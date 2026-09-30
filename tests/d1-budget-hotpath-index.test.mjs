@@ -110,6 +110,10 @@ const directFiveMinuteStreamMigration = readFileSync(
   new URL('../database/facts-migrations/065_direct_5m_stream_history.sql', import.meta.url),
   'utf8',
 );
+const retireLegacyMaterializationsMigration = readFileSync(
+  new URL('../database/facts-migrations/068_retire_legacy_d1_materializations.sql', import.meta.url),
+  'utf8',
+);
 const prSchema = readFileSync(
   new URL('../worker/scripts/apply-facts-pr-schema.mjs', import.meta.url),
   'utf8',
@@ -164,6 +168,7 @@ const expectedMigrations = [
   'database/facts-migrations/065_direct_5m_stream_history.sql',
   'database/facts-migrations/066_pages_canonical_track_identity.sql',
   'database/facts-migrations/067_canonical_track_presentation_integrity.sql',
+  'database/facts-migrations/068_retire_legacy_d1_materializations.sql',
 ];
 
 test('MINUTE_DB deployment selects changed migrations through the current schema tip', () => {
@@ -180,6 +185,8 @@ test('MINUTE_DB deployment selects changed migrations through the current schema
   assert.match(prSchema, /appleMusicCompatibilityPresent/);
   assert.match(prSchema, /036_minute_fact_playback_position\.sql/);
   assert.match(prSchema, /playbackPositionColumnPresent/);
+  assert.match(prSchema, /068_retire_legacy_d1_materializations\.sql/);
+  assert.match(prSchema, /syncTrackHistoryR2Days/);
   assert.match(
     migration,
     /ON sh_minute_facts\(\s*source_code,\s*minute_at DESC,\s*id DESC,\s*channel_id,\s*observed_at,\s*is_broadcasting\s*\)/s,
@@ -288,6 +295,9 @@ test('MINUTE_DB deployment selects changed migrations through the current schema
   assert.doesNotMatch(redundantIndexMigration, /CREATE INDEX|INSERT|UPDATE|DELETE|ANALYZE|PRAGMA optimize/);
   assert.match(directFiveMinuteStreamMigration, /DROP TRIGGER IF EXISTS trg_sh_stream_5m_average_boundary_insert/);
   assert.match(directFiveMinuteStreamMigration, /DROP TABLE IF EXISTS sh_stream_5m_average_read_model/);
+  assert.match(retireLegacyMaterializationsMigration, /DROP TABLE IF EXISTS sh_pages_response_chunks/);
+  assert.match(retireLegacyMaterializationsMigration, /DROP TABLE IF EXISTS sh_pages_track_history_read_model/);
+  assert.match(retireLegacyMaterializationsMigration, /DROP TABLE IF EXISTS sh_pages_track_history_daily_read_model/);
 });
 
 test('production keeps realtime derive bounded while Actions owns ordinary reconstruction', () => {
