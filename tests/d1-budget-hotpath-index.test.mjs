@@ -67,7 +67,7 @@ const repairCandidateMigration = readFileSync(
   'utf8',
 );
 const retireRepairIndexMigration = readFileSync(
-  new URL('../database/facts-migrations/043_retire_repair_candidate_index.sql', import.meta.url),
+  new URL('../database/facts-migrations/043_retire_minute_fact_repair_candidate_index.sql', import.meta.url),
   'utf8',
 );
 const retireRepairWorkMigration = readFileSync(
@@ -163,6 +163,7 @@ const expectedMigrations = [
   'database/facts-migrations/064_retire_redundant_indexes.sql',
   'database/facts-migrations/065_direct_5m_stream_history.sql',
   'database/facts-migrations/066_pages_canonical_track_identity.sql',
+  'database/facts-migrations/067_canonical_track_presentation_integrity.sql',
 ];
 
 test('MINUTE_DB deployment selects changed migrations through the current schema tip', () => {
