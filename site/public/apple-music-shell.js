@@ -13,11 +13,18 @@ import {
 const summary = dashboardSummary([
   dashboardSummaryItem({ label: '取得地域数', valueId: 'appleRegionCount' }),
   dashboardSummaryItem({ label: '集計日', valueId: 'appleSnapshotDate' }),
+  dashboardSummaryItem({ label: '掲載プレイリスト', valueId: 'applePlaylistCount' }),
 ], { className: 'apple-summary', ariaLabel: '櫻坂46 Apple Music 地域別順位概要' });
 
 const regionTable = dashboardTable({
   id: 'appleRegionCompareTable',
   className: 'apple-table apple-region-table',
+  wrapClassName: 'apple-region-table-wrap',
+});
+
+const playlistTable = dashboardTable({
+  id: 'applePlaylistTable',
+  className: 'apple-table apple-playlist-table',
   wrapClassName: 'apple-region-table-wrap',
 });
 
@@ -59,6 +66,13 @@ mountDashboardShell({
         kicker: 'REGION COMPARISON',
         className: 'apple-data-panel',
         bodyHtml: regionTable,
+      })}
+      ${dashboardDataCard({
+        title: '楽曲別プレイリスト掲載一覧',
+        titleId: 'applePlaylistTitle',
+        kicker: 'PUBLIC PLAYLISTS',
+        className: 'apple-data-panel',
+        bodyHtml: `<p class="apple-playlist-note">Apple Music公式サイト上で検出できた公開プレイリストを表示します。</p>${playlistTable}`,
       })}`,
   },
 });
