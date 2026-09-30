@@ -11,11 +11,16 @@ const TRACK_HISTORY_MODEL_KEY = 'track-history';
 const DEFAULT_STALE_FALLBACK_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_EDGE_CACHE_MAX_AGE_MS = 60 * 1000;
 const DASHBOARD_EDGE_CACHE_MAX_AGE_MS = 15 * 1000;
-const R2_ONLY_MODEL_KEYS = new Set(
-  MATERIALIZED_API_VARIANTS
+const PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS = new Set([
+  'apple-music',
+  'amazon-music',
+]);
+const R2_ONLY_MODEL_KEYS = new Set([
+  ...MATERIALIZED_API_VARIANTS
     .map(({ key }) => key)
     .filter((key) => key !== DASHBOARD_MODEL_KEY),
-);
+  ...PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS,
+]);
 
 let responseR2ModulePromise;
 let responseStoreModulePromise;
@@ -133,7 +138,9 @@ export async function runPagesResponseFetch(
   const modelKey = String(url.searchParams.get('key') || '').trim();
   if (!modelKey) return new Response(null, { status: 400 });
   const now = dependencies.now?.() ?? Date.now();
-  const maximumAge = materializedResponseMaximumAge(modelKey, env);
+  const maximumAge = PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS.has(modelKey)
+    ? Number.MAX_SAFE_INTEGER
+    : materializedResponseMaximumAge(modelKey, env);
   const cache = edgeCache(dependencies);
   const cacheKey = edgeCacheKey(request, dependencies);
   try {
