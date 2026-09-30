@@ -5,6 +5,11 @@ function normalizedIdentity(value) {
   return String(value || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
 }
 
+function canonicalIdentity(track) {
+  const trackId = Number(track?.track_id);
+  return Number.isSafeInteger(trackId) && trackId > 0;
+}
+
 function providerIdentity(track) {
   return Boolean(
     String(track?.spotify_id || '').trim()
@@ -19,6 +24,13 @@ function stationheadIdentity(track) {
 
 function identityState(track) {
   const hasProviderIdentity = providerIdentity(track);
+  if (canonicalIdentity(track)) {
+    return {
+      hasProviderIdentity,
+      hasLookup: true,
+      needsProviderIdentity: false,
+    };
+  }
   if (hasProviderIdentity) {
     return {
       hasProviderIdentity: true,
