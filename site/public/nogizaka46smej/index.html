@@ -6,54 +6,10 @@
   <meta name="color-scheme" content="dark light">
   <title>nogizaka46smej リアルタイム</title>
   <meta name="description" content="乃木坂46公式Stationheadアカウント nogizaka46smej のリアルタイム収集状況">
-  <link rel="stylesheet" href="/nogizaka46smej/live.css">
+  <link rel="stylesheet" href="/official-account-live.css">
 </head>
 <body>
-  <main class="page">
-    <header class="hero">
-      <div>
-        <p class="eyebrow">Stationhead official account</p>
-        <h1>nogizaka46smej</h1>
-      </div>
-      <div id="liveBadge" class="badge idle">待機中</div>
-    </header>
-
-    <section class="event-card" aria-live="polite">
-      <div class="label">収集対象</div>
-      <div id="eventName" class="event-name">公式ニュースの告知待ち</div>
-      <div id="eventTime" class="event-time">—</div>
-    </section>
-
-    <section class="metrics" aria-label="リアルタイム数値">
-      <article class="metric"><div class="label">同接</div><div id="listeners" class="value">—</div></article>
-      <article class="metric"><div class="label">累計リスナー</div><div id="totalListens" class="value">—</div></article>
-      <article class="metric"><div class="label">ゲスト</div><div id="guests" class="value">—</div></article>
-      <article class="metric"><div class="label">フォロワー</div><div id="followers" class="value">—</div></article>
-    </section>
-
-    <section class="panel">
-      <div class="panel-head">
-        <div>
-          <div class="label">同接推移</div>
-          <div class="sub">収集中は直近180サンプルを表示</div>
-        </div>
-        <div id="updated" class="updated">未取得</div>
-      </div>
-      <svg id="chart" viewBox="0 0 1000 260" role="img" aria-label="同接推移グラフ" preserveAspectRatio="none">
-        <polyline id="chartLine" points="" fill="none" vector-effect="non-scaling-stroke"></polyline>
-      </svg>
-      <div class="chart-meta"><span id="chartMin">最小 —</span><span id="chartMax">最大 —</span></div>
-    </section>
-
-    <section class="panel details">
-      <div><span class="label">配信開始</span><span id="broadcastStart">—</span></div>
-      <div><span class="label">Station ID</span><span id="stationId">—</span></div>
-      <div><span class="label">Broadcast ID</span><span id="broadcastId">—</span></div>
-      <div><span class="label">取得状態</span><span id="freshness">—</span></div>
-    </section>
-
-    <p id="error" class="error" hidden></p>
-  </main>
-  <script type="module" src="/nogizaka46smej/live.js"></script>
+  <main class="page" data-official-live-root data-handle="nogizaka46smej" data-api="/api/nogizaka46smej-status"></main>
+  <script type="module" src="/official-account-live.js"></script>
 </body>
 </html>

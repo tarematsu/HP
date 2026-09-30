@@ -6,12 +6,14 @@ import { DatabaseSync } from 'node:sqlite';
 import { onRequestGet } from '../site/functions/api/nogizaka46smej-status.js';
 
 const html = readFileSync(new URL('../site/public/nogizaka46smej/index.html', import.meta.url), 'utf8');
-const client = readFileSync(new URL('../site/public/nogizaka46smej/live.js', import.meta.url), 'utf8');
+const client = readFileSync(new URL('../site/public/official-account-live.js', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../site/functions/api/nogizaka46smej-status.js', import.meta.url), 'utf8');
+const common = readFileSync(new URL('../site/functions/lib/official-account-status.js', import.meta.url), 'utf8');
 
-function fakeDb({ event = null, samples = [] } = {}) {
+function fakeDb({ event = null, samples = [], statements = [] } = {}) {
   return {
     prepare(sql) {
+      statements.push(sql);
       return {
         bind() { return this; },
         async first() {
@@ -27,28 +29,33 @@ function fakeDb({ event = null, samples = [] } = {}) {
   };
 }
 
-test('Nogizaka realtime page is addressable as a dedicated static route', () => {
-  assert.match(html, /nogizaka46smej/);
-  assert.match(html, /リアルタイム数値/);
-  assert.match(html, /\/nogizaka46smej\/live\.js/);
-  assert.match(client, /\/api\/nogizaka46smej-status/);
-  assert.match(client, /collection_active \? 15000 : 60000/);
+test('Nogizaka realtime page uses the shared official-account shell', () => {
+  assert.match(html, /data-handle="nogizaka46smej"/);
+  assert.match(html, /data-api="\/api\/nogizaka46smej-status"/);
+  assert.match(html, /\/official-account-live\.css/);
+  assert.match(html, /\/official-account-live\.js/);
+  assert.match(client, /collection_active \? 15_000 : 60_000/);
+  assert.match(client, /visibilitychange/);
 });
 
-test('Nogizaka realtime API reads only isolated Nogizaka collection tables', () => {
+test('Nogizaka realtime API shares status policy while keeping isolated source tables', () => {
+  assert.match(api, /official-account-status\.js/);
   assert.match(api, /sh_nogizaka_official_news_announcements/);
   assert.match(api, /sh_nogizaka46smej_main/);
-  assert.doesNotMatch(api, /sh_sakurazaka46jp_main|sh_official_news_announcements\b/);
-  assert.match(api, /listener_count/);
-  assert.match(api, /total_listens/);
-  assert.match(api, /followers/);
+  assert.doesNotMatch(api, /sh_official_news_announcements\b|sh_sakurazaka46jp_main/);
+  assert.match(common, /listener_count/);
+  assert.match(common, /total_listens/);
+  assert.match(common, /followers/);
+  assert.match(common, /sh_sakurazaka46jp_collection_tests/);
 });
 
-test('active Nogizaka collection returns realtime samples with a short refresh hint', async () => {
+test('active Nogizaka collection returns shared realtime contract and cache policy', async () => {
   const observedAt = Date.now() - 5_000;
+  const statements = [];
   const response = await onRequestGet({
     env: {
       OTHER_DB: fakeDb({
+        statements,
         event: { id: 7, event_name: '乃木坂46 Stationhead', status: 'active', scheduled_at: observedAt },
         samples: [{
           observed_at: observedAt,
@@ -61,6 +68,7 @@ test('active Nogizaka collection returns realtime samples with a short refresh h
     },
   });
   assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
   const body = await response.json();
   assert.equal(body.ok, true);
   assert.equal(body.handle, 'nogizaka46smej');
@@ -68,6 +76,8 @@ test('active Nogizaka collection returns realtime samples with a short refresh h
   assert.equal(body.refresh_hint_ms, 15000);
   assert.equal(body.latest.listener_count, 347);
   assert.equal(body.sample_count, 1);
+  const mainSql = statements.find((sql) => sql.includes('sh_nogizaka46smej_main'));
+  assert.match(mainSql, /target_handle='nogizaka46smej'/);
 });
 
 function sqlDb(events) {
@@ -91,7 +101,7 @@ function sqlDb(events) {
   };
 }
 
-test('start-waiting display ignores stale schedules but retains the delayed-start window', async () => {
+test('start-waiting display ignores stale schedules but retains the shared delayed-start window', async () => {
   const now = Date.now();
   const db = sqlDb([
     [1, 'old campaign', now - 2 * 86400000, 'scheduled'],

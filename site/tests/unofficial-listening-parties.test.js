@@ -23,7 +23,9 @@ test('unofficial listening party list is appended below the shared official view
   assert.match(viewSource, /history\.append\(section\)/);
   assert.match(viewSource, /<h2>非公式リスパ一覧<\/h2>/);
   assert.match(viewSource, /<th>日付<\/th><th>開始時刻<\/th><th>種別<\/th><th>イベント名<\/th><th>開催チャンネル<\/th><th>出典<\/th>/);
-  assert.match(viewSource, /\[event\.date, event\.time, event\.type, event\.name, event\.place\]/);
+  assert.match(viewSource, /dashboard-table-dom\.js\?v=20261001\.1/);
+  assert.match(viewSource, /appendTableRow\(tbody, \[event\.date, event\.time, event\.type, event\.name, event\.place, \{ node: sourceLink \}\]\)/);
+  assert.doesNotMatch(viewSource, /const row = document\.createElement\('tr'\)/);
   assert.doesNotMatch(viewSource, /長さ|duration|最大同接/);
 });
 

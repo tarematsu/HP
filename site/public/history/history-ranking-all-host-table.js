@@ -2,6 +2,7 @@ import {
   appendEmptyTableRow,
   integerFormat as integer,
 } from '../dashboard-ui-common.js?v=20260930.1';
+import { appendTableRow, replaceTableHeader } from '../dashboard-table-dom.js?v=20261001.1';
 import { downloadCsv } from '../csv-download.js?v=20261001.1';
 
 const MODE = 'ranking';
@@ -84,6 +85,16 @@ function setSelectedHost(host) {
   }
 }
 
+function rankingHostButton(row) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'ranking-host-button';
+  button.dataset.rankingHost = String(row.host_name || '');
+  button.textContent = String(row.host_name || '—');
+  button.setAttribute('aria-label', `${button.textContent}の順位推移を表示`);
+  return button;
+}
+
 function render(data) {
   const table = document.getElementById('thead')?.closest('table');
   const head = document.getElementById('thead');
@@ -110,35 +121,13 @@ function render(data) {
   const rows = visibleHostRows(data);
   lastData = { ...data, host_rankings: rows };
   table.classList.add('all-host-ranking-table');
-
-  const headRow = document.createElement('tr');
-  for (const [, label] of ALL_HOST_COLUMNS) {
-    const th = document.createElement('th');
-    th.scope = 'col';
-    th.textContent = label;
-    headRow.append(th);
-  }
-  head.replaceChildren(headRow);
+  replaceTableHeader(head, ALL_HOST_COLUMNS.map(([, label]) => label));
 
   const fragment = document.createDocumentFragment();
   for (const row of rows) {
-    const tr = document.createElement('tr');
-    for (const [key] of ALL_HOST_COLUMNS) {
-      const td = document.createElement('td');
-      if (key === 'host_name') {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'ranking-host-button';
-        button.dataset.rankingHost = String(row.host_name || '');
-        button.textContent = String(row.host_name || '—');
-        button.setAttribute('aria-label', `${button.textContent}の順位推移を表示`);
-        td.append(button);
-      } else {
-        td.textContent = displayValue(key, row[key]);
-      }
-      tr.append(td);
-    }
-    fragment.append(tr);
+    appendTableRow(fragment, ALL_HOST_COLUMNS.map(([key]) => key === 'host_name'
+      ? { node: rankingHostButton(row) }
+      : displayValue(key, row[key])));
   }
   if (!rows.length) appendEmptyTableRow(fragment, 'データがありません。', ALL_HOST_COLUMNS.length);
   body.replaceChildren(fragment);

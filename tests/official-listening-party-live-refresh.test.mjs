@@ -2,14 +2,16 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 
-test('official listening party uses live refresh only while collection is active', () => {
+test('official listening party uses shared status policy and live refresh only while collection is active', () => {
   const status = readFileSync(new URL('../site/functions/api/sakurazaka46jp-status.js', import.meta.url), 'utf8');
+  const commonStatus = readFileSync(new URL('../site/functions/lib/official-account-status.js', import.meta.url), 'utf8');
   const summary = readFileSync(new URL('../site/public/history/history-broadcast-summary.js', import.meta.url), 'utf8');
   const historyEntry = readFileSync(new URL('../site/public/history/history-main.js', import.meta.url), 'utf8');
 
-  assert.match(status, /cache-control': 'no-store'/);
-  assert.match(status, /collection_active: Boolean\(activeAnnouncement\)/);
-  assert.match(status, /WHERE status='active'/);
+  assert.match(status, /official-account-status\.js/);
+  assert.match(commonStatus, /OFFICIAL_STATUS_CACHE_CONTROL = 'no-store'/);
+  assert.match(commonStatus, /scheduled_at>=\?/);
+  assert.match(commonStatus, /sh_sakurazaka46jp_collection_tests/);
   assert.match(summary, /LIVE_REFRESH_MS = 15_000/);
   assert.match(summary, /\/api\/sakurazaka46jp-status/);
   assert.match(summary, /statusPayload\.collection_active !== true/);
