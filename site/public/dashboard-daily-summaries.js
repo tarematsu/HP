@@ -76,7 +76,7 @@ if (typeof document !== 'undefined') {
 }
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('dashboard:details', (event) => {
+  window.addEventListener('dashboard:payload', (event) => {
     const data = event?.detail?.payload?.daily_summaries;
     if (data) renderDashboardDailySummaries(data);
   });
