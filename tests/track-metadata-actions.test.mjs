@@ -16,29 +16,41 @@ test('track metadata backlog repair follows successful runtime maintenance on a 
   assert.match(workflow, /TRACK_METADATA_ACTIONS_LIMIT: '150'/);
 });
 
-test('Actions repair prioritizes the active queue before the bounded backlog window', () => {
+test('Actions repair prioritizes the active queue before the canonical and recent backlog windows', () => {
   assert.match(script, /function activeQueueRows\(\)/);
   assert.match(script, /FROM sh_queue_current/);
   assert.match(script, /JOIN sh_queue_items AS items/);
   assert.match(script, /items\.duration_ms/);
   assert.match(script, /ORDER BY items\.position ASC/);
-  assert.match(script, /for \(const row of \[\.\.\.active, \.\.\.latest\]\)/);
+  assert.match(script, /function canonicalGapRows\(\)/);
+  assert.match(script, /FROM sh_track_canonical_metadata/);
+  assert.match(script, /thumbnail_url IS NULL OR TRIM\(thumbnail_url\)=''/);
+  assert.match(script, /for \(const row of \[\.\.\.active, \.\.\.canonicalGaps, \.\.\.latest\]\)/);
 });
 
-test('Actions repair reads a bounded latest-state candidate window instead of grouping occurrence history', () => {
+test('Actions repair reads bounded canonical and latest-state candidate windows instead of grouping occurrence history', () => {
   assert.match(script, /candidateScanLimit = Math\.min\(2_000, Math\.max\(candidateLimit, candidateLimit \* 4\)\)/);
+  assert.match(script, /FROM sh_track_canonical_metadata/);
+  assert.match(script, /track_id IS NOT NULL/);
   assert.match(script, /FROM sh_track_like_current INDEXED BY idx_sh_track_like_current_observed/);
   assert.match(script, /ORDER BY observed_at DESC LIMIT \$\{candidateScanLimit\}/);
   assert.match(script, /bySpotify\.has\(spotifyId\)/);
   assert.doesNotMatch(script, /FROM sh_queue_items[\s\S]*GROUP BY spotify_id/);
 });
 
-test('Actions repair recovers Spotify oEmbed entries that omit the artist', () => {
+test('Actions repair treats missing artwork as incomplete metadata', () => {
+  assert.match(script, /const thumbnailUrl = text\(row\?\.thumbnail_url\)/);
+  assert.match(script, /spotifyId && title && artist && thumbnailUrl/);
+});
+
+test('Actions repair recovers Spotify oEmbed entries missing artist or artwork', () => {
   assert.match(script, /function appleMetadata\(title, durationMs\)/);
   assert.match(script, /itunes\.apple\.com\/search/);
   assert.match(script, /trackTimeMillis/);
   assert.match(script, /candidate\.duration_ms/);
-  assert.match(script, /if \(!title \|\| !artist\) return null/);
+  assert.match(script, /if \(!artist \|\| !thumbnailUrl\)/);
+  assert.match(script, /thumbnailUrl \|\|= text\(apple\?\.artworkUrl100\)/);
+  assert.match(script, /if \(!title \|\| !artist \|\| !thumbnailUrl\) return null/);
   assert.match(script, /source: apple \? 'spotify_oembed_itunes_actions' : 'spotify_oembed_actions'/);
 });
 
