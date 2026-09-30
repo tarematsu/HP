@@ -69,10 +69,10 @@ async function repairedRows(db, targetDay, generation) {
   if (groupedRows.length > TRACK_HISTORY_LIMIT) {
     throw new Error(`track-history repair exceeded ${TRACK_HISTORY_LIMIT} grouped rows`);
   }
-  const [canonicalGroupedRows, canonicalLikeRows] = await Promise.all([
-    canonicalizeTrackRows(db, groupedRows),
-    canonicalizeTrackRows(db, likeRows),
-  ]);
+  const combinedRows = [...groupedRows, ...(likeRows || [])];
+  const canonicalRows = await canonicalizeTrackRows(db, combinedRows);
+  const canonicalGroupedRows = canonicalRows.slice(0, groupedRows.length);
+  const canonicalLikeRows = canonicalRows.slice(groupedRows.length);
   const mergedRows = mergeTrackRows(canonicalGroupedRows);
   const likedRows = attachCompactTrackLikes(mergedRows, canonicalLikeRows);
   const completed = applyTrackPeriodCompleteness(likedRows, canonicalGroupedRows, generation);
