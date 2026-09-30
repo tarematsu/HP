@@ -113,7 +113,7 @@ function buildPayload(event, probes, summary, generatedAt, day) {
     event: event || null,
     row,
     series: row ? [{
-      event_name: `${day.replaceAll('-', '/')} ${row.broadcast_content}`,
+      event_name: `${day.replaceAll('-', '')} ${row.broadcast_content}`,
       started_at: row.started_at,
       points,
       source: live ? 'official_news_live' : (summary ? 'official_broadcast_summary' : 'official_news_probes'),
