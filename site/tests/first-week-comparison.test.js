@@ -87,7 +87,9 @@ test('dashboard keeps the first-week tab visible while deferring its shell and r
   assert.match(entry, /dashboard-tabs\.js\?v=20260930\.1/);
   assert.match(tabs, /first-week-comparison-shell\.js\?v=20260929\.1/);
   assert.doesNotMatch(shell, /\.css\?v=|style:\s*\{/);
-  assert.match(shell, /dashboard-ui-common\.js\?v=20260930\.1/);
+  assert.match(shell, /dashboard-ui-common\.js\?v=20261001\.1/);
+  assert.match(shell, /dashboardChartCard/);
+  assert.match(shell, /dashboardDataCard/);
   assert.match(shell, /mountDashboardShell/);
   assert.doesNotMatch(shell, /first-week-metric-toggle|data-first-week-metric|再生数増加/);
   assert.match(shell, /view: 'first-week'/);
