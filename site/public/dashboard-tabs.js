@@ -28,8 +28,8 @@ const LAZY_VIEWS = Object.freeze({
   },
   'amazon-music': {
     viewId: 'amazonMusicView',
-    shell: () => import('/amazon-music-shell.js?v=20260929.1'),
-    runtime: () => import('/amazon-music.js?v=20260929.1'),
+    shell: () => import('/amazon-music-shell.js?v=20261001.2'),
+    runtime: () => import('/amazon-music.js?v=20261001.2'),
     loadExport: 'loadAmazonMusicView',
     noticeId: 'amazonMusicNotice',
     errorLabel: 'amazon music',
