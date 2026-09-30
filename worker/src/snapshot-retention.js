@@ -14,7 +14,6 @@ const STATE_ID = 'snapshot-retention-v1';
 const REQUIRED_RETENTION_INDEXES = Object.freeze([
   'idx_sh_channel_snapshots_observed_id',
   'idx_sh_queue_snapshots_time',
-  'idx_sh_comment_minute_counts_bucket',
   'idx_sh_queue_items_observed',
   'idx_sh_track_like_observations_time',
   'idx_sh_track_metadata_fetched_at',
@@ -25,7 +24,6 @@ const AUXILIARY_TABLES = [
   // These sources remain useful for repairs inside the rebuild horizon. Past
   // that horizon they can be removed independently of channel snapshots.
   { name: 'sh_queue_snapshots', timeColumn: 'observed_at', keyColumn: 'id' },
-  { name: 'sh_comment_minute_counts', timeColumn: 'bucket_start', keyColumn: 'rowid' },
   { name: 'sh_queue_items', timeColumn: 'observed_at', keyColumn: 'id' },
   { name: 'sh_track_like_observations', timeColumn: 'observed_at', keyColumn: 'id' },
   { name: 'sh_track_metadata', timeColumn: 'fetched_at', keyColumn: 'rowid' },
