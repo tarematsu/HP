@@ -1,4 +1,4 @@
-import { decimalOneFormat as streamNumber, finiteNumber as finite, integerFormat as integer } from './dashboard-ui-common.js?v=20260930.1';
+import { finiteNumber as finite, integerFormat as integer } from './dashboard-ui-common.js?v=20260930.1';
 
 const DAY_MS = 86_400_000;
 const FIVE_MINUTE_MS = 5 * 60_000;
@@ -10,7 +10,6 @@ let rows = [];
 let streamRows = [];
 
 const numberText = (value) => finite(value) == null ? '—' : integer.format(Number(value));
-const streamNumberText = (value) => finite(value) == null ? '—' : streamNumber.format(Number(value));
 
 function normalizeHistory(history) {
   const list = Array.isArray(history) ? history : [];
@@ -72,16 +71,22 @@ function selectPoint(event) {
   const detail = document.getElementById('currentChartDetail');
   if (detail) {
     const streamText = streamRow
-      ? `　再生数増加 +${streamNumberText(streamRow.stream_delta)}/分（5分平均）`
+      ? `　再生数 +${numberText(streamRow.stream_delta)}`
       : '';
     detail.textContent = `${jstChartDateTime.format(new Date(displayTime))} JST　オンライン数 ${numberText(onlineRow.online_member_count)}人${streamText}`;
   }
 }
 
-window.addEventListener('dashboard:details', (event) => {
+window.addEventListener('dashboard:payload', (event) => {
   const payload = event?.detail?.payload;
   if (!payload?.ok) return;
-  rows = normalizeHistory(payload.history);
-  streamRows = normalizeStreamHistory(payload.stream_5m_history);
+  const nextRows = normalizeHistory(payload.history);
+  if (nextRows.length) rows = nextRows;
+  if (Array.isArray(payload.stream_5m_history)) {
+    const nextStreamRows = normalizeStreamHistory(payload.stream_5m_history);
+    if (nextStreamRows.length || payload.stream_5m_history.length === 0) streamRows = nextStreamRows;
+  }
+  const legend = document.querySelector('#currentView .stream-growth-key');
+  if (legend) legend.textContent = '再生数';
 });
 document.getElementById('audienceChart')?.addEventListener('pointerup', selectPoint, true);
