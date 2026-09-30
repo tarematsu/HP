@@ -1,10 +1,14 @@
 import { collectAmazonMusicSnapshot } from './amazon-music-collector.js';
-import { continueAmazonMusicDeepScan } from './amazon-music-deep-scan.js';
+import {
+  continueAmazon100kScan,
+  monitorAmazonTop1000,
+} from './amazon-music-rank-monitor.js';
 import { collectAppleMusicSnapshot } from './apple-music-collector.js';
 import { appleMusicFetch } from './apple-music-fetch.js';
 
 export const AMAZON_MUSIC_DAILY_CRON = '30 1 * * *';
-export const AMAZON_MUSIC_DEEP_SCAN_CRON = '45 * * * *';
+export const AMAZON_MUSIC_TOP_SCAN_CRON = '5 * * * *';
+export const AMAZON_MUSIC_DEEP_SCAN_CRON = '2,12,22,32,42,52 * * * *';
 export const APPLE_MUSIC_PROBE_CRON = '15 * * * *';
 
 function loggedRun(label, operation, { fatal = false } = {}) {
@@ -33,10 +37,15 @@ export default {
         'apple-music-collection',
         () => collectAppleMusicSnapshot(env, scheduledTime, appleMusicFetch),
       );
+    } else if (cron === AMAZON_MUSIC_TOP_SCAN_CRON) {
+      run = loggedRun(
+        'amazon-music-top-1000-monitor',
+        () => monitorAmazonTop1000(env, scheduledTime),
+      );
     } else if (cron === AMAZON_MUSIC_DEEP_SCAN_CRON) {
       run = loggedRun(
-        'amazon-music-deep-scan',
-        () => continueAmazonMusicDeepScan(env, scheduledTime),
+        'amazon-music-100k-scan',
+        () => continueAmazon100kScan(env, scheduledTime),
       );
     } else if (cron === AMAZON_MUSIC_DAILY_CRON) {
       run = loggedRun(
@@ -45,7 +54,7 @@ export default {
         { fatal: true },
       );
     } else {
-      // Manual/test scheduled invocations without a known cron retain the old behavior.
+      // Manual/test scheduled invocations without a known cron retain the daily collection behavior.
       run = Promise.all([
         loggedRun(
           'amazon-music-collection',
