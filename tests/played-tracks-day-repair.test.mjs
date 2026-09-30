@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { TRACK_HISTORY_SQL } from '../site/functions/lib/track-history-restored-handler.js';
 import { defaultRepairDay } from '../worker/scripts/repair-track-history-day-actions.mjs';
+import { directRevisionTrackHistorySql } from '../worker/src/track-history-direct-revision-sql.js';
 
 const repair = readFileSync(
   new URL('../worker/scripts/repair-track-history-day-actions.mjs', import.meta.url),
@@ -27,11 +29,21 @@ test('played-tracks refresh defaults to the latest completed UTC day', () => {
 test('played-tracks refresh is bounded to one UTC day and publishes only after non-empty aggregation', () => {
   assert.match(repair, /fromTs = Date\.parse\(`\$\{targetDay\}T00:00:00Z`\)/);
   assert.match(repair, /toTs = fromTs \+ DAY_MS/);
-  assert.match(repair, /materializedTrackHistorySql\(\)/);
-  assert.match(repair, /loadTrackHistoryData\(/);
+  assert.match(repair, /loadDirectRevisionTrackHistoryData\(/);
   assert.match(repair, /track-history repair produced no playable rows/);
   assert.match(repair, /publishTrackHistoryR2DayRows/);
+  assert.doesNotMatch(repair, /materializedTrackHistorySql\(|loadTrackHistoryData\(/);
   assert.doesNotMatch(repair, /INSERT INTO sh_pages_track_history_read_model|DELETE FROM sh_pages_track_history_read_model/);
+});
+
+test('played-tracks daily query reads only materialized latest revision items', () => {
+  const sql = directRevisionTrackHistorySql();
+  assert.match(sql, /starts\.latest_revision_id/);
+  assert.match(sql, /JOIN sh_queue_revisions revisions ON revisions\.id=starts\.latest_revision_id/);
+  assert.match(sql, /JOIN sh_queue_revision_items items ON items\.revision_id=revisions\.id/);
+  assert.match(sql, /FROM sh_track_history_queue_starts starts/);
+  assert.doesNotMatch(sql, /sh_queue_items/);
+  assert.equal((sql.match(/\?/g) || []).length, (TRACK_HISTORY_SQL.match(/\?/g) || []).length);
 });
 
 test('played-tracks repair canonicalizes grouped and like rows in one pass', () => {
