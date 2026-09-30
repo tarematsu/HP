@@ -186,7 +186,7 @@ async function showHistory(mode, { updateUrl = true, replaceUrl = false, syncRun
       await loadOnce('ranking-status', () => import('/history/history-ranking-table-status.js?v=20260923.2'));
       if (activeMode !== mode) return;
     }
-    await loadOnce('history-runtime', () => import('/history/history-main.js?v=20261001.1'));
+    await loadOnce('history-runtime', () => import('/history/history-main.js?v=20260928.1'));
     if (activeMode !== mode) return;
     if (syncRuntime && historyRuntimeMode !== mode) {
       tabs?.querySelector(`button[data-mode="${mode}"]`)?.dispatchEvent(new Event('click'));
