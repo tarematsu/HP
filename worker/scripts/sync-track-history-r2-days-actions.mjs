@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { canonicalizeTrackRows } from '../../site/functions/lib/canonical-track-rows.js';
 import {
   TRACK_HISTORY_DAY_INDEX_KEY,
 } from '../src/pages-track-history-day-index.js';
@@ -179,7 +180,7 @@ export async function syncTrackHistoryR2Day({
   if (!db?.prepare) throw new Error('MINUTE_DB adapter is missing');
   if (!validDay(day)) throw new Error(`invalid Track History R2 sync day: ${day}`);
   const source = await loadDayRows(db, day);
-  const rows = source.map((row) => parseRowJson(row, day));
+  const rows = await canonicalizeTrackRows(db, source.map((row) => parseRowJson(row, day)));
   return publishTrackHistoryR2DayRows({ day, rows, now, upload, load });
 }
 
@@ -213,7 +214,7 @@ export async function syncTrackHistoryR2Days({ db, now = Date.now(), upload = up
     if (!validDay(day)) continue;
     const source = await loadDayRows(db, day);
     if (!source.length) continue;
-    const rows = source.map((row) => parseRowJson(row, day));
+    const rows = await canonicalizeTrackRows(db, source.map((row) => parseRowJson(row, day)));
     const payload = dayPayload(day, rows, now, dayRow?.updated_at);
     upload(trackHistoryDayObjectKey(day), payload);
     dates.push(day);
