@@ -122,6 +122,31 @@ export function labelAmazonMusicVariants(tracks) {
   });
 }
 
+export function addAmazonMusicRankChanges(tracks, history, snapshotDate) {
+  const time = Date.parse(`${snapshotDate}T00:00:00Z`);
+  if (!Number.isFinite(time)) return tracks;
+  const previousDate = new Date(time - 86_400_000).toISOString().slice(0, 10);
+  const previous = (Array.isArray(history) ? history : [])
+    .find((item) => item?.snapshot_date === previousDate);
+  const previousRanks = new Map();
+  for (const track of Array.isArray(previous?.tracks) ? previous.tracks : []) {
+    const id = text(track?.amazon_music_id);
+    const rank = integer(track?.amazon_rank);
+    if (id && rank != null && rank > 0) previousRanks.set(id, rank);
+  }
+  return (Array.isArray(tracks) ? tracks : []).map((track) => {
+    const id = text(track?.amazon_music_id);
+    const rank = integer(track?.amazon_rank);
+    const previousRank = previousRanks.get(id);
+    return {
+      ...track,
+      rank_change: id && rank != null && rank > 0 && previousRank != null
+        ? previousRank - rank
+        : null,
+    };
+  });
+}
+
 async function publishDeepProgress(env, deepState, observedAt, { resetRanks = false } = {}) {
   const r2 = env?.PAGES_RESPONSE_R2;
   if (!r2?.put) throw new Error('PAGES_RESPONSE_R2 binding is required');
@@ -166,12 +191,16 @@ async function publishDeepProgress(env, deepState, observedAt, { resetRanks = fa
     });
   }
 
-  const tracks = labelAmazonMusicVariants([...byId.values()]).sort((a, b) => {
+  const snapshotDate = jstDate(observedAt);
+  const tracks = addAmazonMusicRankChanges(
+    labelAmazonMusicVariants([...byId.values()]),
+    previousModel?.history,
+    snapshotDate,
+  ).sort((a, b) => {
     const ar = integer(a.amazon_rank) ?? Number.MAX_SAFE_INTEGER;
     const br = integer(b.amazon_rank) ?? Number.MAX_SAFE_INTEGER;
     return ar - br || String(a.title || '').localeCompare(String(b.title || ''), 'ja');
   });
-  const snapshotDate = jstDate(observedAt);
   const history = (Array.isArray(previousModel?.history) ? previousModel.history : [])
     .filter((item) => /^\d{4}-\d{2}-\d{2}$/.test(String(item?.snapshot_date || '')))
     .filter((item) => item.snapshot_date !== snapshotDate)
