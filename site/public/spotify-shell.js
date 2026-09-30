@@ -15,7 +15,7 @@ mountDashboardShell({
     html: `
     <p id="spotifyNotice" class="notice" role="status" hidden></p>
 
-    <section id="spotifySummary" class="summary-cards spotify-summary" aria-label="櫻坂46 Spotify再生数概要">
+    <section class="summary-cards spotify-summary" aria-label="櫻坂46 Spotify再生数概要">
       <article><span>集計日</span><strong id="spotifySnapshotDate" class="summary-date">-</strong></article>
       <article><span id="spotifyTrackCountLabel">櫻坂46の楽曲数</span><strong id="spotifyTrackCount">-</strong></article>
       <article><span id="spotifyTotalDeltaLabel">櫻坂46の再生数前日比合計</span><strong id="spotifyTotalDelta">-</strong></article>
@@ -37,12 +37,12 @@ mountDashboardShell({
     </section>
 
     <section class="card data-panel spotify-data-panel">
-      <div class="section-head spotify-detail-head">
+      <div class="section-head">
         <div><p class="kicker">SPOTIFY PLAYCOUNTS</p><h2 id="spotifyTableTitle">櫻坂46の再生数一覧</h2></div>
-        <div class="spotify-artist-switcher" role="group" aria-label="再生数一覧のアーティスト切り替え">
-          <button type="button" class="spotify-artist-button is-active" data-spotify-artist="sakurazaka46" aria-pressed="true">櫻坂46</button>
-          <button type="button" class="spotify-artist-button" data-spotify-artist="nogizaka46" aria-pressed="false">乃木坂46</button>
-          <button type="button" class="spotify-artist-button" data-spotify-artist="hinatazaka46" aria-pressed="false">日向坂46</button>
+        <div class="mode-tabs" role="group" aria-label="再生数一覧のアーティスト切り替え">
+          <button type="button" data-spotify-artist="sakurazaka46" class="active" aria-pressed="true">櫻坂46</button>
+          <button type="button" data-spotify-artist="nogizaka46" aria-pressed="false">乃木坂46</button>
+          <button type="button" data-spotify-artist="hinatazaka46" aria-pressed="false">日向坂46</button>
         </div>
       </div>
       <div class="table-wrap table-fit-mobile">
@@ -60,5 +60,3 @@ mountDashboardShell({
     </section>`,
   },
 });
-
-await import('./spotify-artist-switcher.js?v=20261001.1');
