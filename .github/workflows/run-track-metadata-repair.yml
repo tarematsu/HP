@@ -12,11 +12,12 @@ on:
       - 'worker/scripts/repair-legacy-ranking-metadata-actions.mjs'
       - 'worker/scripts/report-unresolved-ranking-metadata-actions.mjs'
       - 'worker/src/isrc-metadata.js'
+  # Runtime maintenance already runs every 30 minutes. Trigger from its successful
+  # completion instead of maintaining a second 30-minute cron; the recovery
+  # watchdog dispatches this workflow if the event chain is missed or stale.
   workflow_run:
     workflows: ["Run runtime offline maintenance"]
     types: [completed]
-  schedule:
-    - cron: '12,42 * * * *'
   workflow_dispatch:
 
 permissions:

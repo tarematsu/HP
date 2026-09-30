@@ -1,12 +1,13 @@
 name: Refresh Cloudflare observability
 
+# This helper is dispatched by the maintenance recovery watchdog when unified
+# observability becomes stale. Unified observability also runs after runtime/deploy
+# workflows, so an independent hourly cron here would duplicate those triggers.
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/refresh-cloudflare-observability.yml'
-  schedule:
-    - cron: '12 * * * *'
   workflow_dispatch:
 
 permissions:

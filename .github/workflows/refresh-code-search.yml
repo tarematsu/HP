@@ -1,9 +1,8 @@
 name: Refresh code search index
 
+# Manual-only utility. Querying code search does not control GitHub's indexing cadence,
+# so a recurring Actions run only adds runner usage without guaranteeing fresher results.
 on:
-  schedule:
-    # Every 2 hours. GitHub cron is evaluated in UTC.
-    - cron: "17 */2 * * *"
   workflow_dispatch:
 
 permissions:
