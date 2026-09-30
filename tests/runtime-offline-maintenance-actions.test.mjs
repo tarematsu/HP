@@ -26,10 +26,9 @@ function statusDatabase(writes) {
   };
 }
 
-test('offline runtime maintenance runs frequently and after reliable workflow completions', () => {
-  assert.match(workflow, /workflows: \["Deploy production", "Rebuild pages read models"\]/);
-  assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/);
-  assert.match(workflow, /ref: \$\{\{ github\.event\.workflow_run\.head_sha \|\| github\.sha \}\}/);
+test('offline runtime maintenance runs on the thirty-minute cadence without deployment fan-out', () => {
+  assert.doesNotMatch(workflow, /workflow_run:/);
+  assert.doesNotMatch(workflow, /workflows: \[[^\]]*Deploy production/);
   assert.match(workflow, /cron: '11,41 \* \* \* \*'/);
   assert.match(workflow, /worker\/src\/minute-\*\*/);
   assert.match(workflow, /worker\/src\/rollup-\*\*/);
