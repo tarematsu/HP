@@ -12,14 +12,18 @@ const r2Api = readFileSync(new URL('../../worker/src/pages-track-history-r2-api.
 
 test('played tracks tab is visible immediately and shell mounts its view', () => {
   assert.match(registry, /view: 'played-tracks', label: '再生履歴'/);
-  assert.match(shell, /dashboard-ui-common\.js\?v=20260930\.1/);
+  assert.match(shell, /dashboard-ui-common\.js\?v=20261001\.1/);
   assert.match(shell, /mountDashboardShell/);
   assert.match(shell, /view: 'played-tracks'/);
   assert.match(shell, /label: '再生履歴'/);
   assert.match(shell, /anchorSelector: '\[data-view="likes"\]'/);
   assert.match(shell, /position: 'beforebegin'/);
   assert.match(shell, /id: 'playedTracksView'/);
-  assert.match(shell, /controls card played-tracks-controls/);
+  assert.match(shell, /dashboardControls/);
+  assert.match(shell, /className: 'played-tracks-controls'/);
+  assert.match(shell, /dashboardSummary/);
+  assert.match(shell, /dashboardChartCard/);
+  assert.match(shell, /dashboardDataCard/);
   assert.doesNotMatch(shell, /view-toolbar played-tracks-toolbar/);
 });
 

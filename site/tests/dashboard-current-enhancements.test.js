@@ -26,8 +26,10 @@ test('current metrics are statically ordered while current-only renderers load l
   assert.doesNotMatch(header, /\.css\?v=|createElement\('link'\)/);
   assert.doesNotMatch(metrics, /window\.fetch|response\.clone\(\)\.json|restoreDashboardCache/);
   assert.match(fetchCache, /dashboard:payload/);
-  assert.ok(currentShell.indexOf('id="online"') < currentShell.indexOf('id="totalStreams"'));
-  assert.ok(currentShell.indexOf('id="totalStreams"') < currentShell.indexOf('id="members"'));
+  assert.ok(currentShell.indexOf("valueId: 'online'") < currentShell.indexOf("valueId: 'totalStreams'"));
+  assert.ok(currentShell.indexOf("valueId: 'totalStreams'") < currentShell.indexOf("valueId: 'members'"));
+  assert.match(currentShell, /dashboardMetric/);
+  assert.match(currentShell, /dashboardMetrics/);
   assert.doesNotMatch(layout, /append\(|insertAdjacent|MutationObserver|goal-card|audienceChart|getContext\('2d'\)|drawEnhancedChart/);
 });
 

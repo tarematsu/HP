@@ -22,7 +22,7 @@ function trackKey(track) {
 
 function trackTitleMap(payload) {
   return new Map((Array.isArray(payload?.tracks) ? payload.tracks : [])
-    .map((track) => [trackKey(track), String(track?.title || '曲名不明')])
+    .map((track) => [trackKey(track), track?.display_title || track?.title || '曲名不明'])
     .filter(([key]) => key));
 }
 
@@ -194,7 +194,7 @@ function renderTable(payload) {
     const title = document.createElement('td');
     const amazon = integer(track?.amazon_rank);
     amazonRank.textContent = amazon == null ? '-' : `${numberFormat.format(amazon)}位`;
-    title.textContent = String(track?.title || '曲名不明');
+    title.textContent = track?.display_title || track?.title || '曲名不明';
     amazonRank.className = 'amazon-rank-number';
     row.append(amazonRank, title);
     tbody.append(row);

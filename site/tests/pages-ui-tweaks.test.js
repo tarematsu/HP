@@ -20,10 +20,12 @@ test('current chart is statically before now playing without a redundant heading
   assert.doesNotMatch(chartCard, /LAST 24 HOURS|オンライン数<\/h2>/);
 });
 
-test('likes update control is removed and CSV is statically in the song table header', () => {
+test('likes update control is removed and CSV stays in the song-table shared data card', () => {
   assert.doesNotMatch(likesShell, /id="likesLoad"|class="like-actions"/);
-  const tablePanel = likesShell.slice(likesShell.indexOf('<h2>楽曲別一覧</h2>'));
+  const tablePanel = likesShell.slice(likesShell.indexOf("title: '楽曲別一覧'"));
+  assert.ok(tablePanel.length > 0);
   assert.match(tablePanel, /id="likesCsv"/);
+  assert.match(likesShell, /dashboardDataCard/);
 });
 
 test('mobile ranking metric layout is shared instead of scoped to the likes tab', () => {

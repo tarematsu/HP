@@ -42,7 +42,7 @@ test('dashboard skeleton and shell modules keep accessibility, privacy and all p
     'trackFallback', 'online', 'members', 'totalStreams', 'membersYesterdayDelta', 'membersDayBeforeDelta',
     'streamsYesterdayDelta', 'streamsDayBeforeDelta', 'nowPlayingLink', 'queue', 'metricGoalCompact', 'streamGoal',
     'goalEta', 'audienceChart', 'historyView', 'likesView', 'likesRankingList', 'likesTbody',
-  ]) assert.match(shellSource, new RegExp(`(?:id=\\"${id}\\"|id: '${id}')`));
+  ]) assert.match(shellSource, new RegExp(`(?:id=\\"${id}\\"|id: '${id}'|valueId: '${id}')`));
   for (const id of ['channelName', 'channelFallback', 'updated']) assert.match(html, new RegExp(`id="${id}"`));
   assert.doesNotMatch(shellSource, /id="streamCount"|id="goalMilestones"|goal-card/);
   assert.match(registry, /view: 'current', label: '現在', active: true/);
@@ -80,8 +80,8 @@ test('dashboard displays completed UTC-day changes from the unified materialized
   const renderer = await text('public/dashboard-daily-summaries.js');
   const criticalEndpoint = await text('functions/api/dashboard.js');
   const loader = await text('functions/lib/dashboard-daily-summaries.js');
-  assert.match(currentShell, />総メンバー数</);
-  assert.match(currentShell, />総再生数</);
+  assert.match(currentShell, /label: '総メンバー数'/);
+  assert.match(currentShell, /label: '総再生数'/);
   assert.match(entry, /dashboard-daily-summaries\.js\?v=20260930\.2/);
   assert.match(renderer, /renderDashboardDailySummaries/);
   assert.match(renderer, /dashboard:payload/);
