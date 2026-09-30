@@ -11,12 +11,6 @@ import {
 let loadPromise = null;
 let lastPayload = null;
 
-function formatDelta(value) {
-  const number = integer(value);
-  if (number == null) return '-';
-  return `${number > 0 ? '+' : ''}${numberFormat.format(number)}`;
-}
-
 const setNotice = (message = '', error = false) => setSharedNotice('amazonMusicNotice', message, error);
 
 function trackKey(track) {
@@ -183,17 +177,7 @@ function renderRankChart(payload, { containerId, metricKey, emptyText, ariaLabel
 }
 
 function renderSummary(payload) {
-  const follower = integer(payload?.follower?.count);
-  const delta = integer(payload?.follower?.delta);
-  const count = element('amazonFollowerCount');
-  const change = element('amazonFollowerDelta');
   const date = element('amazonSnapshotDate');
-  if (count) count.textContent = follower == null ? '-' : numberFormat.format(follower);
-  if (change) {
-    change.textContent = formatDelta(delta);
-    change.classList.toggle('positive', delta != null && delta > 0);
-    change.classList.toggle('negative', delta != null && delta < 0);
-  }
   if (date) date.textContent = formatFullDate(payload?.snapshot_date);
 }
 
@@ -251,7 +235,7 @@ export async function loadAmazonMusicView({ force = false } = {}) {
       render(payload);
       return payload;
     }).catch((error) => {
-      setNotice('Amazon Musicデータを取得できませんでした。', true);
+      setNotice('Amazon Musicデータの取得に失敗しました。', true);
       throw error;
     }).finally(() => {
       loadPromise = null;

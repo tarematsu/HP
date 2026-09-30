@@ -71,7 +71,7 @@ function selectPoint(event) {
   const detail = document.getElementById('currentChartDetail');
   if (detail) {
     const streamText = streamRow
-      ? `　再生数 +${numberText(streamRow.stream_delta)}`
+      ? `　再生数増加 +${numberText(streamRow.stream_delta)}`
       : '';
     detail.textContent = `${jstChartDateTime.format(new Date(displayTime))} JST　オンライン数 ${numberText(onlineRow.online_member_count)}人${streamText}`;
   }
@@ -87,6 +87,6 @@ window.addEventListener('dashboard:payload', (event) => {
     if (nextStreamRows.length || payload.stream_5m_history.length === 0) streamRows = nextStreamRows;
   }
   const legend = document.querySelector('#currentView .stream-growth-key');
-  if (legend) legend.textContent = '再生数';
+  if (legend) legend.textContent = '再生数増加';
 });
 document.getElementById('audienceChart')?.addEventListener('pointerup', selectPoint, true);

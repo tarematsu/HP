@@ -28,7 +28,7 @@ test('current chart adds direct five-minute playback counts below the online ser
   const source = await text('public/dashboard-chart-comparison.js');
   assert.match(source, /payload\?\.stream_5m_history/);
   assert.match(source, /legend\.querySelector\('\.stream-growth-key'\)/);
-  assert.match(source, /stream\.textContent = '再生数'/);
+  assert.match(source, /stream\.textContent = '再生数増加'/);
   assert.match(source, /stream\.hidden = !hasStreamAverages/);
   assert.doesNotMatch(source, /className = 'stream-delta-key'/);
   assert.match(source, /const FIVE_MINUTE_MS = 5 \* 60_000/);
@@ -36,7 +36,7 @@ test('current chart adds direct five-minute playback counts below the online ser
   assert.match(source, /const STREAM_BAR_COLOR = '#168b73'/);
   assert.match(source, /function drawStreamBars\(/);
   assert.match(source, /context\.fillRect\(x - barWidth \/ 2, baseline - barHeight, barWidth, barHeight\)/);
-  assert.match(source, /context\.fillText\('再生数'/);
+  assert.match(source, /context\.fillText\('再生数増加'/);
   assert.doesNotMatch(source, /再生数増加\/分（5分平均）/);
   assert.match(source, /dashboard:payload/);
   assert.doesNotMatch(source, /dashboard:details/);
@@ -45,7 +45,7 @@ test('current chart adds direct five-minute playback counts below the online ser
 test('current online chart no longer renders comment velocity', async () => {
   const source = await text('public/dashboard-chart-comparison.js');
   assert.doesNotMatch(source, /comment_velocity|commentVelocity|コメント\/2分/);
-  assert.match(source, /オンライン数\(人\)/);
+  assert.match(source, /オンライン数（人）/);
 });
 
 test('online extrema labels omit borders, use shared gray points, and include JST time', async () => {
@@ -73,7 +73,7 @@ test('chart detail shows the nearest direct five-minute playback count when avai
   const source = await text('public/dashboard-chart-detail.js');
   assert.doesNotMatch(source, /decimalOneFormat as streamNumber|streamNumberText|\/分（5分平均）/);
   assert.match(source, /payload\.stream_5m_history/);
-  assert.match(source, /再生数 \+\$\{numberText\(streamRow\.stream_delta\)\}/);
+  assert.match(source, /再生数増加 \+\$\{numberText\(streamRow\.stream_delta\)\}/);
   assert.match(source, /nearestRow\(streamRows, targetTime, FIVE_MINUTE_MS \/ 2\)/);
   assert.match(source, /dashboard:payload/);
   assert.doesNotMatch(source, /dashboard:details/);

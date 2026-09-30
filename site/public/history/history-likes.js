@@ -208,7 +208,7 @@ import {
       state.rows = [];
       state.summary = {};
       render();
-      setNotice(`取得失敗: ${error.message}`, true);
+      setNotice(`いいねデータの取得に失敗しました：${error.message}`, true);
     } finally {
       if (state.controller === controller) state.controller = null;
     }

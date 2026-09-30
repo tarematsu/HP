@@ -9,7 +9,10 @@ test('Sakurazaka comparison reuses shared formatters and canonical cache keys', 
   );
   assert.match(source, /decimalOneFormat as number/);
   assert.doesNotMatch(source, /const number = new Intl\.NumberFormat/);
-  assert.match(source, /const eventDate = new Intl\.DateTimeFormat/);
+  assert.match(source, /const jstDay = new Intl\.DateTimeFormat\('en-CA'/);
+  assert.match(source, /timeZone: 'Asia\/Tokyo'/);
+  assert.match(source, /jstDay\.format\(new Date\(startedAt\)\)\.replaceAll\('-', ''\)/);
+  assert.match(source, /return date \? `\$\{date\} \$\{name\}` : name/);
   assert.match(source, /sakurazaka46jp:v1:/);
   assert.match(source, /\/api\/sakurazaka46jp\?/);
   assert.doesNotMatch(source, /broadcast-series/);

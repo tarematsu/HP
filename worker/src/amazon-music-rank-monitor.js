@@ -10,10 +10,12 @@ const OVERALL_CHART_PAGE_URL = `${AMAZON_ORIGIN}/popular/songs/browsePanel/popul
 const OVERALL_CHART_INITIAL_URL = `${CATALOG_SKILL_BASE}/showChartsWidget?genreTitle=browsePanel&genreId=popularTracks&widgetId=top-songs&userHash=%7B%22level%22%3A%22LIBRARY_MEMBER%22%7D`;
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 const RETRY_ATTEMPTS = 6;
+const AMAZON_MUSIC_DEEP_SCAN_CHECKPOINT_HEADROOM_MS = 60_000;
 
 export const AMAZON_MUSIC_TOP_SCAN_RANK = 500;
 export const AMAZON_MUSIC_DEEP_SCAN_TARGET_RANK = 100_000;
 export const AMAZON_MUSIC_DEEP_SCAN_PAGES_PER_RUN = 300;
+export const AMAZON_MUSIC_DEEP_SCAN_CHECKPOINT_PAGES = 25;
 export const AMAZON_MUSIC_DEEP_SCAN_PACING_WINDOW_MS = 570_000;
 export const AMAZON_MUSIC_TOP_STATE_KEY = 'amazon-music/rank-monitor/top-500.json';
 export const AMAZON_MUSIC_DEEP_STATE_KEY = 'amazon-music/rank-monitor/deep-100k.json';
@@ -411,68 +413,103 @@ export async function continueAmazon100kScan(env, observedAt = Date.now(), fetch
   const knownState = await getJson(r2, AMAZON_MUSIC_GROUP_KNOWN_KEY);
   const known = groupStateMap(knownState);
 
-  const scan = await scanAmazonChart(fetchImpl, {
-    startRank,
-    startUrl,
-    stopRank: AMAZON_MUSIC_DEEP_SCAN_TARGET_RANK,
-    maxPages: AMAZON_MUSIC_DEEP_SCAN_PAGES_PER_RUN,
-    pacingWindowMs: AMAZON_MUSIC_DEEP_SCAN_PACING_WINDOW_MS,
-  });
-  const batchGroupTracks = groupTracks(scan.tracks);
-  const changes = [];
-  for (const item of batchGroupTracks) {
-    const id = String(item.amazon_music_id);
-    cycleMap.set(id, item);
-    if (!knownState || reported.has(id)) continue;
-    const change = rankChange(known.get(id), item);
-    if (change) changes.push(change);
-    reported.add(id);
-  }
+  let currentRank = startRank;
+  let currentUrl = startUrl;
+  let exhausted = false;
+  let complete = false;
+  let remainingPages = AMAZON_MUSIC_DEEP_SCAN_PAGES_PER_RUN;
+  let pagesScanned = 0;
+  let checkpoints = 0;
+  let d1Changes = 0;
+  const pacingBudgetMs = Math.max(
+    0,
+    AMAZON_MUSIC_DEEP_SCAN_PACING_WINDOW_MS - AMAZON_MUSIC_DEEP_SCAN_CHECKPOINT_HEADROOM_MS,
+  );
 
-  const complete = scan.scanned_tracks >= AMAZON_MUSIC_DEEP_SCAN_TARGET_RANK || scan.exhausted;
-  if (complete && knownState) {
-    for (const [id, before] of known.entries()) {
-      if (cycleMap.has(id) || reported.has(id)) continue;
-      changes.push({
-        ...before,
-        rank: null,
-        previous_rank: Number(before.rank) || null,
-        change_type: 'exit',
-      });
+  while (remainingPages > 0 && currentRank < AMAZON_MUSIC_DEEP_SCAN_TARGET_RANK) {
+    const pagesThisChunk = Math.min(AMAZON_MUSIC_DEEP_SCAN_CHECKPOINT_PAGES, remainingPages);
+    const chunkPacingWindowMs = Math.floor(
+      pacingBudgetMs * pagesThisChunk / AMAZON_MUSIC_DEEP_SCAN_PAGES_PER_RUN,
+    );
+    const scan = await scanAmazonChart(fetchImpl, {
+      startRank: currentRank,
+      startUrl: currentUrl,
+      stopRank: AMAZON_MUSIC_DEEP_SCAN_TARGET_RANK,
+      maxPages: pagesThisChunk,
+      pacingWindowMs: chunkPacingWindowMs,
+    });
+
+    currentRank = scan.scanned_tracks;
+    currentUrl = scan.continuation_url;
+    exhausted = scan.exhausted;
+    pagesScanned += scan.pages_scanned;
+    remainingPages -= scan.pages_scanned;
+
+    const changes = [];
+    for (const item of groupTracks(scan.tracks)) {
+      const id = String(item.amazon_music_id);
+      cycleMap.set(id, item);
+      if (!knownState || reported.has(id)) continue;
+      const change = rankChange(known.get(id), item);
+      if (change) changes.push(change);
       reported.add(id);
     }
-  }
-  if (knownState && changes.length) await saveGroupChanges(env?.MINUTE_DB, observedAt, changes);
 
-  const cycleTracks = [...cycleMap.values()].sort((a, b) => Number(a.rank) - Number(b.rank));
-  if (complete) {
-    await putJson(r2, AMAZON_MUSIC_GROUP_KNOWN_KEY, {
+    complete = currentRank >= AMAZON_MUSIC_DEEP_SCAN_TARGET_RANK || exhausted;
+    if (complete && knownState) {
+      for (const [id, before] of known.entries()) {
+        if (cycleMap.has(id) || reported.has(id)) continue;
+        changes.push({
+          ...before,
+          rank: null,
+          previous_rank: Number(before.rank) || null,
+          change_type: 'exit',
+        });
+        reported.add(id);
+      }
+    }
+
+    if (knownState && changes.length) {
+      await saveGroupChanges(env?.MINUTE_DB, observedAt, changes);
+      d1Changes += changes.length;
+    }
+
+    const cycleTracks = [...cycleMap.values()].sort((a, b) => Number(a.rank) - Number(b.rank));
+    if (complete) {
+      await putJson(r2, AMAZON_MUSIC_GROUP_KNOWN_KEY, {
+        observed_at: observedAt,
+        cycle,
+        tracks: cycleTracks,
+      });
+    }
+
+    await putJson(r2, AMAZON_MUSIC_DEEP_STATE_KEY, {
       observed_at: observedAt,
       cycle,
-      tracks: cycleTracks,
+      scanned_tracks: currentRank,
+      next_url: complete ? null : currentUrl,
+      complete,
+      exhausted,
+      cycle_tracks: cycleTracks,
+      reported_ids: [...reported],
     });
+    checkpoints += 1;
+
+    if (complete || scan.pages_scanned <= 0) break;
+    if (!currentUrl) throw new Error('Amazon deep-scan continuation URL is missing after checkpoint');
   }
 
-  await putJson(r2, AMAZON_MUSIC_DEEP_STATE_KEY, {
-    observed_at: observedAt,
-    cycle,
-    scanned_tracks: scan.scanned_tracks,
-    next_url: complete ? null : scan.continuation_url,
-    complete,
-    exhausted: scan.exhausted,
-    cycle_tracks: cycleTracks,
-    reported_ids: [...reported],
-  });
-
+  const cycleTracks = [...cycleMap.values()].sort((a, b) => Number(a.rank) - Number(b.rank));
   return {
     ok: true,
     cycle,
-    scanned_tracks: scan.scanned_tracks,
-    pages_scanned: scan.pages_scanned,
+    scanned_tracks: currentRank,
+    pages_scanned: pagesScanned,
+    checkpoints,
     complete,
-    exhausted: scan.exhausted,
-    pacing_window_ms: scan.pacing_window_ms,
+    exhausted,
+    pacing_window_ms: pacingBudgetMs,
     sakamichi_tracks_seen: cycleTracks.length,
-    d1_changes: knownState ? changes.length : 0,
+    d1_changes: d1Changes,
   };
 }
