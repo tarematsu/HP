@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const pageSource = readFileSync(
-  new URL('../public/index.html', import.meta.url),
+const historyShellSource = readFileSync(
+  new URL('../public/history-shell.js', import.meta.url),
   'utf8',
 );
 const navigatorSource = readFileSync(
@@ -16,16 +16,16 @@ const historyEntry = readFileSync(
 );
 
 test('history range controls render their final UI without flashing legacy date controls', () => {
-  assert.match(pageSource, />1ヶ月<\/button>/);
-  assert.match(pageSource, />半年<\/button>/);
-  assert.match(pageSource, />1年<\/button>/);
-  assert.match(pageSource, />全期間<\/button>/);
-  assert.match(pageSource, /id="from" type="hidden"/);
-  assert.match(pageSource, /id="to" type="hidden"/);
-  assert.match(pageSource, /id="load" type="button" hidden/);
-  assert.doesNotMatch(pageSource, /class="date-range"/);
-  assert.doesNotMatch(pageSource, /type="date"/);
-  assert.doesNotMatch(pageSource, />更新<\/button>/);
+  assert.match(historyShellSource, />1ヶ月<\/button>/);
+  assert.match(historyShellSource, />半年<\/button>/);
+  assert.match(historyShellSource, />1年<\/button>/);
+  assert.match(historyShellSource, />全期間<\/button>/);
+  assert.match(historyShellSource, /id="from" type="hidden"/);
+  assert.match(historyShellSource, /id="to" type="hidden"/);
+  assert.match(historyShellSource, /id="load" type="button" hidden/);
+  assert.doesNotMatch(historyShellSource, /class="date-range"/);
+  assert.doesNotMatch(historyShellSource, /type="date"/);
+  assert.doesNotMatch(historyShellSource, />更新<\/button>/);
   assert.doesNotMatch(navigatorSource, /dateRange\.hidden|loadButton\.hidden|button\.textContent = period\.label/);
 });
 
