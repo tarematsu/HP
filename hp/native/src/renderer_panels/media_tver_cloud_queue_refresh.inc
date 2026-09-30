@@ -206,10 +206,8 @@ void NativeMediaTverEndQueuePhase() noexcept {
 }
 
 bool NativeMediaTverXPhaseActive() noexcept {
-  if (gNativeMediaPowerSaving || !NativeMediaXSlotEnabled(true) ||
-      !NativeMediaXRuntimeAllowed()) {
-    return false;
-  }
+  if (gNativeMediaPowerSaving || !NativeMediaXSlotEnabled(true)) return false;
+  if (!NativeMediaXRuntimeAllowed()) return false;
   auto& state = NativeMediaTverNativeQueue();
   std::lock_guard lock(state.mutex);
   if (!state.phaseActive || state.phaseStartedAt == 0) return false;
