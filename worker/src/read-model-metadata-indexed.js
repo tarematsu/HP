@@ -95,6 +95,13 @@ async function canonicalRowsByIsrc(db, isrcs) {
     WHERE isrc IN (${placeholders(isrcs.length)})`, isrcs);
 }
 
+async function trackIdsBySpotify(db, spotifyIds) {
+  if (!spotifyIds.length) return [];
+  return runRows(db, `SELECT id AS track_id,spotify_id
+    FROM sh_tracks
+    WHERE spotify_id IN (${placeholders(spotifyIds.length)})`, spotifyIds);
+}
+
 async function canonicalRowsBySpotify(db, spotifyIds) {
   if (!spotifyIds.length) return [];
   return runRows(db, `SELECT track_id,spotify_id,isrc,title,artist,thumbnail_url,fetched_at
@@ -179,8 +186,29 @@ export async function loadReadModelTrackMetadata(env, spotifyIds, isrcs, trackId
       covered = coveredKeys(resolved);
     }
 
-    const remainingSpotifyIds = requestedSpotifyIds
+    let remainingSpotifyIds = requestedSpotifyIds
       .filter((spotifyId) => !covered.spotifyIds.has(spotifyId));
+
+    // sh_tracks.spotify_id has a dedicated UNIQUE index. Resolve provider-only
+    // rows to the canonical track id there before touching the substantially
+    // more expensive canonical VIEW by Spotify id.
+    if (remainingSpotifyIds.length) {
+      const spotifyMappings = await trackIdsBySpotify(db, remainingSpotifyIds);
+      const mappedTrackIds = [...new Set(spotifyMappings
+        .map((row) => positiveInteger(row?.track_id))
+        .filter(Boolean))]
+        .filter((trackId) => !requestedTrackIds.includes(trackId));
+      if (mappedTrackIds.length) {
+        const mappedCanonicalRows = await canonicalRowsByTrackId(db, mappedTrackIds);
+        if (mappedCanonicalRows.length) {
+          resolved = uniqueRows([...resolved, ...mappedCanonicalRows]);
+          covered = coveredKeys(resolved);
+          remainingSpotifyIds = remainingSpotifyIds
+            .filter((spotifyId) => !covered.spotifyIds.has(spotifyId));
+        }
+      }
+    }
+
     const bySpotify = await canonicalRowsBySpotify(db, remainingSpotifyIds);
     return uniqueRows([...resolved, ...bySpotify]);
   } catch (error) {
