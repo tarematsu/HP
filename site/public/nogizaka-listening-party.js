@@ -6,9 +6,10 @@ import {
 } from './dashboard-ui-common.js?v=20260930.1';
 import { downloadCsv } from './csv-download.js?v=20261001.1';
 import {
+  createOfficialPartyDataRow,
   createOfficialPartyHeaderRow,
-  createOfficialSourceCell,
   durationLabel,
+  officialPartyNumberText,
   OFFICIAL_PARTY_HEADERS,
   splitOfficialEventName,
 } from './official-listening-party-ui.js?v=20261001.1';
@@ -33,11 +34,6 @@ let resizeTimer = 0;
 
 const byId = (id) => document.getElementById(id);
 const active = () => document.querySelector('#modeTabs button.active[data-view="nogizaka"]') != null;
-
-function numberText(value, formatter = decimal) {
-  const parsed = finite(value);
-  return parsed == null ? '—' : formatter.format(parsed);
-}
 
 function epoch(value) {
   const parsed = finite(value);
@@ -105,8 +101,8 @@ function setNotice(payload) {
 function renderSummary(payload) {
   const row = payload?.row;
   byId('nogizakaPartyPeriods').textContent = row ? '1' : '0';
-  byId('nogizakaPartyAverage').textContent = numberText(row?.listener_avg);
-  byId('nogizakaPartyMaximum').textContent = numberText(row?.listener_max, integer);
+  byId('nogizakaPartyAverage').textContent = officialPartyNumberText(row?.listener_avg, decimal);
+  byId('nogizakaPartyMaximum').textContent = officialPartyNumberText(row?.listener_max, integer);
   byId('nogizakaPartyDuration').textContent = durationLabel(durationMinutes(payload));
 }
 
@@ -138,22 +134,15 @@ function renderTable(payload) {
     identity.date,
     timeRange,
     durationLabel(durationMinutes(payload)),
-    numberText(row.listener_avg),
-    numberText(row.listener_min),
-    numberText(row.listener_max),
-    numberText(row.distinct_tracks, integer),
-    numberText(row.estimated_streams, integer),
+    officialPartyNumberText(row.listener_avg, decimal),
+    officialPartyNumberText(row.listener_min, decimal),
+    officialPartyNumberText(row.listener_max, decimal),
+    officialPartyNumberText(row.distinct_tracks, integer),
+    officialPartyNumberText(row.estimated_streams, integer),
     String(row.broadcast_content || '—'),
     identity.name,
   ];
-  const tr = document.createElement('tr');
-  for (const value of values) {
-    const td = document.createElement('td');
-    td.textContent = String(value ?? '—');
-    tr.appendChild(td);
-  }
-  tr.appendChild(createOfficialSourceCell(row.source_url));
-  body.replaceChildren(tr);
+  body.replaceChildren(createOfficialPartyDataRow(values, row.source_url));
 }
 
 function drawChart(payload) {
