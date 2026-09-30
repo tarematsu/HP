@@ -6,6 +6,7 @@ import {
   finiteNumber as finite,
   setNotice as setSharedNotice,
 } from '../dashboard-ui-common.js?v=20260930.1';
+import { downloadCsv } from '../csv-download.js?v=20261001.1';
 import {
   displayTrackArtist,
   displayTrackTitle,
@@ -209,20 +210,17 @@ import {
   }
 
   function exportCsv() {
-    const header = ['順位', '曲名', 'アーティスト', '最新いいね数', '最終取得'];
-    const lines = [header, ...eligibleRankingRows().map((row, index) => [
-      index + 1,
-      trackName(row),
-      artistName(row),
-      row.latest_like_count,
-      row.latest_observed_at ? new Date(Number(row.latest_observed_at)).toISOString() : '',
-    ])].map((line) => line.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(','));
-    const blob = new Blob([`\uFEFF${lines.join('\n')}`], { type: 'text/csv;charset=utf-8' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `sh-like-ranking-${new Date().toISOString().slice(0, 10)}.csv`;
-    link.click();
-    URL.revokeObjectURL(link.href);
+    const rows = [
+      ['順位', '曲名', 'アーティスト', '最新いいね数', '最終取得'],
+      ...eligibleRankingRows().map((row, index) => [
+        index + 1,
+        trackName(row),
+        artistName(row),
+        row.latest_like_count,
+        row.latest_observed_at ? new Date(Number(row.latest_observed_at)).toISOString() : '',
+      ]),
+    ];
+    downloadCsv(`sh-like-ranking-${new Date().toISOString().slice(0, 10)}.csv`, rows);
   }
 
   el('likesCsv').addEventListener('click', exportCsv);
