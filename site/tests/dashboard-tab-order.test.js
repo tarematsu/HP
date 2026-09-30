@@ -2,14 +2,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+const registry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
 const followersShell = readFileSync(new URL('../public/followers-shell.js', import.meta.url), 'utf8');
 const appleMusicShell = readFileSync(new URL('../public/apple-music-shell.js', import.meta.url), 'utf8');
 
 test('leaderboard tab is immediately to the right of likes in static navigation', () => {
-  const likes = html.indexOf('data-view="likes" data-mode="likes"');
-  const ranking = html.indexOf('data-view="history" data-mode="ranking"');
-  const broadcasts = html.indexOf('data-view="history" data-mode="broadcasts"');
+  const likes = registry.indexOf("view: 'likes', mode: 'likes'");
+  const ranking = registry.indexOf("view: 'history', mode: 'ranking'");
+  const broadcasts = registry.indexOf("view: 'history', mode: 'broadcasts'");
   assert.ok(likes >= 0 && ranking > likes && broadcasts > ranking);
 });
 
