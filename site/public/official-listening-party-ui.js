@@ -5,6 +5,13 @@ export const OFFICIAL_PARTY_HEADERS = Object.freeze([
 
 const DATE_PREFIX = /^\s*(\d{4})[./-](\d{1,2})[./-](\d{1,2})\s*/;
 
+export function officialPartyNumberText(value, formatter, fallback = '—') {
+  if (value === null || value === undefined || value === '') return String(fallback);
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || !formatter?.format) return String(fallback);
+  return formatter.format(parsed);
+}
+
 export function durationLabel(minutes, fallback = '—') {
   if (minutes === null || minutes === undefined || minutes === '') return String(fallback);
   const value = Number(minutes);
@@ -55,4 +62,15 @@ export function createOfficialSourceCell(sourceUrl, label = '公式告知') {
   link.textContent = label;
   cell.append(link);
   return cell;
+}
+
+export function createOfficialPartyDataRow(values = [], sourceUrl) {
+  const row = document.createElement('tr');
+  for (const value of Array.isArray(values) ? values : []) {
+    const cell = document.createElement('td');
+    cell.textContent = String(value ?? '—');
+    row.append(cell);
+  }
+  row.append(createOfficialSourceCell(sourceUrl));
+  return row;
 }

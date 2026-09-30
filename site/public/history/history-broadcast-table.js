@@ -5,9 +5,10 @@ import {
   integerFormat as integer,
 } from '../dashboard-ui-common.js?v=20260930.1';
 import {
+  createOfficialPartyDataRow,
   createOfficialPartyHeaderRow,
-  createOfficialSourceCell,
   durationLabel,
+  officialPartyNumberText,
   OFFICIAL_PARTY_HEADERS,
   splitOfficialEventName,
 } from '../official-listening-party-ui.js?v=20261001.1';
@@ -23,11 +24,6 @@ import {
 
   function active() {
     return document.querySelector('#modeTabs button.active[data-mode]')?.dataset?.mode === MODE;
-  }
-
-  function numberText(value, formatter = decimal) {
-    const parsed = finite(value);
-    return parsed == null ? '—' : formatter.format(parsed);
   }
 
   function fallbackDate(value) {
@@ -58,12 +54,6 @@ import {
     return (end - start) / 60_000;
   }
 
-  function createCell(value) {
-    const cell = document.createElement('td');
-    cell.textContent = String(value ?? '—');
-    return cell;
-  }
-
   function render(rows) {
     if (!active()) return;
     const head = document.getElementById('thead');
@@ -91,18 +81,15 @@ import {
         identity.date,
         broadcastTimeLabel(row),
         durationLabel(durationMinutes(row)),
-        numberText(average),
-        numberText(row?.listener_min),
-        numberText(row?.listener_max),
-        numberText(tracks, integer),
-        numberText(estimated, integer),
+        officialPartyNumberText(average, decimal),
+        officialPartyNumberText(row?.listener_min, decimal),
+        officialPartyNumberText(row?.listener_max, decimal),
+        officialPartyNumberText(tracks, integer),
+        officialPartyNumberText(estimated, integer),
         String(row?.broadcast_content || '—'),
         identity.name,
       ];
-      const tableRow = document.createElement('tr');
-      for (const value of values) tableRow.appendChild(createCell(value));
-      tableRow.appendChild(createOfficialSourceCell(row?.source_url));
-      fragment.appendChild(tableRow);
+      fragment.append(createOfficialPartyDataRow(values, row?.source_url));
     }
 
     if (!ordered.length) appendEmptyTableRow(fragment, 'データがありません。', OFFICIAL_PARTY_HEADERS.length);

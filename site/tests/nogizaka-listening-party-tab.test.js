@@ -33,10 +33,11 @@ test('Nogizaka tab keeps the shared official listening-party presentation', () =
   }
   assert.match(runtime, /official-listening-party-ui\.js\?v=20261001\.1/);
   assert.match(runtime, /createOfficialPartyHeaderRow\(\)/);
-  assert.match(runtime, /createOfficialSourceCell\(row\.source_url\)/);
+  assert.match(runtime, /createOfficialPartyDataRow\(values, row\.source_url\)/);
+  assert.match(runtime, /officialPartyNumberText\(row\?\.listener_avg, decimal\)/);
   assert.match(runtime, /splitOfficialEventName\(row\?\.event_name/);
   assert.match(runtime, /durationLabel\(durationMinutes\(payload\)\)/);
-  assert.doesNotMatch(runtime, /function durationLabel|function splitEvent/);
+  assert.doesNotMatch(runtime, /function numberText|function durationLabel|function splitEvent|createOfficialSourceCell/);
   assert.match(runtime, /nogizakaPartyChart/);
   assert.match(runtime, /nogizakaPartyCsv/);
 });
