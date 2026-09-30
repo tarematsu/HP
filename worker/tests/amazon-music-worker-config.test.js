@@ -2,19 +2,17 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { amazonMusicDueTasks } from '../src/amazon-music-entry.js';
+
 function config() {
   return JSON.parse(readFileSync(new URL('../wrangler.amazon-music.jsonc', import.meta.url), 'utf8'));
 }
 
-test('music collector keeps hourly Amazon update detection and gated 10-minute deep scans', () => {
+test('music collector uses one minute cron and gates work internally', () => {
   const value = config();
   assert.equal(value.name, 'sh-amazon-music-collector');
   assert.equal(value.main, 'src/amazon-music-entry.js');
-  assert.deepEqual(value.triggers.crons, [
-    '15 * * * *',
-    '5 * * * *',
-    '2,12,22,32,42,52 * * * *',
-  ]);
+  assert.deepEqual(value.triggers.crons, ['* * * * *']);
   assert.deepEqual(value.d1_databases.map(({ binding }) => binding), ['MINUTE_DB', 'OTHER_DB']);
   assert.equal(value.d1_databases.find(({ binding }) => binding === 'MINUTE_DB')?.database_name, 'stationhead-minute');
   assert.equal(value.d1_databases.find(({ binding }) => binding === 'OTHER_DB')?.database_name, 'stationhead-other');
@@ -25,16 +23,26 @@ test('music collector keeps hourly Amazon update detection and gated 10-minute d
   assert.equal(value.queues, undefined);
 });
 
+test('single Amazon cron preserves the previous minute schedule', () => {
+  const at = (minute) => Date.UTC(2026, 8, 30, 3, minute, 0);
+  assert.deepEqual(amazonMusicDueTasks(at(2)), { apple: false, top500: false, deep100k: true });
+  assert.deepEqual(amazonMusicDueTasks(at(5)), { apple: false, top500: true, deep100k: false });
+  assert.deepEqual(amazonMusicDueTasks(at(12)), { apple: false, top500: false, deep100k: true });
+  assert.deepEqual(amazonMusicDueTasks(at(15)), { apple: true, top500: false, deep100k: false });
+  assert.deepEqual(amazonMusicDueTasks(at(22)), { apple: false, top500: false, deep100k: true });
+  assert.deepEqual(amazonMusicDueTasks(at(6)), { apple: false, top500: false, deep100k: false });
+});
+
 test('scheduled entry separates canonical identity from service storage', () => {
   const source = readFileSync(new URL('../src/amazon-music-entry.js', import.meta.url), 'utf8');
-  assert.match(source, /APPLE_MUSIC_PROBE_CRON = '15 \* \* \* \*'/);
-  assert.match(source, /AMAZON_MUSIC_TOP_SCAN_CRON = '5 \* \* \* \*'/);
-  assert.match(source, /AMAZON_MUSIC_DEEP_SCAN_CRON = '2,12,22,32,42,52 \* \* \* \*'/);
+  assert.match(source, /AMAZON_MUSIC_CRON = '\* \* \* \* \*'/);
+  assert.match(source, /amazonMusicDueTasks/);
+  assert.match(source, /minute === 15/);
+  assert.match(source, /minute === 5/);
+  assert.match(source, /minute % 10 === 2/);
   assert.match(source, /amazonMusicServiceEnv\(env\)/);
   assert.match(source, /persistAppleMusicModelToOther\(env, scheduledTime\)/);
   assert.match(source, /persistAmazonMusicModelToOther\(env, scheduledTime\)/);
-  assert.match(source, /cron === AMAZON_MUSIC_TOP_SCAN_CRON[\s\S]*checkAmazonMusic/);
-  assert.match(source, /cron === AMAZON_MUSIC_DEEP_SCAN_CRON[\s\S]*continueAmazonMusic/);
   assert.doesNotMatch(source, /AMAZON_MUSIC_DAILY_CRON|collectAmazonMusicSnapshot/);
 });
 
