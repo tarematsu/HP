@@ -5,13 +5,18 @@ import test from 'node:test';
 const shell = readFileSync(new URL('../public/nogizaka-listening-party-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/nogizaka-listening-party.js', import.meta.url), 'utf8');
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+const tabLayout = readFileSync(new URL('../public/pages-tabs-layout.css', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/nogizaka-listening-party.js', import.meta.url), 'utf8');
 
-test('Nogizaka tab is mounted next to the existing listening-party tab', () => {
+test('dashboard tabs are capped at seven equal-width columns', () => {
+  assert.match(tabLayout, /grid-template-columns:\s*repeat\(7,\s*minmax\(0,\s*1fr\)\)\s*!important/);
+});
+
+test('Nogizaka tab is mounted immediately before Hinata when available', () => {
   assert.match(shell, /view: 'nogizaka'/);
   assert.match(shell, /label: '乃木坂'/);
-  assert.match(shell, /anchorSelector: '\[data-mode="broadcasts"\]'/);
-  assert.match(shell, /position: 'afterend'/);
+  assert.match(shell, /anchorSelectors: \['\[data-view="hinata"\]', '\[data-mode="broadcasts"\]'\]/);
+  assert.match(shell, /position: 'beforebegin'/);
   assert.match(tabs, /nogizaka:\s*\{/);
   assert.match(tabs, /ensureLazyShell\('nogizaka'\)/);
   assert.match(tabs, /loadNogizakaListeningPartyView/);
