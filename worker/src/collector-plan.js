@@ -18,7 +18,6 @@ export function metadataRefreshDue(
 }
 
 export function buildCollectionPlan({
-  state = null,
   queue = null,
   queueResult = null,
   previousRunAt = 0,
@@ -35,7 +34,6 @@ export function buildCollectionPlan({
   return Object.freeze({
     snapshot: true,
     queue: queueEnabled,
-    comments: false,
     metadataDue,
     metadata: queueEnabled && (
       queueResult?.structure_changed === true
