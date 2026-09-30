@@ -1,10 +1,13 @@
 import {
+  appendEmptyState,
   byId as element,
+  evenlySpacedIndexes,
   fullDate as formatDate,
   integerFormat as numberFormat,
   safeInteger as integer,
   setNotice as setSharedNotice,
   shortDate,
+  signedInteger,
   svgElement,
 } from './dashboard-ui-common.js?v=20260930.1';
 
@@ -27,12 +30,6 @@ let readModelPromise = null;
 const setNotice = (message = '', error = false) => setSharedNotice('spotifyNotice', message, error);
 const formatTrendDate = (value) => shortDate(value, '');
 
-function formatDelta(value) {
-  const number = integer(value);
-  if (number == null) return '-';
-  return number > 0 ? `+${numberFormat.format(number)}` : numberFormat.format(number);
-}
-
 function renderRows(payload = {}) {
   const body = element('spotifyTbody');
   if (!body) return;
@@ -46,7 +43,7 @@ function renderRows(payload = {}) {
     rank.textContent = numberFormat.format(Number(track.rank) || 0);
     name.textContent = String(track.name || '曲名不明');
     playcount.textContent = numberFormat.format(Number(track.playcount) || 0);
-    delta.textContent = formatDelta(track.delta);
+    delta.textContent = signedInteger(track.delta);
     playcount.className = 'spotify-number';
     delta.className = 'spotify-number';
     row.append(rank, name, playcount, delta);
@@ -99,9 +96,7 @@ function xAxis(dates, margin, width) {
   const xForIndex = (index) => margin.left + (dates.length <= 1
     ? plotWidth / 2
     : index / (dates.length - 1) * plotWidth);
-  const xTicks = [...new Set(dates.length <= 1
-    ? [0]
-    : [0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round((dates.length - 1) * ratio)))];
+  const xTicks = evenlySpacedIndexes(dates.length, 5);
   return { dateIndex, xForIndex, xTicks };
 }
 
@@ -132,10 +127,7 @@ function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel, maxSe
   const values = seriesList.flatMap((series) =>
     series.points.map((point) => integer(point?.[metricKey]))).filter((value) => value != null);
   if (!dates.length || !values.length) {
-    const empty = document.createElement('p');
-    empty.className = 'spotify-trend-empty';
-    empty.textContent = 'Spotify再生数の推移データはまだありません。';
-    container.append(empty);
+    appendEmptyState(container, 'Spotify再生数の推移データはまだありません。', { className: 'spotify-trend-empty' });
     return;
   }
 
@@ -168,7 +160,7 @@ function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel, maxSe
     name.textContent = artistName;
     const latestValue = document.createElement('strong');
     latestValue.className = 'spotify-trend-latest';
-    latestValue.textContent = formatDelta(latest?.[metricKey]);
+    latestValue.textContent = signedInteger(latest?.[metricKey]);
     item.append(name, latestValue);
     legend.append(item);
   });
@@ -254,7 +246,7 @@ function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel, maxSe
       });
       circle.style.setProperty('--spotify-trend-color', color);
       const title = svgElement('title');
-      title.textContent = `${artistName} ${formatDate(point.snapshot_date)} ${formatDelta(value)}`;
+      title.textContent = `${artistName} ${formatDate(point.snapshot_date)} ${signedInteger(value)}`;
       circle.append(title);
       svg.append(circle);
     }
@@ -305,10 +297,7 @@ function renderArtistRankChart(chart = {}, trend = {}) {
     series.points.map((point) => point.chart_date)))].sort();
   const ranks = seriesList.flatMap((series) => series.points.map((point) => point.rank));
   if (!dates.length || !ranks.length) {
-    const empty = document.createElement('p');
-    empty.className = 'spotify-trend-empty';
-    empty.textContent = 'Spotify日本 Daily Top Artist の順位データはまだありません。';
-    container.append(empty);
+    appendEmptyState(container, 'Spotify日本 Daily Top Artist の順位データはまだありません。', { className: 'spotify-trend-empty' });
     return;
   }
 
@@ -424,7 +413,7 @@ function render(payload, trend, artistChart) {
   const count = element('spotifyTrackCount');
   if (count) count.textContent = numberFormat.format(Number(payload?.track_count) || 0);
   const delta = element('spotifyTotalDelta');
-  if (delta) delta.textContent = formatDelta(payload?.total_delta);
+  if (delta) delta.textContent = signedInteger(payload?.total_delta);
   const title = element('spotifyTableTitle');
   if (title) title.textContent = `${artistName}の再生数一覧`;
   const countLabel = element('spotifyTrackCountLabel');

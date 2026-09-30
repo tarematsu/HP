@@ -24,7 +24,7 @@ const shells = Object.fromEntries(shellFiles.map((file) => [
   file,
   readFileSync(new URL(`../public/${file}`, import.meta.url), 'utf8'),
 ]));
-const runtimeFiles = ['amazon-music.js', 'apple-music.js', 'followers.js'];
+const runtimeFiles = ['amazon-music.js', 'apple-music.js', 'followers.js', 'spotify.js'];
 const runtimes = Object.fromEntries(runtimeFiles.map((file) => [
   file,
   readFileSync(new URL(`../public/${file}`, import.meta.url), 'utf8'),
@@ -65,7 +65,7 @@ test('dashboard exposes shared runtime primitives for repeated view rendering wo
     assert.match(runtimes[name], /evenlySpacedIndexes/);
     assert.doesNotMatch(runtimes[name], /const empty = document\.createElement/);
   }
-  for (const name of ['amazon-music.js', 'followers.js']) {
+  for (const name of ['amazon-music.js', 'followers.js', 'spotify.js']) {
     assert.match(runtimes[name], /signedInteger/);
     assert.doesNotMatch(runtimes[name], /function formatDelta\s*\(/);
   }
