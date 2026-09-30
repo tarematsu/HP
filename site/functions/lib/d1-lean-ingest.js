@@ -217,7 +217,6 @@ export async function saveLeanSnapshot(db, observedAt, data) {
     frame.streamCount, null, frame.hostAccountId, frame.hostHandle,
     frame.broadcastStartTime,
   ];
-  const velocityBinds = [frame.stationId, observedAt - 120_000, observedAt];
   const compactRaw = rawJson(frame.metadata);
 
   await db.batch([
@@ -226,10 +225,8 @@ export async function saveLeanSnapshot(db, observedAt, data) {
       is_launched,is_broadcasting,chat_status,listener_count,online_member_count,
       total_member_count,guest_count,total_listens,stream_goal,current_stream_count,
       validated_stream_count,host_account_id,host_handle,broadcast_start_time,comment_velocity,raw_json
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,(
-      SELECT COALESCE(SUM(comment_count),0) FROM sh_comment_minute_counts
-      WHERE station_id=? AND bucket_start>=? AND bucket_start<=?
-    ),?)`).bind(...common, ...velocityBinds, compactRaw),
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?)`)
+      .bind(...common, compactRaw),
     db.prepare(`INSERT INTO sh_snapshot_current(
         channel_key,payload_hash,last_snapshot_at,last_stream_count,last_stream_at,updated_at
       ) VALUES(?,?,?,?,?,?) ON CONFLICT(channel_key) DO UPDATE SET

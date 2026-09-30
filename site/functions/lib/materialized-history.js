@@ -19,6 +19,7 @@ const JSON_HEADERS = {
   'cache-control': 'no-store',
 };
 const MAX_DAILY_MINUTE_SAMPLES = 1_440;
+const TRACK_HISTORY_DAY_INDEX_KEY = 'track-history-days/v1/index.json';
 
 const SUMMARY_COLUMNS = `period_key,period_start,period_end,sample_count,reliable_sample_count,
 listener_avg,listener_min,listener_max,stream_start,stream_end,stream_growth,
@@ -61,36 +62,75 @@ function validateDailySummaryRows(rows) {
   return rows;
 }
 
-function trackPeriodExpression(mode) {
-  if (mode === 'daily') return 'play_date';
-  if (mode === 'monthly') return "substr(play_date,1,7)";
-  return "date(play_date,'-' || ((CAST(strftime('%w',play_date) AS INTEGER)+6)%7) || ' days')";
+function trackPeriodKey(mode, day) {
+  if (mode === 'daily') return day;
+  if (mode === 'monthly') return day.slice(0, 7);
+  const timestamp = Date.parse(`${day}T00:00:00Z`);
+  const date = new Date(timestamp);
+  const offset = (date.getUTCDay() + 6) % 7;
+  return new Date(timestamp - offset * 86_400_000).toISOString().slice(0, 10);
+}
+
+async function objectJson(object) {
+  if (!object) return null;
+  if (typeof object.json === 'function') return object.json();
+  if (typeof object.text === 'function') return JSON.parse(await object.text());
+  return null;
+}
+
+function aggregateTrackCounts(mode, rows) {
+  const totals = new Map();
+  for (const row of rows || []) {
+    const day = String(row?.play_date || '');
+    if (!isRealIsoDate(day)) continue;
+    const count = finiteNumber(row?.play_count);
+    if (count == null) continue;
+    const key = trackPeriodKey(mode, day);
+    totals.set(key, (totals.get(key) || 0) + count);
+  }
+  return totals;
+}
+
+async function loadTrackCountsFromR2(r2, mode, from, to) {
+  const payload = await objectJson(await r2.get(TRACK_HISTORY_DAY_INDEX_KEY));
+  if (!payload || Number(payload.version) !== 1 || !Array.isArray(payload.dates)) return new Map();
+  const counts = payload.play_counts && typeof payload.play_counts === 'object'
+    ? payload.play_counts
+    : {};
+  const rows = payload.dates
+    .map(String)
+    .filter((day) => isRealIsoDate(day) && day >= from && day <= to)
+    .map((day) => ({ play_date: day, play_count: counts[day] }))
+    .filter((row) => finiteNumber(row.play_count) != null);
+  return aggregateTrackCounts(mode, rows);
+}
+
+async function loadTrackCountsFromService(service, mode, from, to) {
+  const url = new URL('https://pages-read-model.internal/_internal/pages-response');
+  url.searchParams.set('key', 'track-history');
+  url.searchParams.set('api', '1');
+  url.searchParams.set('counts_only', '1');
+  url.searchParams.set('from', from);
+  url.searchParams.set('to', to);
+  const response = await service.fetch(new Request(url, {
+    method: 'GET',
+    headers: { accept: 'application/json' },
+  }));
+  if (!response?.ok) return new Map();
+  const payload = await response.json().catch(() => null);
+  if (!payload?.ok || !Array.isArray(payload.rows)) return new Map();
+  return aggregateTrackCounts(mode, payload.rows);
 }
 
 export async function loadPeriodTrackCounts(env, mode, from, to) {
-  if (!env?.MINUTE_DB?.prepare) return new Map();
-  const periodExpression = trackPeriodExpression(mode);
-  try {
-    const result = await env.MINUTE_DB.prepare(`SELECT ${periodExpression} AS period_key,
-        SUM(CASE
-          WHEN CAST(json_extract(row_json,'$.play_count') AS INTEGER)>0
-            THEN CAST(json_extract(row_json,'$.play_count') AS INTEGER)
-          ELSE 1
-        END) AS track_count
-      FROM sh_pages_track_history_read_model
-      WHERE play_date>=? AND play_date<=?
-      GROUP BY ${periodExpression}
-      ORDER BY period_key ASC`)
-      .bind(from, to)
-      .all();
-    return new Map((result.results || []).map((row) => [
-      String(row.period_key || ''),
-      Number.isFinite(Number(row.track_count)) ? Number(row.track_count) : null,
-    ]));
-  } catch (error) {
-    if (/no such table|no such function|malformed json/i.test(String(error?.message || error))) return new Map();
-    throw error;
+  if (typeof env?.PAGES_RESPONSE_R2?.get === 'function') {
+    return loadTrackCountsFromR2(env.PAGES_RESPONSE_R2, mode, from, to);
   }
+  const service = env?.PAGES_READ_MODEL_SERVICE;
+  if (typeof service?.fetch === 'function') {
+    return loadTrackCountsFromService(service, mode, from, to);
+  }
+  return new Map();
 }
 
 async function persistClosedPeriodTrackCounts(db, table, rows, trackCounts, mode, now) {
@@ -121,9 +161,6 @@ export async function loadMaterializedSummary(env, mode, from, to, now = Date.no
   const table = SUMMARY_TABLES[mode];
   if (!table) throw new Error(`unsupported summary mode: ${mode}`);
 
-  // Keep one prior daily row in the bounded read for compatibility with the
-  // existing materialization contract. Persisted member metrics are not
-  // recalculated from it; the requested range is filtered before rendering.
   const currentKey = currentPeriodKey(mode, now);
   const currentFilter = mode === 'daily' ? ' AND period_key<?' : '';
   const previousDailyKey = mode === 'daily' ? previousSummaryPeriodKey('daily', from) : null;
@@ -144,12 +181,9 @@ export async function loadMaterializedSummary(env, mode, from, to, now = Date.no
     ? fetchedRows.filter((row) => String(row?.period_key || '') >= from)
     : fetchedRows;
 
-  // Historical track totals are canonical summary data. Calculate them only
-  // when a closed period has not been populated yet, persist the result to
-  // OTHER_DB, and read the stored value on subsequent materializations. Known
-  // missing periods are display-only read-model rows and must never trigger D1
-  // writes. The current weekly/monthly period remains live because it changes.
-  const shouldLoadTrackCounts = Boolean(env?.MINUTE_DB?.prepare) && rows.some((row) => {
+  const trackCountSourceAvailable = typeof env?.PAGES_RESPONSE_R2?.get === 'function'
+    || typeof env?.PAGES_READ_MODEL_SERVICE?.fetch === 'function';
+  const shouldLoadTrackCounts = trackCountSourceAvailable && rows.some((row) => {
     const key = String(row?.period_key || '');
     if (isKnownMissingPeriod(mode, key)) return false;
     return key === currentKey || (key < currentKey && finiteNumber(row?.distinct_tracks) == null);
@@ -179,7 +213,7 @@ export async function loadMaterializedSummary(env, mode, from, to, now = Date.no
     live_truncated: false,
     live_source: 'summary-only',
     storage_source: shouldLoadTrackCounts
-      ? `other.${table}+minute.sh_pages_track_history_read_model`
+      ? `other.${table}+r2.track-history-days`
       : `other.${table}`,
   };
 }
