@@ -128,21 +128,32 @@ function unresolvedRows(rows, indexes) {
  * Resolve Pages/read-model song rows to the single canonical identity:
  * sh_tracks.id. Provider IDs remain aliases only and are used as a bounded
  * lookup fallback while materializing rows that have not yet been assigned
- * track_id.
+ * track_id. Callers may provide trusted canonical seed rows that were already
+ * read from sh_track_canonical_metadata in the same operation.
  */
-export async function canonicalizeTrackRows(db, rows = [], { chunkSize = DEFAULT_CHUNK_SIZE } = {}) {
+export async function canonicalizeTrackRows(
+  db,
+  rows = [],
+  { chunkSize = DEFAULT_CHUNK_SIZE, seedRows = [] } = {},
+) {
   if (!supportsCanonicalQueries(db) || !Array.isArray(rows) || !rows.length) return rows;
   const boundedChunkSize = Math.max(1, Math.min(80, Math.trunc(Number(chunkSize) || DEFAULT_CHUNK_SIZE)));
-  const trackIds = [...new Set(rows.map((row) => positiveInteger(row?.track_id)).filter(Boolean))];
-  const stationheadIds = [...new Set(rows
-    .filter((row) => positiveInteger(row?.track_id) == null)
-    .map((row) => positiveInteger(row?.stationhead_track_id))
-    .filter(Boolean))];
 
   try {
+    const canonicalRows = Array.isArray(seedRows) ? [...seedRows] : [];
+    let indexes = canonicalIndexes(canonicalRows);
+    let unresolved = unresolvedRows(rows, indexes);
+    const trackIds = [...new Set(unresolved
+      .map((row) => positiveInteger(row?.track_id))
+      .filter(Boolean))];
+    const stationheadIds = [...new Set(unresolved
+      .filter((row) => positiveInteger(row?.track_id) == null)
+      .map((row) => positiveInteger(row?.stationhead_track_id))
+      .filter(Boolean))];
+
     // Resolve Stationhead aliases through the indexed sh_tracks column first.
     // Alias lookups are staged by identity priority so rows already resolved by
-    // track_id/Stationhead never trigger redundant ISRC or Spotify view scans.
+    // a seed/track_id/Stationhead never trigger redundant provider view scans.
     const stationheadMappings = await queryChunked(
       db,
       stationheadIds,
@@ -163,16 +174,17 @@ export async function canonicalizeTrackRows(db, rows = [], { chunkSize = DEFAULT
     const canonicalTrackIds = [...new Set([
       ...trackIds,
       ...stationheadByTrackId.keys(),
-    ])];
+    ])].filter((trackId) => !indexes.byTrackId.has(trackId));
     const byTrack = await queryChunked(db, canonicalTrackIds, (chunk) => `SELECT track_id,NULL AS stationhead_track_id,isrc,spotify_id,title,artist,thumbnail_url
       FROM sh_track_canonical_metadata WHERE track_id IN (${placeholders(chunk.length)})`, boundedChunkSize);
-    const canonicalRows = byTrack.map((row) => ({
+    canonicalRows.push(...byTrack.map((row) => ({
       ...row,
       stationhead_track_id: stationheadByTrackId.get(positiveInteger(row?.track_id)) || null,
-    }));
+    })));
 
-    let indexes = canonicalIndexes(canonicalRows);
-    const isrcs = [...new Set(unresolvedRows(rows, indexes)
+    indexes = canonicalIndexes(canonicalRows);
+    unresolved = unresolvedRows(rows, indexes);
+    const isrcs = [...new Set(unresolved
       .map((row) => normalizedIsrc(row?.isrc))
       .filter(Boolean))];
     if (isrcs.length) {
@@ -181,7 +193,8 @@ export async function canonicalizeTrackRows(db, rows = [], { chunkSize = DEFAULT
       indexes = canonicalIndexes(canonicalRows);
     }
 
-    const spotifyIds = [...new Set(unresolvedRows(rows, indexes)
+    unresolved = unresolvedRows(rows, indexes);
+    const spotifyIds = [...new Set(unresolved
       .map((row) => text(row?.spotify_id))
       .filter(Boolean))];
     if (spotifyIds.length) {
@@ -198,10 +211,8 @@ export async function canonicalizeTrackRows(db, rows = [], { chunkSize = DEFAULT
 }
 
 /**
- * Full Pages publications can span years of already-materialized rows. Loading
- * the compact canonical catalog once is cheaper than issuing per-day alias
- * lookups, and keeps old R2 day models canonical at publication time without a
- * request-time D1 join.
+ * Legacy full-catalog helper retained for compatibility with older callers.
+ * New publication paths should prefer bounded canonicalizeTrackRows lookups.
  */
 export async function canonicalizeTrackRowsFromCatalog(db, rows = []) {
   if (!supportsCanonicalQueries(db) || !Array.isArray(rows) || !rows.length) return rows;
