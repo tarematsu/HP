@@ -240,7 +240,6 @@ export async function continueQueuedAmazon100kScan(env, observedAt = Date.now(),
   const pending = object(pipeline?.pending_trigger);
   let active = Boolean(pipeline?.active);
   let activeTriggerId = text(pipeline?.active_trigger_id);
-  let resetRanks = false;
   let restarted = false;
 
   if (pending && text(pending.id) !== activeTriggerId) {
@@ -256,7 +255,6 @@ export async function continueQueuedAmazon100kScan(env, observedAt = Date.now(),
     });
     active = true;
     activeTriggerId = text(pending.id);
-    resetRanks = true;
     restarted = true;
     pipeline = {
       version: 1,
@@ -271,7 +269,6 @@ export async function continueQueuedAmazon100kScan(env, observedAt = Date.now(),
     && ((integer(deepState.scanned_tracks) || 0) > 0 || text(deepState.next_url))) {
     active = true;
     activeTriggerId = 'legacy-active';
-    resetRanks = true;
     pipeline = {
       version: 1,
       active: true,
@@ -292,14 +289,16 @@ export async function continueQueuedAmazon100kScan(env, observedAt = Date.now(),
 
   const result = await continueAmazon100kScan(env, observedAt, fetchImpl);
   deepState = await getJson(r2, AMAZON_MUSIC_DEEP_STATE_KEY);
-  const pages = await publishDeepProgress(env, deepState, observedAt, { resetRanks });
+  const complete = Boolean(result.complete);
+  // Keep the last complete ranks visible while a replacement 100k generation
+  // is still scanning. Clear ranks that disappeared only once the new scan is complete.
+  const pages = await publishDeepProgress(env, deepState, observedAt, { resetRanks: complete });
 
   const latestPipeline = (await getJson(r2, AMAZON_MUSIC_PIPELINE_STATE_KEY)) || {};
   const latestPending = object(latestPipeline.pending_trigger);
   const unhandledPending = latestPending && text(latestPending.id) !== activeTriggerId
     ? latestPending
     : null;
-  const complete = Boolean(result.complete);
 
   await putJson(r2, AMAZON_MUSIC_PIPELINE_STATE_KEY, {
     version: 1,
