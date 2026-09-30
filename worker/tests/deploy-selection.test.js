@@ -47,7 +47,7 @@ test('domain modules select every Worker whose bundle imports them', () => {
   assert.deepEqual(select(['worker/src/nogizaka-raw-materializer.js']).workers, [NOGIZAKA]);
   assert.deepEqual(select(['worker/src/spotify-playcount-collector.js']).workers, [SPOTIFY]);
   assert.deepEqual(select(['worker/src/spotify-playcount-entry.js']).workers, [SPOTIFY]);
-  assert.deepEqual(select(['worker/src/amazon-music-collector.js']).workers, [AMAZON]);
+  assert.deepEqual(select(['worker/src/amazon-music-pipeline.js']).workers, [AMAZON]);
   assert.deepEqual(select(['worker/src/amazon-music-entry.js']).workers, [AMAZON]);
 });
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { loadAmazonMusicCanonicalMetadata } from '../src/amazon-music-collector.js';
+import { loadAmazonMusicCanonicalMetadata } from '../src/amazon-music-canonical-metadata.js';
 
 class Statement {
   constructor(db, sql, bindings = []) {

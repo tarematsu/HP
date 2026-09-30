@@ -1,12 +1,10 @@
-import { collectAmazonMusicSnapshot } from './amazon-music-collector.js';
 import {
-  continueAmazon100kScan,
-  monitorAmazonTop500,
-} from './amazon-music-rank-monitor.js';
+  checkAmazonUpdateAndQueue100k,
+  continueQueuedAmazon100kScan,
+} from './amazon-music-pipeline.js';
 import { collectAppleMusicSnapshot } from './apple-music-collector.js';
 import { appleMusicFetch } from './apple-music-fetch.js';
 
-export const AMAZON_MUSIC_DAILY_CRON = '30 1 * * *';
 export const AMAZON_MUSIC_TOP_SCAN_CRON = '5 * * * *';
 export const AMAZON_MUSIC_DEEP_SCAN_CRON = '2,12,22,32,42,52 * * * *';
 export const APPLE_MUSIC_PROBE_CRON = '15 * * * *';
@@ -40,26 +38,20 @@ export default {
     } else if (cron === AMAZON_MUSIC_TOP_SCAN_CRON) {
       run = loggedRun(
         'amazon-music-top-500-monitor',
-        () => monitorAmazonTop500(env, scheduledTime),
+        () => checkAmazonUpdateAndQueue100k(env, scheduledTime),
       );
     } else if (cron === AMAZON_MUSIC_DEEP_SCAN_CRON) {
       run = loggedRun(
         'amazon-music-100k-scan',
-        () => continueAmazon100kScan(env, scheduledTime),
-      );
-    } else if (cron === AMAZON_MUSIC_DAILY_CRON) {
-      run = loggedRun(
-        'amazon-music-collection',
-        () => collectAmazonMusicSnapshot(env, scheduledTime),
-        { fatal: true },
+        () => continueQueuedAmazon100kScan(env, scheduledTime),
       );
     } else {
-      // Manual/test scheduled invocations without a known cron retain the daily collection behavior.
+      // Manual/test scheduled invocations retain the hourly Amazon update check
+      // and Apple Music probe, without reviving the retired daily Amazon collector.
       run = Promise.all([
         loggedRun(
-          'amazon-music-collection',
-          () => collectAmazonMusicSnapshot(env, scheduledTime),
-          { fatal: true },
+          'amazon-music-top-500-monitor',
+          () => checkAmazonUpdateAndQueue100k(env, scheduledTime),
         ),
         loggedRun(
           'apple-music-collection',

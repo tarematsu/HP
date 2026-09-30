@@ -16,11 +16,6 @@ mountDashboardShell({
     html: `
     <p id="amazonMusicNotice" class="notice" role="status" hidden></p>
 
-    <section class="summary-cards amazon-summary" aria-label="櫻坂46 Amazon Music フォロワー概要">
-      <article><span>フォロワー数</span><strong id="amazonFollowerCount">-</strong></article>
-      <article><span>前日比</span><strong id="amazonFollowerDelta">-</strong></article>
-    </section>
-
     <section class="card amazon-rank-panel" aria-labelledby="amazonAllRankTitle">
       <div class="section-head"><div><p class="kicker">AMAZON MUSIC</p><h2 id="amazonAllRankTitle">Amazon総合順位推移</h2></div></div>
       <div id="amazonAllRankChart" class="amazon-rank-chart chart-fit shared-svg-chart" aria-label="櫻坂46楽曲のAmazon Music総合順位推移"></div>
