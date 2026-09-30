@@ -14,6 +14,7 @@ const RETRY_ATTEMPTS = 6;
 export const AMAZON_MUSIC_TOP_SCAN_RANK = 500;
 export const AMAZON_MUSIC_DEEP_SCAN_TARGET_RANK = 100_000;
 export const AMAZON_MUSIC_DEEP_SCAN_PAGES_PER_RUN = 100;
+export const AMAZON_MUSIC_DEEP_SCAN_PACING_WINDOW_MS = 570_000;
 export const AMAZON_MUSIC_TOP_STATE_KEY = 'amazon-music/rank-monitor/top-500.json';
 export const AMAZON_MUSIC_DEEP_STATE_KEY = 'amazon-music/rank-monitor/deep-100k.json';
 export const AMAZON_MUSIC_GROUP_KNOWN_KEY = 'amazon-music/rank-monitor/sakamichi-100k-known.json';
@@ -187,12 +188,16 @@ export async function scanAmazonChart(fetchImpl = fetch, options = {}) {
   const startRank = Math.max(0, Number(options.startRank) || 0);
   const stopRank = Math.max(startRank + 1, Number(options.stopRank) || AMAZON_MUSIC_TOP_SCAN_RANK);
   const maxPages = Math.max(1, Number(options.maxPages) || 100);
+  const pacingWindowMs = Math.max(0, Number(options.pacingWindowMs) || 0);
+  const nowImpl = typeof options.nowImpl === 'function' ? options.nowImpl : Date.now;
+  const sleepImpl = typeof options.sleepImpl === 'function' ? options.sleepImpl : sleep;
   const configuration = await amazonConfig(fetchImpl);
   await primeWebPlayer(fetchImpl, configuration);
 
   const tracks = [];
   const seenUrls = new Set();
   const seenTrackIds = new Set();
+  const pacingStartedAt = nowImpl();
   let url = text(options.startUrl) || OVERALL_CHART_INITIAL_URL;
   let scannedTracks = startRank;
   let pagesScanned = 0;
@@ -202,6 +207,12 @@ export async function scanAmazonChart(fetchImpl = fetch, options = {}) {
     if (!url || seenUrls.has(url)) {
       exhausted = true;
       break;
+    }
+    if (pacingWindowMs > 0 && pagesScanned > 0 && maxPages > 1) {
+      const targetElapsedMs = Math.floor((pagesScanned * pacingWindowMs) / (maxPages - 1));
+      const elapsedMs = Math.max(0, nowImpl() - pacingStartedAt);
+      const delayMs = targetElapsedMs - elapsedMs;
+      if (delayMs > 0) await sleepImpl(delayMs);
     }
     seenUrls.add(url);
     const document = await fetchChartPage(fetchImpl, configuration, url);
@@ -240,6 +251,7 @@ export async function scanAmazonChart(fetchImpl = fetch, options = {}) {
     pages_scanned: pagesScanned,
     continuation_url: exhausted ? null : url,
     exhausted,
+    pacing_window_ms: pacingWindowMs,
   };
 }
 
@@ -404,6 +416,7 @@ export async function continueAmazon100kScan(env, observedAt = Date.now(), fetch
     startUrl,
     stopRank: AMAZON_MUSIC_DEEP_SCAN_TARGET_RANK,
     maxPages: AMAZON_MUSIC_DEEP_SCAN_PAGES_PER_RUN,
+    pacingWindowMs: AMAZON_MUSIC_DEEP_SCAN_PACING_WINDOW_MS,
   });
   const batchGroupTracks = groupTracks(scan.tracks);
   const changes = [];
@@ -458,6 +471,7 @@ export async function continueAmazon100kScan(env, observedAt = Date.now(), fetch
     pages_scanned: scan.pages_scanned,
     complete,
     exhausted: scan.exhausted,
+    pacing_window_ms: scan.pacing_window_ms,
     sakamichi_tracks_seen: cycleTracks.length,
     d1_changes: knownState ? changes.length : 0,
   };
