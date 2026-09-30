@@ -2,9 +2,19 @@ import {
   dashboardChartCard,
   dashboardChartHost,
   dashboardDataCard,
+  dashboardLegend,
   dashboardNotice,
+  dashboardTable,
   mountDashboardShell,
 } from './dashboard-ui-common.js?v=20261001.1';
+
+const followersTable = dashboardTable({
+  className: 'followers-table',
+  wrapClassName: 'table-fit-mobile',
+  colgroupHtml: '<colgroup><col class="followers-account-col"><col><col><col></colgroup>',
+  headers: ['アカウント名', 'フォロワー数', '前日比', '1週間前比'],
+  bodyId: 'followersTbody',
+});
 
 mountDashboardShell({
   tab: {
@@ -26,7 +36,11 @@ mountDashboardShell({
         kicker: 'STATIONHEAD FOLLOWERS',
         trailingHtml: '<span id="followersLatestDate" class="pill">-</span>',
         className: 'followers-chart-panel',
-        legendHtml: '<div id="followersLegend" class="followers-legend" aria-label="アカウント別の最新フォロワー数"></div>',
+        legendHtml: dashboardLegend({
+          id: 'followersLegend',
+          className: 'followers-legend',
+          ariaLabel: 'アカウント別の最新フォロワー数',
+        }),
         chartHtml: dashboardChartHost({
           id: 'followersChart',
           className: 'followers-chart',
@@ -37,7 +51,7 @@ mountDashboardShell({
         title: '最新フォロワー比較',
         kicker: 'LATEST',
         className: 'followers-data-panel',
-        bodyHtml: '<div class="table-wrap table-fit-mobile"><table class="followers-table shared-numeric-table"><colgroup><col class="followers-account-col"><col><col><col></colgroup><thead><tr><th>アカウント名</th><th>フォロワー数</th><th>前日比</th><th>1週間前比</th></tr></thead><tbody id="followersTbody"></tbody></table></div>',
+        bodyHtml: followersTable,
       })}`,
   },
 });
