@@ -124,9 +124,9 @@ test('Apple Music Japan rank chart keeps first place at the top and exposes a cu
 test('Apple Music Japan rank chart keeps former top-12 songs on an outside lane', () => {
   assert.match(runtime, /const JAPAN_RANK_LIMIT = 12;/);
   assert.match(runtime, /const JAPAN_OUTSIDE_RANK = JAPAN_RANK_LIMIT \+ 1;/);
-  assert.match(runtime, /history\.slice\(firstRankedIndex\)/);
-  assert.match(runtime, /rankInTracks\(point\.tracks, track\.id\) \?\? JAPAN_OUTSIDE_RANK/);
-  assert.match(runtime, /if \(!point\.tracks\) return \{ date: point\.date, rank: null \};/);
+  assert.match(runtime, /item\.points\.push\(\{ date, rank: ranks\.get\(item\.id\) \?\? JAPAN_OUTSIDE_RANK \}\)/);
+  assert.match(runtime, /item\.points\.push\(\{ date, rank: null \}\)/);
+  assert.match(runtime, /title: track\?\.title \|\| track\?\.song_key \|\| '曲名不明'/);
   assert.match(runtime, /if \(rank === JAPAN_OUTSIDE_RANK\) return '圏外';/);
   assert.match(runtime, /JAPAN_RANK_LIMIT, JAPAN_OUTSIDE_RANK/);
 });
