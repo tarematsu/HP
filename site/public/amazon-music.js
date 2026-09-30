@@ -12,6 +12,7 @@ let loadPromise = null;
 let lastPayload = null;
 
 const setNotice = (message = '', error = false) => setSharedNotice('amazonMusicNotice', message, error);
+const amazonMusicIdOrder = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
 
 function trackKey(track) {
   const amazonId = String(track?.amazon_music_id || '').trim();
@@ -20,10 +21,43 @@ function trackKey(track) {
   return trackId != null && trackId > 0 ? `track:${trackId}` : '';
 }
 
+function baseTrackTitle(track) {
+  return String(track?.title || '曲名不明').trim() || '曲名不明';
+}
+
+export function amazonMusicDisplayTitleMap(payload) {
+  const tracks = Array.isArray(payload?.tracks) ? payload.tracks : [];
+  const idsByTitle = new Map();
+
+  for (const track of tracks) {
+    const title = baseTrackTitle(track);
+    const amazonId = String(track?.amazon_music_id || '').trim();
+    if (!amazonId || title === '曲名不明') continue;
+    if (!idsByTitle.has(title)) idsByTitle.set(title, new Set());
+    idsByTitle.get(title).add(amazonId);
+  }
+
+  const seIdsByTitle = new Map();
+  for (const [title, ids] of idsByTitle) {
+    if (ids.size <= 1) continue;
+    const sorted = [...ids].sort((a, b) => amazonMusicIdOrder.compare(a, b));
+    seIdsByTitle.set(title, new Set(sorted.slice(1)));
+  }
+
+  const result = new Map();
+  for (const track of tracks) {
+    const key = trackKey(track);
+    if (!key) continue;
+    const title = baseTrackTitle(track);
+    const amazonId = String(track?.amazon_music_id || '').trim();
+    const isSpecialEdition = Boolean(amazonId && seIdsByTitle.get(title)?.has(amazonId));
+    result.set(key, isSpecialEdition ? `${title}(SE)` : title);
+  }
+  return result;
+}
+
 function trackTitleMap(payload) {
-  return new Map((Array.isArray(payload?.tracks) ? payload.tracks : [])
-    .map((track) => [trackKey(track), String(track?.title || '曲名不明')])
-    .filter(([key]) => key));
+  return amazonMusicDisplayTitleMap(payload);
 }
 
 function latestRanks(payload, metricKey) {
@@ -185,6 +219,7 @@ function renderTable(payload) {
   const tbody = element('amazonMusicTbody');
   if (!tbody) return;
   tbody.replaceChildren();
+  const titles = amazonMusicDisplayTitleMap(payload);
   const tracks = [...(Array.isArray(payload?.tracks) ? payload.tracks : [])]
     .sort((a, b) => (integer(a?.amazon_rank) ?? Number.MAX_SAFE_INTEGER)
       - (integer(b?.amazon_rank) ?? Number.MAX_SAFE_INTEGER));
@@ -194,7 +229,7 @@ function renderTable(payload) {
     const title = document.createElement('td');
     const amazon = integer(track?.amazon_rank);
     amazonRank.textContent = amazon == null ? '-' : `${numberFormat.format(amazon)}位`;
-    title.textContent = String(track?.title || '曲名不明');
+    title.textContent = titles.get(trackKey(track)) || baseTrackTitle(track);
     amazonRank.className = 'amazon-rank-number';
     row.append(amazonRank, title);
     tbody.append(row);
