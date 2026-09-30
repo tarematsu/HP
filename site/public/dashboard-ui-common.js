@@ -27,7 +27,7 @@ export function setText(id, value) {
 export function setNotice(id, message = '', error = false) {
   const node = byId(id);
   if (!node) return;
-  const text = String(message || '').replace(': ', '：');
+  const text = String(message || '');
   if (node.textContent !== text) node.textContent = text;
   node.hidden = !text;
   node.classList.toggle('error', Boolean(error));
