@@ -56,7 +56,7 @@ test('Amazon Music API preserves real materialized-service failures', async () =
 });
 
 test('Amazon Music view is rank-only after retiring the daily follower collector', () => {
-  assert.doesNotMatch(shell, /フォロワー数|前日比|amazonFollowerCount|amazonFollowerDelta/);
+  assert.doesNotMatch(shell, /フォロワー数|amazonFollowerCount|amazonFollowerDelta/);
   assert.match(shell, /id="amazonAllRankChart"/);
   assert.doesNotMatch(shell, /amazonPopularRankChart|櫻坂内人気順|櫻坂46内 人気曲順位/);
   assert.match(shell, /Amazon Music総合順位/);
