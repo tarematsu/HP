@@ -2,8 +2,11 @@ import {
   dashboardChartCard,
   dashboardControls,
   dashboardDataCard,
+  dashboardLegend,
+  dashboardNotice,
   dashboardSummary,
   dashboardSummaryItem,
+  dashboardTable,
   mountDashboardShell,
 } from './dashboard-ui-common.js?v=20261001.1';
 
@@ -24,10 +27,16 @@ const chart = dashboardChartCard({
   title: '',
   titleId: 'chartTitle',
   kicker: 'TREND',
-  trailingHtml: '<div id="chartLegend" class="chart-legend" aria-label="グラフ凡例"></div>',
+  trailingHtml: dashboardLegend({ id: 'chartLegend', className: 'chart-legend' }),
   chartHtml: '<canvas id="chart" width="960" height="360" aria-label="履歴推移グラフ"></canvas><div class="chart-axis"><span id="chartStartDate">-</span><span id="chartEndDate">-</span></div>',
   detailHtml: '<div id="chartDetail" class="chart-detail" data-history-chart-detail></div>',
   footerHtml: '<p id="chartFoot" class="chart-foot"></p>',
+});
+
+const dataTable = dashboardTable({
+  headId: 'thead',
+  bodyId: 'tbody',
+  numeric: false,
 });
 
 const data = dashboardDataCard({
@@ -35,14 +44,19 @@ const data = dashboardDataCard({
   titleId: 'tableTitle',
   kicker: 'DATA',
   trailingHtml: '<button id="csv" class="button" type="button">CSV</button>',
-  bodyHtml: '<div class="table-wrap"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div><button id="more" class="button more-button" type="button" hidden>さらに表示</button>',
+  bodyHtml: `${dataTable}<button id="more" class="button more-button" type="button" hidden>さらに表示</button>`,
 });
 
 const weekly = dashboardDataCard({
   id: 'rankingWeeklyPanel',
   title: 'Buddies週間実績',
   kicker: 'BUDDIES WEEKLY METRICS',
-  bodyHtml: '<div class="table-wrap"><table class="weekly-ranking-table"><thead id="rankingWeeklyThead"></thead><tbody id="rankingWeeklyTbody"></tbody></table></div>',
+  bodyHtml: dashboardTable({
+    className: 'weekly-ranking-table',
+    headId: 'rankingWeeklyThead',
+    bodyId: 'rankingWeeklyTbody',
+    numeric: false,
+  }),
   hidden: true,
 });
 
@@ -52,6 +66,6 @@ mountDashboardShell({
     className: 'history-view',
     anchorId: 'currentView',
     position: 'afterend',
-    html: `<div id="guide" hidden aria-hidden="true"><p class="kicker"></p><h2 id="guideTitle"></h2><p id="guideText"></p></div>${controls}<p id="notice" class="notice" role="status"></p>${summary}${chart}${data}${weekly}`,
+    html: `<div id="guide" hidden aria-hidden="true"><p class="kicker"></p><h2 id="guideTitle"></h2><p id="guideText"></p></div>${controls}${dashboardNotice({ id: 'notice', hidden: false })}${summary}${chart}${data}${weekly}`,
   },
 });
