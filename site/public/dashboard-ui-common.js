@@ -59,6 +59,81 @@ export function fullDate(value, fallback = '-') {
   return parts ? `${parts[0]}/${parts[1]}/${parts[2]}` : String(fallback);
 }
 
+function joinClasses(...values) {
+  return values.flat().filter(Boolean).join(' ');
+}
+
+export function dashboardMetric({ label = '', valueId = '', value = '-', className = '', extraHtml = '' } = {}) {
+  return `<article class="${joinClasses('metric', className)}"><span>${label}</span><div class="metric-value"><strong${valueId ? ` id="${valueId}"` : ''}>${value}</strong></div>${extraHtml}</article>`;
+}
+
+export function dashboardMetrics(items = [], { className = '', ariaLabel = '' } = {}) {
+  return `<section class="${joinClasses('metrics', className)}"${ariaLabel ? ` aria-label="${ariaLabel}"` : ''}>${items.join('')}</section>`;
+}
+
+export function dashboardSummaryItem({ label = '', valueId = '', value = '-', className = '' } = {}) {
+  return `<article${className ? ` class="${className}"` : ''}><span>${label}</span><strong${valueId ? ` id="${valueId}"` : ''}>${value}</strong></article>`;
+}
+
+export function dashboardSummary(items = [], { id = '', className = '', ariaLabel = '' } = {}) {
+  return `<section${id ? ` id="${id}"` : ''} class="${joinClasses('summary-cards', className)}"${ariaLabel ? ` aria-label="${ariaLabel}"` : ''}>${items.join('')}</section>`;
+}
+
+export function dashboardSectionHead({ kicker = '', title = '', titleId = '', trailingHtml = '', className = '' } = {}) {
+  return `<div class="${joinClasses('section-head', className)}"><div>${kicker ? `<p class="kicker">${kicker}</p>` : ''}${title ? `<h2${titleId ? ` id="${titleId}"` : ''}>${title}</h2>` : ''}</div>${trailingHtml}</div>`;
+}
+
+export function dashboardLegend({ id = '', items = [], ariaLabel = 'グラフ凡例', className = '' } = {}) {
+  return `<div${id ? ` id="${id}"` : ''} class="${joinClasses('legend', className)}" aria-label="${ariaLabel}">${items.join('')}</div>`;
+}
+
+export function dashboardChartCard({
+  id = '',
+  title = '',
+  titleId = '',
+  kicker = '',
+  trailingHtml = '',
+  legendHtml = '',
+  chartHtml = '',
+  detailHtml = '',
+  footerHtml = '',
+  className = '',
+  ariaLabelledBy = '',
+} = {}) {
+  const labelledBy = ariaLabelledBy || titleId;
+  return `<section${id ? ` id="${id}"` : ''} class="${joinClasses('card', 'chart-panel', className)}"${labelledBy ? ` aria-labelledby="${labelledBy}"` : ''}>${dashboardSectionHead({ kicker, title, titleId, trailingHtml, className: 'chart-head' })}${legendHtml}${chartHtml}${detailHtml}${footerHtml}</section>`;
+}
+
+export function dashboardTable({
+  id = '',
+  className = '',
+  colgroupHtml = '',
+  headHtml = '',
+  bodyId = '',
+  bodyHtml = '',
+  wrapClassName = '',
+} = {}) {
+  return `<div class="${joinClasses('table-wrap', wrapClassName)}"><table${id ? ` id="${id}"` : ''} class="${joinClasses('shared-numeric-table', className)}">${colgroupHtml}${headHtml}<tbody${bodyId ? ` id="${bodyId}"` : ''}>${bodyHtml}</tbody></table></div>`;
+}
+
+export function dashboardDataCard({
+  id = '',
+  title = '',
+  titleId = '',
+  kicker = '',
+  trailingHtml = '',
+  bodyHtml = '',
+  className = '',
+  ariaLabelledBy = '',
+} = {}) {
+  const labelledBy = ariaLabelledBy || titleId;
+  return `<section${id ? ` id="${id}"` : ''} class="${joinClasses('card', 'data-panel', className)}"${labelledBy ? ` aria-labelledby="${labelledBy}"` : ''}>${dashboardSectionHead({ kicker, title, titleId, trailingHtml })}${bodyHtml}</section>`;
+}
+
+export function dashboardControls({ id = '', bodyHtml = '', className = '', ariaLabel = '' } = {}) {
+  return `<section${id ? ` id="${id}"` : ''} class="${joinClasses('controls', 'card', className)}"${ariaLabel ? ` aria-label="${ariaLabel}"` : ''}>${bodyHtml}</section>`;
+}
+
 function firstMatch(root, selectors) {
   for (const selector of selectors || []) {
     const node = selector ? root?.querySelector(selector) : null;
