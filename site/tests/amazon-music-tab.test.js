@@ -55,15 +55,13 @@ test('Amazon Music API preserves real materialized-service failures', async () =
   assert.equal((await response.json()).ok, false);
 });
 
-test('Amazon Music view exposes follower summary, overall-rank graph, and track rank table', () => {
-  assert.match(shell, /フォロワー数/);
-  assert.match(shell, /前日比/);
+test('Amazon Music view is rank-only after retiring the daily follower collector', () => {
+  assert.doesNotMatch(shell, /フォロワー数|前日比|amazonFollowerCount|amazonFollowerDelta/);
   assert.match(shell, /id="amazonAllRankChart"/);
   assert.doesNotMatch(shell, /amazonPopularRankChart|櫻坂内人気順|櫻坂46内 人気曲順位/);
   assert.match(shell, /Amazon総合順位/);
   assert.match(runtime, /metricKey: 'amazon_rank'/);
   assert.doesNotMatch(runtime, /popular_rank|amazonPopularRankChart/);
-  assert.match(runtime, /payload\?\.follower\?\.delta/);
 });
 
 test('Amazon Music rank chart keeps first place at the top and fits mobile width', () => {

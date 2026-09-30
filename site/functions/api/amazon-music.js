@@ -2,7 +2,7 @@ const INTERNAL_URL = 'https://pages-read-model.internal/_internal/pages-response
 
 const EMPTY_READ_MODEL = Object.freeze({
   ok: true,
-  version: 1,
+  version: 2,
   source: null,
   artist_id: null,
   artist_name: '櫻坂46',
@@ -12,6 +12,7 @@ const EMPTY_READ_MODEL = Object.freeze({
   track_count: 0,
   tracks: [],
   history: [],
+  scan: null,
 });
 
 function jsonResponse(payload, status, cacheControl) {
@@ -31,8 +32,6 @@ function unavailable(message = 'Amazon Music read model unavailable') {
 }
 
 function coldStart() {
-  // Never edge-cache the empty bootstrap model. Once the collector publishes
-  // the first R2 object, the next request must be able to observe it immediately.
   return jsonResponse(EMPTY_READ_MODEL, 200, 'no-store');
 }
 
@@ -45,15 +44,12 @@ export async function onRequestGet({ env }) {
       method: 'GET',
       headers: { accept: 'application/json' },
     }));
-    // The collector runs out-of-band, so a newly deployed tab can legitimately
-    // precede its first materialized object. A storage miss is an empty dataset,
-    // not an application failure; real upstream failures remain 503 below.
     if (response?.status === 404) return coldStart();
     if (!response?.ok) return unavailable(`Amazon Music read model returned HTTP ${response?.status || 503}`);
 
     const headers = new Headers(response.headers);
     headers.set('content-type', 'application/json; charset=utf-8');
-    headers.set('cache-control', 'public, max-age=30, s-maxage=300, stale-while-revalidate=600');
+    headers.set('cache-control', 'public, max-age=15, s-maxage=30, stale-while-revalidate=60');
     headers.set('x-content-type-options', 'nosniff');
     headers.set('vary', 'accept-encoding');
     return new Response(response.body, {
