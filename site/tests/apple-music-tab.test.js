@@ -112,7 +112,7 @@ test('Apple Music regional list is Japan-first and keeps other-region-only songs
 
 test('Apple Music Japan rank chart keeps first place at the top and exposes a current-rank legend', () => {
   assert.match(runtime, /yFor = \(rank\) => margin\.top \+ \(rank - 1\)/);
-  assert.match(runtime, /日本のApple Music櫻坂46人気曲順位推移。1位が上、12位の下は圏外。/);
+  assert.match(runtime, /人気曲順位。1位が上、圏外が下。/);
   assert.match(runtime, /renderJapanLegend/);
   assert.match(shell, /apple-rank-chart chart-fit shared-svg-chart/);
   assert.match(sharedCss, /\.shared-svg-chart svg[\s\S]*width:\s*100%/);
