@@ -69,18 +69,31 @@ function firstMatch(root, selectors) {
 
 export function mountDashboardTab({
   view,
+  mode = '',
   label,
+  active = false,
   anchorSelector = '',
   anchorSelectors = [],
   position = 'beforebegin',
   tabsId = 'modeTabs',
 } = {}) {
   const tabs = byId(tabsId);
-  if (!tabs || !view || tabs.querySelector(`[data-view="${CSS.escape(view)}"]`)) return null;
+  if (!tabs || !view) return null;
+  const selector = mode
+    ? `[data-view="${CSS.escape(view)}"][data-mode="${CSS.escape(mode)}"]`
+    : `[data-view="${CSS.escape(view)}"]:not([data-mode])`;
+  const existing = tabs.querySelector(selector);
+  if (existing) return existing;
+
   const button = document.createElement('button');
   button.type = 'button';
   button.dataset.view = view;
-  button.textContent = String(label || view);
+  if (mode) button.dataset.mode = mode;
+  button.textContent = String(label || mode || view);
+  if (active) {
+    button.classList.add('active');
+    button.setAttribute('aria-current', 'page');
+  }
   const selectors = anchorSelectors.length ? anchorSelectors : [anchorSelector];
   const anchor = firstMatch(tabs, selectors);
   if (anchor) anchor.insertAdjacentElement(position, button);
@@ -92,6 +105,7 @@ export function mountDashboardView({
   id,
   className = '',
   html = '',
+  hidden = true,
   anchorId = '',
   anchorIds = [],
   position = 'beforebegin',
@@ -104,7 +118,7 @@ export function mountDashboardView({
   const section = document.createElement('section');
   section.id = id;
   section.className = ['dashboard-view', className].filter(Boolean).join(' ');
-  section.hidden = true;
+  section.hidden = Boolean(hidden);
   section.innerHTML = html;
   const ids = anchorIds.length ? anchorIds : [anchorId];
   const anchor = ids.map((item) => item && byId(item)).find(Boolean) || null;
@@ -114,6 +128,8 @@ export function mountDashboardView({
 }
 
 export function mountDashboardShell({ tab, view } = {}) {
-  if (tab) mountDashboardTab(tab);
-  if (view) mountDashboardView(view);
+  return {
+    tab: tab ? mountDashboardTab(tab) : null,
+    view: view ? mountDashboardView(view) : null,
+  };
 }
