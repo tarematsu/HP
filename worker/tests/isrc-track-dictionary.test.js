@@ -46,7 +46,7 @@ test('source-priority migration treats Stationhead as provisional and adds ISRC 
   assert.match(priorityMigration, /UPDATE sh_isrc_metadata[\s\S]*SET fetched_at=0/);
 });
 
-test('minute metadata hydration reads only the canonical track metadata view', async () => {
+test('minute metadata hydration gets presentation only from canonical view while sh_tracks resolves identity', async () => {
   const statements = [];
   const MINUTE_DB = {
     prepare(sql) {
@@ -59,6 +59,7 @@ test('minute metadata hydration reads only the canonical track metadata view', a
         },
         async all() {
           const wanted = new Set(this.bindings);
+          if (/FROM sh_tracks/.test(sql)) return { results: [] };
           return {
             results: wanted.has('USABC1234567') || wanted.has('new-sp') ? [{
               track_id: 10,
@@ -81,8 +82,14 @@ test('minute metadata hydration reads only the canonical track metadata view', a
     ['USABC1234567'],
   );
   assert.equal(rows.length, 1);
-  assert.ok(statements.every((sql) => /FROM sh_track_canonical_metadata/.test(sql)));
+  assert.ok(statements.every((sql) => (
+    /FROM sh_track_canonical_metadata/.test(sql) || /FROM sh_tracks/.test(sql)
+  )));
   assert.ok(statements.every((sql) => !/sh_track_metadata|sh_isrc_metadata|sh_track_dictionary/.test(sql)));
+  assert.ok(statements.filter((sql) => /FROM sh_tracks/.test(sql)).every((sql) => (
+    /SELECT id AS track_id,spotify_id/.test(sql)
+    && !/title|artist|thumbnail_url/.test(sql)
+  )));
 
   const hydrated = attachReadModelTrackMetadata({
     tracks: [{
