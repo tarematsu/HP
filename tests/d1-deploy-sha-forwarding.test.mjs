@@ -15,9 +15,9 @@ function jobSection(name, nextName) {
   return workflow.slice(start, end);
 }
 
-test('OTHER_DB reusable deployment receives the push diff range', () => {
+test('OTHER_DB reusable deployment receives a bounded migration diff range', () => {
   const otherDb = jobSection('other_db', 'workers');
   assert.match(otherDb, /operation: other-db/);
-  assert.match(otherDb, /base_sha: \$\{\{ github\.event\.before \|\| '' \}\}/);
+  assert.match(otherDb, /base_sha: \$\{\{ github\.event\.before \|\| github\.sha \}\}/);
   assert.match(otherDb, /head_sha: \$\{\{ github\.sha \}\}/);
 });
