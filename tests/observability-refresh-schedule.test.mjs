@@ -3,12 +3,11 @@ import test from 'node:test';
 
 import { expectAll, expectNone, readSource } from './helpers/source-contract.mjs';
 
-test('full Cloudflare observability has an independent hourly refresh dispatcher', () => {
+test('Cloudflare observability refresh helper is watchdog-dispatched instead of independently scheduled', () => {
   const workflow = readSource('.github/workflows/refresh-cloudflare-observability.yml');
 
   expectAll(workflow, [
     'name: Refresh Cloudflare observability',
-    "cron: '12 * * * *'",
     'workflow_dispatch:',
     'actions: write',
     'actions/github-script@v7',
@@ -20,12 +19,13 @@ test('full Cloudflare observability has an independent hourly refresh dispatcher
   ]);
 
   expectNone(workflow, [
+    'schedule:',
     'CLOUDFLARE_API_TOKEN',
     'CLOUDFLARE_BUILDS_API_TOKEN',
     'wrangler d1 execute',
     'query-cloudflare-d1-costs.py',
   ]);
 
-  assert.equal((workflow.match(/- cron:/g) || []).length, 1);
+  assert.equal((workflow.match(/- cron:/g) || []).length, 0);
   assert.equal((workflow.match(/createWorkflowDispatch/g) || []).length, 1);
 });
