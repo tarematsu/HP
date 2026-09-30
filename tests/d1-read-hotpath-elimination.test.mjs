@@ -12,9 +12,8 @@ import { minuteFactReconcileCandidates } from '../worker/src/minute-facts-day-re
 
 const middleware = readFileSync(new URL('../site/functions/_middleware.js', import.meta.url), 'utf8');
 const reconcile = readFileSync(new URL('../worker/src/minute-facts-day-reconcile.js', import.meta.url), 'utf8');
-const realtimeWorkflow = readFileSync(new URL('../.github/workflows/refresh-pages-realtime.yml', import.meta.url), 'utf8');
-const realtimeRunner = readFileSync(new URL('../worker/scripts/refresh-pages-realtime-actions.mjs', import.meta.url), 'utf8');
-const realtimeWatchdog = readFileSync(new URL('../worker/src/pages-realtime-read-model-watchdog.js', import.meta.url), 'utf8');
+const livePublisher = readFileSync(new URL('../worker/src/pages-dashboard-live-publisher.js', import.meta.url), 'utf8');
+const fastStore = readFileSync(new URL('../worker/src/minute-facts-fast-store.js', import.meta.url), 'utf8');
 const factsDescriptor = JSON.parse(readFileSync(new URL('../database/facts-db.json', import.meta.url), 'utf8'));
 const currentProjectionMigration = readFileSync(
   new URL('../database/facts-migrations/052_current_daily_summary_projection.sql', import.meta.url),
@@ -31,16 +30,14 @@ test('dashboard delta-shaped requests are normalized to the R2 dashboard model',
   assert.match(middleware, /materialized response unavailable/);
 });
 
-test('dashboard freshness is checked every five minutes by the Worker watchdog', () => {
+test('dashboard hot path is event-driven from the committed minute fact', () => {
   const dashboard = MATERIALIZED_API_VARIANTS.find(({ key }) => key === 'dashboard');
   assert.equal(dashboard?.cadence_minutes, 5);
-  assert.doesNotMatch(realtimeWorkflow, /cron:/);
-  assert.match(realtimeWorkflow, /workflow_dispatch:/);
-  assert.match(realtimeWatchdog, /PAGES_REALTIME_WATCHDOG_INTERVAL_MS = 5 \* 60_000/);
-  assert.match(realtimeWatchdog, /PAGES_REALTIME_STALE_AFTER_MS = 9 \* 60_000/);
-  assert.match(realtimeWatchdog, /refresh-pages-realtime\.yml\/dispatches/);
-  assert.match(realtimeRunner, /variant\.key === 'dashboard'/);
-  assert.doesNotMatch(realtimeRunner, /history:daily|history:weekly|history:monthly/);
+  assert.match(fastStore, /upsert_minute_fact/);
+  assert.match(fastStore, /publishCurrentDashboard/);
+  assert.match(livePublisher, /publishDashboardFromMinuteFact/);
+  assert.match(livePublisher, /bucket\.put\(DASHBOARD_KEY/);
+  assert.doesNotMatch(livePublisher, /api\.github\.com|workflow.*dispatch/i);
 });
 
 test('current daily history reads a one-row projection rather than minute facts', () => {
