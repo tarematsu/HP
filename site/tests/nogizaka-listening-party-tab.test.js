@@ -43,5 +43,7 @@ test('Nogizaka live view reads the official-news probes and refreshes while open
   assert.match(api, /listener_avg/);
   assert.match(api, /listener_min/);
   assert.match(api, /listener_max/);
+  assert.match(api, /broadcast_content: '42nd アンダーライブ セットリスト'/);
+  assert.match(api, /event_name: `\$\{day\.replaceAll\('-', ''\)\} \$\{row\.broadcast_content\}`/);
   assert.match(api, /series:/);
 });

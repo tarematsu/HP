@@ -99,7 +99,7 @@ function buildPayload(event, probes, summary, generatedAt, day) {
     distinct_tracks: distinctTracks,
     estimated_streams: estimatedStreams,
     host_handle: 'nogizaka46smej',
-    broadcast_content: null,
+    broadcast_content: '42nd アンダーライブ セットリスト',
     source_url: event.news_url || null,
     status: event.status || null,
   } : null;
@@ -113,7 +113,7 @@ function buildPayload(event, probes, summary, generatedAt, day) {
     event: event || null,
     row,
     series: row ? [{
-      event_name: row.event_name,
+      event_name: `${day.replaceAll('-', '')} ${row.broadcast_content}`,
       started_at: row.started_at,
       points,
       source: live ? 'official_news_live' : (summary ? 'official_broadcast_summary' : 'official_news_probes'),
