@@ -28,7 +28,7 @@ function fakeR2(initial = {}) {
   };
 }
 
-test('Sakamichi scan state becomes complete only after the matching 150k extension finishes', () => {
+test('Sakamichi scan state follows the matching 150k extension completion status', () => {
   const deep = { cycle: 7, scanned_tracks: 100000, complete: true };
   assert.deepEqual(amazonMusicSakamichiScanState(deep, { cycle: 7, status: 'collecting', scanned_tracks: 121000 }), {
     cycle: 7,
@@ -43,6 +43,18 @@ test('Sakamichi scan state becomes complete only after the matching 150k extensi
     scanned_tracks: 150000,
     exhausted: false,
   }).complete, true);
+  assert.deepEqual(amazonMusicSakamichiScanState(deep, {
+    cycle: 7,
+    status: 'complete',
+    scanned_tracks: 143000,
+    exhausted: true,
+  }), {
+    cycle: 7,
+    scanned_tracks: 143000,
+    target_rank: 150000,
+    complete: true,
+    exhausted: true,
+  });
 });
 
 test('publisher exposes Nogizaka, Sakurazaka and Hinatazaka tracks in one read model', async () => {
@@ -54,7 +66,7 @@ test('publisher exposes Nogizaka, Sakurazaka and Hinatazaka tracks in one read m
       cycle_tracks: [
         { amazon_music_id: 'NOGI1', group_name: '乃木坂46', title: '是非に及ばず', artist: '乃木坂46', rank: 120 },
         { amazon_music_id: 'SAKU1', group_name: '櫻坂46', title: '愛MUST BE', artist: '櫻坂46', rank: 240 },
-        { amazon_music_id: 'HINA1', group_name: '日向坂46', title: 'クリフハンガー', artist: '日向坂46', rank: 360 },
+        { amazon_music_id: 'HINA1', group_name: '日向坂46', title: 'イチャイチャ虫', artist: '日向坂46', rank: 360 },
       ],
     },
     [AMAZON_MUSIC_150K_EXTENSION_STATE_KEY]: {
