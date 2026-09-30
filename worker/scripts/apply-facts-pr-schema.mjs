@@ -2,6 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 
+import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
+import { syncTrackHistoryR2Days } from './sync-track-history-r2-days-actions.mjs';
 import { runWranglerCommandWithRetry } from './wrangler-command-retry.mjs';
 
 const workerRoot = resolve(import.meta.dirname, '..');
@@ -124,6 +126,15 @@ if (playbackPositionMigration
   };
 }
 
+function remoteMinuteDatabase() {
+  return createWranglerRemoteD1({
+    database: databaseName,
+    cwd: workerRoot,
+    wranglerScript,
+    tempPrefix: '.facts-track-history-cutover-',
+  });
+}
+
 const applied = [];
 const skipped = [];
 for (const migration of deployment.migrations) {
@@ -137,6 +148,10 @@ for (const migration of deployment.migrations) {
       && playbackPositionColumnPresent()) {
     skipped.push(migration);
     continue;
+  }
+  if (migrationName === '066_retire_legacy_d1_materializations.sql') {
+    const seeded = await syncTrackHistoryR2Days({ db: remoteMinuteDatabase() });
+    console.log(JSON.stringify({ event: 'track_history_r2_cutover_seed', ...seeded }));
   }
   const migrationPath = resolve(repositoryRoot, migration);
   wrangler([
