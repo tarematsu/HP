@@ -1,4 +1,7 @@
-import { integerFormat as integer } from '../dashboard-ui-common.js?v=20260930.1';
+import {
+  appendEmptyTableRow,
+  integerFormat as integer,
+} from '../dashboard-ui-common.js?v=20260930.1';
 
 const MODE = 'ranking';
 const EXCLUDED_ALL_HOSTS = new Set(['sakuramankai', 'sakurazaka46jp', 'nogizaka46smej']);
@@ -136,14 +139,7 @@ function render(data) {
     }
     fragment.append(tr);
   }
-  if (!rows.length) {
-    const tr = document.createElement('tr');
-    const td = document.createElement('td');
-    td.colSpan = ALL_HOST_COLUMNS.length;
-    td.textContent = 'データがありません。';
-    tr.append(td);
-    fragment.append(tr);
-  }
+  if (!rows.length) appendEmptyTableRow(fragment, 'データがありません。', ALL_HOST_COLUMNS.length);
   body.replaceChildren(fragment);
   const more = document.getElementById('more');
   if (more) more.hidden = true;

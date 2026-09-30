@@ -1,4 +1,6 @@
 import {
+  appendEmptyState,
+  appendEmptyTableRow,
   byId as el,
   decimalOneFormat as number,
   finiteNumber as finite,
@@ -119,10 +121,7 @@ import {
     list.replaceChildren();
     const rows = eligibleRankingRows().slice(0, 10);
     if (!rows.length) {
-      const empty = document.createElement('li');
-      empty.className = 'empty-ranking';
-      empty.textContent = 'データがありません。';
-      list.appendChild(empty);
+      appendEmptyState(list, 'データがありません。', { className: 'empty-ranking', tagName: 'li' });
       return;
     }
     const fragment = document.createDocumentFragment();
@@ -157,12 +156,7 @@ import {
     body.replaceChildren();
     const rows = eligibleRankingRows();
     if (!rows.length) {
-      const row = document.createElement('tr');
-      const cell = document.createElement('td');
-      cell.colSpan = 5;
-      cell.textContent = 'データがありません。';
-      row.appendChild(cell);
-      body.appendChild(row);
+      appendEmptyTableRow(body, 'データがありません。', 5);
       return;
     }
     const fragment = document.createDocumentFragment();

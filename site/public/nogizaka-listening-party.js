@@ -1,4 +1,9 @@
-import { decimalOneFormat as decimal, finiteNumber as finite, integerFormat as integer } from './dashboard-ui-common.js?v=20260930.1';
+import {
+  appendEmptyTableRow,
+  decimalOneFormat as decimal,
+  finiteNumber as finite,
+  integerFormat as integer,
+} from './dashboard-ui-common.js?v=20260930.1';
 
 const API_URL = '/api/nogizaka-listening-party';
 const MIN_REFRESH_MS = 15_000;
@@ -142,12 +147,7 @@ function renderTable(payload) {
 
   const row = payload?.row;
   if (!row) {
-    const tr = document.createElement('tr');
-    const td = document.createElement('td');
-    td.colSpan = headers.length;
-    td.textContent = 'データがありません。';
-    tr.appendChild(td);
-    body.replaceChildren(tr);
+    appendEmptyTableRow(body, 'データがありません。', headers.length, { replace: true });
     return;
   }
 

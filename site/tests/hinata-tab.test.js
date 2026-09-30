@@ -63,7 +63,8 @@ test('Hinata daily table matches history start and end cumulative columns', () =
   assert.match(runtime, /numberText\(item\?\.stream_end\)/);
   assert.match(runtime, /numberText\(item\?\.member_start\)/);
   assert.match(runtime, /numberText\(item\?\.member_end\)/);
-  assert.match(runtime, /cell\.colSpan = 10/);
+  assert.match(runtime, /appendEmptyTableRow\(tbody, '日次データはまだありません。', 10, \{ className: 'hinata-empty' \}\)/);
+  assert.match(sharedUi, /export function appendEmptyTableRow\(/);
 });
 
 test('Hinata UI includes the 24-hour online and playback graph plus daily metrics', () => {
@@ -89,6 +90,7 @@ test('Hinata adds a daily listener and stream graph below the 24-hour graph', ()
   assert.match(runtime, /listener_max/);
   assert.match(runtime, /listener_min/);
   assert.match(runtime, /stream_growth/);
+  assert.match(runtime, /appendEmptyState\(host, '日次グラフデータはまだありません。'/);
   assert.match(runtime, /appendDailyLegend\('再生数増加', streamColor, true\)/);
   assert.match(runtime, /row\.timestamp - previousTime <= DAY_MS \* 1\.5/);
   assert.match(runtime, /renderDailyChart\(value\)/);

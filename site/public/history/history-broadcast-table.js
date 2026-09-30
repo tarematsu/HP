@@ -1,4 +1,9 @@
-import { decimalOneFormat as decimal, finiteNumber as finite, integerFormat as integer } from '../dashboard-ui-common.js?v=20260930.1';
+import {
+  appendEmptyTableRow,
+  decimalOneFormat as decimal,
+  finiteNumber as finite,
+  integerFormat as integer,
+} from '../dashboard-ui-common.js?v=20260930.1';
 
 (() => {
   const MODE = 'broadcasts';
@@ -140,14 +145,7 @@ import { decimalOneFormat as decimal, finiteNumber as finite, integerFormat as i
       fragment.appendChild(tableRow);
     }
 
-    if (!ordered.length) {
-      const row = document.createElement('tr');
-      const cell = document.createElement('td');
-      cell.colSpan = VISIBLE_HEADERS.length;
-      cell.textContent = 'データがありません。';
-      row.appendChild(cell);
-      fragment.appendChild(row);
-    }
+    if (!ordered.length) appendEmptyTableRow(fragment, 'データがありません。', VISIBLE_HEADERS.length);
 
     head.replaceChildren(headRow);
     body.replaceChildren(fragment);
