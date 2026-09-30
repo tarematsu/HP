@@ -8,6 +8,7 @@ import { onRequestGet as appleMusicPlaylistsApi } from '../functions/api/apple-m
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../public/apple-music-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/apple-music.js', import.meta.url), 'utf8');
+const playlistRuntime = readFileSync(new URL('../public/apple-music-playlists.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/apple-music.css', import.meta.url), 'utf8');
 const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
@@ -22,8 +23,9 @@ test('Apple Music is a dashboard route backed only by Worker materialized read m
   assert.match(shell, /mountDashboardShell/);
   assert.match(shell, /dashboardChartHost/);
   assert.match(sharedUi, /class="\$\{joinClasses\('shared-svg-chart', className\)\}"/);
-  assert.match(runtime, /fetchJson\('\/api\/apple-music'/);
-  assert.match(runtime, /fetchJson\('\/api\/apple-music-playlists'/);
+  assert.match(runtime, /fetch\('\/api\/apple-music'/);
+  assert.match(runtime, /import\(playlistModuleUrl\(\)\)/);
+  assert.match(playlistRuntime, /fetch\('\/api\/apple-music-playlists'/);
   assert.match(api, /PAGES_READ_MODEL_SERVICE/);
   assert.match(api, /_internal\/pages-response\?key=apple-music/);
   assert.match(playlistApi, /PAGES_READ_MODEL_SERVICE/);
@@ -32,6 +34,15 @@ test('Apple Music is a dashboard route backed only by Worker materialized read m
   assert.doesNotMatch(api, /OTHER_DB|MINUTE_DB|\.prepare\(/);
   assert.doesNotMatch(playlistApi, /OTHER_DB|MINUTE_DB|\.prepare\(/);
   assert.doesNotMatch(runtime, /\/api\/history|\/api\/dashboard|OTHER_DB|MINUTE_DB/);
+  assert.doesNotMatch(playlistRuntime, /OTHER_DB|MINUTE_DB/);
+});
+
+test('Apple Music playlist UI stays outside the shared dashboard bundle', () => {
+  assert.match(runtime, /function playlistModuleUrl\(\)/);
+  assert.match(runtime, /\['\/apple-music-playlists\.js', 'v=20261001\.1'\]\.join\('\?'\)/);
+  assert.match(runtime, /import\(playlistModuleUrl\(\)\)/);
+  assert.doesNotMatch(runtime, /import\(['"]\/apple-music-playlists\.js/);
+  assert.doesNotMatch(shell, /applePlaylistTable|PUBLIC PLAYLISTS/);
 });
 
 test('Apple Music API treats an ungenerated read model as a non-cacheable empty successful dataset', async () => {
@@ -150,14 +161,15 @@ test('Apple Music view fixes the top graph to Japan and uses one regional rankin
   assert.match(runtime, /point\?\.regions\?\.jp/);
 });
 
-test('Apple Music view lists public-site playlist memberships by song', () => {
-  assert.match(shell, /id: 'applePlaylistTable'/);
-  assert.match(shell, /楽曲別プレイリスト掲載一覧/);
-  assert.match(shell, /Apple Music公式サイト上で検出できた公開プレイリスト/);
-  assert.match(runtime, /renderPlaylistMemberships/);
-  assert.match(runtime, /coverage\?\.matched_playlists/);
-  assert.match(runtime, /safeAppleMusicUrl/);
-  assert.match(runtime, /membership\?\.position/);
+test('Apple Music lazy playlist view lists public-site playlist memberships by song', () => {
+  assert.match(playlistRuntime, /dashboardDataCard/);
+  assert.match(playlistRuntime, /dashboardTable/);
+  assert.match(playlistRuntime, /id: 'applePlaylistTable'/);
+  assert.match(playlistRuntime, /楽曲別プレイリスト掲載一覧/);
+  assert.match(playlistRuntime, /Apple Music公式サイト上で検出できた公開プレイリスト/);
+  assert.match(playlistRuntime, /safeAppleMusicUrl/);
+  assert.match(playlistRuntime, /membership\?\.position/);
+  assert.match(playlistRuntime, /loadAppleMusicPlaylistMemberships/);
 });
 
 test('Apple Music regional list is Japan-first and keeps other-region-only songs below it', () => {
