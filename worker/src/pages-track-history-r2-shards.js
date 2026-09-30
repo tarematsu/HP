@@ -278,10 +278,10 @@ export async function materializeTrackHistoryRangeThroughR2(
   if (groupedRows.length > TRACK_HISTORY_LIMIT) {
     throw new Error(`track history read-model shard exceeded ${TRACK_HISTORY_LIMIT} grouped rows`);
   }
-  const [canonicalGroupedRows, canonicalLikeRows] = await Promise.all([
-    canonicalizeTrackRows(targetDb, groupedRows),
-    canonicalizeTrackRows(targetDb, likeRows),
-  ]);
+  const combinedRows = [...groupedRows, ...(likeRows || [])];
+  const canonicalRows = await canonicalizeTrackRows(targetDb, combinedRows);
+  const canonicalGroupedRows = canonicalRows.slice(0, groupedRows.length);
+  const canonicalLikeRows = canonicalRows.slice(groupedRows.length);
   const completed = complete(
     attachLikes(merge(canonicalGroupedRows), canonicalLikeRows),
     canonicalGroupedRows,
