@@ -1,7 +1,4 @@
-import {
-  canonicalizeTrackRows,
-  canonicalizeTrackRowsFromCatalog,
-} from '../../site/functions/lib/canonical-track-rows.js';
+import { canonicalizeTrackRows } from '../../site/functions/lib/canonical-track-rows.js';
 import {
   loadTrackHistoryData,
   TRACK_HISTORY_SQL,
@@ -240,7 +237,7 @@ export async function publishTrackHistoryResponseFromR2Days(
     }
     if (truncated) break;
   }
-  const publishedRows = db ? await canonicalizeTrackRowsFromCatalog(db, rows) : rows;
+  const publishedRows = db ? await canonicalizeTrackRows(db, rows) : rows;
   const completedPublication = { ...publication, truncated };
   const body = `${trackHistoryResponsePrefix(completedPublication)}${publishedRows
     .map((row) => JSON.stringify(row)).join(',')}${trackHistoryResponseSuffix(completedPublication)}`;
