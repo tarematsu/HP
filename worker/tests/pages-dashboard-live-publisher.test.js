@@ -4,7 +4,8 @@ import test from 'node:test';
 
 const publisher = readFileSync(new URL('../src/pages-dashboard-live-publisher.js', import.meta.url), 'utf8');
 const fastStore = readFileSync(new URL('../src/minute-facts-fast-store.js', import.meta.url), 'utf8');
-const detailsClient = readFileSync(new URL('../../site/public/dashboard-details-client.js', import.meta.url), 'utf8');
+const dashboardEntry = readFileSync(new URL('../../site/public/dashboard-metrics.js', import.meta.url), 'utf8');
+const dashboardClient = readFileSync(new URL('../../site/public/dashboard-client.js', import.meta.url), 'utf8');
 
 test('committed live minute facts immediately publish the current dashboard model', () => {
   assert.match(fastStore, /await timedStage\('upsert_minute_fact'/);
@@ -23,9 +24,8 @@ test('steady-state live publication is differential and reserves full D1 renderi
   assert.doesNotMatch(publisher, /FROM sh_minute_facts|FROM sh_dashboard_history_5m/);
 });
 
-test('current-tab client does not issue a details D1 request when the materialized model already embeds details', () => {
-  assert.match(detailsClient, /function embeddedDetails\(/);
-  assert.match(detailsClient, /if \(embedded\) \{/);
-  assert.match(detailsClient, /return;\n  \}/);
-  assert.match(detailsClient, /fetch\(`\/api\/dashboard-details\?channel_id=/);
+test('current-tab client has no secondary details request when the materialized model embeds details', () => {
+  assert.doesNotMatch(dashboardEntry, /dashboard-details-client\.js/);
+  assert.doesNotMatch(dashboardClient, /\/api\/dashboard-details|dashboard:details/);
+  assert.equal((dashboardClient.match(/\/api\/dashboard/g) || []).length, 1);
 });
