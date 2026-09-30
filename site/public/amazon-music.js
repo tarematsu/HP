@@ -14,10 +14,10 @@ let lastPayload = null;
 const setNotice = (message = '', error = false) => setSharedNotice('amazonMusicNotice', message, error);
 
 function trackKey(track) {
-  const amazonId = track?.amazon_music_id || '';
+  const amazonId = String(track?.amazon_music_id || '').trim();
   if (amazonId) return `amazon:${amazonId}`;
   const trackId = integer(track?.track_id);
-  return trackId > 0 ? `track:${trackId}` : '';
+  return trackId != null && trackId > 0 ? `track:${trackId}` : '';
 }
 
 function trackTitleMap(payload) {
