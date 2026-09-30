@@ -5,6 +5,7 @@ import { formatNogizakaBroadcastContent } from '../functions/api/nogizaka-listen
 
 const shell = readFileSync(new URL('../public/nogizaka-listening-party-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/nogizaka-listening-party.js', import.meta.url), 'utf8');
+const partyUi = readFileSync(new URL('../public/official-listening-party-ui.js', import.meta.url), 'utf8');
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const tabLayout = readFileSync(new URL('../public/pages-tabs-layout.css', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/nogizaka-listening-party.js', import.meta.url), 'utf8');
@@ -23,13 +24,19 @@ test('Nogizaka tab is mounted immediately before Hinata when available', () => {
   assert.match(tabs, /loadNogizakaListeningPartyView/);
 });
 
-test('Nogizaka tab keeps the official listening-party presentation', () => {
+test('Nogizaka tab keeps the shared official listening-party presentation', () => {
   for (const text of ['期間数', '平均同接', '最大同接', '所要時間', '公式リスパ一覧']) {
     assert.match(shell, new RegExp(text));
   }
   for (const header of ['日付', '時間帯', '所要時間', '平均同接', '最小同接', '最大同接', '楽曲数', '推定再生数', '放送内容', 'イベント名', '出典']) {
-    assert.match(runtime, new RegExp(`'${header}'`));
+    assert.match(partyUi, new RegExp(`'${header}'`));
   }
+  assert.match(runtime, /official-listening-party-ui\.js\?v=20261001\.1/);
+  assert.match(runtime, /createOfficialPartyHeaderRow\(\)/);
+  assert.match(runtime, /createOfficialSourceCell\(row\.source_url\)/);
+  assert.match(runtime, /splitOfficialEventName\(row\?\.event_name/);
+  assert.match(runtime, /durationLabel\(durationMinutes\(payload\)\)/);
+  assert.doesNotMatch(runtime, /function durationLabel|function splitEvent/);
   assert.match(runtime, /nogizakaPartyChart/);
   assert.match(runtime, /nogizakaPartyCsv/);
 });
