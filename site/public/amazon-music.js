@@ -45,15 +45,23 @@ function svgElement(name, attributes = {}) {
   return node;
 }
 
+function trackKey(track) {
+  const trackId = integer(track?.track_id);
+  if (trackId != null && trackId > 0) return `track:${trackId}`;
+  const amazonId = String(track?.amazon_music_id || '').trim();
+  return amazonId ? `amazon:${amazonId}` : '';
+}
+
 function trackTitleMap(payload) {
   return new Map((Array.isArray(payload?.tracks) ? payload.tracks : [])
-    .map((track) => [String(track?.amazon_music_id || ''), String(track?.title || '曲名不明')]));
+    .map((track) => [trackKey(track), String(track?.title || '曲名不明')])
+    .filter(([key]) => key));
 }
 
 function latestRanks(payload, metricKey) {
   const result = new Map();
   for (const track of Array.isArray(payload?.tracks) ? payload.tracks : []) {
-    const id = String(track?.amazon_music_id || '');
+    const id = trackKey(track);
     const rank = integer(track?.[metricKey]);
     if (id && rank != null && rank > 0) result.set(id, rank);
   }
@@ -68,7 +76,7 @@ function normalizeSeries(payload, metricKey) {
     const date = String(point?.snapshot_date || '');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
     for (const track of Array.isArray(point?.tracks) ? point.tracks : []) {
-      const id = String(track?.amazon_music_id || '');
+      const id = trackKey(track);
       const rank = integer(track?.[metricKey]);
       if (!id || rank == null || rank < 1) continue;
       if (!byTrack.has(id)) byTrack.set(id, []);
