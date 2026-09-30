@@ -6,6 +6,7 @@ const dashboard = readFileSync(new URL('../public/dashboard-metrics.js', import.
 const dashboardCache = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
 const dashboardLayout = readFileSync(new URL('../public/dashboard-current-layout.js', import.meta.url), 'utf8');
 const dashboardStability = readFileSync(new URL('../public/dashboard-chart-stability.js', import.meta.url), 'utf8');
+const paintGate = readFileSync(new URL('../public/chart-paint-gate.js', import.meta.url), 'utf8');
 const dashboardDetail = readFileSync(new URL('../public/dashboard-chart-detail.js', import.meta.url), 'utf8');
 const historyMain = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const historyLite = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
@@ -31,13 +32,26 @@ test('dashboard has one response parser and one canvas renderer', () => {
   assert.doesNotMatch(dashboardLayout, /audienceChart|getContext\('2d'\)|clearRect\(/);
 });
 
+test('current and history charts share one paint gate controller', () => {
+  assert.match(paintGate, /export function createChartPaintGate\(/);
+  assert.match(paintGate, /requestAnimationFrame\(\(\) => requestAnimationFrame/);
+  assert.match(paintGate, /fallbackMs > 0/);
+  assert.match(paintGate, /node\.dataset\[pendingKey\]/);
+  assert.match(paintGate, /node\.dataset\[stableKey\]/);
+  assert.match(dashboardStability, /createChartPaintGate/);
+  assert.match(historyStability, /createChartPaintGate/);
+  assert.doesNotMatch(dashboardStability, /requestAnimationFrame|fallbackTimer|revealTimer/);
+  assert.doesNotMatch(historyStability, /requestAnimationFrame|fallbackTimer|revealTimer/);
+});
+
 test('dashboard first paint settles from the unified materialized payload', () => {
-  assert.match(dashboardStability, /initialPaintPending/);
+  assert.match(dashboardStability, /pendingKey: 'initialPaintPending'/);
+  assert.match(dashboardStability, /stableKey: 'initialPaintStable'/);
+  assert.match(dashboardStability, /fallbackMs: 2500/);
+  assert.match(dashboardStability, /oneShot: true/);
   assert.match(dashboardStability, /source === 'network' \? 180 : 280/);
   assert.match(dashboardStability, /Array\.isArray\(payload\?\.history\)/);
   assert.match(dashboardStability, /dashboard:payload/);
-  assert.match(dashboardStability, /requestAnimationFrame\(\(\) => requestAnimationFrame/);
-  assert.match(dashboardStability, /initialPaintStable/);
   assert.match(dashboardDetail, /currentChartDetail/);
   assert.match(dashboardDetail, /dashboard:payload/);
   assert.doesNotMatch(dashboardDetail, /dashboard:details/);
@@ -61,8 +75,10 @@ test('history has one specialized canvas renderer per mode and hides paint until
   assert.match(historyStability, /history:period-chart-drawn/);
   assert.match(historyStability, /history:ranking-chart-drawn/);
   assert.doesNotMatch(historyStability, /MutationObserver|getContext\('2d'\)|clearRect\(/);
-  assert.match(historyStability, /paintPending/);
-  assert.match(historyStability, /paintStable/);
+  assert.match(historyStability, /pendingKey: 'paintPending'/);
+  assert.match(historyStability, /stableKey: 'paintStable'/);
+  assert.match(historyStability, /fallbackMs: 1800/);
+  assert.match(historyStability, /paintGate\.isStable\(\)/);
   assert.match(historyStability, /document\.getElementById\('load'\)/);
 });
 
@@ -75,6 +91,7 @@ test('history mode switches clear stale shared chart state before the next rende
   assert.match(historyStability, /function clearAxisLabel\(id\)/);
   assert.match(historyStability, /canvas\.width = canvas\.width/);
   assert.match(historyStability, /nextMode === 'broadcasts'[\s\S]*prepareBroadcastCanvas\(\)/);
+  assert.match(historyStability, /paintGate\.show\(\)/);
   assert.match(historyStability, /paintedMode = 'broadcasts'/);
 });
 
