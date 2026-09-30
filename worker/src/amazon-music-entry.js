@@ -10,7 +10,7 @@ import {
   persistAppleMusicModelToOther,
 } from './music-service-other-store.js';
 
-export const AMAZON_MUSIC_CRON = '* * * * *';
+export const AMAZON_MUSIC_CRON = '2,5,12,15,22,32,42,52 * * * *';
 export const AMAZON_MUSIC_TOP_SCAN_CRON = '5 * * * *';
 export const AMAZON_MUSIC_DEEP_SCAN_CRON = '2,12,22,32,42,52 * * * *';
 export const APPLE_MUSIC_PROBE_CRON = '15 * * * *';
