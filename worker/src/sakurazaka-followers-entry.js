@@ -1,12 +1,75 @@
 import app from './sakurazaka-entry.js';
+import { dispatchScheduledService } from './internal-scheduled-dispatch.js';
 
 export const STATIONHEAD_DAILY_FOLLOWERS_MESSAGE = 'stationhead-daily-followers';
+export const SHARED_STATIONHEAD_CRON = '* * * * *';
+const NOGIZAKA_CRON = '* * * * *';
+const OHISAMA_CRON = '*/5 * * * *';
+const SPOTIFY_PLAYCOUNT_CRON = '0 * * * *';
+
+function scheduledTimestamp(controller) {
+  const value = Number(controller?.scheduledTime);
+  return Number.isFinite(value) && value >= 0 ? value : Date.now();
+}
+
+function utcMinute(timestamp) {
+  return new Date(timestamp).getUTCMinutes();
+}
+
+async function runSharedTargets(env, scheduledAt) {
+  const minute = utcMinute(scheduledAt);
+  const tasks = [
+    ['nogizaka46smej', dispatchScheduledService(env?.NOGIZAKA_SCHEDULED, NOGIZAKA_CRON, scheduledAt)],
+  ];
+  if (minute % 5 === 0) {
+    tasks.push(['ohisama', dispatchScheduledService(env?.OHISAMA_SCHEDULED, OHISAMA_CRON, scheduledAt)]);
+  }
+  if (minute === 0) {
+    tasks.push(['spotify-playcount', dispatchScheduledService(env?.SPOTIFY_PLAYCOUNT_SCHEDULED, SPOTIFY_PLAYCOUNT_CRON, scheduledAt)]);
+  }
+
+  const settled = await Promise.allSettled(tasks.map(([, promise]) => promise));
+  const failures = [];
+  const results = {};
+  settled.forEach((result, index) => {
+    const name = tasks[index][0];
+    if (result.status === 'fulfilled') {
+      results[name] = result.value;
+      return;
+    }
+    failures.push({ name, error: String(result.reason?.message || result.reason).slice(0, 800) });
+  });
+
+  if (failures.length) {
+    console.error(JSON.stringify({
+      event: 'shared_stationhead_schedule_failed',
+      scheduled_at: scheduledAt,
+      failures,
+    }));
+    throw new AggregateError(
+      failures.map(({ error }) => new Error(error)),
+      `shared Stationhead schedule failed: ${failures.map(({ name }) => name).join(', ')}`,
+    );
+  }
+  return results;
+}
 
 export async function runSakurazakaFollowersScheduled(controller, env) {
   // Daily follower collection now runs in GitHub Actions at 00:00 JST.
-  // Keep this wrapper as a pass-through so the production Worker no longer
-  // dispatches a task that can hit Stationhead's 401 response from Worker fetch.
-  return app.scheduled(controller, env);
+  // This minute cron is also the shared scheduler for the lightweight
+  // Nogizaka, Ohisama, and Spotify collectors so they do not consume
+  // separate account-wide Cron Trigger slots.
+  const scheduledAt = scheduledTimestamp(controller);
+  const ownController = {
+    ...controller,
+    cron: SHARED_STATIONHEAD_CRON,
+    scheduledTime: scheduledAt,
+  };
+  const [sakurazaka, shared] = await Promise.all([
+    app.scheduled(ownController, env),
+    runSharedTargets(env, scheduledAt),
+  ]);
+  return { sakurazaka, shared, scheduled_at: scheduledAt };
 }
 
 export async function runSakurazakaFollowersQueue(batch, env) {
