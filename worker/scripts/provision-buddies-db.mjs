@@ -56,6 +56,43 @@ function tableColumns(table) {
     .map((row) => String(row?.name || '')));
 }
 
+function enabled(value) {
+  return /^(?:1|true|yes|on)$/i.test(String(value || '').trim());
+}
+
+function selectedDeploymentMigrations(migrationFiles, forceAll = false) {
+  if (forceAll || !enabled(process.env.D1_DEPLOY_CHANGED_ONLY)) return migrationFiles;
+  const baseSha = String(process.env.DEPLOY_BASE_SHA || '').trim();
+  const headSha = String(process.env.DEPLOY_HEAD_SHA || '').trim();
+  if (!baseSha || !headSha || /^0+$/.test(baseSha)) {
+    console.warn('Changed-only buddies deployment has no usable base/head; applying all migrations.');
+    return migrationFiles;
+  }
+  try {
+    const changedPaths = new Set(execFileSync('git', [
+      'diff', '--name-only', `${baseSha}..${headSha}`,
+    ], {
+      cwd: repositoryRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).split(/\r?\n/u).map((value) => value.trim()).filter(Boolean));
+    const selected = migrationFiles.filter((migrationFile) => (
+      changedPaths.has(`database/buddies-migrations/${migrationFile}`)
+    ));
+    console.log(JSON.stringify({
+      operation: 'buddies-db-migration-selection',
+      mode: 'changed-only',
+      base_sha: baseSha,
+      head_sha: headSha,
+      selected,
+    }));
+    return selected;
+  } catch (error) {
+    console.warn(`Could not resolve changed buddies migrations; applying all: ${String(error?.message || error)}`);
+    return migrationFiles;
+  }
+}
+
 function removeAppleMusicCompatibilityColumns() {
   for (const table of APPLE_MUSIC_COMPATIBILITY_TABLES) {
     if (!tableColumns(table).has('apple_music_id')) continue;
@@ -83,6 +120,7 @@ function ensureTrackMetadataIsrcColumn() {
 }
 
 let database = listDatabases().find((item) => item.name === databaseName);
+const databaseExisted = Boolean(database);
 if (!database) {
   wrangler(['d1', 'create', databaseName]);
   database = listDatabases().find((item) => item.name === databaseName);
@@ -95,7 +133,8 @@ if (!databaseId) throw new Error(`Could not determine database id for ${database
 const migrationFiles = readdirSync(migrationsDir)
   .filter((name) => name.endsWith('.sql'))
   .sort();
-for (const migrationFile of migrationFiles) {
+const selectedMigrationFiles = selectedDeploymentMigrations(migrationFiles, !databaseExisted);
+for (const migrationFile of selectedMigrationFiles) {
   if (migrationFile === APPLE_MUSIC_COMPATIBILITY_MIGRATION) {
     removeAppleMusicCompatibilityColumns();
     continue;
@@ -128,6 +167,7 @@ console.log(JSON.stringify({
   ok: true,
   database_name: databaseName,
   database_id: databaseId,
+  migrations_applied: selectedMigrationFiles,
   tables: installed.size,
   binding_change: {
     config: 'worker/wrangler.jsonc',
