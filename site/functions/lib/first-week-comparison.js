@@ -76,6 +76,11 @@ export const FIRST_WEEK_READ_MODEL_SQL = `SELECT
 FROM sh_first_week_comparison_read_model
 ORDER BY release_date_jst ASC`;
 
+export const FIRST_WEEK_LEGACY_READ_MODEL_SQL = `SELECT
+  release_date_jst,NULL AS track_id,point_count,points_json,updated_at
+FROM sh_first_week_comparison_read_model
+ORDER BY release_date_jst ASC`;
+
 function finite(value) {
   if (value == null || value === '') return null;
   const parsed = Number(value);
@@ -94,6 +99,20 @@ function readModelPoints(row) {
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
+  }
+}
+
+function missingTrackIdColumn(error) {
+  const message = String(error?.message || error || '').toLowerCase();
+  return message.includes('no such column') && message.includes('track_id');
+}
+
+async function loadFirstWeekReadModel(db) {
+  try {
+    return await db.prepare(FIRST_WEEK_READ_MODEL_SQL).all();
+  } catch (error) {
+    if (!missingTrackIdColumn(error)) throw error;
+    return db.prepare(FIRST_WEEK_LEGACY_READ_MODEL_SQL).all();
   }
 }
 
@@ -122,7 +141,7 @@ export function normalizeFirstWeekRows(rows = []) {
 export async function loadFirstWeekComparison(db) {
   if (!db?.prepare) throw new Error('MINUTE_DB binding missing');
 
-  const readModel = await db.prepare(FIRST_WEEK_READ_MODEL_SQL).all();
+  const readModel = await loadFirstWeekReadModel(db);
   const rowsByRelease = new Map(
     (readModel?.results || []).map((row) => [String(row.release_date_jst || ''), row]),
   );
