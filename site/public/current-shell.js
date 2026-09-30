@@ -38,7 +38,7 @@ mountDashboardShell({
     hidden: false,
     html: `${currentMetrics}
       <section class="card chart-card">
-        ${dashboardSectionHead({ trailingHtml: currentLegend, className: 'chart-head' })}
+        ${dashboardSectionHead({ trailingHtml: `${currentLegend}<small class="subtle">5分単位</small>`, className: 'chart-head' })}
         <canvas id="audienceChart" width="960" height="360" aria-label="過去24時間のオンライン人数"></canvas>
         <div id="currentChartDetail" class="chart-detail" data-current-chart-detail></div>
       </section>
