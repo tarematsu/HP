@@ -8,6 +8,8 @@ import {
 } from './dashboard-ui-common.js?v=20260930.1';
 
 const REGION_ORDER = Object.freeze(['jp', 'tw', 'hk', 'kr', 'sg', 'th', 'us']);
+const JAPAN_RANK_LIMIT = 12;
+const JAPAN_OUTSIDE_RANK = JAPAN_RANK_LIMIT + 1;
 let loadPromise = null;
 let lastPayload = null;
 
@@ -42,31 +44,45 @@ function renderSummary(payload) {
   if (date) date.textContent = formatFullDate(payload?.snapshot_date);
 }
 
+function rankLabel(rank) {
+  if (rank === JAPAN_OUTSIDE_RANK) return '圏外';
+  return rank == null ? '-' : `${rank}位`;
+}
+
 function japanHistorySeries(payload) {
   const japan = regionByCode(payload, 'jp');
-  const currentTracks = (Array.isArray(japan?.tracks) ? japan.tracks : []).slice(0, 12);
-  const titleById = new Map(currentTracks
-    .map((track) => [trackKey(track), track.title || '曲名不明'])
-    .filter(([key]) => key));
-  const byId = new Map([...titleById.keys()].map((id) => [id, []]));
+  const currentTracks = Array.isArray(japan?.tracks) ? japan.tracks : null;
+  const history = Array.isArray(payload?.history) ? payload.history : [];
+  const series = new Map();
 
-  for (const point of Array.isArray(payload?.history) ? payload.history : []) {
-    const date = String(point?.snapshot_date || '');
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
-    for (const track of Array.isArray(point?.regions?.jp) ? point.regions.jp : []) {
-      const id = trackKey(track);
-      const rank = integer(track?.rank);
-      if (!byId.has(id) || rank == null || rank < 1) continue;
-      byId.get(id).push({ date, rank });
+  for (const point of history) {
+    const date = String(point.snapshot_date);
+    const tracks = Array.isArray(point?.regions?.jp) ? point.regions.jp : null;
+    if (!tracks) {
+      for (const item of series.values()) item.points.push({ date, rank: null });
+      continue;
     }
+    const ranks = new Map(tracks.map((track, index) => [trackKey(track), integer(track?.rank) ?? index + 1]));
+    for (const item of series.values()) item.points.push({ date, rank: ranks.get(item.id) ?? JAPAN_OUTSIDE_RANK });
+    tracks.forEach((track, index) => {
+      const id = trackKey(track);
+      if (!id || series.has(id)) return;
+      series.set(id, {
+        id,
+        title: track?.title || track?.song_key || '曲名不明',
+        points: [{ date, rank: ranks.get(id) ?? index + 1 }],
+      });
+    });
   }
 
-  return currentTracks.map((track, index) => ({
-    id: trackKey(track),
-    title: track.title || '曲名不明',
-    currentRank: integer(track.rank) ?? index + 1,
-    points: (byId.get(trackKey(track)) || []).sort((a, b) => a.date.localeCompare(b.date)),
-  })).filter((series) => series.id && series.points.length);
+  for (const item of series.values()) {
+    const index = currentTracks?.findIndex((track) => trackKey(track) === item.id) ?? -1;
+    item.currentRank = !currentTracks ? null : index < 0
+      ? JAPAN_OUTSIDE_RANK
+      : integer(currentTracks[index]?.rank) ?? index + 1;
+    if (index >= 0 && currentTracks[index]?.title) item.title = currentTracks[index].title;
+  }
+  return [...series.values()];
 }
 
 function renderJapanLegend(series) {
@@ -79,7 +95,7 @@ function renderJapanLegend(series) {
     const marker = document.createElement('i');
     marker.style.setProperty('--apple-rank-hue', String((index * 43) % 360));
     const label = document.createElement('span');
-    label.textContent = `${item.currentRank}位 ${item.title}`;
+    label.textContent = `${rankLabel(item.currentRank)} ${item.title}`;
     entry.append(marker, label);
     container.append(entry);
   }
@@ -95,7 +111,7 @@ function renderRankChart(payload) {
   if (!series.length || !dates.length) {
     const empty = document.createElement('p');
     empty.className = 'apple-rank-empty';
-    empty.textContent = '日本の順位履歴はまだありません。';
+    empty.textContent = '順位履歴はまだありません。';
     container.append(empty);
     return;
   }
@@ -105,21 +121,20 @@ function renderRankChart(payload) {
   const margin = { left: 52, right: 16, top: 16, bottom: 36 };
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
-  const maxRank = Math.max(12, ...series.flatMap((item) => item.points.map((point) => point.rank)));
   const dateIndex = new Map(dates.map((date, index) => [date, index]));
   const xFor = (date) => {
     const index = dateIndex.get(date) ?? 0;
     return margin.left + (dates.length <= 1 ? plotWidth / 2 : index / (dates.length - 1) * plotWidth);
   };
-  const yFor = (rank) => margin.top + (rank - 1) / Math.max(1, maxRank - 1) * plotHeight;
+  const yFor = (rank) => margin.top + (rank - 1) / (JAPAN_OUTSIDE_RANK - 1) * plotHeight;
   const svg = svgElement('svg', {
     viewBox: `0 0 ${width} ${height}`,
     role: 'img',
-    'aria-label': '日本のApple Music櫻坂46人気曲順位推移。1位が上。',
+    'aria-label': '人気曲順位。1位が上、圏外が下。',
     class: 'apple-rank-svg',
   });
 
-  const rankTicks = [...new Set([1, 3, 5, 10, maxRank].filter((rank) => rank <= maxRank))];
+  const rankTicks = [1, 3, 5, 10, JAPAN_RANK_LIMIT, JAPAN_OUTSIDE_RANK];
   for (const rank of rankTicks) {
     const y = yFor(rank);
     svg.append(svgElement('line', {
@@ -135,7 +150,7 @@ function renderRankChart(payload) {
       'text-anchor': 'end',
       class: 'apple-rank-axis-label',
     });
-    label.textContent = `${rank}位`;
+    label.textContent = rankLabel(rank);
     svg.append(label);
   }
 
@@ -157,6 +172,10 @@ function renderRankChart(payload) {
     let d = '';
     let previousIndex = null;
     for (const point of item.points) {
+      if (!Number.isFinite(point.rank)) {
+        previousIndex = null;
+        continue;
+      }
       const currentIndex = dateIndex.get(point.date);
       const command = previousIndex != null && currentIndex === previousIndex + 1 ? 'L' : 'M';
       d += ` ${command} ${xFor(point.date).toFixed(2)} ${yFor(point.rank).toFixed(2)}`;
@@ -165,7 +184,7 @@ function renderRankChart(payload) {
     const path = svgElement('path', { d: d.trim(), class: 'apple-rank-line' });
     path.style.setProperty('--apple-rank-hue', String((index * 43) % 360));
     const title = svgElement('title');
-    title.textContent = `${item.currentRank}位 ${item.title}`;
+    title.textContent = `${rankLabel(item.currentRank)} ${item.title}`;
     path.append(title);
     svg.append(path);
   });
