@@ -1,3 +1,4 @@
+import { loadTrackHistoryDayIndex } from './pages-track-history-day-index.js';
 import {
   loadTrackHistoryDayReadModel,
   publishTrackHistoryResponseFromR2Days,
@@ -54,24 +55,43 @@ export async function advanceTrackHistoryR2Publication(
   }
   cursor = Math.max(cursor, fromTs);
   const pageDays = positiveInteger(publication.page_days, 30, 90);
+  const loadIndex = dependencies.loadIndex || loadTrackHistoryDayIndex;
   const loadDay = dependencies.loadDay || loadTrackHistoryDayReadModel;
+  const index = await loadIndex(r2);
+  if (!index) {
+    publication.day_cursor = dayText(cursor);
+    publication.updated_at = integer(now) ?? Date.now();
+    return {
+      publication,
+      action: 'r2-day-repair',
+      published: false,
+      rows: 0,
+      chunks: 0,
+      days: 0,
+      bootstrapped: 0,
+      missing_day: publication.day_cursor,
+    };
+  }
+  const indexedDates = new Set(index.dates || []);
   let processed = 0;
   while (cursor <= toTs && processed < pageDays) {
     const day = dayText(cursor);
-    const existing = await loadDay(r2, day);
-    if (!existing) {
-      publication.day_cursor = day;
-      publication.updated_at = integer(now) ?? Date.now();
-      return {
-        publication,
-        action: 'r2-day-repair',
-        published: false,
-        rows: 0,
-        chunks: 0,
-        days: processed,
-        bootstrapped: 0,
-        missing_day: day,
-      };
+    if (indexedDates.has(day)) {
+      const existing = await loadDay(r2, day);
+      if (!existing) {
+        publication.day_cursor = day;
+        publication.updated_at = integer(now) ?? Date.now();
+        return {
+          publication,
+          action: 'r2-day-repair',
+          published: false,
+          rows: 0,
+          chunks: 0,
+          days: processed,
+          bootstrapped: 0,
+          missing_day: day,
+        };
+      }
     }
     cursor += DAY_MS;
     processed += 1;
