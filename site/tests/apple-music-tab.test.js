@@ -92,9 +92,11 @@ test('Apple Music UI uses sh_tracks.id before localized song_key for identity', 
 
 test('Apple Music view fixes the top graph to Japan and uses one regional ranking table', () => {
   assert.match(shell, /id: 'appleRankChart'/);
-  assert.match(shell, /id="appleRankLegend"/);
+  assert.match(shell, /dashboardLegend/);
+  assert.match(shell, /id: 'appleRankLegend'/);
   assert.match(shell, /日本の人気曲順位推移/);
-  assert.match(shell, /id="appleRegionCompareTable"/);
+  assert.match(shell, /dashboardTable/);
+  assert.match(shell, /id: 'appleRegionCompareTable'/);
   assert.match(shell, /地域別人気順位一覧/);
   assert.doesNotMatch(shell, /appleRegionTabs|appleMusicTbody|前日比/);
   assert.doesNotMatch(runtime, /selectedRegion|rankChangeLabel|renderCurrentTable|renderRegionTabs/);
