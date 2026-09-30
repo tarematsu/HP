@@ -93,10 +93,14 @@ test('local minute rebuild accepts bounded Wrangler JSON exports', () => {
   assert.equal(manifest.carry_forward, 1);
 });
 
-test('database workflow exports an incremental window before final upload', () => {
+test('full local rebuild remains available only as a manual emergency path', () => {
   const workflow = readFileSync(join(root, '.github/workflows/database.yml'), 'utf8');
   const caller = readFileSync(
     join(root, '.github/workflows/run-local-minute-facts-rebuild.yml'),
+    'utf8',
+  );
+  const runtimeMaintenance = readFileSync(
+    join(root, '.github/workflows/run-runtime-offline-maintenance.yml'),
     'utf8',
   );
   assert.match(workflow, /minute-facts-actions-window\.mjs export/);
@@ -109,10 +113,14 @@ test('database workflow exports an incremental window before final upload', () =
   assert.match(workflow, /D1 import still busy; retrying/);
   assert.match(workflow, /Failed to upload \$\(basename "\$chunk"\) after 6 attempts/);
   assert.doesNotMatch(workflow, /--table sh_worker_collector_state/);
-  assert.match(caller, /cron: '7,22,37,52 \* \* \* \*'/);
+  assert.match(caller, /^\s*workflow_dispatch:\s*$/m);
+  assert.doesNotMatch(caller, /^\s*schedule:\s*$/m);
+  assert.doesNotMatch(caller, /^\s*workflow_run:\s*$/m);
   assert.match(caller, /group: minute-facts-local-rebuild/);
   assert.match(caller, /cancel-in-progress: false/);
   assert.match(caller, /Never cancel an upload that may already have committed part of its window/);
+  assert.match(runtimeMaintenance, /run-minute-facts-gap-scan-actions\.mjs/);
+  assert.match(runtimeMaintenance, /Minute-fact gap scan deferred by D1 budget guard/);
   assert.match(
     workflow,
     /if: \(github\.event_name == 'push' && inputs\.operation == ''\) \|\| inputs\.operation == 'buddies-db'/,
