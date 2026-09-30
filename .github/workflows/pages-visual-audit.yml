@@ -17,17 +17,17 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Compare Nogizaka official list URL variants
+      - name: Verify month-scoped Nogizaka news list
         shell: bash
         run: |
           set -euo pipefail
           ua='stationhead-monitor/1.0'
-          for suffix in '' '?dy=20' '?dy=44' '?ima=0000' '?dy=20&ima=0000'; do
-            file="/tmp/list$(printf '%s' "$suffix" | tr '?&=' '___').html"
-            curl --fail --silent --show-error -A "$ua" -H 'Accept: text/html,application/xhtml+xml' "https://www.nogizaka46.com/s/n46/news/list${suffix}" -o "$file"
-            echo "=== ${suffix:-default} bytes=$(wc -c <"$file") details=$(grep -Eo '/s/n46/news/detail/[0-9]+' "$file" | wc -l) ==="
-            grep -Eo '/s/n46/news/detail/[0-9]+' "$file" | head -10 || true
+          for dy in 202609 202608; do
+            file="/tmp/list-${dy}.html"
+            curl --fail --silent --show-error -A "$ua" -H 'Accept: text/html,application/xhtml+xml' "https://www.nogizaka46.com/s/n46/news/list?dy=${dy}" -o "$file"
+            echo "=== dy=${dy} bytes=$(wc -c <"$file") details=$(grep -Eo '/s/n46/news/detail/[0-9]+' "$file" | wc -l) ==="
             grep -q '102280' "$file" && echo 'HAS_102280=yes' || echo 'HAS_102280=no'
             grep -Eiq 'stationhead' "$file" && echo 'HAS_STATIONHEAD=yes' || echo 'HAS_STATIONHEAD=no'
+            grep -Eo '/s/n46/news/detail/[0-9]+' "$file" | head -5 || true
           done
           exit 1
