@@ -20,8 +20,9 @@ test('feature styles do not reimplement dashboard view spacing or mobile fit tab
   }
 });
 
-test('history rendering does not inject CSS and static corrections live in a stylesheet', () => {
+test('history rendering does not inject CSS and static corrections use generic shared selectors', () => {
   assert.doesNotMatch(history, /createElement\('style'\)|style\.textContent|MOBILE_TABLE_STYLE_ID/);
   assert.match(presentation, /\.dashboard-view \.data-panel/);
-  assert.match(presentation, /#historyView \.summary-cards strong/);
+  assert.match(presentation, /\.dashboard-view \.summary-cards strong/);
+  assert.doesNotMatch(presentation, /#historyView \.summary-cards strong/);
 });
