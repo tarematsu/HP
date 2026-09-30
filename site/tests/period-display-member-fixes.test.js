@@ -11,6 +11,7 @@ import { CURRENT_DAILY_MINUTE_SUMMARY_SQL } from '../functions/lib/current-minut
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const responsive = readFileSync(new URL('../public/period-display-fixes.css', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
+const historyLite = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
 const persistenceMigration = readFileSync(
   new URL('../../database/other-migrations/024_persist_daily_member_growth.sql', import.meta.url),
@@ -33,7 +34,8 @@ test('mobile dashboard navigation stays on a four-column two-row grid', () => {
 });
 
 test('daily weekly and monthly stream growth uses black average listener line and replay bars', () => {
-  assert.match(historyEntry, /history-period-chart\.js\?v=20260923\.\d+/);
+  assert.match(historyEntry, /history-period-chart\.js\?v=20261001\.1/);
+  assert.match(historyLite, /chart: '同接・再生数増加の推移'/);
   assert.match(periodChart, /new Set\(\['daily', 'weekly', 'monthly'\]\)/);
   assert.match(periodChart, /history:data-loaded/);
   assert.match(periodChart, /detail\.data/);
@@ -41,7 +43,7 @@ test('daily weekly and monthly stream growth uses black average listener line an
   assert.match(periodChart, /fillRect\(/);
   assert.match(periodChart, /listener_avg'.*color: '#000000'/);
   assert.match(periodChart, /appendLegend\('再生数増加'/);
-  assert.match(periodChart, /同接・再生数増加の推移/);
+  assert.doesNotMatch(periodChart, /同接・再生数増加の推移/);
   assert.doesNotMatch(periodChart, /期間再生数/);
   assert.doesNotMatch(periodChart, /stream_end|previousFetch|response\.clone\(\)\.json/);
 });
