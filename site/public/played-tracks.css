@@ -21,7 +21,6 @@
   overflow-y: hidden;
   margin: 2px 0 8px;
   scrollbar-width: thin;
-  scroll-behavior: smooth;
   overscroll-behavior-inline: contain;
   -webkit-overflow-scrolling: touch;
 }
