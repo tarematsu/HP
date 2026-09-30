@@ -267,6 +267,12 @@ function draw() {
     if (hasMissingBand) items.push(appendLegend('欠測', 'rgba(100, 107, 116, .55)', 'period-missing-band'));
     legend.replaceChildren(...items);
   }
+  const foot = byId('chartFoot');
+  if (foot) {
+    foot.textContent = hasMissingBand
+      ? '左軸は同接（平均・最大・最小）、右軸は各期間の再生数増加です。灰色は欠測期間です。'
+      : '左軸は同接（平均・最大・最小）、右軸は各期間の再生数増加です。';
+  }
   const start = byId('chartStartDate');
   const end = byId('chartEndDate');
   if (start) start.textContent = rows[0]?.period_key || '—';
