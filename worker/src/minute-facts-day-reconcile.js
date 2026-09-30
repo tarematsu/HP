@@ -7,6 +7,7 @@ const DEFAULT_CANDIDATE_LIMIT = 4;
 const DEFAULT_ENQUEUE_LIMIT = 50;
 const RECONCILE_BUILD_VERSION = 3;
 const HISTORICAL_RECONCILE_UTC_HOUR = 0;
+const PROTECTED_CORRECTION_PRIORITY = 200;
 
 const SOURCE_COLUMNS = `id,observed_at,channel_id,channel_alias,channel_name,station_id,
   is_launched,is_broadcasting,chat_status,listener_count,online_member_count,
@@ -189,6 +190,9 @@ function classifyExpected(expected, materialized) {
       missing.push(row);
       continue;
     }
+    // Manually repaired anomalies deliberately differ from the immutable raw
+    // snapshot. A higher priority protects that correction from exact rebuilds.
+    if (Number(fact.source_priority || 0) >= PROTECTED_CORRECTION_PRIORITY) continue;
     const listenerMismatch = integer(fact.listener_count) !== integer(row.listener_count);
     if (fact.source_record_id !== expectedSourceRecordId(row)
         || Number(fact.source_priority || 0) < 90
