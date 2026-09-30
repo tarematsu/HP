@@ -181,7 +181,7 @@ function renderQueue() {
   const upcoming = state.queue.slice(Math.max(0, current + 1));
   const returned = finite(state.payload?.queue_status?.returned_items) ?? state.queue.length;
   const total = finite(state.payload?.queue_status?.total_items) ?? returned;
-  setText('queueCount', `取得${number(returned)}曲/キュー登録${number(total)}曲`);
+  setText('queueCount', `取得 ${number(returned)}曲／登録 ${number(total)}曲`);
   box.replaceChildren(...upcoming.map((track, index) => queueItem(track, index)));
   if (!upcoming.length) {
     const empty = document.createElement('p');
@@ -259,7 +259,7 @@ async function refreshDashboard(force = false) {
   } catch (error) {
     if (error?.name !== 'AbortError') {
       console.error(error);
-      showStatus(state.payload ? '更新に失敗しました。保存済みの表示を継続します。' : 'データを取得できませんでした。');
+      showStatus(state.payload ? '更新に失敗しました。保存済みの表示を継続します。' : 'データの取得に失敗しました。');
     }
   } finally {
     state.refreshing = false;
