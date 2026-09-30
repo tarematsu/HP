@@ -10,7 +10,10 @@ import {
   trackHistoryResponseSuffix,
 } from './pages-track-history-response.js';
 import { saveMaterializedR2Response } from './pages-response-r2.js';
-import { updateTrackHistoryDayIndex } from './pages-track-history-day-index.js';
+import {
+  loadTrackHistoryDayIndex,
+  updateTrackHistoryDayIndex,
+} from './pages-track-history-day-index.js';
 
 const DAY_MS = 86_400_000;
 const SHARD_MS = 3 * 60 * 60_000;
@@ -208,11 +211,15 @@ export async function publishTrackHistoryResponseFromR2Days(
   if (fromTs == null || toTs == null || toTs < fromTs) {
     throw new Error('track-history publication date range is invalid');
   }
+  const index = await loadTrackHistoryDayIndex(r2);
+  if (!index) return { published: false, missing_day: publication?.from || null, rows: 0 };
+  const indexedDates = new Set(index.dates || []);
   const limit = Math.max(1, Number(publication?.limit || 10_000));
   const rows = [];
   let truncated = false;
   for (let cursor = fromTs; cursor <= toTs; cursor += DAY_MS) {
     const day = dayText(cursor);
+    if (!indexedDates.has(day)) continue;
     const model = await loadTrackHistoryDayReadModel(r2, day);
     if (!model) return { published: false, missing_day: day, rows: rows.length };
     for (const row of model.payload.rows) {
