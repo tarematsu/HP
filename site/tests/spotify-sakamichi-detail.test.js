@@ -48,14 +48,15 @@ test('Sakamichi detail SQL selects latest date independently per artist', () => 
   assert.match(sql, /d\.delta DESC/);
 });
 
-test('Spotify detail UI exposes all three Sakamichi buttons and fetches the shared materialized model', () => {
+test('Spotify detail UI switches the shared table between all three Sakamichi groups', () => {
   const shell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
-  const switcher = readFileSync(new URL('../public/spotify-artist-switcher.js', import.meta.url), 'utf8');
+  const runtime = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
 
   assert.match(shell, /data-spotify-artist="sakurazaka46"[^>]*>櫻坂46<\/button>/);
   assert.match(shell, /data-spotify-artist="nogizaka46"[^>]*>乃木坂46<\/button>/);
   assert.match(shell, /data-spotify-artist="hinatazaka46"[^>]*>日向坂46<\/button>/);
-  assert.match(switcher, /fetch\('\/api\/spotify-playcounts\?artists=sakamichi'\)/);
-  assert.match(switcher, /\?\.groups\?\.\[key\]/);
-  assert.match(switcher, /`\$\{name\}の再生数一覧`/);
+  assert.match(runtime, /let selectedArtistKey = 'sakurazaka46'/);
+  assert.match(runtime, /model\?\.groups\?\.\[selectedArtistKey\]/);
+  assert.match(runtime, /selectedArtistKey = button\.dataset\.spotifyArtist/);
+  assert.match(runtime, /`\$\{artistName\}の再生数一覧`/);
 });
