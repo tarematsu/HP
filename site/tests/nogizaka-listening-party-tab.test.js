@@ -47,17 +47,25 @@ test('Nogizaka listening-party labels are reusable for future Under Live events'
   }), '43rd アンダーライブ セットリスト');
 });
 
-test('Nogizaka live view reads the official-news probes and refreshes while open', () => {
+test('Nogizaka live view composites the materialized series with only the realtime probe tail', () => {
   assert.match(runtime, /\/api\/nogizaka-listening-party/);
   assert.match(runtime, /MIN_REFRESH_MS = 15_000/);
   assert.match(runtime, /collection_active/);
   assert.match(api, /sh_nogizaka_official_news_announcements/);
-  assert.match(api, /sh_nogizaka_official_news_station_probes/);
-  assert.match(api, /host_handle='nogizaka46smej'/);
-  assert.match(api, /listener_avg/);
-  assert.match(api, /listener_min/);
-  assert.match(api, /listener_max/);
+  assert.match(api, /FROM sh_official_broadcast_summary/);
+  assert.match(api, /FROM sh_official_broadcast_series/);
+  assert.match(api, /async function loadLiveProbes/);
+  assert.match(api, /if \(event\.status === 'active'\) \{[\s\S]*loadLiveProbes\(env, event\.id, observedAfter\)/);
+  assert.match(api, /mergePoints\(basePoints, realtimePoints\)/);
+  assert.match(api, /official_broadcast_series\+official_news_live/);
   assert.match(api, /broadcast_content: formatNogizakaBroadcastContent\(event\)/);
   assert.match(api, /event_name: `\$\{day\.replaceAll\('-', ''\)\} \$\{row\.broadcast_content\}`/);
-  assert.match(api, /series:/);
+});
+
+test('Nogizaka completed view is read-model-only and never loads probes outside the active branch', () => {
+  assert.match(api, /const \[summary, readSeries\] = await Promise\.all/);
+  assert.match(api, /let probes = \[\];\s*if \(event\.status === 'active'\)/);
+  assert.doesNotMatch(api, /Promise\.all\(\[\s*loadLiveProbes/);
+  assert.match(api, /else if \(readSeries\) source = 'official_broadcast_series'/);
+  assert.match(api, /const points = live \? mergePoints\(basePoints, realtimePoints\) : basePoints/);
 });
