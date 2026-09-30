@@ -184,7 +184,14 @@ export async function hydrateReadModelMetadata(env, readModel) {
     : { ...readModel, queue: { ...readModel.queue, value: queue } };
   const rows = await loadPlaybackReadModelTrackMetadata(env, queue.tracks, TRACK_METADATA_KEY_LIMIT);
   const metadataHydrated = rows.length ? attachPlaybackReadModelTrackMetadata(queue, rows) : queue;
-  const canonicalTracks = await canonicalizeTrackRows(env?.MINUTE_DB, metadataHydrated.tracks);
+  const canonicalSeeds = rows.filter((row) => (
+    positiveInteger(row?.track_id) != null && !trackNeedsHydration(row)
+  ));
+  const canonicalTracks = await canonicalizeTrackRows(
+    env?.MINUTE_DB,
+    metadataHydrated.tracks,
+    { seedRows: canonicalSeeds },
+  );
   const canonicalQueue = canonicalTracks === metadataHydrated.tracks
     ? metadataHydrated
     : { ...metadataHydrated, tracks: canonicalTracks };
