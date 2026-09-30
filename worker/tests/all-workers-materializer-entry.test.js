@@ -30,21 +30,23 @@ test('runtime keeps only immediate enrichment Queue boundaries', () => {
   assert.match(metadata, /from '\.\/committed-metadata-enrichment\.js'/);
 });
 
-test('Pages history materialization is owned by the bounded independent Actions runner', () => {
+test('Pages history materialization is revision-driven with a bounded daily Actions recovery runner', () => {
   const workflow = source('../../.github/workflows/run-pages-read-model-rebuild.yml');
   const runner = source('../scripts/run-pages-read-model-actions.mjs');
   const historyRunner = source('../scripts/run-pages-history-read-model-actions.mjs');
   const responseStore = source('../src/pages-response-r2.js');
   assert.doesNotMatch(workflow, /workflow_run:/);
-  assert.match(workflow, /cron: '26 0,6,12,18 \* \* \*'/);
+  assert.match(workflow, /cron: '26 0 \* \* \*'/);
   assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/);
   assert.match(workflow, /timeout-minutes: 15/);
   assert.doesNotMatch(workflow, /PAGES_READ_MODEL_MAX_STEPS|Rebuild track history/);
   assert.match(workflow, /Refresh reusable history models during D1 budget deferral/);
   assert.match(workflow, /run-pages-history-read-model-actions\.mjs/);
+  assert.match(workflow, /PAGES_READ_MODEL_DUE_KEYS/);
   assert.doesNotMatch(workflow, /node scripts\/refresh-pages-realtime-actions\.mjs/);
   assert.match(workflow, /cancel-in-progress: true/);
   assert.match(historyRunner, /variant\.key !== 'dashboard'/);
+  assert.match(historyRunner, /PAGES_READ_MODEL_DUE_KEYS/);
   assert.match(runner, /PAGES_READ_MODEL_DEADLINE_MS/);
   assert.match(runner, /pagesActionsR2ResponseKey/);
   assert.match(runner, /track-history-read-model-disabled/);
