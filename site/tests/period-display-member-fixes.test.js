@@ -9,7 +9,7 @@ import {
 import { CURRENT_DAILY_MINUTE_SUMMARY_SQL } from '../functions/lib/current-minute-summary.js';
 
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
-const responsive = readFileSync(new URL('../public/period-display-fixes.css', import.meta.url), 'utf8');
+const responsive = readFileSync(new URL('../public/dashboard-presentation.css', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const historyLite = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
@@ -30,7 +30,7 @@ test('header update formatter omits seconds and renders the dashboard materializ
 test('mobile dashboard navigation stays on a four-column two-row grid', () => {
   assert.match(responsive, /@media \(max-width: 760px\)[\s\S]*grid-template-columns:\s*repeat\(4,/);
   assert.match(responsive, /@media \(max-width: 430px\)[\s\S]*grid-template-columns:\s*repeat\(4,/);
-  assert.doesNotMatch(responsive, /repeat\(6,/);
+  assert.match(responsive, /@media \(max-width: 430px\)[\s\S]*grid-column:\s*span 2/);
 });
 
 test('daily weekly and monthly stream growth uses black average listener line and replay bars', () => {
