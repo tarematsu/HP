@@ -5,7 +5,7 @@ import {
   AMAZON_MUSIC_GROUP_KNOWN_KEY,
   AMAZON_MUSIC_TOP_STATE_KEY,
   continueAmazon100kScan,
-  monitorAmazonTop1000,
+  monitorAmazonTop500,
 } from '../src/amazon-music-rank-monitor.js';
 
 function jsonResponse(value, status = 200) {
@@ -60,14 +60,14 @@ function amazonFetch(pages) {
   };
 }
 
-function top1000Pages({ swap = false } = {}) {
-  const ids = Array.from({ length: 1000 }, (_, index) => `OTHER${String(index + 1).padStart(4, '0')}`);
+function top500Pages({ swap = false } = {}) {
+  const ids = Array.from({ length: 500 }, (_, index) => `OTHER${String(index + 1).padStart(4, '0')}`);
   if (swap) [ids[10], ids[11]] = [ids[11], ids[10]];
-  return Array.from({ length: 50 }, (_, page) => {
+  return Array.from({ length: 25 }, (_, page) => {
     const start = page * 20;
     return chartDocument(
       ids.slice(start, start + 20).map((id, offset) => track(id, `Song ${start + offset + 1}`, 'Other Artist')),
-      page < 49 ? `page-${page + 2}` : null,
+      page < 24 ? `page-${page + 2}` : null,
     );
   });
 }
@@ -112,24 +112,25 @@ class FakeDb {
   }
 }
 
-test('hourly top-1000 monitor detects a ranking update even when no Sakamichi track is involved', async () => {
+test('hourly top-500 monitor detects a ranking update even when no Sakamichi track is involved', async () => {
   const r2 = new FakeR2();
   const db = new FakeDb();
   const env = { PAGES_RESPONSE_R2: r2, MINUTE_DB: db };
 
-  const initial = await monitorAmazonTop1000(env, 1000, amazonFetch(top1000Pages()));
+  const initial = await monitorAmazonTop500(env, 1000, amazonFetch(top500Pages()));
   assert.equal(initial.initialized, true);
   assert.equal(initial.updated, false);
+  assert.equal(initial.scanned_tracks, 500);
   assert.equal(db.runs.length, 0);
 
-  const changed = await monitorAmazonTop1000(env, 2000, amazonFetch(top1000Pages({ swap: true })));
+  const changed = await monitorAmazonTop500(env, 2000, amazonFetch(top500Pages({ swap: true })));
   assert.equal(changed.updated, true);
   assert.equal(changed.changed_positions, 2);
   assert.equal(db.runs.length, 1);
   assert.match(db.runs[0].sql, /amazon_music_chart_change_events/);
 
   const state = JSON.parse(r2.values.get(AMAZON_MUSIC_TOP_STATE_KEY));
-  assert.equal(state.tracks.length, 1000);
+  assert.equal(state.tracks.length, 500);
   assert.deepEqual(Object.keys(state.tracks[0]).sort(), ['amazon_music_id', 'rank']);
 });
 
