@@ -171,11 +171,11 @@ test('track resolution reports the failing D1 substage', async () => {
   );
 });
 
-test('dashboard rollup scans one completed five-minute bucket only at its boundary', () => {
-  assert.match(rollup, /completedDashboardBucket/);
-  assert.match(rollup, /bucket_facts/);
-  assert.match(rollup, /f\.minute_at>=\? AND f\.minute_at<\?/);
+test('dashboard rollup uses one exact indexed five-minute fact lookup without bucket scans', () => {
+  assert.match(rollup, /dashboardBucket/);
+  assert.match(rollup, /f\.channel_id=\? AND f\.minute_at=\?/);
   assert.match(rollup, /INDEXED BY idx_sh_minute_facts_source_channel_minute_desc/);
+  assert.doesNotMatch(rollup, /completedDashboardBucket|bucket_facts|f\.minute_at>=\? AND f\.minute_at<\?/);
   assert.doesNotMatch(rollup, /previous\.|comment_count|comment_velocity|RANGE BETWEEN|ROW_NUMBER\(\)/);
 });
 

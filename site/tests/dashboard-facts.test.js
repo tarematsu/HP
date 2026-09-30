@@ -84,7 +84,7 @@ test('persisted prediction state suppresses the per-request aggregate scan', asy
   assert.equal(db.callsMatching(/reported_current_stream_count AS current_stream_count/).length, 1);
 });
 
-test('critical dashboard returns facts first and detail route supplies charts and daily summaries', async () => {
+test('dashboard materializes complete current-tab charts and daily summaries in one model', async () => {
   resetDashboardDailySummariesCache();
   const now = Date.now();
   const currentDay = Math.floor(now / 86_400_000) * 86_400_000;
@@ -104,6 +104,24 @@ test('critical dashboard returns facts first and detail route supplies charts an
       raw_json: '{}',
     })
     .route('all', 'WITH latest_station AS', { results: [] });
+  const history = [
+    {
+      observed_at: now - 302_000,
+      listener_count: 150,
+      online_member_count: 160,
+      total_member_count: 30_599,
+      total_listens: 790_350,
+      current_stream_count: 49_127_250,
+    },
+    {
+      observed_at: now - 2_000,
+      listener_count: 155,
+      online_member_count: 167,
+      total_member_count: 30_599,
+      total_listens: 790_366,
+      current_stream_count: 49_127_261,
+    },
+  ];
   const facts = new FakeD1Database()
     .route('first', 'FROM sh_minute_facts AS f INDEXED BY idx_sh_minute_facts_live_minute', {
       id: 10,
@@ -117,14 +135,7 @@ test('critical dashboard returns facts first and detail route supplies charts an
       current_stream_count: 49_127_261,
       host_handle: 'sakuramankai',
     })
-    .route('all', 'FROM sh_dashboard_history_5m r', {
-      results: [{
-        observed_at: now - 2_000,
-        online_member_count: 167,
-        total_member_count: 30_599,
-        total_listens: 790_366,
-      }],
-    })
+    .route('all', 'FROM sh_dashboard_history_5m AS r', { results: history })
     .route('first', 'FROM sh_channel_read_model', {
       channel_id: 318,
       observed_at: now - 2_000,
@@ -161,17 +172,17 @@ test('critical dashboard returns facts first and detail route supplies charts an
   assert.equal(payload.latest.online_member_count, 167);
   assert.equal(payload.latest.current_stream_count, 49_127_261);
   assert.equal(payload.latest.stream_goal, 50_000_000);
-  assert.equal(payload.history[0].online_member_count, 167);
+  assert.equal(payload.history.at(-1).online_member_count, 167);
+  assert.equal(payload.stream_5m_history.at(-1).stream_delta, 11);
   assert.equal(payload.daily_change.total_member_count, 99);
   assert.equal(payload.daily_change.total_listens, 366);
-  assert.equal(payload.daily_summaries, undefined);
-  assert.equal(other.callsMatching(/FROM sh_daily_summary/).length, 0);
+  assert.equal(payload.daily_summaries.yesterday.member_growth, 11);
+  assert.equal(payload.daily_summaries.yesterday.stream_growth, 55);
+  assert.equal(other.callsMatching(/FROM sh_daily_summary/).length, 1);
 
   const detailFacts = new FakeD1Database()
-    .route('all', 'FROM sh_dashboard_history_5m', {
-      results: [{ observed_at: now - 2_000, online_member_count: 167 }],
-    })
-    .route('all', 'FROM sh_stream_5m_average_read_model', { results: [] });
+    .route('all', 'FROM sh_dashboard_history_5m', { results: history })
+    .route('all', 'FROM sh_dashboard_history_5m AS r', { results: history });
   const detailsResponse = await dashboardDetailsGet({
     request: new Request('https://skrzk.test/api/dashboard-details?channel_id=318'),
     env: { MINUTE_DB: detailFacts, OTHER_DB: other },
@@ -179,10 +190,9 @@ test('critical dashboard returns facts first and detail route supplies charts an
   const details = await responseJson(detailsResponse);
   assert.equal(detailsResponse.status, 200);
   assert.equal(details.channel_id, 318);
-  assert.equal(details.history[0].online_member_count, 167);
+  assert.equal(details.history.at(-1).online_member_count, 167);
+  assert.equal(details.stream_5m_history.at(-1).stream_delta, 11);
   assert.equal(details.daily_summaries.yesterday.member_growth, 11);
-  assert.equal(details.daily_summaries.yesterday.stream_growth, 55);
-  assert.equal(details.daily_summaries.day_before_yesterday.member_growth, 7);
   assert.equal(other.callsMatching(/FROM sh_daily_summary/).length, 1);
   assert.equal(other.callsMatching(/FROM sh_comment_velocity_samples/).length, 0);
   assert.equal(db.callsMatching(/snapshots\.observed_at >=/).length, 0);

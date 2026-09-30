@@ -17,12 +17,14 @@ const workers = readFileSync(new URL('../../worker/scripts/cloudflare-workers.mj
 
 // Pages remains read-only. Production Worker ownership is split across the
 // official Stationhead monitors, buddies recovery, buddies collector, and runtime orchestrator.
-test('dashboard details compose completed daily summaries through a focused loader', () => {
+test('dashboard read model embeds chart details and completed daily summaries for read-only serving', () => {
+  assert.match(dashboard, /loadDashboardDailySummaries/);
+  assert.match(dashboard, /augmentDashboardChartData/);
+  assert.match(dashboard, /daily_summaries/);
   assert.match(dashboardDetails, /loadDashboardDailySummaries/);
   assert.match(dashboardDetails, /daily_summaries/);
   assert.match(dailySummaries, /FROM sh_daily_summary/);
   assert.doesNotMatch(dashboardDetails, /FROM sh_daily_summary/);
-  assert.doesNotMatch(dashboard, /loadDashboardDailySummaries|daily_summaries/);
 });
 
 test('like ranking reads only the worker-materialized status payload', () => {

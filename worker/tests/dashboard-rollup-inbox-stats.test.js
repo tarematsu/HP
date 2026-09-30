@@ -93,48 +93,36 @@ function insertFact(sqlite, values) {
     ) VALUES(?,?,?,?,?,?,?,?,?,?)`).run(...values);
 }
 
-test('five-minute rollup catches up a completed bucket once after a missed boundary', async () => {
+test('each live five-minute fact materializes its own dashboard bucket idempotently', async () => {
   const sqlite = database();
   const db = d1Adapter(sqlite);
-  const nextBucket = Math.floor(Date.now() / 300_000) * 300_000;
-  const bucket = nextBucket - 300_000;
-  const comments = [5, 7, 2, 1, 0];
-  for (let index = 0; index < 5; index += 1) {
-    const minuteAt = bucket + index * 60_000;
-    insertFact(sqlite, [
-      318,
-      minuteAt,
-      minuteAt + 1_000,
-      1,
-      10 + index,
-      20 + index,
-      30 + index,
-      40 + index,
-      100 + index * 5,
-      comments[index],
-    ]);
-  }
+  const bucket = Math.floor(Date.now() / 300_000) * 300_000;
+  insertFact(sqlite, [318, bucket, bucket + 1_000, 1, 14, 24, 34, 44, 120, 0]);
 
-  const result = await dashboardHistoryRollupStatement(db, {
+  const first = await dashboardHistoryRollupStatement(db, {
     source_code: 1,
     channel_id: 318,
-    minute_at: nextBucket + 60_000,
+    minute_at: bucket,
   }).run();
-  await dashboardHistoryRollupStatement(db, {
+  const second = await dashboardHistoryRollupStatement(db, {
     source_code: 1,
     channel_id: 318,
-    minute_at: nextBucket + 120_000,
+    minute_at: bucket,
   }).run();
 
   const rows = sqlite.prepare(FACTS_HISTORY_24H_SQL).all(318);
-  assert.equal(result.meta.changes, 1);
+  const rollupRow = sqlite.prepare(`SELECT listener_count,total_listens,current_stream_count
+    FROM sh_dashboard_history_5m WHERE channel_id=? AND bucket_at=?`).get(318, bucket);
+  assert.equal(first.meta.changes, 1);
+  assert.equal(second.meta.changes, 0);
   assert.equal(rows.length, 1);
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM sh_dashboard_history_5m').get().count, 1);
   assert.equal(rows[0].listener_count, 14);
   assert.equal(rows[0].total_listens, 44);
+  assert.equal(rollupRow.current_stream_count, 120);
   assert.equal(rows[0].comment_velocity, undefined);
-  assert.doesNotMatch(FACTS_HISTORY_24H_SQL, /comment_velocity|FROM sh_minute_facts AS f\s+WHERE f\.source_code=1[\s\S]*RANGE BETWEEN/);
   assert.match(FACTS_HISTORY_24H_SQL, /FROM sh_dashboard_history_5m r/);
+  assert.doesNotMatch(FACTS_HISTORY_24H_SQL, /FROM sh_minute_facts AS f\s+WHERE f\.source_code=1[\s\S]*RANGE BETWEEN/);
 });
 
 test('24-hour prediction aggregate reads the rollup rather than raw minute facts', async () => {

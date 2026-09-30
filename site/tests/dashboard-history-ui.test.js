@@ -22,14 +22,14 @@ test('main page renders current track likes from the dashboard response', () => 
   assert.match(dashboardClient, /`♡ \$\{integer\.format\(bites\)\}`/);
   assert.equal((dashboardClient.match(/\/api\/dashboard/g) || []).length, 1);
   assert.match(dashboardClient, /payload\.queue/);
-  assert.match(dashboardChart, /dashboard:details/);
-  assert.doesNotMatch(dashboardChart, /dashboard:payload/);
+  assert.match(dashboardChart, /dashboard:payload/);
+  assert.doesNotMatch(dashboardChart, /dashboard:details/);
 });
 
 test('main page labels member and stream deltas with their actual dates', () => {
-  assert.match(dashboardEntry, /dashboard-daily-summaries\.js\?v=20260930\.1/);
+  assert.match(dashboardEntry, /dashboard-daily-summaries\.js\?v=20260930\.2/);
   assert.match(dashboardDaily, /renderDashboardDailySummaries/);
-  assert.match(dashboardDaily, /dashboard:details/);
+  assert.match(dashboardDaily, /dashboard:payload/);
   assert.match(dashboardDaily, /const data = event\?\.detail\?\.payload\?\.daily_summaries/);
   assert.match(dashboardDaily, /formatPeriodLabel\(data\?\.yesterday\?\.period_key, '昨日'\)/);
   assert.match(dashboardDaily, /formatPeriodLabel\(data\?\.day_before_yesterday\?\.period_key, '一昨日'\)/);

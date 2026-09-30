@@ -27,16 +27,16 @@ function scheduleReveal(source) {
   if (!canvas || settled) return;
   conceal();
   clearTimeout(revealTimer);
-  const delay = source === 'details-network' ? 180 : 280;
+  const delay = source === 'network' ? 180 : 280;
   revealTimer = setTimeout(reveal, delay);
 }
 
 if (canvas) {
   conceal();
   fallbackTimer = setTimeout(reveal, 2500);
-  window.addEventListener('dashboard:details', (event) => {
+  window.addEventListener('dashboard:payload', (event) => {
     const payload = event?.detail?.payload;
     if (!Array.isArray(payload?.history) || !payload.history.length) return;
-    scheduleReveal(String(event?.detail?.source || 'details-network'));
+    scheduleReveal(String(event?.detail?.source || 'network'));
   });
 }

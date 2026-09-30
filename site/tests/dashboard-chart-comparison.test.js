@@ -9,9 +9,10 @@ const text = (relativePath) => readFile(path.join(siteRoot, relativePath), 'utf8
 
 test('dashboard entry installs the sole previous-day comparison chart renderer lazily', async () => {
   const entry = await text('public/dashboard-metrics.js');
-  assert.match(entry, /dashboard-chart-comparison\.js\?v=20260930\.1/);
-  assert.match(entry, /dashboard-chart-detail\.js\?v=20260930\.1/);
+  assert.match(entry, /dashboard-chart-comparison\.js\?v=20260930\.2/);
+  assert.match(entry, /dashboard-chart-detail\.js\?v=20260930\.2/);
   assert.doesNotMatch(entry, /dashboard-current-enhancements\.js/);
+  assert.doesNotMatch(entry, /dashboard-details-client\.js/);
 });
 
 test('online chart overlays the previous 24-hour series in gray on the current time axis', async () => {
@@ -23,10 +24,11 @@ test('online chart overlays the previous 24-hour series in gray on the current t
   assert.match(source, /drawSeries\(context, current, xFor, yOnline, '#111', 2\)/);
 });
 
-test('current chart adds five-minute average stream increase bars below the online series', async () => {
+test('current chart adds direct five-minute playback counts below the online series', async () => {
   const source = await text('public/dashboard-chart-comparison.js');
   assert.match(source, /payload\?\.stream_5m_history/);
   assert.match(source, /legend\.querySelector\('\.stream-growth-key'\)/);
+  assert.match(source, /stream\.textContent = '再生数'/);
   assert.match(source, /stream\.hidden = !hasStreamAverages/);
   assert.doesNotMatch(source, /className = 'stream-delta-key'/);
   assert.match(source, /const FIVE_MINUTE_MS = 5 \* 60_000/);
@@ -34,7 +36,10 @@ test('current chart adds five-minute average stream increase bars below the onli
   assert.match(source, /const STREAM_BAR_COLOR = '#168b73'/);
   assert.match(source, /function drawStreamBars\(/);
   assert.match(source, /context\.fillRect\(x - barWidth \/ 2, baseline - barHeight, barWidth, barHeight\)/);
-  assert.match(source, /context\.fillText\('再生数増加\/分（5分平均）'/);
+  assert.match(source, /context\.fillText\('再生数'/);
+  assert.doesNotMatch(source, /再生数増加\/分（5分平均）/);
+  assert.match(source, /dashboard:payload/);
+  assert.doesNotMatch(source, /dashboard:details/);
 });
 
 test('current online chart no longer renders comment velocity', async () => {
@@ -64,11 +69,12 @@ test('online comparison chart waits for a real canvas width and redraws after la
   assert.match(source, /observer\.observe\(canvas\)/);
 });
 
-test('chart detail shows the nearest five-minute stream average when available', async () => {
+test('chart detail shows the nearest direct five-minute playback count when available', async () => {
   const source = await text('public/dashboard-chart-detail.js');
-  assert.match(source, /decimalOneFormat as streamNumber/);
+  assert.doesNotMatch(source, /decimalOneFormat as streamNumber|streamNumberText|\/分（5分平均）/);
   assert.match(source, /payload\.stream_5m_history/);
-  assert.match(source, /再生数増加 \+\$\{streamNumberText\(streamRow\.stream_delta\)\}\/分（5分平均）/);
+  assert.match(source, /再生数 \+\$\{numberText\(streamRow\.stream_delta\)\}/);
   assert.match(source, /nearestRow\(streamRows, targetTime, FIVE_MINUTE_MS \/ 2\)/);
-  assert.match(source, /dashboard:details/);
+  assert.match(source, /dashboard:payload/);
+  assert.doesNotMatch(source, /dashboard:details/);
 });

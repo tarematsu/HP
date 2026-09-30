@@ -14,11 +14,13 @@ const history = readFileSync(new URL('../public/history/history-lite.js', import
 
 test('current metrics are statically ordered while current-only renderers load lazily without duplicates', () => {
   assert.match(metrics, /dashboard-current-layout\.js\?v=20260924\.1/);
-  assert.match(metrics, /dashboard-chart-comparison\.js\?v=20260930\.1/);
-  assert.match(metrics, /dashboard-chart-detail\.js\?v=20260930\.1/);
+  assert.match(metrics, /dashboard-chart-stability\.js\?v=20260930\.2/);
+  assert.match(metrics, /dashboard-chart-comparison\.js\?v=20260930\.2/);
+  assert.match(metrics, /dashboard-chart-detail\.js\?v=20260930\.2/);
+  assert.match(metrics, /dashboard-daily-summaries\.js\?v=20260930\.2/);
   assert.match(metrics, /dashboard-fetch-cache\.js\?v=20260930\.1/);
-  assert.doesNotMatch(metrics, /dashboard-current-enhancements\.js/);
-  assert.match(metrics, /dashboard-client\.js\?v=20260930\.1/);
+  assert.doesNotMatch(metrics, /dashboard-current-enhancements\.js|dashboard-details-client\.js/);
+  assert.match(metrics, /dashboard-client\.js\?v=20260930\.2/);
   assert.match(metrics, /function ensureCurrentRuntime\(\)/);
   assert.doesNotMatch(metrics, /replayCurrentPayload|runtime-replay/);
   assert.match(header, /dashboard-current-enhancements\.css\?v=20260924\.1/);
@@ -37,12 +39,13 @@ test('shared mobile layout owns tab count and current metric columns', () => {
   assert.match(sharedLayout, /@media \(max-width: 760px\)[\s\S]*grid-template-rows:\s*minmax\(44px, auto\) !important/);
 });
 
-test('current chart draws online axes, five-minute average stream bars and JST labels from one renderer', () => {
+test('current chart draws online axes, direct five-minute playback bars and JST labels from one renderer', () => {
   assert.match(chart, /オンライン数\(人\)/);
-  assert.match(chart, /再生数増加\/分（5分平均）/);
+  assert.match(chart, /context\.fillText\('再生数'/);
+  assert.match(chart, /stream\.textContent = '再生数'/);
   assert.match(chart, /stream_5m_history/);
   assert.match(chart, /drawStreamBars/);
-  assert.doesNotMatch(chart, /stream_minute_history|コメント\/2分|comment_velocity|commentVelocity|rgba\(22,139,115/);
+  assert.doesNotMatch(chart, /再生数増加\/分（5分平均）|stream_minute_history|コメント\/2分|comment_velocity|commentVelocity|rgba\(22,139,115/);
   assert.match(chart, /時刻 \(JST\)/);
   assert.match(chart, /timeZone: 'Asia\/Tokyo'/);
   assert.match(chart, /drawSeries\(context, current, xFor, yOnline, '#111', 2\)/);
@@ -52,7 +55,6 @@ test('current chart draws online axes, five-minute average stream bars and JST l
   assert.match(chart, /`最小 \$\{integer\.format\(currentMin\)\}（\$\{jstTime\.format/);
   assert.match(chart, /`最大 \$\{integer\.format\(currentMax\)\}（\$\{jstTime\.format/);
   assert.doesNotMatch(chart, /strokeRect\(/);
-  assert.match(html, /stream-growth-key">5分平均の再生増加/);
 });
 
 test('stream goal is static inside the metric and ETA is display-only JST', () => {
