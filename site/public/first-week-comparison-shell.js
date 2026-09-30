@@ -1,7 +1,6 @@
 import { mountDashboardShell } from './dashboard-ui-common.js?v=20260930.1';
 
 mountDashboardShell({
-  style: { href: '/first-week-comparison.css?v=20260928.1', key: 'first-week-comparison' },
   tab: {
     view: 'first-week',
     label: '初週比較',

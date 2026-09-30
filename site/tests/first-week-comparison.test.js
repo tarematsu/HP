@@ -86,7 +86,7 @@ test('dashboard keeps the first-week tab visible while deferring its shell and r
   assert.doesNotMatch(entry, /^import .*first-week-comparison-shell/m);
   assert.match(entry, /dashboard-tabs\.js\?v=20260930\.1/);
   assert.match(tabs, /first-week-comparison-shell\.js\?v=20260929\.1/);
-  assert.match(shell, /first-week-comparison\.css\?v=20260928\.1/);
+  assert.doesNotMatch(shell, /\.css\?v=|style:\s*\{/);
   assert.match(shell, /dashboard-ui-common\.js\?v=20260930\.1/);
   assert.match(shell, /mountDashboardShell/);
   assert.doesNotMatch(shell, /first-week-metric-toggle|data-first-week-metric|再生数増加/);
@@ -96,6 +96,7 @@ test('dashboard keeps the first-week tab visible while deferring its shell and r
   assert.doesNotMatch(shell, /firstWeekLoad|>更新</);
   assert.match(tabs, /'first-week'/);
   assert.match(tabs, /first-week-comparison\.js\?v=20260929\.1/);
+  assert.match(runtime, /dashboard-ui-common\.js\?v=20260930\.1/);
   assert.match(runtime, /sh\.first-week-comparison\.v2/);
   assert.match(runtime, /first-week-comparison\?v=20260926\.2/);
   assert.doesNotMatch(runtime, /firstWeekLoad|loadButton|data-first-week-metric|metricButtons|metric === 'streams'/);

@@ -115,7 +115,9 @@ test('mobile dashboard loads one first-paint stylesheet and one bundled entry sc
 
 test('dashboard mobile layout prevents metric and goal number clipping', async () => {
   const css = await text('public/app-lite.css');
-  assert.match(css, /\.metric\.featured \{ grid-column: 1 \/ -1/);
+  const layout = await text('public/pages-layout.css');
+  assert.match(layout, /@media \(max-width: 760px\)[\s\S]*?\.metric,\s*\.metric\.featured\s*\{[^}]*grid-column:\s*auto\s*!important/s);
+  assert.match(layout, /\.metric strong,\s*\.metric\.featured strong\s*\{[^}]*font-size:\s*clamp\(1\.08rem, 5\.7vw, 1\.45rem\)\s*!important/s);
   assert.match(css, /\.metric strong \{[^}]*white-space:\s*nowrap/);
   assert.match(css, /\.goal-number \{[^}]*flex-wrap:\s*wrap/);
   assert.match(css, /\.top-actions \{[^}]*repeat\(2/);

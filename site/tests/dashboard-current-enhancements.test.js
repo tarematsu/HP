@@ -23,8 +23,7 @@ test('current metrics are statically ordered while current-only renderers load l
   assert.match(metrics, /dashboard-client\.js\?v=20260930\.2/);
   assert.match(metrics, /function ensureCurrentRuntime\(\)/);
   assert.doesNotMatch(metrics, /replayCurrentPayload|runtime-replay/);
-  assert.match(header, /dashboard-current-enhancements\.css\?v=20260924\.1/);
-  assert.match(header, /pages-layout\.css\?v=20260928\.1/);
+  assert.doesNotMatch(header, /\.css\?v=|createElement\('link'\)/);
   assert.doesNotMatch(metrics, /window\.fetch|response\.clone\(\)\.json|restoreDashboardCache/);
   assert.match(fetchCache, /dashboard:payload/);
   assert.ok(html.indexOf('id="online"') < html.indexOf('id="totalStreams"'));

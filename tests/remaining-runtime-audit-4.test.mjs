@@ -90,7 +90,8 @@ test('history client owns table formatting and cache while charts are mode-speci
     new URL('../site/public/history/history-lite.js', import.meta.url),
     'utf8',
   );
-  assert.match(source, /const integer = new Intl\.NumberFormat/);
+  assert.match(source, /integerFormat as integer/);
+  assert.doesNotMatch(source, /const integer = new Intl\.NumberFormat/);
   assert.match(source, /const dateOnly = new Intl\.DateTimeFormat/);
   assert.match(source, /function renderTable/);
   assert.match(source, /function publishHistoryData/);

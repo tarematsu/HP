@@ -1,35 +1,25 @@
+import {
+  byId,
+  fullDate as fullDateLabel,
+  integerFormat as numberFormat,
+  safeInteger as integer,
+  setNotice as setSharedNotice,
+  shortDate as dateLabel,
+  svgElement as createSvgNode,
+} from './dashboard-ui-common.js?v=20260930.1';
+
 const DEFAULT_HANDLES = Object.freeze([
   'sakuramankai',
   'sakuramankai2',
   'sakurazaka46jp',
   'nogizaka46smej',
 ]);
-const SVG_NS = 'http://www.w3.org/2000/svg';
-const numberFormat = new Intl.NumberFormat('ja-JP');
 let currentPayload = null;
 let loadPromise = null;
 let resizeObserver = null;
 
-function integer(value) {
-  if (value == null || value === '') return null;
-  const parsed = Number(value);
-  return Number.isInteger(parsed) ? parsed : null;
-}
-
 function validDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
-}
-
-function dateLabel(value) {
-  if (!validDate(value)) return '-';
-  const [, month, day] = value.split('-');
-  return `${Number(month)}/${Number(day)}`;
-}
-
-function fullDateLabel(value) {
-  if (!validDate(value)) return '-';
-  const [year, month, day] = value.split('-');
-  return `${year}/${Number(month)}/${Number(day)}`;
 }
 
 function normalizedHandle(value) {
@@ -126,12 +116,6 @@ function normalizeAccounts(accounts, rows, handles) {
   });
 }
 
-function createSvgNode(name, attributes = {}) {
-  const node = document.createElementNS(SVG_NS, name);
-  for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value));
-  return node;
-}
-
 function appendText(svg, text, x, y, className, anchor = 'start') {
   const node = createSvgNode('text', { x, y, class: className, 'text-anchor': anchor });
   node.textContent = text;
@@ -150,7 +134,7 @@ function tickIndexes(length) {
 }
 
 function renderChart(rows, handles) {
-  const container = document.getElementById('followersChart');
+  const container = byId('followersChart');
   if (!container) return;
   container.replaceChildren();
   const values = rows.flatMap((row) => handles
@@ -241,7 +225,7 @@ function renderChart(rows, handles) {
 }
 
 function renderLegend(accounts) {
-  const legend = document.getElementById('followersLegend');
+  const legend = byId('followersLegend');
   if (!legend) return;
   legend.replaceChildren();
   accounts.forEach((account, index) => {
@@ -263,7 +247,7 @@ function renderLegend(accounts) {
 }
 
 function renderTable(accounts) {
-  const body = document.getElementById('followersTbody');
+  const body = byId('followersTbody');
   if (!body) return;
   body.replaceChildren();
   for (const account of accounts) {
@@ -283,21 +267,15 @@ function renderTable(accounts) {
   }
 }
 
-function setNotice(message = '', error = false) {
-  const notice = document.getElementById('followersNotice');
-  if (!notice) return;
-  notice.textContent = message;
-  notice.hidden = !message;
-  notice.classList.toggle('error', error);
-}
+const setNotice = (message = '', error = false) => setSharedNotice('followersNotice', message, error);
 
 function render(payload) {
   const handles = payloadHandles(payload);
   const rows = normalizeRows(payload?.rows, handles);
   const accounts = normalizeAccounts(payload?.accounts, rows, handles);
-  const latestDate = document.getElementById('followersLatestDate');
+  const latestDate = byId('followersLatestDate');
   if (latestDate) latestDate.textContent = rows.length ? fullDateLabel(rows.at(-1).date) : '-';
-  const chart = document.getElementById('followersChart');
+  const chart = byId('followersChart');
   if (chart) chart.setAttribute('aria-label', `${handles.length}アカウントのフォロワー数推移`);
   renderLegend(accounts);
   renderChart(rows, handles);
@@ -339,7 +317,7 @@ export async function loadFollowersView() {
 }
 
 if (!resizeObserver && typeof ResizeObserver === 'function') {
-  const chart = document.getElementById('followersChart');
+  const chart = byId('followersChart');
   if (chart) {
     resizeObserver = new ResizeObserver(() => {
       if (!currentPayload) return;

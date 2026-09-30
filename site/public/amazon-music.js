@@ -1,29 +1,15 @@
-const SVG_NS = 'http://www.w3.org/2000/svg';
-const numberFormat = new Intl.NumberFormat('ja-JP');
+import {
+  byId as element,
+  fullDate as formatFullDate,
+  integerFormat as numberFormat,
+  safeInteger as integer,
+  setNotice as setSharedNotice,
+  shortDate as formatDate,
+  svgElement,
+} from './dashboard-ui-common.js?v=20260930.1';
+
 let loadPromise = null;
 let lastPayload = null;
-
-function element(id) {
-  return document.getElementById(id);
-}
-
-function integer(value) {
-  if (value == null || value === '') return null;
-  const number = Number(value);
-  return Number.isSafeInteger(number) ? number : null;
-}
-
-function formatDate(value) {
-  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return String(value || '-');
-  return `${Number(match[2])}/${Number(match[3])}`;
-}
-
-function formatFullDate(value) {
-  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return String(value || '-');
-  return `${Number(match[1])}/${Number(match[2])}/${Number(match[3])}`;
-}
 
 function formatDelta(value) {
   const number = integer(value);
@@ -31,19 +17,7 @@ function formatDelta(value) {
   return `${number > 0 ? '+' : ''}${numberFormat.format(number)}`;
 }
 
-function setNotice(message = '', error = false) {
-  const notice = element('amazonMusicNotice');
-  if (!notice) return;
-  notice.textContent = message;
-  notice.hidden = !message;
-  notice.classList.toggle('error', Boolean(error));
-}
-
-function svgElement(name, attributes = {}) {
-  const node = document.createElementNS(SVG_NS, name);
-  for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value));
-  return node;
-}
+const setNotice = (message = '', error = false) => setSharedNotice('amazonMusicNotice', message, error);
 
 function trackKey(track) {
   const trackId = integer(track?.track_id);

@@ -1,5 +1,11 @@
+import {
+  byId,
+  cssColor,
+  finiteNumber as finite,
+  integerFormat as integer,
+} from '../dashboard-ui-common.js?v=20260930.1';
+
 const SUMMARY_MODES = new Set(['daily', 'weekly', 'monthly']);
-const integer = new Intl.NumberFormat('ja-JP');
 
 let latestMode = '';
 let latestRows = [];
@@ -8,23 +14,13 @@ let drawTimer = 0;
 let resizeTimer = 0;
 let chartModel = null;
 
-function finite(value) {
-  if (value === null || value === undefined || value === '') return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 function activeMode() {
   const active = document.querySelector('#modeTabs button.active[data-mode]');
   const routeMode = String(active?.dataset?.mode || latestMode || '');
-  if (routeMode === 'daily' && document.getElementById('historyPastWeekMode')?.checked) {
+  if (routeMode === 'daily' && byId('historyPastWeekMode')?.checked) {
     return 'weekly';
   }
   return routeMode;
-}
-
-function cssColor(name, fallback) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
 
 function scheduleDraw(delay = 0) {
@@ -35,7 +31,7 @@ function scheduleDraw(delay = 0) {
 }
 
 function prepareCanvas() {
-  const canvas = document.getElementById('chart');
+  const canvas = byId('chart');
   if (!canvas) return null;
   const context = canvas.getContext('2d');
   if (!context) return null;
@@ -115,7 +111,7 @@ function xAxisTickIndices(rowCount, plotWidth) {
 function draw() {
   const mode = activeMode();
   if (!SUMMARY_MODES.has(mode) || mode !== latestMode) return;
-  const chartPanel = document.getElementById('chartPanel');
+  const chartPanel = byId('chartPanel');
   if (!chartPanel || chartPanel.hidden) return;
   const rows = latestRows.filter((row) => row?.known_missing === true
     || ['listener_avg', 'listener_max', 'listener_min', 'stream_growth']
@@ -133,9 +129,9 @@ function draw() {
   const hasMissingBand = drawMissingBands(context, rows, positions, area);
 
   const listenerSeries = [
-    { key: 'listener_avg', label: '平均同接', color: '#000000', width: 2.6 },
-    { key: 'listener_max', label: '最大同接', color: cssColor('--orange', '#c56a18'), width: 1.9 },
-    { key: 'listener_min', label: '最小同接', color: cssColor('--blue', '#2776b9'), width: 1.9 },
+    { key: 'listener_avg', label: '平均同接', color: '#000000', width: 2 },
+    { key: 'listener_max', label: '最大同接', color: cssColor('--orange', '#c56a18'), width: 2 },
+    { key: 'listener_min', label: '最小同接', color: cssColor('--blue', '#2776b9'), width: 2 },
   ];
   const streamColor = cssColor('--green', '#168b73');
   const listenerValues = listenerSeries.flatMap(({ key }) =>
@@ -152,7 +148,7 @@ function draw() {
   context.strokeStyle = 'rgba(31,45,68,.12)';
   context.fillStyle = cssColor('--muted', '#667287');
   context.lineWidth = 1;
-  context.font = '10.5px system-ui';
+  context.font = '11px system-ui';
   for (let index = 0; index <= 4; index += 1) {
     const ratio = index / 4;
     const y = area.top + area.height * ratio;
@@ -174,10 +170,10 @@ function draw() {
   const xAxisY = area.top + area.height;
   const xTickIndexes = xAxisTickIndices(rows.length, area.width);
   context.save();
-  context.strokeStyle = 'rgba(31,45,68,.24)';
+  context.strokeStyle = 'rgba(31,45,68,.12)';
   context.fillStyle = cssColor('--muted', '#667287');
   context.lineWidth = 1;
-  context.font = width < 480 ? '9px system-ui' : '10px system-ui';
+  context.font = '11px system-ui';
   context.textAlign = 'center';
   context.textBaseline = 'top';
   context.beginPath();
@@ -245,7 +241,7 @@ function draw() {
   };
   listenerSeries.forEach(drawLine);
 
-  const detail = document.getElementById('chartDetail');
+  const detail = byId('chartDetail');
   if (detail) {
     if (Number.isInteger(selectedIndex) && rows[selectedIndex]) {
       const row = rows[selectedIndex];
@@ -262,7 +258,7 @@ function draw() {
     }
   }
 
-  const legend = document.getElementById('chartLegend');
+  const legend = byId('chartLegend');
   if (legend) {
     const items = listenerSeries
       .filter((series) => rows.some((row) => finite(row?.[series.key]) != null))
@@ -271,12 +267,12 @@ function draw() {
     if (hasMissingBand) items.push(appendLegend('欠測', 'rgba(100, 107, 116, .55)', 'period-missing-band'));
     legend.replaceChildren(...items);
   }
-  const title = document.getElementById('chartTitle');
+  const title = byId('chartTitle');
   if (title) title.textContent = '同接・再生数の推移';
-  const foot = document.getElementById('chartFoot');
+  const foot = byId('chartFoot');
   if (foot) foot.textContent = hasMissingBand ? '灰色は欠測期間です。' : '';
-  const start = document.getElementById('chartStartDate');
-  const end = document.getElementById('chartEndDate');
+  const start = byId('chartStartDate');
+  const end = byId('chartEndDate');
   if (start) start.textContent = rows[0]?.period_key || '—';
   if (end) end.textContent = rows.at(-1)?.period_key || '—';
 
@@ -296,7 +292,7 @@ window.addEventListener('history:data-loaded', (event) => {
   scheduleDraw();
 });
 
-const chart = document.getElementById('chart');
+const chart = byId('chart');
 chart?.addEventListener('pointerup', (event) => {
   if (!SUMMARY_MODES.has(activeMode()) || !chartModel?.positions?.length) return;
   event.stopImmediatePropagation();

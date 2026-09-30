@@ -1,3 +1,5 @@
+import { cssColor, finiteNumber as finite, integerFormat as number } from './dashboard-ui-common.js?v=20260930.1';
+
 const view = document.getElementById('firstWeekView');
 const canvas = document.getElementById('firstWeekChart');
 const legend = document.getElementById('firstWeekLegend');
@@ -19,7 +21,6 @@ const SERIES_COLORS = [
   [null, '#8c6d1f'],
 ];
 
-const number = new Intl.NumberFormat('ja-JP');
 let series = [];
 let selectedMinute = null;
 let loading = false;
@@ -29,12 +30,6 @@ function active() {
   return Boolean(view && !view.hidden);
 }
 
-function finite(value) {
-  if (value == null || value === '') return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 function escapeHtml(value) {
   return String(value ?? '')
     .replaceAll('&', '&amp;')
@@ -42,11 +37,6 @@ function escapeHtml(value) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
-}
-
-function cssColor(name, fallback) {
-  if (!name) return fallback;
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
 
 function colorFor(index) {
@@ -184,7 +174,7 @@ function draw() {
   context.lineWidth = 1;
   context.strokeStyle = 'rgba(31,45,68,.12)';
   context.fillStyle = cssColor('--muted', '#667287');
-  context.font = '10.5px system-ui';
+  context.font = '11px system-ui';
   for (let index = 0; index <= 4; index += 1) {
     const y = area.top + area.height * index / 4;
     context.beginPath();
@@ -206,7 +196,7 @@ function draw() {
     const index = series.indexOf(item);
     context.save();
     context.strokeStyle = colorFor(index);
-    context.lineWidth = 1.8;
+    context.lineWidth = 2;
     context.globalAlpha = 0.9;
     context.beginPath();
     let open = false;

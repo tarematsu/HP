@@ -1,21 +1,4 @@
-const dashboardStylesheets = [
-  '/dashboard-fixes.css?v=20260923.4',
-  '/screenshot-audit-cleanup.css?v=20260919.3',
-  '/period-display-fixes.css?v=20260921.4',
-  '/dashboard-current-enhancements.css?v=20260924.1',
-  '/pages-layout.css?v=20260928.1',
-  '/pages-tabs-layout.css?v=20260930.1',
-];
-
-if (document.documentElement.dataset.dashboardCssBundled !== 'true') {
-  for (const href of dashboardStylesheets) {
-    if (document.querySelector(`link[href="${href}"]`)) continue;
-    const stylesheet = document.createElement('link');
-    stylesheet.rel = 'stylesheet';
-    stylesheet.href = href;
-    document.head.append(stylesheet);
-  }
-}
+import { byId } from './dashboard-ui-common.js?v=20260930.1';
 
 const KEYBOARD_NAVIGATION_CLASS = 'keyboard-navigation';
 const skipLink = document.querySelector('.skip-link');
@@ -45,7 +28,7 @@ document.addEventListener('pointerdown', clearKeyboardNavigation, { capture: tru
 const DASHBOARD_TITLE = '#櫻坂46_ステへ統計';
 document.title = DASHBOARD_TITLE;
 const DASHBOARD_TITLE_SEARCH_URL = `https://x.com/search?q=${encodeURIComponent(DASHBOARD_TITLE)}&src=typed_query`;
-const channelName = document.getElementById('channelName');
+const channelName = byId('channelName');
 if (channelName) {
   const link = document.createElement('a');
   link.dataset.dashboardTitleLink = 'true';
@@ -85,7 +68,7 @@ function cacheDashboardMaterializedAt(value) {
 }
 
 let dashboardMaterializedAt = cachedDashboardMaterializedAt();
-const updated = document.getElementById('updated');
+const updated = byId('updated');
 
 function renderUpdatedLabel() {
   if (!updated) return;

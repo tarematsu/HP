@@ -4,10 +4,12 @@ import test from 'node:test';
 
 const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
+const build = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 const cleanup = readFileSync(new URL('../public/screenshot-audit-cleanup.css', import.meta.url), 'utf8');
 
-test('screenshot audit cleanup loads with the dashboard while the listening-party label is static', () => {
-  assert.match(header, /screenshot-audit-cleanup\.css\?v=20260919\.3/);
+test('screenshot audit cleanup is bundled while the listening-party label is static', () => {
+  assert.match(build, /'screenshot-audit-cleanup\.css'/);
+  assert.doesNotMatch(header, /screenshot-audit-cleanup\.css|createElement\('link'\)/);
   assert.match(page, /data-mode="broadcasts">リスパ/);
   assert.doesNotMatch(header, /\[data-mode="broadcasts"\]|textContent = '(?:Listening Party|リスニングパーティ|リスパ)'/);
 });
