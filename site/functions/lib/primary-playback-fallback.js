@@ -1,3 +1,4 @@
+import { canonicalizeTrackRows } from './canonical-track-rows.js';
 import { FACTS_FRESH_MS } from './dashboard-facts.js';
 import {
   LATEST_PLAYBACK_WITH_SNAPSHOT_SQL,
@@ -53,7 +54,9 @@ export async function loadCanonicalPlaybackPayload(db, generatedAt = Date.now())
   if (!db) return null;
   const loaded = await loadPlaybackRows(db);
   const snapshot = loaded.snapshot;
-  const { latestQueue, queue } = parseLatestQueueRows(loaded.rows);
+  const parsed = parseLatestQueueRows(loaded.rows);
+  const latestQueue = parsed.latestQueue;
+  const queue = await canonicalizeTrackRows(db, parsed.queue);
   if (!snapshot || !latestQueue || !queue.length) return null;
 
   const playback = computePlayback(queue, generatedAt);

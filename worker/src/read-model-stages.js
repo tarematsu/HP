@@ -3,6 +3,7 @@ import {
   attachPlaybackReadModelTrackMetadata,
   loadPlaybackReadModelTrackMetadata,
 } from './read-model-stationhead-metadata.js';
+import { canonicalizeTrackRows } from '../../site/functions/lib/canonical-track-rows.js';
 import { queueNeedsPreservation } from './read-model-metadata-plan.js';
 import {
   sanitizeQueueTrackMetadata,
@@ -54,6 +55,10 @@ function objectValue(value) {
 }
 
 function sameStableQueueTrack(current, previous) {
+  const currentTrackId = positiveInteger(current?.track_id);
+  const previousTrackId = positiveInteger(previous?.track_id);
+  if (currentTrackId != null && previousTrackId != null) return currentTrackId === previousTrackId;
+
   const currentQueueTrackId = positiveInteger(current?.queue_track_id);
   const previousQueueTrackId = positiveInteger(previous?.queue_track_id);
   if (currentQueueTrackId != null && previousQueueTrackId != null) {
@@ -92,11 +97,13 @@ function preserveStablePositionMetadata(queue, previousQueue) {
     const previous = previousByPosition.get(position);
     if (!previous || !sameStableQueueTrack(track, previous)) return track;
 
+    const trackId = positiveInteger(track.track_id) ?? positiveInteger(previous.track_id);
     const title = track.title || previous.title || null;
     const artist = track.artist || previous.artist || null;
     const albumName = track.album_name || previous.album_name || null;
     const thumbnailUrl = track.thumbnail_url || previous.thumbnail_url || null;
-    if (title === track.title
+    if (trackId === positiveInteger(track.track_id)
+        && title === track.title
         && artist === track.artist
         && albumName === track.album_name
         && thumbnailUrl === track.thumbnail_url) return track;
@@ -104,6 +111,7 @@ function preserveStablePositionMetadata(queue, previousQueue) {
     changed = true;
     return {
       ...track,
+      ...(trackId != null ? { track_id: trackId } : {}),
       title,
       artist,
       album_name: albumName,
@@ -175,12 +183,14 @@ export async function hydrateReadModelMetadata(env, readModel) {
     ? readModel
     : { ...readModel, queue: { ...readModel.queue, value: queue } };
   const rows = await loadPlaybackReadModelTrackMetadata(env, queue.tracks, TRACK_METADATA_KEY_LIMIT);
-  if (!rows.length) return baseReadModel;
-
-  const hydrated = attachPlaybackReadModelTrackMetadata(queue, rows);
-  return hydrated === queue
+  const metadataHydrated = rows.length ? attachPlaybackReadModelTrackMetadata(queue, rows) : queue;
+  const canonicalTracks = await canonicalizeTrackRows(env?.MINUTE_DB, metadataHydrated.tracks);
+  const canonicalQueue = canonicalTracks === metadataHydrated.tracks
+    ? metadataHydrated
+    : { ...metadataHydrated, tracks: canonicalTracks };
+  return canonicalQueue === queue
     ? baseReadModel
-    : { ...baseReadModel, queue: { ...baseReadModel.queue, value: hydrated } };
+    : { ...baseReadModel, queue: { ...baseReadModel.queue, value: canonicalQueue } };
 }
 
 export async function preserveReadModelForWrite(env, readModel) {

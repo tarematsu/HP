@@ -110,9 +110,12 @@ export function normalizePlaybackTrack(track, index, playback) {
       || fallback.thumbnail_url || '',
   ).trim() || null;
   const spotifyId = String(track.spotify_id || '').trim() || null;
+  const trackId = num(track.track_id);
+  const canonicalTrackId = Number.isSafeInteger(trackId) && trackId > 0 ? trackId : null;
   const durationMs = Math.max(0, num(track.duration_ms) || 0);
   const isCurrent = index === playback.currentIndex;
   const output = {
+    ...(canonicalTrackId != null ? { track_id: canonicalTrackId } : {}),
     title,
     artist,
     thumbnail_url: thumbnailUrl,
