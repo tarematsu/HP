@@ -2,6 +2,7 @@ import {
   appendEmptyTableRow,
   integerFormat as integer,
 } from '../dashboard-ui-common.js?v=20260930.1';
+import { downloadCsv } from '../csv-download.js?v=20261001.1';
 
 const MODE = 'ranking';
 const EXCLUDED_ALL_HOSTS = new Set(['sakuramankai', 'sakurazaka46jp', 'nogizaka46smej']);
@@ -157,18 +158,13 @@ function render(data) {
 function exportCsv() {
   if (!lastData || lastData.scope !== 'all') return;
   const rows = Array.isArray(lastData.host_rankings) ? lastData.host_rankings : [];
-  const lines = [
+  const csvRows = [
     ALL_HOST_COLUMNS.map(([, label]) => label),
     ...rows.map((row) => ALL_HOST_COLUMNS.map(([key]) => key === 'host_name'
       ? String(row.host_name || '')
       : displayValue(key, row[key]))),
-  ].map((line) => line.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(','));
-  const blob = new Blob([`\uFEFF${lines.join('\n')}`], { type: 'text/csv;charset=utf-8' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `sh-ranking-all-hosts-${new Date().toISOString().slice(0, 10)}.csv`;
-  link.click();
-  URL.revokeObjectURL(link.href);
+  ];
+  downloadCsv(`sh-ranking-all-hosts-${new Date().toISOString().slice(0, 10)}.csv`, csvRows);
 }
 
 window.addEventListener('history:data-loaded', (event) => {
