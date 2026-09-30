@@ -167,27 +167,24 @@ async function runStationMain(env, task, dependencies) {
 async function runStationDecode(env, task, dependencies) {
   const decode = dependencies.decode || (await loadSplitModule()).runOfficialNewsDecodeOnly;
   const result = await decode(env, await stageConfig(env, dependencies), task.scheduledAt);
-  const nextStage = result?.active ? 'station-chat' : 'station-finalize';
-  await sendStage(env, nextStage, task.scheduledAt, dependencies, continuationExtra(task));
+  await sendStage(env, 'station-finalize', task.scheduledAt, dependencies, continuationExtra(task));
   return {
     stage: 'station-decode',
     pending: true,
-    next_stage: nextStage,
+    next_stage: 'station-finalize',
     active: result?.active === true,
     station_id: result?.station_id ?? null,
   };
 }
 
-async function runStationChat(env, task, dependencies) {
-  const chat = dependencies.chat || (await loadSplitModule()).runOfficialNewsChatOnly;
-  const result = await chat(env, await stageConfig(env, dependencies), task.scheduledAt);
-  await sendStage(env, 'station-finalize', task.scheduledAt, dependencies, continuationExtra(task));
+async function runRetiredStationChat(_env, task, dependencies) {
+  await sendStage(_env, 'station-finalize', task.scheduledAt, dependencies, continuationExtra(task));
   return {
     stage: 'station-chat',
     pending: true,
     next_stage: 'station-finalize',
-    skipped: result?.skipped === true,
-    reason: result?.reason ?? null,
+    skipped: true,
+    reason: 'comment-collection-retired',
   };
 }
 
@@ -272,7 +269,7 @@ export async function processOfficialNewsStage(env, task, dependencies = {}) {
   if (task.stage === 'raw-materialize') return runRawMaterialize(env, task, dependencies);
   if (task.stage === 'reconcile') return runReconcile(env, task, dependencies);
   if (task.stage === 'station-finalize') return runStationFinalize(env, task, dependencies);
-  if (task.stage === 'station-chat') return runStationChat(env, task, dependencies);
+  if (task.stage === 'station-chat') return runRetiredStationChat(env, task, dependencies);
   if (task.stage === 'station-decode') return runStationDecode(env, task, dependencies);
   if (task.stage === 'station-main') return runStationMain(env, task, dependencies);
   if (task.stage === 'station-auth') return runStationAuth(env, task, dependencies);

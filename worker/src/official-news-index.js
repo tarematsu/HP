@@ -27,7 +27,6 @@ export {
 export {
   DECODE_STATION_MAIN_SQL,
   OFFICIAL_PROBE_CONTEXT_SQL,
-  collectStationChat,
   collectStationMain,
   decodeStationMain,
   finalizeStationProbe,

@@ -9,7 +9,6 @@ export {
   shHeaders,
   shJson,
 } from './collector-config.js';
-export { collectOptionalComments } from './collector-comments.js';
 export { ingest } from './collector-ingest.js';
 export {
   extractIds,

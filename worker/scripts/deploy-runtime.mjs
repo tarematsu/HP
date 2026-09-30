@@ -28,7 +28,6 @@ const DEFERRED_RETIREMENT_WORKERS = new Set(['sh-minute-enrichment']);
 const previousScriptByQueue = new Map([
   ['stationhead-raw-collection', 'sh-buddies-ingest'],
   ['stationhead-ingest-finalize', 'sh-buddies-ingest'],
-  ['stationhead-comments', 'sh-buddies-ingest'],
   ['stationhead-buddies-persist', 'sh-buddies-ingest'],
   ['stationhead-minute-enrichment', 'sh-minute-enrichment'],
   ['stationhead-track-metadata', 'sh-minute-enrichment'],

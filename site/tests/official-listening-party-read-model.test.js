@@ -12,7 +12,7 @@ test('official listening-party API returns a complete materialized server-side r
   assert.match(historyApi, /FROM sh_official_broadcast_summary/);
   assert.doesNotMatch(historyApi, /sh_host_broadcast_sessions|sh_host_station_snapshots|sh_official_broadcast_series|json_each/);
   assert.match(historyApi, /listener_min/);
-  assert.match(historyApi, /comment_count/);
+  assert.doesNotMatch(historyApi, /comment_count/);
   assert.match(historyApi, /estimated_streams/);
   assert.match(historyApi, /source_url/);
   assert.match(historyApi, /read_model_complete: loaded\.complete/);
@@ -20,12 +20,13 @@ test('official listening-party API returns a complete materialized server-side r
 });
 
 test('official listening-party table renders final fields directly without hidden enrichment columns', () => {
-  for (const field of ['listener_avg', 'listener_min', 'listener_max', 'distinct_tracks', 'estimated_streams', 'comment_count', 'source_url']) {
+  for (const field of ['listener_avg', 'listener_min', 'listener_max', 'distinct_tracks', 'estimated_streams', 'source_url']) {
     assert.match(table, new RegExp(field));
   }
-  for (const label of ['平均同接', '最小同接', '最大同接', '楽曲数', '推定再生数', 'コメント数', '放送内容', 'イベント名', '出典']) {
+  for (const label of ['平均同接', '最小同接', '最大同接', '楽曲数', '推定再生数', '放送内容', 'イベント名', '出典']) {
     assert.match(table, new RegExp(label));
   }
+  assert.doesNotMatch(table, /comment_count|コメント数/);
   assert.match(table, /時間帯/);
   assert.match(table, /所要時間/);
   assert.doesNotMatch(table, /TECHNICAL_HEADERS|OFFICIAL_NEWS|開始日時（UTC）/);

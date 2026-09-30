@@ -4,7 +4,6 @@ import {
   saveMonitorState,
 } from './official-news-announcements.js';
 import {
-  collectStationChat,
   collectStationMain,
   decodeStationMain,
   finalizeStationProbe,
@@ -51,10 +50,6 @@ export async function runOfficialNewsMainOnly(env, cfg, now, dependencies = {}) 
 
 export async function runOfficialNewsDecodeOnly(env, cfg, now, dependencies = {}) {
   return runStage(env, cfg, now, dependencies, decodeStationMain);
-}
-
-export async function runOfficialNewsChatOnly(env, cfg, now, dependencies = {}) {
-  return runStage(env, cfg, now, dependencies, collectStationChat);
 }
 
 export async function runOfficialNewsFinalizeOnly(env, cfg, now, dependencies = {}) {

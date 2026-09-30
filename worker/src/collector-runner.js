@@ -2,11 +2,6 @@ import { jwtExpiryMs } from './shared.js';
 import {
   asCollectorFailure,
 } from './collector-failure.js';
-import {
-  NO_COMMENTS_RESULT,
-  collectOptionalComments,
-  optionalCommentsEnabled,
-} from './collector-comments.js';
 import { buildCollectionPlan } from './collector-plan.js';
 import { configFromEnv, shJson } from './collector-config.js';
 import {
@@ -25,13 +20,6 @@ import { handoffMinuteFactJob } from './minute-facts-queue.js';
 
 const SLOW_STAGE_THRESHOLD_MS = 1_000;
 const RAW_D1_STATEMENT = Symbol('collector-raw-d1-statement');
-const NO_PLANNED_COMMENTS_RESULT = Object.freeze({
-  commentsSaved: 0,
-  commentTotal: null,
-  commentTotalKnown: false,
-  degraded: false,
-  errorStage: null,
-});
 
 export async function loadMinuteFactQueueMetadata(db, queue, providedRows = []) {
   let hydratedQueue = attachMinuteFactQueueMetadata(queue, providedRows);
@@ -138,9 +126,6 @@ export function timedStage(
   thresholdMs = SLOW_STAGE_THRESHOLD_MS,
   timings = null,
 ) {
-  // Stage timing is diagnostic-only. When it is disabled, return the original
-  // operation result directly so the per-minute path pays no Date.now(),
-  // async wrapper, catch/finally continuation, or replacement Promise.
   if (!timings) return operation();
   return measureTimedStage(stage, operation, thresholdMs, timings);
 }
@@ -207,7 +192,6 @@ export function preparedCollectionPayload(
     snapshot,
     queue,
     initialPlan: buildCollectionPlan({
-      state,
       queue,
       previousRunAt,
       observedAt,
@@ -279,7 +263,6 @@ export async function collectOnce(env, source = 'manual') {
           snapshot: normalizedSnapshot,
           queue: extractedQueue,
           initialPlan: buildCollectionPlan({
-            state,
             queue: extractedQueue,
             previousRunAt,
             observedAt,
@@ -309,20 +292,6 @@ export async function collectOnce(env, source = 'manual') {
       metadataPlanned = initialPlan.metadataDue || queueResult?.structure_changed === true;
     }
 
-    const commentsEnabled = initialPlan.comments && optionalCommentsEnabled(state, config);
-    let commentResult = initialPlan.comments
-      ? NO_COMMENTS_RESULT
-      : NO_PLANNED_COMMENTS_RESULT;
-    if (commentsEnabled) {
-      stage = 'sh_chat_history';
-      commentResult = await measure(stage, () => collectOptionalComments(
-        activeEnv,
-        state,
-        config,
-        observedAt,
-      ));
-    }
-
     const factSnapshot = minuteFactSnapshot(snapshot);
     const factQueue = minuteFactQueue(queue);
     const presentation = readModelPresentation(snapshot);
@@ -338,7 +307,6 @@ export async function collectOnce(env, source = 'manual') {
       observedAt,
       snapshot: factSnapshot,
       queue: factQueue,
-      comments: commentResult,
     }, {
       enrichTrackMetadata: metadataPlanned,
       collectComments: false,
@@ -377,10 +345,6 @@ export async function collectOnce(env, source = 'manual') {
       channel_alias: config.channelAlias,
       channel_id: state.channelId,
       station_id: state.stationId,
-      comments_saved: commentResult.commentsSaved,
-      comments_degraded: commentResult.degraded,
-      comments_error_stage: commentResult.errorStage,
-      comments_deferred: false,
       queue_tracks: queue?.tracks?.length || 0,
       queue_inspected: Boolean(queueResult?.queue_inspected),
       queue_structure_changed: Boolean(queueResult?.structure_changed),
