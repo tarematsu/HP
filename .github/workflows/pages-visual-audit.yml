@@ -17,19 +17,32 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect Nogizaka news page internals
+      - name: Inspect Nogizaka official news JSON API
         shell: bash
         run: |
           set -euo pipefail
           ua='stationhead-monitor/1.0'
-          curl --fail --silent --show-error -A "$ua" -H 'Accept: text/html,application/xhtml+xml' 'https://www.nogizaka46.com/s/n46/news/list' -o /tmp/list.html
-          echo '--- relevant html ---'
-          grep -Ei 'news|ajax|api|json|script' /tmp/list.html | head -120 || true
-          echo '--- script srcs ---'
+          curl --fail --silent --show-error -A "$ua" -H 'Accept: application/json' 'https://www.nogizaka46.com/s/n46/api/list/news_v2?rw=400' -o /tmp/news.json
           python3 - <<'PY'
-          import re
-          html=open('/tmp/list.html',encoding='utf-8').read()
-          for src in sorted(set(re.findall(r'<script\b[^>]*\bsrc=["\']([^"\']+)["\']', html, re.I))):
-              print(src)
+          import json
+          data=json.load(open('/tmp/news.json',encoding='utf-8'))
+          print(type(data).__name__)
+          if isinstance(data, dict):
+              print('keys=', sorted(data.keys()))
+              for key, value in data.items():
+                  if isinstance(value, list):
+                      print('list_key=', key, 'count=', len(value))
+                      for item in value[:3]: print(json.dumps(item, ensure_ascii=False)[:1500])
+                      for item in value:
+                          if '102280' in json.dumps(item, ensure_ascii=False):
+                              print('MATCH_102280=', json.dumps(item, ensure_ascii=False)[:3000])
+                              break
+          elif isinstance(data, list):
+              print('count=', len(data))
+              for item in data[:3]: print(json.dumps(item, ensure_ascii=False)[:1500])
+              for item in data:
+                  if '102280' in json.dumps(item, ensure_ascii=False):
+                      print('MATCH_102280=', json.dumps(item, ensure_ascii=False)[:3000])
+                      break
           PY
           exit 1
