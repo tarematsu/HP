@@ -21,7 +21,8 @@ function db() {
         results = [{
           artist_key: 'sakurazaka46',
           snapshot_date: '2026-09-29',
-          track_id: 'track-1',
+          track_id: 41,
+          spotify_track_id: 'track-1',
           name: 'Song 1',
           playcount: 1000,
           delta: 25,
@@ -79,13 +80,26 @@ test('Spotify read model writes the canonical Actions R2 envelope only when body
   assert.equal(envelope.version, 1);
   assert.equal(envelope.cadence_seconds, 0);
   assert.equal(envelope.updated_at, 1000);
-  assert.equal(JSON.parse(envelope.body).groups.sakurazaka46.total_delta, 25);
-  assert.equal(JSON.parse(envelope.body).artist_chart.latest_chart_date, '2026-09-29');
+  const body = JSON.parse(envelope.body);
+  assert.equal(body.groups.sakurazaka46.total_delta, 25);
+  assert.equal(body.groups.sakurazaka46.tracks[0].track_id, 41);
+  assert.equal(body.groups.sakurazaka46.tracks[0].spotify_track_id, 'track-1');
+  assert.equal(body.groups.sakurazaka46.unresolved_track_count, 0);
+  assert.equal(body.artist_chart.latest_chart_date, '2026-09-29');
 
   const second = await publishSpotifyPagesReadModel(env, { now: 2000 });
   assert.equal(second.published, false);
   assert.equal(second.changed, false);
   assert.equal(writes.length, 1);
+});
+
+test('Spotify playcount SQL resolves public track_id through the shared service reference', () => {
+  const sql = spotifyPlaycountSql();
+  assert.match(sql, /LEFT JOIN music_service_track_refs ref/);
+  assert.match(sql, /ref\.service='spotify'/);
+  assert.match(sql, /ref\.source_track_id=d\.track_id/);
+  assert.match(sql, /ref\.track_id/);
+  assert.match(sql, /d\.track_id AS spotify_track_id/);
 });
 
 test('Spotify source events use the existing collector queue', async () => {
