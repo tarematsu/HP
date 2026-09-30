@@ -4,14 +4,16 @@ import {
   finiteNumber as finite,
   integerFormat as integer,
 } from '../dashboard-ui-common.js?v=20260930.1';
+import {
+  createOfficialPartyHeaderRow,
+  createOfficialSourceCell,
+  durationLabel,
+  OFFICIAL_PARTY_HEADERS,
+  splitOfficialEventName,
+} from '../official-listening-party-ui.js?v=20261001.1';
 
 (() => {
   const MODE = 'broadcasts';
-  const VISIBLE_HEADERS = [
-    '日付', '時間帯', '所要時間', '平均同接', '最小同接', '最大同接',
-    '楽曲数', '推定再生数', '放送内容', 'イベント名', '出典',
-  ];
-  const DATE_PREFIX = /^\s*(\d{4})[./-](\d{1,2})[./-](\d{1,2})\s*/;
   const jstDate = new Intl.DateTimeFormat('ja-JP', {
     timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
   });
@@ -26,16 +28,6 @@ import {
   function numberText(value, formatter = decimal) {
     const parsed = finite(value);
     return parsed == null ? '—' : formatter.format(parsed);
-  }
-
-  function elapsedLabel(minutes) {
-    const value = finite(minutes);
-    if (value == null || value < 0) return '—';
-    const rounded = Math.round(value);
-    if (rounded < 60) return `${rounded}分`;
-    const hours = Math.floor(rounded / 60);
-    const rest = rounded % 60;
-    return rest ? `${hours}時間${rest}分` : `${hours}時間`;
   }
 
   function fallbackDate(value) {
@@ -59,15 +51,6 @@ import {
     return start && end ? `${start}-${end}` : '—';
   }
 
-  function splitEvent(row) {
-    const raw = String(row?.event_name || '公式リスパ').trim();
-    const match = DATE_PREFIX.exec(raw);
-    if (!match) return { date: fallbackDate(row?.started_at), name: raw };
-    const date = `${match[1]}/${String(Number(match[2])).padStart(2, '0')}/${String(Number(match[3])).padStart(2, '0')}`;
-    const name = raw.slice(match[0].length).trim() || '公式リスパ';
-    return { date, name };
-  }
-
   function durationMinutes(row) {
     const start = finite(row?.started_at);
     const end = finite(row?.ended_at);
@@ -75,32 +58,9 @@ import {
     return (end - start) / 60_000;
   }
 
-  function createHeader(label) {
-    const cell = document.createElement('th');
-    cell.scope = 'col';
-    cell.textContent = label;
-    return cell;
-  }
-
   function createCell(value) {
     const cell = document.createElement('td');
     cell.textContent = String(value ?? '—');
-    return cell;
-  }
-
-  function createSourceCell(sourceUrl) {
-    const cell = document.createElement('td');
-    const source = String(sourceUrl || '').trim();
-    if (!source) {
-      cell.textContent = '—';
-      return cell;
-    }
-    const link = document.createElement('a');
-    link.href = source;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    link.textContent = '公式告知';
-    cell.appendChild(link);
     return cell;
   }
 
@@ -115,14 +75,14 @@ import {
     table?.classList.add('official-party-table');
     if (table) table.dataset.officialPartyReadModel = 'complete';
 
-    const headRow = document.createElement('tr');
-    headRow.dataset.officialPartyLayout = '1';
-    for (const label of VISIBLE_HEADERS) headRow.appendChild(createHeader(label));
-
+    const headRow = createOfficialPartyHeaderRow({ layoutMarker: true });
     const fragment = document.createDocumentFragment();
     const ordered = [...(Array.isArray(rows) ? rows : [])].reverse();
     for (const row of ordered) {
-      const identity = splitEvent(row);
+      const identity = splitOfficialEventName(row?.event_name, {
+        defaultName: '公式リスパ',
+        fallbackDate: fallbackDate(row?.started_at),
+      });
       const average = finite(row?.listener_avg);
       const tracks = finite(row?.distinct_tracks);
       const estimated = finite(row?.estimated_streams)
@@ -130,7 +90,7 @@ import {
       const values = [
         identity.date,
         broadcastTimeLabel(row),
-        elapsedLabel(durationMinutes(row)),
+        durationLabel(durationMinutes(row)),
         numberText(average),
         numberText(row?.listener_min),
         numberText(row?.listener_max),
@@ -141,11 +101,11 @@ import {
       ];
       const tableRow = document.createElement('tr');
       for (const value of values) tableRow.appendChild(createCell(value));
-      tableRow.appendChild(createSourceCell(row?.source_url));
+      tableRow.appendChild(createOfficialSourceCell(row?.source_url));
       fragment.appendChild(tableRow);
     }
 
-    if (!ordered.length) appendEmptyTableRow(fragment, 'データがありません。', VISIBLE_HEADERS.length);
+    if (!ordered.length) appendEmptyTableRow(fragment, 'データがありません。', OFFICIAL_PARTY_HEADERS.length);
 
     head.replaceChildren(headRow);
     body.replaceChildren(fragment);

@@ -5,6 +5,7 @@ import test from 'node:test';
 const historyApi = readFileSync(new URL('../functions/api/history.js', import.meta.url), 'utf8');
 const historyMain = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const table = readFileSync(new URL('../public/history/history-broadcast-table.js', import.meta.url), 'utf8');
+const partyUi = readFileSync(new URL('../public/official-listening-party-ui.js', import.meta.url), 'utf8');
 const chart = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
 
 test('official listening-party API returns a complete materialized server-side read model', () => {
@@ -23,12 +24,11 @@ test('official listening-party table renders final fields directly without hidde
   for (const field of ['listener_avg', 'listener_min', 'listener_max', 'distinct_tracks', 'estimated_streams', 'source_url']) {
     assert.match(table, new RegExp(field));
   }
-  for (const label of ['平均同接', '最小同接', '最大同接', '楽曲数', '推定再生数', '放送内容', 'イベント名', '出典']) {
-    assert.match(table, new RegExp(label));
+  for (const label of ['平均同接', '最小同接', '最大同接', '楽曲数', '推定再生数', '放送内容', 'イベント名', '出典', '時間帯', '所要時間']) {
+    assert.match(partyUi, new RegExp(label));
   }
   assert.doesNotMatch(table, /comment_count|コメント数/);
-  assert.match(table, /時間帯/);
-  assert.match(table, /所要時間/);
+  assert.match(table, /createOfficialPartyHeaderRow/);
   assert.doesNotMatch(table, /TECHNICAL_HEADERS|OFFICIAL_NEWS|開始日時（UTC）/);
   assert.doesNotMatch(table, /setTimeout\(\(\) => render|more'\)\?\.addEventListener/);
 });

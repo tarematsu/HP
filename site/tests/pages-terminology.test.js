@@ -14,6 +14,7 @@ const historyEntry = readFileSync(new URL('../public/history/history-main.js', i
 const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 const ranking = readFileSync(new URL('../public/history/history-ranking-all-host-table.js', import.meta.url), 'utf8');
 const official = readFileSync(new URL('../public/history/history-broadcast-table.js', import.meta.url), 'utf8');
+const officialUi = readFileSync(new URL('../public/official-listening-party-ui.js', import.meta.url), 'utf8');
 const unofficial = readFileSync(new URL('../public/unofficial-listening-parties.js', import.meta.url), 'utf8');
 const likes = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
 
@@ -43,8 +44,9 @@ test('history renderer owns final totals, growth, tracks, and ranking terminolog
 
 test('official and unofficial listening-party tables use event-specific column names', () => {
   for (const label of ['時間帯', '所要時間', '楽曲数', 'イベント名']) {
-    assert.match(official, new RegExp(label));
+    assert.match(officialUi, new RegExp(label));
   }
+  assert.match(official, /createOfficialPartyHeaderRow/);
   for (const label of ['開始時刻', 'イベント名', '開催チャンネル']) {
     assert.match(unofficial, new RegExp(label));
   }

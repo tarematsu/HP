@@ -5,6 +5,13 @@ import {
   integerFormat as integer,
 } from './dashboard-ui-common.js?v=20260930.1';
 import { downloadCsv } from './csv-download.js?v=20261001.1';
+import {
+  createOfficialPartyHeaderRow,
+  createOfficialSourceCell,
+  durationLabel,
+  OFFICIAL_PARTY_HEADERS,
+  splitOfficialEventName,
+} from './official-listening-party-ui.js?v=20261001.1';
 
 const API_URL = '/api/nogizaka-listening-party';
 const MIN_REFRESH_MS = 15_000;
@@ -41,16 +48,6 @@ function epoch(value) {
 function clock(value) {
   const timestamp = epoch(value);
   return timestamp == null ? null : jstTime.format(new Date(timestamp)).replace(/\s+/g, '');
-}
-
-function durationLabel(minutes) {
-  const value = finite(minutes);
-  if (value == null || value < 0) return '—';
-  const rounded = Math.round(value);
-  if (rounded < 60) return `${rounded}分`;
-  const hours = Math.floor(rounded / 60);
-  const rest = rounded % 60;
-  return rest ? `${hours}時間${rest}分` : `${hours}時間`;
 }
 
 function durationMinutes(payload) {
@@ -113,46 +110,27 @@ function renderSummary(payload) {
   byId('nogizakaPartyDuration').textContent = durationLabel(durationMinutes(payload));
 }
 
-function splitEvent(row) {
-  const raw = String(row?.event_name || '乃木坂46 公式リスパ').trim();
-  const match = /^\s*(\d{4})[./-](\d{1,2})[./-](\d{1,2})\s*/.exec(raw);
-  if (match) {
-    return {
-      date: `${match[1]}/${String(Number(match[2])).padStart(2, '0')}/${String(Number(match[3])).padStart(2, '0')}`,
-      name: raw.slice(match[0].length).trim() || '乃木坂46 公式リスパ',
-    };
-  }
+function eventIdentity(row) {
   const startedAt = epoch(row?.started_at);
-  return {
-    date: startedAt == null ? '—' : jstDate.format(new Date(startedAt)),
-    name: raw,
-  };
+  return splitOfficialEventName(row?.event_name, {
+    defaultName: '乃木坂46 公式リスパ',
+    fallbackDate: startedAt == null ? '—' : jstDate.format(new Date(startedAt)),
+  });
 }
 
 function renderTable(payload) {
   const head = byId('nogizakaPartyThead');
   const body = byId('nogizakaPartyTbody');
   if (!head || !body) return;
-  const headers = [
-    '日付', '時間帯', '所要時間', '平均同接', '最小同接', '最大同接',
-    '楽曲数', '推定再生数', '放送内容', 'イベント名', '出典',
-  ];
-  const headRow = document.createElement('tr');
-  for (const label of headers) {
-    const th = document.createElement('th');
-    th.scope = 'col';
-    th.textContent = label;
-    headRow.appendChild(th);
-  }
-  head.replaceChildren(headRow);
+  head.replaceChildren(createOfficialPartyHeaderRow());
 
   const row = payload?.row;
   if (!row) {
-    appendEmptyTableRow(body, 'データがありません。', headers.length, { replace: true });
+    appendEmptyTableRow(body, 'データがありません。', OFFICIAL_PARTY_HEADERS.length, { replace: true });
     return;
   }
 
-  const identity = splitEvent(row);
+  const identity = eventIdentity(row);
   const start = clock(row.started_at);
   const end = clock(row.ended_at);
   const timeRange = start ? `${start}-${end || (payload.collection_active ? '現在' : '—')}` : '—';
@@ -174,16 +152,7 @@ function renderTable(payload) {
     td.textContent = String(value ?? '—');
     tr.appendChild(td);
   }
-  const sourceCell = document.createElement('td');
-  if (row.source_url) {
-    const link = document.createElement('a');
-    link.href = row.source_url;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    link.textContent = '公式告知';
-    sourceCell.appendChild(link);
-  } else sourceCell.textContent = '—';
-  tr.appendChild(sourceCell);
+  tr.appendChild(createOfficialSourceCell(row.source_url));
   body.replaceChildren(tr);
 }
 
@@ -272,8 +241,7 @@ function drawChart(payload) {
 function exportCsv() {
   const row = latestPayload?.row;
   if (!row) return;
-  const identity = splitEvent(row);
-  const headers = ['日付', '時間帯', '所要時間', '平均同接', '最小同接', '最大同接', '楽曲数', '推定再生数', '放送内容', 'イベント名', '出典'];
+  const identity = eventIdentity(row);
   const start = clock(row.started_at);
   const end = clock(row.ended_at);
   const values = [
@@ -286,7 +254,7 @@ function exportCsv() {
   ];
   downloadCsv(
     `nogizaka-listening-party-${latestPayload.date || 'today'}.csv`,
-    [headers, values],
+    [OFFICIAL_PARTY_HEADERS, values],
     { quoteAll: false, trailingNewline: true },
   );
 }
