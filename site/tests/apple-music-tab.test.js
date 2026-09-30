@@ -113,7 +113,8 @@ test('Apple Music regional list is Japan-first and keeps other-region-only songs
   assert.match(runtime, /aBest - bBest \|\| aAverage - bAverage/);
   assert.match(runtime, /replaceTableHeader\(thead, \['順位', '曲名'/);
   assert.match(runtime, /appendTableRow\(tbody, \[/);
-  assert.match(runtime, /rank == null \? '-' : String\(rank\)/);
+  assert.match(runtime, /text: item\.ranks\.get\(region\.code\) \?\? '-'/);
+  assert.match(runtime, /className: 'apple-rank-number'/);
   assert.match(tableDom, /export function replaceTableHeader\(/);
 });
 
