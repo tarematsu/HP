@@ -52,6 +52,13 @@ mountDashboardShell({
         chartHtml: '<div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="最新日の全曲合計再生数前日比が大きい女性アイドル上位10組の推移"></div>',
       })}
       ${dashboardChartCard({
+        title: 'Spotify 月間リスナー推移（上位10組）',
+        titleId: 'spotifyMonthlyListenerTrendTitle',
+        kicker: 'MONTHLY LISTENERS',
+        className: 'spotify-trend-panel',
+        chartHtml: '<img class="chart-fit" src="/api/spotify-monthly-listeners?format=svg" alt="Spotify月間リスナー推移">',
+      })}
+      ${dashboardChartCard({
         title: 'Spotify 今年リリース上位10曲合計の再生数前日比推移（上位10組）',
         titleId: 'spotifyTop10YearTrendTitle',
         kicker: 'FEMALE IDOLS',

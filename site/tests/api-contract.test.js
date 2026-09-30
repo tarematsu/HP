@@ -21,7 +21,7 @@ function unique(values, label) {
 test('API contract contains unique canonical paths only', () => {
   const canonical = canonicalApiPaths();
   unique(canonical, 'canonical API paths');
-  assert.equal(canonical.length, 17);
+  assert.equal(canonical.length, 18);
   assert.ok(canonical.includes('/api/dashboard-details'));
   assert.ok(canonical.includes('/api/hinata'));
   assert.ok(canonical.includes('/api/history-current'));
@@ -30,6 +30,7 @@ test('API contract contains unique canonical paths only', () => {
   assert.ok(canonical.includes('/api/nogizaka-listening-party'));
   assert.ok(canonical.includes('/api/first-week-comparison'));
   assert.ok(canonical.includes('/api/spotify-playcounts'));
+  assert.ok(canonical.includes('/api/spotify-monthly-listeners'));
   assert.ok(canonical.includes('/api/amazon-music'));
   assert.ok(canonical.includes('/api/apple-music'));
   assert.ok(canonical.includes('/api/followers'));
@@ -78,6 +79,7 @@ test('current minute history uses a 30-second shared cache', () => {
   assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/hinata')), 300);
   assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/first-week-comparison')), 3600);
   assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/spotify-playcounts?artist=sakurazaka46')), 300);
+  assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/spotify-monthly-listeners?format=svg')), 300);
   assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/amazon-music')), 300);
   assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/apple-music')), 300);
   assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/followers')), 300);

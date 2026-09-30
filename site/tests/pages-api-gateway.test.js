@@ -25,6 +25,7 @@ const CANONICAL_PATHS = [
   '/api/host-history',
   '/api/first-week-comparison',
   '/api/spotify-playcounts',
+  '/api/spotify-monthly-listeners',
   '/api/amazon-music',
   '/api/apple-music',
   '/api/followers',

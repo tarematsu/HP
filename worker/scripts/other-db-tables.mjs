@@ -45,6 +45,7 @@ export const OTHER_REQUIRED_TABLES = Object.freeze([
   'sh_spotify_playcount_current',
   'sh_spotify_playcount_daily',
   'sh_spotify_artist_daily',
+  'sh_spotify_artist_monthly_listeners_daily',
   'sh_spotify_playcount_candidates',
   'sh_spotify_collection_runs',
   'sh_spotify_collection_album_runs',
