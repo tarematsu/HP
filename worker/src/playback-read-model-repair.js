@@ -88,10 +88,12 @@ async function publishTrackHistoryStatus(env, status) {
 async function repairTrackHistoryStatusRanking(env, db) {
   let row;
   try {
-    row = await db.prepare(`SELECT payload_json
+    const statement = db.prepare(`SELECT payload_json
       FROM sh_pages_payload_read_model
       WHERE model_key='track-history-status'
-      LIMIT 1`).first();
+      LIMIT 1`);
+    if (typeof statement?.first !== 'function') return 0;
+    row = await statement.first();
   } catch (error) {
     if (/no such table|no such column/i.test(String(error?.message || error))) return 0;
     throw error;
@@ -107,13 +109,13 @@ async function repairTrackHistoryStatusRanking(env, db) {
       WHERE model_key='track-history-status'`)
       .bind(JSON.stringify(nextStatus)).run();
   }
-  const published = await publishTrackHistoryStatus(env, nextStatus);
-  return changed || published ? 1 : 0;
+  await publishTrackHistoryStatus(env, nextStatus);
+  return changed ? 1 : 0;
 }
 
 export async function repairPlaybackReadModels(env) {
   const db = env?.MINUTE_DB;
-  if (!db) return { repaired: 0, status_repaired: 0, skipped: true, reason: 'db-binding-missing' };
+  if (!db) return { repaired: 0, skipped: true, reason: 'db-binding-missing' };
   const current = await db.prepare(`SELECT channel_id,queue_json
     FROM sh_queue_read_model_current WHERE queue_json IS NOT NULL`).all();
   let repaired = 0;
@@ -136,6 +138,6 @@ export async function repairPlaybackReadModels(env) {
       .bind(JSON.stringify(canonicalQueue), row.channel_id).run();
     repaired += 1;
   }
-  const statusRepaired = await repairTrackHistoryStatusRanking(env, db);
-  return { repaired, status_repaired: statusRepaired, skipped: false };
+  await repairTrackHistoryStatusRanking(env, db);
+  return { repaired, skipped: false };
 }
