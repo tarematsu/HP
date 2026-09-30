@@ -12,6 +12,7 @@ on:
     paths:
       - '.github/workflows/run-runtime-offline-maintenance.yml'
       - 'scripts/cloudflare-d1-write-guard.mjs'
+      - 'worker/scripts/detect-pages-read-model-revision-drift-actions.mjs'
       - 'worker/scripts/publish-recent-daily-summaries-actions.mjs'
       - 'worker/scripts/run-minute-facts-gap-scan-actions.mjs'
       - 'worker/scripts/run-runtime-offline-maintenance-actions.mjs'
@@ -43,6 +44,7 @@ jobs:
       BUDDIES_DATABASE_NAME: stationhead-buddies
       FACTS_DATABASE_NAME: stationhead-minute
       OTHER_DATABASE_NAME: stationhead-other
+      PAGES_RESPONSE_BUCKET: sh-pages-responses
       RUNTIME_MAINTENANCE_DEADLINE_MS: '720000'
       D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT: '4000'
       # Reserve 750k daily rows for higher-priority read-model publication.
@@ -77,13 +79,6 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Install Worker dependencies
         run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Capture Pages source revisions before maintenance
-        shell: bash
-        run: |
-          set -euo pipefail
-          npx wrangler d1 execute "$OTHER_DATABASE_NAME" --remote --json --command \
-            "SELECT model_key,revision FROM sh_read_model_revision WHERE model_key IN ('history:daily','history:weekly','history:monthly','history:broadcasts','host-history:summary') ORDER BY model_key" \
-            > pages-revisions-before.json
       - name: Scan minute-fact gaps, publish summaries, then run budget-aware maintenance
         shell: bash
         env:
@@ -103,39 +98,20 @@ jobs:
           fi
           node scripts/publish-recent-daily-summaries-actions.mjs 2>&1 | tee -a runtime-offline-maintenance.log
           node scripts/run-runtime-offline-maintenance-actions.mjs 2>&1 | tee -a runtime-offline-maintenance.log
-      - name: Detect changed Pages source revisions
-        id: pages-revision-diff
+      - name: Detect unpublished Pages source revisions
+        id: pages-revision-drift
         shell: bash
         run: |
           set -euo pipefail
-          npx wrangler d1 execute "$OTHER_DATABASE_NAME" --remote --json --command \
-            "SELECT model_key,revision FROM sh_read_model_revision WHERE model_key IN ('history:daily','history:weekly','history:monthly','history:broadcasts','host-history:summary') ORDER BY model_key" \
-            > pages-revisions-after.json
-          due_keys="$(node - <<'NODE'
-          const fs = require('node:fs');
-          function rows(path) {
-            const payload = JSON.parse(fs.readFileSync(path, 'utf8'));
-            const blocks = Array.isArray(payload) ? payload : [payload];
-            return blocks.flatMap((block) => Array.isArray(block?.results) ? block.results : []);
-          }
-          const before = new Map(rows('pages-revisions-before.json')
-            .map((row) => [String(row.model_key || ''), Number(row.revision) || 0]));
-          const after = new Map(rows('pages-revisions-after.json')
-            .map((row) => [String(row.model_key || ''), Number(row.revision) || 0]));
-          const changed = [...after.keys()]
-            .filter((key) => after.get(key) !== before.get(key))
-            .sort();
-          process.stdout.write(changed.join(','));
-          NODE
-          )"
+          due_keys="$(node scripts/detect-pages-read-model-revision-drift-actions.mjs)"
           echo "due_keys=$due_keys" >> "$GITHUB_OUTPUT"
-          echo "Pages read-model revision changes: ${due_keys:-none}"
+          echo "Pages read-model revision drift: ${due_keys:-none}"
       - name: Trigger changed Pages read models
-        if: steps.pages-revision-diff.outputs.due_keys != ''
+        if: steps.pages-revision-drift.outputs.due_keys != ''
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          DUE_KEYS: ${{ steps.pages-revision-diff.outputs.due_keys }}
+          DUE_KEYS: ${{ steps.pages-revision-drift.outputs.due_keys }}
         run: |
           set -euo pipefail
           payload="$(jq -nc --arg keys "$DUE_KEYS" '{ref:"main",inputs:{force_all:"false",due_keys:$keys}}')"
