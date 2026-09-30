@@ -6,6 +6,7 @@ import {
   captureAmazon150kBoundaryCheckpoint,
   continueAmazon150kExtension,
 } from './amazon-music-150k-extension.js';
+import { publishAmazonMusicSakamichiModel } from './amazon-music-sakamichi-publisher.js';
 import { recordAmazonTop500Check } from './amazon-music-top500-history.js';
 import { collectAppleMusicSnapshot } from './apple-music-collector.js';
 import { appleMusicFetch } from './apple-music-fetch.js';
@@ -73,14 +74,16 @@ async function continueAmazonMusic(env, scheduledTime) {
   // remains published until the extension itself finishes.
   const extension = await continueAmazon150kExtension(serviceEnv, scheduledTime);
   if (extension?.handled) {
+    const sakamichi = await publishAmazonMusicSakamichiModel(serviceEnv, scheduledTime);
     const persisted = await persistAmazonMusicModelToOther(env, scheduledTime);
-    return { ...extension, other_db: persisted };
+    return { ...extension, sakamichi, other_db: persisted };
   }
 
   const result = await continueQueuedAmazon100kScan(serviceEnv, scheduledTime);
   const boundary = await captureAmazon150kBoundaryCheckpoint(serviceEnv, scheduledTime);
+  const sakamichi = await publishAmazonMusicSakamichiModel(serviceEnv, scheduledTime);
   const persisted = await persistAmazonMusicModelToOther(env, scheduledTime);
-  return { ...result, ...boundary, other_db: persisted };
+  return { ...result, ...boundary, sakamichi, other_db: persisted };
 }
 
 export function amazonMusicDueTasks(scheduledTime) {
