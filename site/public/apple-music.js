@@ -111,7 +111,7 @@ function renderRankChart(payload) {
   if (!series.length || !dates.length) {
     const empty = document.createElement('p');
     empty.className = 'apple-rank-empty';
-    empty.textContent = '日本の順位履歴はまだありません。';
+    empty.textContent = '順位履歴はまだありません。';
     container.append(empty);
     return;
   }
