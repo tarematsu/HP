@@ -9,6 +9,7 @@ import {
   amazonMusicSakamichiScanState,
   publishAmazonMusicSakamichiModel,
 } from '../src/amazon-music-sakamichi-publisher.js';
+import { isAmazonMusicTitleTrack } from '../src/amazon-music-title-tracks.js';
 
 function fakeR2(initial = {}) {
   const store = new Map(Object.entries(initial).map(([key, value]) => [key, JSON.stringify(value)]));
@@ -22,11 +23,20 @@ function fakeR2(initial = {}) {
         async text() { return value; },
       };
     },
-    async put(key, value) {
-      store.set(key, String(value));
-    },
+    async put(key, value) { store.set(key, String(value)); },
   };
 }
+
+test('current Sakamichi title tracks are classified in the Worker', () => {
+  for (const [group_name, title] of [
+    ['乃木坂46', '是非に及ばず'],
+    ['櫻坂46', 'Lonesome rabbit'],
+    ['櫻坂46', '愛MUST BE'],
+    ['日向坂46', 'Kind of love'],
+    ['日向坂46', 'イチャイチャ虫'],
+  ]) assert.equal(isAmazonMusicTitleTrack({ group_name, title }), true);
+  assert.equal(isAmazonMusicTitleTrack({ group_name: '櫻坂46', title: '愛MUST BE -OFF VOCAL ver.-' }), false);
+});
 
 test('Sakamichi scan state follows the matching 150k extension completion status', () => {
   const deep = { cycle: 7, scanned_tracks: 100000, complete: true };
@@ -92,5 +102,7 @@ test('publisher exposes Nogizaka, Sakurazaka and Hinatazaka tracks in one read m
   assert.equal(model.scan.complete, true);
   assert.deepEqual(new Set(model.tracks.map((track) => track.group_name)), new Set(['乃木坂46', '櫻坂46', '日向坂46']));
   assert.equal(model.tracks.find((track) => track.amazon_music_id === 'HINA2').amazon_rank, 120500);
+  assert.equal(model.tracks.find((track) => track.amazon_music_id === 'NOGI1').is_title_track, true);
+  assert.equal(model.tracks.find((track) => track.amazon_music_id === 'SAKU1').is_title_track, true);
   assert.deepEqual(new Set(model.history.at(-1).tracks.map((track) => track.group_name)), new Set(['乃木坂46', '櫻坂46', '日向坂46']));
 });
