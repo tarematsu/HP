@@ -17,6 +17,11 @@ function integer(value) {
   return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
 }
 
+function positiveInteger(value) {
+  const parsed = integer(value);
+  return parsed != null && parsed > 0 ? parsed : null;
+}
+
 function normalizedIsrc(value) {
   return String(value || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
 }
@@ -36,6 +41,7 @@ function mergeRow(current, rawRow) {
   return {
     ...row,
     ...current,
+    track_id: positiveInteger(current.track_id) ?? positiveInteger(row.track_id),
     position: integer(current.position) ?? integer(row.position),
     queue_track_id: integer(current.queue_track_id) ?? integer(row.queue_track_id),
     stationhead_track_id: integer(current.stationhead_track_id)
@@ -50,10 +56,11 @@ function mergeRow(current, rawRow) {
   };
 }
 
-async function stationheadRows(db, stationheadTrackIds) {
+async function stationheadRows(db, stationheadTrackIds, includeTrackId = true) {
   if (!db?.prepare || !stationheadTrackIds.length) return [];
   try {
-    const statement = db.prepare(`SELECT stationhead_track_id,spotify_id,isrc,
+    const statement = db.prepare(`SELECT ${includeTrackId ? 'id' : 'NULL'} AS track_id,
+        stationhead_track_id,spotify_id,isrc,
         NULL AS title,NULL AS artist,NULL AS album_name,NULL AS thumbnail_url,
         last_seen_at AS fetched_at
       FROM sh_tracks
@@ -68,7 +75,7 @@ async function stationheadRows(db, stationheadTrackIds) {
   }
 }
 
-async function latestQueueIdentityRows(db, positions) {
+async function latestQueueIdentityRows(db, positions, includeTrackId = true) {
   if (!db?.prepare || !positions.length) return [];
   try {
     const statement = db.prepare(`WITH latest_queue AS (
@@ -78,7 +85,8 @@ async function latestQueueIdentityRows(db, positions) {
         ORDER BY observed_at DESC
         LIMIT 1
       )
-      SELECT q.position,q.queue_track_id,q.stationhead_track_id,q.spotify_id,q.isrc,
+      SELECT ${includeTrackId ? 'q.track_id' : 'NULL'} AS track_id,
+        q.position,q.queue_track_id,q.stationhead_track_id,q.spotify_id,q.isrc,
         NULL AS title,NULL AS artist,NULL AS album_name,NULL AS thumbnail_url,
         q.observed_at AS fetched_at
       FROM latest_queue l
@@ -96,6 +104,7 @@ async function latestQueueIdentityRows(db, positions) {
 }
 
 function collectKeys(tracks, limit) {
+  const trackIds = new Set();
   const spotifyIds = new Set();
   const isrcs = new Set();
   const stationheadTrackIds = new Set();
@@ -103,30 +112,33 @@ function collectKeys(tracks, limit) {
   for (let index = 0; index < (tracks || []).length; index += 1) {
     const track = tracks[index];
     if (!track || !trackNeedsHydration(track)) continue;
+    const trackId = positiveInteger(track.track_id);
     const spotifyId = text(track.spotify_id);
     const isrc = normalizedIsrc(track.isrc);
-    const stationheadTrackId = integer(track.stationhead_track_id);
+    const stationheadTrackId = positiveInteger(track.stationhead_track_id);
 
+    if (trackIds.size < limit && trackId != null) trackIds.add(trackId);
     if (spotifyIds.size < limit && spotifyId) spotifyIds.add(spotifyId);
     if (isrcs.size < limit && isrc) isrcs.add(isrc);
     if (stationheadTrackIds.size < limit && stationheadTrackId != null) {
       stationheadTrackIds.add(stationheadTrackId);
     }
-    if (!spotifyId && !isrc && stationheadTrackId == null && positions.size < limit) {
+    if (trackId == null && !spotifyId && !isrc && stationheadTrackId == null && positions.size < limit) {
       positions.add(integer(track.position) ?? index);
     }
-    if (spotifyIds.size === limit
+    if (trackIds.size === limit
+        && spotifyIds.size === limit
         && isrcs.size === limit
         && stationheadTrackIds.size === limit
         && positions.size === limit) break;
   }
-  return { spotifyIds, isrcs, stationheadTrackIds, positions };
+  return { trackIds, spotifyIds, isrcs, stationheadTrackIds, positions };
 }
 
 function mergeIdentityRows(rows) {
   const byStationhead = new Map();
   for (const rawRow of rows || []) {
-    const id = integer(rawRow?.stationhead_track_id);
+    const id = positiveInteger(rawRow?.stationhead_track_id);
     if (id == null) continue;
     byStationhead.set(id, mergeRow(byStationhead.get(id), rawRow));
   }
@@ -144,18 +156,23 @@ function mergeQueueIdentityRows(rows) {
 }
 
 function enrichIdentityRows(identityRows, metadataRows) {
+  const byTrackId = new Map();
   const bySpotify = new Map();
   const byIsrc = new Map();
   for (const row of metadataRows || []) {
+    const trackId = positiveInteger(row?.track_id);
     const spotifyId = text(row?.spotify_id);
     const isrc = normalizedIsrc(row?.isrc);
+    if (trackId != null) byTrackId.set(trackId, mergeRow(byTrackId.get(trackId), row));
     if (spotifyId) bySpotify.set(spotifyId, mergeRow(bySpotify.get(spotifyId), row));
     if (isrc) byIsrc.set(isrc, mergeRow(byIsrc.get(isrc), row));
   }
   return identityRows.map((row) => {
+    const byTrackRow = byTrackId.get(positiveInteger(row?.track_id));
     const byIsrcRow = byIsrc.get(normalizedIsrc(row?.isrc));
     const bySpotifyRow = bySpotify.get(text(row?.spotify_id));
     let enriched = row;
+    if (byTrackRow) enriched = mergeRow(enriched, byTrackRow);
     if (bySpotifyRow) enriched = mergeRow(enriched, bySpotifyRow);
     if (byIsrcRow) enriched = mergeRow(enriched, byIsrcRow);
     return enriched;
@@ -165,19 +182,21 @@ function enrichIdentityRows(identityRows, metadataRows) {
 export async function loadPlaybackReadModelTrackMetadata(env, tracks, limit = 80) {
   const boundedLimit = Math.max(1, Math.trunc(Number(limit) || 80));
   const keys = collectKeys(tracks, boundedLimit);
-  if (!keys.spotifyIds.size && !keys.isrcs.size
+  if (!keys.trackIds.size && !keys.spotifyIds.size && !keys.isrcs.size
       && !keys.stationheadTrackIds.size && !keys.positions.size) return [];
 
   const positions = [...keys.positions];
-  const localQueueRows = await latestQueueIdentityRows(env?.MINUTE_DB, positions);
+  const localQueueRows = await latestQueueIdentityRows(env?.MINUTE_DB, positions, true);
   const sourceQueueRows = env?.BUDDIES_DB && env.BUDDIES_DB !== env.MINUTE_DB
-    ? await latestQueueIdentityRows(env.BUDDIES_DB, positions)
+    ? await latestQueueIdentityRows(env.BUDDIES_DB, positions, false)
     : [];
   const queueIdentityRows = mergeQueueIdentityRows([...localQueueRows, ...sourceQueueRows]);
   for (const row of queueIdentityRows) {
-    const stationheadTrackId = integer(row.stationhead_track_id);
+    const trackId = positiveInteger(row.track_id);
+    const stationheadTrackId = positiveInteger(row.stationhead_track_id);
     const spotifyId = text(row.spotify_id);
     const isrc = normalizedIsrc(row.isrc);
+    if (trackId != null && keys.trackIds.size < boundedLimit) keys.trackIds.add(trackId);
     if (stationheadTrackId != null && keys.stationheadTrackIds.size < boundedLimit) {
       keys.stationheadTrackIds.add(stationheadTrackId);
     }
@@ -186,21 +205,28 @@ export async function loadPlaybackReadModelTrackMetadata(env, tracks, limit = 80
   }
 
   const stationheadIds = [...keys.stationheadTrackIds];
-  const localIdentityRows = await stationheadRows(env?.MINUTE_DB, stationheadIds);
+  const localIdentityRows = await stationheadRows(env?.MINUTE_DB, stationheadIds, true);
   const sourceIdentityRows = env?.BUDDIES_DB && env.BUDDIES_DB !== env.MINUTE_DB
-    ? await stationheadRows(env.BUDDIES_DB, stationheadIds)
+    ? await stationheadRows(env.BUDDIES_DB, stationheadIds, false)
     : [];
   const stationheadIdentityRows = mergeIdentityRows([...localIdentityRows, ...sourceIdentityRows]);
 
   for (const row of stationheadIdentityRows) {
+    const trackId = positiveInteger(row.track_id);
     const spotifyId = text(row.spotify_id);
     const isrc = normalizedIsrc(row.isrc);
+    if (trackId != null && keys.trackIds.size < boundedLimit) keys.trackIds.add(trackId);
     if (spotifyId && keys.spotifyIds.size < boundedLimit) keys.spotifyIds.add(spotifyId);
     if (isrc && keys.isrcs.size < boundedLimit) keys.isrcs.add(isrc);
   }
 
-  const metadataRows = (keys.spotifyIds.size || keys.isrcs.size)
-    ? await loadReadModelTrackMetadata(env, [...keys.spotifyIds], [...keys.isrcs])
+  const metadataRows = (keys.trackIds.size || keys.spotifyIds.size || keys.isrcs.size)
+    ? await loadReadModelTrackMetadata(
+      env,
+      [...keys.spotifyIds],
+      [...keys.isrcs],
+      [...keys.trackIds],
+    )
     : [];
   const identityRows = [...queueIdentityRows, ...stationheadIdentityRows];
   const enrichedIdentityRows = enrichIdentityRows(identityRows, metadataRows);
@@ -210,6 +236,7 @@ export async function loadPlaybackReadModelTrackMetadata(env, tracks, limit = 80
 export function attachPlaybackReadModelTrackMetadata(queue, rows = []) {
   if (!queue?.tracks?.length || !rows?.length) return queue;
 
+  const byTrackId = new Map();
   const byPosition = new Map();
   const byQueueTrack = new Map();
   const byStationhead = new Map();
@@ -217,11 +244,13 @@ export function attachPlaybackReadModelTrackMetadata(queue, rows = []) {
   const byIsrc = new Map();
   for (const rawRow of rows) {
     const row = sanitizeMetadataRow(rawRow);
+    const trackId = positiveInteger(row?.track_id);
     const position = integer(row?.position);
     const queueTrackId = integer(row?.queue_track_id);
-    const stationheadTrackId = integer(row?.stationhead_track_id);
+    const stationheadTrackId = positiveInteger(row?.stationhead_track_id);
     const spotifyId = text(row?.spotify_id);
     const isrc = normalizedIsrc(row?.isrc);
+    if (trackId != null) byTrackId.set(trackId, mergeRow(byTrackId.get(trackId), row));
     if (position != null) byPosition.set(position, mergeRow(byPosition.get(position), row));
     if (queueTrackId != null) byQueueTrack.set(queueTrackId, mergeRow(byQueueTrack.get(queueTrackId), row));
     if (stationheadTrackId != null) {
@@ -234,16 +263,18 @@ export function attachPlaybackReadModelTrackMetadata(queue, rows = []) {
   let changed = false;
   const tracks = queue.tracks.map((track, index) => {
     if (!track || typeof track !== 'object') return track;
+    const trackId = positiveInteger(track.track_id);
     const position = integer(track.position) ?? index;
     const queueTrackId = integer(track.queue_track_id);
-    const stationheadTrackId = integer(track.stationhead_track_id);
+    const stationheadTrackId = positiveInteger(track.stationhead_track_id);
     const spotifyId = text(track.spotify_id);
     const isrc = normalizedIsrc(track.isrc);
 
-    let metadata = mergeRow(null, byPosition.get(position));
+    let metadata = mergeRow(null, trackId == null ? null : byTrackId.get(trackId));
+    metadata = mergeRow(metadata, byPosition.get(position));
     const lookupQueueTrackId = queueTrackId ?? integer(metadata?.queue_track_id);
     if (lookupQueueTrackId != null) metadata = mergeRow(metadata, byQueueTrack.get(lookupQueueTrackId));
-    const lookupStationheadTrackId = stationheadTrackId ?? integer(metadata?.stationhead_track_id);
+    const lookupStationheadTrackId = stationheadTrackId ?? positiveInteger(metadata?.stationhead_track_id);
     if (lookupStationheadTrackId != null) {
       metadata = mergeRow(metadata, byStationhead.get(lookupStationheadTrackId));
     }
@@ -257,11 +288,13 @@ export function attachPlaybackReadModelTrackMetadata(queue, rows = []) {
     const artist = trackArtistValue(track.artist) || trackArtistValue(metadata.artist);
     const albumName = text(track.album_name) || text(metadata.album_name);
     const thumbnailUrl = text(track.thumbnail_url) || text(metadata.thumbnail_url);
+    const resolvedTrackId = trackId ?? positiveInteger(metadata.track_id);
     const resolvedQueueTrackId = queueTrackId ?? integer(metadata.queue_track_id);
-    const resolvedStationheadTrackId = stationheadTrackId ?? integer(metadata.stationhead_track_id);
+    const resolvedStationheadTrackId = stationheadTrackId ?? positiveInteger(metadata.stationhead_track_id);
     const resolvedSpotifyId = spotifyId || text(metadata.spotify_id);
     const resolvedIsrc = isrc || normalizedIsrc(metadata.isrc) || null;
-    const identityChanged = (resolvedQueueTrackId != null && resolvedQueueTrackId !== queueTrackId)
+    const identityChanged = (resolvedTrackId != null && resolvedTrackId !== trackId)
+      || (resolvedQueueTrackId != null && resolvedQueueTrackId !== queueTrackId)
       || (resolvedStationheadTrackId != null && resolvedStationheadTrackId !== stationheadTrackId)
       || (resolvedSpotifyId != null && resolvedSpotifyId !== spotifyId)
       || (resolvedIsrc != null && resolvedIsrc !== isrc);
@@ -280,6 +313,7 @@ export function attachPlaybackReadModelTrackMetadata(queue, rows = []) {
       album_name: albumName,
       thumbnail_url: thumbnailUrl,
     };
+    if (resolvedTrackId != null) result.track_id = resolvedTrackId;
     if (resolvedQueueTrackId != null) result.queue_track_id = resolvedQueueTrackId;
     if (resolvedStationheadTrackId != null) result.stationhead_track_id = resolvedStationheadTrackId;
     if (resolvedSpotifyId != null) result.spotify_id = resolvedSpotifyId;

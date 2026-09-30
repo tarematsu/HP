@@ -58,6 +58,7 @@ function collectedMetadata(track, isrc, spotifyId) {
 }
 
 function compactTrack(track, isrc, spotifyId) {
+  const identifiableByProvider = Boolean(isrc || spotifyId);
   return {
     position: integer(track?.position),
     queue_track_id: integer(track?.queue_track_id),
@@ -66,6 +67,12 @@ function compactTrack(track, isrc, spotifyId) {
     isrc,
     duration_ms: integer(track?.duration_ms),
     bite_count: integer(track?.bite_count),
+    ...(!identifiableByProvider ? {
+      title: text(track?.title, 500),
+      artist: text(track?.artist, 500),
+      display_title: text(track?.display_title, 1_000),
+      thumbnail_url: text(track?.thumbnail_url),
+    } : {}),
   };
 }
 

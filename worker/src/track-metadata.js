@@ -71,8 +71,9 @@ export async function fetchTrackMetadata(track, config) {
 function completeMetadata(value, spotifyId = '') {
   const title = String(value?.title || '').trim();
   const artist = String(value?.artist || '').trim();
+  const thumbnailUrl = String(value?.thumbnail_url || '').trim();
   return Boolean(
-    title && artist
+    title && artist && thumbnailUrl
     && title !== spotifyId
     && artist !== spotifyId
     && !/^JP[A-Z0-9]{8,}$/i.test(artist),

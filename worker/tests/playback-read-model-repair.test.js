@@ -69,6 +69,7 @@ test('metadata sync repairs an already persisted sparse playback queue', async (
   const saved = JSON.parse(updates[0].bindings[0]);
   assert.deepEqual(saved.tracks[0], {
     position: 0,
+    track_id: 1,
     spotify_id: 'sp1',
     isrc: 'JPX1',
     title: 'Song',
@@ -99,6 +100,7 @@ test('playback repair does not blend BUDDIES metadata into an available canonica
   assert.deepEqual(result, { repaired: 1, skipped: false });
   assert.deepEqual(sourceCalls, []);
   const saved = JSON.parse(updates[0].bindings[0]);
+  assert.equal(saved.tracks[0].track_id, 1);
   assert.equal(saved.tracks[0].title, 'Canonical Song');
   assert.equal(saved.tracks[0].artist, 'Canonical Artist');
   assert.equal(saved.tracks[0].thumbnail_url, 'https://img.example/canonical.jpg');
