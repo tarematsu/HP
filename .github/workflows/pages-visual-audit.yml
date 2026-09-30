@@ -15,35 +15,22 @@ jobs:
   capture:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: worker/package-lock.json
-
-      - name: Resolve Cloudflare account context
-        uses: ./.github/actions/cloudflare-context
-        with:
-          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
-
-      - name: Install Worker dependencies
-        working-directory: worker
-        run: npm ci --prefer-offline --no-audit --no-fund
-
-      - name: Query production Nogizaka announcement rows
-        working-directory: worker
+      - name: Inspect Nogizaka official HTML with production headers
         shell: bash
         run: |
           set -euo pipefail
-          npx wrangler d1 execute stationhead-other --remote --yes --json --command "SELECT id,news_id,published_date,title,event_name,scheduled_at,detected_at,updated_at,status FROM sh_nogizaka_official_news_announcements WHERE news_id='102280' OR title LIKE '%STATIONHEAD%' ORDER BY id DESC LIMIT 20"
-          echo '--- monitor state ---'
-          npx wrangler d1 execute stationhead-other --remote --yes --json --command "SELECT id,last_check_at,last_success_at,last_error,updated_at FROM sh_official_news_monitor_state WHERE id='official-news:nogizaka46smej'"
-          # Intentionally fail after the read so this temporary diagnostic cannot be mistaken for a passing audit.
+          ua='stationhead-monitor/1.0'
+          curl --fail --silent --show-error -A "$ua" -H 'Accept: text/html,application/xhtml+xml' 'https://www.nogizaka46.com/s/n46/news/list' -o /tmp/list.html
+          curl --fail --silent --show-error -A "$ua" -H 'Accept: text/html,application/xhtml+xml' 'https://www.nogizaka46.com/s/n46/news/detail/102280' -o /tmp/detail.html
+          echo "list_bytes=$(wc -c </tmp/list.html) detail_bytes=$(wc -c </tmp/detail.html)"
+          echo '--- list matches ---'
+          grep -Eio '.{0,120}(102280|STATIONHEAD).{0,180}' /tmp/list.html | head -20 || true
+          echo '--- detail matches ---'
+          grep -Eio '.{0,120}(2026年9月30日|21:30|STATIONHEAD).{0,180}' /tmp/detail.html | head -30 || true
+          echo '--- href forms ---'
+          grep -Eo 'href=["'"'][^"'"']*102280[^"'"']*["'"']' /tmp/list.html | head -10 || true
           exit 1
