@@ -81,16 +81,18 @@ function canonicalPlaylistUrl(value) {
 }
 
 export function extractAppleMusicPlaylistLinks(html) {
-  const source = String(html || '');
+  const source = String(html || '')
+    .replaceAll('\\/', '/')
+    .replaceAll('\\u002F', '/');
   const seen = new Set();
   const links = [];
   const patterns = [
     /href=["']([^"']*\/playlist\/[^"']*\/pl\.[A-Za-z0-9]+[^"']*)["']/giu,
-    /"(https:\\?\/\\?\/music\.apple\.com\\?\/jp\\?\/playlist\\?\/[^\"]*\\?\/pl\.[A-Za-z0-9]+[^\"]*)"/giu,
+    /(https:\/\/music\.apple\.com\/[a-z]{2}\/playlist\/[^"'<>\s]*\/pl\.[A-Za-z0-9]+[^"'<>\s]*)/giu,
   ];
   for (const pattern of patterns) {
     for (const match of source.matchAll(pattern)) {
-      const candidate = String(match[1] || '').replaceAll('\\/', '/');
+      const candidate = String(match[1] || match[0] || '');
       const url = canonicalPlaylistUrl(candidate);
       if (!url || seen.has(url)) continue;
       seen.add(url);
