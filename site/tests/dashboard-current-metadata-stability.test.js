@@ -7,17 +7,17 @@ const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.me
 const buildScript = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const historyApi = readFileSync(new URL('../functions/api/history.js', import.meta.url), 'utf8');
-const rootPresentation = readFileSync(new URL('../public/dashboard-root-presentation.css', import.meta.url), 'utf8');
+const presentation = readFileSync(new URL('../public/dashboard-presentation.css', import.meta.url), 'utf8');
 const officialCopyUrl = new URL('../public/official-listening-party-copy.js', import.meta.url);
 
 test('dashboard metrics use one initial bundled stylesheet rule across views', () => {
   assert.match(html, /assets\/dashboard\.min\.css\?v=\d{8}\.\d+/);
-  assert.match(buildScript, /'dashboard-root-presentation\.css'/);
+  assert.match(buildScript, /'dashboard-presentation\.css'/);
   assert.doesNotMatch(metrics, /dashboard-current-metric-style|ensureRootPresentationStylesheet|createElement\('link'\)/);
-  assert.match(rootPresentation, /\.dashboard-view \.metrics \.metric-value > strong/);
-  assert.doesNotMatch(rootPresentation, /#currentView \.metrics/);
-  assert.match(rootPresentation, /font-size: clamp\(1\.75rem, 5\.8vw, 2\.5rem\) !important/);
-  assert.match(rootPresentation, /@media \(max-width: 760px\)[\s\S]*font-size: clamp\(1rem, 5vw, 1\.4rem\) !important/);
+  assert.match(presentation, /\.dashboard-view \.metrics \.metric-value > strong/);
+  assert.doesNotMatch(presentation, /#currentView \.metrics/);
+  assert.match(presentation, /font-size: clamp\(1\.75rem, 5\.8vw, 2\.5rem\) !important/);
+  assert.match(presentation, /@media \(max-width: 760px\)[\s\S]*font-size: clamp\(1rem, 5vw, 1\.4rem\) !important/);
 });
 
 test('dashboard does not supplement queue metadata in the browser', () => {
