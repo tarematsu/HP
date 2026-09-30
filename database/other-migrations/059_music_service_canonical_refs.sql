@@ -28,45 +28,45 @@ CREATE INDEX IF NOT EXISTS idx_apple_music_rank_snapshots_region_date
   ON apple_music_rank_snapshots(region_code,snapshot_date DESC);
 
 -- Amazon's public read model remains in R2, while the compact daily ranking
--- snapshot and change-history facts belong in stationhead-other.
+-- snapshot and update/change history belong in stationhead-other.
 CREATE TABLE IF NOT EXISTS amazon_music_rank_snapshots (
   snapshot_date TEXT PRIMARY KEY,
   observed_at INTEGER NOT NULL,
   ranks_json TEXT NOT NULL
 );
 
+-- Keep this schema byte-for-byte compatible with the existing rank-monitor SQL
+-- in stationhead-minute so the routing layer can move writes without changing
+-- the identity resolver.
 CREATE TABLE IF NOT EXISTS amazon_music_chart_change_events (
-  chart_id TEXT NOT NULL,
-  chart_date TEXT NOT NULL,
-  rank INTEGER NOT NULL,
-  group_key TEXT NOT NULL,
-  apple_id TEXT,
-  amazon_music_id TEXT,
-  previous_rank INTEGER,
-  observed_at INTEGER NOT NULL,
-  PRIMARY KEY(chart_id,chart_date,rank,group_key)
+  observed_at INTEGER PRIMARY KEY,
+  chart_key TEXT NOT NULL,
+  previous_hash TEXT NOT NULL,
+  current_hash TEXT NOT NULL,
+  changed_positions INTEGER NOT NULL CHECK(changed_positions >= 0)
 );
 
-CREATE INDEX IF NOT EXISTS idx_amazon_music_change_events_group_time
-  ON amazon_music_chart_change_events(group_key,observed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_amazon_music_chart_change_events_chart_time
+  ON amazon_music_chart_change_events(chart_key,observed_at DESC);
 
 CREATE TABLE IF NOT EXISTS amazon_music_group_rank_history (
-  jst_week TEXT NOT NULL,
-  group_key TEXT NOT NULL,
   observed_at INTEGER NOT NULL,
-  chart_id TEXT NOT NULL,
-  chart_date TEXT NOT NULL,
-  rank INTEGER NOT NULL,
-  previous_rank INTEGER,
-  apple_id TEXT,
-  amazon_music_id TEXT,
+  group_name TEXT NOT NULL CHECK(group_name IN ('櫻坂46', '日向坂46', '乃木坂46')),
+  amazon_music_id TEXT NOT NULL,
   track_id INTEGER,
-  PRIMARY KEY(jst_week,group_key,observed_at,chart_id,rank)
+  rank INTEGER CHECK(rank IS NULL OR rank > 0),
+  previous_rank INTEGER CHECK(previous_rank IS NULL OR previous_rank > 0),
+  change_type TEXT NOT NULL CHECK(change_type IN ('enter', 'move', 'exit')),
+  title TEXT,
+  artist TEXT,
+  PRIMARY KEY(observed_at,amazon_music_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_amazon_music_group_rank_history_lookup
-  ON amazon_music_group_rank_history(group_key,observed_at DESC,rank,chart_date);
-CREATE INDEX IF NOT EXISTS idx_amazon_music_group_rank_history_track
+CREATE INDEX IF NOT EXISTS idx_amazon_music_group_rank_history_group_time
+  ON amazon_music_group_rank_history(group_name,observed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_amazon_music_group_rank_history_source_time
+  ON amazon_music_group_rank_history(amazon_music_id,observed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_amazon_music_group_rank_history_track_id_time
   ON amazon_music_group_rank_history(track_id,observed_at DESC)
   WHERE track_id IS NOT NULL;
 
