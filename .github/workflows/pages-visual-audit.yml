@@ -2,46 +2,18 @@ name: Pages visual audit
 
 on:
   pull_request:
-  workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: pages-visual-audit-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
   capture:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install Playwright
-        run: npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.54.0
-
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
-
-      - name: Capture production Pages at every tab and viewport size
-        run: >-
-          node scripts/capture-pages-visual-audit.mjs
-          --url=https://skrzk.pages.dev
-          --out=.pages-visual-audit
-
-      - name: Upload visual audit screenshots
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pages-visual-audit-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .pages-visual-audit/
-          include-hidden-files: true
-          if-no-files-found: warn
-          retention-days: 14
+      - name: Read Nogizaka production status
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error \
+            -H 'Accept: application/json' \
+            'https://skrzk.pages.dev/api/nogizaka46smej-status'
