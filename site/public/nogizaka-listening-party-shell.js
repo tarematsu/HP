@@ -4,8 +4,8 @@ mountDashboardShell({
   tab: {
     view: 'nogizaka',
     label: '乃木坂',
-    anchorSelector: '[data-mode="broadcasts"]',
-    position: 'afterend',
+    anchorSelectors: ['[data-view="hinata"]', '[data-mode="broadcasts"]'],
+    position: 'beforebegin',
   },
   view: {
     id: 'nogizakaListeningPartyView',
