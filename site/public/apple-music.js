@@ -51,15 +51,13 @@ function rankLabel(rank) {
 
 function japanHistorySeries(payload) {
   const japan = regionByCode(payload, 'jp');
-  const currentTracks = Array.isArray(japan?.tracks) ? japan.tracks.slice(0, JAPAN_RANK_LIMIT) : null;
-  const history = (Array.isArray(payload?.history) ? payload.history : [])
-    .filter((point) => /^\d{4}-\d{2}-\d{2}$/.test(String(point?.snapshot_date || '')))
-    .sort((a, b) => String(a.snapshot_date).localeCompare(String(b.snapshot_date)));
+  const currentTracks = Array.isArray(japan?.tracks) ? japan.tracks : null;
+  const history = Array.isArray(payload?.history) ? payload.history : [];
   const series = new Map();
 
   for (const point of history) {
     const date = String(point.snapshot_date);
-    const tracks = Array.isArray(point?.regions?.jp) ? point.regions.jp.slice(0, JAPAN_RANK_LIMIT) : null;
+    const tracks = Array.isArray(point?.regions?.jp) ? point.regions.jp : null;
     if (!tracks) {
       for (const item of series.values()) item.points.push({ date, rank: null });
       continue;
@@ -77,16 +75,14 @@ function japanHistorySeries(payload) {
     });
   }
 
-  const currentRanks = new Map((currentTracks || [])
-    .map((track, index) => [trackKey(track), integer(track?.rank) ?? index + 1]));
-  for (const track of currentTracks || []) {
-    const item = series.get(trackKey(track));
-    if (item && track?.title) item.title = track.title;
+  for (const item of series.values()) {
+    const index = currentTracks?.findIndex((track) => trackKey(track) === item.id) ?? -1;
+    item.currentRank = !currentTracks ? null : index < 0
+      ? JAPAN_OUTSIDE_RANK
+      : integer(currentTracks[index]?.rank) ?? index + 1;
+    if (index >= 0 && currentTracks[index]?.title) item.title = currentTracks[index].title;
   }
-  return [...series.values()].map((item) => ({
-    ...item,
-    currentRank: currentTracks ? (currentRanks.get(item.id) ?? JAPAN_OUTSIDE_RANK) : null,
-  }));
+  return [...series.values()];
 }
 
 function renderJapanLegend(series) {
@@ -125,13 +121,12 @@ function renderRankChart(payload) {
   const margin = { left: 52, right: 16, top: 16, bottom: 36 };
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
-  const maxRank = JAPAN_OUTSIDE_RANK;
   const dateIndex = new Map(dates.map((date, index) => [date, index]));
   const xFor = (date) => {
     const index = dateIndex.get(date) ?? 0;
     return margin.left + (dates.length <= 1 ? plotWidth / 2 : index / (dates.length - 1) * plotWidth);
   };
-  const yFor = (rank) => margin.top + (rank - 1) / Math.max(1, maxRank - 1) * plotHeight;
+  const yFor = (rank) => margin.top + (rank - 1) / (JAPAN_OUTSIDE_RANK - 1) * plotHeight;
   const svg = svgElement('svg', {
     viewBox: `0 0 ${width} ${height}`,
     role: 'img',
@@ -177,11 +172,11 @@ function renderRankChart(payload) {
     let d = '';
     let previousIndex = null;
     for (const point of item.points) {
-      const currentIndex = dateIndex.get(point.date);
-      if (currentIndex == null || !Number.isFinite(point.rank)) {
+      if (!Number.isFinite(point.rank)) {
         previousIndex = null;
         continue;
       }
+      const currentIndex = dateIndex.get(point.date);
       const command = previousIndex != null && currentIndex === previousIndex + 1 ? 'L' : 'M';
       d += ` ${command} ${xFor(point.date).toFixed(2)} ${yFor(point.rank).toFixed(2)}`;
       previousIndex = currentIndex;
