@@ -61,6 +61,34 @@ SELECT station_id,track_key,track_id,queue_id,queue_start_time AS start_time,que
   count_value AS like_count,observed_at
 FROM ranked WHERE row_rank=1;
 
+-- Rebuild the compact likes ranking once so historical ISRC/Spotify identities
+-- that are now resolvable immediately collapse to track:<sh_tracks.id>.
+DELETE FROM sh_track_ranking_occurrence;
+INSERT INTO sh_track_ranking_occurrence(
+  occurrence_key,track_identity,track_id,title,artist,isrc,spotify_id,
+  latest_like_count,latest_observed_at
+)
+SELECT occurrence_key,track_identity,resolved_track_id,title,artist,isrc,spotify_id,
+  count_value,observed_at
+FROM sh_track_ranking_candidates;
+
+DELETE FROM sh_track_ranking_current;
+INSERT INTO sh_track_ranking_current(
+  track_identity,track_id,title,artist,isrc,spotify_id,
+  latest_like_count,latest_observed_at,latest_occurrence_key
+)
+SELECT track_identity,track_id,title,artist,isrc,spotify_id,
+  latest_like_count,latest_observed_at,occurrence_key
+FROM (
+  SELECT occurrences.*,
+    ROW_NUMBER() OVER (
+      PARTITION BY track_identity
+      ORDER BY latest_observed_at DESC,occurrence_key DESC
+    ) AS identity_rank
+  FROM sh_track_ranking_occurrence occurrences
+)
+WHERE identity_rank=1 AND latest_like_count>0;
+
 -- The first-week comparison is a release-window read model, but releases are
 -- songs too. Store their sh_tracks.id so every Pages song-bearing payload has
 -- the same canonical identity.
@@ -79,17 +107,18 @@ SET track_id=(
   FROM sh_track_canonical_metadata AS metadata
   WHERE metadata.track_id IS NOT NULL
     AND metadata.artist LIKE '櫻坂%'
-    AND metadata.title=CASE releases.release_date_jst
-      WHEN '2024-09-25' THEN 'I want tomorrow to come'
-      WHEN '2025-01-28' THEN 'UDAGAWA GENERATION'
-      WHEN '2025-05-30' THEN 'Make or Break'
-      WHEN '2025-10-16' THEN 'Unhappy birthday構文'
-      WHEN '2026-02-12' THEN 'The growing up train'
-      WHEN '2026-04-19' THEN 'What''s “KAZOKU”?'
-      WHEN '2026-05-19' THEN 'Lonesome rabbit'
-      WHEN '2026-09-17' THEN '愛MUST BE'
-      ELSE NULL
-    END
+    AND REPLACE(REPLACE(metadata.title,'“','"'),'”','"')=
+      REPLACE(REPLACE(CASE releases.release_date_jst
+        WHEN '2024-09-25' THEN 'I want tomorrow to come'
+        WHEN '2025-01-28' THEN 'UDAGAWA GENERATION'
+        WHEN '2025-05-30' THEN 'Make or Break'
+        WHEN '2025-10-16' THEN 'Unhappy birthday構文'
+        WHEN '2026-02-12' THEN 'The growing up train'
+        WHEN '2026-04-19' THEN 'What''s “KAZOKU”?'
+        WHEN '2026-05-19' THEN 'Lonesome rabbit'
+        WHEN '2026-09-17' THEN '愛MUST BE'
+        ELSE NULL
+      END,'“','"'),'”','"')
   ORDER BY metadata.track_id
   LIMIT 1
 )
@@ -98,4 +127,6 @@ WHERE releases.release_date_jst IN (
   '2026-02-12','2026-04-19','2026-05-19','2026-09-17'
 );
 
+ANALYZE sh_track_ranking_occurrence;
+ANALYZE sh_track_ranking_current;
 PRAGMA optimize;
