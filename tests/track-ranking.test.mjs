@@ -3,7 +3,10 @@ import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 
-import { loadTrackRanking } from '../site/functions/lib/track-ranking.js';
+import {
+  loadTrackRanking,
+  TRACK_RANKING_SQL,
+} from '../site/functions/lib/track-ranking.js';
 
 const materializedMigration = readFileSync(
   new URL('../database/facts-migrations/032_materialized_cleanup_ranking.sql', import.meta.url),
@@ -94,9 +97,10 @@ function rankingDatabase() {
   return db;
 }
 
-function d1Adapter(db) {
+function d1Adapter(db, calls = null) {
   return {
     prepare(sql) {
+      if (calls) calls.push(sql);
       const statement = db.prepare(sql);
       return {
         bind(...args) {
@@ -111,6 +115,19 @@ function d1Adapter(db) {
     },
   };
 }
+
+test('ranking scan avoids three canonical metadata joins and resolves direct track ids once', async () => {
+  assert.match(TRACK_RANKING_SQL, /FROM sh_track_ranking_current current/);
+  assert.doesNotMatch(TRACK_RANKING_SQL, /JOIN sh_track_canonical_metadata/);
+
+  const db = rankingDatabase();
+  const calls = [];
+  await loadTrackRanking(d1Adapter(db, calls), { limit: 500, persist: false });
+  const canonicalCalls = calls.filter((sql) => sql.includes('FROM sh_track_canonical_metadata'));
+  assert.equal(canonicalCalls.length, 1);
+  assert.match(canonicalCalls[0], /WHERE track_id IN/);
+  assert.doesNotMatch(canonicalCalls[0], /WHERE isrc IN|WHERE spotify_id IN/);
+});
 
 test('track ranking is seeded and maintained at counter update time', async () => {
   const db = rankingDatabase();
