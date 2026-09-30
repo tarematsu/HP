@@ -4,6 +4,11 @@ import {
 } from './amazon-music-pipeline.js';
 import { collectAppleMusicSnapshot } from './apple-music-collector.js';
 import { appleMusicFetch } from './apple-music-fetch.js';
+import {
+  amazonMusicServiceEnv,
+  persistAmazonMusicModelToOther,
+  persistAppleMusicModelToOther,
+} from './music-service-other-store.js';
 
 export const AMAZON_MUSIC_TOP_SCAN_CRON = '5 * * * *';
 export const AMAZON_MUSIC_DEEP_SCAN_CRON = '2,12,22,32,42,52 * * * *';
@@ -24,6 +29,24 @@ function loggedRun(label, operation, { fatal = false } = {}) {
     });
 }
 
+async function collectAppleMusic(env, scheduledTime) {
+  const result = await collectAppleMusicSnapshot(env, scheduledTime, appleMusicFetch);
+  if (result?.changed || result?.migrated_track_ids) {
+    result.other_db = await persistAppleMusicModelToOther(env, scheduledTime);
+  }
+  return result;
+}
+
+async function checkAmazonMusic(env, scheduledTime) {
+  return checkAmazonUpdateAndQueue100k(amazonMusicServiceEnv(env), scheduledTime);
+}
+
+async function continueAmazonMusic(env, scheduledTime) {
+  const result = await continueQueuedAmazon100kScan(amazonMusicServiceEnv(env), scheduledTime);
+  const persisted = await persistAmazonMusicModelToOther(env, scheduledTime);
+  return { ...result, other_db: persisted };
+}
+
 export default {
   async scheduled(controller, env, ctx) {
     const scheduledTime = Number(controller?.scheduledTime) || Date.now();
@@ -33,17 +56,17 @@ export default {
     if (cron === APPLE_MUSIC_PROBE_CRON) {
       run = loggedRun(
         'apple-music-collection',
-        () => collectAppleMusicSnapshot(env, scheduledTime, appleMusicFetch),
+        () => collectAppleMusic(env, scheduledTime),
       );
     } else if (cron === AMAZON_MUSIC_TOP_SCAN_CRON) {
       run = loggedRun(
         'amazon-music-top-500-monitor',
-        () => checkAmazonUpdateAndQueue100k(env, scheduledTime),
+        () => checkAmazonMusic(env, scheduledTime),
       );
     } else if (cron === AMAZON_MUSIC_DEEP_SCAN_CRON) {
       run = loggedRun(
         'amazon-music-100k-scan',
-        () => continueQueuedAmazon100kScan(env, scheduledTime),
+        () => continueAmazonMusic(env, scheduledTime),
       );
     } else {
       // Manual/test scheduled invocations retain the hourly Amazon update check
@@ -51,11 +74,11 @@ export default {
       run = Promise.all([
         loggedRun(
           'amazon-music-top-500-monitor',
-          () => checkAmazonUpdateAndQueue100k(env, scheduledTime),
+          () => checkAmazonMusic(env, scheduledTime),
         ),
         loggedRun(
           'apple-music-collection',
-          () => collectAppleMusicSnapshot(env, scheduledTime, appleMusicFetch),
+          () => collectAppleMusic(env, scheduledTime),
         ),
       ]);
     }
