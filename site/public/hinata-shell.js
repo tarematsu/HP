@@ -1,7 +1,6 @@
 import { mountDashboardShell } from './dashboard-ui-common.js?v=20260930.1';
 
 mountDashboardShell({
-  style: { href: '/hinata.css?v=20260930.4', key: 'hinata' },
   tab: {
     view: 'hinata',
     label: '日向坂',
@@ -32,7 +31,7 @@ mountDashboardShell({
         <span><i class="hinata-bar-key"></i>再生数増加</span>
       </div>
       <div id="hinataChart" class="hinata-chart chart-fit shared-svg-chart" role="img" aria-label="過去24時間のオンライン数と5分ごとの再生数増加"></div>
-      <p id="hinataChartDetail" class="chart-detail subtle hinata-chart-detail">グラフをタッチすると数値を確認できます。</p>
+      <p id="hinataChartDetail" class="chart-detail subtle hinata-chart-detail"></p>
     </section>
 
     <section class="card chart-card hinata-daily-chart-panel" aria-labelledby="hinataDailyChartTitle">
@@ -41,7 +40,7 @@ mountDashboardShell({
       </div>
       <div id="hinataDailyChartLegend" class="legend hinata-legend" aria-label="日次グラフ凡例"></div>
       <div id="hinataDailyChart" class="hinata-chart chart-fit shared-svg-chart" role="img" aria-label="日次の平均・最大・最小同接と再生数増加"></div>
-      <p id="hinataDailyChartDetail" class="chart-detail subtle hinata-chart-detail">グラフをタッチすると数値を確認できます。</p>
+      <p id="hinataDailyChartDetail" class="chart-detail subtle hinata-chart-detail"></p>
     </section>
 
     <section class="card data-panel hinata-daily-panel" aria-labelledby="hinataDailyTitle">
