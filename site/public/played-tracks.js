@@ -69,6 +69,8 @@ function trackLabel(row) {
 }
 
 function trackIdentity(row) {
+  const trackId = Number(row?.track_id);
+  if (Number.isSafeInteger(trackId) && trackId > 0) return `track:${trackId}`;
   const spotify = String(row?.spotify_id || '').trim();
   if (spotify) return `spotify:${spotify}`;
   const isrc = String(row?.isrc || '').trim();
