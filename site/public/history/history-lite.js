@@ -1,4 +1,5 @@
 import {
+  appendEmptyTableRow,
   byId as el,
   decimalOneFormat as decimal,
   finiteNumber as finite,
@@ -6,6 +7,8 @@ import {
   setNotice as setSharedNotice,
   setText,
 } from '../dashboard-ui-common.js?v=20260930.1';
+import { downloadCsv } from '../csv-download.js?v=20261001.1';
+import { durationLabel } from '../official-listening-party-ui.js?v=20261001.1';
 import {
   fetchHistoryPayload,
   historyCacheTtl,
@@ -235,14 +238,7 @@ import {
       }
       fragment.appendChild(tr);
     }
-    if (!rows.length) {
-      const tr = document.createElement('tr');
-      const td = document.createElement('td');
-      td.colSpan = columns.length;
-      td.textContent = 'データがありません。';
-      tr.appendChild(td);
-      fragment.appendChild(tr);
-    }
+    if (!rows.length) appendEmptyTableRow(fragment, 'データがありません。', columns.length);
     el('tbody').replaceChildren(fragment);
     el('more').hidden = state.tableRows.length <= state.visibleRows;
   }
@@ -316,14 +312,6 @@ import {
     setText('memberGrowth', values.member);
   }
 
-  function formatMinutes(value) {
-    const rounded = Math.max(0, Math.round(finite(value) || 0));
-    if (rounded < 60) return `${rounded}分`;
-    const hours = Math.floor(rounded / 60);
-    const minutes = rounded % 60;
-    return minutes ? `${hours}時間${minutes}分` : `${hours}時間`;
-  }
-
   function updateSummary() {
     const rows = state.rows;
     const mode = dataMode();
@@ -371,7 +359,7 @@ import {
           periods: numberText(rows.length),
           max: numberText(average(rows, 'listener_avg')),
           stream: maximums.length ? integer.format(Math.max(...maximums)) : '—',
-          member: durations.length ? formatMinutes(durations.reduce((sum, value) => sum + value, 0) / durations.length) : '—',
+          member: durations.length ? durationLabel(durations.reduce((sum, value) => sum + value, 0) / durations.length) : '—',
         },
       );
       return;
@@ -546,16 +534,11 @@ import {
 
   function exportCsv() {
     const columns = columnsFor(dataMode());
-    const lines = [
+    const rows = [
       columns.map(([, label]) => label),
       ...state.rows.map((row) => columns.map(([key]) => displayCell(key, row))),
-    ].map((line) => line.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(','));
-    const blob = new Blob([`\uFEFF${lines.join('\n')}`], { type: 'text/csv;charset=utf-8' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `sh-${dataMode()}-${todayUtc()}.csv`;
-    link.click();
-    URL.revokeObjectURL(link.href);
+    ];
+    downloadCsv(`sh-${dataMode()}-${todayUtc()}.csv`, rows);
   }
 
   async function start() {
