@@ -19,7 +19,8 @@ test('played tracks tab is visible immediately and shell mounts its view', () =>
   assert.match(shell, /anchorSelector: '\[data-view="likes"\]'/);
   assert.match(shell, /position: 'beforebegin'/);
   assert.match(shell, /id: 'playedTracksView'/);
-  assert.match(shell, /view-toolbar played-tracks-toolbar/);
+  assert.match(shell, /controls card played-tracks-controls/);
+  assert.doesNotMatch(shell, /view-toolbar played-tracks-toolbar/);
 });
 
 test('played tracks exposes horizontal day navigation and weekly mode', () => {
