@@ -24,7 +24,7 @@ test('database workflow excludes the retired Pages migration operation', () => {
   assert.doesNotMatch(workflow, /stationhead-legacy/);
 });
 
-test('production deploy owns automatic MINUTE_DB migration ordering', () => {
+test('production deploy owns automatic D1 migration ordering', () => {
   assert.match(workflow, /if: inputs\.operation == 'minute-db'/);
   assert.match(workflow, /FACTS_DEPLOY_CHANGED_ONLY: 'true'/);
   assert.match(workflow, /DEPLOY_BASE_SHA:/);
@@ -33,9 +33,12 @@ test('production deploy owns automatic MINUTE_DB migration ordering', () => {
   assert.match(pushBlock, /branches:\s*\n\s*- main/);
   assert.match(pushBlock, /paths:/);
   assert.doesNotMatch(pushBlock, /database\/facts-migrations/);
+
   assert.match(deployWorkflow, /database\/facts-migrations\/\*\*/);
+  assert.match(deployWorkflow, /database\/other-migrations\/\*\*/);
   assert.match(deployWorkflow, /operation: minute-db/);
-  assert.match(deployWorkflow, /needs: \[select, minute_db\]/);
+  assert.match(deployWorkflow, /operation: other-db/);
+  assert.match(deployWorkflow, /needs: \[select, minute_db, other_db\]/);
 });
 
 test('retired Pages scripts delegate ownership to Worker database jobs', () => {
