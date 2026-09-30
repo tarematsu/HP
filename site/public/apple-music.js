@@ -44,28 +44,6 @@ function renderSummary(payload) {
   if (date) date.textContent = formatFullDate(payload?.snapshot_date);
 }
 
-function japanHistoryPoints(payload) {
-  return (Array.isArray(payload?.history) ? payload.history : [])
-    .map((point) => {
-      const date = String(point?.snapshot_date || '');
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
-      const tracks = Array.isArray(point?.regions?.jp)
-        ? point.regions.jp.slice(0, JAPAN_RANK_LIMIT)
-        : null;
-      return { date, tracks };
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.date.localeCompare(b.date));
-}
-
-function rankInTracks(tracks, id) {
-  if (!Array.isArray(tracks)) return null;
-  const index = tracks.findIndex((track) => trackKey(track) === id);
-  if (index < 0) return null;
-  const rank = integer(tracks[index]?.rank) ?? index + 1;
-  return rank >= 1 && rank <= JAPAN_RANK_LIMIT ? rank : null;
-}
-
 function rankLabel(rank) {
   if (rank === JAPAN_OUTSIDE_RANK) return '圏外';
   return rank == null ? '-' : `${rank}位`;
@@ -73,50 +51,42 @@ function rankLabel(rank) {
 
 function japanHistorySeries(payload) {
   const japan = regionByCode(payload, 'jp');
-  const currentAvailable = Array.isArray(japan?.tracks);
-  const currentTracks = currentAvailable ? japan.tracks.slice(0, JAPAN_RANK_LIMIT) : [];
-  const history = japanHistoryPoints(payload);
-  const tracked = new Map();
-
-  const rememberTrack = (track) => {
-    const id = trackKey(track);
-    if (!id) return;
-    const previous = tracked.get(id);
-    tracked.set(id, {
-      id,
-      title: track?.title || previous?.title || '曲名不明',
-    });
-  };
+  const currentTracks = Array.isArray(japan?.tracks) ? japan.tracks.slice(0, JAPAN_RANK_LIMIT) : null;
+  const history = (Array.isArray(payload?.history) ? payload.history : [])
+    .filter((point) => /^\d{4}-\d{2}-\d{2}$/.test(String(point?.snapshot_date || '')))
+    .sort((a, b) => String(a.snapshot_date).localeCompare(String(b.snapshot_date)));
+  const series = new Map();
 
   for (const point of history) {
-    if (!point.tracks) continue;
-    for (const track of point.tracks) rememberTrack(track);
-  }
-  for (const track of currentTracks) rememberTrack(track);
-
-  const currentRankById = new Map(currentTracks
-    .map((track, index) => [trackKey(track), integer(track?.rank) ?? index + 1])
-    .filter(([id]) => id));
-
-  return [...tracked.values()].map((track) => {
-    const firstRankedIndex = history.findIndex((point) => rankInTracks(point.tracks, track.id) != null);
-    if (firstRankedIndex < 0) return null;
-    const points = history.slice(firstRankedIndex).map((point) => {
-      if (!point.tracks) return { date: point.date, rank: null };
-      return {
-        date: point.date,
-        rank: rankInTracks(point.tracks, track.id) ?? JAPAN_OUTSIDE_RANK,
-      };
+    const date = String(point.snapshot_date);
+    const tracks = Array.isArray(point?.regions?.jp) ? point.regions.jp.slice(0, JAPAN_RANK_LIMIT) : null;
+    if (!tracks) {
+      for (const item of series.values()) item.points.push({ date, rank: null });
+      continue;
+    }
+    const ranks = new Map(tracks.map((track, index) => [trackKey(track), integer(track?.rank) ?? index + 1]));
+    for (const item of series.values()) item.points.push({ date, rank: ranks.get(item.id) ?? JAPAN_OUTSIDE_RANK });
+    tracks.forEach((track, index) => {
+      const id = trackKey(track);
+      if (!id || series.has(id)) return;
+      series.set(id, {
+        id,
+        title: track?.title || track?.song_key || '曲名不明',
+        points: [{ date, rank: ranks.get(id) ?? index + 1 }],
+      });
     });
-    return {
-      id: track.id,
-      title: track.title,
-      currentRank: currentAvailable
-        ? (currentRankById.get(track.id) ?? JAPAN_OUTSIDE_RANK)
-        : null,
-      points,
-    };
-  }).filter((series) => series?.points.length);
+  }
+
+  const currentRanks = new Map((currentTracks || [])
+    .map((track, index) => [trackKey(track), integer(track?.rank) ?? index + 1]));
+  for (const track of currentTracks || []) {
+    const item = series.get(trackKey(track));
+    if (item && track?.title) item.title = track.title;
+  }
+  return [...series.values()].map((item) => ({
+    ...item,
+    currentRank: currentTracks ? (currentRanks.get(item.id) ?? JAPAN_OUTSIDE_RANK) : null,
+  }));
 }
 
 function renderJapanLegend(series) {
