@@ -45,4 +45,5 @@ jobs:
           npx wrangler d1 execute stationhead-other --remote --yes --json --command "SELECT id,news_id,published_date,title,event_name,scheduled_at,detected_at,updated_at,status FROM sh_nogizaka_official_news_announcements WHERE news_id='102280' OR title LIKE '%STATIONHEAD%' ORDER BY id DESC LIMIT 20"
           echo '--- monitor state ---'
           npx wrangler d1 execute stationhead-other --remote --yes --json --command "SELECT id,last_check_at,last_success_at,last_error,updated_at FROM sh_official_news_monitor_state WHERE id='official-news:nogizaka46smej'"
+          # Intentionally fail after the read so this temporary diagnostic cannot be mistaken for a passing audit.
           exit 1
