@@ -19,9 +19,6 @@ import {
   const MAX_DRAW_POINTS = 2_400;
   const CACHE_REVISION = '9';
   const API_REVISION = '3';
-  const eventDate = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
-  });
   const jstDay = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
   });
@@ -73,12 +70,11 @@ import {
     const prefixedDate = DATE_PREFIX.exec(rawName);
     const name = rawName.replace(DATE_PREFIX, '').trim() || '公式リスパ';
     const startedAt = Number(item?.started_at);
-    let date = Number.isFinite(startedAt)
-      ? eventDate.format(new Date(startedAt)).replaceAll('-', '')
-      : null;
-    if (!date && prefixedDate) {
-      date = `${prefixedDate[1]}${String(Number(prefixedDate[2])).padStart(2, '0')}${String(Number(prefixedDate[3])).padStart(2, '0')}`;
-    }
+    const date = Number.isFinite(startedAt)
+      ? jstDay.format(new Date(startedAt)).replaceAll('-', '')
+      : prefixedDate
+        ? `${prefixedDate[1]}${prefixedDate[2].padStart(2, '0')}${prefixedDate[3].padStart(2, '0')}`
+        : '';
     return date ? `${date} ${name}` : name;
   }
 
