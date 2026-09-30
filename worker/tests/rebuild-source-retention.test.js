@@ -40,14 +40,13 @@ test('all durable reconstruction sources share a thirty-day retention floor', ()
   assert.match(retention, /FROM sh_minute_facts INDEXED BY idx_sh_minute_facts_time/);
   assert.match(retention, /factKeys\.has\(factKey\(row\.channelId, minute\)\)/);
   assert.match(retention, /name: 'sh_queue_snapshots'/);
-  assert.match(retention, /name: 'sh_comment_minute_counts'/);
-  assert.match(retention, /timeColumn: 'bucket_start'/);
+  assert.doesNotMatch(retention, /sh_comment_minute_counts|bucket_start/);
   assert.equal(Object.hasOwn(runtime.vars, 'SNAPSHOT_RETENTION_MS'), false);
   assert.equal(Object.hasOwn(runtime.vars, 'SNAPSHOT_RETENTION_ENABLED'), false);
 });
 
 test('current buddies schema keeps retention safe and indexes bounded repair paths', () => {
-  assert.equal(manifest.schema, 'database/buddies-migrations/015_track_history_dirty_days.sql');
+  assert.equal(manifest.schema, 'database/buddies-migrations/017_retire_redundant_state_indexes.sql');
   assert.match(retentionMigration, /DROP TRIGGER IF EXISTS trg_sh_claim_retention/);
   assert.doesNotMatch(retentionMigration, /172800000/);
   assert.doesNotMatch(retentionMigration, /DELETE FROM sh_comment_minute_counts/);

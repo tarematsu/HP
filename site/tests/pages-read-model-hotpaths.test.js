@@ -38,9 +38,11 @@ test('current history reads a single daily track-count projection row', () => {
   assert.match(dailyTracks, /CREATE TRIGGER trg_pages_track_history_daily_delete/);
 });
 
-test('likes and latest-date requests read the track-history status payload only', () => {
-  assert.match(tracks, /model_key='track-history-status'/);
-  assert.doesNotMatch(tracks, /TRACK_RANKING_SQL|TRACK_RANKING_SUMMARY_SQL|sh_track_ranking_current|MAX\(play_date\)|FROM sh_tracks/);
+test('track-history public requests proxy only to the R2 materialized service', () => {
+  assert.match(tracks, /PAGES_READ_MODEL_SERVICE/);
+  assert.match(tracks, /url\.searchParams\.set\('key', TRACK_HISTORY_MODEL_KEY\)/);
+  assert.match(tracks, /url\.searchParams\.set\('api', '1'\)/);
+  assert.doesNotMatch(tracks, /MINUTE_DB|\.prepare\(|TRACK_RANKING_SQL|TRACK_RANKING_SUMMARY_SQL|sh_track_ranking_current|MAX\(play_date\)|FROM sh_tracks/);
 });
 
 test('dashboard request path never calculates the prediction regression', () => {

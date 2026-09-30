@@ -80,14 +80,12 @@ test('summary renderer defines only final visible columns and labels track count
   assert.match(history, /const BROADCAST_COLUMNS = \[[\s\S]*\['likes_max', '最大いいね'\]/);
 });
 
-test('history read models count total broadcasts including repeated tracks', () => {
-  assert.match(materialized, /sh_pages_track_history_read_model/);
-  assert.match(materialized, /SUM\(CASE/);
-  assert.match(materialized, /json_extract\(row_json,'\$\.play_count'\)/);
-  assert.match(materialized, /ELSE 1/);
-  assert.doesNotMatch(materialized, /COUNT\(DISTINCT/);
-  assert.match(materialized, /strftime\('%w',play_date\)/);
-  assert.match(materialized, /substr\(play_date,1,7\)/);
+test('history read models count total broadcasts from compact Track History R2 day counts', () => {
+  assert.match(materialized, /TRACK_HISTORY_DAY_INDEX_KEY/);
+  assert.match(materialized, /play_counts/);
+  assert.match(materialized, /PAGES_RESPONSE_R2/);
+  assert.match(materialized, /trackPeriodKey/);
+  assert.doesNotMatch(materialized, /sh_pages_track_history_read_model|json_extract\(row_json|COUNT\(DISTINCT/);
   assert.match(current, /sh_pages_track_history_daily_read_model/);
   assert.match(current, /SELECT play_count AS track_count/);
   assert.doesNotMatch(current, /SUM\(CASE|json_extract\(row_json|FROM sh_pages_track_history_read_model/);

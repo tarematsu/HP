@@ -14,7 +14,6 @@ const MINUTE_MS = 60_000;
 const RETENTION_INDEXES = [
   'idx_sh_channel_snapshots_observed_id',
   'idx_sh_queue_snapshots_time',
-  'idx_sh_comment_minute_counts_bucket',
   'idx_sh_queue_items_observed',
   'idx_sh_track_like_observations_time',
   'idx_sh_track_metadata_fetched_at',
@@ -132,7 +131,7 @@ test('retention deletes channel snapshots only after the matching minute fact ex
       { id: 2, channel_id: 318, observed_at: protectedAt },
       { id: 3, channel_id: 318, observed_at: recentAt },
     ],
-    auxiliaryDeleteChanges: [2, 0, 0, 0, 0, 0, 0],
+    auxiliaryDeleteChanges: [2, 0, 0, 0, 0, 0],
   });
   const minuteDb = new FakeMinuteDb([
     { channel_id: 318, minute_at: minute(materializedAt) },
@@ -156,7 +155,7 @@ test('retention deletes channel snapshots only after the matching minute fact ex
   });
   assert.deepEqual(db.snapshots.map((row) => row.id), [2, 3]);
   assert.equal(minuteDb.calls.length, 1);
-  assert.deepEqual(db.batchCalls, [7]);
+  assert.deepEqual(db.batchCalls, [6]);
 });
 
 test('retention keeps old channel snapshots when minute facts are unavailable', async () => {

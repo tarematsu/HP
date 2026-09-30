@@ -15,8 +15,6 @@ const responseFetch = readFileSync(new URL('../../worker/src/pages-response-fetc
 const runtime = JSON.parse(readFileSync(new URL('../../worker/wrangler.runtime.jsonc', import.meta.url), 'utf8'));
 const workers = readFileSync(new URL('../../worker/scripts/cloudflare-workers.mjs', import.meta.url), 'utf8');
 
-// Pages remains read-only. Production Worker ownership is split across the
-// official Stationhead monitors, buddies recovery, buddies collector, and runtime orchestrator.
 test('dashboard read model embeds chart details and completed daily summaries for read-only serving', () => {
   assert.match(dashboard, /loadDashboardDailySummaries/);
   assert.match(dashboard, /augmentDashboardChartData/);
@@ -27,21 +25,23 @@ test('dashboard read model embeds chart details and completed daily summaries fo
   assert.doesNotMatch(dashboardDetails, /FROM sh_daily_summary/);
 });
 
-test('like ranking reads only the worker-materialized status payload', () => {
-  assert.match(tracks, /ranking_only/);
-  assert.match(tracks, /track-history-status/);
-  assert.match(tracks, /current_track_like_ranking/);
-  assert.doesNotMatch(tracks, /TRACK_RANKING_SQL|TRACK_RANKING_SUMMARY_SQL|sh_track_ranking_current|FROM sh_tracks/);
+test('like ranking is read only through the worker R2 materialized service', () => {
+  assert.match(tracks, /PAGES_READ_MODEL_SERVICE/);
+  assert.match(tracks, /url\.searchParams\.set\('key', TRACK_HISTORY_MODEL_KEY\)/);
+  assert.match(tracks, /url\.searchParams\.set\('api', '1'\)/);
+  assert.doesNotMatch(tracks, /MINUTE_DB|TRACK_RANKING_SQL|TRACK_RANKING_SUMMARY_SQL|sh_track_ranking_current|FROM sh_tracks|\.prepare\(/);
   assert.match(ranking, /FROM sh_track_ranking_current/);
   assert.doesNotMatch(ranking, /FROM sh_track_counter_current/);
 });
 
-test('track-history builders remain available only for explicit maintenance', () => {
+test('track-history builders persist only R2 day models while D1 keeps compact control state', () => {
   assert.match(trackStage, /loadTrackRanking/);
-  assert.match(trackStage, /sh_pages_track_history_read_model/);
-  assert.match(splitCycle, /advanceTrackHistoryPublication/);
+  assert.match(trackStage, /materializeTrackHistoryRangeThroughR2/);
+  assert.match(trackStage, /loadTrackHistoryDayIndex/);
+  assert.doesNotMatch(trackStage, /sh_pages_track_history_read_model/);
   assert.match(splitCycle, /advanceTrackHistoryR2Publication/);
   assert.match(splitCycle, /advancePublicationInline/);
+  assert.doesNotMatch(splitCycle, /advanceTrackHistoryPublication|promoteMaterializedD1ResponseToR2|sh_pages_response_manifest/);
   assert.doesNotMatch(splitCycle, /PAGES_READ_MODEL_QUEUE|enqueueTrackHistoryPublication/);
   assert.doesNotMatch(actions, /runSplitTrackHistoryCycleStep|trackHistoryPublishedThisRun|dueKeys\.add\('track-history'\)/);
   assert.match(actions, /track-history-read-model-disabled/);
