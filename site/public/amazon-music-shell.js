@@ -30,7 +30,7 @@ mountDashboardShell({
         kicker: 'AMAZON MUSIC TRACKS',
         className: 'amazon-data-panel',
         trailingHtml: '<span class="subtle">集計日 <time id="amazonSnapshotDate">-</time></span>',
-        bodyHtml: '<div class="table-wrap table-fit-mobile"><table class="amazon-table shared-numeric-table"><colgroup><col class="amazon-rank-col"><col></colgroup><thead><tr><th>Amazon Music総合順位</th><th>曲名</th></tr></thead><tbody id="amazonMusicTbody"></tbody></table></div>',
+        bodyHtml: '<div class="table-wrap table-fit-mobile"><table class="amazon-table shared-numeric-table"><colgroup><col class="amazon-rank-col"><col class="amazon-rank-col"><col></colgroup><thead><tr><th>Amazon Music総合順位</th><th>前日比</th><th>曲名</th></tr></thead><tbody id="amazonMusicTbody"></tbody></table></div>',
       })}`,
   },
 });
