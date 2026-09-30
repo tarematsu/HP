@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  AMAZON_MUSIC_DEEP_SCAN_CHECKPOINT_PAGES,
   AMAZON_MUSIC_DEEP_SCAN_PACING_WINDOW_MS,
+  AMAZON_MUSIC_DEEP_SCAN_PAGES_PER_RUN,
   scanAmazonChart,
 } from '../src/amazon-music-rank-monitor.js';
 
@@ -60,6 +62,12 @@ function amazonFetch(pages) {
 
 test('deep scan pacing window leaves headroom inside the 10-minute cron interval', () => {
   assert.equal(AMAZON_MUSIC_DEEP_SCAN_PACING_WINDOW_MS, 570_000);
+});
+
+test('deep scan persists progress in 25-page checkpoints while keeping the 300-page run budget', () => {
+  assert.equal(AMAZON_MUSIC_DEEP_SCAN_CHECKPOINT_PAGES, 25);
+  assert.equal(AMAZON_MUSIC_DEEP_SCAN_PAGES_PER_RUN, 300);
+  assert.equal(AMAZON_MUSIC_DEEP_SCAN_PAGES_PER_RUN % AMAZON_MUSIC_DEEP_SCAN_CHECKPOINT_PAGES, 0);
 });
 
 test('paced chart scan distributes page starts across the configured window', async () => {
