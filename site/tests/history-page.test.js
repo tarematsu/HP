@@ -3,6 +3,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const mainPage = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+const tabRegistry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
+const historyShell = readFileSync(new URL('../public/history-shell.js', import.meta.url), 'utf8');
+const likesShell = readFileSync(new URL('../public/likes-shell.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const historyClient = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 const historyData = readFileSync(new URL('../public/history/history-data-client.js', import.meta.url), 'utf8');
@@ -22,17 +25,17 @@ const INTERNAL_ARCHIVE_MODES = ['daily', 'weekly', 'monthly', 'ranking', 'broadc
 
 test('main dashboard exposes only active archive tabs and likes without separate pages', () => {
   for (const mode of NAV_ARCHIVE_MODES) {
-    assert.match(mainPage, new RegExp(`data-view="history" data-mode="${mode}"`));
+    assert.match(tabRegistry, new RegExp(`view: 'history', mode: '${mode}'`));
   }
-  assert.doesNotMatch(mainPage, /data-view="history" data-mode="(?:weekly|monthly)"/);
-  assert.match(mainPage, /data-view="likes" data-mode="likes">いいね/);
-  assert.doesNotMatch(mainPage, /data-mode="tracks"|>再生曲/);
+  assert.doesNotMatch(tabRegistry, /view: 'history', mode: '(?:weekly|monthly)'/);
+  assert.match(tabRegistry, /view: 'likes', mode: 'likes', label: 'いいね'/);
+  assert.doesNotMatch(tabRegistry, /mode: 'tracks'|label: '再生曲'/);
   assert.equal(existsSync(new URL('../public/history/index.html', import.meta.url)), false);
   assert.equal(existsSync(new URL('../public/history/likes/index.html', import.meta.url)), false);
 });
 
 test('weekly and monthly summary modes remain internal after their top tabs are removed', () => {
-  assert.doesNotMatch(mainPage, /data-mode="weekly"|data-mode="monthly"/);
+  assert.doesNotMatch(tabRegistry, /mode: 'weekly'|mode: 'monthly'/);
   assert.match(historyClient, /weekly: \{/);
   assert.match(historyClient, /monthly: \{/);
 });
@@ -57,13 +60,13 @@ test('shared tabs use a fixed grid without horizontal scrolling', () => {
 });
 
 test('history keeps the guide as an accessible hidden label source', () => {
-  assert.match(mainPage, /<div id="guide" hidden aria-hidden="true">/);
+  assert.match(historyShell, /<div id="guide" hidden aria-hidden="true">/);
   assert.match(historyClient, /setText\('guideTitle', config\.title\)/);
   assert.match(historyClient, /setText\('tableTitle', config\.table\)/);
 });
 
 test('history keeps one visible chart and delegates chart drawing to mode-specific runtimes', () => {
-  assert.match(mainPage, /<canvas id="chart"[^>]*><\/canvas>/);
+  assert.match(historyShell, /<canvas id="chart"[^>]*><\/canvas>/);
   assert.match(historyStyles, /\.chart-panel \{[^}]*margin-top/);
   assert.match(historyStyles, /\.data-panel \{[^}]*content-visibility:\s*auto/);
   assert.doesNotMatch(historyClient, /drawSummaryChart|prepareCanvas|history-broadcasts\.js/);
@@ -136,10 +139,10 @@ test('history tables render newest rows first and paginate only in the browser',
 });
 
 test('integrated likes view reads materialized current ranking without playback counts', () => {
-  assert.match(mainPage, /id="likesView"/);
-  assert.match(mainPage, /id="likesRankingList"/);
-  assert.match(mainPage, /最新いいね/);
-  assert.doesNotMatch(mainPage, /今週再生|再生曲/);
+  assert.match(likesShell, /id: 'likesView'/);
+  assert.match(likesShell, /id="likesRankingList"/);
+  assert.match(likesShell, /最新いいね/);
+  assert.doesNotMatch(likesShell, /今週再生|再生曲/);
   assert.match(likesClient, /\/api\/track-history\?ranking_only=1&ranking_limit=500/);
   assert.doesNotMatch(likesClient, /metadata_revision=/);
   assert.match(likesClient, /result\.data\.ranking/);
@@ -167,4 +170,5 @@ test('edge middleware materializes summaries but not track history', () => {
   assert.match(middleware, /SERVICE_MATERIALIZED_MODEL_KEYS/);
   assert.match(middleware, /cache\.put/);
   assert.match(middleware, /materializedApiKey/);
+  assert.doesNotMatch(mainPage, /id="historyView"|id="likesView"/);
 });

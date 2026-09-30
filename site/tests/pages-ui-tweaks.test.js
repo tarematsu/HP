@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+const currentShell = readFileSync(new URL('../public/current-shell.js', import.meta.url), 'utf8');
+const likesShell = readFileSync(new URL('../public/likes-shell.js', import.meta.url), 'utf8');
 const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
@@ -14,14 +15,14 @@ test('history no longer loads a post-render UI tweak runtime', () => {
 });
 
 test('current chart is statically before now playing without a redundant heading block', () => {
-  assert.ok(page.indexOf('class="card chart-card"') < page.indexOf('class="primary-grid"'));
-  const chartCard = page.slice(page.indexOf('class="card chart-card"'), page.indexOf('class="primary-grid"'));
+  assert.ok(currentShell.indexOf('class="card chart-card"') < currentShell.indexOf('class="primary-grid"'));
+  const chartCard = currentShell.slice(currentShell.indexOf('class="card chart-card"'), currentShell.indexOf('class="primary-grid"'));
   assert.doesNotMatch(chartCard, /LAST 24 HOURS|オンライン数<\/h2>/);
 });
 
 test('likes update control is removed and CSV is statically in the song table header', () => {
-  assert.doesNotMatch(page, /id="likesLoad"|class="like-actions"/);
-  const tablePanel = page.slice(page.indexOf('<h2>楽曲別一覧</h2>'));
+  assert.doesNotMatch(likesShell, /id="likesLoad"|class="like-actions"/);
+  const tablePanel = likesShell.slice(likesShell.indexOf('<h2>楽曲別一覧</h2>'));
   assert.match(tablePanel, /id="likesCsv"/);
 });
 

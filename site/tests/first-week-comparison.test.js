@@ -76,13 +76,13 @@ test('API rejects missing minute database binding', async () => {
 });
 
 test('dashboard keeps the first-week tab visible while deferring its shell and runtime', () => {
-  const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  const registry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
   const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
   const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
   const shell = readFileSync(new URL('../public/first-week-comparison-shell.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../public/first-week-comparison.js', import.meta.url), 'utf8');
   const css = readFileSync(new URL('../public/first-week-comparison.css', import.meta.url), 'utf8');
-  assert.match(page, /data-view="first-week">初週比較/);
+  assert.match(registry, /view: 'first-week', label: '初週比較'/);
   assert.doesNotMatch(entry, /^import .*first-week-comparison-shell/m);
   assert.match(entry, /dashboard-tabs\.js\?v=20260930\.1/);
   assert.match(tabs, /first-week-comparison-shell\.js\?v=20260929\.1/);

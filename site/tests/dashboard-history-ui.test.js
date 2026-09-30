@@ -3,6 +3,9 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const mainPage = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+const currentShell = readFileSync(new URL('../public/current-shell.js', import.meta.url), 'utf8');
+const likesShell = readFileSync(new URL('../public/likes-shell.js', import.meta.url), 'utf8');
+const tabRegistry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
 const dashboardEntry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const dashboardDaily = readFileSync(new URL('../public/dashboard-daily-summaries.js', import.meta.url), 'utf8');
 const dashboardClient = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
@@ -14,7 +17,7 @@ const historyLikes = readFileSync(new URL('../public/history/history-likes.js', 
 const trackEndpoint = readFileSync(new URL('../functions/api/track-history.js', import.meta.url), 'utf8');
 
 test('main page renders current track likes from the dashboard response', () => {
-  assert.match(mainPage, /id="trackBites" hidden/);
+  assert.match(currentShell, /id="trackBites" hidden/);
   assert.equal((mainPage.match(/<script /g) || []).length, 1);
   assert.match(mainPage, /src="\/assets\/dashboard\.min\.js\?v=[^"']+"/);
   assert.match(dashboardEntry, /import\('\/dashboard-client\.js\?v=[^']+'\)/);
@@ -39,8 +42,10 @@ test('main page labels member and stream deltas with their actual dates', () => 
 });
 
 test('like ranking is an integrated view backed by the materialized status payload', () => {
-  assert.match(mainPage, /id="likesView" class="dashboard-view likes-view" hidden/);
-  assert.match(mainPage, /data-view="likes" data-mode="likes">いいね/);
+  assert.match(likesShell, /id: 'likesView'/);
+  assert.match(likesShell, /className: 'likes-view'/);
+  assert.match(likesShell, /id="likesRankingList"/);
+  assert.match(tabRegistry, /view: 'likes', mode: 'likes', label: 'いいね'/);
   assert.match(trackEndpoint, /ranking_only/);
   assert.match(trackEndpoint, /track-history-status/);
   assert.doesNotMatch(trackEndpoint, /loadTrackRanking|TRACK_RANKING_SQL|sh_track_ranking_current/);
@@ -51,7 +56,7 @@ test('like ranking is an integrated view backed by the materialized status paylo
 });
 
 test('archive removes the track playback tab and its aggregation runtime', () => {
-  assert.doesNotMatch(mainPage, /data-mode="tracks"|>再生曲/);
+  assert.doesNotMatch(tabRegistry, /mode: 'tracks'|label: '再生曲'/);
   assert.doesNotMatch(historyEntry, /trackDate|trackWeekMode|'tracks'/);
   assert.doesNotMatch(historyClient, /aggregateCompleteTrackRows|再生数ランキング|history:track-rows/);
 });
