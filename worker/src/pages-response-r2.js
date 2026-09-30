@@ -93,47 +93,6 @@ export async function saveMaterializedR2Response(
   return { bytes: body.length, chunks: 1, storage: 'r2', object_key: key };
 }
 
-export async function promoteMaterializedD1ResponseToR2(
-  db,
-  r2,
-  modelKey,
-  now,
-  cadenceSeconds,
-) {
-  if (!db?.prepare || typeof r2?.put !== 'function') return null;
-  const manifest = await db.prepare(`SELECT generation,status,headers_json,chunk_count,updated_at
-    FROM sh_pages_response_manifest WHERE model_key=? LIMIT 1`)
-    .bind(modelKey)
-    .first();
-  if (!manifest?.generation) throw new Error(`${modelKey} response manifest is missing`);
-  const result = await db.prepare(`SELECT chunk_index,payload_chunk
-    FROM sh_pages_response_chunks
-    WHERE model_key=? AND generation=?
-    ORDER BY chunk_index ASC`)
-    .bind(modelKey, manifest.generation)
-    .all();
-  const chunks = result.results || [];
-  if (chunks.length !== Number(manifest.chunk_count || 0)) {
-    throw new Error(`${modelKey} response chunk count is incomplete`);
-  }
-  let headers = {};
-  try {
-    headers = JSON.parse(manifest.headers_json || '{}');
-  } catch {
-    headers = {};
-  }
-  const body = chunks.map((row) => String(row.payload_chunk || '')).join('');
-  return saveMaterializedR2Response(
-    r2,
-    modelKey,
-    body,
-    Number(manifest.status) || 200,
-    headers,
-    Number(manifest.updated_at) || Number(now) || Date.now(),
-    cadenceSeconds,
-  );
-}
-
 async function responseFromActionsObject(object, now, maximumAgeMs) {
   if (!object?.body) return null;
   let envelope;

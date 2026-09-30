@@ -3,7 +3,10 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { runPagesReadModelActions } from '../scripts/run-pages-read-model-actions.mjs';
-import { advanceTrackHistoryPublication } from '../src/pages-track-history-publication.js';
+import {
+  advanceTrackHistoryPublication,
+  initializeTrackHistoryPublication,
+} from '../src/pages-track-history-publication.js';
 import {
   assembledTrackHistoryPublicationForTest,
   createTrackHistoryPublication,
@@ -40,7 +43,11 @@ function baseStage(overrides = {}) {
   };
 }
 
-test('paged track-history chunks assemble the existing explicit-maintenance API response contract', () => {
+function r2Binding() {
+  return { async get() { return null; }, async put() {} };
+}
+
+test('track-history response helper keeps the explicit-maintenance response shape', () => {
   const publication = createTrackHistoryPublication(
     { generation: CYCLE_START },
     {
@@ -65,97 +72,80 @@ test('paged track-history chunks assemble the existing explicit-maintenance API 
   assert.equal(payload.likes_included, true);
   assert.equal(payload.source_row_count, 2);
   assert.deepEqual(payload.excluded_play_count_dates, ['2026-07-01']);
-  assert.equal(payload.historical_recovery, 'worker_materialized_read_model');
-  assert.equal(payload.method, 'precomputed_track_history_read_model');
+  assert.equal(payload.historical_recovery, 'r2-day-read-model');
+  assert.equal(payload.method, 'precomputed_track_history_r2_day_read_model');
 });
 
-test('explicit publication advances by bounded rows and commits the manifest separately', async () => {
-  const publication = {
-    ...createTrackHistoryPublication(
-      { generation: CYCLE_START },
-      { generated_at: CYCLE_START },
-      CYCLE_START,
-      { PAGES_TRACK_HISTORY_ROWS_PER_STEP: 40 },
-    ),
-    limit: 1_000,
-  };
-  const written = [];
-  const first = await advanceTrackHistoryPublication({}, publication, CYCLE_START + 60_000, {
-    loadRows: async (_db, _state, limit) => {
-      assert.equal(limit, 41);
-      return Array.from({ length: 41 }, (_, index) => row(index));
-    },
-    writeChunks: async (_db, _state, chunks) => written.push(...chunks),
-  });
-  assert.equal(first.action, 'rows');
-  assert.equal(first.rows, 40);
-  assert.equal(first.publication.cursor.row_key, 'row-0039');
-  assert.ok(written.length >= 1);
-
-  const second = await advanceTrackHistoryPublication({}, first.publication, CYCLE_START + 120_000, {
-    loadRows: async () => [row(40)],
-    writeChunks: async () => {},
-  });
-  assert.equal(second.action, 'rows-complete');
-  assert.equal(second.publication.phase, 'finalize');
-
-  const committed = await advanceTrackHistoryPublication({}, second.publication, CYCLE_START + 180_000, {
-    publishManifest: async (_db, state) => ({ chunks: state.next_chunk_index + 1 }),
-  });
-  assert.equal(committed.action, 'publish');
-  assert.equal(committed.published, true);
+test('legacy D1 response publication is explicitly retired', async () => {
+  await assert.rejects(
+    advanceTrackHistoryPublication(),
+    /D1 Track History response publication has been retired/,
+  );
 });
 
-test('explicit split cycle initializes and advances one publication page inline', async () => {
+test('publication initialization always selects R2 day mode', async () => {
+  const publication = createTrackHistoryPublication(
+    { generation: CYCLE_START },
+    { generated_at: CYCLE_START },
+    CYCLE_START,
+  );
+  const initialized = await initializeTrackHistoryPublication({}, publication);
+  assert.equal(initialized.phase, 'r2-days');
+  assert.equal(initialized.day_cursor, '2024-05-01');
+});
+
+test('explicit split cycle advances only the R2 publication state machine', async () => {
   const stage = baseStage();
   const saves = [];
   const result = await runSplitTrackHistoryCycleStep(
-    { BUDDIES_DB: {}, MINUTE_DB: {} },
+    { BUDDIES_DB: {}, MINUTE_DB: {}, PAGES_RESPONSE_R2: r2Binding() },
     CYCLE_START + 12 * 60_000,
     {
       loadStage: async () => stage,
       finalizeStatus: async () => ({ generated_at: CYCLE_START, source_row_count: 3 }),
       initializePublication: async (_db, publication) => ({
         ...publication,
-        phase: 'rows',
-        next_chunk_index: 1,
+        phase: 'r2-days',
+        day_cursor: publication.from,
         rows_written: 0,
       }),
-      advancePublication: async (_db, publication) => ({
-        action: 'rows',
-        rows: 40,
-        chunks: 1,
+      publishStatus: async () => {},
+      advanceR2Publication: async (_db, _r2, publication) => ({
+        action: 'r2-days',
+        rows: 0,
+        chunks: 0,
+        days: 30,
         published: false,
-        publication: { ...publication, rows_written: 40, next_chunk_index: 2 },
+        publication: { ...publication, day_cursor: '2024-05-31' },
       }),
       saveStage: async () => saves.push(stage.publication?.phase || 'none'),
     },
   );
 
   assert.equal(result.task.kind, 'track-history-publish-step');
-  assert.equal(result.publication.action, 'rows');
-  assert.equal(result.publication.rows_written, 40);
+  assert.equal(result.publication.action, 'r2-days');
   assert.equal(stage.published, false);
-  assert.deepEqual(saves, ['rows', 'rows']);
+  assert.equal(saves.length, 3);
 });
 
-test('explicit split cycle marks the stage published in the same inline state machine', async () => {
+test('explicit split cycle marks an R2 publication completed inline', async () => {
   const stage = baseStage({
     publication: {
       generation: 'generation-1',
-      phase: 'finalize',
+      phase: 'r2-days',
       rows_written: 40,
-      next_chunk_index: 2,
+      status_published: true,
     },
   });
   const result = await runSplitTrackHistoryCycleStep(
-    { BUDDIES_DB: {}, MINUTE_DB: {} },
+    { BUDDIES_DB: {}, MINUTE_DB: {}, PAGES_RESPONSE_R2: r2Binding() },
     CYCLE_START + 13 * 60_000,
     {
       loadStage: async () => stage,
-      advancePublication: async (_db, publication) => ({
-        action: 'publish',
+      advanceR2Publication: async (_db, _r2, publication) => ({
+        action: 'publish-r2-days',
         published: true,
+        storage: 'r2',
         publication: { ...publication, phase: 'published' },
       }),
       saveStage: async () => {},

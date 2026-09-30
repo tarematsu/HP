@@ -16,15 +16,6 @@ const SHARD_SCHEMA_SQL = [
     payload_json TEXT NOT NULL,
     updated_at INTEGER NOT NULL
   )`,
-  `CREATE TABLE IF NOT EXISTS sh_pages_track_history_read_model (
-    row_key TEXT PRIMARY KEY,
-    play_date TEXT NOT NULL,
-    first_played_at INTEGER,
-    row_json TEXT NOT NULL,
-    updated_at INTEGER NOT NULL
-  )`,
-  `CREATE INDEX IF NOT EXISTS idx_sh_pages_track_history_date
-    ON sh_pages_track_history_read_model(play_date,first_played_at,row_key)`,
 ];
 
 function dayText(timestamp) {
@@ -223,8 +214,8 @@ export async function runTrackHistoryCycleStep(env, now = Date.now(), dependenci
   const cycleStart = Math.floor(timestamp / TRACK_HISTORY_CYCLE_MS) * TRACK_HISTORY_CYCLE_MS;
   const cycleMinute = Math.floor((timestamp - cycleStart) / MINUTE_MS);
   if (cycleMinute >= TRACK_HISTORY_ACTIVE_MINUTES) return idleResult(timestamp, cycleStart, cycleMinute);
-  if (!env?.BUDDIES_DB || !env?.MINUTE_DB) {
-    throw new Error('track-history cycle step is missing BUDDIES_DB or MINUTE_DB');
+  if (!env?.BUDDIES_DB || !env?.MINUTE_DB || !env?.PAGES_RESPONSE_R2?.get || !env?.PAGES_RESPONSE_R2?.put) {
+    throw new Error('track-history cycle step is missing BUDDIES_DB, MINUTE_DB, or PAGES_RESPONSE_R2');
   }
 
   const stage = await loadOrCreateStage(env.MINUTE_DB, env.BUDDIES_DB, timestamp, dependencies);

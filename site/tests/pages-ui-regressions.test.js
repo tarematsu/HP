@@ -111,8 +111,7 @@ test('integrated likes UI contains no playback totals or weekly play merge', () 
   assert.match(source, /ranking_only=1/);
 });
 
-function materializedRankingDb(rankingSize = 0) {
-  const prepared = [];
+function materializedRankingPayload(rankingSize = 0) {
   const rows = Array.from({ length: rankingSize }, (_, index) => ({
     rank: index + 1,
     track_identity: `track:${index + 1}`,
@@ -124,39 +123,41 @@ function materializedRankingDb(rankingSize = 0) {
     latest_occurrence_key: `occurrence:${index + 1}`,
   }));
   return {
-    prepared,
-    prepare(sql) {
-      prepared.push(sql);
-      return {
-        bind() { return this; },
-        async all() { return { results: [] }; },
-        async first() {
-          if (sql.includes("model_key='track-history-status'")) {
-            return {
-              payload_json: JSON.stringify({
-                ranking: rows,
-                ranking_summary: {
-                  track_count: rows.length,
-                  max_like_count: rows[0]?.latest_like_count || 0,
-                  latest_observed_at: rows.at(-1)?.latest_observed_at || null,
-                },
-                ranking_scope: 'all-time-latest-counter',
-                generated_at: rows.at(-1)?.latest_observed_at || null,
-              }),
-            };
-          }
-          return null;
-        },
-      };
+    ok: true,
+    mode: 'likes',
+    rows: [],
+    ranking: rows,
+    ranking_summary: {
+      track_count: rows.length,
+      max_like_count: rows[0]?.latest_like_count || 0,
+      latest_observed_at: rows.at(-1)?.latest_observed_at || null,
     },
+    ranking_truncated: false,
+    ranking_scope: 'all-time-latest-counter',
+    generated_at: rows.at(-1)?.latest_observed_at || null,
+    method: 'current_track_like_ranking',
   };
 }
 
-test('like ranking reads the materialized ranking payload directly', async () => {
-  const db = materializedRankingDb(300);
+test('like ranking proxies the materialized ranking payload directly', async () => {
+  const requests = [];
+  const full = materializedRankingPayload(300);
   const response = await trackHistory({
     request: new Request('https://pages.test/api/track-history?ranking_only=1&ranking_limit=40'),
-    env: { MINUTE_DB: db },
+    env: {
+      PAGES_READ_MODEL_SERVICE: {
+        async fetch(request) {
+          const url = new URL(request.url);
+          requests.push(url);
+          const limit = Number(url.searchParams.get('ranking_limit')) || 200;
+          return new Response(JSON.stringify({
+            ...full,
+            ranking: full.ranking.slice(0, limit),
+            ranking_truncated: full.ranking.length > limit,
+          }), { status: 200, headers: { 'content-type': 'application/json' } });
+        },
+      },
+    },
   });
   const payload = await response.json();
   assert.equal(response.status, 200);
@@ -165,33 +166,38 @@ test('like ranking reads the materialized ranking payload directly', async () =>
   assert.equal(payload.ranking_summary.track_count, 300);
   assert.equal(payload.ranking_truncated, true);
   assert.equal(payload.method, 'current_track_like_ranking');
-  assert.equal(db.prepared.length, 1);
-  assert.equal(db.prepared[0].includes("model_key='track-history-status'"), true);
-  assert.equal(db.prepared.some((sql) => sql.includes('sh_track_ranking_current')), false);
-  assert.equal(db.prepared.some((sql) => sql.includes('sh_pages_track_history_read_model')), false);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].searchParams.get('key'), 'track-history');
+  assert.equal(requests[0].searchParams.get('api'), '1');
+  assert.equal(requests[0].searchParams.get('ranking_only'), '1');
 });
 
-test('normal track history skips the unused like-ranking status payload', async () => {
-  const prepared = [];
-  const db = {
-    prepare(sql) {
-      prepared.push(sql);
-      const statement = {
-        bind() { return statement; },
-        async all() { return { results: [] }; },
-        async first() { return null; },
-      };
-      return statement;
-    },
-  };
+test('normal track history forwards ranking=0 without any D1 ranking read', async () => {
+  const requests = [];
   const response = await trackHistory({
     request: new Request('https://pages.test/api/track-history?from=2026-07-20&to=2026-07-20&ranking=0'),
-    env: { MINUTE_DB: db },
+    env: {
+      PAGES_READ_MODEL_SERVICE: {
+        async fetch(request) {
+          requests.push(new URL(request.url));
+          return new Response(JSON.stringify({
+            ok: true,
+            mode: 'tracks',
+            rows: [],
+            ranking_included: false,
+            ranking: [],
+          }), { status: 200, headers: { 'content-type': 'application/json' } });
+        },
+      },
+    },
   });
   const payload = await response.json();
   assert.equal(payload.ranking_included, false);
   assert.deepEqual(payload.ranking, []);
-  assert.equal(prepared.some((sql) => sql.includes("model_key='track-history-status'")), false);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].searchParams.get('ranking'), '0');
+  assert.equal(requests[0].searchParams.get('from'), '2026-07-20');
+  assert.equal(requests[0].searchParams.get('to'), '2026-07-20');
 });
 
 test('history runtime uses direct data requests instead of global fetch guards or UI rewrite modules', () => {

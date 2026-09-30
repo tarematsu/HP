@@ -58,6 +58,10 @@ function shardResult(range) {
   };
 }
 
+function r2Binding() {
+  return { async get() { return null; }, async put() {} };
+}
+
 test('track history ranges split into three-hour CPU shards', () => {
   const fromTs = Date.UTC(2026, 0, 1);
   assert.deepEqual(splitTrackHistoryRange({ fromTs, toTs: fromTs + DAY_MS }), [
@@ -109,7 +113,7 @@ test('same-month stage refreshes one completed recent day when backfill is compl
 
 test('cycle core processes the completed day and cleans after its final shard', async () => {
   const memory = memoryDependencies(incrementalState());
-  const env = { BUDDIES_DB: {}, MINUTE_DB: {} };
+  const env = { BUDDIES_DB: {}, MINUTE_DB: {}, PAGES_RESPONSE_R2: r2Binding() };
   const refreshed = [];
   const dependencies = {
     ...memory,

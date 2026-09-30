@@ -24,22 +24,9 @@ test('played-tracks range backfill rejects reversed ranges', () => {
   );
 });
 
-test('played-tracks range backfill skips already materialized days before expensive repair', async () => {
+test('played-tracks range backfill repairs every requested day directly into R2', async () => {
   const seenDays = [];
-  const db = {
-    prepare() {
-      return {
-        bind(day) {
-          seenDays.push(day);
-          return {
-            async first() {
-              return { row_count: 5, total_plays: 25 };
-            },
-          };
-        },
-      };
-    },
-  };
+  const db = { prepare() { return {}; } };
   const originalLog = console.log;
   console.log = () => {};
   try {
@@ -48,12 +35,18 @@ test('played-tracks range backfill skips already materialized days before expens
       start: '2026-09-21',
       end: '2026-09-22',
       delayMs: 0,
+      repair: async ({ day }) => {
+        seenDays.push(day);
+        return { ok: true, day, rows: 5, total_plays: 25, storage: 'r2-day' };
+      },
     });
     assert.deepEqual(seenDays, ['2026-09-21', '2026-09-22']);
     assert.equal(result.requested_days, 2);
-    assert.equal(result.existing_days, 2);
-    assert.equal(result.generated_days, 0);
-    assert.equal(result.generated_rows, 0);
+    assert.equal(result.existing_days, 0);
+    assert.equal(result.generated_days, 2);
+    assert.equal(result.generated_rows, 10);
+    assert.equal(result.generated_plays, 50);
+    assert.equal(result.storage, 'r2-day');
   } finally {
     console.log = originalLog;
   }

@@ -14,6 +14,18 @@ function normalizeDates(values) {
     .filter(validDay))].sort();
 }
 
+function normalizePlayCounts(value, dates) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const allowed = new Set(dates);
+  const counts = {};
+  for (const [day, raw] of Object.entries(source)) {
+    if (!allowed.has(day)) continue;
+    const count = Number(raw);
+    if (Number.isFinite(count) && count >= 0) counts[day] = Math.trunc(count);
+  }
+  return counts;
+}
+
 async function objectJson(object) {
   if (!object) return null;
   if (typeof object.json === 'function') return object.json();
@@ -34,10 +46,16 @@ export async function loadTrackHistoryDayIndex(r2) {
     updated_at: Number(payload.updated_at) || 0,
     dates,
     latest_date: dates.at(-1) || null,
+    play_counts: normalizePlayCounts(payload.play_counts, dates),
   };
 }
 
-export async function saveTrackHistoryDayIndex(r2, dates, updatedAt = Date.now()) {
+export async function saveTrackHistoryDayIndex(
+  r2,
+  dates,
+  updatedAt = Date.now(),
+  playCounts = {},
+) {
   if (typeof r2?.put !== 'function') throw new Error('track-history R2 index binding is missing');
   const normalized = normalizeDates(dates);
   const payload = {
@@ -45,6 +63,7 @@ export async function saveTrackHistoryDayIndex(r2, dates, updatedAt = Date.now()
     updated_at: Number(updatedAt) || Date.now(),
     dates: normalized,
     latest_date: normalized.at(-1) || null,
+    play_counts: normalizePlayCounts(playCounts, normalized),
   };
   await r2.put(TRACK_HISTORY_DAY_INDEX_KEY, JSON.stringify(payload), {
     httpMetadata: { contentType: 'application/json; charset=utf-8' },
@@ -52,15 +71,29 @@ export async function saveTrackHistoryDayIndex(r2, dates, updatedAt = Date.now()
   return payload;
 }
 
-export async function updateTrackHistoryDayIndex(r2, day, hasRows, updatedAt = Date.now()) {
+export async function updateTrackHistoryDayIndex(
+  r2,
+  day,
+  hasRows,
+  updatedAt = Date.now(),
+  playCount = null,
+) {
   if (!validDay(day)) throw new Error('track-history day index update has invalid day');
   const current = await loadTrackHistoryDayIndex(r2).catch(() => null);
   const dates = new Set(current?.dates || []);
-  if (hasRows) dates.add(day);
-  else dates.delete(day);
+  const counts = { ...(current?.play_counts || {}) };
+  if (hasRows) {
+    dates.add(day);
+    const numeric = Number(playCount);
+    if (Number.isFinite(numeric) && numeric >= 0) counts[day] = Math.trunc(numeric);
+  } else {
+    dates.delete(day);
+    delete counts[day];
+  }
   return saveTrackHistoryDayIndex(
     r2,
     [...dates],
     Math.max(Number(current?.updated_at) || 0, Number(updatedAt) || Date.now()),
+    counts,
   );
 }

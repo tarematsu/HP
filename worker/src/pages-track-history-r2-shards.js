@@ -14,7 +14,10 @@ import {
   trackHistoryResponseSuffix,
 } from './pages-track-history-response.js';
 import { saveMaterializedR2Response } from './pages-response-r2.js';
-import { updateTrackHistoryDayIndex } from './pages-track-history-day-index.js';
+import {
+  loadTrackHistoryDayIndex,
+  updateTrackHistoryDayIndex,
+} from './pages-track-history-day-index.js';
 
 const DAY_MS = 86_400_000;
 const SHARD_MS = 3 * 60 * 60_000;
@@ -170,18 +173,19 @@ export async function saveTrackHistoryDayReadModel(r2, range, rows, metadata = {
       || trackRowKey(left).localeCompare(trackRowKey(right))
   ));
   const updatedAt = validTimestamp(metadata.updated_at) ?? Date.now();
+  const sourceRowCount = Math.max(0, Number(metadata.source_row_count || 0));
   await r2.put(key, JSON.stringify({
     version: DAY_MODEL_VERSION,
     day,
     updated_at: updatedAt,
     rows: sortedRows,
-    source_row_count: Math.max(0, Number(metadata.source_row_count || 0)),
+    source_row_count: sourceRowCount,
     excluded_dates: Array.isArray(metadata.excluded_dates) ? metadata.excluded_dates : [],
   }), {
     httpMetadata: { contentType: 'application/json; charset=utf-8' },
   });
-  await updateTrackHistoryDayIndex(r2, day, sortedRows.length > 0, updatedAt);
-  return { key, day, rows: sortedRows.length };
+  await updateTrackHistoryDayIndex(r2, day, sortedRows.length > 0, updatedAt, sourceRowCount);
+  return { key, day, rows: sortedRows.length, plays: sourceRowCount };
 }
 
 export async function loadTrackHistoryDayReadModel(r2, day) {
@@ -196,30 +200,12 @@ export async function loadTrackHistoryDayReadModel(r2, day) {
   return { key, payload };
 }
 
-export async function bootstrapTrackHistoryDayReadModel(db, r2, day, now = Date.now()) {
-  const result = await db.prepare(`SELECT row_json,json_valid(row_json) AS row_json_valid
-    FROM sh_pages_track_history_read_model
-    WHERE play_date=?
-    ORDER BY COALESCE(first_played_at,-1) ASC,row_key ASC
-    LIMIT ?`).bind(day, TRACK_HISTORY_LIMIT + 1).all();
-  const rawRows = result.results || [];
-  if (rawRows.length > TRACK_HISTORY_LIMIT) {
-    throw new Error(`track-history day ${day} exceeded ${TRACK_HISTORY_LIMIT} rows`);
-  }
-  const rows = rawRows.map((row) => {
-    if (row.row_json_valid != null && Number(row.row_json_valid) !== 1) {
-      throw new Error(`track-history day ${day} contained invalid JSON`);
-    }
-    return JSON.parse(String(row.row_json || 'null'));
-  });
-  const canonicalRows = await canonicalizeTrackRows(db, rows);
-  const fromTs = dayTimestamp(day);
-  return saveTrackHistoryDayReadModel(
-    r2,
-    { fromTs, toTs: fromTs + DAY_MS },
-    canonicalRows,
-    { updated_at: now },
-  );
+// Compatibility export only. D1 is no longer a fallback source for missing R2
+// days; deployment seeds R2 before migration 067 drops the old projection.
+export async function bootstrapTrackHistoryDayReadModel(_db, r2, day) {
+  const existing = await loadTrackHistoryDayReadModel(r2, day);
+  if (existing) return existing;
+  throw new Error(`track-history R2 day is missing: ${day}`);
 }
 
 export async function publishTrackHistoryResponseFromR2Days(
@@ -234,11 +220,15 @@ export async function publishTrackHistoryResponseFromR2Days(
   if (fromTs == null || toTs == null || toTs < fromTs) {
     throw new Error('track-history publication date range is invalid');
   }
+  const index = await loadTrackHistoryDayIndex(r2);
+  if (!index) return { published: false, missing_day: publication?.from || null, rows: 0 };
+  const indexedDates = new Set(index.dates || []);
   const limit = Math.max(1, Number(publication?.limit || 10_000));
   const rows = [];
   let truncated = false;
   for (let cursor = fromTs; cursor <= toTs; cursor += DAY_MS) {
     const day = dayText(cursor);
+    if (!indexedDates.has(day)) continue;
     const model = await loadTrackHistoryDayReadModel(r2, day);
     if (!model) return { published: false, missing_day: day, rows: rows.length };
     for (const row of model.payload.rows) {
@@ -264,30 +254,6 @@ export async function publishTrackHistoryResponseFromR2Days(
     cadenceSeconds,
   );
   return { published: true, rows: publishedRows.length, truncated, ...saved };
-}
-
-async function persistDayRows(targetDb, rows, range, generation) {
-  const statements = rows.map((row) => targetDb.prepare(`INSERT INTO sh_pages_track_history_read_model(
-      row_key,play_date,first_played_at,row_json,updated_at
-    ) VALUES(?,?,?,?,?) ON CONFLICT(row_key) DO UPDATE SET
-      play_date=excluded.play_date,
-      first_played_at=excluded.first_played_at,
-      row_json=excluded.row_json,
-      updated_at=excluded.updated_at`)
-    .bind(
-      trackRowKey(row),
-      row.play_date,
-      Number(row.first_played_at || row.played_at || 0) || null,
-      JSON.stringify(row),
-      generation,
-    ));
-  for (let offset = 0; offset < statements.length; offset += 100) {
-    await targetDb.batch(statements.slice(offset, offset + 100));
-  }
-  await targetDb.prepare(`DELETE FROM sh_pages_track_history_read_model
-    WHERE play_date>=? AND play_date<=? AND updated_at<>?`)
-    .bind(dayText(range.fromTs), dayText(range.toTs - 1), generation)
-    .run();
 }
 
 export async function materializeTrackHistoryRangeThroughR2(
@@ -365,7 +331,6 @@ export async function materializeTrackHistoryRangeThroughR2(
     source_row_count: daySourceRowCount,
     excluded_dates: dayExcludedDates,
   });
-  await persistDayRows(targetDb, dayRows, dayRange, generation);
   return {
     from: dayText(dayRange.fromTs),
     to: dayText(dayRange.toTs - 1),
@@ -375,6 +340,6 @@ export async function materializeTrackHistoryRangeThroughR2(
     sourceRowCount,
     excludedDates: dayExcludedDates,
     cleanupDay: true,
-    storage: 'r2-day+d1-day',
+    storage: 'r2-day',
   };
 }

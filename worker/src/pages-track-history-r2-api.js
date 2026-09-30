@@ -7,7 +7,7 @@ const TRACK_HISTORY_RESPONSE_LIMIT = 20_000;
 const TRACK_HISTORY_CACHE_SECONDS = 300;
 const ALLOWED_PARAMS = new Set([
   'key', 'api', 'from', 'to', 'limit', 'ranking', 'ranking_limit',
-  'ranking_only', 'latest', 'dates_only',
+  'ranking_only', 'latest', 'dates_only', 'counts_only',
 ]);
 
 function validDate(value) {
@@ -58,8 +58,6 @@ function rankingFromPayload(payload, limit) {
 
 async function loadStatusPayload(r2, now, maximumAgeMs, dependencies) {
   const loadResponse = dependencies.loadStatusResponse || loadMaterializedR2Response;
-  // The compact status is available as soon as the cycle finalizes ranking,
-  // while the full history can still be backfilling its day objects.
   for (const key of ['track-history-status', TRACK_HISTORY_MODEL_KEY]) {
     const response = await loadResponse(r2, key, now, maximumAgeMs);
     if (!response?.ok) continue;
@@ -74,6 +72,32 @@ function validateParams(url) {
     if (!ALLOWED_PARAMS.has(key)) return key;
   }
   return null;
+}
+
+async function playCountRows(r2, index, selectedDates, loadDay) {
+  const rows = [];
+  let updatedAt = Number(index.updated_at) || 0;
+  for (const day of selectedDates) {
+    const indexed = Number(index.play_counts?.[day]);
+    if (Number.isFinite(indexed) && indexed >= 0) {
+      rows.push({ play_date: day, play_count: Math.trunc(indexed) });
+      continue;
+    }
+    const model = await loadDay(r2, day);
+    if (!model) throw new Error(`track-history R2 day missing: ${day}`);
+    updatedAt = Math.max(updatedAt, Number(model.payload?.updated_at) || 0);
+    const count = Number(model.payload?.source_row_count);
+    rows.push({
+      play_date: day,
+      play_count: Number.isFinite(count) && count >= 0
+        ? Math.trunc(count)
+        : (model.payload.rows || []).reduce(
+          (sum, row) => sum + Math.max(0, Number(row?.play_count || 0)),
+          0,
+        ),
+    });
+  }
+  return { rows, updatedAt };
 }
 
 export async function loadTrackHistoryR2ApiResponse(
@@ -146,10 +170,28 @@ export async function loadTrackHistoryR2ApiResponse(
   if (!validDate(from) || !validDate(to) || from > to) {
     return json({ ok: false, error: 'invalid date range' }, 400, now, index.updated_at);
   }
-  const limit = boundedInteger(url.searchParams.get('limit'), 10_000, 100, TRACK_HISTORY_RESPONSE_LIMIT);
-  const includeRanking = url.searchParams.get('ranking') !== '0';
   const selectedDates = dates.filter((day) => day >= from && day <= to);
   const loadDay = dependencies.loadDay || loadTrackHistoryDayReadModel;
+
+  if (url.searchParams.get('counts_only') === '1') {
+    try {
+      const counts = await playCountRows(r2, index, selectedDates, loadDay);
+      return json({
+        ok: true,
+        mode: 'counts',
+        from,
+        to,
+        timezone: 'UTC',
+        rows: counts.rows,
+        read_path: 'r2-track-history-day-counts',
+      }, 200, now, counts.updatedAt);
+    } catch (error) {
+      return json({ ok: false, error: error?.message || 'track-history counts unavailable' }, 503, now);
+    }
+  }
+
+  const limit = boundedInteger(url.searchParams.get('limit'), 10_000, 100, TRACK_HISTORY_RESPONSE_LIMIT);
+  const includeRanking = url.searchParams.get('ranking') !== '0';
   const rows = [];
   let truncated = false;
   let readModelUpdatedAt = Number(index.updated_at) || 0;

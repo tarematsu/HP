@@ -35,9 +35,7 @@ function summaryRow(overrides = {}) {
   };
 }
 
-function environment(calls, rows = [summaryRow()], trackRows = [{
-  period_key: '2026-07-26', track_count: 17,
-}]) {
+function environment(calls, rows = [summaryRow()], playCounts = { '2026-07-26': 17 }) {
   const forbidden = new Proxy({}, {
     get() { assert.fail('history materialization must not inspect raw history databases'); },
   });
@@ -66,18 +64,20 @@ function environment(calls, rows = [summaryRow()], trackRows = [{
   };
   return {
     DB: forbidden,
-    MINUTE_DB: {
-      prepare(sql) {
-        const call = { source: 'minute', sql, bindings: null };
-        calls.push(call);
-        assert.match(sql, /FROM sh_pages_track_history_read_model/);
-        assert.match(sql, /SUM\(CASE/);
-        assert.match(sql, /json_extract\(row_json,'\$\.play_count'\)/);
-        assert.doesNotMatch(sql, /sh_channel_snapshots|sh_minute_facts/);
+    MINUTE_DB: forbidden,
+    BUDDIES_DB: forbidden,
+    PAGES_RESPONSE_R2: {
+      async get(key) {
+        calls.push({ source: 'r2', key });
+        assert.equal(key, 'track-history-days/v1/index.json');
         return {
-          bind(...bindings) {
-            call.bindings = bindings;
-            return { all: async () => ({ results: trackRows }) };
+          async json() {
+            return {
+              version: 1,
+              updated_at: PERIOD_END,
+              dates: Object.keys(playCounts).sort(),
+              play_counts: playCounts,
+            };
           },
         };
       },
@@ -100,9 +100,7 @@ test('Actions history renderer persists missing historical track totals in OTHER
   assert.deepEqual(calls.find((call) => call.source === 'other-select').bindings, [
     '2026-06-30', '2026-07-28', '2026-07-28', 801,
   ]);
-  assert.deepEqual(calls.find((call) => call.source === 'minute').bindings, [
-    '2026-07-01', '2026-07-28',
-  ]);
+  assert.equal(calls.filter((call) => call.source === 'r2').length, 1);
   assert.deepEqual(calls.find((call) => call.source === 'other-update').bindings, [
     17, now, '2026-07-26',
   ]);
@@ -111,10 +109,10 @@ test('Actions history renderer persists missing historical track totals in OTHER
   assert.equal(result.rows[0].distinct_tracks, 17);
   assert.equal(result.live_overlay_count, 0);
   assert.equal(result.live_source, 'summary-only');
-  assert.equal(result.storage_source, 'other.sh_daily_summary+minute.sh_pages_track_history_read_model');
+  assert.equal(result.storage_source, 'other.sh_daily_summary+r2.track-history-days');
 });
 
-test('persisted historical track totals skip request-time MINUTE_DB aggregation', async () => {
+test('persisted historical track totals skip Track History R2 reads', async () => {
   const calls = [];
   const result = await loadMaterializedSummary(
     environment(calls, [summaryRow({ distinct_tracks: 17 })]),
@@ -124,7 +122,7 @@ test('persisted historical track totals skip request-time MINUTE_DB aggregation'
     Date.parse('2026-07-28T01:00:00Z'),
   );
 
-  assert.equal(calls.filter((call) => call.source === 'minute').length, 0);
+  assert.equal(calls.filter((call) => call.source === 'r2').length, 0);
   assert.equal(calls.filter((call) => call.source === 'other-update').length, 0);
   assert.equal(result.rows[0].distinct_tracks, 17);
   assert.equal(result.storage_source, 'other.sh_daily_summary');
@@ -185,6 +183,6 @@ test('materialized history response keeps the public payload shape without raw D
   assert.equal(payload.live_source, 'summary-only');
   assert.equal(payload.live_overlay_count, 0);
   assert.equal(payload.rows[0].distinct_tracks, 17);
-  assert.equal(calls.filter((call) => call.source === 'minute').length, 1);
+  assert.equal(calls.filter((call) => call.source === 'r2').length, 1);
   assert.equal(calls.filter((call) => call.source === 'other-update').length, 1);
 });

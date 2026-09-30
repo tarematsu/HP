@@ -24,7 +24,11 @@ function publication(overrides = {}) {
   };
 }
 
-test('R2 publication traverses day models without invoking the D1 row pager', async () => {
+function r2Binding() {
+  return { async get() { return null; }, async put() {} };
+}
+
+test('R2 publication traverses indexed day models without invoking the D1 row pager', async () => {
   const requested = [];
   const db = {
     prepare() {
@@ -33,17 +37,17 @@ test('R2 publication traverses day models without invoking the D1 row pager', as
   };
   const result = await advanceTrackHistoryR2Publication(
     db,
-    { get() {}, put() {} },
+    r2Binding(),
     publication(),
     START + 2 * DAY,
     86_400,
     {
+      async loadIndex() {
+        return { dates: ['2026-07-22', '2026-07-23'] };
+      },
       async loadDay(_r2, day) {
         requested.push(day);
         return { payload: { rows: [] } };
-      },
-      async bootstrapDay() {
-        throw new Error('complete R2 day models must not bootstrap from D1');
       },
       async publishR2(_r2, state, _now, cadence) {
         assert.equal(cadence, 86_400);
@@ -60,25 +64,25 @@ test('R2 publication traverses day models without invoking the D1 row pager', as
   assert.equal(result.storage, 'r2');
 });
 
-test('R2 publication bootstraps only a missing indexed day and checkpoints progress', async () => {
-  const bootstrapped = [];
+test('R2 publication reports an indexed day whose object is missing instead of rebuilding D1', async () => {
   const first = await advanceTrackHistoryR2Publication(
     {},
-    { get() {}, put() {} },
+    r2Binding(),
     publication({ page_days: 1 }),
     START + 2 * DAY,
     86_400,
     {
+      async loadIndex() { return { dates: ['2026-07-22'] }; },
       async loadDay() { return null; },
-      async bootstrapDay(_db, _r2, day) { bootstrapped.push(day); },
-      async publishR2() { throw new Error('first page must checkpoint before publish'); },
+      async publishR2() { throw new Error('missing day must not publish'); },
     },
   );
 
   assert.equal(first.published, false);
-  assert.equal(first.action, 'r2-days');
-  assert.equal(first.publication.day_cursor, '2026-07-23');
-  assert.deepEqual(bootstrapped, ['2026-07-22']);
+  assert.equal(first.action, 'r2-day-repair');
+  assert.equal(first.publication.day_cursor, '2026-07-22');
+  assert.equal(first.missing_day, '2026-07-22');
+  assert.equal(first.bootstrapped, 0);
 });
 
 test('inline Actions cycle routes r2-days state without legacy D1 advancement or promotion', async () => {
@@ -94,7 +98,7 @@ test('inline Actions cycle routes r2-days state without legacy D1 advancement or
   const result = await runSplitTrackHistoryCycleStep({
     BUDDIES_DB: {},
     MINUTE_DB: {},
-    PAGES_RESPONSE_R2: {},
+    PAGES_RESPONSE_R2: r2Binding(),
   }, START + DAY, {
     loadStage: async () => stage,
     async publishStatus() { calls.push('status'); },
