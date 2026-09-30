@@ -41,10 +41,12 @@ test('silent loading changes are cache busted through the bundled Pages entry', 
   assert.match(tabs, /spotify\.js\?v=20260929\.1/);
   assert.match(dashboardEntry, /legacy-listening-party-route\.js\?v=20260926\.1/);
   assert.match(dashboardEntry, /dashboard-tab-order\.js\?v=20260929\.1/);
-  assert.match(dashboardEntry, /dashboard-chart-comparison\.js\?v=20260930\.1/);
-  assert.match(dashboardEntry, /dashboard-chart-detail\.js\?v=20260930\.1/);
-  assert.match(dashboardEntry, /dashboard-details-client\.js\?v=20260930\.1/);
-  assert.match(dashboardEntry, /dashboard-client\.js\?v=20260930\.1/);
+  assert.match(dashboardEntry, /dashboard-chart-stability\.js\?v=20260930\.2/);
+  assert.match(dashboardEntry, /dashboard-chart-comparison\.js\?v=20260930\.2/);
+  assert.match(dashboardEntry, /dashboard-chart-detail\.js\?v=20260930\.2/);
+  assert.match(dashboardEntry, /dashboard-daily-summaries\.js\?v=20260930\.2/);
+  assert.doesNotMatch(dashboardEntry, /dashboard-details-client\.js/);
+  assert.match(dashboardEntry, /dashboard-client\.js\?v=20260930\.2/);
   assert.match(assetBuild, /'dashboard-root-presentation\.css'/);
   assert.doesNotMatch(dashboardEntry, /dashboard-root-presentation\.css|history-global-fixes|dashboard-current-metric-style/);
   assert.doesNotMatch(dashboardEntry, /import '.\/unofficial-listening-parties\.js/);
