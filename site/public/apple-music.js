@@ -7,13 +7,23 @@ import {
   setNotice as setSharedNotice,
   shortDate as formatDate,
   svgElement,
-} from './dashboard-ui-common.js?v=20260930.1';
+} from './dashboard-ui-common.js?v=20261001.1';
 
 const REGION_ORDER = Object.freeze(['jp', 'tw', 'hk', 'kr', 'sg', 'th', 'us']);
 const JAPAN_RANK_LIMIT = 12;
 const JAPAN_OUTSIDE_RANK = JAPAN_RANK_LIMIT + 1;
 let loadPromise = null;
 let lastPayload = null;
+
+function playlistModuleUrl() {
+  return ['/apple-music-playlists.js', 'v=20261001.1'].join('?');
+}
+
+function loadPlaylistMemberships(force = false) {
+  void import(playlistModuleUrl())
+    .then((module) => module.loadAppleMusicPlaylistMemberships?.({ force }))
+    .catch((error) => console.warn('Apple Music playlist view failed to load', error));
+}
 
 function trackKey(track) {
   const trackId = integer(track?.track_id);
@@ -279,6 +289,7 @@ async function fetchPayload() {
 export async function loadAppleMusicView({ force = false } = {}) {
   if (!force && lastPayload) {
     render(lastPayload);
+    loadPlaylistMemberships(false);
     return lastPayload;
   }
   if (!loadPromise || force) {
@@ -287,6 +298,7 @@ export async function loadAppleMusicView({ force = false } = {}) {
       const failed = Array.isArray(payload?.failed_regions) ? payload.failed_regions : [];
       setNotice(failed.length ? `一部地域の取得に失敗しました：${failed.map((item) => item.label || item.code).join('、')}` : '');
       render(payload);
+      loadPlaylistMemberships(force);
       return payload;
     }).catch((error) => {
       setNotice('Apple Musicデータの取得に失敗しました。', true);
