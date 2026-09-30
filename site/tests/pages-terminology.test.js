@@ -15,7 +15,7 @@ const unofficial = readFileSync(new URL('../public/unofficial-listening-parties.
 const likes = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
 
 test('current and likes views use explicit user-facing metric names in static markup', () => {
-  for (const label of ['累計再生数', '最終取得', '対象楽曲数', '合計いいね数', '合計いいね数 前日比', '楽曲別一覧', '最新いいね数', 'リスパ']) {
+  for (const label of ['総再生数', '最終取得', '対象楽曲数', '合計いいね数', '合計いいね数（前日比）', '楽曲別一覧', '最新いいね数', 'リスパ']) {
     assert.match(staticUi, new RegExp(label));
   }
   assert.doesNotMatch(staticUi, /最大いいね数/);
@@ -27,7 +27,7 @@ test('current and likes views use explicit user-facing metric names in static ma
 test('history renderer owns final totals, growth, tracks, and ranking terminology', () => {
   for (const label of [
     '取得記録数', 'メンバー数（開始）', 'メンバー数（終了）', 'メンバー増加数', '楽曲数',
-    '平均再生増加数', '平均メンバー増加数', '圏外・欠測週数', '圏外・欠測数', '平均所要時間',
+    '平均再生数増加量', '平均メンバー増加数', '圏外・欠測週数', '圏外・欠測数', '平均所要時間',
   ]) {
     assert.match(history, new RegExp(label));
   }
@@ -55,7 +55,7 @@ test('likes runtime and CSV use the same likes terminology', () => {
 });
 
 test('legacy standalone goal card is absent from the current view', () => {
-  assert.match(currentShell, /<span>累計再生数<\/span>/);
+  assert.match(currentShell, /<span>総再生数<\/span>/);
   assert.match(currentShell, /id="metricGoalCompact"/);
-  assert.doesNotMatch(currentShell, /累計再生数の目標|goal-card|id="streamCount"|id="goalBar"|id="goalRate"/);
+  assert.doesNotMatch(currentShell, /総再生数の目標|goal-card|id="streamCount"|id="goalBar"|id="goalRate"/);
 });
