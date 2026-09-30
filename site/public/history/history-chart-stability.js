@@ -1,8 +1,12 @@
+import { createChartPaintGate } from '../chart-paint-gate.js?v=20261001.1';
+
 const canvas = document.getElementById('chart');
 const STABLE_MODES = new Set(['daily', 'weekly', 'monthly', 'ranking']);
-let armed = false;
-let fallbackTimer = 0;
-let revealTimer = 0;
+const paintGate = createChartPaintGate(canvas, {
+  pendingKey: 'paintPending',
+  stableKey: 'paintStable',
+  fallbackMs: 1800,
+});
 let paintedMode = '';
 
 function activeMode() {
@@ -11,36 +15,17 @@ function activeMode() {
 
 function conceal(mode = activeMode()) {
   if (!canvas || !STABLE_MODES.has(String(mode))) return;
-  armed = true;
-  clearTimeout(fallbackTimer);
-  clearTimeout(revealTimer);
-  canvas.style.opacity = '0';
-  canvas.style.pointerEvents = 'none';
-  canvas.dataset.paintPending = 'true';
-  delete canvas.dataset.paintStable;
+  paintGate.conceal();
   delete canvas.dataset.periodChart;
   delete canvas.dataset.rankingChart;
-  fallbackTimer = setTimeout(() => reveal(0), 1800);
 }
 
 function reveal(delay = 0) {
-  if (!canvas || !armed) return;
-  clearTimeout(revealTimer);
-  revealTimer = setTimeout(() => {
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      if (!armed) return;
-      armed = false;
-      clearTimeout(fallbackTimer);
-      canvas.style.opacity = '1';
-      canvas.style.pointerEvents = '';
-      delete canvas.dataset.paintPending;
-      canvas.dataset.paintStable = 'true';
-    }));
-  }, delay);
+  paintGate.reveal(delay);
 }
 
 function hasStablePaint() {
-  return Boolean(canvas?.dataset?.paintStable === 'true' && canvas.style.opacity !== '0');
+  return paintGate.isStable();
 }
 
 function clearAxisLabel(id) {
@@ -67,13 +52,7 @@ function resetSharedChartPresentation() {
 
 function prepareBroadcastCanvas() {
   if (!canvas) return;
-  clearTimeout(fallbackTimer);
-  clearTimeout(revealTimer);
-  armed = false;
-  canvas.style.opacity = '1';
-  canvas.style.pointerEvents = '';
-  delete canvas.dataset.paintPending;
-  delete canvas.dataset.paintStable;
+  paintGate.show();
   delete canvas.dataset.periodChart;
   delete canvas.dataset.rankingChart;
   paintedMode = 'broadcasts';
