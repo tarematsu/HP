@@ -59,20 +59,6 @@ export function fullDate(value, fallback = '-') {
   return parts ? `${parts[0]}/${parts[1]}/${parts[2]}` : String(fallback);
 }
 
-export function ensureStylesheet(href, key) {
-  if (document.documentElement.dataset.dashboardCssBundled === 'true') return null;
-  if (!href || !key) return null;
-  const selector = `link[data-dashboard-feature-style="${CSS.escape(key)}"]`;
-  const existing = document.querySelector(selector);
-  if (existing) return existing;
-  const link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = href;
-  link.dataset.dashboardFeatureStyle = key;
-  document.head.append(link);
-  return link;
-}
-
 function firstMatch(root, selectors) {
   for (const selector of selectors || []) {
     const node = selector ? root?.querySelector(selector) : null;
@@ -127,9 +113,7 @@ export function mountDashboardView({
   return section;
 }
 
-export function mountDashboardShell({ style, tab, view } = {}) {
-  ensureStylesheet('/dashboard-ui-common.css?v=20260930.1', 'dashboard-ui-common');
-  if (style?.href && style?.key) ensureStylesheet(style.href, style.key);
+export function mountDashboardShell({ tab, view } = {}) {
   if (tab) mountDashboardTab(tab);
   if (view) mountDashboardView(view);
 }
