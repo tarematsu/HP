@@ -1,9 +1,18 @@
+import { materializedResponseCadenceSeconds } from '../../site/functions/lib/api-contract.js';
 import { canonicalizeTrackRows } from '../../site/functions/lib/canonical-track-rows.js';
+import {
+  pagesActionsR2ResponseKey,
+  saveMaterializedR2Response,
+} from './pages-response-r2.js';
 import {
   attachPlaybackReadModelTrackMetadata,
   loadPlaybackReadModelTrackMetadata,
 } from './read-model-stationhead-metadata.js';
 import { sanitizeQueueTrackMetadata } from './track-metadata-quality.js';
+
+const TRACK_HISTORY_MODEL_KEY = 'track-history';
+const TRACK_HISTORY_STATUS_KEY = 'track-history-status';
+const STATUS_HEADERS = Object.freeze({ 'content-type': 'application/json; charset=utf-8' });
 
 function safeQueue(value) {
   try {
@@ -14,7 +23,69 @@ function safeQueue(value) {
   }
 }
 
-async function repairTrackHistoryStatusRanking(db) {
+function compactTrackHistoryStatus(status, now) {
+  return {
+    ok: true,
+    ranking: Array.isArray(status?.ranking) ? status.ranking : [],
+    ranking_summary: status?.ranking_summary && typeof status.ranking_summary === 'object'
+      ? status.ranking_summary
+      : {},
+    ranking_scope: status?.ranking_scope || 'all-time-latest-counter',
+    source_row_count: Number(status?.source_row_count || 0),
+    excluded_play_count_dates: Array.isArray(status?.excluded_play_count_dates)
+      ? status.excluded_play_count_dates
+      : [],
+    generated_at: Number(status?.generated_at || 0) || now,
+  };
+}
+
+async function publishTrackHistoryStatus(env, status) {
+  const r2 = env?.PAGES_RESPONSE_R2;
+  if (typeof r2?.put !== 'function') return 0;
+  const now = Date.now();
+  const payload = compactTrackHistoryStatus(status, now);
+  const body = JSON.stringify(payload);
+  const cadenceSeconds = materializedResponseCadenceSeconds(TRACK_HISTORY_MODEL_KEY);
+  try {
+    await saveMaterializedR2Response(
+      r2,
+      TRACK_HISTORY_STATUS_KEY,
+      body,
+      200,
+      STATUS_HEADERS,
+      now,
+      cadenceSeconds,
+    );
+    const actionsKey = pagesActionsR2ResponseKey(TRACK_HISTORY_STATUS_KEY);
+    if (actionsKey) {
+      await r2.put(actionsKey, JSON.stringify({
+        version: 1,
+        updated_at: now,
+        cadence_seconds: cadenceSeconds,
+        status: 200,
+        headers: STATUS_HEADERS,
+        body,
+      }), {
+        httpMetadata: { contentType: 'application/json; charset=utf-8' },
+        customMetadata: {
+          version: '1',
+          model_key: TRACK_HISTORY_STATUS_KEY,
+          updated_at: String(now),
+          cadence_seconds: String(cadenceSeconds),
+        },
+      });
+    }
+    return 1;
+  } catch (error) {
+    console.warn(JSON.stringify({
+      event: 'track_history_status_metadata_republish_failed',
+      error: String(error?.message || error || '').slice(0, 500),
+    }));
+    return 0;
+  }
+}
+
+async function repairTrackHistoryStatusRanking(env, db) {
   let row;
   try {
     row = await db.prepare(`SELECT payload_json
@@ -28,12 +99,16 @@ async function repairTrackHistoryStatusRanking(db) {
   const status = safeQueue(row?.payload_json);
   if (!status || !Array.isArray(status.ranking) || !status.ranking.length) return 0;
   const canonicalRanking = await canonicalizeTrackRows(db, status.ranking);
-  if (canonicalRanking === status.ranking) return 0;
-  await db.prepare(`UPDATE sh_pages_payload_read_model
-    SET payload_json=?
-    WHERE model_key='track-history-status'`)
-    .bind(JSON.stringify({ ...status, ranking: canonicalRanking })).run();
-  return 1;
+  const changed = canonicalRanking !== status.ranking;
+  const nextStatus = changed ? { ...status, ranking: canonicalRanking } : status;
+  if (changed) {
+    await db.prepare(`UPDATE sh_pages_payload_read_model
+      SET payload_json=?
+      WHERE model_key='track-history-status'`)
+      .bind(JSON.stringify(nextStatus)).run();
+  }
+  const published = await publishTrackHistoryStatus(env, nextStatus);
+  return changed || published ? 1 : 0;
 }
 
 export async function repairPlaybackReadModels(env) {
@@ -61,6 +136,6 @@ export async function repairPlaybackReadModels(env) {
       .bind(JSON.stringify(canonicalQueue), row.channel_id).run();
     repaired += 1;
   }
-  const statusRepaired = await repairTrackHistoryStatusRanking(db);
+  const statusRepaired = await repairTrackHistoryStatusRanking(env, db);
   return { repaired, status_repaired: statusRepaired, skipped: false };
 }
