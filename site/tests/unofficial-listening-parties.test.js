@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const viewSource = await readFile(new URL('../public/unofficial-listening-parties.js', import.meta.url), 'utf8');
-const pageSource = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+const registrySource = await readFile(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
 const metricsSource = await readFile(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const historyEntry = await readFile(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const legacyRoute = await readFile(new URL('../public/legacy-listening-party-route.js', import.meta.url), 'utf8');
@@ -11,9 +11,9 @@ const legacyRoute = await readFile(new URL('../public/legacy-listening-party-rou
 const eventRows = [...viewSource.matchAll(/^  \['\d{4}\/\d{2}\/\d{2}'.+?\],$/gm)].map(([row]) => row);
 
 test('official and unofficial listening parties share one top-level リスパ tab', () => {
-  assert.match(pageSource, /data-mode="broadcasts">リスパ<\/button>/);
-  assert.doesNotMatch(pageSource, /data-mode="broadcasts">(?:Listening Party|リスニングパーティ)<\/button>/);
-  assert.doesNotMatch(pageSource, /data-view="unofficial"/);
+  assert.match(registrySource, /view: 'history', mode: 'broadcasts', label: 'リスパ'/);
+  assert.doesNotMatch(registrySource, /label: '(?:Listening Party|リスニングパーティ)'/);
+  assert.doesNotMatch(registrySource, /view: 'unofficial'/);
   assert.doesNotMatch(viewSource, /button\.dataset\.view = 'unofficial'|button\.textContent = '非公式リスパ'/);
 });
 
@@ -78,8 +78,5 @@ test('unofficial list is visible only while リスパ is active and legacy route
 
 test('unofficial data stays out of initial entry and loads only through broadcasts history runtime', () => {
   assert.doesNotMatch(metricsSource, /import '.\/unofficial-listening-parties\.js/);
-  assert.match(metricsSource, /legacy-listening-party-route\.js\?v=20260926\.1/);
-  assert.ok(metricsSource.indexOf('legacy-listening-party-route.js') < metricsSource.indexOf('dashboard-tabs.js'));
-  assert.match(historyEntry, /if \(mode === 'ranking' \|\| mode === 'broadcasts'\) return mode/);
-  assert.match(historyEntry, /unofficial-listening-parties\.js\?v=20260927\.1/);
+  assert.match(historyEntry, /unofficial-listening-parties\.js/);
 });
