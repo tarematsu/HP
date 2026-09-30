@@ -11,10 +11,10 @@ const OVERALL_CHART_INITIAL_URL = `${CATALOG_SKILL_BASE}/showChartsWidget?genreT
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 const RETRY_ATTEMPTS = 6;
 
-export const AMAZON_MUSIC_TOP_SCAN_RANK = 1_000;
+export const AMAZON_MUSIC_TOP_SCAN_RANK = 500;
 export const AMAZON_MUSIC_DEEP_SCAN_TARGET_RANK = 100_000;
 export const AMAZON_MUSIC_DEEP_SCAN_PAGES_PER_RUN = 100;
-export const AMAZON_MUSIC_TOP_STATE_KEY = 'amazon-music/rank-monitor/top-1000.json';
+export const AMAZON_MUSIC_TOP_STATE_KEY = 'amazon-music/rank-monitor/top-500.json';
 export const AMAZON_MUSIC_DEEP_STATE_KEY = 'amazon-music/rank-monitor/deep-100k.json';
 export const AMAZON_MUSIC_GROUP_KNOWN_KEY = 'amazon-music/rank-monitor/sakamichi-100k-known.json';
 
@@ -299,7 +299,7 @@ async function saveChartUpdate(db, observedAt, previousHash, currentHash, change
   if (!db?.prepare) return false;
   await db.prepare(`INSERT OR IGNORE INTO amazon_music_chart_change_events
     (observed_at, chart_key, previous_hash, current_hash, changed_positions)
-    VALUES (?, 'jp-popular-songs', ?, ?, ?)`)
+    VALUES (?, 'jp-popular-songs', ?, ?, ?)`) 
     .bind(observedAt, previousHash, currentHash, changedCount)
     .run();
   return true;
@@ -310,7 +310,7 @@ async function saveGroupChanges(db, observedAt, changes) {
   const resolved = await resolveAmazonMusicTracks(db, changes, observedAt);
   const statements = changes.map((item, index) => db.prepare(`INSERT OR IGNORE INTO amazon_music_group_rank_history
     (observed_at, group_name, amazon_music_id, track_id, rank, previous_rank, change_type, title, artist)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`) 
     .bind(
       observedAt,
       item.group_name,
@@ -343,7 +343,7 @@ function rankChange(before, item) {
   return null;
 }
 
-export async function monitorAmazonTop1000(env, observedAt = Date.now(), fetchImpl = fetch) {
+export async function monitorAmazonTop500(env, observedAt = Date.now(), fetchImpl = fetch) {
   const r2 = env?.PAGES_RESPONSE_R2;
   if (!r2?.put) throw new Error('PAGES_RESPONSE_R2 binding is required');
   const scan = await scanAmazonChart(fetchImpl, {
@@ -352,7 +352,7 @@ export async function monitorAmazonTop1000(env, observedAt = Date.now(), fetchIm
     maxPages: 60,
   });
   if (scan.scanned_tracks < AMAZON_MUSIC_TOP_SCAN_RANK) {
-    throw new Error(`Amazon top-1000 scan incomplete: ${scan.scanned_tracks}`);
+    throw new Error(`Amazon top-500 scan incomplete: ${scan.scanned_tracks}`);
   }
 
   const previous = await getJson(r2, AMAZON_MUSIC_TOP_STATE_KEY);
