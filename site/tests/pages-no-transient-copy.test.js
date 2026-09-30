@@ -27,10 +27,11 @@ test('history shell contains structure only and first reveal waits for runtime i
   assert.match(tabs, /await loadOnce\('history-runtime',[\s\S]*showOnly\(historyView\);[\s\S]*markRouteReady\(\)/);
 });
 
-test('history static copy and tab state each have one owner', () => {
+test('history static copy stays in runtime and tabs update immediately', () => {
   assert.match(history, /broadcasts: \{ title: '公式リスパ比較', table: '公式リスパ一覧', chart: '公式リスパ 同接推移（開始0分比較）' \}/);
   assert.match(history, /querySelectorAll\('#modeTabs button'\)[\s\S]*classList\.toggle\('active'/);
-  assert.match(tabs, /function updateTabs\(mode\) \{\s*if \(HISTORY_MODES\.has\(mode\)\) return;/);
+  assert.match(tabs, /function updateTabs\(mode\) \{[\s\S]*button\.classList\.toggle\('active', selected\)/);
+  assert.doesNotMatch(tabs, /function updateTabs\(mode\) \{\s*if \(HISTORY_MODES\.has\(mode\)\) return;/);
   assert.doesNotMatch(broadcasts, /button\.textContent = '公式リスパ'/);
   assert.doesNotMatch(broadcasts, /chartTitle'\)\.textContent|chartFoot'\)\.textContent/);
   assert.doesNotMatch(broadcastTable, /tableTitle\.textContent/);
