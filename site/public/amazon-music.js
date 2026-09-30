@@ -26,30 +26,9 @@ function trackKey(track) {
   return trackId != null && trackId > 0 ? `track:${trackId}` : '';
 }
 
-function duplicateCanonicalTrackIds(payload) {
-  const counts = new Map();
-  for (const track of Array.isArray(payload?.tracks) ? payload.tracks : []) {
-    const trackId = integer(track?.track_id);
-    if (trackId == null || trackId < 1) continue;
-    counts.set(trackId, (counts.get(trackId) || 0) + 1);
-  }
-  return new Set([...counts].filter(([, count]) => count > 1).map(([trackId]) => trackId));
-}
-
-function trackDisplayTitle(track, duplicateTrackIds) {
-  const title = String(track?.title || '曲名不明');
-  const trackId = integer(track?.track_id);
-  if (trackId == null || !duplicateTrackIds.has(trackId)) return title;
-  const album = String(track?.album || '').trim();
-  if (album && album !== title) return `${title}（${album}）`;
-  const amazonId = String(track?.amazon_music_id || '').trim();
-  return amazonId ? `${title}（Amazon ${amazonId}）` : title;
-}
-
 function trackTitleMap(payload) {
-  const duplicateTrackIds = duplicateCanonicalTrackIds(payload);
   return new Map((Array.isArray(payload?.tracks) ? payload.tracks : [])
-    .map((track) => [trackKey(track), trackDisplayTitle(track, duplicateTrackIds)])
+    .map((track) => [trackKey(track), String(track?.title || '曲名不明')])
     .filter(([key]) => key));
 }
 
@@ -222,7 +201,6 @@ function renderTable(payload) {
   const tbody = element('amazonMusicTbody');
   if (!tbody) return;
   tbody.replaceChildren();
-  const duplicateTrackIds = duplicateCanonicalTrackIds(payload);
   const tracks = [...(Array.isArray(payload?.tracks) ? payload.tracks : [])]
     .sort((a, b) => (integer(a?.amazon_rank) ?? Number.MAX_SAFE_INTEGER)
       - (integer(b?.amazon_rank) ?? Number.MAX_SAFE_INTEGER));
@@ -232,7 +210,7 @@ function renderTable(payload) {
     const title = document.createElement('td');
     const amazon = integer(track?.amazon_rank);
     amazonRank.textContent = amazon == null ? '-' : `${numberFormat.format(amazon)}位`;
-    title.textContent = trackDisplayTitle(track, duplicateTrackIds);
+    title.textContent = String(track?.title || '曲名不明');
     amazonRank.className = 'amazon-rank-number';
     row.append(amazonRank, title);
     tbody.append(row);
