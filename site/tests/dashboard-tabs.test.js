@@ -52,8 +52,16 @@ test('dashboard hides the static page skeleton until the selected route shell is
 });
 
 test('archive and likes markup are owned by their shared shell modules', () => {
-  for (const id of ['controls', 'summaryCards', 'chartPanel', 'rankingWeeklyPanel']) assert.match(historyShell, new RegExp(`id="${id}"`));
+  for (const id of ['controls', 'summaryCards', 'chartPanel', 'rankingWeeklyPanel']) {
+    assert.match(historyShell, new RegExp(`(?:id=\\"${id}\\"|id: '${id}')`));
+  }
   for (const id of ['likesCsv', 'likesNotice', 'likesRankingList', 'likesTbody']) assert.match(likesShell, new RegExp(`id="${id}"`));
+  assert.match(historyShell, /dashboardControls/);
+  assert.match(historyShell, /dashboardSummary/);
+  assert.match(historyShell, /dashboardChartCard/);
+  assert.match(historyShell, /dashboardDataCard/);
+  assert.match(likesShell, /dashboardSummary/);
+  assert.match(likesShell, /dashboardDataCard/);
   assert.doesNotMatch(likesShell, /id="likesLoad"/);
   assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260930\.1'/);
   assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20261001\.1'\)/);
@@ -67,7 +75,7 @@ test('feature tabs share one lazy route registry and loader', () => {
   assert.match(tabsClient, /const LAZY_VIEWS = Object\.freeze/);
   assert.match(tabsClient, /const modulePromises = new Map\(\)/);
   assert.match(tabsClient, /function loadOnce\(key, importer\)/);
-  assert.match(tabsClient, /async function showLazyView\(mode, options = \{\}\)/);
+  assert.match(tabsClient, /async function showLazyView\(mode, options = \{}\)/);
   for (const [mode, shell, runtime] of [
     ['first-week', 'first-week-comparison-shell.js', 'first-week-comparison.js'],
     ['played-tracks', 'played-tracks-shell.js', 'played-tracks.js'],
