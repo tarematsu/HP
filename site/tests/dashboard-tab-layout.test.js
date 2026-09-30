@@ -6,10 +6,10 @@ const theme = readFileSync(new URL('../public/monochrome.css', import.meta.url),
 const sharedTabs = readFileSync(new URL('../public/pages-tabs-layout.css', import.meta.url), 'utf8');
 const buildScript = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 
-test('dashboard tabs use the shared seven-column cap', () => {
+test('dashboard tabs use the shared six-column cap', () => {
   assert.match(
     sharedTabs,
-    /#modeTabs\.mode-tabs\.dashboard-tabs\s*\{[^}]*grid-template-columns:\s*repeat\(7, minmax\(0, 1fr\)\)\s*!important/s,
+    /#modeTabs\.mode-tabs\.dashboard-tabs\s*\{[^}]*grid-template-columns:\s*repeat\(6, minmax\(0, 1fr\)\)\s*!important/s,
   );
   assert.ok(
     buildScript.indexOf("'pages-layout.css'") < buildScript.indexOf("'pages-tabs-layout.css'"),
