@@ -37,6 +37,7 @@ class FakeDb {
   constructor() {
     this.batches = [];
     this.deletes = [];
+    this.selects = [];
   }
 
   prepare(sql) {
@@ -46,6 +47,10 @@ class FakeDb {
       bind(...args) {
         this.args = args;
         return this;
+      },
+      all: async () => {
+        this.selects.push(statement);
+        return { results: [] };
       },
       run: async () => {
         this.deletes.push(statement);
@@ -110,6 +115,45 @@ test('scheduled Actions never invoke track-history R2 shard generation', async (
   assert.equal(calls, 0);
   assert.equal(result.track_history_steps, 0);
   assert.equal(result.track_history_result.reason, 'track-history-read-model-disabled');
+});
+
+test('grouped history rows and like rows share one canonical lookup pass', async () => {
+  const r2 = new FakeR2();
+  const db = new FakeDb();
+  const range = { fromTs: DAY_START, toTs: DAY_START + 3 * 60 * 60_000 };
+  await materializeTrackHistoryRangeThroughR2(
+    { prepare() { throw new Error('raw BUDDIES_DB must not be read'); } },
+    db,
+    range,
+    DAY_START,
+    {
+      r2,
+      generation: DAY_START,
+      cleanupDay: false,
+      async loadData() {
+        return {
+          result: { results: [{
+            play_date: '2026-07-23',
+            spotify_id: 'shared-track',
+            title: 'Shared Track',
+            artist: 'Artist',
+            play_count: 1,
+            first_played_at: range.fromTs,
+            last_played_at: range.toTs - 1,
+          }] },
+          likeRows: [{ spotify_id: 'shared-track', like_count: 12 }],
+        };
+      },
+      mergeRows: (rows) => rows,
+      attachLikes: (rows) => rows,
+      applyCompleteness: (rows) => ({ rows, excludedDates: [] }),
+    },
+  );
+
+  const canonicalSelects = db.selects.filter(({ sql }) => /FROM sh_track_canonical_metadata/.test(sql));
+  assert.equal(canonicalSelects.length, 1);
+  assert.match(canonicalSelects[0].sql, /WHERE track_id IS NOT NULL AND spotify_id IN/);
+  assert.deepEqual(canonicalSelects[0].args, ['shared-track']);
 });
 
 test('explicit maintenance keeps seven staging shards in R2 and writes a stable R2 day model', async () => {
