@@ -83,6 +83,41 @@
   font-size: var(--dashboard-copy-size, .72rem);
 }
 
+.spotify-detail-head {
+  align-items: end;
+  gap: 10px;
+}
+
+.spotify-artist-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.spotify-artist-button {
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid var(--line, #d5d5d5);
+  border-radius: 999px;
+  background: var(--card, #fff);
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.spotify-artist-button:hover {
+  border-color: currentColor;
+}
+
+.spotify-artist-button.is-active,
+.spotify-artist-button[aria-pressed="true"] {
+  background: var(--text, #111);
+  border-color: var(--text, #111);
+  color: var(--card, #fff);
+}
+
 .spotify-table th:first-child,
 .spotify-table td:first-child {
   text-align: center;
@@ -112,5 +147,17 @@
 
   .spotify-trend-legend {
     gap: 4px 9px;
+  }
+
+  .spotify-detail-head {
+    align-items: stretch;
+  }
+
+  .spotify-artist-switcher {
+    justify-content: flex-start;
+  }
+
+  .spotify-artist-button {
+    flex: 1 1 auto;
   }
 }
