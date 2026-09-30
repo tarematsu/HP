@@ -28,11 +28,11 @@ import {
   });
 
   const MODES = Object.freeze({
-    daily: { title: '日次集計', table: '日次集計一覧', chart: '同接・再生数の推移' },
-    weekly: { title: '週次集計', table: '週次集計一覧', chart: '同接・再生数の推移' },
-    monthly: { title: '月次集計', table: '月次集計一覧', chart: '同接・再生数の推移' },
+    daily: { title: '日次集計', table: '日次集計一覧', chart: '同接・再生数増加の推移' },
+    weekly: { title: '週次集計', table: '週次集計一覧', chart: '同接・再生数増加の推移' },
+    monthly: { title: '月次集計', table: '月次集計一覧', chart: '同接・再生数増加の推移' },
     ranking: { title: '週間リーダーボード', table: '週間リーダーボード', chart: '' },
-    broadcasts: { title: '公式ストリーム比較', table: '公式ストリーム一覧', chart: '公式ステヘ 同接推移（開始0分比較）' },
+    broadcasts: { title: '公式リスパ比較', table: '公式リスパ一覧', chart: '公式リスパ 同接推移（開始0分比較）' },
   });
 
   const SUMMARY_COLUMNS = [
@@ -378,7 +378,7 @@ import {
     }
 
     setSummary(
-      { period: '期間数', max: '平均同接', stream: '平均再生増加数', member: '平均メンバー増加数' },
+      { period: '期間数', max: '平均同接', stream: '平均再生数増加量', member: '平均メンバー増加数' },
       {
         periods: numberText(rows.length),
         max: numberText(average(rows, 'listener_avg')),
@@ -489,7 +489,7 @@ import {
         console.error(error);
         resetData();
         renderLoadedData();
-        setNotice(`データを取得できませんでした: ${error.message}`, true);
+        setNotice(`データの取得に失敗しました：${error.message}`, true);
       }
     } finally {
       if (token === state.requestToken) {
