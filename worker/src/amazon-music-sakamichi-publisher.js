@@ -115,9 +115,7 @@ export function amazonMusicSakamichiScanState(deepState, extensionState) {
   const extensionScanned = extensionMatches
     ? Math.max(0, integer(extensionState?.scanned_tracks) || 0)
     : 0;
-  const extensionComplete = extensionMatches
-    && extensionState?.status === 'complete'
-    && extensionScanned >= AMAZON_MUSIC_DEEP_TARGET_RANK;
+  const extensionComplete = extensionMatches && extensionState?.status === 'complete';
   return {
     cycle,
     scanned_tracks: Math.max(baseScanned, extensionScanned),
