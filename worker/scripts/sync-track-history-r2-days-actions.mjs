@@ -82,6 +82,17 @@ function normalizedDates(values) {
     .filter(validDay))].sort();
 }
 
+function normalizedCounts(value, dates) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const allowed = new Set(dates);
+  const result = {};
+  for (const [day, raw] of Object.entries(source)) {
+    const count = Number(raw);
+    if (allowed.has(day) && Number.isFinite(count) && count >= 0) result[day] = Math.trunc(count);
+  }
+  return result;
+}
+
 function parseRowJson(row, day) {
   try {
     const parsed = JSON.parse(String(row?.row_json || 'null'));
@@ -100,23 +111,61 @@ async function loadDayRows(db, day) {
   return result.results || [];
 }
 
-function dayPayload(day, source, now) {
-  const rows = source.map((row) => parseRowJson(row, day));
+function dayPayload(day, rows, now, sourceUpdatedAt = 0) {
   const sourceRowCount = rows.reduce(
     (sum, row) => sum + Math.max(0, Number(row?.play_count || 0)),
     0,
   );
-  const updatedAt = Math.max(
-    Number(now) || Date.now(),
-    ...source.map((row) => Number(row?.updated_at) || 0),
-  );
   return {
     version: 1,
     day,
-    updated_at: updatedAt,
+    updated_at: Math.max(Number(now) || Date.now(), Number(sourceUpdatedAt) || 0),
     rows,
     source_row_count: sourceRowCount,
     excluded_dates: [],
+  };
+}
+
+export async function publishTrackHistoryR2DayRows({
+  day,
+  rows,
+  now = Date.now(),
+  upload = uploadJson,
+  load = loadJson,
+} = {}) {
+  if (!validDay(day)) throw new Error(`invalid Track History R2 day: ${day}`);
+  const normalizedRows = Array.isArray(rows) ? rows : [];
+  const payload = dayPayload(day, normalizedRows, now);
+  const existingIndex = await Promise.resolve(load(TRACK_HISTORY_DAY_INDEX_KEY));
+  const dates = new Set(normalizedDates(existingIndex?.dates));
+  const counts = normalizedCounts(existingIndex?.play_counts, [...dates]);
+  if (normalizedRows.length) {
+    dates.add(day);
+    counts[day] = payload.source_row_count;
+  } else {
+    dates.delete(day);
+    delete counts[day];
+  }
+  const normalized = [...dates].sort();
+  const index = {
+    version: 1,
+    updated_at: Math.max(
+      Number(existingIndex?.updated_at) || 0,
+      Number(payload.updated_at) || Number(now) || Date.now(),
+    ),
+    dates: normalized,
+    latest_date: normalized.at(-1) || null,
+    play_counts: normalizedCounts(counts, normalized),
+  };
+  upload(trackHistoryDayObjectKey(day), payload);
+  upload(TRACK_HISTORY_DAY_INDEX_KEY, index);
+  return {
+    ok: true,
+    day,
+    rows: payload.rows.length,
+    plays: payload.source_row_count,
+    latest_date: index.latest_date,
+    updated_at: index.updated_at,
   };
 }
 
@@ -129,51 +178,33 @@ export async function syncTrackHistoryR2Day({
 } = {}) {
   if (!db?.prepare) throw new Error('MINUTE_DB adapter is missing');
   if (!validDay(day)) throw new Error(`invalid Track History R2 sync day: ${day}`);
-
   const source = await loadDayRows(db, day);
-  const payload = dayPayload(day, source, now);
-  const existingIndex = await Promise.resolve(load(TRACK_HISTORY_DAY_INDEX_KEY));
-  if (!existingIndex
-      || Number(existingIndex.version) !== 1
-      || !Array.isArray(existingIndex.dates)) {
-    throw new Error('track-history R2 day index unavailable; run a full sync before incremental refresh');
+  const rows = source.map((row) => parseRowJson(row, day));
+  return publishTrackHistoryR2DayRows({ day, rows, now, upload, load });
+}
+
+async function legacySourceAvailable(db) {
+  try {
+    const row = await db.prepare(`SELECT 1 AS present FROM sqlite_schema
+      WHERE type='table' AND name='sh_pages_track_history_read_model' LIMIT 1`).first();
+    return Boolean(row?.present);
+  } catch {
+    return false;
   }
-
-  upload(trackHistoryDayObjectKey(day), payload);
-
-  const dates = new Set(normalizedDates(existingIndex.dates));
-  if (payload.rows.length) dates.add(day);
-  else dates.delete(day);
-  const normalized = [...dates].sort();
-  const index = {
-    version: 1,
-    updated_at: Math.max(
-      Number(existingIndex.updated_at) || 0,
-      Number(payload.updated_at) || Number(now) || Date.now(),
-    ),
-    dates: normalized,
-    latest_date: normalized.at(-1) || null,
-  };
-  upload(TRACK_HISTORY_DAY_INDEX_KEY, index);
-
-  return {
-    ok: true,
-    day,
-    rows: payload.rows.length,
-    plays: payload.source_row_count,
-    latest_date: index.latest_date,
-    updated_at: index.updated_at,
-  };
 }
 
 export async function syncTrackHistoryR2Days({ db, now = Date.now(), upload = uploadJson } = {}) {
   if (!db?.prepare) throw new Error('MINUTE_DB adapter is missing');
+  if (!(await legacySourceAvailable(db))) {
+    return { ok: true, skipped: true, reason: 'legacy-d1-source-retired' };
+  }
   const dayResult = await db.prepare(`SELECT play_date,MAX(updated_at) AS updated_at
     FROM sh_pages_track_history_read_model
     GROUP BY play_date
     ORDER BY play_date ASC`).all();
   const dayRows = dayResult.results || [];
   const dates = [];
+  const playCounts = {};
   let rowCount = 0;
   let playCount = 0;
 
@@ -182,9 +213,11 @@ export async function syncTrackHistoryR2Days({ db, now = Date.now(), upload = up
     if (!validDay(day)) continue;
     const source = await loadDayRows(db, day);
     if (!source.length) continue;
-    const payload = dayPayload(day, source, Math.max(Number(now) || 0, Number(dayRow?.updated_at) || 0));
+    const rows = source.map((row) => parseRowJson(row, day));
+    const payload = dayPayload(day, rows, now, dayRow?.updated_at);
     upload(trackHistoryDayObjectKey(day), payload);
     dates.push(day);
+    playCounts[day] = payload.source_row_count;
     rowCount += payload.rows.length;
     playCount += payload.source_row_count;
   }
@@ -195,6 +228,7 @@ export async function syncTrackHistoryR2Days({ db, now = Date.now(), upload = up
     updated_at: timestamp,
     dates,
     latest_date: dates.at(-1) || null,
+    play_counts: playCounts,
   });
 
   return {
