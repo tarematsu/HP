@@ -133,7 +133,7 @@ test('tab selection stays on the root document and never navigates to history pa
   assert.match(tabsClient, /mode === 'current' \? '\/' : `\/#\$\{mode\}`/);
   assert.match(tabsClient, /event\.preventDefault\(\)/);
   assert.doesNotMatch(page, /href="\/history/);
-  assert.doesNotMatch(tabsClient, /location\.(?:assign|replace\)\([^)]*history/);
+  assert.doesNotMatch(tabsClient, /location\.(?:assign|replace)\([^)]*history/);
   assert.doesNotMatch(historyEntry, /legacyHistoryRoute|location\.replace/);
 });
 
