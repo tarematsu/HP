@@ -225,11 +225,16 @@ html.keyboard-navigation .skip-link:focus {
   }
 
   .mode-tabs.dashboard-tabs button {
+    grid-column: span 2;
     min-width: 0;
     min-height: 46px;
     padding-inline: 4px;
     font-size: .68rem;
     white-space: nowrap;
+  }
+
+  .mode-tabs.dashboard-tabs button:last-child {
+    grid-column: 1 / -1;
   }
 
   .dashboard-header .channel-copy > .subtle {
