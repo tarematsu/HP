@@ -66,8 +66,10 @@ function buildPayload(event, probes, summary, generatedAt, day) {
   const points = [];
   const listeners = [];
   for (const row of probes) {
-    if (preferredBroadcastId != null && finite(row?.broadcast_id) != null
-        && Number(row.broadcast_id) !== Number(preferredBroadcastId)) continue;
+    if (preferredBroadcastId != null && (
+      Number(row?.is_broadcasting) !== 1
+      || Number(row?.broadcast_id) !== Number(preferredBroadcastId)
+    )) continue;
     const observedAt = finite(row?.observed_at);
     const listener = finite(row?.listener_count);
     if (observedAt == null || listener == null || start == null || observedAt < start) continue;
