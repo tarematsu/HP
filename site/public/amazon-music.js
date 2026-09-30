@@ -190,13 +190,15 @@ function renderTable(payload) {
       - (integer(b?.amazon_rank) ?? Number.MAX_SAFE_INTEGER));
   for (const track of tracks) {
     const row = document.createElement('tr');
-    const amazonRank = document.createElement('td');
-    const title = document.createElement('td');
+    const amazonRank = row.insertCell();
+    const change = row.insertCell();
+    const title = row.insertCell();
     const amazon = integer(track?.amazon_rank);
+    const delta = integer(track?.rank_change);
     amazonRank.textContent = amazon == null ? '-' : `${numberFormat.format(amazon)}位`;
+    change.textContent = delta == null ? '-' : delta > 0 ? `+${numberFormat.format(delta)}` : numberFormat.format(delta);
     title.textContent = track?.display_title || track?.title || '曲名不明';
-    amazonRank.className = 'amazon-rank-number';
-    row.append(amazonRank, title);
+    amazonRank.className = change.className = 'amazon-rank-number';
     tbody.append(row);
   }
 }
