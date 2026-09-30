@@ -52,8 +52,8 @@ function twelveHourVariants() {
   ];
 }
 
-test('pages read models run independently before runtime maintenance', () => {
-  assert.match(workflow, /cron: '26 0,6,12,18 \* \* \*'/);
+test('Pages history recovery is daily while normal publication is revision-targeted', () => {
+  assert.match(workflow, /cron: '26 0 \* \* \*'/);
   assert.doesNotMatch(workflow, /workflow_run:/);
   assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/);
   assert.match(workflow, /group: pages-read-model-rebuild/);
@@ -61,6 +61,8 @@ test('pages read models run independently before runtime maintenance', () => {
   assert.match(workflow, /timeout-minutes: 15/);
   assert.match(workflow, /PAGES_RESPONSE_BUCKET/);
   assert.match(workflow, /PAGES_READ_MODEL_FORCE_ALL/);
+  assert.match(workflow, /PAGES_READ_MODEL_DUE_KEYS/);
+  assert.match(workflow, /due_keys:/);
   assert.match(workflow, /PAGES_READ_MODEL_RETRY_OVERDUE: 'true'/);
   assert.match(workflow, /steps\.d1-write-budget\.outputs\.read_allowed == 'true'/);
   assert.match(workflow, /steps\.d1-write-budget\.outputs\.read_allowed != 'true'/);
@@ -68,7 +70,7 @@ test('pages read models run independently before runtime maintenance', () => {
   assert.doesNotMatch(workflow, /steps\.d1-write-budget\.outputs\.allowed != 'true'/);
   assert.doesNotMatch(workflow, /PAGES_READ_MODEL_MAX_STEPS|Rebuild track history/);
   assert.match(workflow, /Publish due pages read models/);
-  assert.match(workflow, /run-pages-read-model-actions\.mjs/);
+  assert.match(workflow, /run-pages-history-read-model-actions\.mjs/);
   assert.match(runner, /export async function runPagesReadModelActions/);
   assert.doesNotMatch(runner, /runSplitTrackHistoryCycleStep|MAX_TRACK_HISTORY_STEPS|while \(steps < maxSteps/);
   assert.match(runner, /variant\.cadence_minutes/);
@@ -106,7 +108,7 @@ test('dashboard materialized lifetime covers the five-minute publication interva
   assert.equal(materializedResponseMaximumAge('dashboard'), 15 * MINUTE);
 });
 
-test('contract cadence follows the requested generation intervals', () => {
+test('contract cadence metadata remains compatible with recovery tooling', () => {
   assert.deepEqual([...dueVariantKeys(DAY + 26 * MINUTE)], allMaterializedVariants());
   assert.deepEqual([...dueVariantKeys(DAY + 55 * MINUTE)], allMaterializedVariants());
   assert.deepEqual([...dueVariantKeys(DAY + 56 * MINUTE)], ['dashboard']);
@@ -135,8 +137,7 @@ test('manual and main-push rebuilds can force every bounded model immediately', 
   );
 });
 
-
-test('overdue historical models are retried without making every model due', async () => {
+test('revision-driven historical models are not declared overdue by age alone', async () => {
   const variants = [
     { key: 'dashboard' },
     { key: 'history:daily' },
@@ -157,10 +158,10 @@ test('overdue historical models are retried without making every model due', asy
   });
 
   assert.deepEqual(loaded, ['history:daily', 'history:weekly', 'host-history:summary']);
-  assert.deepEqual([...overdue], ['history:daily', 'host-history:summary']);
+  assert.deepEqual([...overdue], []);
 });
 
-test('normal runner adds only overdue models to the cadence set', async () => {
+test('normal runner does not add revision-driven history solely because it is old', async () => {
   const published = [];
   const result = await runPagesReadModelActions({
     startedAt: DAY + 56 * MINUTE,
@@ -179,8 +180,8 @@ test('normal runner adds only overdue models to the cadence set', async () => {
     },
   });
 
-  assert.deepEqual(published, ['dashboard', 'history:daily']);
-  assert.deepEqual(result.published.map(({ key }) => key), ['dashboard', 'history:daily']);
+  assert.deepEqual(published, ['dashboard']);
+  assert.deepEqual(result.published.map(({ key }) => key), ['dashboard']);
 });
 
 test('materialized summaries exclude the current period while keeping known gaps in the R2 body', async () => {
