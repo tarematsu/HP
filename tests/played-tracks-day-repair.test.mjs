@@ -34,6 +34,14 @@ test('played-tracks refresh is bounded to one UTC day and publishes only after n
   assert.doesNotMatch(repair, /INSERT INTO sh_pages_track_history_read_model|DELETE FROM sh_pages_track_history_read_model/);
 });
 
+test('played-tracks repair canonicalizes grouped and like rows in one pass', () => {
+  assert.match(repair, /const combinedRows = \[\.\.\.groupedRows, \.\.\.\(likeRows \|\| \[\]\)\];/);
+  assert.match(repair, /const canonicalRows = await canonicalizeTrackRows\(db, combinedRows\);/);
+  assert.match(repair, /canonicalRows\.slice\(0, groupedRows\.length\)/);
+  assert.match(repair, /canonicalRows\.slice\(groupedRows\.length\)/);
+  assert.doesNotMatch(repair, /Promise\.all\(\[\s*canonicalizeTrackRows\(db, groupedRows\)/);
+});
+
 test('played-tracks refresh publishes only the changed day and updates the R2 date index', () => {
   assert.match(repair, /publishTrackHistoryR2DayRows/);
   assert.match(repair, /const r2 = await publish\(\{ day: targetDay, rows: repaired\.rows, now: generation \}\)/);
