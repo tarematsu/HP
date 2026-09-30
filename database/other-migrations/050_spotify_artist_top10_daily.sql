@@ -1,3 +1,5 @@
+-- Cache grouped results once: the correlated UPDATE must not recompute
+-- 90 days of window functions for every artist/day row during deployment.
 WITH latest AS (
   SELECT MAX(snapshot_date) AS snapshot_date
   FROM sh_spotify_playcount_daily
@@ -53,7 +55,7 @@ ranked_all AS (
     ) AS delta_rank
   FROM recent_daily AS base
 ),
-top10_all AS (
+top10_all AS MATERIALIZED (
   SELECT
     snapshot_date,
     artist_key,
@@ -79,7 +81,7 @@ ranked_year AS (
   INNER JOIN canonical_release AS release ON release.canonical_track_id=base.track_id
   WHERE substr(release.release_date,1,4)=substr(base.snapshot_date,1,4)
 ),
-top10_year AS (
+top10_year AS MATERIALIZED (
   SELECT
     snapshot_date,
     artist_key,

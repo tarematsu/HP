@@ -66,6 +66,7 @@ export async function onRequestGet({ env }) {
   if (!env?.OTHER_DB?.prepare) return json({ ok: false, error: 'OTHER_DB unavailable' }, 503);
   const generatedAt = Date.now();
   try {
+    // Keep delayed starts visible for the same window used by the collector.
     const configuredWindow = Math.trunc(Number(env.OFFICIAL_NEWS_LATE_WINDOW_MS));
     const lateWindowMs = Number.isFinite(configuredWindow) && configuredWindow > 0
       ? configuredWindow : DEFAULT_LATE_WINDOW_MS;

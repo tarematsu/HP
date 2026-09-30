@@ -151,3 +151,30 @@ test('Spotify artist-day summary keeps only the ten largest deltas and filters c
     },
   ]);
 });
+
+test('top-10 migration computes grouped rankings once per replay and keeps identical values', () => {
+  const sqlite = new DatabaseSync(':memory:');
+  try {
+    createSpotifySchema(sqlite);
+    sqlite.exec(`INSERT INTO sh_spotify_releases VALUES ('new','2026-01-01'),('old','2025-01-01')`);
+    for (let track = 0; track < 30; track += 1) {
+      sqlite.prepare('INSERT INTO sh_spotify_tracks VALUES (?,?,?)').run(`t${track}`, track % 2 ? 'old' : 'new', 'song');
+      sqlite.prepare('INSERT INTO sh_spotify_track_targets VALUES (?,?)').run(`t${track}`, `a${track % 2}`);
+      for (let day = 1; day <= 28; day += 1) {
+        sqlite.prepare('INSERT INTO sh_spotify_playcount_daily VALUES (?,?,?,?,?,0)')
+          .run(`2026-09-${String(day).padStart(2, '0')}`, `t${track}`, 1000 + day * track,
+            day % 5 ? track : null, day);
+      }
+    }
+    sqlite.exec(migration);
+    sqlite.exec(top10Migration.replaceAll('AS MATERIALIZED (', 'AS ('));
+    const expected = rows(sqlite);
+    sqlite.exec(top10Migration);
+    assert.deepEqual(rows(sqlite), expected);
+    sqlite.exec(top10Migration);
+    assert.deepEqual(rows(sqlite), expected);
+    const plan = sqlite.prepare(`EXPLAIN QUERY PLAN ${top10Migration}`).all().map(row => row.detail);
+    assert.ok(plan.includes('MATERIALIZE top10_all'));
+    assert.ok(plan.includes('MATERIALIZE top10_year'));
+  } finally { sqlite.close(); }
+});

@@ -32,6 +32,7 @@ export function parseNogizakaNewsArticle(source) {
   const body = classElement(html, 'div', 'post_body_in');
   const title = stripHtml(header?.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1]);
   const dateArea = header == null ? null : classElement(header, 'div', 'post_header_data');
+  // A layout change must fail parsing rather than revive sidebar announcements.
   if (!title || body == null || !stripHtml(body)) {
     throw new Error('Nogizaka official news article structure unavailable');
   }
