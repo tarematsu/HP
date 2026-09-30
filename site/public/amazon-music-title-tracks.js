@@ -13,12 +13,13 @@ const TITLE_TRACKS = Object.freeze({
   '櫻坂46': [
     "Nobody's fault", 'BAN', '流れ弾', '五月雨よ', '桜月', 'Start over!', '承認欲求',
     '何歳の頃に戻りたいのか？', '自業自得', 'I want tomorrow to come', 'UDAGAWA GENERATION',
-    'Make or Break', 'Unhappy birthday構文', 'The growing up train', "What's “KAZOKU”?", '愛MUST BE',
+    'Make or Break', 'Unhappy birthday構文', 'The growing up train', 'Lonesome rabbit', "What's “KAZOKU”?", '愛MUST BE',
   ],
   '日向坂46': [
     'キュン', 'ドレミソラシド', 'こんなに好きになっちゃっていいの？', 'ソンナコトナイヨ', '君しか勝たん',
     'ってか', '僕なんか', '月と星が踊るMidnight', 'One choice', 'Am I ready?', '君はハニーデュー',
     '絶対的第六感', '卒業写真だけが知ってる', 'Love yourself!', 'お願いバッハ！', 'クリフハンガー',
+    'Kind of love', 'イチャイチャ虫',
   ],
 });
 
