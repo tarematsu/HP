@@ -3,8 +3,8 @@ namespace {
 constexpr UINT kMvStartupPassHoldMs = 1'500;
 constexpr int64_t kMonitorAuthProbeIntervalMs = 5 * 60'000;
 constexpr int64_t kMonitorAuthActiveProbeIntervalMs = 1'000;
-constexpr int kPowerSavingStartMinute = 11 * 60;
-constexpr int kPowerSavingEndMinute = 21 * 60;
+constexpr int kPowerSavingStartMinute = 12 * 60;
+constexpr int kPowerSavingEndMinute = 20 * 60;
 
 constexpr bool ScheduledPowerSavingAt(int hour, int minute) noexcept {
   const int minuteOfDay = hour * 60 + minute;
@@ -12,10 +12,10 @@ constexpr bool ScheduledPowerSavingAt(int hour, int minute) noexcept {
       minuteOfDay < kPowerSavingEndMinute;
 }
 
-static_assert(!ScheduledPowerSavingAt(10, 59));
-static_assert(ScheduledPowerSavingAt(11, 0));
-static_assert(ScheduledPowerSavingAt(20, 59));
-static_assert(!ScheduledPowerSavingAt(21, 0));
+static_assert(!ScheduledPowerSavingAt(11, 59));
+static_assert(ScheduledPowerSavingAt(12, 0));
+static_assert(ScheduledPowerSavingAt(19, 59));
+static_assert(!ScheduledPowerSavingAt(20, 0));
 static_assert(kMonitorAuthProbeIntervalMs == 300'000);
 static_assert(kMonitorAuthActiveProbeIntervalMs == 1'000);
 
