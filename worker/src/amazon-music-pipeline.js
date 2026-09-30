@@ -73,17 +73,18 @@ async function resolveProgressTrackIds(db, tracks, previousTracks, observedAt) {
   }
   if (!db?.prepare) return result;
 
-  const unresolved = tracks.filter((track) => {
-    const id = text(track?.amazon_music_id);
-    return id && !result.has(id);
-  });
-  if (!unresolved.length) return result;
+  const currentTracks = tracks.filter((track) => text(track?.amazon_music_id));
+  if (!currentTracks.length) return result;
 
-  const resolved = await resolveAmazonMusicTracks(db, unresolved, observedAt);
+  // Revalidate every currently observed Amazon id. A previously persisted
+  // track_id may predate identity repairs, so it must not bypass the resolver.
+  const resolved = await resolveAmazonMusicTracks(db, currentTracks, observedAt);
   for (const item of resolved) {
     const id = text(item?.amazon_music_id);
+    if (!id) continue;
     const trackId = integer(item?.trackId);
-    if (id && trackId != null) result.set(id, trackId);
+    if (trackId != null) result.set(id, trackId);
+    else result.delete(id);
   }
   return result;
 }
@@ -102,22 +103,12 @@ function historyPoint(snapshotDate, observedAt, tracks) {
 }
 
 export function labelAmazonMusicVariants(tracks) {
-  const rows = Array.isArray(tracks) ? tracks : [];
-  const first = new Map();
-  for (const track of rows) {
+  return (Array.isArray(tracks) ? tracks : []).map((track) => {
     const title = text(track?.title) || '曲名不明';
-    const id = text(track?.amazon_music_id);
-    const group = integer(track?.track_id) ?? title;
-    const current = first.get(group);
-    if (id && title !== '曲名不明' && (!current || id < current)) first.set(group, id);
-  }
-  return rows.map((track) => {
-    const title = text(track?.title) || '曲名不明';
-    const id = text(track?.amazon_music_id);
-    const group = integer(track?.track_id) ?? title;
+    const album = text(track?.album);
     return {
       ...track,
-      display_title: id && first.has(group) && first.get(group) !== id ? `${title}(SE)` : title,
+      display_title: album && album !== title ? `${title} (${album})` : title,
     };
   });
 }
@@ -179,7 +170,7 @@ async function publishDeepProgress(env, deepState, observedAt, { resetRanks = fa
   for (const track of deepTracks) {
     const id = text(track.amazon_music_id);
     const current = byId.get(id) || null;
-    const trackId = trackIdByAmazonId.get(id) ?? current?.track_id ?? null;
+    const trackId = trackIdByAmazonId.get(id) ?? null;
     const canonical = trackId == null ? null : canonicalMetadata.get(Number(trackId));
     byId.set(id, {
       amazon_music_id: id,

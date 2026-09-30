@@ -7,11 +7,16 @@ import {
 
 const AMAZON_ALIAS_TYPE = 'amazon_music_id';
 const ALIAS_LOOKUP_CHUNK_SIZE = 79;
+const TRACK_LOOKUP_CHUNK_SIZE = 79;
 const REPAIR_BATCH_SIZE = 20;
 const TITLE_ARTIST_LOOKUP_CHUNK_SIZE = 40;
 
 function normalizedIsrc(value) {
   return text(value)?.toUpperCase() || null;
+}
+
+function normalizedIdentityText(value) {
+  return text(value)?.normalize('NFKC').replace(/\s+/g, ' ').toLowerCase() || null;
 }
 
 function amazonMusicId(track = {}) {
@@ -49,6 +54,35 @@ async function loadKnownAmazonAliases(db, amazonIds) {
     }
   }
   return result;
+}
+
+async function loadKnownTrackRows(db, trackIds) {
+  const result = new Map();
+  const ids = [...new Set(trackIds
+    .map((value) => Number(value))
+    .filter((value) => Number.isSafeInteger(value) && value > 0))];
+  for (const part of chunks(ids, TRACK_LOOKUP_CHUNK_SIZE)) {
+    const placeholders = part.map(() => '?').join(',');
+    const rows = await db.prepare(`SELECT id,title,artist,isrc
+      FROM sh_tracks WHERE id IN (${placeholders})`)
+      .bind(...part).all();
+    for (const row of rows?.results || []) {
+      const id = Number(row?.id);
+      if (Number.isSafeInteger(id) && id > 0) result.set(id, row);
+    }
+  }
+  return result;
+}
+
+function compatibleKnownTrack(track, known) {
+  if (!known) return true;
+  const incomingTitle = normalizedIdentityText(track?.title);
+  const knownTitle = normalizedIdentityText(known?.title);
+  if (incomingTitle && knownTitle && incomingTitle !== knownTitle) return false;
+  const incomingArtist = normalizedIdentityText(track?.artist);
+  const knownArtist = normalizedIdentityText(known?.artist);
+  if (incomingArtist && knownArtist && incomingArtist !== knownArtist) return false;
+  return true;
 }
 
 async function hydrateUniqueIsrcFromLocalMetadata(db, tracks) {
@@ -97,11 +131,19 @@ export async function resolveAmazonMusicTracks(db, tracks, observedAt = Date.now
     db,
     normalized.map((track) => track.amazon_music_id),
   );
+  const knownTrackRows = await loadKnownTrackRows(db, [...knownAliases.values()]);
 
-  const result = normalized.map((track) => ({
-    ...track,
-    trackId: track.amazon_music_id ? (knownAliases.get(track.amazon_music_id) ?? null) : null,
-  }));
+  // Amazon aliases are cached identity hints, not authority. If the current
+  // Amazon title/artist clearly disagrees with the linked sh_tracks row, drop
+  // the stale link and resolve again from the exact title/artist -> ISRC path.
+  const result = normalized.map((track) => {
+    const trackId = track.amazon_music_id ? (knownAliases.get(track.amazon_music_id) ?? null) : null;
+    const known = trackId == null ? null : knownTrackRows.get(Number(trackId));
+    return {
+      ...track,
+      trackId: trackId != null && compatibleKnownTrack(track, known) ? trackId : null,
+    };
+  });
 
   // Amazon's current anonymous Web Player does not expose ISRC on catalog-track
   // detail responses. Reuse the existing metadata dictionary only when title +
