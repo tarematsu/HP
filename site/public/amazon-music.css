@@ -3,12 +3,9 @@
 .amazon-rank-panel { overflow: hidden; }
 .amazon-rank-chart { --shared-chart-min-height: 280px; }
 .amazon-rank-svg { overflow: visible; }
-.amazon-rank-grid { stroke: color-mix(in srgb, currentColor 12%, transparent); stroke-width: 1; }
-.amazon-rank-axis-label { fill: currentColor; opacity: .62; font-size: 12px; }
-.amazon-rank-line { fill: none; stroke: hsl(var(--amazon-rank-hue) 55% 48%); stroke-width: 1.15; opacity: .42; vector-effect: non-scaling-stroke; }
-.amazon-rank-line:hover { opacity: 1; stroke-width: 2.2; }
+.amazon-rank-line { stroke: hsl(var(--amazon-rank-hue) 55% 48%); opacity: .42; }
+.amazon-rank-line:hover { opacity: 1; }
 .amazon-rank-point { fill: hsl(var(--amazon-rank-hue) 55% 48%); opacity: .9; }
-.amazon-rank-empty { margin: 0; padding: 48px 16px; text-align: center; color: var(--muted, #666); }
 .amazon-table { width: 100%; table-layout: fixed; }
 .amazon-rank-col { width: 112px; }
 .amazon-rank-number { text-align: right; white-space: nowrap; }
