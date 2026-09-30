@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 
 import { runWranglerCommandWithRetry } from './wrangler-command-retry.mjs';
@@ -8,6 +8,7 @@ const workerRoot = resolve(import.meta.dirname, '..');
 const repositoryRoot = resolve(workerRoot, '..');
 const wranglerScript = resolve(workerRoot, 'node_modules/wrangler/bin/wrangler.js');
 const descriptorPath = resolve(repositoryRoot, 'database/facts-db.json');
+const migrationsDirectory = resolve(repositoryRoot, 'database/facts-migrations');
 const descriptor = JSON.parse(readFileSync(descriptorPath, 'utf8'));
 const databaseName = process.env.FACTS_DATABASE_NAME || descriptor.database_name;
 const configuredMigrations = Array.isArray(descriptor.migrations)
@@ -23,10 +24,31 @@ const deployChangedOnly = /^(1|true|yes)$/i.test(
 const deployBaseSha = String(process.env.DEPLOY_BASE_SHA || '').trim();
 const deployHeadSha = String(process.env.DEPLOY_HEAD_SHA || 'HEAD').trim() || 'HEAD';
 
+function migrationOrdinal(name) {
+  const match = String(name || '').match(/^(\d+)_.*\.sql$/);
+  return match ? Number(match[1]) : -1;
+}
+
+function latestMigrationPath() {
+  const latest = readdirSync(migrationsDirectory)
+    .filter((name) => migrationOrdinal(name) >= 0)
+    .sort((left, right) => migrationOrdinal(left) - migrationOrdinal(right) || left.localeCompare(right))
+    .at(-1);
+  return latest ? `database/facts-migrations/${latest}` : '';
+}
+
+const latestMigration = latestMigrationPath();
+
 if (!process.env.CLOUDFLARE_API_TOKEN) throw new Error('CLOUDFLARE_API_TOKEN is required');
 if (!databaseName) throw new Error('facts database name is missing');
 if (!descriptor.schema) throw new Error('facts schema descriptor is missing');
 if (!migrationPaths.length) throw new Error('facts migration set is empty');
+if (configuredMigrations.at(-1) !== descriptor.schema) {
+  throw new Error(`facts schema tip must be the last configured migration: ${descriptor.schema}`);
+}
+if (descriptor.schema !== latestMigration) {
+  throw new Error(`facts schema descriptor is stale: expected ${latestMigration}, got ${descriptor.schema}`);
+}
 
 function wrangler(args, stdio = 'inherit') {
   const echoOutput = stdio === 'inherit';
@@ -101,6 +123,11 @@ function deploymentMigrations() {
     { cwd: repositoryRoot, env: process.env, encoding: 'utf8' },
   );
   const changed = new Set(String(changedOutput || '').split(/\r?\n/).filter(Boolean));
+  const changedMigrations = [...changed].filter((path) => path.startsWith('database/facts-migrations/'));
+  const unregistered = changedMigrations.filter((path) => !migrationPaths.includes(path));
+  if (unregistered.length) {
+    throw new Error(`changed FACTS migrations are not registered in facts-db.json: ${unregistered.join(', ')}`);
+  }
   const selected = migrationPaths.filter((migration) => changed.has(migration));
   if (selected.length) {
     return { migrations: selected, mode: 'changed-migration-set' };
