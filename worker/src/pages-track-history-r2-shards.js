@@ -1,4 +1,7 @@
-import { canonicalizeTrackRows } from '../../site/functions/lib/canonical-track-rows.js';
+import {
+  canonicalizeTrackRows,
+  canonicalizeTrackRowsFromCatalog,
+} from '../../site/functions/lib/canonical-track-rows.js';
 import {
   loadTrackHistoryData,
   TRACK_HISTORY_SQL,
@@ -224,6 +227,7 @@ export async function publishTrackHistoryResponseFromR2Days(
   publication,
   now,
   cadenceSeconds,
+  db = null,
 ) {
   const fromTs = dayTimestamp(publication?.from);
   const toTs = dayTimestamp(publication?.to);
@@ -246,8 +250,9 @@ export async function publishTrackHistoryResponseFromR2Days(
     }
     if (truncated) break;
   }
+  const publishedRows = db ? await canonicalizeTrackRowsFromCatalog(db, rows) : rows;
   const completedPublication = { ...publication, truncated };
-  const body = `${trackHistoryResponsePrefix(completedPublication)}${rows
+  const body = `${trackHistoryResponsePrefix(completedPublication)}${publishedRows
     .map((row) => JSON.stringify(row)).join(',')}${trackHistoryResponseSuffix(completedPublication)}`;
   const saved = await saveMaterializedR2Response(
     r2,
@@ -258,7 +263,7 @@ export async function publishTrackHistoryResponseFromR2Days(
     now,
     cadenceSeconds,
   );
-  return { published: true, rows: rows.length, truncated, ...saved };
+  return { published: true, rows: publishedRows.length, truncated, ...saved };
 }
 
 async function persistDayRows(targetDb, rows, range, generation) {
