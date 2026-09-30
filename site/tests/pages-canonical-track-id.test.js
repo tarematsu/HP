@@ -83,17 +83,22 @@ test('current playback payload exposes sh_tracks.id', () => {
   assert.equal(row.is_current, true);
 });
 
-test('Pages song-bearing surfaces use track_id as canonical identity', () => {
+test('Pages song-bearing surfaces keep canonical identity except provider-specific Amazon rank variants', () => {
   assert.match(playedTracks, /Number\(row\?\.track_id\)/);
   assert.ok(
     playedTracks.indexOf('Number(row?.track_id)') < playedTracks.indexOf("String(row?.spotify_id"),
     'played-tracks must prefer track_id before Spotify ID',
   );
 
-  for (const runtime of [appleMusic, amazonMusic]) {
-    assert.match(runtime, /track\?\.track_id/);
-    assert.match(runtime, /return `track:\$\{trackId\}`/);
-  }
+  assert.match(appleMusic, /track\?\.track_id/);
+  assert.match(appleMusic, /return `track:\$\{trackId\}`/);
+
+  assert.match(amazonMusic, /track\?\.amazon_music_id/);
+  assert.match(amazonMusic, /track\?\.track_id/);
+  assert.ok(
+    amazonMusic.indexOf('track?.amazon_music_id') < amazonMusic.indexOf('track?.track_id'),
+    'Amazon ranking must keep provider catalog tracks separate before canonical fallback',
+  );
 
   assert.match(spotifyApi, /ref\.track_id/);
   assert.match(spotifyApi, /AS spotify_track_id/);
