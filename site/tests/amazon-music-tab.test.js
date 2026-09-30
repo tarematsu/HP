@@ -59,7 +59,8 @@ test('Amazon Music view is rank-only after retiring the daily follower collector
   assert.doesNotMatch(shell, /フォロワー数|前日比|amazonFollowerCount|amazonFollowerDelta/);
   assert.match(shell, /id="amazonAllRankChart"/);
   assert.doesNotMatch(shell, /amazonPopularRankChart|櫻坂内人気順|櫻坂46内 人気曲順位/);
-  assert.match(shell, /Amazon総合順位/);
+  assert.match(shell, /Amazon Music総合順位/);
+  assert.match(shell, /集計日 <time id="amazonSnapshotDate">/);
   assert.match(runtime, /metricKey: 'amazon_rank'/);
   assert.doesNotMatch(runtime, /popular_rank|amazonPopularRankChart/);
 });
