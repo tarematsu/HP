@@ -29,7 +29,7 @@ function unavailable(message = 'Apple Music read model unavailable') {
 }
 
 function coldStart() {
-  return jsonResponse(EMPTY_READ_MODEL, 200, 'public, max-age=15, s-maxage=60');
+  return jsonResponse(EMPTY_READ_MODEL, 200, 'no-store');
 }
 
 export async function onRequestGet({ env }) {
