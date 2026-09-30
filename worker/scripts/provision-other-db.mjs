@@ -112,6 +112,43 @@ function tableColumns(tableName) {
     .map((row) => String(row?.name || '')));
 }
 
+function enabled(value) {
+  return /^(?:1|true|yes|on)$/i.test(String(value || '').trim());
+}
+
+function selectedDeploymentMigrations(migrationFiles, forceAll = false) {
+  if (forceAll || !enabled(process.env.D1_DEPLOY_CHANGED_ONLY)) return migrationFiles;
+  const baseSha = String(process.env.DEPLOY_BASE_SHA || '').trim();
+  const headSha = String(process.env.DEPLOY_HEAD_SHA || '').trim();
+  if (!baseSha || !headSha || /^0+$/.test(baseSha)) {
+    console.warn('Changed-only OTHER_DB deployment has no usable base/head; applying all migrations.');
+    return migrationFiles;
+  }
+  try {
+    const changedPaths = new Set(execFileSync('git', [
+      'diff', '--name-only', `${baseSha}..${headSha}`,
+    ], {
+      cwd: repositoryRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).split(/\r?\n/u).map((value) => value.trim()).filter(Boolean));
+    const selected = migrationFiles.filter((migrationFile) => (
+      changedPaths.has(`database/other-migrations/${migrationFile}`)
+    ));
+    console.log(JSON.stringify({
+      operation: 'other-db-migration-selection',
+      mode: 'changed-only',
+      base_sha: baseSha,
+      head_sha: headSha,
+      selected,
+    }));
+    return selected;
+  } catch (error) {
+    console.warn(`Could not resolve changed OTHER_DB migrations; applying all: ${String(error?.message || error)}`);
+    return migrationFiles;
+  }
+}
+
 function ensureOfficialPartyMetricColumns() {
   const columns = tableColumns(OFFICIAL_PARTY_SUMMARY_TABLE);
   const requiredColumns = [
@@ -167,8 +204,8 @@ function applyMigration(migrationFile) {
     return;
   }
   if (migrationFile === SPOTIFY_STATIONHEAD_IDENTITY_MIGRATION) {
-    // Provisioning intentionally replays every active migration. Add the new
-    // column only once, then replay the idempotent index + compaction statements.
+    // Add the new column only once. The remaining compaction SQL is executed
+    // only when this migration is part of the selected deployment diff.
     ensureSpotifyStationheadIdentityColumn();
     const remainderSql = readFileSync(migrationPath, 'utf8')
       .replace(/^[\s\S]*?ALTER TABLE sh_spotify_track_aliases\s+ADD COLUMN stationhead_track_id INTEGER;\s*/u, '');
@@ -254,6 +291,7 @@ function verifySchema() {
 }
 
 let database = listDatabases().find((item) => item.name === databaseName);
+const databaseExisted = Boolean(database);
 if (!database) {
   wrangler(['d1', 'create', databaseName]);
   database = listDatabases().find((item) => item.name === databaseName);
@@ -278,7 +316,8 @@ const retiredMigrationFiles = new Set(OTHER_RETIRED_MIGRATIONS);
 const migrationFiles = readdirSync(migrationsDir)
   .filter((name) => name.endsWith('.sql'))
   .sort();
-const activeMigrationFiles = migrationFiles.filter((name) => !retiredMigrationFiles.has(name));
+const availableMigrationFiles = migrationFiles.filter((name) => !retiredMigrationFiles.has(name));
+const activeMigrationFiles = selectedDeploymentMigrations(availableMigrationFiles, !databaseExisted);
 for (const migrationFile of activeMigrationFiles) applyMigration(migrationFile);
 removeAppleMusicCompatibilityColumn();
 consolidateLegacyTrackMetadata();
@@ -288,11 +327,12 @@ writeFileSync(metadataPath, `${JSON.stringify({
   binding: BINDING,
   database_name: databaseName,
   database_id: databaseId,
-  schema: `database/other-migrations/${activeMigrationFiles.at(-1)}`,
+  schema: `database/other-migrations/${availableMigrationFiles.at(-1)}`,
 }, null, 2)}\n`);
 console.log(JSON.stringify({
   ok: true,
   database_name: databaseName,
   database_id: databaseId,
+  migrations_applied: activeMigrationFiles,
   tables: OTHER_REQUIRED_TABLES.length,
 }));
