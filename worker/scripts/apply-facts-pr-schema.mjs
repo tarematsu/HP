@@ -149,7 +149,7 @@ for (const migration of deployment.migrations) {
     skipped.push(migration);
     continue;
   }
-  if (migrationName === '066_retire_legacy_d1_materializations.sql') {
+  if (migrationName === '067_retire_legacy_d1_materializations.sql') {
     const seeded = await syncTrackHistoryR2Days({ db: remoteMinuteDatabase() });
     console.log(JSON.stringify({ event: 'track_history_r2_cutover_seed', ...seeded }));
   }
