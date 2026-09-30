@@ -1,4 +1,4 @@
-function latestQueueSql(includeSnapshot) {
+function latestQueueSql(includeSnapshot, includeTrackId = false) {
   const snapshotColumns = includeSnapshot
     ? 'observed_at,channel_id,station_id,is_broadcasting,host_account_id,host_handle'
     : 'station_id';
@@ -9,6 +9,7 @@ function latestQueueSql(includeSnapshot) {
   latest_station.host_account_id AS snapshot_host_account_id,
   latest_station.host_handle AS snapshot_host_handle,
   ` : '';
+  const trackIdSelect = includeTrackId ? 'q.track_id,' : '';
   const snapshotJoin = includeSnapshot ? '\nCROSS JOIN latest_station' : '';
   return `WITH latest_station AS (
   SELECT ${snapshotColumns} FROM sh_channel_snapshots
@@ -35,7 +36,7 @@ function latestQueueSql(includeSnapshot) {
 SELECT ${snapshotSelect}lq.station_id AS queue_station_id,lq.queue_id,
   lq.start_time AS queue_start_time,lq.is_paused AS queue_is_paused,
   lq.observed_at AS queue_observed_at,q.observed_at AS item_observed_at,
-  q.position,q.queue_track_id,q.stationhead_track_id,q.spotify_id,
+  q.position,${trackIdSelect}q.queue_track_id,q.stationhead_track_id,q.spotify_id,
   q.deezer_id,q.isrc,q.duration_ms,q.preview_url,
   COALESCE(likes.like_count,q.bite_count) AS bite_count,
   m.title,m.artist,m.display_title,m.thumbnail_url,m.spotify_url,
@@ -50,8 +51,10 @@ LEFT JOIN sh_track_like_current likes ON likes.station_id IS q.station_id
 ORDER BY q.position ASC LIMIT 80`;
 }
 
-export const LATEST_QUEUE_WITH_ITEMS_SQL = latestQueueSql(false);
-export const LATEST_PLAYBACK_WITH_SNAPSHOT_SQL = latestQueueSql(true);
+// Legacy rollback intentionally avoids q.track_id so an older source schema can
+// still be rendered. The normal one-query path carries sh_tracks.id.
+export const LATEST_QUEUE_WITH_ITEMS_SQL = latestQueueSql(false, false);
+export const LATEST_PLAYBACK_WITH_SNAPSHOT_SQL = latestQueueSql(true, true);
 
 export function parseLatestSnapshotRow(row = null) {
   if (row?.snapshot_observed_at == null) return null;
@@ -75,6 +78,7 @@ export function parseLatestQueueRows(rows = []) {
   const queue = rows.filter((row) => row.position != null).map((row) => ({
     observed_at: row.item_observed_at, station_id: row.queue_station_id,
     queue_id: row.queue_id, start_time: row.queue_start_time, position: row.position,
+    track_id: row.track_id,
     queue_track_id: row.queue_track_id, stationhead_track_id: row.stationhead_track_id,
     spotify_id: row.spotify_id,
     deezer_id: row.deezer_id, isrc: row.isrc, duration_ms: row.duration_ms,
