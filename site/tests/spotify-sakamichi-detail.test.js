@@ -50,11 +50,15 @@ test('Sakamichi detail SQL selects latest date independently per artist', () => 
 
 test('Spotify detail UI switches the shared table between all three Sakamichi groups', () => {
   const shell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
+  const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
 
-  assert.match(shell, /data-spotify-artist="sakurazaka46"[^>]*>櫻坂46<\/button>/);
-  assert.match(shell, /data-spotify-artist="nogizaka46"[^>]*>乃木坂46<\/button>/);
-  assert.match(shell, /data-spotify-artist="hinatazaka46"[^>]*>日向坂46<\/button>/);
+  assert.match(shell, /dashboardModeTabs/);
+  assert.match(shell, /value: 'sakurazaka46', label: '櫻坂46', active: true/);
+  assert.match(shell, /value: 'nogizaka46', label: '乃木坂46'/);
+  assert.match(shell, /value: 'hinatazaka46', label: '日向坂46'/);
+  assert.match(shell, /dataAttribute: 'spotify-artist'/);
+  assert.match(sharedUi, /data-\$\{attribute\}="\$\{item\.value\}"/);
   assert.match(runtime, /let selectedArtistKey = 'sakurazaka46'/);
   assert.match(runtime, /model\?\.groups\?\.\[selectedArtistKey\]/);
   assert.match(runtime, /selectedArtistKey = button\.dataset\.spotifyArtist/);

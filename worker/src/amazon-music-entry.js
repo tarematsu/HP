@@ -2,6 +2,7 @@ import {
   checkAmazonUpdateAndQueue100k,
   continueQueuedAmazon100kScan,
 } from './amazon-music-pipeline.js';
+import { recordAmazonTop500Check } from './amazon-music-top500-history.js';
 import { collectAppleMusicSnapshot } from './apple-music-collector.js';
 import { appleMusicFetch } from './apple-music-fetch.js';
 import {
@@ -39,7 +40,24 @@ async function collectAppleMusic(env, scheduledTime) {
 }
 
 async function checkAmazonMusic(env, scheduledTime) {
-  return checkAmazonUpdateAndQueue100k(amazonMusicServiceEnv(env), scheduledTime);
+  const serviceEnv = amazonMusicServiceEnv(env);
+  try {
+    const result = await checkAmazonUpdateAndQueue100k(serviceEnv, scheduledTime);
+    const history = await recordAmazonTop500Check(serviceEnv, scheduledTime, result);
+    return { ...result, ...history };
+  } catch (error) {
+    try {
+      await recordAmazonTop500Check(serviceEnv, scheduledTime, {
+        status: 'error',
+        error: String(error?.message || error),
+      });
+    } catch (historyError) {
+      console.error('amazon-music-top-500-history-failed', {
+        error: String(historyError?.stack || historyError?.message || historyError).slice(0, 1200),
+      });
+    }
+    throw error;
+  }
 }
 
 async function continueAmazonMusic(env, scheduledTime) {

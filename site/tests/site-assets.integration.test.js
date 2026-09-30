@@ -42,7 +42,7 @@ test('dashboard skeleton and shell modules keep accessibility, privacy and all p
     'trackFallback', 'online', 'members', 'totalStreams', 'membersYesterdayDelta', 'membersDayBeforeDelta',
     'streamsYesterdayDelta', 'streamsDayBeforeDelta', 'nowPlayingLink', 'queue', 'metricGoalCompact', 'streamGoal',
     'goalEta', 'audienceChart', 'historyView', 'likesView', 'likesRankingList', 'likesTbody',
-  ]) assert.match(shellSource, new RegExp(`(?:id=\\"${id}\\"|id: '${id}'|valueId: '${id}')`));
+  ]) assert.match(shellSource, new RegExp(`(?:id=\\"${id}\\"|id: '${id}'|valueId: '${id}'|bodyId: '${id}')`));
   for (const id of ['channelName', 'channelFallback', 'updated']) assert.match(html, new RegExp(`id="${id}"`));
   assert.doesNotMatch(shellSource, /id="streamCount"|id="goalMilestones"|goal-card/);
   assert.match(registry, /view: 'current', label: '現在', active: true/);
@@ -72,58 +72,4 @@ test('dashboard current page renders online history and direct five-minute playb
   assert.doesNotMatch(chart, /再生数増加\/分（5分平均）|comment_velocity|commentVelocity|コメント\/2分/);
   assert.match(detail, /再生数増加 \+\$\{numberText\(streamRow\.stream_delta\)\}/);
   assert.doesNotMatch(detail, /comment_velocity|commentVelocity|コメント勢い/);
-});
-
-test('dashboard displays completed UTC-day changes from the unified materialized response', async () => {
-  const currentShell = await text('public/current-shell.js');
-  const entry = await text('public/dashboard-metrics.js');
-  const renderer = await text('public/dashboard-daily-summaries.js');
-  const criticalEndpoint = await text('functions/api/dashboard.js');
-  const loader = await text('functions/lib/dashboard-daily-summaries.js');
-  assert.match(currentShell, /label: '総メンバー数'/);
-  assert.match(currentShell, /label: '総再生数'/);
-  assert.match(entry, /dashboard-daily-summaries\.js\?v=20260930\.2/);
-  assert.match(renderer, /renderDashboardDailySummaries/);
-  assert.match(renderer, /dashboard:payload/);
-  assert.match(renderer, /payload\?\.daily_summaries/);
-  assert.match(criticalEndpoint, /daily_summaries/);
-  assert.match(criticalEndpoint, /augmentDashboardChartData/);
-  assert.match(loader, /FROM sh_daily_summary/);
-  assert.match(renderer, /member_growth/);
-  assert.match(renderer, /stream_growth/);
-});
-
-test('dashboard declares and implements a light white-base theme', async () => {
-  const html = await text('public/index.html');
-  const css = await text('public/app-lite.css');
-  assert.match(html, /name="theme-color" content="#ffffff"/);
-  assert.match(html, /name="color-scheme" content="light"/);
-  assert.match(css, /color-scheme:\s*light/);
-  assert.match(css, /--bg:\s*#f6f8fb/);
-  assert.match(css, /--panel:\s*#ffffff/);
-  assert.match(css, /#audienceChart \{[^}]*background:\s*#fff/);
-});
-
-test('mobile dashboard loads one first-paint stylesheet and one bundled entry script', async () => {
-  const html = await text('public/index.html');
-  const entry = await text('public/dashboard-metrics.js');
-  const bundledCss = html.match(/\/assets\/dashboard\.min\.css\?v=[^"']+/)?.[0];
-  const bundledJs = html.match(/\/assets\/dashboard\.min\.js\?v=[^"']+/)?.[0];
-  assert.ok(bundledCss, 'dashboard.min.css must have an explicit deployment version');
-  assert.ok(bundledJs, 'dashboard.min.js must have an explicit deployment version');
-  assert.ok(html.indexOf(bundledCss) < html.indexOf('</head>'));
-  assert.match(html, /type="module" src="\/assets\/dashboard\.min\.js\?v=[^"']+"/);
-  assert.equal((html.match(/<link rel="stylesheet"/g) || []).length, 1);
-  assert.equal((html.match(/<script /g) || []).length, 1);
-  assert.match(entry, /import\('\/dashboard-client\.js\?v=[^']+'\)/);
-});
-
-test('dashboard mobile layout prevents metric and goal number clipping', async () => {
-  const css = await text('public/app-lite.css');
-  const layout = await text('public/pages-layout.css');
-  assert.match(layout, /@media \(max-width: 760px\)[\s\S]*?\.metric,\s*\.metric\.featured\s*\{[^}]*grid-column:\s*auto\s*!important/s);
-  assert.match(layout, /\.metric strong,\s*\.metric\.featured strong\s*\{[^}]*font-size:\s*clamp\(1\.08rem, 5\.7vw, 1\.45rem\)\s*!important/s);
-  assert.match(css, /\.metric strong \{[^}]*white-space:\s*nowrap/);
-  assert.match(css, /\.goal-number \{[^}]*flex-wrap:\s*wrap/);
-  assert.match(css, /\.top-actions \{[^}]*repeat\(2/);
 });

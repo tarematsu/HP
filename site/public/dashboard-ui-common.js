@@ -18,6 +18,33 @@ export function safeInteger(value) {
   return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
+export function signedInteger(value, fallback = '-') {
+  const parsed = safeInteger(value);
+  if (parsed == null) return String(fallback);
+  return `${parsed > 0 ? '+' : ''}${integerFormat.format(parsed)}`;
+}
+
+export function evenlySpacedIndexes(length, count = 5) {
+  const size = Number.isInteger(length) ? Math.max(0, length) : 0;
+  if (!size) return [];
+  if (size === 1) return [0];
+  const tickCount = Math.max(2, Math.min(size, Number.isInteger(count) ? count : 5));
+  const indexes = new Set([0, size - 1]);
+  for (let index = 1; index < tickCount - 1; index += 1) {
+    indexes.add(Math.round((size - 1) * index / (tickCount - 1)));
+  }
+  return [...indexes].sort((left, right) => left - right);
+}
+
+export function appendEmptyState(container, message, { className = 'shared-empty', tagName = 'p' } = {}) {
+  if (!container) return null;
+  const node = document.createElement(tagName);
+  node.className = className;
+  node.textContent = String(message || '');
+  container.append(node);
+  return node;
+}
+
 export function setText(id, value) {
   const node = byId(id);
   const text = String(value);
@@ -112,16 +139,37 @@ export function dashboardChartCard({
   return `<section${id ? ` id="${id}"` : ''} class="${joinClasses('card', 'chart-panel', className)}"${labelledBy ? ` aria-labelledby="${labelledBy}"` : ''}${hiddenAttribute(hidden)}>${dashboardSectionHead({ kicker, title, titleId, trailingHtml, className: 'chart-head' })}${legendHtml}${chartHtml}${detailHtml}${footerHtml}</section>`;
 }
 
+function dashboardTableHead({ headHtml = '', headId = '', headers = [] } = {}) {
+  if (headHtml) return headHtml;
+  if (!headId && !headers.length) return '';
+  const cells = headers.map((header) => {
+    if (typeof header === 'string') return `<th>${header}</th>`;
+    const item = header || {};
+    return `<th${item.className ? ` class="${item.className}"` : ''}${item.title ? ` title="${item.title}"` : ''}>${item.label || ''}</th>`;
+  }).join('');
+  return `<thead${headId ? ` id="${headId}"` : ''}>${cells ? `<tr>${cells}</tr>` : ''}</thead>`;
+}
+
 export function dashboardTable({
   id = '',
   className = '',
   colgroupHtml = '',
   headHtml = '',
+  headId = '',
+  headers = [],
   bodyId = '',
   bodyHtml = '',
   wrapClassName = '',
+  numeric = true,
 } = {}) {
-  return `<div class="${joinClasses('table-wrap', wrapClassName)}"><table${id ? ` id="${id}"` : ''} class="${joinClasses('shared-numeric-table', className)}">${colgroupHtml}${headHtml}<tbody${bodyId ? ` id="${bodyId}"` : ''}>${bodyHtml}</tbody></table></div>`;
+  const tableHead = dashboardTableHead({ headHtml, headId, headers });
+  return `<div class="${joinClasses('table-wrap', wrapClassName)}"><table${id ? ` id="${id}"` : ''} class="${joinClasses(numeric && 'shared-numeric-table', className)}">${colgroupHtml}${tableHead}<tbody${bodyId ? ` id="${bodyId}"` : ''}>${bodyHtml}</tbody></table></div>`;
+}
+
+export function dashboardModeTabs(items = [], { dataAttribute = 'mode', className = '', ariaLabel = '' } = {}) {
+  const attribute = String(dataAttribute || 'mode').replace(/[^a-z0-9-]/gi, '');
+  const buttons = items.map((item) => `<button type="button" data-${attribute}="${item.value}"${item.active ? ' class="active"' : ''}>${item.label}</button>`).join('');
+  return `<div class="${joinClasses('mode-tabs', className)}"${ariaLabel ? ` aria-label="${ariaLabel}"` : ''}>${buttons}</div>`;
 }
 
 export function dashboardDataCard({

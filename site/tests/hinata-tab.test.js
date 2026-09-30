@@ -58,7 +58,7 @@ test('Hinata graph is rendered as five-minute buckets with actual five-minute st
 });
 
 test('Hinata daily table matches history start and end cumulative columns', () => {
-  assert.match(shell, /<th>再生数（開始）<\/th><th>再生数（終了）<\/th><th>再生数増加<\/th><th>メンバー数（開始）<\/th><th>メンバー数（終了）<\/th><th>メンバー増加数<\/th>/);
+  assert.match(shell, /headers: \['日付', '平均同接', '最小同接', '最大同接', '再生数（開始）', '再生数（終了）', '再生数増加', 'メンバー数（開始）', 'メンバー数（終了）', 'メンバー増加数'\]/);
   assert.match(runtime, /numberText\(item\?\.stream_start\)/);
   assert.match(runtime, /numberText\(item\?\.stream_end\)/);
   assert.match(runtime, /numberText\(item\?\.member_start\)/);

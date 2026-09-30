@@ -1,10 +1,13 @@
 import {
+  appendEmptyState,
   byId as element,
+  evenlySpacedIndexes,
   fullDate as formatFullDate,
   integerFormat as numberFormat,
   safeInteger as integer,
   setNotice as setSharedNotice,
   shortDate as formatDate,
+  signedInteger,
   svgElement,
 } from './dashboard-ui-common.js?v=20260930.1';
 
@@ -72,10 +75,7 @@ function renderRankChart(payload, { containerId, metricKey, emptyText, ariaLabel
   const dates = [...new Set(series.flatMap((item) => item.points.map((point) => point.date)))].sort();
   const ranks = series.flatMap((item) => item.points.map((point) => point.rank));
   if (!series.length || !dates.length || !ranks.length) {
-    const empty = document.createElement('p');
-    empty.className = 'amazon-rank-empty';
-    empty.textContent = emptyText;
-    container.append(empty);
+    appendEmptyState(container, emptyText, { className: 'amazon-rank-empty' });
     return;
   }
 
@@ -111,28 +111,21 @@ function renderRankChart(payload, { containerId, metricKey, emptyText, ariaLabel
       y2: y,
       class: 'amazon-rank-grid',
     }));
-    const label = svgElement('text', {
+    svg.append(svgElement('text', {
       x: margin.left - 8,
       y: y + 4,
       'text-anchor': 'end',
       class: 'amazon-rank-axis-label',
-    });
-    label.textContent = `${rank}位`;
-    svg.append(label);
+    }, `${rank}位`));
   }
 
-  const dateTicks = [...new Set(dates.length <= 1
-    ? [0]
-    : [0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round((dates.length - 1) * ratio)))];
-  for (const index of dateTicks) {
-    const label = svgElement('text', {
+  for (const index of evenlySpacedIndexes(dates.length, 5)) {
+    svg.append(svgElement('text', {
       x: xFor(dates[index]),
       y: height - 10,
       'text-anchor': index === 0 ? 'start' : index === dates.length - 1 ? 'end' : 'middle',
       class: 'amazon-rank-axis-label',
-    });
-    label.textContent = formatDate(dates[index]);
-    svg.append(label);
+    }, formatDate(dates[index])));
   }
 
   series.forEach((item, index) => {
@@ -152,8 +145,7 @@ function renderRankChart(payload, { containerId, metricKey, emptyText, ariaLabel
         class: 'amazon-rank-line',
       });
       path.style.setProperty('--amazon-rank-hue', String((index * 47) % 360));
-      const title = svgElement('title');
-      title.textContent = `${item.title}${item.currentRank == null ? '' : ` 現在${item.currentRank}位`}`;
+      const title = svgElement('title', {}, `${item.title}${item.currentRank == null ? '' : ` 現在${item.currentRank}位`}`);
       path.append(title);
       svg.append(path);
     }
@@ -166,9 +158,7 @@ function renderRankChart(payload, { containerId, metricKey, emptyText, ariaLabel
         class: 'amazon-rank-point',
       });
       circle.style.setProperty('--amazon-rank-hue', String((index * 47) % 360));
-      const title = svgElement('title');
-      title.textContent = `${item.title} ${formatFullDate(latest.date)} ${latest.rank}位`;
-      circle.append(title);
+      circle.append(svgElement('title', {}, `${item.title} ${formatFullDate(latest.date)} ${latest.rank}位`));
       svg.append(circle);
     }
   });
@@ -194,9 +184,8 @@ function renderTable(payload) {
     const change = row.insertCell();
     const title = row.insertCell();
     const amazon = integer(track?.amazon_rank);
-    const delta = integer(track?.rank_change);
     amazonRank.textContent = amazon == null ? '-' : `${numberFormat.format(amazon)}位`;
-    change.textContent = delta == null ? '-' : delta > 0 ? `+${numberFormat.format(delta)}` : numberFormat.format(delta);
+    change.textContent = signedInteger(track?.rank_change);
     title.textContent = track?.display_title || track?.title || '曲名不明';
     amazonRank.className = change.className = 'amazon-rank-number';
     tbody.append(row);

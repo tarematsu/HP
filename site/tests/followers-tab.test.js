@@ -41,8 +41,10 @@ test('followers tab keeps the fixed accounts and renders a dynamic multi-series 
   assert.match(shell, /id: 'followersChart'/);
   assert.match(sharedUi, /joinClasses\('shared-svg-chart', className\)/);
   assert.match(runtime, /followers-line-/);
-  assert.match(shell, /<th>アカウント名<\/th><th>フォロワー数<\/th><th>前日比<\/th><th>1週間前比<\/th>/);
-  assert.match(shell, /shared-numeric-table/);
+  assert.match(shell, /dashboardTable/);
+  assert.match(shell, /headers: \['アカウント名', 'フォロワー数', '前日比', '1週間前比'\]/);
+  assert.match(shell, /bodyId: 'followersTbody'/);
+  assert.match(sharedUi, /numeric && 'shared-numeric-table'/);
   assert.match(runtime, /previous_day_delta/);
   assert.match(runtime, /previous_week_delta/);
 });

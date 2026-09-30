@@ -24,6 +24,11 @@ const shells = Object.fromEntries(shellFiles.map((file) => [
   file,
   readFileSync(new URL(`../public/${file}`, import.meta.url), 'utf8'),
 ]));
+const runtimeFiles = ['amazon-music.js', 'apple-music.js', 'followers.js'];
+const runtimes = Object.fromEntries(runtimeFiles.map((file) => [
+  file,
+  readFileSync(new URL(`../public/${file}`, import.meta.url), 'utf8'),
+]));
 
 const hinataRoute = readFileSync(new URL('../public/dashboard-hinata-route.js', import.meta.url), 'utf8');
 const followersRoute = readFileSync(new URL('../public/dashboard-followers-route.js', import.meta.url), 'utf8');
@@ -44,10 +49,27 @@ test('dashboard exposes reusable presentation components in one shared module', 
     'dashboardChartCard',
     'dashboardChartHost',
     'dashboardTable',
+    'dashboardModeTabs',
     'dashboardDataCard',
     'dashboardControls',
     'dashboardNotice',
   ]) assert.match(sharedUi, new RegExp(`export function ${helper}\\(`));
+});
+
+test('dashboard exposes shared runtime primitives for repeated view rendering work', () => {
+  for (const helper of ['signedInteger', 'evenlySpacedIndexes', 'appendEmptyState']) {
+    assert.match(sharedUi, new RegExp(`export function ${helper}\\(`));
+  }
+  for (const name of runtimeFiles) {
+    assert.match(runtimes[name], /appendEmptyState/);
+    assert.match(runtimes[name], /evenlySpacedIndexes/);
+    assert.doesNotMatch(runtimes[name], /const empty = document\.createElement/);
+  }
+  for (const name of ['amazon-music.js', 'followers.js']) {
+    assert.match(runtimes[name], /signedInteger/);
+    assert.doesNotMatch(runtimes[name], /function formatDelta\s*\(/);
+  }
+  assert.doesNotMatch(runtimes['followers.js'], /function (?:appendText|tickIndexes)\s*\(/);
 });
 
 test('all dashboard shells share mounting and reusable UI components without runtime stylesheet loading', () => {
@@ -74,9 +96,34 @@ test('all dashboard shells share mounting and reusable UI components without run
   for (const name of ['hinata-shell.js', 'followers-shell.js', 'apple-music-shell.js', 'amazon-music-shell.js']) {
     assert.match(shells[name], /dashboardChartHost/, `${name} must use the shared chart host`);
   }
-  for (const name of ['hinata-shell.js', 'followers-shell.js', 'spotify-shell.js', 'apple-music-shell.js', 'amazon-music-shell.js']) {
+});
+
+test('dashboard shells reuse shared notices tables legends and mode tabs instead of duplicating markup', () => {
+  const noticeShells = [
+    'history-shell.js', 'likes-shell.js', 'hinata-shell.js', 'followers-shell.js', 'spotify-shell.js',
+    'apple-music-shell.js', 'amazon-music-shell.js', 'played-tracks-shell.js',
+    'first-week-comparison-shell.js', 'nogizaka-listening-party-shell.js',
+  ];
+  for (const name of noticeShells) {
     assert.match(shells[name], /dashboardNotice/, `${name} must use the shared notice primitive`);
+    assert.doesNotMatch(shells[name], /class="notice"\s+role="status"/, `${name} must not hand-write notice markup`);
   }
+
+  const tableShells = [
+    'history-shell.js', 'likes-shell.js', 'hinata-shell.js', 'followers-shell.js', 'spotify-shell.js',
+    'apple-music-shell.js', 'amazon-music-shell.js', 'played-tracks-shell.js',
+    'first-week-comparison-shell.js', 'nogizaka-listening-party-shell.js',
+  ];
+  for (const name of tableShells) {
+    assert.match(shells[name], /dashboardTable/, `${name} must use the shared table primitive`);
+    assert.doesNotMatch(shells[name], /<div class="table-wrap/, `${name} must not hand-write table wrappers`);
+  }
+
+  for (const name of ['history-shell.js', 'hinata-shell.js', 'followers-shell.js', 'apple-music-shell.js', 'first-week-comparison-shell.js', 'nogizaka-listening-party-shell.js']) {
+    assert.match(shells[name], /dashboardLegend/, `${name} must use the shared legend primitive`);
+  }
+  assert.match(shells['spotify-shell.js'], /dashboardModeTabs/);
+  assert.doesNotMatch(shells['spotify-shell.js'], /<div class="mode-tabs">/);
 });
 
 test('standalone lazy tabs share route activation and navigation handling', () => {
