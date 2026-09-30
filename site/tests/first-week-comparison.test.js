@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
+  FIRST_WEEK_LEGACY_READ_MODEL_SQL,
   FIRST_WEEK_READ_MODEL_SQL,
   FIRST_WEEK_RELEASES,
   loadFirstWeekComparison,
@@ -36,6 +37,8 @@ test('known 2026 collection gap suppresses affected title tracks instead of inve
 test('public first-week reads use only the compact release read model', () => {
   assert.match(FIRST_WEEK_READ_MODEL_SQL, /FROM sh_first_week_comparison_read_model/);
   assert.doesNotMatch(FIRST_WEEK_READ_MODEL_SQL, /sh_minute_facts|GROUP BY|ROW_NUMBER|MATERIALIZED/);
+  assert.match(FIRST_WEEK_LEGACY_READ_MODEL_SQL, /NULL AS track_id/);
+  assert.doesNotMatch(FIRST_WEEK_LEGACY_READ_MODEL_SQL, /sh_minute_facts|GROUP BY|ROW_NUMBER|MATERIALIZED/);
   assert.match(readModelMigration, /CREATE TABLE IF NOT EXISTS sh_first_week_comparison_read_model/);
   assert.match(readModelMigration, /JOIN sh_minute_facts AS f INDEXED BY idx_sh_minute_facts_time/);
   assert.match(readModelMigration, /json_group_array/);
@@ -55,18 +58,49 @@ test('stream growth is rebased in the compact payload without masking counter re
 test('loader performs one compact read and preserves known-gap status', async () => {
   const prepared = [];
   const db = { prepare(sql) { prepared.push(sql); return { async all() { return { results: [
-    { release_date_jst: '2024-09-25', point_count: 2, points_json: '[[0,866,1000],[5,870,1025]]', updated_at: 1 },
-    { release_date_jst: '2026-09-17', point_count: 0, points_json: '[]', updated_at: 1 },
+    { release_date_jst: '2024-09-25', track_id: 101, point_count: 2, points_json: '[[0,866,1000],[5,870,1025]]', updated_at: 1 },
+    { release_date_jst: '2026-09-17', track_id: 202, point_count: 0, points_json: '[]', updated_at: 1 },
   ] }; } }; } };
   const result = await loadFirstWeekComparison(db);
   assert.equal(prepared.length, 1);
   assert.equal(prepared[0], FIRST_WEEK_READ_MODEL_SQL);
   assert.equal(result.series.length, 8);
+  assert.equal(result.series[0].track_id, 101);
   assert.equal(result.series[0].status, 'available');
   assert.deepEqual(result.series[0].points[1], [5, 870, 25]);
   assert.equal(byTitle('The growing up train').release_date_jst, '2026-02-12');
   assert.equal(result.series.find((item) => item.title === 'The growing up train').status, 'known_missing');
   assert.equal(result.series.find((item) => item.title === '愛MUST BE').status, 'no_data');
+});
+
+test('loader falls back when production has not applied the track_id migration yet', async () => {
+  const prepared = [];
+  const db = {
+    prepare(sql) {
+      prepared.push(sql);
+      if (sql === FIRST_WEEK_READ_MODEL_SQL) {
+        return { async all() { throw new Error('D1_ERROR: no such column: track_id at offset 26'); } };
+      }
+      assert.equal(sql, FIRST_WEEK_LEGACY_READ_MODEL_SQL);
+      return { async all() { return { results: [
+        { release_date_jst: '2024-09-25', track_id: null, point_count: 1, points_json: '[[0,866,1000]]', updated_at: 1 },
+      ] }; } };
+    },
+  };
+  const result = await loadFirstWeekComparison(db);
+  assert.deepEqual(prepared, [FIRST_WEEK_READ_MODEL_SQL, FIRST_WEEK_LEGACY_READ_MODEL_SQL]);
+  assert.equal(result.series[0].track_id, null);
+  assert.equal(result.series[0].status, 'available');
+  assert.deepEqual(result.series[0].points, [[0, 866, 0]]);
+});
+
+test('non-schema first-week failures are not masked by the compatibility fallback', async () => {
+  const db = {
+    prepare() {
+      return { async all() { throw new Error('D1_ERROR: database unavailable'); } };
+    },
+  };
+  await assert.rejects(() => loadFirstWeekComparison(db), /database unavailable/);
 });
 
 test('API rejects missing minute database binding', async () => {
