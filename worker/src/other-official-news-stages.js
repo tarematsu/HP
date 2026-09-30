@@ -219,20 +219,37 @@ async function runRawMaterialize(env, task, dependencies) {
     || (await loadRawMaterializerModule()).materializeSakurazakaRawMinute;
   const result = await materialize(env, task.scheduledAt);
   if (!task.afterNewsCheck) {
-    const reconciliation = await runReconcile(env, task, dependencies);
-    return {
-      stage: 'raw-materialize',
-      pending: false,
-      next_stage: null,
-      reconciled: true,
-      reconcile_skipped: reconciliation.skipped,
-      reconcile_reason: reconciliation.reason,
-      skipped: result?.skipped === true,
-      reason: result?.reason ?? null,
-      active: result?.active === true,
-      session_id: result?.session_id ?? null,
-      station_id: result?.station_id ?? null,
-    };
+    try {
+      const reconciliation = await runReconcile(env, task, dependencies);
+      return {
+        stage: 'raw-materialize',
+        pending: false,
+        next_stage: null,
+        reconciled: true,
+        reconcile_skipped: reconciliation.skipped,
+        reconcile_reason: reconciliation.reason,
+        skipped: result?.skipped === true,
+        reason: result?.reason ?? null,
+        active: result?.active === true,
+        session_id: result?.session_id ?? null,
+        station_id: result?.station_id ?? null,
+      };
+    } catch (error) {
+      await sendStage(env, 'reconcile', task.scheduledAt, dependencies, continuationExtra(task));
+      return {
+        stage: 'raw-materialize',
+        pending: true,
+        next_stage: 'reconcile',
+        reconciled: false,
+        reconcile_deferred: true,
+        reconcile_error: String(error?.message || error).slice(0, 300),
+        skipped: result?.skipped === true,
+        reason: result?.reason ?? null,
+        active: result?.active === true,
+        session_id: result?.session_id ?? null,
+        station_id: result?.station_id ?? null,
+      };
+    }
   }
   await sendStage(env, 'probe', task.scheduledAt, dependencies);
   return {
