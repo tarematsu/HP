@@ -130,7 +130,7 @@ function renderRankChart(payload) {
   const svg = svgElement('svg', {
     viewBox: `0 0 ${width} ${height}`,
     role: 'img',
-    'aria-label': '日本のApple Music櫻坂46人気曲順位推移。1位が上、12位の下は圏外。',
+    'aria-label': '人気曲順位。1位が上、圏外が下。',
     class: 'apple-rank-svg',
   });
 
