@@ -20,6 +20,13 @@ test('mode-specific table classes are set by the root table renderer', () => {
   assert.match(history, /syncTableModeClass\(mode\)/);
 });
 
+test('history root renderer reuses shared empty-row and listening-party duration helpers', () => {
+  assert.match(history, /appendEmptyTableRow\(fragment, 'データがありません。', columns\.length\)/);
+  assert.match(history, /durationLabel\(durations\.reduce/);
+  assert.doesNotMatch(history, /function formatMinutes\s*\(/);
+  assert.doesNotMatch(history, /td\.colSpan = columns\.length/);
+});
+
 test('history transitions clear root state before the next mode renders', () => {
   assert.match(history, /function resetData\(\)/);
   assert.match(history, /state\.rows = \[\]/);
