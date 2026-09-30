@@ -10,7 +10,7 @@ import { applyTrackPeriodCompleteness } from '../../site/functions/lib/period-co
 import { attachCompactTrackLikes } from '../../site/functions/lib/track-likes.js';
 import { materializedTrackHistorySql } from '../src/pages-track-history-r2-shards.js';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
-import { syncTrackHistoryR2Day } from './sync-track-history-r2-days-actions.mjs';
+import { publishTrackHistoryR2DayRows } from './sync-track-history-r2-days-actions.mjs';
 
 const DAY_MS = 86_400_000;
 const TRACK_HISTORY_LIMIT = 40_000;
@@ -54,78 +54,9 @@ function boundedDatabase(db) {
   });
 }
 
-function trackRowKey(row) {
-  return [
-    row.play_date || '',
-    row.stationhead_track_id ?? '',
-    row.isrc || '',
-    row.spotify_id || '',
-    row.queue_track_id ?? '',
-    row.position ?? '',
-    row.first_played_at ?? row.played_at ?? '',
-  ].join('|');
-}
-
-async function ensureReadModelSchema(db) {
-  await db.prepare(`CREATE TABLE IF NOT EXISTS sh_pages_track_history_read_model (
-    row_key TEXT PRIMARY KEY,
-    play_date TEXT NOT NULL,
-    first_played_at INTEGER,
-    row_json TEXT NOT NULL,
-    updated_at INTEGER NOT NULL
-  )`).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_sh_pages_track_history_date
-    ON sh_pages_track_history_read_model(play_date,first_played_at,row_key)`).run();
-}
-
-async function writeStatements(db, statements) {
-  if (!statements.length) return;
-  if (typeof db.script === 'function') {
-    await db.script(statements);
-    return;
-  }
-  await db.batch(statements);
-}
-
-async function persistDay(db, day, rows, generation) {
-  await ensureReadModelSchema(db);
-  const statements = rows.map((row) => db.prepare(`INSERT INTO sh_pages_track_history_read_model(
-      row_key,play_date,first_played_at,row_json,updated_at
-    ) VALUES(?,?,?,?,?) ON CONFLICT(row_key) DO UPDATE SET
-      play_date=excluded.play_date,
-      first_played_at=excluded.first_played_at,
-      row_json=excluded.row_json,
-      updated_at=excluded.updated_at`)
-    .bind(
-      trackRowKey(row),
-      row.play_date,
-      Number(row.first_played_at || row.played_at || 0) || null,
-      JSON.stringify(row),
-      generation,
-    ));
-
-  for (let offset = 0; offset < statements.length; offset += 100) {
-    await writeStatements(db, statements.slice(offset, offset + 100));
-  }
-
-  await db.prepare(`DELETE FROM sh_pages_track_history_read_model
-    WHERE play_date=? AND updated_at<>?`).bind(day, generation).run();
-}
-
-export async function repairTrackHistoryDay({
-  db,
-  day,
-  now = Date.now(),
-} = {}) {
-  const targetDay = day || defaultRepairDay(now);
-  if (!validDay(targetDay)) throw new Error(`invalid track-history repair day: ${targetDay}`);
-  if (!db?.prepare) throw new Error('MINUTE_DB adapter is missing');
-
+async function repairedRows(db, targetDay, generation) {
   const fromTs = Date.parse(`${targetDay}T00:00:00Z`);
   const toTs = fromTs + DAY_MS;
-  const generation = Number(now);
-  if (!Number.isFinite(generation) || generation <= 0) throw new Error('invalid repair generation');
-
   const { result, likeRows } = await loadTrackHistoryData(
     boundedDatabase(db),
     fromTs,
@@ -137,7 +68,6 @@ export async function repairTrackHistoryDay({
   if (groupedRows.length > TRACK_HISTORY_LIMIT) {
     throw new Error(`track-history repair exceeded ${TRACK_HISTORY_LIMIT} grouped rows`);
   }
-
   const mergedRows = mergeTrackRows(groupedRows);
   const likedRows = attachCompactTrackLikes(mergedRows, likeRows);
   const completed = applyTrackPeriodCompleteness(likedRows, groupedRows, generation);
@@ -146,23 +76,35 @@ export async function repairTrackHistoryDay({
   if (!rows.length || totalPlays <= 0) {
     throw new Error(`track-history repair produced no playable rows for ${targetDay}`);
   }
+  return { groupedRows, completed, rows, totalPlays };
+}
 
-  await persistDay(db, targetDay, rows, generation);
-  const stored = await db.prepare(`SELECT COUNT(*) AS row_count,
-      COALESCE(SUM(CAST(json_extract(row_json,'$.play_count') AS INTEGER)),0) AS total_plays
-    FROM sh_pages_track_history_read_model
-    WHERE play_date=?`).bind(targetDay).first();
+export async function repairTrackHistoryDay({
+  db,
+  day,
+  now = Date.now(),
+  publish = publishTrackHistoryR2DayRows,
+} = {}) {
+  const targetDay = day || defaultRepairDay(now);
+  if (!validDay(targetDay)) throw new Error(`invalid track-history repair day: ${targetDay}`);
+  if (!db?.prepare) throw new Error('MINUTE_DB adapter is missing');
+  const generation = Number(now);
+  if (!Number.isFinite(generation) || generation <= 0) throw new Error('invalid repair generation');
 
+  const repaired = await repairedRows(db, targetDay, generation);
+  const r2 = await publish({ day: targetDay, rows: repaired.rows, now: generation });
   return {
     ok: true,
     day: targetDay,
     generation,
-    grouped_rows: groupedRows.length,
-    rows: rows.length,
-    total_plays: totalPlays,
-    stored_rows: Number(stored?.row_count || 0),
-    stored_total_plays: Number(stored?.total_plays || 0),
-    excluded_dates: completed.excludedDates,
+    grouped_rows: repaired.groupedRows.length,
+    rows: repaired.rows.length,
+    total_plays: repaired.totalPlays,
+    stored_rows: Number(r2?.rows || repaired.rows.length),
+    stored_total_plays: Number(r2?.plays || repaired.totalPlays),
+    excluded_dates: repaired.completed.excludedDates,
+    storage: 'r2-day',
+    r2,
   };
 }
 
@@ -170,16 +112,15 @@ export async function refreshTrackHistoryDay({
   db = remoteMinuteDatabase(),
   day,
   now = Date.now(),
-  sync = syncTrackHistoryR2Day,
+  publish = publishTrackHistoryR2DayRows,
 } = {}) {
   const targetDay = day || defaultRepairDay(now);
-  const repaired = await repairTrackHistoryDay({ db, day: targetDay, now });
-  const published = await sync({ db, day: targetDay, now });
+  const repaired = await repairTrackHistoryDay({ db, day: targetDay, now, publish });
   return {
     ok: true,
     day: targetDay,
-    repair: repaired,
-    r2: published,
+    repair: { ...repaired, r2: undefined },
+    r2: repaired.r2,
   };
 }
 
