@@ -4,28 +4,24 @@ import test from 'node:test';
 import collector, {
   runAlarmCoordinatedBuddiesCollectorScheduled,
   runBuddiesCollectorScheduled,
-  runBuddiesCollectorScheduledWithPagesWatchdog,
+  runBuddiesCollectorScheduledWithFollowers,
 } from '../src/buddies-collector-entry.js';
 
-test('production collector Cron keeps Durable Object collection behind the Pages watchdog wrapper', () => {
-  assert.equal(collector.scheduled, runBuddiesCollectorScheduledWithPagesWatchdog);
+test('production collector Cron keeps Durable Object collection behind the follower wrapper', () => {
+  assert.equal(collector.scheduled, runBuddiesCollectorScheduledWithFollowers);
   assert.notEqual(collector.scheduled, runAlarmCoordinatedBuddiesCollectorScheduled);
   assert.notEqual(collector.scheduled, runBuddiesCollectorScheduled);
 });
 
-test('Pages watchdog is waitUntil work and does not replace coordinated collection', async () => {
+test('ordinary collector minutes do not add dashboard watchdog work', async () => {
   const waitUntil = [];
   const calls = [];
   const controller = { cron: '* * * * *', scheduledTime: Date.UTC(2026, 8, 22, 1, 0) };
-  const result = await runBuddiesCollectorScheduledWithPagesWatchdog(
+  const result = await runBuddiesCollectorScheduledWithFollowers(
     controller,
     {},
     { waitUntil: (promise) => waitUntil.push(promise) },
     {
-      watchdog: async (_env, options) => {
-        calls.push(['watchdog', options.scheduledAt]);
-        return { status: 'fresh' };
-      },
       collectFollowers: async () => {
         calls.push(['followers']);
       },
@@ -37,26 +33,19 @@ test('Pages watchdog is waitUntil work and does not replace coordinated collecti
   );
 
   assert.deepEqual(result, { ok: true });
-  assert.equal(waitUntil.length, 1);
-  await Promise.all(waitUntil);
-  assert.deepEqual(calls, [
-    ['collector', controller.scheduledTime],
-    ['watchdog', controller.scheduledTime],
-  ]);
+  assert.equal(waitUntil.length, 0);
+  assert.deepEqual(calls, [['collector', controller.scheduledTime]]);
 });
 
 test('JST midnight adds one follower snapshot as independent waitUntil work', async () => {
   const waitUntil = [];
   const calls = [];
   const controller = { cron: '* * * * *', scheduledTime: Date.UTC(2026, 8, 30, 15, 0) };
-  const result = await runBuddiesCollectorScheduledWithPagesWatchdog(
+  const result = await runBuddiesCollectorScheduledWithFollowers(
     controller,
     { marker: true },
     { waitUntil: (promise) => waitUntil.push(promise) },
     {
-      watchdog: async () => {
-        calls.push('watchdog');
-      },
       collectFollowers: async (env, scheduledAt) => {
         assert.equal(env.marker, true);
         assert.equal(scheduledAt, controller.scheduledTime);
@@ -71,7 +60,7 @@ test('JST midnight adds one follower snapshot as independent waitUntil work', as
   );
 
   assert.deepEqual(result, { ok: true });
-  assert.equal(waitUntil.length, 2);
+  assert.equal(waitUntil.length, 1);
   await Promise.all(waitUntil);
-  assert.deepEqual(calls, ['collector', 'watchdog', 'followers']);
+  assert.deepEqual(calls, ['collector', 'followers']);
 });

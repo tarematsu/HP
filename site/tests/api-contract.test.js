@@ -47,8 +47,7 @@ test('GET /api catalog is generated from the canonical contract only', () => {
   assert.equal(catalog.public_write_api, false);
 });
 
-test('materialized response freshness follows canonical generation policies', () => {
-  const minute = 60_000;
+test('materialized response freshness follows event and revision policies', () => {
   for (const key of [
     'history:daily',
     'history:weekly',
@@ -56,14 +55,14 @@ test('materialized response freshness follows canonical generation policies', ()
     'history:broadcasts',
   ]) {
     assert.equal(materializedResponseCadenceSeconds(key), 1440 * 60, key);
-    assert.equal(materializedResponseMaximumAge(key), 1445 * minute, key);
+    assert.equal(materializedResponseMaximumAge(key), Number.MAX_SAFE_INTEGER, key);
   }
   assert.equal(materializedResponseCadenceSeconds('spotify-playcounts'), 0);
   assert.equal(materializedResponseMaximumAge('spotify-playcounts'), Number.MAX_SAFE_INTEGER);
   assert.equal(materializedResponseCadenceSeconds('followers'), 0);
   assert.equal(materializedResponseMaximumAge('followers'), Number.MAX_SAFE_INTEGER);
   assert.equal(materializedResponseCadenceSeconds('host-history:summary'), 1440 * 60);
-  assert.equal(materializedResponseMaximumAge('host-history:summary'), 1445 * minute);
+  assert.equal(materializedResponseMaximumAge('host-history:summary'), Number.MAX_SAFE_INTEGER);
   assert.equal(materializedApiKey('https://skrzk.test/api/followers'), 'followers');
   assert.equal(materializedApiKey('https://skrzk.test/api/amazon-music'), null);
   assert.equal(materializedApiKey('https://skrzk.test/api/apple-music'), null);

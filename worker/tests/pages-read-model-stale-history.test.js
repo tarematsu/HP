@@ -7,7 +7,7 @@ function historyRequest() {
   return new Request('https://internal.test/_internal/pages-response?key=history%3Adaily');
 }
 
-test('expired completed history uses one bounded stale R2 read without KV or cache writes', async () => {
+test('old revision-driven completed history remains valid and cacheable without KV reads', async () => {
   const now = Date.UTC(2026, 7, 31, 23, 30);
   const updatedAt = now - 25 * 60 * 60 * 1000;
   const maximumAges = [];
@@ -25,10 +25,10 @@ test('expired completed history uses one bounded stale R2 read without KV or cac
         assert.equal(modelKey, 'history:daily');
         assert.equal(requestedNow, now);
         maximumAges.push(maximumAge);
-        const stale = Response.json({ ok: true, source: 'stale-r2' });
-        stale.headers.set('x-materialized-at', String(updatedAt));
-        stale.headers.set('x-materialized-cadence-seconds', '86400');
-        return stale;
+        const stored = Response.json({ ok: true, source: 'revision-r2' });
+        stored.headers.set('x-materialized-at', String(updatedAt));
+        stored.headers.set('x-materialized-cadence-seconds', '86400');
+        return stored;
       },
       loadResponse: async () => {
         throw new Error('completed history must not consult KV');
@@ -37,10 +37,10 @@ test('expired completed history uses one bounded stale R2 read without KV or cac
   );
 
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { ok: true, source: 'stale-r2' });
-  assert.equal(response.headers.get('x-materialized-stale'), '1');
-  assert.deepEqual(maximumAges, [7 * 24 * 60 * 60 * 1000]);
-  assert.equal(cacheWrites, 0);
+  assert.deepEqual(await response.json(), { ok: true, source: 'revision-r2' });
+  assert.equal(response.headers.get('x-materialized-stale'), null);
+  assert.deepEqual(maximumAges, [Number.MAX_SAFE_INTEGER]);
+  assert.equal(cacheWrites, 1);
 });
 
 test('fresh completed history remains the preferred single R2 response', async () => {

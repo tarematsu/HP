@@ -38,7 +38,7 @@ const TWELVE_HOUR_VARIANTS = [
   'spotify-playcounts',
 ];
 
-test('shared cadence metadata stays compatible while Spotify is excluded by scheduled runner', () => {
+test('shared cadence metadata stays compatible while Spotify is excluded by history runner', () => {
   assert.deepEqual([...dueVariantKeys(cycleStart + 26 * MINUTE)], ALL_VARIANTS);
   assert.deepEqual([...dueVariantKeys(cycleStart + 55 * MINUTE)], ALL_VARIANTS);
   assert.deepEqual([...dueVariantKeys(cycleStart + 56 * MINUTE)], ['dashboard']);
@@ -56,17 +56,20 @@ test('track-history read-model generation is absent from scheduled Actions', () 
   assert.doesNotMatch(workflow, /PAGES_READ_MODEL_MAX_STEPS|Rebuild track history|track-history generation/);
 });
 
-test('scheduled rebuild owns history models only; dashboard and Spotify use other dispatch paths', () => {
+test('history rebuild is targeted by source revision with one daily recovery sweep', () => {
   assert.doesNotMatch(workflow, /workflow_run:/);
-  assert.match(workflow, /cron: '26 0,6,12,18 \* \* \*'/);
+  assert.match(workflow, /cron: '26 0 \* \* \*'/);
   assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/);
   assert.match(workflow, /PAGES_READ_MODEL_FORCE_ALL/);
+  assert.match(workflow, /PAGES_READ_MODEL_DUE_KEYS/);
+  assert.match(workflow, /due_keys:/);
   assert.match(workflow, /Refresh reusable history models during D1 budget deferral/);
   assert.match(workflow, /Publish due pages read models/);
   assert.match(workflow, /run-pages-history-read-model-actions\.mjs/);
   assert.doesNotMatch(workflow, /node scripts\/refresh-pages-dashboard-actions\.mjs/);
   assert.doesNotMatch(workflow, /node scripts\/refresh-pages-realtime-actions\.mjs/);
   assert.match(historyRunner, /variant\.key !== 'dashboard' && variant\.event_driven !== true/);
+  assert.match(historyRunner, /PAGES_READ_MODEL_DUE_KEYS/);
   assert.match(historyRunner, /reuseOnlyKeys: variants\.map/);
   assert.doesNotMatch(historyRunner, /SPOTIFY_MODEL_KEY/);
   assert.match(workflow, /timeout-minutes: 15/);

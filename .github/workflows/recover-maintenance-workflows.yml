@@ -18,7 +18,6 @@ on:
       - '.github/workflows/run-pages-read-model-rebuild.yml'
       - '.github/workflows/run-runtime-offline-maintenance.yml'
       - '.github/workflows/run-track-metadata-repair.yml'
-      - '.github/workflows/run-local-minute-facts-rebuild.yml'
   workflow_dispatch:
 
 permissions:

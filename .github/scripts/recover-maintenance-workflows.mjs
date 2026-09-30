@@ -103,7 +103,8 @@ export async function recoverMaintenanceWorkflows({
   const dispatched = [];
 
   // Runtime rollups are the source for Pages history. Recover or finish Runtime
-  // first. Pages itself is refreshed only on its own cadence or when stale/missing.
+  // first. Pages itself is normally revision-driven; this watchdog is only a
+  // low-frequency recovery path if the daily fallback run is missed.
   if (shouldRecover(states.runtime.state)) {
     await dispatchWorkflow(repository, WORKFLOWS.runtime, token, request);
     dispatched.push('runtime');
@@ -133,10 +134,12 @@ export async function recoverMaintenanceWorkflows({
     return { ok: true, dispatched, states, reason: `pages-${states.pages.state}` };
   }
 
-  for (const key of ['metadata', 'localMinute']) {
-    if (!shouldRecover(states[key].state)) continue;
-    await dispatchWorkflow(repository, WORKFLOWS[key], token, request);
-    dispatched.push(key);
+  // Metadata repair remains event-driven from runtime maintenance. The former
+  // local minute-facts full rebuild is manual-only; normal missing facts are
+  // detected by the bounded gap scanner inside runtime maintenance.
+  if (shouldRecover(states.metadata.state)) {
+    await dispatchWorkflow(repository, WORKFLOWS.metadata, token, request);
+    dispatched.push('metadata');
   }
 
   if (shouldRefreshObservability(states)) {

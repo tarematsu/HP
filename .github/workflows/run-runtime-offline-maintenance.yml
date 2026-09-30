@@ -12,7 +12,9 @@ on:
     paths:
       - '.github/workflows/run-runtime-offline-maintenance.yml'
       - 'scripts/cloudflare-d1-write-guard.mjs'
+      - 'worker/scripts/detect-pages-read-model-revision-drift-actions.mjs'
       - 'worker/scripts/publish-recent-daily-summaries-actions.mjs'
+      - 'worker/scripts/run-minute-facts-gap-scan-actions.mjs'
       - 'worker/scripts/run-runtime-offline-maintenance-actions.mjs'
       - 'worker/scripts/remote-d1-adapter.mjs'
       - 'worker/src/recent-daily-summary-publication.js'
@@ -42,6 +44,7 @@ jobs:
       BUDDIES_DATABASE_NAME: stationhead-buddies
       FACTS_DATABASE_NAME: stationhead-minute
       OTHER_DATABASE_NAME: stationhead-other
+      PAGES_RESPONSE_BUCKET: sh-pages-responses
       RUNTIME_MAINTENANCE_DEADLINE_MS: '720000'
       D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT: '4000'
       # Reserve 750k daily rows for higher-priority read-model publication.
@@ -76,7 +79,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Install Worker dependencies
         run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Publish recent daily summaries, then run budget-aware maintenance
+      - name: Scan minute-fact gaps, publish summaries, then run budget-aware maintenance
         shell: bash
         env:
           RUNTIME_MAINTENANCE_D1_ALLOWED: ${{ steps.d1-budget.outputs.allowed }}
@@ -88,21 +91,37 @@ jobs:
           RUNTIME_MAINTENANCE_D1_WRITE_LIMIT: ${{ steps.d1-budget.outputs.limit }}
         run: |
           set -o pipefail
-          node scripts/publish-recent-daily-summaries-actions.mjs 2>&1 | tee runtime-offline-maintenance.log
+          if [[ "$RUNTIME_MAINTENANCE_D1_ALLOWED" == 'true' ]]; then
+            node scripts/run-minute-facts-gap-scan-actions.mjs 2>&1 | tee runtime-offline-maintenance.log
+          else
+            echo "Minute-fact gap scan deferred by D1 budget guard." | tee runtime-offline-maintenance.log
+          fi
+          node scripts/publish-recent-daily-summaries-actions.mjs 2>&1 | tee -a runtime-offline-maintenance.log
           node scripts/run-runtime-offline-maintenance-actions.mjs 2>&1 | tee -a runtime-offline-maintenance.log
-      - name: Trigger Pages read-model revision checks
+      - name: Detect unpublished Pages source revisions
+        id: pages-revision-drift
+        shell: bash
+        run: |
+          set -euo pipefail
+          due_keys="$(node scripts/detect-pages-read-model-revision-drift-actions.mjs)"
+          echo "due_keys=$due_keys" >> "$GITHUB_OUTPUT"
+          echo "Pages read-model revision drift: ${due_keys:-none}"
+      - name: Trigger changed Pages read models
+        if: steps.pages-revision-drift.outputs.due_keys != ''
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          DUE_KEYS: ${{ steps.pages-revision-drift.outputs.due_keys }}
         run: |
           set -euo pipefail
+          payload="$(jq -nc --arg keys "$DUE_KEYS" '{ref:"main",inputs:{force_all:"false",due_keys:$keys}}')"
           curl --fail-with-body --silent --show-error \
             -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/run-pages-read-model-rebuild.yml/dispatches" \
-            -d '{"ref":"main","inputs":{"force_all":"true"}}'
+            -d "$payload"
       - name: Upload runtime maintenance failure log
         if: failure()
         uses: actions/upload-artifact@v4
