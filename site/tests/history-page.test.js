@@ -46,7 +46,7 @@ test('embedded history defaults invalid hashes to weekly and lazy-loads mode run
   assert.doesNotMatch(historyEntry, /'tracks'/);
   assert.match(historyEntry, /history\.replaceState\(null, '', '\/#weekly'\)/);
   assert.match(historyEntry, /window\.__ensureHistoryModeRuntime = ensureHistoryModeRuntime/);
-  assert.match(historyEntry, /history-lite\.js\?v=20260930\.1/);
+  assert.match(historyEntry, /history-lite\.js\?v=20261001\.1/);
   assert.doesNotMatch(historyEntry, /history-page-fixes|history-table-cleanup|history-summary-average-labels|pages-ui-tweaks|pages-terminology/);
   assert.match(historyClient, /const MODES = Object\.freeze/);
   for (const mode of INTERNAL_ARCHIVE_MODES) assert.match(historyClient, new RegExp(`${mode}: \\{`));
@@ -71,9 +71,9 @@ test('history keeps one visible chart and delegates chart drawing to mode-specif
   assert.match(historyStyles, /\.data-panel \{[^}]*content-visibility:\s*auto/);
   assert.doesNotMatch(historyClient, /drawSummaryChart|prepareCanvas|history-broadcasts\.js/);
   assert.match(historyClient, /history:data-loaded/);
-  assert.match(historyEntry, /history-period-chart\.js\?v=20260923\.\d+/);
+  assert.match(historyEntry, /history-period-chart\.js\?v=20261001\.1/);
   assert.match(historyEntry, /history-ranking-chart\.js\?v=20260930\.2/);
-  assert.match(historyEntry, /history-broadcasts\.js\?v=20260927\.1/);
+  assert.match(historyEntry, /history-broadcasts\.js\?v=20261001\.1/);
   assert.match(periodChart, /history:data-loaded/);
   assert.match(rankingChart, /history:data-loaded/);
   assert.match(broadcastClient, /function draw\(\)/);
