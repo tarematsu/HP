@@ -13,7 +13,7 @@ function occurrences(value) {
   return source.split(value).length - 1;
 }
 
-test('ingest entry resolves each lazy stage module only once in an isolate', () => {
+test('ingest entry resolves each active lazy stage module only once in an isolate', () => {
   const modulePaths = [
     './ingest-prepared-channel.js',
     './queue-analysis-transfer.js',
@@ -22,12 +22,12 @@ test('ingest entry resolves each lazy stage module only once in an isolate', () 
     './ingest-channel-entry.js',
     './ingest-fact-stage.js',
     './ingest-finalize-entry.js',
-    './comments-cpu-entry.js',
     './persist-channel-optimized-entry.js',
   ];
   for (const modulePath of modulePaths) {
     assert.equal(occurrences(`import('${modulePath}')`), 1, modulePath);
   }
+  assert.equal(occurrences("import('./comments-cpu-entry.js')"), 0);
 
   for (const cache of [
     'preparedModulesPromise',
@@ -35,22 +35,11 @@ test('ingest entry resolves each lazy stage module only once in an isolate', () 
     'legacyIngestPromise',
     'ingestFactStagesPromise',
     'ingestFinalizePromise',
-    'commentsModulePromise',
     'persistModulePromise',
   ]) {
     assert.match(source, new RegExp(`return ${cache} \\?\\?=`));
   }
-});
-
-test('comments Queue is delegated to the lazy comments wrapper with its own limits', async () => {
-  const calls = [];
-  const message = {
-    body: { message_type: 'stationhead-comments-forward', message_version: 1 },
-    ack() { calls.push('ack'); },
-    retry() { calls.push('retry'); },
-  };
-  await worker.queue({ queue: 'stationhead-comments', messages: [message] }, {});
-  assert.deepEqual(calls, ['retry']);
+  assert.doesNotMatch(source, /commentsModulePromise|stationhead-comments/);
 });
 
 test('persist Queue is delegated to the lazy persistence wrapper', async () => {
