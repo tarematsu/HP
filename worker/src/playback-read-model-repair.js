@@ -8,7 +8,10 @@ import {
   attachPlaybackReadModelTrackMetadata,
   loadPlaybackReadModelTrackMetadata,
 } from './read-model-stationhead-metadata.js';
-import { sanitizeQueueTrackMetadata } from './track-metadata-quality.js';
+import {
+  sanitizeQueueTrackMetadata,
+  trackNeedsHydration,
+} from './track-metadata-quality.js';
 
 const TRACK_HISTORY_MODEL_KEY = 'track-history';
 const TRACK_HISTORY_STATUS_KEY = 'track-history-status';
@@ -128,7 +131,16 @@ export async function repairPlaybackReadModels(env) {
     const hydrated = metadataRows.length
       ? attachPlaybackReadModelTrackMetadata(queue, metadataRows)
       : queue;
-    const canonicalTracks = await canonicalizeTrackRows(db, hydrated.tracks);
+    const canonicalSeeds = metadataRows.filter((metadata) => (
+      Number.isSafeInteger(Number(metadata?.track_id))
+      && Number(metadata.track_id) > 0
+      && !trackNeedsHydration(metadata)
+    ));
+    const canonicalTracks = await canonicalizeTrackRows(
+      db,
+      hydrated.tracks,
+      { seedRows: canonicalSeeds },
+    );
     const canonicalQueue = canonicalTracks === hydrated.tracks
       ? hydrated
       : { ...hydrated, tracks: canonicalTracks };
