@@ -56,9 +56,9 @@ test('archive and likes markup are owned by their shared shell modules', () => {
   for (const id of ['likesCsv', 'likesNotice', 'likesRankingList', 'likesTbody']) assert.match(likesShell, new RegExp(`id="${id}"`));
   assert.doesNotMatch(likesShell, /id="likesLoad"/);
   assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260930\.1'/);
-  assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20260928\.1'\)/);
+  assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20261001\.1'\)/);
   assert.match(tabsClient, /import\('\/history\/history-likes\.js\?v=20260930\.1'\)/);
-  assert.match(tabsClient, /setRoute\(mode, historyView/);
+  assert.match(tabsClient, /setRoute\(mode, runtimeReady \? historyView : null/);
   assert.match(tabsClient, /viewId: 'likesView'/);
   assert.match(historyEntry, /VALID_MODES/);
 });
@@ -67,7 +67,7 @@ test('feature tabs share one lazy route registry and loader', () => {
   assert.match(tabsClient, /const LAZY_VIEWS = Object\.freeze/);
   assert.match(tabsClient, /const modulePromises = new Map\(\)/);
   assert.match(tabsClient, /function loadOnce\(key, importer\)/);
-  assert.match(tabsClient, /async function showLazyView\(mode, options = \{}\)/);
+  assert.match(tabsClient, /async function showLazyView\(mode, options = \{\}\)/);
   for (const [mode, shell, runtime] of [
     ['first-week', 'first-week-comparison-shell.js', 'first-week-comparison.js'],
     ['played-tracks', 'played-tracks-shell.js', 'played-tracks.js'],
@@ -94,13 +94,13 @@ test('inactive route runtimes are not prefetched from the current tab', () => {
 
 test('history mode-specific runtimes are lazy-loaded only after history starts', () => {
   assert.match(historyEntry, /function ensureHistoryModeRuntime/);
-  assert.match(historyEntry, /history-period-chart\.js\?v=20260923\.\d+/);
+  assert.match(historyEntry, /history-period-chart\.js\?v=20261001\.1/);
   assert.match(historyEntry, /history-ranking-chart\.js\?v=20260930\.\d+/);
   assert.doesNotMatch(historyEntry, /history-ranking-missing-gap/);
   assert.match(historyEntry, /history-ranking-all-host-table\.js\?v=20260930\.1/);
   assert.match(tabsClient, /history-ranking-table-status\.js\?v=20260923\.2/);
   assert.match(tabsClient, /mode === 'ranking'[\s\S]*loadOnce\('ranking-status'/);
-  assert.match(historyEntry, /history-broadcasts\.js\?v=20260927\.1/);
+  assert.match(historyEntry, /history-broadcasts\.js\?v=20261001\.1/);
   assert.doesNotMatch(tabsClient, /history-period-chart|history-ranking-chart|history-broadcasts/);
 });
 
