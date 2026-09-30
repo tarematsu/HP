@@ -3,24 +3,8 @@
   margin-bottom: 10px;
 }
 
-.apple-rank-grid {
-  stroke: currentColor;
-  stroke-opacity: .12;
-  stroke-width: 1;
-}
-
-.apple-rank-axis-label {
-  fill: currentColor;
-  opacity: .62;
-  font-size: 12px;
-}
-
 .apple-rank-line {
-  fill: none;
   stroke: hsl(var(--apple-rank-hue) 68% 48%);
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
 }
 
 .apple-rank-legend {
@@ -35,7 +19,6 @@
   align-items: center;
   min-width: 0;
   gap: 7px;
-  font-size: 13px;
 }
 
 .apple-rank-legend-item i {
@@ -52,10 +35,7 @@
 }
 
 .apple-rank-empty {
-  margin: 0;
-  padding: 54px 12px;
-  text-align: center;
-  color: var(--muted, #737780);
+  --shared-empty-padding: 54px 12px;
 }
 
 .apple-table {
@@ -113,10 +93,6 @@
   .apple-rank-legend {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px 10px;
-  }
-
-  .apple-rank-legend-item {
-    font-size: 12px;
   }
 
   .apple-region-table {

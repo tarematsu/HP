@@ -1,6 +1,8 @@
 import {
   dashboardChartCard,
+  dashboardChartHost,
   dashboardDataCard,
+  dashboardNotice,
   mountDashboardShell,
 } from './dashboard-ui-common.js?v=20261001.1';
 
@@ -17,13 +19,18 @@ mountDashboardShell({
     anchorId: 'likesView',
     position: 'beforebegin',
     html: `
-      <p id="amazonMusicNotice" class="notice" role="status" hidden></p>
+      ${dashboardNotice({ id: 'amazonMusicNotice' })}
       ${dashboardChartCard({
         title: 'Amazon Music総合順位推移',
         titleId: 'amazonAllRankTitle',
         kicker: 'AMAZON MUSIC',
         className: 'amazon-rank-panel',
-        chartHtml: '<div id="amazonAllRankChart" class="amazon-rank-chart chart-fit shared-svg-chart" aria-label="櫻坂46楽曲のAmazon Music総合順位推移"></div>',
+        chartHtml: dashboardChartHost({
+          id: 'amazonAllRankChart',
+          className: 'amazon-rank-chart chart-fit',
+          ariaLabel: '櫻坂46楽曲のAmazon Music総合順位推移',
+          role: '',
+        }),
       })}
       ${dashboardDataCard({
         title: '櫻坂46の全楽曲順位',

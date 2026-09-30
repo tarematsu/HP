@@ -31,6 +31,7 @@ const hinataCss = readFileSync(new URL('../public/hinata.css', import.meta.url),
 const followersCss = readFileSync(new URL('../public/followers.css', import.meta.url), 'utf8');
 const amazonCss = readFileSync(new URL('../public/amazon-music.css', import.meta.url), 'utf8');
 const appleCss = readFileSync(new URL('../public/apple-music.css', import.meta.url), 'utf8');
+const spotifyCss = readFileSync(new URL('../public/spotify.css', import.meta.url), 'utf8');
 
 test('dashboard exposes reusable presentation components in one shared module', () => {
   for (const helper of [
@@ -41,9 +42,11 @@ test('dashboard exposes reusable presentation components in one shared module', 
     'dashboardSectionHead',
     'dashboardLegend',
     'dashboardChartCard',
+    'dashboardChartHost',
     'dashboardTable',
     'dashboardDataCard',
     'dashboardControls',
+    'dashboardNotice',
   ]) assert.match(sharedUi, new RegExp(`export function ${helper}\\(`));
 });
 
@@ -68,6 +71,12 @@ test('all dashboard shells share mounting and reusable UI components without run
   for (const name of ['history-shell.js', 'likes-shell.js', 'spotify-shell.js', 'apple-music-shell.js', 'played-tracks-shell.js', 'nogizaka-listening-party-shell.js']) {
     assert.match(shells[name], /dashboard(?:Summary|DataCard|ChartCard)/, `${name} must compose shared cards`);
   }
+  for (const name of ['hinata-shell.js', 'followers-shell.js', 'apple-music-shell.js', 'amazon-music-shell.js']) {
+    assert.match(shells[name], /dashboardChartHost/, `${name} must use the shared chart host`);
+  }
+  for (const name of ['hinata-shell.js', 'followers-shell.js', 'spotify-shell.js', 'apple-music-shell.js', 'amazon-music-shell.js']) {
+    assert.match(shells[name], /dashboardNotice/, `${name} must use the shared notice primitive`);
+  }
 });
 
 test('standalone lazy tabs share route activation and navigation handling', () => {
@@ -86,12 +95,23 @@ test('shared feature CSS owns generic SVG and numeric-table primitives', () => {
   assert.match(sharedCss, /\.shared-svg-chart svg\s*\{/);
   assert.match(sharedCss, /\.shared-numeric-table th/);
   assert.match(sharedCss, /font-variant-numeric:\s*tabular-nums/);
+  for (const emptyClass of ['apple-rank-empty', 'amazon-rank-empty', 'followers-empty', 'spotify-trend-empty']) {
+    assert.match(sharedCss, new RegExp(`\\.${emptyClass}`), `${emptyClass} must inherit the shared empty-state contract`);
+  }
 
   for (const [name, source] of Object.entries({ hinataCss, followersCss, amazonCss, appleCss })) {
     assert.doesNotMatch(source, /\.\w+-view\s*\{[^}]*display:\s*grid/, `${name} must use canonical dashboard view layout`);
     assert.doesNotMatch(source, /\.\w+-view\[hidden\]/, `${name} must use canonical hidden-view behavior`);
   }
   assert.doesNotMatch(hinataCss, /\.hinata-metric|\.hinata-section-head|\.hinata-chart-detail/);
+
+  assert.doesNotMatch(appleCss, /\.apple-rank-(?:grid|axis-label)\s*\{/);
+  assert.doesNotMatch(appleCss, /\.apple-rank-line\s*\{[^}]*stroke-width:/s);
+  assert.doesNotMatch(amazonCss, /\.amazon-rank-(?:grid|axis-label)\s*\{/);
+  assert.doesNotMatch(amazonCss, /\.amazon-rank-line\s*\{[^}]*stroke-width:/s);
+  assert.doesNotMatch(followersCss, /\.followers-(?:grid-line|axis-label|line)\s*\{/);
+  assert.doesNotMatch(followersCss, /\.followers-endpoint\s*\{[^}]*stroke-width:/s);
+  assert.doesNotMatch(spotifyCss, /\.spotify-trend-empty\s*\{[^}]*(?:margin|color|font-size):/s);
 });
 
 test('history feature shells rely on the single bundled stylesheet', () => {

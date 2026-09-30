@@ -143,6 +143,16 @@ export function dashboardControls({ id = '', bodyHtml = '', className = '', aria
   return `<section${id ? ` id="${id}"` : ''} class="${joinClasses('controls', 'card', className)}"${ariaLabel ? ` aria-label="${ariaLabel}"` : ''}${hiddenAttribute(hidden)}>${bodyHtml}</section>`;
 }
 
+export function dashboardNotice({ id, className = '', role = 'status', hidden = true } = {}) {
+  if (!id) return '';
+  return `<p id="${id}" class="${joinClasses('notice', className)}"${role ? ` role="${role}"` : ''}${hiddenAttribute(hidden)}></p>`;
+}
+
+export function dashboardChartHost({ id, className = '', ariaLabel = '', role = 'img' } = {}) {
+  if (!id) return '';
+  return `<div id="${id}" class="${joinClasses('shared-svg-chart', className)}"${role ? ` role="${role}"` : ''}${ariaLabel ? ` aria-label="${ariaLabel}"` : ''}></div>`;
+}
+
 function firstMatch(root, selectors) {
   for (const selector of selectors || []) {
     const node = selector ? root?.querySelector(selector) : null;

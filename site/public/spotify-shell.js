@@ -1,6 +1,7 @@
 import {
   dashboardChartCard,
   dashboardDataCard,
+  dashboardNotice,
   dashboardSummary,
   dashboardSummaryItem,
   mountDashboardShell,
@@ -27,7 +28,7 @@ mountDashboardShell({
     anchorId: 'likesView',
     position: 'beforebegin',
     html: `
-      <p id="spotifyNotice" class="notice" role="status" hidden></p>
+      ${dashboardNotice({ id: 'spotifyNotice' })}
       ${summary}
       ${dashboardChartCard({
         title: 'Spotify 全曲合計の再生数前日比推移（上位10組）',

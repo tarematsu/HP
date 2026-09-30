@@ -1,9 +1,11 @@
 import {
   dashboardChartCard,
+  dashboardChartHost,
   dashboardDataCard,
   dashboardLegend,
   dashboardMetric,
   dashboardMetrics,
+  dashboardNotice,
   dashboardTable,
   mountDashboardShell,
 } from './dashboard-ui-common.js?v=20261001.1';
@@ -36,7 +38,7 @@ mountDashboardShell({
     anchorId: 'historyView',
     position: 'afterend',
     html: `
-      <p id="hinataNotice" class="notice" role="status" hidden></p>
+      ${dashboardNotice({ id: 'hinataNotice' })}
       ${dashboardMetrics([
         dashboardMetric({ label: 'オンライン', valueId: 'hinataOnline', value: '—' }),
         dashboardMetric({ label: '総再生数', valueId: 'hinataStreams', value: '—' }),
@@ -48,7 +50,11 @@ mountDashboardShell({
         kicker: 'OHISAMA / 24H',
         trailingHtml: '<span id="hinataUpdated" class="pill">—</span>',
         legendHtml: liveLegend,
-        chartHtml: '<div id="hinataChart" class="hinata-chart chart-fit shared-svg-chart" role="img" aria-label="過去24時間のオンライン数と5分ごとの再生数増加"></div>',
+        chartHtml: dashboardChartHost({
+          id: 'hinataChart',
+          className: 'hinata-chart chart-fit',
+          ariaLabel: '過去24時間のオンライン数と5分ごとの再生数増加',
+        }),
         detailHtml: '<p id="hinataChartDetail" class="chart-detail subtle"></p>',
         className: 'chart-card hinata-chart-panel',
       })}
@@ -57,7 +63,11 @@ mountDashboardShell({
         titleId: 'hinataDailyChartTitle',
         kicker: 'DAILY',
         legendHtml: '<div id="hinataDailyChartLegend" class="legend hinata-legend" aria-label="日次グラフ凡例"></div>',
-        chartHtml: '<div id="hinataDailyChart" class="hinata-chart chart-fit shared-svg-chart" role="img" aria-label="日次の平均・最大・最小同接と再生数増加"></div>',
+        chartHtml: dashboardChartHost({
+          id: 'hinataDailyChart',
+          className: 'hinata-chart chart-fit',
+          ariaLabel: '日次の平均・最大・最小同接と再生数増加',
+        }),
         detailHtml: '<p id="hinataDailyChartDetail" class="chart-detail subtle"></p>',
         className: 'chart-card hinata-daily-chart-panel',
       })}
