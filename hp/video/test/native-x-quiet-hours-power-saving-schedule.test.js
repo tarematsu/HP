@@ -7,14 +7,32 @@ const mediaBase = readFileSync(
 const powerSavingSchedule = readFileSync(
   new URL('../../native/src/power_saving_schedule.inc', import.meta.url), 'utf8');
 
-test('native X slots stay inactive from 01:00 through 05:59 while normal media cadence remains independent', () => {
+test('native X random draw is independent from quiet hours and runtime gating happens only when a selected slot is due', () => {
   assert.match(mediaBase, /kNativeMediaXQuietStartSecond = 1 \* 60 \* 60/);
   assert.match(mediaBase, /kNativeMediaXQuietEndSecond = 6 \* 60 \* 60/);
-  assert.match(mediaBase, /if \(!NativeMediaXRuntimeAllowed\(\)\) return false/);
-  assert.match(mediaBase, /bool NativeMediaHostSuppressX\(\) noexcept/);
-  assert.match(mediaBase, /return gNativeMediaPowerSaving \|\| !NativeMediaXRuntimeAllowed\(\)/);
-  assert.match(mediaBase, /#define gNativeMediaPowerSaving NativeMediaHostSuppressX\(\)/);
-  assert.match(mediaBase, /#undef gNativeMediaPowerSaving/);
+  assert.match(
+    mediaBase,
+    /bool NativeMediaXSlotEnabled\(bool firstSlot\) noexcept \{\s*const auto& plan = NativeMediaCurrentXCyclePlan\(\);\s*return firstSlot \? plan\.firstSlot : plan\.secondSlot;\s*\}/,
+  );
+  assert.doesNotMatch(
+    mediaBase,
+    /bool NativeMediaXSlotEnabled\(bool firstSlot\) noexcept \{[\s\S]*?NativeMediaXRuntimeAllowed\(\)[\s\S]*?\}/,
+  );
+  assert.match(
+    mediaBase,
+    /bool NativeMediaHostSuppressX\([\s\S]*bool tver, bool phaseStarted, ULONGLONG phaseStartedAt,[\s\S]*bool xPhaseActive\) noexcept/,
+  );
+  assert.match(mediaBase, /if \(xPhaseActive\) return !NativeMediaXRuntimeAllowed\(\)/);
+  assert.match(mediaBase, /if \(!phaseStarted\) return false/);
+  assert.match(mediaBase, /return now - phaseStartedAt >= xStartMs && !NativeMediaXRuntimeAllowed\(\)/);
+  assert.match(
+    mediaBase,
+    /#define gNativeMediaPowerSaving NativeMediaHostSuppressX\([\s\S]*phase_ == Phase::Tver, phaseStarted_, phaseStartedAt_, xPhaseActive_\)/,
+  );
+  assert.match(
+    mediaBase,
+    /gNativeMediaPowerSaving \|\| !NativeMediaXRuntimeAllowed\(\) \|\|[\s\S]*!NativeMediaXSlotEnabled\(true\)/,
+  );
   assert.match(mediaBase, /static_assert\(!NativeMediaXCanStartAtSecondOfDay\(1 \* 60 \* 60\)\)/);
   assert.match(mediaBase, /static_assert\(NativeMediaXCanStartAtSecondOfDay\(6 \* 60 \* 60\)\)/);
 });
