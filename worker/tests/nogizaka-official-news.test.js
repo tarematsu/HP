@@ -6,6 +6,7 @@ import {
   NOGIZAKA_HANDLE,
   NOGIZAKA_NEWS_API_URL,
   NOGIZAKA_NEWS_LIST_URL,
+  nogizakaEventName,
   nogizakaNewsApiCandidates,
   nogizakaOfficialNewsConfig,
 } from '../src/nogizaka-official-news.js';
@@ -76,6 +77,17 @@ test('Nogizaka news API candidate parser finds the real Stationhead announcement
       listTitle: '乃木坂46、初の「STATIONHEAD」9/30(水)21:30～開催！',
     },
   ]);
+});
+
+test('news 102280 uses the 42ndSG Under Live listening-party name', () => {
+  assert.equal(
+    nogizakaEventName('102280', '乃木坂46、初の「STATIONHEAD」9/30(水)21:30～開催！'),
+    '「42ndSG アンダーライブ」セットリスト Stationhead リスニングパーティー',
+  );
+  assert.equal(
+    nogizakaEventName('other', '通常タイトル 開催決定！'),
+    '通常タイトル',
+  );
 });
 
 test('Nogizaka news API parser rejects a silently empty or malformed feed', () => {
