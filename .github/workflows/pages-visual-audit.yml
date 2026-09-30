@@ -17,26 +17,19 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect Nogizaka news client scripts
+      - name: Inspect Nogizaka news page internals
         shell: bash
         run: |
           set -euo pipefail
           ua='stationhead-monitor/1.0'
           curl --fail --silent --show-error -A "$ua" -H 'Accept: text/html,application/xhtml+xml' 'https://www.nogizaka46.com/s/n46/news/list' -o /tmp/list.html
-          grep -Eo '<script[^>]+src=["'"'][^"'"']+["'"']' /tmp/list.html | sed -E 's/.*src=["'"']([^"'"']+).*/\1/' | sort -u > /tmp/scripts.txt
-          cat /tmp/scripts.txt
-          while IFS= read -r src; do
-            case "$src" in
-              http*) url="$src" ;;
-              //*) url="https:${src}" ;;
-              /*) url="https://www.nogizaka46.com${src}" ;;
-              *) continue ;;
-            esac
-            file="/tmp/$(basename "${src%%\?*}")"
-            curl --fail --silent --show-error -A "$ua" "$url" -o "$file" || continue
-            if grep -Eiq 'news|ajax|api|dy=' "$file"; then
-              echo "=== $url ==="
-              grep -Eio '.{0,180}(news|ajax|api|dy=).{0,260}' "$file" | head -40 || true
-            fi
-          done < /tmp/scripts.txt
+          echo '--- relevant html ---'
+          grep -Ei 'news|ajax|api|json|script' /tmp/list.html | head -120 || true
+          echo '--- script srcs ---'
+          python3 - <<'PY'
+          import re
+          html=open('/tmp/list.html',encoding='utf-8').read()
+          for src in sorted(set(re.findall(r'<script\b[^>]*\bsrc=["\']([^"\']+)["\']', html, re.I))):
+              print(src)
+          PY
           exit 1
