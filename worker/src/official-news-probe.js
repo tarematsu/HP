@@ -151,30 +151,6 @@ export async function decodeStationMain(env, _cfg, now) {
   };
 }
 
-export async function collectStationChat(env, cfg, now, dependencies = {}) {
-  const minute = observedMinute(now);
-  const main = await env.OTHER_DB.prepare(MAIN_ROW_SQL).bind(minute).first();
-  if (!main) throw new Error('Sakurazaka main row is missing before chat collection');
-  if (!activeMainRow(main)) return { skipped: true, reason: 'station-inactive' };
-
-  const session = await (dependencies.loadSession || loadOfficialSession)(env);
-  if (!session?.auth_token || !session?.device_uid) {
-    throw new Error('Stationhead worker session unavailable');
-  }
-  const stationId = finite(main.station_id);
-  const fetchText = dependencies.stationTextRequest || stationTextRequest;
-  const rawText = await fetchText(`/station/${stationId}/chatHistory?limit=50`, cfg, session);
-  await env.OTHER_DB.prepare(`INSERT INTO sh_sakurazaka46jp_chat
-      (observed_at,observed_minute,station_id,raw_json)
-    VALUES (?,?,?,?)
-    ON CONFLICT(observed_minute) DO UPDATE SET
-      observed_at=excluded.observed_at,
-      station_id=excluded.station_id,
-      raw_json=excluded.raw_json`)
-    .bind(now, minute, stationId, rawText).run();
-  return { skipped: false, observed_minute: minute, station_id: stationId };
-}
-
 function probeStatement(env, announcement, main, active, now) {
   return env.OTHER_DB.prepare(`INSERT INTO sh_official_news_station_probes
       (announcement_id,observed_at,observed_minute,station_id,broadcast_id,broadcast_start_time,

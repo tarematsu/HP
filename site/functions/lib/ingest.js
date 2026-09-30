@@ -7,7 +7,6 @@ import {
   readJsonBody,
   text,
 } from './api-utils.js';
-import { saveCommentCounts } from './comment-counts.js';
 import { saveLeanHeartbeat, saveLeanQueue, saveLeanSnapshot } from './d1-optimized-ingest.js';
 import { withoutQueueItemLikeMirrors } from './d1-queue-like-write-filter.js';
 import { savePeriodBoundaryEvidence } from './period-boundary-preaggregate.js';
@@ -19,11 +18,6 @@ import {
 export * from './queue-ingest-state.js';
 
 const INGEST_HANDLERS = {
-  comments: async (env, body, observedAt, data) => ({
-    ok: true,
-    type: body.type,
-    ...await saveCommentCounts(env.DB, observedAt, data),
-  }),
   snapshot: async (env, body, observedAt, data) => {
     const snapshot = await saveLeanSnapshot(env.DB, observedAt, data);
     const boundary = await savePeriodBoundaryEvidence(env.DB, observedAt, data);

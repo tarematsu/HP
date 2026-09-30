@@ -2,7 +2,6 @@ import { persistHostEvent } from '../../site/functions/lib/host-ingest.js';
 import {
   finite,
   identity,
-  normalizeComments,
   normalizeProfile,
   normalizeQueue,
   queueHash,
@@ -38,18 +37,14 @@ function parseRawJson(value, label, { allowArray = false } = {}) {
   return parsed;
 }
 
-async function minuteRows(env, now) {
+async function minuteRow(env, now) {
   const minute = observedMinute(now);
-  const [main, chat] = await Promise.all([
-    env.OTHER_DB.prepare(`SELECT
-        observed_at,observed_minute,buddies_station_id,station_id,broadcast_id,
-        broadcast_start_time,is_broadcasting,listener_count,guest_count,total_listens,
-        status,chat_status,channel_id,channel_alias,raw_json
-      FROM sh_sakurazaka46jp_main WHERE observed_minute=? LIMIT 1`).bind(minute).first(),
-    env.OTHER_DB.prepare(`SELECT observed_at,observed_minute,station_id,raw_json
-      FROM sh_sakurazaka46jp_chat WHERE observed_minute=? LIMIT 1`).bind(minute).first(),
-  ]);
-  return { minute, main, chat };
+  const main = await env.OTHER_DB.prepare(`SELECT
+      observed_at,observed_minute,buddies_station_id,station_id,broadcast_id,
+      broadcast_start_time,is_broadcasting,listener_count,guest_count,total_listens,
+      status,chat_status,channel_id,channel_alias,raw_json
+    FROM sh_sakurazaka46jp_main WHERE observed_minute=? LIMIT 1`).bind(minute).first();
+  return { minute, main };
 }
 
 async function openSession(env, handle) {
@@ -259,27 +254,10 @@ async function saveQueueMinute(env, sessionId, queue, observedAt) {
   return { saved: true, metadata };
 }
 
-async function saveChatMinute(env, sessionId, stationId, chat, observedAt) {
-  if (!chat?.raw_json) return { saved: false, accepted: 0 };
-  const payload = parseRawJson(chat.raw_json, 'Sakurazaka chat', { allowArray: true });
-  const comments = normalizeComments(payload, stationId);
-  const result = await writeEvent(env, 'solo_comments', {
-    session_id: sessionId,
-    station_id: stationId,
-    comments: comments.map((comment) => ({
-      comment_id: comment.comment_id,
-      station_id: comment.station_id,
-      chat_time: comment.chat_time,
-      chat_time_ms: comment.chat_time_ms,
-    })),
-  }, observedAt);
-  return { saved: true, accepted: Number(result.accepted || 0) };
-}
-
 export async function materializeSakurazakaRawMinute(env, now = Date.now()) {
   if (!env?.OTHER_DB?.prepare) return { skipped: true, reason: 'other-db-binding-missing' };
   const handle = handleFromEnv(env);
-  const { minute, main, chat } = await minuteRows(env, now);
+  const { minute, main } = await minuteRow(env, now);
   if (!main?.raw_json) return { skipped: true, reason: 'main-raw-missing', observed_minute: minute };
 
   const observedAt = finite(main.observed_at) || Number(now);
@@ -312,20 +290,11 @@ export async function materializeSakurazakaRawMinute(env, now = Date.now()) {
 
   let queueSaved = false;
   let trackMetadataWritten = 0;
-  let commentsAccepted = 0;
   let profileSaved = false;
   if (active) {
     const queueResult = await saveQueueMinute(env, Number(session.id), queue, observedAt);
     queueSaved = queueResult.saved;
     trackMetadataWritten = queueResult.metadata;
-    const chatResult = await saveChatMinute(
-      env,
-      Number(session.id),
-      finite(main.station_id),
-      chat,
-      observedAt,
-    );
-    commentsAccepted = chatResult.accepted;
     profileSaved = await saveProfile(env, Number(session.id), station, handle, observedAt);
 
     if (!opened && session.status === 'provisional') {
@@ -351,7 +320,6 @@ export async function materializeSakurazakaRawMinute(env, now = Date.now()) {
     session_status: session.status,
     queue_saved: queueSaved,
     track_metadata_written: trackMetadataWritten,
-    comments_accepted: commentsAccepted,
     profile_saved: profileSaved,
   }));
 
@@ -364,7 +332,6 @@ export async function materializeSakurazakaRawMinute(env, now = Date.now()) {
     session_status: session.status,
     queue_saved: queueSaved,
     track_metadata_written: trackMetadataWritten,
-    comments_accepted: commentsAccepted,
     profile_saved: profileSaved,
   };
 }

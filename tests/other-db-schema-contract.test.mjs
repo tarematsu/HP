@@ -11,15 +11,17 @@ import {
   normalizedIsrc,
 } from '../worker/scripts/track-metadata-consolidation-lib.mjs';
 
-test('OTHER_DB schema contract retains rankings, their read model, and Sakurazaka raw/derived collection', () => {
+test('OTHER_DB schema contract retains rankings and active Sakurazaka raw/derived collection', () => {
   assert.ok(OTHER_REQUIRED_TABLES.includes('sh_channel_rankings'));
   assert.ok(OTHER_REQUIRED_TABLES.includes('sh_weekly_ranking_read_model'));
   assert.ok(OTHER_REQUIRED_TABLES.includes('sh_sakurazaka46jp_main'));
-  assert.ok(OTHER_REQUIRED_TABLES.includes('sh_sakurazaka46jp_chat'));
+  assert.equal(OTHER_REQUIRED_TABLES.includes('sh_sakurazaka46jp_chat'), false);
   assert.ok(OTHER_REQUIRED_TABLES.includes('sh_sakurazaka46jp_track_metadata'));
   assert.ok(OTHER_REQUIRED_TABLES.includes('sh_sakurazaka46jp_collection_tests'));
   assert.ok(OTHER_RETIRED_OBJECTS.includes('sh_track_metadata'));
   assert.ok(OTHER_RETIRED_OBJECTS.includes('sh_playback_channel_current'));
+  assert.ok(OTHER_RETIRED_OBJECTS.includes('sh_sakurazaka46jp_chat'));
+  assert.ok(OTHER_RETIRED_OBJECTS.includes('sh_nogizaka46smej_chat'));
   assert.deepEqual(OTHER_RETIRED_MIGRATIONS, [
     '005_legacy_history_tables.sql',
     '006_legacy_snapshot_stream_count.sql',
@@ -50,12 +52,14 @@ test('OTHER_DB metadata advances through collection test to the pending official
   const rawMigration = readFileSync('database/other-migrations/016_sakurazaka46jp_raw_collection.sql', 'utf8');
   const derivedMigration = readFileSync('database/other-migrations/017_sakurazaka_raw_derived_metadata.sql', 'utf8');
   const collectionTestMigration = readFileSync('database/other-migrations/018_sakurazaka_collection_test.sql', 'utf8');
+  const cleanupMigration = readFileSync('database/other-migrations/058_remove_stationhead_comments.sql', 'utf8');
   const migrationPath = 'database/other-migrations/019_rock_in_japan_2026_listening_party.sql';
   const migration = readFileSync(migrationPath, 'utf8');
   const metadata = JSON.parse(readFileSync('database/other-db.json', 'utf8'));
   assert.equal(metadata.schema, migrationPath);
   assert.match(rawMigration, /sh_sakurazaka46jp_main/);
-  assert.match(rawMigration, /sh_sakurazaka46jp_chat/);
+  assert.match(cleanupMigration, /DROP TABLE IF EXISTS sh_sakurazaka46jp_chat/);
+  assert.match(cleanupMigration, /DROP TABLE IF EXISTS sh_nogizaka46smej_chat/);
   assert.match(derivedMigration, /CREATE TABLE IF NOT EXISTS sh_sakurazaka46jp_track_metadata/);
   assert.match(derivedMigration, /PRIMARY KEY\(session_id, observed_at, position\)/);
   assert.doesNotMatch(derivedMigration, /ALTER TABLE/);

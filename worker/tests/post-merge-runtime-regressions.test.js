@@ -49,12 +49,14 @@ test('read-model compatibility handoff remains available without a runtime Queue
   assert.equal(runtime.queues.consumers.some(({ queue }) => queue === 'stationhead-read-model'), false);
 });
 
-test('production comment acquisition Queue is detached', () => {
+test('production comment acquisition surfaces are removed', () => {
   const collector = config('wrangler.buddies-collector.jsonc');
   const recovery = config('wrangler.buddies-recovery.jsonc');
   const runtime = config('wrangler.runtime.jsonc');
-  assert.equal(collector.vars.CHAT_LIMIT, 0);
-  assert.equal(recovery.vars.CHAT_LIMIT, 0);
+  for (const value of [collector, recovery, runtime]) {
+    assert.equal(Object.hasOwn(value.vars || {}, 'CHAT_LIMIT'), false);
+    assert.equal(Object.hasOwn(value.vars || {}, 'COMMENT_CHAIN_MAX_ATTEMPTS'), false);
+  }
   assert.equal(collector.queues.producers.some(({ queue }) => queue === 'stationhead-comments'), false);
   assert.equal(recovery.queues.producers.some(({ queue }) => queue === 'stationhead-comments'), false);
   assert.equal(recovery.queues.consumers.some(({ queue }) => queue === 'stationhead-comments'), false);
@@ -105,6 +107,7 @@ test('stale sparse revision continuations refresh from durable revision progress
     message_type: 'minute-fact-derive-stage',
     message_version: 1,
     stage: 'revision-materialize',
+    started_at: 1_000_000,
     revision: {
       revision_id: 860,
       source_job_id: 10,

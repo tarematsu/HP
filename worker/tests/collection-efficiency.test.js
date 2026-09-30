@@ -5,9 +5,8 @@ import { buildCollectionPlan, metadataRefreshDue } from '../src/collector-plan.j
 
 const FIFTEEN_MINUTES = 15 * 60_000;
 
-test('collection plan disables comments, heartbeat and metadata for an unchanged queue within one refresh window', () => {
+test('collection plan disables heartbeat and metadata for an unchanged queue within one refresh window', () => {
   const plan = buildCollectionPlan({
-    state: { stationId: 10 },
     queue: { tracks: [{ spotify_id: 'track-1' }] },
     queueResult: { structure_changed: false, likes_changed: true },
     previousRunAt: FIFTEEN_MINUTES + 60_000,
@@ -17,7 +16,7 @@ test('collection plan disables comments, heartbeat and metadata for an unchanged
 
   assert.equal(plan.snapshot, true);
   assert.equal(plan.queue, true);
-  assert.equal(plan.comments, false);
+  assert.equal(Object.hasOwn(plan, 'comments'), false);
   assert.equal(plan.metadata, false);
   assert.equal(plan.metadataDue, false);
   assert.equal(plan.heartbeat, false);
@@ -25,7 +24,6 @@ test('collection plan disables comments, heartbeat and metadata for an unchanged
 
 test('collection plan schedules metadata after a structural queue change', () => {
   const plan = buildCollectionPlan({
-    state: { stationId: 10 },
     queue: { tracks: [{ spotify_id: 'track-1' }] },
     queueResult: { structure_changed: true },
     previousRunAt: FIFTEEN_MINUTES + 60_000,
@@ -37,7 +35,6 @@ test('collection plan schedules metadata after a structural queue change', () =>
 
 test('collection plan periodically rechecks metadata after fifteen minutes without a queue change', () => {
   const plan = buildCollectionPlan({
-    state: { stationId: 10 },
     queue: { tracks: [{ spotify_id: 'track-1' }] },
     queueResult: { structure_changed: false },
     previousRunAt: FIFTEEN_MINUTES - 60_000,
@@ -55,7 +52,6 @@ test('collection plan periodically rechecks metadata after fifteen minutes witho
 
 test('collection plan retries metadata after a failed collector cycle', () => {
   const plan = buildCollectionPlan({
-    state: { stationId: 10 },
     queue: { tracks: [{ spotify_id: 'track-1' }] },
     queueResult: { structure_changed: false },
     previousRunAt: FIFTEEN_MINUTES + 60_000,

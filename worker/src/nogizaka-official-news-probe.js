@@ -4,7 +4,6 @@ const SH_ORIGIN = 'https://production1.stationhead.com';
 const ANNOUNCEMENTS = 'sh_nogizaka_official_news_announcements';
 const PROBES = 'sh_nogizaka_official_news_station_probes';
 const MAIN = 'sh_nogizaka46smej_main';
-const CHAT = 'sh_nogizaka46smej_chat';
 
 function stationHeaders(cfg, session) {
   return {
@@ -127,37 +126,6 @@ export async function decodeNogizakaStationMain(env, _cfg, now) {
     station_id: finite(row.station_id),
     active: activeMainRow(row),
   };
-}
-
-export async function collectNogizakaStationChat(env, cfg, now, dependencies = {}) {
-  const minute = observedMinute(now);
-  const main = await env.OTHER_DB.prepare(`SELECT ${MAIN_COLUMNS}
-      FROM ${MAIN} WHERE observed_minute=? LIMIT 1`)
-    .bind(minute)
-    .first();
-  if (!main) throw new Error('Nogizaka main row is missing before chat collection');
-  if (!activeMainRow(main)) return { skipped: true, reason: 'station-inactive' };
-
-  const session = await (dependencies.loadSession || loadSession)(env);
-  if (!session?.auth_token || !session?.device_uid) {
-    throw new Error('Nogizaka Stationhead worker session unavailable');
-  }
-  const stationId = finite(main.station_id);
-  const rawText = await (dependencies.stationTextRequest || stationTextRequest)(
-    `/station/${stationId}/chatHistory?limit=50`,
-    cfg,
-    session,
-  );
-  await env.OTHER_DB.prepare(`INSERT INTO ${CHAT}
-      (observed_at,observed_minute,station_id,raw_json)
-      VALUES (?,?,?,?)
-      ON CONFLICT(observed_minute) DO UPDATE SET
-        observed_at=excluded.observed_at,
-        station_id=excluded.station_id,
-        raw_json=excluded.raw_json`)
-    .bind(now, minute, stationId, rawText)
-    .run();
-  return { skipped: false, observed_minute: minute, station_id: stationId };
 }
 
 async function dueAnnouncements(env, cfg, now) {

@@ -4,7 +4,7 @@ import { decimalOneFormat as decimal, finiteNumber as finite, integerFormat as i
   const MODE = 'broadcasts';
   const VISIBLE_HEADERS = [
     '日付', '時間帯', '所要時間', '平均同接', '最小同接', '最大同接',
-    '楽曲数', '推定再生数', 'コメント数', '放送内容', 'イベント名', '出典',
+    '楽曲数', '推定再生数', '放送内容', 'イベント名', '出典',
   ];
   const DATE_PREFIX = /^\s*(\d{4})[./-](\d{1,2})[./-](\d{1,2})\s*/;
   const jstDate = new Intl.DateTimeFormat('ja-JP', {
@@ -133,7 +133,6 @@ import { decimalOneFormat as decimal, finiteNumber as finite, integerFormat as i
         numberText(row?.listener_max),
         numberText(tracks, integer),
         numberText(estimated, integer),
-        numberText(row?.comment_count, integer),
         String(row?.broadcast_content || '—'),
         identity.name,
       ];

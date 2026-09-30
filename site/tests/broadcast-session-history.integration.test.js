@@ -58,7 +58,7 @@ test('broadcast history reads UTC timestamps from the compact official summary t
   }]);
 });
 
-test('official listening-party read model reads only materialized summary metrics', () => {
+test('official listening-party read model reads only materialized non-comment metrics', () => {
   const db = new DatabaseSync(':memory:');
   createSummaryTable(db);
   db.prepare(`INSERT INTO sh_official_broadcast_summary(
@@ -70,7 +70,7 @@ test('official listening-party read model reads only materialized summary metric
     '2025-01-01 09:01:30', 2, 111.5, 150, 12, 4, 95, 321, 7,
   );
 
-  assert.doesNotMatch(BROADCAST_READ_MODEL_SQL, /json_each|sh_official_broadcast_series|sh_host_station_snapshots|sh_host_broadcast_sessions/);
+  assert.doesNotMatch(BROADCAST_READ_MODEL_SQL, /json_each|sh_official_broadcast_series|sh_host_station_snapshots|sh_host_broadcast_sessions|comment_count/);
   const rows = db.prepare(BROADCAST_READ_MODEL_SQL).all(0, 2_000_000);
   const parsed = parseBroadcastSummaryRows(rows);
 
@@ -81,7 +81,7 @@ test('official listening-party read model reads only materialized summary metric
   assert.equal(parsed.rows[0].listener_min, 95);
   assert.equal(parsed.rows[0].listener_max, 150);
   assert.equal(parsed.rows[0].distinct_tracks, 4);
-  assert.equal(parsed.rows[0].comment_count, 321);
+  assert.equal(Object.hasOwn(parsed.rows[0], 'comment_count'), false);
   assert.equal(parsed.rows[0].estimated_streams, 446);
 });
 

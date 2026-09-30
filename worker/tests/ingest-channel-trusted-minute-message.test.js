@@ -3,7 +3,6 @@ import test from 'node:test';
 
 import {
   capturedReadModelEnvelope,
-  commentsTaskForMinuteFact,
   readModelEnvelopeForMinuteFact,
 } from '../src/ingest-channel-entry.js';
 import { minuteFactQueueMessage } from '../src/minute-facts-queue.js';
@@ -102,29 +101,4 @@ test('captured read-model envelope is reused only for the matching minute identi
     () => capturedReadModelEnvelope({ channel_id: 10 }, capture),
     /current minute fact identity is missing/,
   );
-});
-
-test('comments handoff mutates only the explicitly trusted in-memory message', () => {
-  const copiedBody = minuteMessage();
-  const copiedReadModel = copiedBody.read_model;
-  const copiedTask = commentsTaskForMinuteFact(
-    { observed_at: 1, station_id: 123, auth: {} },
-    copiedBody,
-  );
-
-  assert.notEqual(copiedTask.minute_fact, copiedBody);
-  assert.equal(copiedBody.read_model, copiedReadModel);
-  assert.equal(copiedTask.minute_fact.read_model, null);
-
-  const trustedBody = minuteMessage();
-  const trustedTask = commentsTaskForMinuteFact(
-    { observed_at: 1, station_id: 999, auth: {} },
-    trustedBody,
-    { inPlace: true },
-  );
-
-  assert.equal(trustedTask.minute_fact, trustedBody);
-  assert.equal(trustedBody.read_model, null);
-  assert.equal(trustedTask.observed_at, trustedBody.payload.observedAt);
-  assert.equal(trustedTask.station_id, trustedBody.payload.snapshot.station_id);
 });

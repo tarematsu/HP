@@ -7,10 +7,10 @@ import {
 } from '../../site/functions/lib/ingest.js';
 import { ingest } from '../src/collector-ingest.js';
 
-test('all collector write types use the optimized direct ingest path', () => {
+test('all active collector write types use the optimized direct ingest path', () => {
   assert.equal(supportsOptimizedIngestType('snapshot'), true);
   assert.equal(supportsOptimizedIngestType('queue'), true);
-  assert.equal(supportsOptimizedIngestType('comments'), true);
+  assert.equal(supportsOptimizedIngestType('comments'), false);
   assert.equal(supportsOptimizedIngestType('collector_heartbeat'), true);
   assert.equal(supportsOptimizedIngestType('track_metadata'), true);
 });
@@ -25,7 +25,7 @@ test('optimized ingest returns handler promises directly and reuses the unavaila
   assert.equal(await missingDb, null);
 });
 
-test('collector queue and comment dispatch avoids an async wrapper without changing unavailable errors', async () => {
+test('collector queue dispatch avoids an async wrapper and retired comments are unsupported', async () => {
   assert.notEqual(ingest.constructor.name, 'AsyncFunction');
   await assert.rejects(
     ingest({}, 'queue', {}, 1),

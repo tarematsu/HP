@@ -27,12 +27,12 @@ test('CPU budget keeps the 10 ms ceiling with current-version fail-closed covera
   assert.match(router, /processSparseLiveWrite/);
 });
 
-test('production core Worker bounds comment work and defers duplicate metadata persistence', async () => {
+test('production core Worker has no comment acquisition settings and defers duplicate metadata persistence', async () => {
   const runtime = config('wrangler.runtime.jsonc');
   const entry = readFileSync(new URL('../src/ingest-channel-optimized-entry.js', import.meta.url), 'utf8');
-  assert.equal(runtime.vars.CHAT_LIMIT, 0);
-  assert.equal(runtime.vars.COMMENT_CHAIN_MAX_ATTEMPTS, 1);
-  assert.match(entry, /CHAT_LIMIT: \{ value: 25/);
+  assert.equal(Object.hasOwn(runtime.vars, 'CHAT_LIMIT'), false);
+  assert.equal(Object.hasOwn(runtime.vars, 'COMMENT_CHAIN_MAX_ATTEMPTS'), false);
+  assert.doesNotMatch(entry, /CHAT_LIMIT|COMMENT_CHAIN_MAX_ATTEMPTS|comments-cpu-entry|stationhead-comments/);
   assert.equal(runtime.vars.METADATA_REFRESH_INTERVAL_MS, 1_800_000);
   assert.equal(runtime.vars.COLLECTED_METADATA_PERSIST_ENABLED, false);
   assert.equal(await materializeDependencies({}).collectedMetadataDue(), false);

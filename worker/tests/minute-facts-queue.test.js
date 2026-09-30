@@ -17,7 +17,6 @@ const input = {
   observedAt: 123_456,
   snapshot: { channel_id: 10, listener_count: 42 },
   queue: { queue_id: 20, tracks: [] },
-  comments: { commentCount: 3 },
 };
 
 function queueMessage(body, attempts = 1) {
@@ -106,7 +105,6 @@ test('producer awaits durable Queue acceptance without touching MINUTE_DB', asyn
 
   const result = await sendMinuteFactJob(env, input, {
     enrichTrackMetadata: true,
-    collectComments: true,
   });
 
   assert.equal(accepted, true);
@@ -116,13 +114,12 @@ test('producer awaits durable Queue acceptance without touching MINUTE_DB', asyn
   assert.equal(sent.options.contentType, 'json');
   const parsed = parseMinuteFactQueueMessage(sent.body);
   assert.equal(parsed.options.enrichTrackMetadata, true);
-  assert.equal(parsed.options.collectComments, true);
   assert.deepEqual(parsed.payload, {
     payload_version: 1,
     observedAt: 123_456,
     snapshot: input.snapshot,
     queue: input.queue,
-    comments: input.comments,
+    comments: {},
     rebuild: null,
   });
 });
@@ -237,7 +234,6 @@ test('consumer emits optional work only after the durable commit and acknowledge
   const calls = [];
   const body = minuteFactQueueMessage(input, {
     enrichTrackMetadata: true,
-    collectComments: true,
   });
   const message = {
     body,
@@ -249,14 +245,13 @@ test('consumer emits optional work only after the durable commit and acknowledge
     hasReceipt: async () => false,
     enqueue: async () => { calls.push('enqueue'); return { enqueued: true }; },
     saveReadModels: async () => { calls.push('read_model'); },
-    saveCommentTask: async () => { calls.push('comment_task'); },
     saveReceipt: async () => { calls.push('receipt'); },
     onCommitted(job) {
       calls.push(`committed:${job.options.enrichTrackMetadata}`);
     },
   });
 
-  assert.deepEqual(calls, ['enqueue', 'read_model', 'comment_task', 'receipt', 'ack', 'committed:true']);
+  assert.deepEqual(calls, ['enqueue', 'read_model', 'receipt', 'ack', 'committed:true']);
 });
 
 test('consumer retries transient D1 failures and acks poison messages', async () => {
@@ -483,24 +478,14 @@ test('minute worker hydrates queue metadata from BUDDIES_DB instead of the prima
   assert.match(batches[0][1].params[6], /"artist":"Artist"/);
 });
 
-test('minute worker hydrates comment facts before enqueueing minute facts', async () => {
+test('minute worker does not hydrate retired comment facts', async () => {
   let enqueuedPayload = null;
-  const BUDDIES_DB = {
-    prepare(sql) {
-      return {
-        bind() { return this; },
-        async first() {
-          return sql.includes('sh_comment_minute_counts')
-            ? { comment_count: 3 }
-            : { total_count: 12 };
-        },
-      };
-    },
-  };
+  const BUDDIES_DB = new Proxy({}, {
+    get() { throw new Error('retired comment storage must not be read'); },
+  });
   const message = queueMessage(minuteFactQueueMessage({
     observedAt: 123_456,
     snapshot: { channel_id: 10, station_id: 5 },
-    comments: { commentTotalKnown: false },
   }));
 
   await consumeMinuteFactBatch({ messages: [message] }, { BUDDIES_DB }, {
@@ -513,8 +498,6 @@ test('minute worker hydrates comment facts before enqueueing minute facts', asyn
     saveReceipt: async () => {},
   });
 
-  assert.equal(enqueuedPayload.comments.commentCount, 3);
-  assert.equal(enqueuedPayload.comments.commentTotal, 12);
-  assert.equal(enqueuedPayload.comments.commentTotalKnown, true);
+  assert.deepEqual(enqueuedPayload.comments, {});
   assert.deepEqual(message.calls, [['ack']]);
 });

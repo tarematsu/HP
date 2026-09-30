@@ -32,35 +32,33 @@ test('main response decoding is delegated to D1 JSON functions', () => {
   assert.match(DECODE_STATION_MAIN_SQL, /json_extract\(raw_json,'\$\.broadcast\.id'\)/);
 });
 
-test('main and chat save stages persist response text without Worker JSON processing', () => {
+test('main save stage persists response text without Worker JSON processing or chat collection', () => {
   const source = readFileSync(new URL('../src/official-news-probe.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /response\.json\(/);
   const main = source.slice(source.indexOf('export async function collectStationMain'), source.indexOf('export async function decodeStationMain'));
-  const chat = source.slice(source.indexOf('export async function collectStationChat'), source.indexOf('function probeStatement'));
   assert.doesNotMatch(main, /JSON\.(?:parse|stringify)|json_(?:valid|extract)/);
-  assert.doesNotMatch(chat, /JSON\.(?:parse|stringify)|json_(?:valid|extract)/);
   assert.match(main, /rawText/);
-  assert.match(chat, /rawText/);
   assert.match(main, /sh_sakurazaka46jp_main/);
-  assert.match(chat, /sh_sakurazaka46jp_chat/);
+  assert.doesNotMatch(source, /collectStationChat|chatHistory|sh_sakurazaka46jp_chat/);
 });
 
 test('raw-derived materialization is a separate Queue stage after every collected minute', () => {
   const source = readFileSync(new URL('../src/other-official-news-stages.js', import.meta.url), 'utf8');
-  for (const stage of ['station-auth', 'station-main', 'station-decode', 'station-chat', 'station-finalize', 'raw-materialize']) {
+  for (const stage of ['station-auth', 'station-main', 'station-decode', 'station-finalize', 'raw-materialize']) {
     assert.match(source, new RegExp(`['"]${stage}['"]`));
   }
+  assert.match(source, /runRetiredStationChat/);
+  assert.match(source, /comment-collection-retired/);
   assert.match(source, /runStationFinalize[\s\S]*sendStage\(env, 'raw-materialize'/);
 });
 
-test('raw materializer reads saved raw only and performs no Stationhead fetch', () => {
+test('raw materializer reads saved non-comment raw only and performs no Stationhead fetch', () => {
   const source = readFileSync(new URL('../src/sakurazaka-raw-materializer.js', import.meta.url), 'utf8');
   assert.match(source, /FROM sh_sakurazaka46jp_main/);
-  assert.match(source, /FROM sh_sakurazaka46jp_chat/);
+  assert.doesNotMatch(source, /sh_sakurazaka46jp_chat|solo_comments|chatHistory/);
   assert.match(source, /solo_station_snapshot/);
   assert.match(source, /solo_queue/);
-  assert.match(source, /solo_comments/);
-  assert.doesNotMatch(source, /\bfetch\s*\(|stationRequest|\/guest|chatHistory\?/);
+  assert.doesNotMatch(source, /\bfetch\s*\(|stationRequest|\/guest/);
   assert.equal(existsSync(new URL('../src/sakurazaka-monitor.js', import.meta.url)), false);
 });
 
@@ -71,11 +69,12 @@ test('raw-derived queue normalization preserves Buddies-equivalent track fields'
   }
 });
 
-test('HP migrations own minute raw tables and repeatable per-minute derived track metadata', () => {
+test('HP migrations retain main raw and derived metadata while current cleanup removes chat storage', () => {
   const rawMigration = readFileSync(new URL('../../database/other-migrations/016_sakurazaka46jp_raw_collection.sql', import.meta.url), 'utf8');
   assert.match(rawMigration, /CREATE TABLE IF NOT EXISTS sh_sakurazaka46jp_main/);
-  assert.match(rawMigration, /CREATE TABLE IF NOT EXISTS sh_sakurazaka46jp_chat/);
   assert.match(rawMigration, /raw_json TEXT NOT NULL/);
+  const cleanup = readFileSync(new URL('../../database/other-migrations/058_remove_stationhead_comments.sql', import.meta.url), 'utf8');
+  assert.match(cleanup, /DROP TABLE IF EXISTS sh_sakurazaka46jp_chat/);
 
   const derivedMigration = readFileSync(new URL('../../database/other-migrations/017_sakurazaka_raw_derived_metadata.sql', import.meta.url), 'utf8');
   assert.match(derivedMigration, /CREATE TABLE IF NOT EXISTS sh_sakurazaka46jp_track_metadata/);
