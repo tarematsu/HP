@@ -68,36 +68,13 @@
   overflow: visible;
 }
 
-.spotify-trend-grid,
-.spotify-trend-axis {
-  stroke: var(--line, #dedede);
-  vector-effect: non-scaling-stroke;
-}
-
-.spotify-trend-grid {
-  stroke-dasharray: 3 4;
-}
-
-.spotify-trend-axis-label {
-  fill: currentColor;
-  font-size: var(--dashboard-axis-font-size, 11px);
-  opacity: .68;
-}
-
 .spotify-trend-line {
-  fill: none;
   stroke: var(--spotify-trend-color);
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
 }
 
 .spotify-trend-point {
   fill: var(--spotify-trend-color);
   stroke: var(--card, #fff);
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
 }
 
 .spotify-trend-empty {
