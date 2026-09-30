@@ -24,16 +24,17 @@ test('history chart hides duplicate endpoint labels through shared CSS', () => {
 });
 
 test('history axis titles cover summary, ranking, and official listening-party modes', () => {
-  assert.match(axisLabels, /daily: \{ left: '同接（人）', right: '再生数', x: '期間' \}/);
-  assert.match(axisLabels, /weekly: \{ left: '同接（人）', right: '再生数', x: '期間' \}/);
-  assert.match(axisLabels, /monthly: \{ left: '同接（人）', right: '再生数', x: '期間' \}/);
+  assert.match(axisLabels, /daily: \{ left: '同接（人）', right: '再生数増加', x: '期間' \}/);
+  assert.match(axisLabels, /weekly: \{ left: '同接（人）', right: '再生数増加', x: '期間' \}/);
+  assert.match(axisLabels, /monthly: \{ left: '同接（人）', right: '再生数増加', x: '期間' \}/);
   assert.match(axisLabels, /ranking: \{ left: '順位', right: '', x: '週' \}/);
   assert.match(axisLabels, /broadcasts: \{ left: '同接（人）', right: '', x: '' \}/);
   assert.doesNotMatch(axisLabels, /期間再生数/);
 });
 
 test('current 24-hour chart keeps explicit online and bottom axis labels', () => {
-  assert.match(currentChart, /fillText\('オンライン数\(人\)'/);
+  assert.match(currentChart, /fillText\('オンライン数（人）'/);
+  assert.match(currentChart, /fillText\('再生数増加'/);
   assert.doesNotMatch(currentChart, /fillText\('コメント\/2分'/);
-  assert.match(currentChart, /fillText\('時刻 \(JST\)'/);
+  assert.match(currentChart, /fillText\('時刻（JST）'/);
 });
