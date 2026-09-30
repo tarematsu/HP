@@ -44,6 +44,7 @@ test('dashboard exposes reusable presentation components in one shared module', 
     'dashboardChartCard',
     'dashboardChartHost',
     'dashboardTable',
+    'dashboardModeTabs',
     'dashboardDataCard',
     'dashboardControls',
     'dashboardNotice',
@@ -74,9 +75,34 @@ test('all dashboard shells share mounting and reusable UI components without run
   for (const name of ['hinata-shell.js', 'followers-shell.js', 'apple-music-shell.js', 'amazon-music-shell.js']) {
     assert.match(shells[name], /dashboardChartHost/, `${name} must use the shared chart host`);
   }
-  for (const name of ['hinata-shell.js', 'followers-shell.js', 'spotify-shell.js', 'apple-music-shell.js', 'amazon-music-shell.js']) {
+});
+
+test('dashboard shells reuse shared notices tables legends and mode tabs instead of duplicating markup', () => {
+  const noticeShells = [
+    'history-shell.js', 'likes-shell.js', 'hinata-shell.js', 'followers-shell.js', 'spotify-shell.js',
+    'apple-music-shell.js', 'amazon-music-shell.js', 'played-tracks-shell.js',
+    'first-week-comparison-shell.js', 'nogizaka-listening-party-shell.js',
+  ];
+  for (const name of noticeShells) {
     assert.match(shells[name], /dashboardNotice/, `${name} must use the shared notice primitive`);
+    assert.doesNotMatch(shells[name], /class="notice"\s+role="status"/, `${name} must not hand-write notice markup`);
   }
+
+  const tableShells = [
+    'history-shell.js', 'likes-shell.js', 'hinata-shell.js', 'followers-shell.js', 'spotify-shell.js',
+    'apple-music-shell.js', 'amazon-music-shell.js', 'played-tracks-shell.js',
+    'first-week-comparison-shell.js', 'nogizaka-listening-party-shell.js',
+  ];
+  for (const name of tableShells) {
+    assert.match(shells[name], /dashboardTable/, `${name} must use the shared table primitive`);
+    assert.doesNotMatch(shells[name], /<div class="table-wrap/, `${name} must not hand-write table wrappers`);
+  }
+
+  for (const name of ['history-shell.js', 'hinata-shell.js', 'followers-shell.js', 'apple-music-shell.js', 'first-week-comparison-shell.js', 'nogizaka-listening-party-shell.js']) {
+    assert.match(shells[name], /dashboardLegend/, `${name} must use the shared legend primitive`);
+  }
+  assert.match(shells['spotify-shell.js'], /dashboardModeTabs/);
+  assert.doesNotMatch(shells['spotify-shell.js'], /<div class="mode-tabs">/);
 });
 
 test('standalone lazy tabs share route activation and navigation handling', () => {
