@@ -13,7 +13,7 @@ const RETRY_ATTEMPTS = 6;
 
 export const AMAZON_MUSIC_TOP_SCAN_RANK = 500;
 export const AMAZON_MUSIC_DEEP_SCAN_TARGET_RANK = 100_000;
-export const AMAZON_MUSIC_DEEP_SCAN_PAGES_PER_RUN = 100;
+export const AMAZON_MUSIC_DEEP_SCAN_PAGES_PER_RUN = 300;
 export const AMAZON_MUSIC_DEEP_SCAN_PACING_WINDOW_MS = 570_000;
 export const AMAZON_MUSIC_TOP_STATE_KEY = 'amazon-music/rank-monitor/top-500.json';
 export const AMAZON_MUSIC_DEEP_STATE_KEY = 'amazon-music/rank-monitor/deep-100k.json';
