@@ -202,24 +202,6 @@ async function runStationFinalize(env, task, dependencies) {
   };
 }
 
-async function runRawMaterialize(env, task, dependencies) {
-  const materialize = dependencies.rawMaterialize
-    || (await loadRawMaterializerModule()).materializeSakurazakaRawMinute;
-  const result = await materialize(env, task.scheduledAt);
-  const nextStage = task.afterNewsCheck ? 'probe' : 'reconcile';
-  await sendStage(env, nextStage, task.scheduledAt, dependencies);
-  return {
-    stage: 'raw-materialize',
-    pending: true,
-    next_stage: nextStage,
-    skipped: result?.skipped === true,
-    reason: result?.reason ?? null,
-    active: result?.active === true,
-    session_id: result?.session_id ?? null,
-    station_id: result?.station_id ?? null,
-  };
-}
-
 async function runReconcile(env, task, dependencies) {
   const reconcile = dependencies.reconcile
     || (await loadReconcileModule()).reconcileOfficialAnnouncements;
@@ -229,6 +211,39 @@ async function runReconcile(env, task, dependencies) {
     pending: false,
     skipped: result?.skipped === true,
     reason: result?.reason ?? null,
+  };
+}
+
+async function runRawMaterialize(env, task, dependencies) {
+  const materialize = dependencies.rawMaterialize
+    || (await loadRawMaterializerModule()).materializeSakurazakaRawMinute;
+  const result = await materialize(env, task.scheduledAt);
+  if (!task.afterNewsCheck) {
+    const reconciliation = await runReconcile(env, task, dependencies);
+    return {
+      stage: 'raw-materialize',
+      pending: false,
+      next_stage: null,
+      reconciled: true,
+      reconcile_skipped: reconciliation.skipped,
+      reconcile_reason: reconciliation.reason,
+      skipped: result?.skipped === true,
+      reason: result?.reason ?? null,
+      active: result?.active === true,
+      session_id: result?.session_id ?? null,
+      station_id: result?.station_id ?? null,
+    };
+  }
+  await sendStage(env, 'probe', task.scheduledAt, dependencies);
+  return {
+    stage: 'raw-materialize',
+    pending: true,
+    next_stage: 'probe',
+    skipped: result?.skipped === true,
+    reason: result?.reason ?? null,
+    active: result?.active === true,
+    session_id: result?.session_id ?? null,
+    station_id: result?.station_id ?? null,
   };
 }
 
