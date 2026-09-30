@@ -96,7 +96,8 @@ function applyCanonical(row, canonical) {
 /**
  * Resolve Pages/read-model song rows to the single canonical identity:
  * sh_tracks.id. Provider IDs remain aliases only and are used as a bounded
- * fallback when a row has not yet been assigned track_id.
+ * lookup fallback while materializing rows that have not yet been assigned
+ * track_id.
  */
 export async function canonicalizeTrackRows(db, rows = [], { chunkSize = DEFAULT_CHUNK_SIZE } = {}) {
   if (!db?.prepare || !Array.isArray(rows) || !rows.length) return rows;
@@ -133,7 +134,5 @@ export function canonicalTrackKey(row) {
   const isrc = normalizedIsrc(row?.isrc);
   if (isrc) return `isrc:${isrc}`;
   const spotifyId = text(row?.spotify_id);
-  if (spotifyId) return `spotify:${spotifyId}`;
-  const stationheadId = positiveInteger(row?.stationhead_track_id);
-  return stationheadId != null ? `stationhead:${stationheadId}` : null;
+  return spotifyId ? `spotify:${spotifyId}` : null;
 }
