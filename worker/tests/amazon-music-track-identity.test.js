@@ -16,6 +16,10 @@ class Statement {
   }
 
   async all() {
+    if (this.sql.includes('FROM sh_tracks WHERE id IN')) {
+      const wanted = new Set(this.bindings.map(Number));
+      return { results: this.db.trackRows.filter((row) => wanted.has(Number(row.id))) };
+    }
     if (this.sql.includes('FROM sh_tracks') && this.sql.includes('TRIM(title)')) {
       this.db.maxTitleBindings = Math.max(this.db.maxTitleBindings, this.bindings.length);
       if (this.bindings.length > 100) throw new Error('D1_ERROR: too many SQL variables');
@@ -60,6 +64,11 @@ class FakeDb {
     for (const statement of statements) {
       if (statement.sql.includes('INSERT OR IGNORE INTO sh_tracks')) {
         this.trackInserts += 1;
+      }
+      if (statement.sql.includes('UPDATE sh_track_aliases SET')) {
+        const [trackId, , aliasValue] = statement.bindings;
+        this.aliases.set(`amazon_music_id:${String(aliasValue)}`, Number(trackId));
+        continue;
       }
       if (!statement.sql.includes('INSERT INTO sh_track_aliases')) continue;
       const [aliasType, aliasValue, trackId] = statement.bindings;
@@ -118,6 +127,37 @@ test('known Amazon alias resolves without ISRC and unknown alias stays unresolve
   assert.deepEqual(resolved.map((track) => track.trackId), [77, null]);
   assert.equal(db.trackInserts, 0);
   assert.equal(db.aliases.has('amazon_music_id:B0UNKNOWN'), false);
+});
+
+test('stale Amazon alias is repaired when OFF VOCAL title resolves to its own ISRC track', async () => {
+  const db = new FakeDb(
+    [
+      ['amazon_music_id:B0OFFVOCAL', 41],
+      ['isrc:JPSR02600001', 42],
+    ],
+    [
+      { id: 41, isrc: 'JPSR02600000', title: 'BAN', artist: '櫻坂46', last_seen_at: 8_000 },
+      {
+        id: 42,
+        spotify_id: 'spotify-off-vocal',
+        isrc: 'JPSR02600001',
+        title: 'BAN -OFF VOCAL ver.-',
+        artist: '櫻坂46',
+        last_seen_at: 9_000,
+      },
+    ],
+  );
+
+  const [resolved] = await resolveAmazonMusicTracks(db, [{
+    amazon_music_id: 'B0OFFVOCAL',
+    title: 'BAN -OFF VOCAL ver.-',
+    artist: '櫻坂46',
+  }], 25_000);
+
+  assert.equal(resolved.trackId, 42);
+  assert.equal(resolved.isrc, 'JPSR02600001');
+  assert.equal(db.aliases.get('amazon_music_id:B0OFFVOCAL'), 42);
+  assert.equal(db.trackInserts, 0);
 });
 
 test('missing Amazon ISRC is recovered only from a unique title-artist ISRC identity', async () => {
