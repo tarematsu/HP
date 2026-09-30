@@ -9,6 +9,7 @@ const shell = readFileSync(new URL('../public/apple-music-shell.js', import.meta
 const runtime = readFileSync(new URL('../public/apple-music.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/apple-music.css', import.meta.url), 'utf8');
 const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
+const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/apple-music.js', import.meta.url), 'utf8');
 
 test('Apple Music is a dashboard route backed only by the Worker materialized read model', () => {
@@ -17,7 +18,8 @@ test('Apple Music is a dashboard route backed only by the Worker materialized re
   assert.match(tabs, /import\('\/apple-music\.js\?v=20260930\.2'\)/);
   assert.match(tabs, /async function showLazyView/);
   assert.match(shell, /mountDashboardShell/);
-  assert.match(shell, /shared-svg-chart/);
+  assert.match(shell, /dashboardChartHost/);
+  assert.match(sharedUi, /class="\$\{joinClasses\('shared-svg-chart', className\)\}"/);
   assert.match(runtime, /fetch\('\/api\/apple-music'/);
   assert.match(api, /PAGES_READ_MODEL_SERVICE/);
   assert.match(api, /_internal\/pages-response\?key=apple-music/);
@@ -89,7 +91,7 @@ test('Apple Music UI uses sh_tracks.id before localized song_key for identity', 
 });
 
 test('Apple Music view fixes the top graph to Japan and uses one regional ranking table', () => {
-  assert.match(shell, /id="appleRankChart"/);
+  assert.match(shell, /id: 'appleRankChart'/);
   assert.match(shell, /id="appleRankLegend"/);
   assert.match(shell, /日本の人気曲順位推移/);
   assert.match(shell, /id="appleRegionCompareTable"/);
@@ -114,7 +116,8 @@ test('Apple Music Japan rank chart keeps first place at the top and exposes a cu
   assert.match(runtime, /yFor = \(rank\) => margin\.top \+ \(rank - 1\)/);
   assert.match(runtime, /人気曲順位。1位が上、圏外が下。/);
   assert.match(runtime, /renderJapanLegend/);
-  assert.match(shell, /apple-rank-chart chart-fit shared-svg-chart/);
+  assert.match(shell, /className: 'apple-rank-chart chart-fit'/);
+  assert.match(sharedUi, /joinClasses\('shared-svg-chart', className\)/);
   assert.match(sharedCss, /\.shared-svg-chart svg[\s\S]*width:\s*100%/);
   assert.match(css, /\.apple-rank-legend[\s\S]*grid-template-columns/);
   assert.match(css, /\.apple-region-table[\s\S]*min-width:\s*820px/);
