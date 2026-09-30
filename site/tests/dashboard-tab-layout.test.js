@@ -3,21 +3,23 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const theme = readFileSync(new URL('../public/monochrome.css', import.meta.url), 'utf8');
+const sharedTabs = readFileSync(new URL('../public/pages-tabs-layout.css', import.meta.url), 'utf8');
+const buildScript = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 
-test('dashboard tabs use one row on tablet and desktop', () => {
+test('dashboard tabs use the shared six-column cap', () => {
   assert.match(
-    theme,
-    /\.mode-tabs\.dashboard-tabs\s*\{[^}]*grid-template-columns:\s*repeat\(9, minmax\(0, 1fr\)\)/s,
+    sharedTabs,
+    /#modeTabs\.mode-tabs\.dashboard-tabs\s*\{[^}]*grid-template-columns:\s*repeat\(6, minmax\(0, 1fr\)\)\s*!important/s,
+  );
+  assert.ok(
+    buildScript.indexOf("'pages-layout.css'") < buildScript.indexOf("'pages-tabs-layout.css'"),
+    'shared tab cap must be bundled after the base layout',
   );
 });
 
-test('dashboard tabs use five columns on mobile, including narrow phones', () => {
-  assert.match(
+test('responsive tab column ownership is not duplicated in the monochrome theme', () => {
+  assert.doesNotMatch(
     theme,
-    /@media \(max-width: 760px\)[\s\S]*?\.mode-tabs\.dashboard-tabs\s*\{[^}]*grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\)/,
-  );
-  assert.match(
-    theme,
-    /@media \(max-width: 430px\)[\s\S]*?\.mode-tabs\.dashboard-tabs\s*\{[^}]*grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\)/,
+    /@media \(max-width: (?:760|430)px\)[\s\S]*?\.mode-tabs\.dashboard-tabs\s*\{[^}]*grid-template-columns/,
   );
 });
