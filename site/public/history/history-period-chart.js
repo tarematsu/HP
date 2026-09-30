@@ -267,8 +267,6 @@ function draw() {
     if (hasMissingBand) items.push(appendLegend('欠測', 'rgba(100, 107, 116, .55)', 'period-missing-band'));
     legend.replaceChildren(...items);
   }
-  const note = byId('chartNote');
-  if (note) note.textContent = hasMissingBand ? '灰色は欠測期間です。' : '';
   const start = byId('chartStartDate');
   const end = byId('chartEndDate');
   if (start) start.textContent = rows[0]?.period_key || '—';
