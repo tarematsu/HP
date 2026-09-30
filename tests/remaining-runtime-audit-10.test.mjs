@@ -65,6 +65,7 @@ test('host summary falls back to official broadcast history when session trackin
 
 test('history runtime is embedded, lazy, and has one chart owner per mode', () => {
   const html = readFileSync(new URL('../site/public/index.html', import.meta.url), 'utf8');
+  const shell = readFileSync(new URL('../site/public/history-shell.js', import.meta.url), 'utf8');
   const tabs = readFileSync(new URL('../site/public/dashboard-tabs.js', import.meta.url), 'utf8');
   const entry = readFileSync(new URL('../site/public/history/history-main.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../site/public/history/history-lite.js', import.meta.url), 'utf8');
@@ -72,7 +73,7 @@ test('history runtime is embedded, lazy, and has one chart owner per mode', () =
   const ranking = readFileSync(new URL('../site/public/history/history-ranking-chart.js', import.meta.url), 'utf8');
 
   assert.equal((html.match(/<script /g) || []).length, 1);
-  assert.match(html, /id="historyView"/);
+  assert.match(shell, /id: 'historyView'/);
   assert.match(tabs, /import\('\/history\/history-main\.js\?v=20260928\.1'\)/);
   assert.doesNotMatch(html, /href="\/history/);
   assert.match(entry, /function ensureHistoryModeRuntime/);
