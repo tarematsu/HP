@@ -44,6 +44,15 @@ const LAZY_VIEWS = Object.freeze({
     errorLabel: 'apple music',
     errorMessage: 'Apple Musicデータの初期化に失敗しました。再読み込みしてください。',
   },
+  nogizaka: {
+    viewId: 'nogizakaListeningPartyView',
+    shell: () => import('/nogizaka-listening-party-shell.js?v=20260930.1'),
+    runtime: () => import('/nogizaka-listening-party.js?v=20260930.1'),
+    loadExport: 'loadNogizakaListeningPartyView',
+    noticeId: 'nogizakaListeningPartyNotice',
+    errorLabel: 'nogizaka listening party',
+    errorMessage: '乃木坂公式リスパデータの初期化に失敗しました。再読み込みしてください。',
+  },
   likes: {
     viewId: 'likesView',
     runtime: () => import('/history/history-likes.js?v=20260930.1'),
@@ -231,8 +240,9 @@ window.addEventListener('hashchange', syncFromLocation);
 void Promise.all([
   ensureLazyShell('amazon-music'),
   ensureLazyShell('apple-music'),
+  ensureLazyShell('nogizaka'),
 ]).catch((error) => {
-  console.error('music tab shell failed to start', error);
+  console.error('dashboard tab shell failed to start', error);
 });
 
 const initialMode = modeFromLocation();

@@ -1,4 +1,4 @@
-export const API_CONTRACT_VERSION = 13;
+export const API_CONTRACT_VERSION = 14;
 
 export const API_GROUPS = Object.freeze({
   status: Object.freeze([
@@ -16,6 +16,7 @@ export const API_GROUPS = Object.freeze({
     { path: '/api/history-current', methods: ['GET'], description: 'Current UTC daily summary from the incremental minute projection' },
     { path: '/api/track-history', methods: ['GET'], description: 'Stored track history and current like ranking' },
     { path: '/api/sakurazaka46jp', methods: ['GET'], description: 'Sakurazaka official broadcast listener series' },
+    { path: '/api/nogizaka-listening-party', methods: ['GET'], description: 'Today Nogizaka official listening-party listener series and summary' },
     { path: '/api/host-history', methods: ['GET'], description: 'Sakurazaka broadcast sessions and session details' },
     { path: '/api/first-week-comparison', methods: ['GET'], description: 'Title-track first-week comparison aligned to JST prerelease midnight' },
     { path: '/api/spotify-playcounts', methods: ['GET'], description: 'Latest finalized Spotify cumulative playcounts by Sakamichi group' },
@@ -90,7 +91,8 @@ export function edgeCacheableApiRequest(request) {
   if (!pathname.startsWith('/api/')) return false;
   return pathname !== '/api/health'
     && pathname !== '/api/sakurazaka46jp-status'
-    && pathname !== '/api/nogizaka46smej-status';
+    && pathname !== '/api/nogizaka46smej-status'
+    && pathname !== '/api/nogizaka-listening-party';
 }
 
 export function apiCacheTtlSeconds(request) {
