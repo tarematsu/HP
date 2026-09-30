@@ -6,7 +6,7 @@ import {
 } from './dashboard-ui-common.js?v=20261001.1';
 
 const summary = dashboardSummary([
-  dashboardSummaryItem({ label: '最終取得', valueId: 'likesLatestAt', className: 'summary-date' }),
+  dashboardSummaryItem({ label: '最終取得', valueId: 'likesLatestAt', valueClassName: 'summary-date' }),
   dashboardSummaryItem({ label: '対象楽曲数', valueId: 'likesTrackCount' }),
   dashboardSummaryItem({ label: '合計いいね数', valueId: 'likesTotalLikes' }),
   dashboardSummaryItem({ label: '合計いいね数（前日比）', valueId: 'likesTotalDelta' }),
