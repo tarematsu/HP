@@ -24,6 +24,11 @@ const shells = Object.fromEntries(shellFiles.map((file) => [
   file,
   readFileSync(new URL(`../public/${file}`, import.meta.url), 'utf8'),
 ]));
+const runtimeFiles = ['amazon-music.js', 'apple-music.js', 'followers.js'];
+const runtimes = Object.fromEntries(runtimeFiles.map((file) => [
+  file,
+  readFileSync(new URL(`../public/${file}`, import.meta.url), 'utf8'),
+]));
 
 const hinataRoute = readFileSync(new URL('../public/dashboard-hinata-route.js', import.meta.url), 'utf8');
 const followersRoute = readFileSync(new URL('../public/dashboard-followers-route.js', import.meta.url), 'utf8');
@@ -49,6 +54,22 @@ test('dashboard exposes reusable presentation components in one shared module', 
     'dashboardControls',
     'dashboardNotice',
   ]) assert.match(sharedUi, new RegExp(`export function ${helper}\\(`));
+});
+
+test('dashboard exposes shared runtime primitives for repeated view rendering work', () => {
+  for (const helper of ['signedInteger', 'evenlySpacedIndexes', 'appendEmptyState']) {
+    assert.match(sharedUi, new RegExp(`export function ${helper}\\(`));
+  }
+  for (const name of runtimeFiles) {
+    assert.match(runtimes[name], /appendEmptyState/);
+    assert.match(runtimes[name], /evenlySpacedIndexes/);
+    assert.doesNotMatch(runtimes[name], /const empty = document\.createElement/);
+  }
+  for (const name of ['amazon-music.js', 'followers.js']) {
+    assert.match(runtimes[name], /signedInteger/);
+    assert.doesNotMatch(runtimes[name], /function formatDelta\s*\(/);
+  }
+  assert.doesNotMatch(runtimes['followers.js'], /function (?:appendText|tickIndexes)\s*\(/);
 });
 
 test('all dashboard shells share mounting and reusable UI components without runtime stylesheet loading', () => {
