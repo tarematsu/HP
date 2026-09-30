@@ -181,8 +181,7 @@ export function preserveReadModelTrackMetadata(queue, previousQueue) {
 
 export function queueNeedsPreviousTrackMetadata(queue) {
   return Boolean(queue?.tracks?.some((track) => (
-    positiveInteger(track?.track_id) == null
-    || !track?.title || !track?.artist || !track?.album_name || !track?.thumbnail_url
+    !track?.title || !track?.artist || !track?.album_name || !track?.thumbnail_url
   )));
 }
 
@@ -195,8 +194,7 @@ async function hydrateQueueMetadataFromSource(env, readModel) {
   if (!queue?.tracks?.length) return readModel;
 
   const incomplete = queue.tracks.filter((track) => (
-    positiveInteger(track?.track_id) == null
-    || !track?.title || !track?.artist || !track?.thumbnail_url
+    !track?.title || !track?.artist || !track?.thumbnail_url
   ));
   const spotifyIds = [...new Set(
     incomplete.map((track) => String(track?.spotify_id || '').trim()).filter(Boolean),
@@ -245,6 +243,7 @@ async function canonicalizeReadModelQueue(env, readModel) {
   const value = queue.value;
   if (!value?.tracks?.length) return readModel;
   const tracks = await canonicalizeTrackRows(env?.MINUTE_DB, value.tracks);
+  if (tracks === value.tracks) return readModel;
   return { ...readModel, queue: { ...queue, value: { ...value, tracks } } };
 }
 
