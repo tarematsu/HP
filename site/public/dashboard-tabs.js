@@ -223,7 +223,7 @@ function syncFromLocation() {
 tabs?.addEventListener('click', (event) => {
   const button = event.target.closest('button');
   if (!button || !tabs.contains(button)) return;
-  const mode = button.dataset.view || button.dataset.mode;
+  const mode = button.dataset.mode || button.dataset.view;
   if (!mode || !VIEW_MODES.has(mode)) return;
   event.preventDefault();
   if (HISTORY_MODES.has(mode)) {
