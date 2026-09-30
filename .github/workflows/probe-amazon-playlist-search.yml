@@ -1,0 +1,35 @@
+name: Probe Amazon Music playlist search
+
+on:
+  push:
+    branches:
+      - probe/amazon-playlist-track-search-20261001
+    paths:
+      - '.github/scripts/probe-amazon-music-playlist-search.mjs'
+      - '.github/workflows/probe-amazon-playlist-search.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Playwright
+        run: npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.54.0
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Capture Amazon Music search network
+        run: node .github/scripts/probe-amazon-music-playlist-search.mjs > amazon-playlist-probe.json
+      - name: Show probe summary
+        run: cat amazon-playlist-probe.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: amazon-playlist-probe
+          path: amazon-playlist-probe.json
+          retention-days: 1
