@@ -17,6 +17,11 @@ const databaseName = process.env.OTHER_DATABASE_NAME || 'stationhead-other';
 const BINDING = 'OTHER_DB';
 const APPLE_MUSIC_COMPATIBILITY_TABLE = 'sh_host_queue_items';
 const LEGACY_TRACK_METADATA_TABLE = 'sh_track_metadata';
+const OBSOLETE_COLLECTION_TABLES = Object.freeze([
+  'sh_host_raw_events',
+  'sh_host_profile_snapshots',
+  'sh_host_comments',
+]);
 const OFFICIAL_PARTY_SUMMARY_TABLE = 'sh_official_broadcast_summary';
 const OFFICIAL_PARTY_METRICS_MIGRATION = '039_official_party_materialized_metrics.sql';
 const SPOTIFY_COLLECTION_RUNS_TABLE = 'sh_spotify_collection_runs';
@@ -273,6 +278,25 @@ function consolidateLegacyTrackMetadata() {
   });
 }
 
+function removeObsoleteCollectionTables() {
+  const existing = schemaObjects(OBSOLETE_COLLECTION_TABLES)
+    .filter((row) => String(row?.type || '') === 'table')
+    .map((row) => String(row?.name || ''))
+    .filter((name) => OBSOLETE_COLLECTION_TABLES.includes(name));
+  if (!existing.length) return;
+  const sql = existing.map((table) => `DROP TABLE IF EXISTS ${table};`).join('\n');
+  wrangler([
+    'd1', 'execute', databaseName,
+    '--remote', '--yes',
+    `--command=${sql}`,
+  ]);
+  console.log(JSON.stringify({
+    ok: true,
+    operation: 'retired-host-collection-cleanup',
+    removed: existing,
+  }));
+}
+
 function verifySchema() {
   const installed = new Map(schemaObjects(OTHER_REQUIRED_TABLES)
     .map((row) => [String(row.name), String(row.type)]));
@@ -321,6 +345,7 @@ const activeMigrationFiles = selectedDeploymentMigrations(availableMigrationFile
 for (const migrationFile of activeMigrationFiles) applyMigration(migrationFile);
 removeAppleMusicCompatibilityColumn();
 consolidateLegacyTrackMetadata();
+removeObsoleteCollectionTables();
 verifySchema();
 
 writeFileSync(metadataPath, `${JSON.stringify({
