@@ -215,11 +215,12 @@ test('track rows retain details but incomplete dates are marked for total exclus
 
 test('history lite client is loaded lazily into the integrated dashboard', () => {
   const html = readFileSync(new URL('../site/public/index.html', import.meta.url), 'utf8');
+  const shell = readFileSync(new URL('../site/public/history-shell.js', import.meta.url), 'utf8');
   const tabs = readFileSync(new URL('../site/public/dashboard-tabs.js', import.meta.url), 'utf8');
   const entry = readFileSync(new URL('../site/public/history/history-main.js', import.meta.url), 'utf8');
-  assert.match(html, /id="historyView"/);
+  assert.match(shell, /id: 'historyView'/);
   assert.match(tabs, /import\('\/history\/history-main\.js\?v=20260928\.1'\)/);
-  assert.doesNotMatch(html, /history-period-completeness\.js|history-copy-fixes\.js|history-track-likes\.js/);
+  assert.doesNotMatch([html, shell].join('\n'), /history-period-completeness\.js|history-copy-fixes\.js|history-track-likes\.js/);
 
   const runtimeSource = readFileSync(
     new URL('../site/public/history/history-lite.js', import.meta.url),
