@@ -9,6 +9,7 @@ import {
 } from './amazon-music-pipeline.js';
 import { AMAZON_MUSIC_DEEP_STATE_KEY } from './amazon-music-rank-monitor.js';
 import { resolveAmazonMusicTracks } from './amazon-music-track-identity.js';
+import { isAmazonMusicTitleTrack } from './amazon-music-title-tracks.js';
 import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
 
 const AMAZON_MUSIC_READ_MODEL_KEY = 'amazon-music/read-model/latest.json';
@@ -169,7 +170,7 @@ export async function publishAmazonMusicSakamichiModel(env, observedAt = Date.no
     const current = byId.get(id) || null;
     const trackId = trackIdByAmazonId.get(id) ?? integer(current?.track_id) ?? null;
     const canonical = trackId == null ? null : canonicalMetadata.get(Number(trackId));
-    byId.set(id, {
+    const next = {
       amazon_music_id: id,
       track_id: trackId,
       group_name: text(track?.group_name) || current?.group_name || null,
@@ -177,7 +178,8 @@ export async function publishAmazonMusicSakamichiModel(env, observedAt = Date.no
       album: text(track?.album) || current?.album || null,
       image: text(track?.image) || current?.image || null,
       amazon_rank: integer(track?.rank),
-    });
+    };
+    byId.set(id, { ...next, is_title_track: isAmazonMusicTitleTrack(next) });
   }
 
   const snapshotDate = jstDate(observedAt);
