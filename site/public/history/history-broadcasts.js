@@ -1,10 +1,17 @@
+import {
+  byId,
+  cssColor,
+  decimalOneFormat as number,
+  finiteNumber as finite,
+} from '../dashboard-ui-common.js?v=20260930.1';
+
 (() => {
   const button = document.querySelector('[data-mode="broadcasts"]');
-  const canvas = document.getElementById('chart');
-  const legend = document.getElementById('chartLegend');
-  const notice = document.getElementById('notice');
-  const fromInput = document.getElementById('from');
-  const toInput = document.getElementById('to');
+  const canvas = byId('chart');
+  const legend = byId('chartLegend');
+  const notice = byId('notice');
+  const fromInput = byId('from');
+  const toInput = byId('to');
   if (!button || !canvas || !legend || !notice || !fromInput || !toInput) return;
 
   const CACHE_MS = 15 * 60_000;
@@ -12,7 +19,6 @@
   const MAX_DRAW_POINTS = 2_400;
   const CACHE_REVISION = '9';
   const API_REVISION = '3';
-  const number = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
   const eventDate = new Intl.DateTimeFormat('ja-JP', {
     timeZone: 'UTC', month: 'numeric', day: 'numeric',
   });
@@ -48,11 +54,6 @@
   button.textContent = '公式リスパ';
 
   const active = () => button.classList.contains('active');
-  const finite = (value) => {
-    if (value === null || value === undefined || value === '') return null;
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  };
   const escape = (value) => String(value ?? '')
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
@@ -88,11 +89,6 @@
     return item?.source_mismatch ? '（集計値のみ）' : '（データ未取得）';
   }
 
-  function cssColor(name, fallback) {
-    if (!name) return fallback;
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
-  }
-
   function colorFor(index) {
     const preset = SERIES_COLORS[index];
     if (preset) return cssColor(preset[0], preset[1]);
@@ -115,10 +111,10 @@
       let maxMinute = 0;
       let maxListener = 0;
       for (const point of points) {
-        const minute = Number(point?.[0]);
-        const listener = Number(point?.[1]);
-        if (Number.isFinite(minute)) maxMinute = Math.max(maxMinute, minute);
-        if (Number.isFinite(listener)) maxListener = Math.max(maxListener, listener);
+        const minute = finite(point?.[0]);
+        const listener = finite(point?.[1]);
+        if (minute != null) maxMinute = Math.max(maxMinute, minute);
+        if (listener != null) maxListener = Math.max(maxListener, listener);
       }
       return { ...item, points, drawPoints: samplePoints(points), maxMinute, maxListener };
     });
@@ -142,7 +138,7 @@
   }
 
   function renderDetail(minute) {
-    const detail = document.getElementById('chartDetail');
+    const detail = byId('chartDetail');
     if (!detail) return;
     if (minute == null) {
       detail.replaceChildren();
@@ -170,8 +166,8 @@
     context.clearRect(0, 0, width, height);
 
     const available = series.filter((item) => item.points.length);
-    document.getElementById('chartTitle').textContent = '公式リスパ 同接推移（開始0分比較）';
-    document.getElementById('chartFoot').textContent = '各線は1回の公式リスパです。横軸は各開催の開始からの経過時間です。';
+    byId('chartTitle').textContent = '公式リスパ 同接推移（開始0分比較）';
+    byId('chartFoot').textContent = '各線は1回の公式リスパです。横軸は各開催の開始からの経過時間です。';
     if (!available.length) {
       context.font = '14px system-ui';
       context.fillStyle = cssColor('--muted', '#667287');
@@ -194,7 +190,7 @@
     context.lineWidth = 1;
     context.strokeStyle = 'rgba(31,45,68,.12)';
     context.fillStyle = cssColor('--muted', '#667287');
-    context.font = '10.5px system-ui';
+    context.font = '11px system-ui';
     for (let index = 0; index <= 4; index += 1) {
       const y = area.top + area.height * index / 4;
       context.beginPath();
@@ -225,9 +221,9 @@
       context.beginPath();
       let open = false;
       for (const point of item.drawPoints) {
-        const minute = Number(point?.[0]);
-        const listener = Number(point?.[1]);
-        if (!Number.isFinite(minute) || !Number.isFinite(listener)) continue;
+        const minute = finite(point?.[0]);
+        const listener = finite(point?.[1]);
+        if (minute == null || listener == null) continue;
         if (!open) context.moveTo(xFor(minute), yFor(listener));
         else context.lineTo(xFor(minute), yFor(listener));
         open = true;
@@ -251,8 +247,8 @@
 
     legend.innerHTML = series.map((item, index) =>
       `<span><i style="background:${colorFor(index)}"></i>${escape(eventLabel(item))}${missingSuffix(item)}</span>`).join('');
-    document.getElementById('chartStartDate').textContent = '開始 0分';
-    document.getElementById('chartEndDate').textContent = `最長 ${elapsedLabel(maxMinute)}`;
+    byId('chartStartDate').textContent = '開始 0分';
+    byId('chartEndDate').textContent = `最長 ${elapsedLabel(maxMinute)}`;
     renderDetail(selectedMinute);
     canvas.dataset.sakurazakaMaxMinute = String(maxMinute);
     canvas.dataset.sakurazakaLeft = String(area.left);
@@ -357,7 +353,7 @@
   canvas.addEventListener('click', handlePointer, true);
   canvas.addEventListener('touchstart', handlePointer, { capture: true, passive: true });
   button.addEventListener('click', () => scheduleLoad(120));
-  document.getElementById('load')?.addEventListener('click', () => {
+  byId('load')?.addEventListener('click', () => {
     loadedKey = '';
     scheduleLoad(160);
   });
