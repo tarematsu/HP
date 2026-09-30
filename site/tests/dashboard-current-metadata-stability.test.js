@@ -10,11 +10,12 @@ const historyApi = readFileSync(new URL('../functions/api/history.js', import.me
 const rootPresentation = readFileSync(new URL('../public/dashboard-root-presentation.css', import.meta.url), 'utf8');
 const officialCopyUrl = new URL('../public/official-listening-party-copy.js', import.meta.url);
 
-test('online, members and total streams use one initial bundled stylesheet rule', () => {
-  assert.match(html, /assets\/dashboard\.min\.css\?v=20260930\.5/);
+test('dashboard metrics use one initial bundled stylesheet rule across views', () => {
+  assert.match(html, /assets\/dashboard\.min\.css\?v=20261001\.1/);
   assert.match(buildScript, /'dashboard-root-presentation\.css'/);
   assert.doesNotMatch(metrics, /dashboard-current-metric-style|ensureRootPresentationStylesheet|createElement\('link'\)/);
-  assert.match(rootPresentation, /#currentView \.metrics #online,[\s\S]*#currentView \.metrics #members,[\s\S]*#currentView \.metrics #totalStreams/);
+  assert.match(rootPresentation, /\.dashboard-view \.metrics \.metric-value > strong/);
+  assert.doesNotMatch(rootPresentation, /#currentView \.metrics/);
   assert.match(rootPresentation, /font-size: clamp\(1\.75rem, 5\.8vw, 2\.5rem\) !important/);
   assert.match(rootPresentation, /@media \(max-width: 760px\)[\s\S]*font-size: clamp\(1rem, 5vw, 1\.4rem\) !important/);
 });
