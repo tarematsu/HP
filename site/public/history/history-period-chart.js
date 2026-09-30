@@ -267,10 +267,8 @@ function draw() {
     if (hasMissingBand) items.push(appendLegend('欠測', 'rgba(100, 107, 116, .55)', 'period-missing-band'));
     legend.replaceChildren(...items);
   }
-  const title = byId('chartTitle');
-  if (title) title.textContent = '同接・再生数増加の推移';
-  const foot = byId('chartFoot');
-  if (foot) foot.textContent = hasMissingBand ? '灰色は欠測期間です。' : '';
+  const note = byId('chartNote');
+  if (note) note.textContent = hasMissingBand ? '灰色は欠測期間です。' : '';
   const start = byId('chartStartDate');
   const end = byId('chartEndDate');
   if (start) start.textContent = rows[0]?.period_key || '—';
