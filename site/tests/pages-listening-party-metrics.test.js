@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 const likes = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
 const broadcasts = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
 const table = readFileSync(new URL('../public/history/history-broadcast-table.js', import.meta.url), 'utf8');
+const partyUi = readFileSync(new URL('../public/official-listening-party-ui.js', import.meta.url), 'utf8');
 const historyApi = readFileSync(new URL('../functions/api/history.js', import.meta.url), 'utf8');
 const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
 
@@ -24,7 +25,7 @@ test('official listening party lines do not recycle colors across dates', () => 
 
 test('official listening party table exposes final materialized listener, track and estimate metrics', () => {
   for (const label of ['平均同接', '最小同接', '最大同接', '楽曲数', '推定再生数']) {
-    assert.match(table, new RegExp(label));
+    assert.match(partyUi, new RegExp(label));
   }
   for (const field of ['listener_avg', 'listener_min', 'listener_max', 'distinct_tracks', 'estimated_streams']) {
     assert.match(historyApi, new RegExp(field));
