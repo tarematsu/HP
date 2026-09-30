@@ -1,4 +1,12 @@
 import {
+  byId as el,
+  decimalOneFormat as decimal,
+  finiteNumber as finite,
+  integerFormat as integer,
+  setNotice as setSharedNotice,
+  setText,
+} from '../dashboard-ui-common.js?v=20260930.1';
+import {
   fetchHistoryPayload,
   historyCacheTtl,
   migrateHistoryCache,
@@ -11,8 +19,6 @@ import {
   const CACHE_PREFIX = 'sh.history.v3:';
   const MAX_CACHE_CHARS = 1_500_000;
   const OFFICIAL_EVENT_DATE_GAP = /(\d{4}[./-]\d{1,2}[./-]\d{1,2})[ \u3000]+(?=『)/g;
-  const integer = new Intl.NumberFormat('ja-JP');
-  const decimal = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
   const dateOnly = new Intl.DateTimeFormat('ja-JP', {
     timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit',
   });
@@ -69,14 +75,9 @@ import {
     requestToken: 0,
   };
 
-  const el = (id) => document.getElementById(id);
-  const finite = (value) => {
-    if (value === null || value === undefined || value === '') return null;
-    const number = Number(value);
-    return Number.isFinite(number) ? number : null;
-  };
   const numberText = (value) => finite(value) == null ? '—' : decimal.format(Number(value));
   const todayUtc = () => new Date().toISOString().slice(0, 10);
+  const setNotice = (text, error = false) => setSharedNotice('notice', text, error);
 
   function dataMode() {
     return state.mode === 'daily' && state.pastWeekMode ? 'weekly' : state.mode;
@@ -96,16 +97,6 @@ import {
     const date = parseDate(value);
     if (!date || Number.isNaN(date.getTime())) return '—';
     return (includeTime ? dateTime : dateOnly).format(date);
-  }
-
-  function setText(id, value) {
-    const node = el(id);
-    if (node) node.textContent = String(value);
-  }
-
-  function setNotice(text, error = false) {
-    setText('notice', text);
-    el('notice')?.classList.toggle('error', error);
   }
 
   function cacheKey(url) {
