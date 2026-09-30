@@ -8,8 +8,7 @@ import {
   svgElement,
 } from './dashboard-ui-common.js?v=20260930.1';
 
-const SAKURAZAKA_KEY = 'sakurazaka46';
-const SAKURAZAKA_NAME = '櫻坂46';
+let selectedArtistKey = 'sakurazaka46';
 const TREND_ARTIST_LIMIT = 10;
 const TREND_COLORS = Object.freeze([
   '#f3a6c8', '#8264b0', '#9ecff3', '#ef8a62', '#67a9cf',
@@ -64,7 +63,6 @@ function normalizeTrendSeries(trend = {}) {
     return {
       artistKey,
       artistName: String(metadata.artist_name || artistKey),
-      currentRank: integer(metadata.current_rank),
       points,
     };
   }).filter((series) => series.points.length)
@@ -420,12 +418,20 @@ function renderArtistRankChart(chart = {}, trend = {}) {
 }
 
 function render(payload, trend, artistChart) {
+  const artistName = payload?.artist?.name || selectedArtistKey;
   const date = element('spotifySnapshotDate');
   if (date) date.textContent = formatDate(payload?.snapshot_date);
   const count = element('spotifyTrackCount');
   if (count) count.textContent = numberFormat.format(Number(payload?.track_count) || 0);
   const delta = element('spotifyTotalDelta');
   if (delta) delta.textContent = formatDelta(payload?.total_delta);
+  const title = element('spotifyTableTitle');
+  if (title) title.textContent = `${artistName}の再生数一覧`;
+  const countLabel = element('spotifyTrackCountLabel');
+  if (countLabel) countLabel.textContent = `${artistName}の楽曲数`;
+  const deltaLabel = element('spotifyTotalDeltaLabel');
+  if (deltaLabel) deltaLabel.textContent = `${artistName}の再生数前日比合計`;
+  document.querySelectorAll('[data-spotify-artist]').forEach((button) => button.classList.toggle('active', button.dataset.spotifyArtist === selectedArtistKey));
 
   renderTrendChart(trend, {
     containerId: 'spotifyTrendCharts',
@@ -443,7 +449,7 @@ function render(payload, trend, artistChart) {
   renderRows(payload || {});
 
   if (!payload?.track_count) {
-    setNotice(`${SAKURAZAKA_NAME}のSpotify再生数はまだ収集されていません。`);
+    setNotice(`${artistName}のSpotify再生数はまだ収集されていません。`);
   } else if (payload.carried_forward) {
     setNotice(`${formatDate(payload.snapshot_date)} はSpotify公開値の更新が確認できなかったため、直近の累計値を引き継いでいます。`);
   } else {
@@ -474,11 +480,16 @@ export async function loadSpotifyView({ refresh = false } = {}) {
     setNotice('');
     const model = await fetchReadModel({ refresh });
     if (sequence !== requestSequence) return;
-    const payload = model?.groups?.[SAKURAZAKA_KEY];
-    if (!payload) throw new Error(`${SAKURAZAKA_NAME}のリードモデルがありません`);
+    const payload = model?.groups?.[selectedArtistKey];
+    if (!payload) throw new Error(`${selectedArtistKey}のリードモデルがありません`);
     render(payload, model?.trend || {}, model?.artist_chart || {});
   } catch (error) {
     if (sequence !== requestSequence) return;
     setNotice(`Spotify再生数の取得に失敗しました：${error.message}`, true);
   }
 }
+
+globalThis.document?.querySelectorAll('[data-spotify-artist]').forEach((button) => button.addEventListener('click', () => {
+  selectedArtistKey = button.dataset.spotifyArtist;
+  loadSpotifyView();
+}));
