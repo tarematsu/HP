@@ -87,6 +87,7 @@ test('one GitHub Actions workflow owns automatic and manual production deploymen
   assert.doesNotMatch(deploymentWorkflow, /deploy:minute-enrichment/);
 
   assert.match(deploymentWorkflow, /name: Apply MINUTE_DB migrations before deployment/);
+  assert.match(deploymentWorkflow, /name: Apply OTHER_DB migrations before deployment/);
   assert.match(deploymentWorkflow, /name: Deploy affected Workers/);
   assert.match(deploymentWorkflow, /name: Build and deploy Pages/);
   assert.match(deploymentWorkflow, /name: Resolve Pages production branch/);
@@ -94,11 +95,15 @@ test('one GitHub Actions workflow owns automatic and manual production deploymen
     deploymentWorkflow,
     /wrangler pages deploy public[\s\S]*--project-name skrzk[\s\S]*--branch "\$\{\{ steps\.pages-project\.outputs\.production_branch \}\}"/,
   );
-  assert.match(deploymentWorkflow, /needs: \[select, minute_db\]/);
-  assert.match(deploymentWorkflow, /needs: \[select, minute_db, workers\]/);
+  assert.match(deploymentWorkflow, /needs: \[select, minute_db, other_db\]/);
+  assert.match(deploymentWorkflow, /needs: \[select, minute_db, other_db, workers\]/);
   assert.match(
     deploymentWorkflow,
     /needs\.minute_db\.result == 'success' \|\| needs\.minute_db\.result == 'skipped'/,
+  );
+  assert.match(
+    deploymentWorkflow,
+    /needs\.other_db\.result == 'success' \|\| needs\.other_db\.result == 'skipped'/,
   );
   assert.match(deploymentWorkflow, /needs\.workers\.result == 'success' \|\| needs\.workers\.result == 'skipped'/);
 });
@@ -119,34 +124,46 @@ test('automatic production deploy selects affected Workers and Pages from change
   assert.match(deploymentWorkflow, /site\/public\/\*\*/);
   assert.match(deploymentWorkflow, /site\/wrangler\.jsonc/);
   assert.match(deploymentWorkflow, /packages\/sh-shared/);
+  assert.match(deploymentWorkflow, /database\/other-migrations\/\*\*/);
   assert.match(deploymentWorkflow, /DEPLOY_COMMANDS/);
   assert.match(deploymentWorkflow, /npm run "\$command"/);
   assert.match(deploymentWorkflow, /select-worker-deploys\.mjs --all/);
   assert.doesNotMatch(deploymentWorkflow, /sync-cloudflare-build-watch-paths/);
 });
 
-test('MINUTE_DB migrations are a blocking reusable stage before Worker and Pages deployment', () => {
+test('D1 migrations are blocking reusable stages before Worker and Pages deployment', () => {
   assert.match(deploymentWorkflow, /database\/facts-db\.json/);
   assert.match(deploymentWorkflow, /database\/facts-migrations\/\*\*/);
+  assert.match(deploymentWorkflow, /database\/other-migrations\/\*\*/);
   assert.match(deploymentWorkflow, /\.github\/workflows\/database\.yml/);
   assert.match(deploymentWorkflow, /echo "minute_db=\$minute_db" >> "\$GITHUB_OUTPUT"/);
+  assert.match(deploymentWorkflow, /echo "other_db=\$other_db" >> "\$GITHUB_OUTPUT"/);
 
-  const minuteDb = jobSection(deploymentWorkflow, 'minute_db', 'workers');
+  const minuteDb = jobSection(deploymentWorkflow, 'minute_db', 'other_db');
   assert.match(minuteDb, /uses: \.\/\.github\/workflows\/database\.yml/);
   assert.match(minuteDb, /operation: minute-db/);
   assert.match(minuteDb, /base_sha: \$\{\{ github\.event\.before \|\| '' \}\}/);
   assert.match(minuteDb, /head_sha: \$\{\{ github\.sha \}\}/);
   assert.match(minuteDb, /secrets: inherit/);
 
+  const otherDb = jobSection(deploymentWorkflow, 'other_db', 'workers');
+  assert.match(otherDb, /uses: \.\/\.github\/workflows\/database\.yml/);
+  assert.match(otherDb, /operation: other-db/);
+  assert.match(otherDb, /secrets: inherit/);
+
   const workers = jobSection(deploymentWorkflow, 'workers', 'pages');
-  assert.match(workers, /needs: \[select, minute_db\]/);
+  assert.match(workers, /needs: \[select, minute_db, other_db\]/);
   assert.match(workers, /needs\.minute_db\.result == 'success'/);
   assert.match(workers, /needs\.minute_db\.result == 'skipped'/);
+  assert.match(workers, /needs\.other_db\.result == 'success'/);
+  assert.match(workers, /needs\.other_db\.result == 'skipped'/);
 
   const pages = jobSection(deploymentWorkflow, 'pages');
-  assert.match(pages, /needs: \[select, minute_db, workers\]/);
+  assert.match(pages, /needs: \[select, minute_db, other_db, workers\]/);
   assert.match(pages, /needs\.minute_db\.result == 'success'/);
   assert.match(pages, /needs\.minute_db\.result == 'skipped'/);
+  assert.match(pages, /needs\.other_db\.result == 'success'/);
+  assert.match(pages, /needs\.other_db\.result == 'skipped'/);
 
   assert.match(databaseWorkflow, /^  workflow_call:$/m);
   assert.match(databaseWorkflow, /^      base_sha:$/m);

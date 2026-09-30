@@ -6,6 +6,7 @@ on:
     paths:
       - 'database/facts-db.json'
       - 'database/facts-migrations/**'
+      - 'database/other-migrations/**'
       - 'worker/src/**'
       - 'worker/scripts/**'
       - 'worker/wrangler*.jsonc'
@@ -47,6 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       minute_db: ${{ steps.targets.outputs.minute_db }}
+      other_db: ${{ steps.targets.outputs.other_db }}
       pages: ${{ steps.targets.outputs.pages }}
       workers: ${{ steps.targets.outputs.workers }}
       commands: ${{ steps.targets.outputs.commands }}
@@ -72,12 +74,14 @@ jobs:
         run: |
           set -euo pipefail
           minute_db=false
+          other_db=false
           pages=false
 
           if [[ "$EVENT_NAME" == 'workflow_dispatch' ]]; then
             case "$TARGET" in
               all)
                 minute_db=true
+                other_db=true
                 pages=true
                 selection="$(node worker/scripts/select-worker-deploys.mjs --all)"
                 ;;
@@ -87,6 +91,7 @@ jobs:
                 ;;
               workers)
                 minute_db=true
+                other_db=true
                 selection="$(node worker/scripts/select-worker-deploys.mjs --all)"
                 ;;
               sakurazaka46jp)
@@ -114,6 +119,9 @@ jobs:
             if grep -Eq '^(database/facts-db\.json$|database/facts-migrations/|worker/scripts/(provision-facts-db|provision-current-facts-db|apply-facts-pr-schema)\.mjs$|\.github/workflows/database\.yml$)' changed-files.txt; then
               minute_db=true
             fi
+            if grep -Eq '^(database/other-migrations/|worker/scripts/(provision-other-db|other-db-tables)\.mjs$|\.github/workflows/(database|deploy-split-pipeline)\.yml$)' changed-files.txt; then
+              other_db=true
+            fi
             if grep -Eq '^(site/(functions|public)/|site/wrangler\.jsonc$|site/package(-lock)?\.json$|packages/sh-shared/|\.github/scripts/resolve-pages-production-branch\.mjs$|\.github/workflows/deploy-split-pipeline\.yml$)' changed-files.txt; then
               pages=true
             fi
@@ -128,15 +136,17 @@ jobs:
           workers_json="$(jq -c '.workers' <<<"$selection")"
           commands_json="$(jq -c '.commands' <<<"$selection")"
           echo "minute_db=$minute_db" >> "$GITHUB_OUTPUT"
+          echo "other_db=$other_db" >> "$GITHUB_OUTPUT"
           echo "pages=$pages" >> "$GITHUB_OUTPUT"
           echo "workers=$workers_json" >> "$GITHUB_OUTPUT"
           echo "commands=$commands_json" >> "$GITHUB_OUTPUT"
           deployment_targets="$(jq -cn \
             --argjson minute_db "$minute_db" \
+            --argjson other_db "$other_db" \
             --argjson pages "$pages" \
             --argjson workers "$workers_json" \
             --argjson commands "$commands_json" \
-            '{minute_db:$minute_db,pages:$pages,workers:$workers,commands:$commands}')"
+            '{minute_db:$minute_db,other_db:$other_db,pages:$pages,workers:$workers,commands:$commands}')"
           echo "DEPLOYMENT_TARGETS_JSON=$deployment_targets"
 
   minute_db:
@@ -150,13 +160,23 @@ jobs:
       head_sha: ${{ github.sha }}
     secrets: inherit
 
+  other_db:
+    name: Apply OTHER_DB migrations before deployment
+    needs: select
+    if: needs.select.outputs.other_db == 'true'
+    uses: ./.github/workflows/database.yml
+    with:
+      operation: other-db
+    secrets: inherit
+
   workers:
     name: Deploy affected Workers
-    needs: [select, minute_db]
+    needs: [select, minute_db, other_db]
     if: >-
       always()
       && needs.select.result == 'success'
       && (needs.minute_db.result == 'success' || needs.minute_db.result == 'skipped')
+      && (needs.other_db.result == 'success' || needs.other_db.result == 'skipped')
       && needs.select.outputs.workers != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -226,11 +246,12 @@ jobs:
 
   pages:
     name: Build and deploy Pages
-    needs: [select, minute_db, workers]
+    needs: [select, minute_db, other_db, workers]
     if: >-
       always()
       && needs.select.result == 'success'
       && (needs.minute_db.result == 'success' || needs.minute_db.result == 'skipped')
+      && (needs.other_db.result == 'success' || needs.other_db.result == 'skipped')
       && needs.select.outputs.pages == 'true'
       && (needs.workers.result == 'success' || needs.workers.result == 'skipped')
     runs-on: ubuntu-latest
