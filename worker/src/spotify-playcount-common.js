@@ -34,6 +34,11 @@ export const SPOTIFY_ALWAYS_COLLECT_ARTISTS = Object.freeze([
     artist_name: '≒JOY',
     spotify_artist_id: '0CXdxGaAia8vQLHVRFXW8a',
   }),
+  Object.freeze({
+    artist_key: 'illit',
+    artist_name: 'ILLIT',
+    spotify_artist_id: '36cgvBn0aadzOijnjjwqMN',
+  }),
 ]);
 
 // Preserve the legacy three-group export for existing callers; collection scheduling uses
