@@ -2,7 +2,9 @@ name: Rebuild pages read models
 
 on:
   schedule:
-    - cron: '26 0,6,12,18 * * *'
+    # Low-frequency recovery sweep. Normal history publication is revision-driven
+    # from runtime maintenance and only targets changed model keys.
+    - cron: '26 0 * * *'
   push:
     branches: [main]
     paths:
@@ -24,13 +26,19 @@ on:
       - 'site/functions/lib/period-completeness.js'
       - 'site/functions/api/host-history.js'
       - 'database/other-migrations/053_read_model_revisions.sql'
+      - 'database/other-migrations/056_completed_read_model_revisions.sql'
   workflow_dispatch:
     inputs:
       force_all:
-        description: Force every history read-model variant instead of normal due-only cadence
+        description: Force every history read-model variant instead of targeted revision keys
         required: false
-        default: true
+        default: false
         type: boolean
+      due_keys:
+        description: Comma-separated history model keys to check and publish
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -55,6 +63,7 @@ jobs:
       PAGES_RESPONSE_BUCKET: sh-pages-responses
       PAGES_READ_MODEL_DEADLINE_MS: '720000'
       PAGES_READ_MODEL_FORCE_ALL: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.force_all) }}
+      PAGES_READ_MODEL_DUE_KEYS: ${{ github.event_name == 'workflow_dispatch' && inputs.due_keys || '' }}
       PAGES_READ_MODEL_RETRY_OVERDUE: 'true'
       D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT: '4000'
       D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT: '3500000'

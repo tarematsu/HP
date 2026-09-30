@@ -40,8 +40,9 @@ mountDashboardShell({
 
     <section class="card data-panel">
       <div class="section-head"><div><p class="kicker">DATA</p><h2>楽曲別再生一覧</h2></div></div>
-      <div class="table-wrap">
+      <div class="table-wrap table-fit-mobile">
         <table class="played-tracks-table shared-numeric-table">
+          <colgroup><col><col class="col-number"><col class="col-number"></colgroup>
           <thead><tr><th>曲名</th><th>回数</th><th>割合</th></tr></thead>
           <tbody id="playedTracksTbody"></tbody>
         </table>

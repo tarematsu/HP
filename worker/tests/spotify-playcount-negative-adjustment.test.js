@@ -24,7 +24,9 @@ test('downward Spotify playcount adjustments are treated as published changes', 
 test('daily finalization preserves negative deltas instead of rejecting adjustments', () => {
   const consumer = readFileSync(new URL('../src/spotify-playcount-consumer.js', import.meta.url), 'utf8');
 
-  assert.match(consumer, /c\.playcount-p\.playcount/);
+  // Numeric delta equivalence (including decreases) is exercised against SQLite
+  // in spotify-daily-finalize-query.test.js.
+  assert.match(consumer, /spotifyDailyFinalizeStatement\(db, message, previousDate\)/);
   assert.match(consumer, /spotify_playcount_adjustment/);
   assert.doesNotMatch(consumer, /candidate snapshot regressed/);
 });

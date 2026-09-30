@@ -6,7 +6,6 @@ import {
   runAlarmCoordinatedBuddiesCollectorScheduled,
 } from './buddies-collector-do-entry.js';
 import { BuddiesCollectorCoordinator } from './buddies-collector-coordinator-combined.js';
-import { runPagesRealtimeReadModelWatchdog } from './pages-realtime-read-model-watchdog.js';
 import {
   collectStationheadDailyFollowers,
   isJstMidnightMinute,
@@ -19,24 +18,13 @@ export {
   runBuddiesCollectorScheduled,
 };
 
-export function runBuddiesCollectorScheduledWithPagesWatchdog(
+export function runBuddiesCollectorScheduledWithFollowers(
   controller,
   env,
   ctx,
   dependencies = {},
 ) {
-  const watchdog = dependencies.watchdog || runPagesRealtimeReadModelWatchdog;
   const scheduledAt = Number(controller?.scheduledTime) || Date.now();
-  const watchdogTask = Promise.resolve()
-    .then(() => watchdog(env, { scheduledAt }))
-    .catch((error) => {
-      console.error(JSON.stringify({
-        event: 'pages_realtime_read_model_watchdog_failed',
-        scheduled_at: scheduledAt,
-        error: String(error?.message || error).slice(0, 500),
-      }));
-    });
-  if (typeof ctx?.waitUntil === 'function') ctx.waitUntil(watchdogTask);
 
   // Reuse the already-authenticated Buddies collector once per JST day instead
   // of launching a browser or maintaining a second Stationhead session.
@@ -65,9 +53,10 @@ export function runBuddiesCollectorScheduledWithPagesWatchdog(
   return coordinatedScheduled(controller, env, ctx, dependencies.coordinator);
 }
 
-// Keep minute collection delegated to the Durable Object. The Pages watchdog and
-// midnight follower snapshot run as independent waitUntil work.
+// Keep minute collection delegated to the Durable Object. The current-tab Pages
+// read model is published directly after each committed live minute fact, while
+// the midnight follower snapshot remains independent waitUntil work.
 export default {
   ...collectorApp,
-  scheduled: runBuddiesCollectorScheduledWithPagesWatchdog,
+  scheduled: runBuddiesCollectorScheduledWithFollowers,
 };

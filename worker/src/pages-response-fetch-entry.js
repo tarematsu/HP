@@ -2,6 +2,7 @@ import {
   MATERIALIZED_API_VARIANTS,
   materializedResponseMaximumAge,
 } from '../../site/functions/lib/api-contract.js';
+import { loadTrackHistoryR2ApiResponse } from './pages-track-history-r2-api.js';
 
 const EMPTY_DEPENDENCIES = Object.freeze({});
 const INTERNAL_RESPONSE_PATH = '/_internal/pages-response';
@@ -10,15 +11,19 @@ const TRACK_HISTORY_MODEL_KEY = 'track-history';
 const DEFAULT_STALE_FALLBACK_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_EDGE_CACHE_MAX_AGE_MS = 60 * 1000;
 const DASHBOARD_EDGE_CACHE_MAX_AGE_MS = 15 * 1000;
-const R2_ONLY_MODEL_KEYS = new Set(
-  MATERIALIZED_API_VARIANTS
+const PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS = new Set([
+  'apple-music',
+  'amazon-music',
+]);
+const R2_ONLY_MODEL_KEYS = new Set([
+  ...MATERIALIZED_API_VARIANTS
     .map(({ key }) => key)
     .filter((key) => key !== DASHBOARD_MODEL_KEY),
-);
+  ...PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS,
+]);
 
 let responseR2ModulePromise;
 let responseStoreModulePromise;
-let trackHistoryApiModulePromise;
 
 function loadResponseR2Module() {
   responseR2ModulePromise ||= import('./pages-response-r2.js');
@@ -28,11 +33,6 @@ function loadResponseR2Module() {
 function loadResponseStoreModule() {
   responseStoreModulePromise ||= import('./pages-response-store.js');
   return responseStoreModulePromise;
-}
-
-function loadTrackHistoryApiModule() {
-  trackHistoryApiModulePromise ||= import('./pages-track-history-r2-api.js');
-  return trackHistoryApiModulePromise;
 }
 
 function edgeCache(dependencies) {
@@ -138,7 +138,9 @@ export async function runPagesResponseFetch(
   const modelKey = String(url.searchParams.get('key') || '').trim();
   if (!modelKey) return new Response(null, { status: 400 });
   const now = dependencies.now?.() ?? Date.now();
-  const maximumAge = materializedResponseMaximumAge(modelKey, env);
+  const maximumAge = PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS.has(modelKey)
+    ? Number.MAX_SAFE_INTEGER
+    : materializedResponseMaximumAge(modelKey, env);
   const cache = edgeCache(dependencies);
   const cacheKey = edgeCacheKey(request, dependencies);
   try {
@@ -152,7 +154,7 @@ export async function runPagesResponseFetch(
     let response;
     if (modelKey === TRACK_HISTORY_MODEL_KEY && url.searchParams.get('api') === '1') {
       const loadTrackHistoryApi = dependencies.loadTrackHistoryApiResponse
-        || (await loadTrackHistoryApiModule()).loadTrackHistoryR2ApiResponse;
+        || loadTrackHistoryR2ApiResponse;
       response = await loadTrackHistoryApi(
         env?.PAGES_RESPONSE_R2,
         request,

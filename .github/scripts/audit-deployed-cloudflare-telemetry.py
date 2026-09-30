@@ -36,6 +36,31 @@ module.cron_expression = lambda event: (
     value if len((value := _original_cron_expression(event)).split()) == 5 else ""
 )
 
+# Cloudflare telemetry reports Cron Trigger invocations as eventType=scheduled.
+# Normalize that representation so Cron recovery and CPU policy are applied to
+# the invocation class that actually produced the event.
+_CRON_CPU_BUDGET_MS = float(os.environ.get("CRON_CPU_BUDGET_MS", "100"))
+_original_invocation_class = module.audit.invocation_class
+_original_cpu_budget_ms = module.audit.cpu_budget_ms
+
+
+def _invocation_class(event: dict[str, object]) -> str:
+    metadata, workers = module.audit.fields(event)
+    event_type = str(workers.get("eventType") or metadata.get("origin") or "").strip().lower()
+    if event_type == "scheduled":
+        return "cron"
+    return _original_invocation_class(event)
+
+
+def _cpu_budget_ms(event: dict[str, object]) -> float:
+    if module.audit.invocation_class(event) == "cron":
+        return _CRON_CPU_BUDGET_MS
+    return _original_cpu_budget_ms(event)
+
+
+module.audit.invocation_class = _invocation_class
+module.audit.cpu_budget_ms = _cpu_budget_ms
+
 _CRON_INGESTION_GRACE_SECONDS = max(
     0,
     int(os.environ.get("CRON_COVERAGE_INGESTION_GRACE_SECONDS", "300")),
@@ -338,6 +363,12 @@ def _self_test_schedule_grace() -> None:
         2026, 7, 26, 19, 5, tzinfo=dt.timezone.utc
     )
     assert _worker_grace_seconds(created, {"0 * * * *"}, 900) == 3894
+    scheduled_event = {
+        "$metadata": {"service": "scheduled-test"},
+        "$workers": {"eventType": "scheduled", "cpuTimeMs": 41},
+    }
+    assert module.audit.invocation_class(scheduled_event) == "cron"
+    assert module.audit.cpu_budget_ms(scheduled_event) == _CRON_CPU_BUDGET_MS
     original_workers = module.audit.WORKERS
     module.audit.WORKERS = ("hourly",)
     _active_schedules.clear()

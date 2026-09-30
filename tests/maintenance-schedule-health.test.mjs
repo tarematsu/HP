@@ -11,16 +11,21 @@ function cron(workflow) {
   return workflow.match(/cron:\s*['"]([^'"]+)['"]/)?.[1] || '';
 }
 
-test('runtime rollups precede Pages publication without a reciprocal workflow cycle', () => {
+test('runtime rollups trigger revision-driven Pages publication with one daily recovery sweep', () => {
   const runtime = read('.github/workflows/run-runtime-offline-maintenance.yml');
   const pages = read('.github/workflows/run-pages-read-model-rebuild.yml');
   const repair = read('.github/workflows/repair-pages-summaries.yml');
 
   assert.equal(cron(runtime), '11,41 * * * *');
-  assert.equal(cron(pages), '26 0,6,12,18 * * *');
+  assert.equal(cron(pages), '26 0 * * *');
   assert.equal(cron(repair), '23 4 * * *');
   assert.match(runtime, /^\s*workflows: \["Deploy production"\]\s*$/m);
   assert.doesNotMatch(runtime, /^\s*workflows: \[[^\]]*Rebuild pages read models/m);
+  assert.match(runtime, /detect-pages-read-model-revision-drift-actions\.mjs/);
+  assert.match(runtime, /steps\.pages-revision-drift\.outputs\.due_keys != ''/);
+  assert.match(runtime, /PAGES_RESPONSE_BUCKET: sh-pages-responses/);
+  assert.doesNotMatch(runtime, /pages-revisions-before\.json|pages-revisions-after\.json/);
+  assert.match(runtime, /due_keys/);
   assert.doesNotMatch(pages, /workflow_run:/);
   assert.match(runtime, /cancel-in-progress: false/);
   assert.match(pages, /group: pages-read-model-rebuild/);
@@ -48,4 +53,11 @@ test('runtime maintenance freshness is diagnostic after the runner warning', () 
   assert.match(healthSource, /ok: Boolean\(row\) && !failed/);
   assert.equal(runtimePolicy.name, 'Runtime offline maintenance');
   assert.equal(runtimePolicy.staleAfterMinutes, 75);
+});
+
+test('Pages recovery health follows the daily fallback rather than the old six-hour cadence', () => {
+  const pagesPolicy = WORKFLOW_HEALTH_BY_KEY.pages;
+  assert.equal(pagesPolicy.cadenceMinutes, 1440);
+  assert.equal(pagesPolicy.staleAfterMinutes, 1500);
+  assert.equal(WORKFLOW_HEALTH_BY_KEY.localMinute, undefined);
 });

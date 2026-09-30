@@ -7,6 +7,12 @@ import {
 const MAX_KEYS_PER_TYPE = 80;
 const CANONICAL_QUERY_UNAVAILABLE = 'canonical metadata query unavailable';
 
+function positiveInteger(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 function normalizedIsrc(value) {
   return String(value || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
 }
@@ -47,6 +53,7 @@ function mergeRow(current, rawRow) {
   return {
     ...row,
     ...current,
+    track_id: positiveInteger(current.track_id) ?? positiveInteger(row.track_id),
     title: trackTitleValue(current.title) || trackTitleValue(row.title),
     artist: trackArtistValue(current.artist) || trackArtistValue(row.artist),
     thumbnail_url: current.thumbnail_url || row.thumbnail_url || null,
@@ -58,16 +65,27 @@ function uniqueRows(rows) {
   const byIdentity = new Map();
   for (const rawRow of rows || []) {
     const row = sanitizeMetadataRow(rawRow);
-    const trackId = Number(row?.track_id);
+    const trackId = positiveInteger(row?.track_id);
     const spotifyId = text(row?.spotify_id);
     const isrc = normalizedIsrc(row?.isrc);
-    if (!Number.isFinite(trackId) && !spotifyId && !isrc) continue;
-    const key = Number.isFinite(trackId)
-      ? `track:${Math.trunc(trackId)}`
+    if (trackId == null && !spotifyId && !isrc) continue;
+    const key = trackId != null
+      ? `track:${trackId}`
       : (isrc ? `isrc:${isrc}` : `spotify:${spotifyId}`);
-    byIdentity.set(key, mergeRow(byIdentity.get(key), { ...row, isrc: isrc || row?.isrc || null }));
+    byIdentity.set(key, mergeRow(byIdentity.get(key), {
+      ...row,
+      track_id: trackId,
+      isrc: isrc || row?.isrc || null,
+    }));
   }
   return [...byIdentity.values()];
+}
+
+async function canonicalRowsByTrackId(db, trackIds) {
+  if (!trackIds.length) return [];
+  return runRows(db, `SELECT track_id,spotify_id,isrc,title,artist,thumbnail_url,fetched_at
+    FROM sh_track_canonical_metadata
+    WHERE track_id IN (${placeholders(trackIds.length)})`, trackIds);
 }
 
 async function canonicalRowsByIsrc(db, isrcs) {
@@ -119,28 +137,32 @@ async function legacyRowsDuringMigration(db, spotifyIds, isrcs) {
 /**
  * Read presentation metadata from the single MINUTE_DB canonical view.
  *
- * Source caches never supplement a working canonical view. The only exception
- * is a bounded BUDDIES_DB fallback when the canonical query itself is
- * unavailable during a rolling migration; once migration 061 is installed,
- * even an empty canonical result is authoritative.
+ * sh_tracks.id is the primary lookup. Provider identities are bounded alias
+ * fallbacks for rows that have not yet been assigned a canonical track id.
+ * Source caches are consulted only when the canonical view itself is unavailable
+ * during a rolling migration.
  */
-export async function loadReadModelTrackMetadata(env, spotifyIds, isrcs) {
+export async function loadReadModelTrackMetadata(env, spotifyIds, isrcs, trackIds = []) {
+  const requestedTrackIds = [...new Set(
+    (trackIds || []).map(positiveInteger).filter(Boolean),
+  )].slice(0, MAX_KEYS_PER_TYPE);
   const requestedSpotifyIds = [...new Set(
     (spotifyIds || []).map(text).filter(Boolean),
   )].slice(0, MAX_KEYS_PER_TYPE);
   const requestedIsrcs = [...new Set(
     (isrcs || []).map(normalizedIsrc).filter(Boolean),
   )].slice(0, MAX_KEYS_PER_TYPE);
-  if (!requestedSpotifyIds.length && !requestedIsrcs.length) return [];
+  if (!requestedTrackIds.length && !requestedSpotifyIds.length && !requestedIsrcs.length) return [];
 
   const db = env?.MINUTE_DB;
   if (!db?.prepare) return [];
   try {
-    const [byIsrc, bySpotify] = await Promise.all([
+    const [byTrackId, byIsrc, bySpotify] = await Promise.all([
+      canonicalRowsByTrackId(db, requestedTrackIds),
       canonicalRowsByIsrc(db, requestedIsrcs),
       canonicalRowsBySpotify(db, requestedSpotifyIds),
     ]);
-    return uniqueRows([...byIsrc, ...bySpotify]);
+    return uniqueRows([...byTrackId, ...byIsrc, ...bySpotify]);
   } catch (error) {
     if (!canonicalUnavailable(error)) throw error;
     const fallback = env?.BUDDIES_DB;

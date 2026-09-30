@@ -9,7 +9,7 @@ const workflow = readFileSync(
   'utf8',
 );
 
-test('local minute facts rebuild reserves D1 read headroom for higher-priority read models', () => {
+test('manual local minute facts rebuild reserves D1 read headroom for higher-priority read models', () => {
   assert.match(workflow, /D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT: '4000'/);
   assert.match(workflow, /D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT: '3000000'/);
   assert.match(workflow, /D1_ACTIONS_READ_PROJECTION_MINUTES: '60'/);
@@ -23,8 +23,9 @@ test('local minute facts rebuild reserves D1 read headroom for higher-priority r
   assert.match(workflow, /Local minute facts rebuild: deferred/);
 });
 
-test('guard changes trigger the protected workflow on main', () => {
-  assert.match(workflow, /'\.github\/workflows\/run-local-minute-facts-rebuild\.yml'/);
-  assert.match(workflow, /'scripts\/cloudflare-d1-write-guard\.mjs'/);
-  assert.match(workflow, /'database\/minute-facts-local-rebuild\.trigger'/);
+test('full rebuild is manual-only and has no automatic trigger', () => {
+  assert.match(workflow, /^\s*workflow_dispatch:\s*$/m);
+  assert.doesNotMatch(workflow, /^\s*schedule:\s*$/m);
+  assert.doesNotMatch(workflow, /^\s*workflow_run:\s*$/m);
+  assert.doesNotMatch(workflow, /^\s*push:\s*$/m);
 });

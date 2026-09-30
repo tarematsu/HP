@@ -26,7 +26,7 @@ test('Apple Music is a dashboard route backed only by the Worker materialized re
   assert.doesNotMatch(runtime, /\/api\/history|\/api\/dashboard|OTHER_DB|MINUTE_DB/);
 });
 
-test('Apple Music API treats an ungenerated read model as an empty successful dataset', async () => {
+test('Apple Music API treats an ungenerated read model as a non-cacheable empty successful dataset', async () => {
   const response = await appleMusicApi({
     env: {
       PAGES_READ_MODEL_SERVICE: {
@@ -35,7 +35,7 @@ test('Apple Music API treats an ungenerated read model as an empty successful da
     },
   });
   assert.equal(response.status, 200);
-  assert.match(response.headers.get('cache-control') || '', /max-age=15/);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
   const payload = await response.json();
   assert.equal(payload.ok, true);
   assert.equal(payload.artist_name, '櫻坂46');

@@ -137,23 +137,22 @@ test('runner health queries main workflow runs and renders actionable links', as
   assert.match(summary, /\[#20\]\(https:\/\/github\.com\/tarematsu\/HP\/actions\/runs\/100\) success/);
 });
 
-test('current runner target set covers operational workflows and excludes redundant dispatch', () => {
+test('current runner target set covers recurring operational workflows and excludes manual-only rebuilds', () => {
   const byWorkflow = new Map(ACTIONS_RUNNER_TARGETS.map((entry) => [entry.workflow, entry]));
   for (const workflow of [
     'run-pages-read-model-rebuild.yml',
     'run-runtime-offline-maintenance.yml',
     'run-track-metadata-repair.yml',
-    'run-local-minute-facts-rebuild.yml',
     'sh-observability.yml',
     'publish-github-deployment-health.yml',
     'publish-github-actions-runner-health.yml',
   ]) assert.ok(byWorkflow.has(workflow), workflow);
   assert.equal(byWorkflow.has('refresh-cloudflare-observability.yml'), false);
-  assert.equal(byWorkflow.get('run-pages-read-model-rebuild.yml').cadenceMinutes, 360);
-  assert.ok(byWorkflow.get('run-pages-read-model-rebuild.yml').staleAfterMinutes >= 60);
+  assert.equal(byWorkflow.has('run-local-minute-facts-rebuild.yml'), false);
+  assert.equal(byWorkflow.get('run-pages-read-model-rebuild.yml').cadenceMinutes, 1440);
+  assert.ok(byWorkflow.get('run-pages-read-model-rebuild.yml').staleAfterMinutes >= 1440);
   assert.equal(byWorkflow.get('run-runtime-offline-maintenance.yml').ignoreExpectedWorkflowRunSkips, true);
   assert.equal(byWorkflow.get('run-track-metadata-repair.yml').ignoreExpectedWorkflowRunSkips, true);
-  assert.equal(byWorkflow.get('run-local-minute-facts-rebuild.yml').ignoreExpectedWorkflowRunSkips, true);
   assert.equal(new Set(ACTIONS_RUNNER_TARGETS.map((entry) => entry.workflow)).size, ACTIONS_RUNNER_TARGETS.length);
 });
 

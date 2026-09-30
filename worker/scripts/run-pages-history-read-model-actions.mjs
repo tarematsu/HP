@@ -14,15 +14,24 @@ function enabled(value) {
   return /^(?:1|true|yes|on)$/i.test(String(value || '').trim());
 }
 
+function environmentDueKeys(variants) {
+  const raw = String(process.env.PAGES_READ_MODEL_DUE_KEYS || '').trim();
+  if (!raw) return null;
+  const allowed = new Set(variants.map((variant) => variant.key));
+  return [...new Set(raw.split(',').map((value) => value.trim()).filter((key) => allowed.has(key)))];
+}
+
 export async function runPagesHistoryReadModelActions(options = {}) {
   const variants = (options.variants || HISTORY_READ_MODEL_VARIANTS)
     .filter((variant) => variant.key !== 'dashboard' && variant.event_driven !== true);
   const reuseOnly = options.reuseOnly
     ?? enabled(process.env.PAGES_READ_MODEL_REUSE_ONLY);
+  const requestedDueKeys = options.dueKeys ?? environmentDueKeys(variants);
 
   return runPagesRevisionReadModelActions({
     ...options,
     variants,
+    ...(requestedDueKeys !== null ? { dueKeys: requestedDueKeys } : {}),
     ...(reuseOnly ? {
       dueKeys: variants.map((variant) => variant.key),
       reuseOnlyKeys: variants.map((variant) => variant.key),

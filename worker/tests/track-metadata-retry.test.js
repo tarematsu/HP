@@ -11,8 +11,18 @@ test('complete metadata never needs a refresh', () => {
   assert.equal(metadataNeedsRefresh({
     title: 'Interlude #1',
     artist: '櫻坂46',
+    thumbnail_url: 'https://image.example/cover.jpg',
     fetched_at: 1,
   }, 'spotify-track', DAY_MS * 10), false);
+});
+
+test('metadata without artwork is incomplete', () => {
+  assert.equal(metadataNeedsRefresh({
+    title: 'Interlude #1',
+    artist: '櫻坂46',
+    thumbnail_url: null,
+    fetched_at: 0,
+  }, 'spotify-track', DAY_MS * 10), true);
 });
 
 test('recent incomplete metadata is not fetched every minute', () => {

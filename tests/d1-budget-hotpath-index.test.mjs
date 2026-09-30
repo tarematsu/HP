@@ -91,7 +91,7 @@ const counterCurrentMigration = readFileSync(
   'utf8',
 );
 const minuteJobWriteAmplificationMigration = readFileSync(
-  new URL('../database/facts-migrations/050_reduce_minute_fact_write_amplification.sql', import.meta.url),
+  new URL('../database/facts-migrations/050_reduce_minute_job_write_amplification.sql', import.meta.url),
   'utf8',
 );
 const canonicalRollupMigration = readFileSync(
@@ -149,7 +149,7 @@ const expectedMigrations = [
   'database/facts-migrations/047_join_latest_daily_members.sql',
   'database/facts-migrations/048_use_counter_current_projection.sql',
   'database/facts-migrations/049_bound_history_host_ranges.sql',
-  'database/facts-migrations/050_reduce_minute_fact_write_amplification.sql',
+  'database/facts-migrations/050_reduce_minute_job_write_amplification.sql',
   'database/facts-migrations/051_canonical_rollup_minute_range.sql',
   'database/facts-migrations/052_current_daily_summary_projection.sql',
   'database/facts-migrations/056_stream_minute_delta_read_model.sql',
@@ -164,7 +164,6 @@ const expectedMigrations = [
   'database/facts-migrations/065_direct_5m_stream_history.sql',
   'database/facts-migrations/066_pages_canonical_track_identity.sql',
   'database/facts-migrations/067_canonical_track_presentation_integrity.sql',
-  'database/facts-migrations/068_retire_legacy_d1_materializations.sql',
 ];
 
 test('MINUTE_DB deployment selects changed migrations through the current schema tip', () => {
@@ -181,8 +180,6 @@ test('MINUTE_DB deployment selects changed migrations through the current schema
   assert.match(prSchema, /appleMusicCompatibilityPresent/);
   assert.match(prSchema, /036_minute_fact_playback_position\.sql/);
   assert.match(prSchema, /playbackPositionColumnPresent/);
-  assert.match(prSchema, /068_retire_legacy_d1_materializations\.sql/);
-  assert.match(prSchema, /syncTrackHistoryR2Days/);
   assert.match(
     migration,
     /ON sh_minute_facts\(\s*source_code,\s*minute_at DESC,\s*id DESC,\s*channel_id,\s*observed_at,\s*is_broadcasting\s*\)/s,

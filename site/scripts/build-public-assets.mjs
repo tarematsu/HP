@@ -28,6 +28,7 @@ const cssFiles = [
   'history/history-past-toggle.css',
   'history/history-range-navigator.css',
   'dashboard-ui-common.css',
+  'mobile-layout-refinements.css',
 ];
 
 const browserModuleResolver = {
