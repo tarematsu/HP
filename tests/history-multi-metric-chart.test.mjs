@@ -12,15 +12,15 @@ const chart = readFileSync(
 );
 
 test('daily weekly and monthly charts expose listener average extrema and stream growth', () => {
-  assert.match(historyClient, /daily: \{[^\n]+chart: '同接・再生数の推移'/);
-  assert.match(historyClient, /weekly: \{[^\n]+chart: '同接・再生数の推移'/);
-  assert.match(historyClient, /monthly: \{[^\n]+chart: '同接・再生数の推移'/);
+  assert.match(historyClient, /daily: \{[^\n]+chart: '同接・再生数増加の推移'/);
+  assert.match(historyClient, /weekly: \{[^\n]+chart: '同接・再生数増加の推移'/);
+  assert.match(historyClient, /monthly: \{[^\n]+chart: '同接・再生数増加の推移'/);
   for (const key of ['listener_avg', 'listener_max', 'listener_min']) {
     assert.match(chart, new RegExp(`key: '${key}'`));
   }
   assert.match(chart, /listener_avg'.*color: '#000000'/);
   assert.match(chart, /row\?\.stream_growth/);
-  for (const label of ['平均同接', '最大同接', '最小同接', '再生数']) {
+  for (const label of ['平均同接', '最大同接', '最小同接', '再生数増加']) {
     assert.match(chart, new RegExp(label));
   }
   assert.doesNotMatch(chart, /期間再生数/);
@@ -32,7 +32,7 @@ test('stream growth uses a separate right-hand scale with bars and selected-peri
   assert.match(chart, /streamCeiling/);
   assert.match(chart, /streamY/);
   assert.match(chart, /fillRect\(/);
-  assert.match(chart, /再生数 \$\{finite\(row\.stream_growth\)/);
+  assert.match(chart, /再生数増加 \$\{finite\(row\.stream_growth\)/);
   assert.match(chart, /最大同接 \$\{integer\.format/);
   assert.match(chart, /最小同接 \$\{integer\.format/);
   assert.doesNotMatch(chart, /stream_end|drawSeries\(streamSeries/);
