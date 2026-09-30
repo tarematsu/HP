@@ -176,24 +176,29 @@ async function showHistory(mode, { updateUrl = true, replaceUrl = false, syncRun
     return;
   }
 
-  setRoute(mode, historyView, { updateUrl, replaceUrl });
-  markRouteReady();
+  const runtimeReady = historyRuntimeMode !== null;
+  setRoute(mode, runtimeReady ? historyView : null, { updateUrl, replaceUrl });
+  if (runtimeReady) markRouteReady();
 
   try {
     if (mode === 'ranking') {
       await loadOnce('ranking-status', () => import('/history/history-ranking-table-status.js?v=20260923.2'));
       if (activeMode !== mode) return;
     }
-    await loadOnce('history-runtime', () => import('/history/history-main.js?v=20260928.1'));
+    await loadOnce('history-runtime', () => import('/history/history-main.js?v=20261001.1'));
     if (activeMode !== mode) return;
     if (syncRuntime && historyRuntimeMode !== mode) {
       tabs?.querySelector(`button[data-mode="${mode}"]`)?.dispatchEvent(new Event('click'));
     }
     if (activeMode !== mode) return;
     historyRuntimeMode = mode;
+    showOnly(historyView);
+    markRouteReady();
   } catch (error) {
     if (activeMode !== mode) return;
     historyRuntimeMode = null;
+    showOnly(historyView);
+    markRouteReady();
     showRuntimeError({
       noticeId: 'notice',
       errorLabel: 'history',
@@ -227,7 +232,6 @@ tabs?.addEventListener('click', (event) => {
   if (!mode || !VIEW_MODES.has(mode)) return;
   event.preventDefault();
   if (HISTORY_MODES.has(mode)) {
-    if (modulePromises.has('history-runtime')) historyRuntimeMode = mode;
     void showHistory(mode, { syncRuntime: false });
   } else {
     showMode(mode);
