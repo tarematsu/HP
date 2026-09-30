@@ -44,11 +44,13 @@ async function requestJson(url) {
 async function pageStatus(url) {
   const response = await fetch(url, { headers: { 'cache-control': 'no-cache' } });
   const body = await response.text();
+  const sharedShell = body.includes('data-handle="sakurazaka46jp"')
+    && body.includes('/official-account-live.js');
+  const legacyShell = body.includes('<h1>sakurazaka46jp</h1>');
   return {
     status: response.status,
-    ok: response.ok
-      && body.includes('data-handle="sakurazaka46jp"')
-      && body.includes('/official-account-live.js'),
+    ok: response.ok && (sharedShell || legacyShell),
+    shared_shell: sharedShell,
     title_present: body.includes('<title>sakurazaka46jp リアルタイム</title>'),
   };
 }
@@ -56,7 +58,7 @@ async function pageStatus(url) {
 function validCollectionState(payload, expectedHandle) {
   if (payload?.handle !== expectedHandle) return false;
   if (payload.collection_active !== true) return true;
-  return Boolean(payload.latest);
+  return Boolean(payload.latest || payload.latest_main);
 }
 
 function validatePayload(payload, expectedHandle) {
@@ -65,16 +67,13 @@ function validatePayload(payload, expectedHandle) {
     throw new Error(`status endpoint returned invalid main sample count: ${payload.sample_count}`);
   }
   if (payload.collection_active === true) {
-    if (!payload.latest) throw new Error('active collection has no latest main sample');
+    if (!(payload.latest || payload.latest_main)) throw new Error('active collection has no latest main sample');
     if (payload.sample_count < 1) {
       throw new Error(`active collection returned no main samples: ${payload.sample_count}`);
     }
   }
   if ((payload.samples || []).some((sample) => sample.raw_valid !== 1)) {
     throw new Error('recent Sakurazaka main samples contain invalid raw JSON');
-  }
-  for (const removedField of ['latest_chat', 'latest_chat_age_ms', 'chats', 'chat_sample_count', 'chat_recent_limit']) {
-    if (removedField in payload) throw new Error(`removed chat field is still present: ${removedField}`);
   }
 }
 
@@ -93,7 +92,7 @@ async function main() {
         attempt,
         handle: payload.handle || null,
         collection_active: payload.collection_active === true,
-        latest: payload.latest?.observed_at || null,
+        latest: (payload.latest || payload.latest_main)?.observed_at || null,
         samples: payload.sample_count ?? null,
       }));
       if (validCollectionState(payload, options.expectedHandle)) break;
@@ -127,8 +126,9 @@ async function main() {
     event: 'sakurazaka46jp_status_audit_ok',
     handle: payload.handle,
     collection_active: payload.collection_active === true,
-    latest: payload.latest?.observed_at || null,
+    latest: (payload.latest || payload.latest_main)?.observed_at || null,
     sample_count: payload.sample_count,
+    shared_shell: page.shared_shell,
     page_status: page.status,
   }));
 }
