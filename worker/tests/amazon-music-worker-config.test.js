@@ -24,13 +24,13 @@ test('music collector keeps daily Amazon collection, hourly update detection, an
   assert.equal(value.queues, undefined);
 });
 
-test('scheduled entry separates global top-1000 detection from Sakamichi 100k storage', () => {
+test('scheduled entry separates global top-500 detection from Sakamichi 100k storage', () => {
   const source = readFileSync(new URL('../src/amazon-music-entry.js', import.meta.url), 'utf8');
   assert.match(source, /APPLE_MUSIC_PROBE_CRON = '15 \* \* \* \*'/);
   assert.match(source, /AMAZON_MUSIC_TOP_SCAN_CRON = '5 \* \* \* \*'/);
   assert.match(source, /AMAZON_MUSIC_DEEP_SCAN_CRON = '2,12,22,32,42,52 \* \* \* \*'/);
   assert.match(source, /AMAZON_MUSIC_DAILY_CRON = '30 1 \* \* \*'/);
-  assert.match(source, /cron === AMAZON_MUSIC_TOP_SCAN_CRON[\s\S]*monitorAmazonTop1000/);
+  assert.match(source, /cron === AMAZON_MUSIC_TOP_SCAN_CRON[\s\S]*monitorAmazonTop500/);
   assert.match(source, /cron === AMAZON_MUSIC_DEEP_SCAN_CRON[\s\S]*continueAmazon100kScan/);
   assert.match(source, /cron === AMAZON_MUSIC_DAILY_CRON[\s\S]*collectAmazonMusicSnapshot/);
 });
