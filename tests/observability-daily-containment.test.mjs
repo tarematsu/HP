@@ -18,6 +18,7 @@ function dailySummary(
   writesActual = 36_859,
   writesProjected = 55_510,
   readStatus = 'VIOLATION (actual)',
+  writeStatus = 'OK',
 ) {
   return `## Cloudflare projected UTC daily budgets
 
@@ -28,7 +29,7 @@ function dailySummary(
 |---|---:|---:|---:|---:|---|
 | Worker and Pages requests | 10 | 20 | 100,000 | 99,980 | OK |
 | D1 rows read | ${actual.toLocaleString('en-US')} | ${projected.toLocaleString('en-US')} | 5,000,000 | ${Math.max(0, 5_000_000 - projected).toLocaleString('en-US')} | ${readStatus} |
-| D1 rows written | ${writesActual.toLocaleString('en-US')} | ${writesProjected.toLocaleString('en-US')} | 100,000 | ${Math.max(0, 100_000 - writesProjected).toLocaleString('en-US')} | OK |
+| D1 rows written | ${writesActual.toLocaleString('en-US')} | ${writesProjected.toLocaleString('en-US')} | 100,000 | ${Math.max(0, 100_000 - writesProjected).toLocaleString('en-US')} | ${writeStatus} |
 | Queue billable operations | 10 | 20 | 10,000 | 9,980 | OK |
 `;
 }
@@ -123,6 +124,32 @@ test('historical daily breach is contained when the recent delta pace is within 
   assert.match(triage, /CONTAINED — 1 historical signal remains until the UTC counter resets/);
   assert.match(triage, /Historical daily D1 breach/);
   assert.match(triage, /recent pace 135,288\/day vs 5,000,000\/day limit/);
+  assert.match(triage, /\| Recent D1 rows written pace \| \*\*OK\*\*/);
+  assert.match(triage, /\| Projected daily usage \| \*\*CONTAINED\*\*/);
+  assert.doesNotMatch(triage, /ACTION REQUIRED/);
+});
+
+test('projected D1 write breach is contained when recent read and write paces are healthy', () => {
+  const previousIssueBody = previousIssue();
+  const currentSummary = dailySummary(
+    227_545_050,
+    406_087_050,
+    '2026-07-27',
+    36_859,
+    120_000,
+    'VIOLATION (actual)',
+    'VIOLATION (projected)',
+  );
+  const triage = buildObservabilityTriage({
+    outcomes,
+    summaries: { ...summaries, daily: currentSummary },
+    activeDeployments: deployments,
+    previousIssueBody,
+    generatedAt,
+  });
+  assert.match(triage, /CONTAINED — 1 historical signal remains until the UTC counter resets/);
+  assert.match(triage, /D1 rows written remain projected above the UTC-day limit/);
+  assert.match(triage, /\| Recent D1 rows read pace \| \*\*OK\*\*/);
   assert.match(triage, /\| Recent D1 rows written pace \| \*\*OK\*\*/);
   assert.match(triage, /\| Projected daily usage \| \*\*CONTAINED\*\*/);
   assert.doesNotMatch(triage, /ACTION REQUIRED/);
