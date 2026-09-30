@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "sh-ohisama-collector",
-  "main": "src/ohisama-pages-entry.js",
+  "main": "src/ohisama-service-entry.js",
   "compatibility_date": "2026-06-24",
   "workers_dev": false,
   "preview_urls": false,
@@ -22,7 +22,6 @@
     "AUTH_REFRESH_BEFORE_MS": 3600000,
     "OHISAMA_D1_STATE_CHECKPOINT_MS": 3600000
   },
-  "triggers": { "crons": ["*/5 * * * *"] },
   "r2_buckets": [
     { "binding": "PAGES_RESPONSE_R2", "bucket_name": "sh-pages-responses" }
   ],
