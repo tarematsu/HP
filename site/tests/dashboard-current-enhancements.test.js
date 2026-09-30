@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+const currentShell = readFileSync(new URL('../public/current-shell.js', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const fetchCache = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
@@ -26,8 +26,8 @@ test('current metrics are statically ordered while current-only renderers load l
   assert.doesNotMatch(header, /\.css\?v=|createElement\('link'\)/);
   assert.doesNotMatch(metrics, /window\.fetch|response\.clone\(\)\.json|restoreDashboardCache/);
   assert.match(fetchCache, /dashboard:payload/);
-  assert.ok(html.indexOf('id="online"') < html.indexOf('id="totalStreams"'));
-  assert.ok(html.indexOf('id="totalStreams"') < html.indexOf('id="members"'));
+  assert.ok(currentShell.indexOf('id="online"') < currentShell.indexOf('id="totalStreams"'));
+  assert.ok(currentShell.indexOf('id="totalStreams"') < currentShell.indexOf('id="members"'));
   assert.doesNotMatch(layout, /append\(|insertAdjacent|MutationObserver|goal-card|audienceChart|getContext\('2d'\)|drawEnhancedChart/);
 });
 
@@ -57,10 +57,10 @@ test('current chart draws online axes, direct five-minute playback bars and JST 
 });
 
 test('stream goal is static inside the metric and ETA is display-only JST', () => {
-  assert.match(html, /id="metricGoalCompact"/);
-  assert.match(html, /id="streamGoal"/);
-  assert.match(html, /id="goalEta"/);
-  assert.doesNotMatch(html, /goal-card|id="streamCount"|id="goalBar"|id="goalPercent"|id="goalRemaining"|id="goalRate"|id="goalMilestones"/);
+  assert.match(currentShell, /id="metricGoalCompact"/);
+  assert.match(currentShell, /id="streamGoal"/);
+  assert.match(currentShell, /id="goalEta"/);
+  assert.doesNotMatch(currentShell, /goal-card|id="streamCount"|id="goalBar"|id="goalPercent"|id="goalRemaining"|id="goalRate"|id="goalMilestones"/);
   assert.match(layout, /jstGoalDateTime = new Intl\.DateTimeFormat[\s\S]*timeZone: 'Asia\/Tokyo'/);
   assert.match(layout, /jstGoalDateTime\.format/);
   assert.doesNotMatch(css, /\.goal-card/);
