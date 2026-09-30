@@ -1,7 +1,7 @@
 import { collectAmazonMusicSnapshot } from './amazon-music-collector.js';
 import {
   continueAmazon100kScan,
-  monitorAmazonTop1000,
+  monitorAmazonTop500,
 } from './amazon-music-rank-monitor.js';
 import { collectAppleMusicSnapshot } from './apple-music-collector.js';
 import { appleMusicFetch } from './apple-music-fetch.js';
@@ -39,8 +39,8 @@ export default {
       );
     } else if (cron === AMAZON_MUSIC_TOP_SCAN_CRON) {
       run = loggedRun(
-        'amazon-music-top-1000-monitor',
-        () => monitorAmazonTop1000(env, scheduledTime),
+        'amazon-music-top-500-monitor',
+        () => monitorAmazonTop500(env, scheduledTime),
       );
     } else if (cron === AMAZON_MUSIC_DEEP_SCAN_CRON) {
       run = loggedRun(
