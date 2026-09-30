@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+const currentShell = readFileSync(new URL('../public/current-shell.js', import.meta.url), 'utf8');
+const likesShell = readFileSync(new URL('../public/likes-shell.js', import.meta.url), 'utf8');
+const tabRegistry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
+const staticUi = [currentShell, likesShell, tabRegistry].join('\n');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
@@ -13,10 +16,10 @@ const likes = readFileSync(new URL('../public/history/history-likes.js', import.
 
 test('current and likes views use explicit user-facing metric names in static markup', () => {
   for (const label of ['累計再生数', '最終取得', '対象楽曲数', '合計いいね数', '合計いいね数 前日比', '楽曲別一覧', '最新いいね数', 'リスパ']) {
-    assert.match(html, new RegExp(label));
+    assert.match(staticUi, new RegExp(label));
   }
-  assert.doesNotMatch(html, /最大いいね数/);
-  assert.match(html, /likes-summary[^>]*grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
+  assert.doesNotMatch(staticUi, /最大いいね数/);
+  assert.match(likesShell, /likes-summary[^>]*grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
   assert.doesNotMatch(historyEntry, /pages-terminology/);
   assert.doesNotMatch(metrics, /pages-terminology/);
 });
@@ -52,7 +55,7 @@ test('likes runtime and CSV use the same likes terminology', () => {
 });
 
 test('legacy standalone goal card is absent from the current view', () => {
-  assert.match(html, /<span>累計再生数<\/span>/);
-  assert.match(html, /id="metricGoalCompact"/);
-  assert.doesNotMatch(html, /累計再生数の目標|goal-card|id="streamCount"|id="goalBar"|id="goalRate"/);
+  assert.match(currentShell, /<span>累計再生数<\/span>/);
+  assert.match(currentShell, /id="metricGoalCompact"/);
+  assert.doesNotMatch(currentShell, /累計再生数の目標|goal-card|id="streamCount"|id="goalBar"|id="goalRate"/);
 });
