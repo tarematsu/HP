@@ -276,11 +276,11 @@ export async function loadAppleMusicView({ force = false } = {}) {
     loadPromise = fetchPayload().then((payload) => {
       lastPayload = payload;
       const failed = Array.isArray(payload?.failed_regions) ? payload.failed_regions : [];
-      setNotice(failed.length ? `一部地域の取得に失敗しました: ${failed.map((item) => item.label || item.code).join('、')}` : '');
+      setNotice(failed.length ? `一部地域の取得に失敗しました：${failed.map((item) => item.label || item.code).join('、')}` : '');
       render(payload);
       return payload;
     }).catch((error) => {
-      setNotice('Apple Musicデータを取得できませんでした。', true);
+      setNotice('Apple Musicデータの取得に失敗しました。', true);
       throw error;
     }).finally(() => {
       loadPromise = null;
