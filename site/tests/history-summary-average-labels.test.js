@@ -8,7 +8,7 @@ const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 
 test('daily weekly and monthly summary cards generate average growth labels directly', () => {
-  assert.match(history, /stream: '平均再生増加数'/);
+  assert.match(history, /stream: '平均再生数増加量'/);
   assert.match(history, /member: '平均メンバー増加数'/);
   assert.match(history, /stream: numberText\(average\(rows, 'stream_growth'\)\)/);
   assert.match(history, /member: numberText\(average\(rows, 'member_growth'\)\)/);
