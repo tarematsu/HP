@@ -7,9 +7,9 @@ import {
 } from './buddies-collector-do-entry.js';
 import { BuddiesCollectorCoordinator } from './buddies-collector-coordinator-combined.js';
 import {
-  collectStationheadDailyFollowers,
-  isJstMidnightMinute,
-} from './stationhead-daily-followers.js';
+  collectStationheadDailyFollowersResilient,
+  isJstFollowerCollectionMinute,
+} from './stationhead-daily-followers-resilient.js';
 
 export {
   BUDDIES_COLLECTOR_CRON,
@@ -26,15 +26,19 @@ export function runBuddiesCollectorScheduledWithFollowers(
 ) {
   const scheduledAt = Number(controller?.scheduledTime) || Date.now();
 
-  // Reuse the already-authenticated Buddies collector once per JST day instead
-  // of launching a browser or maintaining a second Stationhead session.
-  if (String(controller?.cron || '') === BUDDIES_COLLECTOR_CRON && isJstMidnightMinute(scheduledAt)) {
-    const collectFollowers = dependencies.collectFollowers || collectStationheadDailyFollowers;
+  // Collect at 00:00 JST and automatically repair a missing daily snapshot at
+  // 00:05 / 00:10. The resilient collector shares the Buddies auth lock, makes
+  // one forced re-auth attempt after 401/403, and persists failure details.
+  if (String(controller?.cron || '') === BUDDIES_COLLECTOR_CRON
+      && isJstFollowerCollectionMinute(scheduledAt)) {
+    const collectFollowers = dependencies.collectFollowers || collectStationheadDailyFollowersResilient;
     const followersTask = Promise.resolve()
       .then(() => collectFollowers(env, scheduledAt))
       .then((result) => {
         console.log(JSON.stringify({
-          event: 'stationhead_daily_followers_collected',
+          event: result?.skipped
+            ? 'stationhead_daily_followers_skipped'
+            : 'stationhead_daily_followers_collected',
           ...result,
         }));
       })
@@ -55,7 +59,7 @@ export function runBuddiesCollectorScheduledWithFollowers(
 
 // Keep minute collection delegated to the Durable Object. The current-tab Pages
 // read model is published directly after each committed live minute fact, while
-// the midnight follower snapshot remains independent waitUntil work.
+// the daily follower snapshot remains independent waitUntil work.
 export default {
   ...collectorApp,
   scheduled: runBuddiesCollectorScheduledWithFollowers,
