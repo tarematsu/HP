@@ -17,6 +17,8 @@ constexpr UINT_PTR kNativeMediaTverWatchdogTimer = 0x4D560007;
 constexpr UINT kNativeMediaRecreateMessage = WM_USER + 0x4D;
 constexpr UINT kNativeMediaXPhaseMs = 1U * 60U * 1000U;
 constexpr UINT kNativeMediaStartupXPhaseMs = 1U * 60U * 1000U;
+constexpr int kNativeMediaXQuietStartSecond = 1 * 60 * 60;
+constexpr int kNativeMediaXQuietEndSecond = 6 * 60 * 60;
 // Retained as the neutral/default duration for power saving and legacy contracts.
 // Every normal YouTube phase redraws its content duration in the 45-75 minute range.
 constexpr UINT kNativeMediaYoutubeContentPhaseMs = 60U * 60U * 1000U;
@@ -36,6 +38,36 @@ constexpr UINT kNativeMediaYoutubeWatchdogHealthyMs = 30U * 1000U;
 constexpr UINT kNativeMediaYoutubeWatchdogRecoveryMs = 2U * 1000U;
 constexpr UINT kNativeMediaTverWatchdogMs = 30U * 1000U;
 constexpr ULONGLONG kNativeMediaWatchdogExecutionTimeoutMs = 5ULL * 1000ULL;
+
+constexpr bool NativeMediaXCanStartAtSecondOfDay(int secondOfDay) noexcept {
+  if (secondOfDay >= kNativeMediaXQuietStartSecond &&
+      secondOfDay < kNativeMediaXQuietEndSecond) {
+    return false;
+  }
+  if (secondOfDay < kNativeMediaXQuietStartSecond) {
+    const int xPhaseSeconds = static_cast<int>(kNativeMediaXPhaseMs / 1000U);
+    return secondOfDay + xPhaseSeconds <= kNativeMediaXQuietStartSecond;
+  }
+  return true;
+}
+
+static_assert(NativeMediaXCanStartAtSecondOfDay(0 * 60 * 60 + 59 * 60));
+static_assert(!NativeMediaXCanStartAtSecondOfDay(0 * 60 * 60 + 59 * 60 + 1));
+static_assert(!NativeMediaXCanStartAtSecondOfDay(1 * 60 * 60));
+static_assert(!NativeMediaXCanStartAtSecondOfDay(5 * 60 * 60 + 59 * 60 + 59));
+static_assert(NativeMediaXCanStartAtSecondOfDay(6 * 60 * 60));
+
+bool NativeMediaXRuntimeAllowed() noexcept {
+  SYSTEMTIME local{};
+  GetLocalTime(&local);
+  const int secondOfDay = static_cast<int>(local.wHour) * 60 * 60 +
+      static_cast<int>(local.wMinute) * 60 + static_cast<int>(local.wSecond);
+  return NativeMediaXCanStartAtSecondOfDay(secondOfDay);
+}
+
+bool NativeMediaHostSuppressX() noexcept {
+  return gNativeMediaPowerSaving || !NativeMediaXRuntimeAllowed();
+}
 
 struct NativeMediaXCyclePlan {
   bool firstSlot = false;
@@ -124,6 +156,7 @@ void NativeMediaObserveXCyclePhase(bool tver) noexcept {
 }
 
 bool NativeMediaXSlotEnabled(bool firstSlot) noexcept {
+  if (!NativeMediaXRuntimeAllowed()) return false;
   const auto& plan = NativeMediaCurrentXCyclePlan();
   return firstSlot ? plan.firstSlot : plan.secondSlot;
 }
@@ -228,7 +261,12 @@ LRESULT CALLBACK NativeMediaPanelWndProc(HWND, UINT, WPARAM, LPARAM);
 #define kNativeMediaPhaseMs NativeMediaPhaseIntervalMs(phase_ == Phase::Tver)
 #define kNativeMediaTverForceFullscreenAdSafeScript \
   kNativeMediaTverForceFullscreenAnyMediaScript
+// media_host.inc uses this flag only to decide whether X may be active. During
+// the 01:00-06:00 quiet window, present that same suppression signal to the
+// host without changing the actual media power-saving cadence.
+#define gNativeMediaPowerSaving NativeMediaHostSuppressX()
 #include "media_host.inc"
+#undef gNativeMediaPowerSaving
 #undef kNativeMediaTverForceFullscreenAdSafeScript
 #undef kNativeMediaPhaseMs
 #undef kNativeMediaTverContentDurationMs
