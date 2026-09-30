@@ -1,3 +1,4 @@
+import { canonicalizeTrackRows } from '../../site/functions/lib/canonical-track-rows.js';
 import {
   loadTrackHistoryData,
   TRACK_HISTORY_GRACE_MS,
@@ -130,6 +131,10 @@ function parsedPayload(row) {
 }
 
 function trackRowKey(row) {
+  const trackId = Number(row?.track_id);
+  if (Number.isSafeInteger(trackId) && trackId > 0) {
+    return `${row.play_date || ''}|track:${trackId}`;
+  }
   return [
     row.play_date || '',
     row.stationhead_track_id ?? '',
@@ -202,9 +207,13 @@ async function materializeTrackHistoryDay(sourceDb, targetDb, range, now, option
   if (groupedRows.length > TRACK_HISTORY_LIMIT) {
     throw new Error(`track history read-model day exceeded ${TRACK_HISTORY_LIMIT} grouped rows`);
   }
-  const mergedRows = mergeTrackRows(groupedRows);
-  const likedRows = attachCompactTrackLikes(mergedRows, likeRows);
-  const completed = applyTrackPeriodCompleteness(likedRows, groupedRows);
+  const [canonicalGroupedRows, canonicalLikeRows] = await Promise.all([
+    canonicalizeTrackRows(targetDb, groupedRows),
+    canonicalizeTrackRows(targetDb, likeRows),
+  ]);
+  const mergedRows = mergeTrackRows(canonicalGroupedRows);
+  const likedRows = attachCompactTrackLikes(mergedRows, canonicalLikeRows);
+  const completed = applyTrackPeriodCompleteness(likedRows, canonicalGroupedRows);
   const rows = completed.rows;
   const fromDay = dayText(range.fromTs);
   const toDay = dayText(range.toTs - 1);
@@ -236,8 +245,8 @@ async function materializeTrackHistoryDay(sourceDb, targetDb, range, now, option
     from: fromDay,
     to: toDay,
     rows: rows.length,
-    groupedRows: groupedRows.length,
-    sourceRowCount: groupedRows.reduce((sum, row) => sum + (Number(row.play_count) || 0), 0),
+    groupedRows: canonicalGroupedRows.length,
+    sourceRowCount: canonicalGroupedRows.reduce((sum, row) => sum + (Number(row.play_count) || 0), 0),
     excludedDates: completed.excludedDates,
     cleanupDay,
   };
