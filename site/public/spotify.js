@@ -63,7 +63,6 @@ function normalizeTrendSeries(trend = {}) {
     return {
       artistKey,
       artistName: String(metadata.artist_name || artistKey),
-      currentRank: integer(metadata.current_rank),
       points,
     };
   }).filter((series) => series.points.length)
@@ -490,7 +489,7 @@ export async function loadSpotifyView({ refresh = false } = {}) {
   }
 }
 
-document.querySelectorAll('[data-spotify-artist]').forEach((button) => button.addEventListener('click', () => {
+globalThis.document?.querySelectorAll('[data-spotify-artist]').forEach((button) => button.addEventListener('click', () => {
   selectedArtistKey = button.dataset.spotifyArtist;
   loadSpotifyView();
 }));
