@@ -1,10 +1,16 @@
+.played-tracks-controls {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
 .played-tracks-week-toggle {
   display: inline-flex;
   align-items: center;
+  justify-self: end;
   gap: 7px;
-  min-height: 34px;
+  min-height: var(--pages-control-height, 34px);
   color: var(--muted);
-  font-size: .78rem;
+  font-size: var(--dashboard-label-size, .7rem);
   font-weight: 750;
   user-select: none;
 }
@@ -17,9 +23,10 @@
 
 .played-tracks-period-scroller {
   width: 100%;
+  min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  margin: 2px 0 8px;
+  margin: 0;
   scrollbar-width: thin;
   overscroll-behavior-inline: contain;
   -webkit-overflow-scrolling: touch;
@@ -66,7 +73,7 @@
 
 .played-tracks-period-date {
   display: block;
-  font-size: .84rem;
+  font-size: var(--dashboard-label-size, .7rem);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -76,7 +83,7 @@
   display: block;
   margin-top: 2px;
   color: var(--muted);
-  font-size: .69rem;
+  font-size: var(--dashboard-small-size, .68rem);
   font-weight: 700;
   line-height: 1.1;
   white-space: nowrap;
@@ -129,7 +136,7 @@
   margin-top: 2px;
   overflow: hidden;
   color: var(--muted);
-  font-size: .9em;
+  font-size: var(--dashboard-small-size, .68rem);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -147,6 +154,17 @@
 }
 
 @media (max-width: 760px) {
+  .played-tracks-controls {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .played-tracks-week-toggle {
+    justify-self: start;
+    min-height: var(--pages-control-height-mobile, 32px);
+    font-size: var(--dashboard-label-size, 10px);
+  }
+
   .played-tracks-period-strip {
     padding-inline: calc(50vw - 38px);
   }
