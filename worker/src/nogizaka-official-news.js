@@ -110,7 +110,10 @@ function articleContent(html, title) {
   return area.trim();
 }
 
-function eventName(title) {
+export function nogizakaEventName(newsId, title) {
+  if (String(newsId || '').trim() === '102280') {
+    return '「42ndSG アンダーライブ」セットリスト Stationhead リスニングパーティー';
+  }
   return String(title || '乃木坂46 Stationhead')
     .replace(/\s*開催決定[！!。]?\s*$/u, '')
     .replace(/\s+/g, ' ')
@@ -321,7 +324,7 @@ export async function runNogizakaNewsDetailStage(env, cfg, now, candidate, depen
       ...candidate,
       title,
       publishedDate: date,
-      eventName: eventName(title),
+      eventName: nogizakaEventName(candidate.newsId, title),
       text,
     };
     if (!times.length) {
