@@ -11,7 +11,7 @@ function cron(workflow) {
   return workflow.match(/cron:\s*['"]([^'"]+)['"]/)?.[1] || '';
 }
 
-test('runtime rollups trigger revision-driven Pages publication with one daily recovery sweep', () => {
+test('runtime rollups stay on cadence and trigger revision-driven Pages publication with one daily recovery sweep', () => {
   const runtime = read('.github/workflows/run-runtime-offline-maintenance.yml');
   const pages = read('.github/workflows/run-pages-read-model-rebuild.yml');
   const repair = read('.github/workflows/repair-pages-summaries.yml');
@@ -19,7 +19,8 @@ test('runtime rollups trigger revision-driven Pages publication with one daily r
   assert.equal(cron(runtime), '11,41 * * * *');
   assert.equal(cron(pages), '26 0 * * *');
   assert.equal(cron(repair), '23 4 * * *');
-  assert.match(runtime, /^\s*workflows: \["Deploy production"\]\s*$/m);
+  assert.doesNotMatch(runtime, /workflow_run:/);
+  assert.doesNotMatch(runtime, /^\s*workflows: \[[^\]]*Deploy production/m);
   assert.doesNotMatch(runtime, /^\s*workflows: \[[^\]]*Rebuild pages read models/m);
   assert.match(runtime, /detect-pages-read-model-revision-drift-actions\.mjs/);
   assert.match(runtime, /steps\.pages-revision-drift\.outputs\.due_keys != ''/);
