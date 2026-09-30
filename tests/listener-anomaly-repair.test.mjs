@@ -15,6 +15,13 @@ test('low-listener repair protects corrected minute facts from restore writes', 
   assert.match(normalize, /excluded\.source_priority>sh_minute_facts\.source_priority/);
 });
 
+test('low-listener repair discovers anomalies from minute facts, not summary minima', () => {
+  assert.match(repair, /FROM sh_minute_facts INDEXED BY idx_sh_minute_facts_time/);
+  assert.match(repair, /listener_count IS NOT NULL AND listener_count<=\?/);
+  assert.match(repair, /GROUP BY channel_id,CAST\(minute_at\/\$\{DAY_MS\} AS INTEGER\)/);
+  assert.doesNotMatch(repair, /WHERE period_key>=\? AND period_key<\?[\s\S]*listener_min IS NOT NULL AND listener_min<=\?/);
+});
+
 test('low-listener repair interpolates only with nearby normal neighbours and otherwise excludes the sample', () => {
   assert.match(repair, /MAX_INTERPOLATION_DISTANCE_MS = 30 \* 60_000/);
   assert.match(repair, /current > LOW_LISTENER_MAX/);
