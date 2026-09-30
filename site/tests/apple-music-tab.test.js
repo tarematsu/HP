@@ -11,17 +11,17 @@ const css = readFileSync(new URL('../public/apple-music.css', import.meta.url), 
 const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/apple-music.js', import.meta.url), 'utf8');
 
-test('Apple Music is a dashboard route backed only by Worker materialized read models', () => {
+test('Apple Music is a dashboard route backed only by the Worker materialized read model', () => {
   assert.match(tabs, /'apple-music':\s*\{/);
   assert.match(tabs, /import\('\/apple-music-shell\.js\?v=20260930\.1'\)/);
-  assert.match(tabs, /import\('\/apple-music\.js\?v=20260930\.1'\)/);
+  assert.match(tabs, /import\('\/apple-music\.js\?v=20260930\.2'\)/);
   assert.match(tabs, /async function showLazyView/);
   assert.match(shell, /mountDashboardShell/);
   assert.match(shell, /shared-svg-chart/);
   assert.match(runtime, /fetch\('\/api\/apple-music'/);
   assert.match(api, /PAGES_READ_MODEL_SERVICE/);
   assert.match(api, /_internal\/pages-response\?key=apple-music/);
-  assert.match(api, /_internal\/pages-response\?key=track-history-status/);
+  assert.doesNotMatch(api, /track-history-status/);
   assert.doesNotMatch(api, /OTHER_DB|MINUTE_DB|\.prepare\(/);
   assert.doesNotMatch(runtime, /\/api\/history|\/api\/dashboard|OTHER_DB|MINUTE_DB/);
 });
@@ -55,58 +55,37 @@ test('Apple Music API preserves real materialized-service failures', async () =>
   assert.equal((await response.json()).ok, false);
 });
 
-test('Apple Music API canonicalizes localized titles and identity with sh_tracks.id', async () => {
+test('Apple Music API streams the materialized payload without request-time cross-model joins', async () => {
   const applePayload = {
     ok: true,
     regions: [
       { code: 'jp', tracks: [{ track_id: 101, rank: 1, title: 'ピッカーン！', song_key: 'ピッカーン！' }] },
-      {
-        code: 'us',
-        tracks: [
-          { track_id: 101, rank: 2, title: 'Pikkaan!', song_key: 'pikkaan!' },
-          { track_id: 202, rank: 3, title: 'Samidareyo', song_key: 'samidareyo' },
-          { track_id: null, rank: 4, title: 'Unresolved Song', song_key: 'unresolvedsong' },
-        ],
-      },
+      { code: 'us', tracks: [{ track_id: 101, rank: 2, title: 'Pikkaan!', song_key: 'pikkaan!' }] },
     ],
-    history: [{
-      snapshot_date: '2026-09-29',
-      regions: {
-        us: [
-          { track_id: 101, rank: 3, song_key: 'pikkaan!' },
-          { track_id: null, rank: 4, song_key: 'unresolvedsong' },
-        ],
-      },
-    }],
+    history: [],
   };
-  const titlePayload = {
-    ranking: [
-      { track_id: 101, title: 'ピッカーン！' },
-      { track_id: 202, title: '五月雨よ' },
-    ],
-  };
+  let calls = 0;
   const service = {
     async fetch(request) {
-      const url = new URL(request.url);
-      const key = url.searchParams.get('key');
-      if (key === 'apple-music') return Response.json(applePayload);
-      if (key === 'track-history-status') return Response.json(titlePayload);
-      return new Response(null, { status: 404 });
+      calls += 1;
+      assert.equal(new URL(request.url).searchParams.get('key'), 'apple-music');
+      return Response.json(applePayload, {
+        headers: { 'x-materialized-at': '1234' },
+      });
     },
   };
 
   const response = await appleMusicApi({ env: { PAGES_READ_MODEL_SERVICE: service } });
   assert.equal(response.status, 200);
-  const payload = await response.json();
-  const us = payload.regions.find((region) => region.code === 'us');
-  assert.deepEqual(us.tracks.map(({ track_id: trackId, title, song_key: songKey }) => ({ trackId, title, songKey })), [
-    { trackId: 101, title: 'ピッカーン！', songKey: 'track:101' },
-    { trackId: 202, title: '五月雨よ', songKey: 'track:202' },
-    { trackId: null, title: 'Unresolved Song', songKey: 'unresolvedsong' },
-  ]);
-  assert.equal(payload.regions[0].tracks[0].song_key, 'track:101');
-  assert.equal(payload.history[0].regions.us[0].song_key, 'track:101');
-  assert.equal(payload.history[0].regions.us[1].song_key, 'unresolvedsong');
+  assert.equal(calls, 1);
+  assert.deepEqual(await response.json(), applePayload);
+  assert.equal(response.headers.get('x-materialized-at'), '1234');
+});
+
+test('Apple Music UI uses sh_tracks.id before localized song_key for identity', () => {
+  assert.match(runtime, /const trackId = integer\(track\?\.track_id\)/);
+  assert.match(runtime, /if \(trackId != null\) return `track:\$\{trackId\}`/);
+  assert.match(runtime, /return String\(track\?\.song_key \|\| track\?\.apple_music_id \|\| ''\)/);
 });
 
 test('Apple Music view fixes the top graph to Japan and uses one regional ranking table', () => {
