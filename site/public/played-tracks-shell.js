@@ -1,7 +1,6 @@
 import { mountDashboardShell } from './dashboard-ui-common.js?v=20260930.1';
 
 mountDashboardShell({
-  style: { href: '/played-tracks.css?v=20260928.1', key: 'played-tracks' },
   tab: {
     view: 'played-tracks',
     label: '再生履歴',
