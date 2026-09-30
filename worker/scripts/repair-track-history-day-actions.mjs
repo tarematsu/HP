@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
+import { canonicalizeTrackRows } from '../../site/functions/lib/canonical-track-rows.js';
 import {
   loadTrackHistoryData,
   TRACK_HISTORY_SQL,
@@ -55,6 +56,10 @@ function boundedDatabase(db) {
 }
 
 function trackRowKey(row) {
+  const trackId = Number(row?.track_id);
+  if (Number.isSafeInteger(trackId) && trackId > 0) {
+    return `${row.play_date || ''}|track:${trackId}`;
+  }
   return [
     row.play_date || '',
     row.stationhead_track_id ?? '',
@@ -138,9 +143,13 @@ export async function repairTrackHistoryDay({
     throw new Error(`track-history repair exceeded ${TRACK_HISTORY_LIMIT} grouped rows`);
   }
 
-  const mergedRows = mergeTrackRows(groupedRows);
-  const likedRows = attachCompactTrackLikes(mergedRows, likeRows);
-  const completed = applyTrackPeriodCompleteness(likedRows, groupedRows, generation);
+  const [canonicalGroupedRows, canonicalLikeRows] = await Promise.all([
+    canonicalizeTrackRows(db, groupedRows),
+    canonicalizeTrackRows(db, likeRows),
+  ]);
+  const mergedRows = mergeTrackRows(canonicalGroupedRows);
+  const likedRows = attachCompactTrackLikes(mergedRows, canonicalLikeRows);
+  const completed = applyTrackPeriodCompleteness(likedRows, canonicalGroupedRows, generation);
   const rows = completed.rows.filter((row) => String(row?.play_date || '') === targetDay);
   const totalPlays = rows.reduce((sum, row) => sum + Math.max(0, Number(row?.play_count || 0)), 0);
   if (!rows.length || totalPlays <= 0) {
@@ -157,7 +166,7 @@ export async function repairTrackHistoryDay({
     ok: true,
     day: targetDay,
     generation,
-    grouped_rows: groupedRows.length,
+    grouped_rows: canonicalGroupedRows.length,
     rows: rows.length,
     total_plays: totalPlays,
     stored_rows: Number(stored?.row_count || 0),

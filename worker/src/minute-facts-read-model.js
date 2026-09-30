@@ -1,3 +1,4 @@
+import { canonicalizeTrackRows } from '../../site/functions/lib/canonical-track-rows.js';
 import { loadReadModelTrackMetadata as loadCanonicalTrackMetadata } from './read-model-metadata-indexed.js';
 
 export const MINUTE_FACT_QUEUE_RECEIPT_SCHEMA_SQL = `CREATE TABLE IF NOT EXISTS sh_minute_fact_queue_receipts (
@@ -34,6 +35,12 @@ function integer(value) {
   return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
 }
 
+function positiveInteger(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 function timestamp(value) {
   const numeric = integer(value);
   if (numeric != null) return numeric;
@@ -60,6 +67,7 @@ function mergeMetadataRow(current, row) {
   if (!current) return { ...row };
   return {
     ...current,
+    track_id: positiveInteger(current.track_id) ?? positiveInteger(row.track_id),
     title: current.title || row.title || null,
     artist: current.artist || row.artist || null,
     album_name: current.album_name || row.album_name || null,
@@ -87,12 +95,15 @@ export function attachReadModelTrackMetadata(queue, rows = []) {
     const fallback = spotifyId ? bySpotifyId.get(spotifyId) : null;
     if (!preferred && !fallback) return track;
 
-    const title = track.title || boundedText(preferred?.title || fallback?.title, 500);
-    const artist = track.artist || boundedText(preferred?.artist || fallback?.artist, 500);
-    const albumName = track.album_name || boundedText(preferred?.album_name || fallback?.album_name, 500);
+    const metadata = preferred || fallback;
+    const trackId = positiveInteger(track.track_id) ?? positiveInteger(metadata?.track_id);
+    const title = track.title || boundedText(metadata?.title, 500);
+    const artist = track.artist || boundedText(metadata?.artist, 500);
+    const albumName = track.album_name || boundedText(metadata?.album_name, 500);
     const thumbnailUrl = track.thumbnail_url
-      || boundedText(preferred?.thumbnail_url || fallback?.thumbnail_url, 2_048);
-    if (title === track.title
+      || boundedText(metadata?.thumbnail_url, 2_048);
+    if (trackId === positiveInteger(track.track_id)
+      && title === track.title
       && artist === track.artist
       && albumName === track.album_name
       && thumbnailUrl === track.thumbnail_url) return track;
@@ -100,6 +111,7 @@ export function attachReadModelTrackMetadata(queue, rows = []) {
     changed = true;
     return {
       ...track,
+      ...(trackId != null ? { track_id: trackId } : {}),
       title,
       artist,
       album_name: albumName,
@@ -122,6 +134,9 @@ function queueValueFromJson(value) {
 }
 
 function sameTrackIdentity(left, right) {
+  const leftTrackId = positiveInteger(left?.track_id);
+  const rightTrackId = positiveInteger(right?.track_id);
+  if (leftTrackId != null && rightTrackId != null) return leftTrackId === rightTrackId;
   const leftIsrc = normalizedIsrc(left?.isrc);
   const rightIsrc = normalizedIsrc(right?.isrc);
   if (leftIsrc && rightIsrc) return leftIsrc === rightIsrc;
@@ -141,17 +156,20 @@ export function preserveReadModelTrackMetadata(queue, previousQueue) {
     const position = integer(track?.position) ?? index;
     const previous = previousByPosition.get(position);
     if (!previous || !sameTrackIdentity(track, previous)) return track;
+    const trackId = positiveInteger(track.track_id) ?? positiveInteger(previous.track_id);
     const title = track.title || previous.title || null;
     const artist = track.artist || previous.artist || null;
     const albumName = track.album_name || previous.album_name || null;
     const thumbnailUrl = track.thumbnail_url || previous.thumbnail_url || null;
-    if (title === track.title
+    if (trackId === positiveInteger(track.track_id)
+      && title === track.title
       && artist === track.artist
       && albumName === track.album_name
       && thumbnailUrl === track.thumbnail_url) return track;
     changed = true;
     return {
       ...track,
+      ...(trackId != null ? { track_id: trackId } : {}),
       title,
       artist,
       album_name: albumName,
@@ -220,6 +238,15 @@ async function preservePreviousQueueMetadata(env, readModel) {
     : { ...readModel, queue: { ...queue, value: preservedQueue } };
 }
 
+async function canonicalizeReadModelQueue(env, readModel) {
+  const queue = readModel?.queue || {};
+  const value = queue.value;
+  if (!value?.tracks?.length) return readModel;
+  const tracks = await canonicalizeTrackRows(env?.MINUTE_DB, value.tracks);
+  if (tracks === value.tracks) return readModel;
+  return { ...readModel, queue: { ...queue, value: { ...value, tracks } } };
+}
+
 export async function ensureMinuteFactReadModelSchema(env) {
   if (!env?.MINUTE_DB) throw new Error('minute fact read model MINUTE_DB binding is missing');
   // Owned by database/facts-migrations/004_buddies_queue_read_models.sql.
@@ -245,10 +272,11 @@ export async function saveMinuteFactReadModels(env, readModel, _jobId) {
   await ensureMinuteFactReadModelSchema(env);
   const hydratedReadModel = await hydrateQueueMetadataFromSource(env, readModel);
   const stableReadModel = await preservePreviousQueueMetadata(env, hydratedReadModel);
-  if (!stableReadModel || typeof stableReadModel !== 'object') throw new Error('minute fact read model payload is missing');
-  const channel = stableReadModel.channel || {};
-  const queue = stableReadModel.queue || {};
-  const collector = stableReadModel.collector || {};
+  const canonicalReadModel = await canonicalizeReadModelQueue(env, stableReadModel);
+  if (!canonicalReadModel || typeof canonicalReadModel !== 'object') throw new Error('minute fact read model payload is missing');
+  const channel = canonicalReadModel.channel || {};
+  const queue = canonicalReadModel.queue || {};
+  const collector = canonicalReadModel.collector || {};
   const channelId = integer(channel.channel_id);
   const observedAt = integer(channel.observed_at);
   if (channelId == null || observedAt == null) throw new Error('channel read model identity is missing');

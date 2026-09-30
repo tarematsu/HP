@@ -72,7 +72,7 @@ export function releaseOverlapsKnownGap(release) {
 }
 
 export const FIRST_WEEK_READ_MODEL_SQL = `SELECT
-  release_date_jst,point_count,points_json,updated_at
+  release_date_jst,track_id,point_count,points_json,updated_at
 FROM sh_first_week_comparison_read_model
 ORDER BY release_date_jst ASC`;
 
@@ -80,6 +80,11 @@ function finite(value) {
   if (value == null || value === '') return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function canonicalTrackId(value) {
+  const parsed = finite(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
 function readModelPoints(row) {
@@ -123,17 +128,20 @@ export async function loadFirstWeekComparison(db) {
   );
 
   const series = FIRST_WEEK_RELEASES.map((release) => {
+    const row = rowsByRelease.get(release.release_date_jst);
+    const trackId = canonicalTrackId(row?.track_id);
     if (releaseOverlapsKnownGap(release)) {
       return {
         ...release,
+        track_id: trackId,
         status: 'known_missing',
         points: [],
       };
     }
-    const row = rowsByRelease.get(release.release_date_jst);
     const points = normalizeFirstWeekRows(readModelPoints(row));
     return {
       ...release,
+      track_id: trackId,
       status: points.length ? 'available' : 'no_data',
       points,
     };

@@ -1,3 +1,5 @@
+import { canonicalTrackKey } from './canonical-track-rows.js';
+
 function normalizedIsrc(value) {
   if (value == null || value === '') return null;
   const isrc = String(value).trim().toUpperCase();
@@ -11,10 +13,7 @@ function normalizedSpotifyId(value) {
 }
 
 function likeIdentity(row) {
-  const isrc = normalizedIsrc(row?.isrc);
-  if (isrc) return `isrc:${isrc}`;
-  const spotifyId = normalizedSpotifyId(row?.spotify_id);
-  return spotifyId ? `spotify:${spotifyId}` : null;
+  return canonicalTrackKey(row);
 }
 
 export const TRACK_LIKE_REALTIME_SQL = `WITH prepared AS (

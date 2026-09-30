@@ -1,4 +1,8 @@
 import {
+  canonicalizeTrackRows,
+  canonicalizeTrackRowsFromCatalog,
+} from '../../site/functions/lib/canonical-track-rows.js';
+import {
   loadTrackHistoryData,
   TRACK_HISTORY_SQL,
 } from '../../site/functions/lib/track-history-restored-handler.js';
@@ -58,6 +62,10 @@ function dayTimestamp(value) {
 }
 
 function trackRowKey(row) {
+  const trackId = Number(row?.track_id);
+  if (Number.isSafeInteger(trackId) && trackId > 0) {
+    return `${row.play_date || ''}|track:${trackId}`;
+  }
   return [
     row.play_date || '',
     row.stationhead_track_id ?? '',
@@ -204,11 +212,12 @@ export async function bootstrapTrackHistoryDayReadModel(db, r2, day, now = Date.
     }
     return JSON.parse(String(row.row_json || 'null'));
   });
+  const canonicalRows = await canonicalizeTrackRows(db, rows);
   const fromTs = dayTimestamp(day);
   return saveTrackHistoryDayReadModel(
     r2,
     { fromTs, toTs: fromTs + DAY_MS },
-    rows,
+    canonicalRows,
     { updated_at: now },
   );
 }
@@ -218,6 +227,7 @@ export async function publishTrackHistoryResponseFromR2Days(
   publication,
   now,
   cadenceSeconds,
+  db = null,
 ) {
   const fromTs = dayTimestamp(publication?.from);
   const toTs = dayTimestamp(publication?.to);
@@ -240,8 +250,9 @@ export async function publishTrackHistoryResponseFromR2Days(
     }
     if (truncated) break;
   }
+  const publishedRows = db ? await canonicalizeTrackRowsFromCatalog(db, rows) : rows;
   const completedPublication = { ...publication, truncated };
-  const body = `${trackHistoryResponsePrefix(completedPublication)}${rows
+  const body = `${trackHistoryResponsePrefix(completedPublication)}${publishedRows
     .map((row) => JSON.stringify(row)).join(',')}${trackHistoryResponseSuffix(completedPublication)}`;
   const saved = await saveMaterializedR2Response(
     r2,
@@ -252,7 +263,7 @@ export async function publishTrackHistoryResponseFromR2Days(
     now,
     cadenceSeconds,
   );
-  return { published: true, rows: rows.length, truncated, ...saved };
+  return { published: true, rows: publishedRows.length, truncated, ...saved };
 }
 
 async function persistDayRows(targetDb, rows, range, generation) {
@@ -304,14 +315,21 @@ export async function materializeTrackHistoryRangeThroughR2(
   if (groupedRows.length > TRACK_HISTORY_LIMIT) {
     throw new Error(`track history read-model shard exceeded ${TRACK_HISTORY_LIMIT} grouped rows`);
   }
-  const completed = complete(attachLikes(merge(groupedRows), likeRows), groupedRows);
-  const sourceRowCount = groupedRows.reduce(
+  const [canonicalGroupedRows, canonicalLikeRows] = await Promise.all([
+    canonicalizeTrackRows(targetDb, groupedRows),
+    canonicalizeTrackRows(targetDb, likeRows),
+  ]);
+  const completed = complete(
+    attachLikes(merge(canonicalGroupedRows), canonicalLikeRows),
+    canonicalGroupedRows,
+  );
+  const sourceRowCount = canonicalGroupedRows.reduce(
     (sum, row) => sum + (Number(row.play_count) || 0),
     0,
   );
   await saveShard(r2, generation, range, {
     rows: completed.rows,
-    grouped_rows: groupedRows.length,
+    grouped_rows: canonicalGroupedRows.length,
     source_row_count: sourceRowCount,
     excluded_dates: completed.excludedDates,
   });
@@ -323,7 +341,7 @@ export async function materializeTrackHistoryRangeThroughR2(
       to: dayText(range.toTs - 1),
       rows: 0,
       stagedRows: completed.rows.length,
-      groupedRows: groupedRows.length,
+      groupedRows: canonicalGroupedRows.length,
       sourceRowCount,
       excludedDates: completed.excludedDates,
       cleanupDay: false,
@@ -353,7 +371,7 @@ export async function materializeTrackHistoryRangeThroughR2(
     to: dayText(dayRange.toTs - 1),
     rows: dayRows.length,
     stagedRows: shards.reduce((sum, { payload }) => sum + payload.rows.length, 0),
-    groupedRows: groupedRows.length,
+    groupedRows: canonicalGroupedRows.length,
     sourceRowCount,
     excludedDates: dayExcludedDates,
     cleanupDay: true,

@@ -1,5 +1,6 @@
 import { onRequestGet as renderDashboard } from '../../site/functions/api/dashboard.js';
 import { directFiveMinuteStreamHistory } from '../../site/functions/lib/dashboard-chart-support.js';
+import { canonicalizeTrackRows } from '../../site/functions/lib/canonical-track-rows.js';
 import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
 
 const FIVE_MINUTES_MS = 5 * 60_000;
@@ -17,6 +18,11 @@ function finite(value) {
 function integer(value) {
   const number = finite(value);
   return number == null ? null : Math.trunc(number);
+}
+
+function positiveInteger(value) {
+  const number = integer(value);
+  return number != null && number > 0 ? number : null;
 }
 
 function bucketAt(value) {
@@ -190,7 +196,9 @@ function playbackQueue(queue, now) {
   }
   const publicQueue = tracks.map((track, index) => {
     const spotifyId = String(track?.spotify_id || '').trim();
+    const trackId = positiveInteger(track?.track_id);
     const item = {
+      ...(trackId != null ? { track_id: trackId } : {}),
       title: track?.title ?? null,
       artist: track?.artist ?? null,
       thumbnail_url: track?.thumbnail_url ?? null,
@@ -316,6 +324,13 @@ async function saveEnvelope(bucket, existingEnvelope, payload, now) {
   return true;
 }
 
+async function canonicalInput(env, input) {
+  const tracks = Array.isArray(input?.queue?.tracks) ? input.queue.tracks : [];
+  if (!tracks.length) return input;
+  const canonicalTracks = await canonicalizeTrackRows(env?.MINUTE_DB, tracks);
+  return { ...input, queue: { ...input.queue, tracks: canonicalTracks } };
+}
+
 export async function publishDashboardFromMinuteFact(env, input, fact, options = {}) {
   if (Number(fact?.source_code) !== 1) return { skipped: true, reason: 'not-live' };
   const bucket = env?.PAGES_RESPONSE_R2;
@@ -329,15 +344,16 @@ export async function publishDashboardFromMinuteFact(env, input, fact, options =
   if (currentMinute != null && existingMinute != null && existingMinute >= currentMinute) {
     return { skipped: true, reason: 'already-published', minute_at: currentMinute };
   }
+  const canonical = await canonicalInput(env, input);
   const cycles = cycleState(now);
   let base = existing?.payload || null;
   let full = false;
-  if (needsFullRefresh(base, input?.snapshot, now, cycles)) {
+  if (needsFullRefresh(base, canonical?.snapshot, now, cycles)) {
     base = await fullyRender(env, now);
     full = true;
   }
   const fullGeneratedAt = full ? now : finite(base?._live_full_generated_at) ?? now;
-  const payload = incrementalPayload(base, input, fact, now, cycles, fullGeneratedAt);
+  const payload = incrementalPayload(base, canonical, fact, now, cycles, fullGeneratedAt);
   await saveEnvelope(bucket, existing?.envelope, payload, now);
   console.log(JSON.stringify({
     event: 'pages_dashboard_live_published',

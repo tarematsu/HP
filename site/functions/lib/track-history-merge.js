@@ -1,6 +1,7 @@
 import { bestText, canonical, cleanText, looksLikeId, looksLikePlaceholder } from './track-history-text.js';
 
 const ID_FIELDS = [
+  ['track_id', 'track'],
   ['isrc', 'isrc'],
   ['spotify_id', 'spotify'],
   ['stationhead_track_id', 'stationhead'],
@@ -17,6 +18,10 @@ const finiteLikeCount = (value) => Number.isFinite(Number(value)) && Number(valu
   ? Number(value)
   : null;
 const normalizedId = (field, value) => {
+  if (field === 'track_id') {
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? String(parsed) : null;
+  }
   const id = cleanText(value);
   if (!id || looksLikePlaceholder(id)) return null;
   return field === 'isrc' ? id.toUpperCase() : id;
@@ -108,24 +113,29 @@ function aggregateEntries(entries, unionFindState) {
   });
 
   return [...merged.values()].map((current) => {
+    const rawTrackId = firstValue(current.ids.get('track_id'));
+    const trackId = rawTrackId == null ? null : Number(rawTrackId);
     const isrc = firstValue(current.ids.get('isrc'));
     const spotifyId = firstValue(current.ids.get('spotify_id'));
     const stationheadTrackId = firstValue(current.ids.get('stationhead_track_id'));
     const queueTrackId = firstValue(current.ids.get('queue_track_id'));
-    const strongest = isrc
-      ? `isrc:${isrc}`
-      : spotifyId
-        ? `spotify:${spotifyId}`
-        : stationheadTrackId
-          ? `stationhead:${stationheadTrackId}`
-          : queueTrackId
-            ? `queue:${queueTrackId}`
-            : `name:${canonical(current.title)}|artist:${canonical(current.artist)}`;
+    const strongest = trackId != null
+      ? `track:${trackId}`
+      : isrc
+        ? `isrc:${isrc}`
+        : spotifyId
+          ? `spotify:${spotifyId}`
+          : stationheadTrackId
+            ? `stationhead:${stationheadTrackId}`
+            : queueTrackId
+              ? `queue:${queueTrackId}`
+              : `name:${canonical(current.title)}|artist:${canonical(current.artist)}`;
     const sourceKeys = ID_FIELDS.flatMap(([field, prefix]) =>
       [...current.ids.get(field)].map((value) => `${prefix}:${value}`));
     return {
       play_date: current.play_date,
       track_key: strongest,
+      track_id: trackId,
       title: current.title,
       artist: current.artist,
       spotify_id: spotifyId,
