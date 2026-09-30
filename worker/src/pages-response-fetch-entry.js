@@ -13,6 +13,7 @@ const DEFAULT_EDGE_CACHE_MAX_AGE_MS = 60 * 1000;
 const DASHBOARD_EDGE_CACHE_MAX_AGE_MS = 15 * 1000;
 const PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS = new Set([
   'apple-music',
+  'apple-music-playlists',
   'amazon-music',
 ]);
 const R2_ONLY_MODEL_KEYS = new Set([
