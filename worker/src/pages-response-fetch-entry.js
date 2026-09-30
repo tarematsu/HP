@@ -2,6 +2,7 @@ import {
   MATERIALIZED_API_VARIANTS,
   materializedResponseMaximumAge,
 } from '../../site/functions/lib/api-contract.js';
+import { loadTrackHistoryR2ApiResponse } from './pages-track-history-r2-api.js';
 
 const EMPTY_DEPENDENCIES = Object.freeze({});
 const INTERNAL_RESPONSE_PATH = '/_internal/pages-response';
@@ -18,7 +19,6 @@ const R2_ONLY_MODEL_KEYS = new Set(
 
 let responseR2ModulePromise;
 let responseStoreModulePromise;
-let trackHistoryApiModulePromise;
 
 function loadResponseR2Module() {
   responseR2ModulePromise ||= import('./pages-response-r2.js');
@@ -28,11 +28,6 @@ function loadResponseR2Module() {
 function loadResponseStoreModule() {
   responseStoreModulePromise ||= import('./pages-response-store.js');
   return responseStoreModulePromise;
-}
-
-function loadTrackHistoryApiModule() {
-  trackHistoryApiModulePromise ||= import('./pages-track-history-r2-api.js');
-  return trackHistoryApiModulePromise;
 }
 
 function edgeCache(dependencies) {
@@ -152,7 +147,7 @@ export async function runPagesResponseFetch(
     let response;
     if (modelKey === TRACK_HISTORY_MODEL_KEY && url.searchParams.get('api') === '1') {
       const loadTrackHistoryApi = dependencies.loadTrackHistoryApiResponse
-        || (await loadTrackHistoryApiModule()).loadTrackHistoryR2ApiResponse;
+        || loadTrackHistoryR2ApiResponse;
       response = await loadTrackHistoryApi(
         env?.PAGES_RESPONSE_R2,
         request,
