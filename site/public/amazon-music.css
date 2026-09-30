@@ -1,5 +1,10 @@
+.amazon-summary { display: flex; justify-content: flex-end; margin: 0 0 10px; }
 .amazon-summary .positive { color: #18794e; }
 .amazon-summary .negative { color: #b42318; }
+.amazon-mode-switch { display: flex; gap: 6px; overflow-x: auto; padding: 0 0 10px; margin: 0 0 4px; scrollbar-width: thin; }
+.amazon-mode-button { flex: 0 0 auto; appearance: none; border: 1px solid color-mix(in srgb, currentColor 28%, transparent); border-radius: 999px; background: transparent; color: inherit; font: inherit; font-size: .9rem; line-height: 1.2; padding: 7px 12px; cursor: pointer; }
+.amazon-mode-button.is-active { border-color: currentColor; font-weight: 700; }
+.amazon-mode-button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .amazon-rank-panel { overflow: hidden; }
 .amazon-rank-chart { --shared-chart-min-height: 280px; }
 .amazon-rank-svg { overflow: visible; }
@@ -8,13 +13,18 @@
 .amazon-rank-point { fill: hsl(var(--amazon-rank-hue) 55% 48%); opacity: .9; }
 .amazon-table { width: 100%; table-layout: fixed; }
 .amazon-rank-col { width: 112px; }
+.amazon-artist-col { width: 96px; }
 .amazon-rank-number { text-align: right; white-space: nowrap; }
+.amazon-artist-name { white-space: nowrap; }
 .amazon-table th:nth-child(1),
 .amazon-table th:nth-child(2) { text-align: right; }
 .amazon-table td:last-child,
 .amazon-table th:last-child { overflow-wrap: anywhere; }
 
 @media (max-width: 640px) {
+  .amazon-summary { justify-content: flex-start; }
   .amazon-rank-chart { --shared-chart-min-height: 220px; }
   .amazon-rank-col { width: 84px; }
+  .amazon-artist-col { width: 82px; }
+  .amazon-mode-button { padding: 6px 10px; }
 }
