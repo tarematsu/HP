@@ -112,11 +112,21 @@ test('Apple Music regional list is Japan-first and keeps other-region-only songs
 
 test('Apple Music Japan rank chart keeps first place at the top and exposes a current-rank legend', () => {
   assert.match(runtime, /yFor = \(rank\) => margin\.top \+ \(rank - 1\)/);
-  assert.match(runtime, /日本のApple Music櫻坂46人気曲順位推移。1位が上。/);
+  assert.match(runtime, /人気曲順位。1位が上、圏外が下。/);
   assert.match(runtime, /renderJapanLegend/);
   assert.match(shell, /apple-rank-chart chart-fit shared-svg-chart/);
   assert.match(sharedCss, /\.shared-svg-chart svg[\s\S]*width:\s*100%/);
   assert.match(css, /\.apple-rank-legend[\s\S]*grid-template-columns/);
   assert.match(css, /\.apple-region-table[\s\S]*min-width:\s*820px/);
   assert.match(css, /\.apple-region-table-wrap[\s\S]*overflow-x:\s*auto/);
+});
+
+test('Apple Music Japan rank chart keeps former top-12 songs on an outside lane', () => {
+  assert.match(runtime, /const JAPAN_RANK_LIMIT = 12;/);
+  assert.match(runtime, /const JAPAN_OUTSIDE_RANK = JAPAN_RANK_LIMIT \+ 1;/);
+  assert.match(runtime, /item\.points\.push\(\{ date, rank: ranks\.get\(item\.id\) \?\? JAPAN_OUTSIDE_RANK \}\)/);
+  assert.match(runtime, /item\.points\.push\(\{ date, rank: null \}\)/);
+  assert.match(runtime, /title: track\?\.title \|\| track\?\.song_key \|\| '曲名不明'/);
+  assert.match(runtime, /if \(rank === JAPAN_OUTSIDE_RANK\) return '圏外';/);
+  assert.match(runtime, /JAPAN_RANK_LIMIT, JAPAN_OUTSIDE_RANK/);
 });

@@ -156,24 +156,51 @@ test('every station finalization queues raw materialization before reconcile or 
   }
 });
 
-test('raw materialization derives the collected minute then continues news or reconcile', async () => {
-  for (const [afterNewsCheck, stage] of [[false, 'reconcile'], [true, 'probe']]) {
-    const sent = [];
-    const calls = [];
-    const result = await processOfficialNewsStage({ marker: true }, {
-      stage: 'raw-materialize', scheduledAt: BASE, afterNewsCheck,
-    }, {
-      rawMaterialize: async (env, now) => {
-        calls.push([env.marker, now]);
-        return { skipped: false, active: true, session_id: 7, station_id: 123 };
-      },
-      send: async (message) => sent.push(message),
-    });
-    assert.deepEqual(calls, [[true, BASE]]);
-    assert.equal(result.next_stage, stage);
-    assert.equal(result.session_id, 7);
-    assert.equal(sent[0].stage, stage);
-  }
+test('raw materialization reconciles inline unless a deferred news check remains', async () => {
+  const sent = [];
+  const calls = [];
+  const result = await processOfficialNewsStage({ marker: true }, {
+    stage: 'raw-materialize', scheduledAt: BASE, afterNewsCheck: false,
+  }, {
+    rawMaterialize: async (env, now) => {
+      calls.push(['materialize', env.marker, now]);
+      return { skipped: false, active: true, session_id: 7, station_id: 123 };
+    },
+    reconcile: async (env, now) => {
+      calls.push(['reconcile', env.marker, now]);
+      return { skipped: false };
+    },
+    send: async (message) => sent.push(message),
+  });
+  assert.deepEqual(calls, [
+    ['materialize', true, BASE],
+    ['reconcile', true, BASE],
+  ]);
+  assert.equal(result.next_stage, null);
+  assert.equal(result.pending, false);
+  assert.equal(result.reconciled, true);
+  assert.equal(result.session_id, 7);
+  assert.deepEqual(sent, []);
+
+  const newsSent = [];
+  const newsCalls = [];
+  const newsResult = await processOfficialNewsStage({ marker: true }, {
+    stage: 'raw-materialize', scheduledAt: BASE, afterNewsCheck: true,
+  }, {
+    rawMaterialize: async (env, now) => {
+      newsCalls.push(['materialize', env.marker, now]);
+      return { skipped: false, active: true, session_id: 8, station_id: 456 };
+    },
+    reconcile: async () => {
+      throw new Error('deferred news path must not reconcile before the news check');
+    },
+    send: async (message) => newsSent.push(message),
+  });
+  assert.deepEqual(newsCalls, [['materialize', true, BASE]]);
+  assert.equal(newsResult.next_stage, 'probe');
+  assert.equal(newsResult.pending, true);
+  assert.equal(newsResult.session_id, 8);
+  assert.equal(newsSent[0].stage, 'probe');
 });
 
 test('legacy queued solo-monitor messages are redirected to raw materialization', () => {
