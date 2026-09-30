@@ -7,11 +7,11 @@ const runtime = readFileSync(new URL('../public/nogizaka-listening-party.js', im
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/nogizaka-listening-party.js', import.meta.url), 'utf8');
 
-test('Nogizaka tab is mounted next to the existing listening-party tab', () => {
+test('Nogizaka tab is mounted immediately before Hinata when available', () => {
   assert.match(shell, /view: 'nogizaka'/);
   assert.match(shell, /label: '乃木坂'/);
-  assert.match(shell, /anchorSelector: '\[data-mode="broadcasts"\]'/);
-  assert.match(shell, /position: 'afterend'/);
+  assert.match(shell, /anchorSelectors: \['\[data-view="hinata"\]', '\[data-mode="broadcasts"\]'\]/);
+  assert.match(shell, /position: 'beforebegin'/);
   assert.match(tabs, /nogizaka:\s*\{/);
   assert.match(tabs, /ensureLazyShell\('nogizaka'\)/);
   assert.match(tabs, /loadNogizakaListeningPartyView/);
