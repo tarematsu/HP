@@ -99,6 +99,37 @@ test('playlist parser keeps only Sakurazaka recordings and captures position/cat
   assert.deepEqual(parsed.related_urls, ['https://music.apple.com/jp/playlist/related/pl.related999']);
 });
 
+test('playlist parser falls back to serialized-server-data track lockups', () => {
+  const html = `<!doctype html><html><head>
+    <meta property="og:title" content="Serialized Test - プレイリスト - Apple Music">
+    <script id="serialized-server-data" type="application/json">${JSON.stringify({
+      data: [{
+        itemKind: 'trackLockup',
+        items: [
+          {
+            title: 'UDAGAWA GENERATION',
+            artistName: '櫻坂46',
+            url: 'https://music.apple.com/jp/album/example/1800000000?i=1800000001',
+          },
+          {
+            title: '別アーティスト曲',
+            artistName: 'Other Artist',
+            url: 'https://music.apple.com/jp/album/example/1800000002?i=1800000003',
+          },
+        ],
+      }],
+    })}</script>
+  </head></html>`;
+  const parsed = parseAppleMusicPlaylistPage(html, PLAYLIST_URL);
+  assert.equal(parsed.name, 'Serialized Test');
+  assert.deepEqual(parsed.tracks, [{
+    apple_music_id: '1800000001',
+    title: 'UDAGAWA GENERATION',
+    url: 'https://music.apple.com/jp/album/example/1800000000?i=1800000001',
+    position: 1,
+  }]);
+});
+
 test('daily playlist collection crawls only public Apple Music pages and publishes a track reverse index', async () => {
   const r2 = new FakeR2({
     'apple-music/read-model/latest.json': {
@@ -148,4 +179,5 @@ test('playlist collector source does not call the Apple Music catalog API', () =
   const source = readFileSync(new URL('../src/apple-music-playlist-collector.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /api\.music\.apple\.com/);
   assert.match(source, /music\.apple\.com-public-pages/);
+  assert.match(source, /serialized-server-data/);
 });
