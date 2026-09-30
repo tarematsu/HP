@@ -1,0 +1,80 @@
+name: Refresh Amazon Music read model
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/refresh-amazon-music-read-model.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    name: Publish current Sakamichi Amazon Music model
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets['CLOUDFLARE_API_TOKEN'] || secrets['CF_API_TOKEN'] || secrets['CLOUDFLARE_BUILDS_API_TOKEN'] }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - name: Install Worker dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+        working-directory: worker
+      - name: Build remote-binding refresh config
+        working-directory: worker
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const source = JSON.parse(readFileSync('wrangler.amazon-music.jsonc', 'utf8'));
+          source.name = 'sh-amazon-music-read-model-refresh';
+          source.main = 'scripts/amazon-music-read-model-refresh-entry.js';
+          source.workers_dev = false;
+          source.preview_urls = false;
+          delete source.triggers;
+          delete source.observability;
+          source.d1_databases = (source.d1_databases || []).map((binding) => ({ ...binding, remote: true }));
+          source.r2_buckets = (source.r2_buckets || []).map((binding) => ({ ...binding, remote: true }));
+          writeFileSync('.amazon-music-refresh.wrangler.jsonc', JSON.stringify(source, null, 2));
+          NODE
+      - name: Publish read model now
+        working-directory: worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > amazon-refresh.log
+          npx wrangler dev --config .amazon-music-refresh.wrangler.jsonc --port 8791 --log-level error > amazon-refresh.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" >/dev/null 2>&1 || true' EXIT
+          ok=false
+          for _ in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:8791/refresh -o amazon-refresh-result.json; then
+              ok=true
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$ok" != true ]]; then
+            cat amazon-refresh.log
+            exit 1
+          fi
+          cat amazon-refresh-result.json
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const result = JSON.parse(readFileSync('amazon-refresh-result.json', 'utf8'));
+          if (result?.published !== true) throw new Error(`Amazon Music read model publish failed: ${JSON.stringify(result)}`);
+          for (const group of ['乃木坂46', '櫻坂46', '日向坂46']) {
+            if (!Object.hasOwn(result.groups || {}, group)) throw new Error(`Missing group in published read model: ${group}`);
+          }
+          console.log(JSON.stringify({ event: 'amazon_music_read_model_refreshed', ...result }));
+          NODE
