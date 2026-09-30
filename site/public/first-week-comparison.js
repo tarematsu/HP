@@ -124,11 +124,11 @@ function renderTable() {
 
 function renderLegend() {
   if (!legend) return;
-  legend.innerHTML = series.map((item, index) => {
-    const suffix = item.status === 'known_missing' ? '（欠測）' : item.status === 'no_data' ? '（データなし）' : '';
-    const className = item.status === 'available' ? '' : ' class="is-missing"';
-    return `<span${className}><i style="background:${colorFor(index)}"></i>${escapeHtml(item.title)}${escapeHtml(suffix)}</span>`;
-  }).join('');
+  legend.innerHTML = series
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item.points.some((point) => pointValue(point) != null))
+    .map(({ item, index }) => `<span><i style="background:${colorFor(index)}"></i>${escapeHtml(item.title)}</span>`)
+    .join('');
 }
 
 function draw() {
@@ -276,13 +276,6 @@ async function load() {
     selectedMinute = null;
     renderTable();
     draw();
-    if (notice) {
-      const missing = series.filter((item) => item.status === 'known_missing').length;
-      notice.textContent = missing
-        ? `2026/1/14〜6/22の欠測期間に重なる${missing}曲は比較線を表示していません。`
-        : '';
-      notice.hidden = !notice.textContent;
-    }
   } catch (error) {
     series = [];
     renderTable();
