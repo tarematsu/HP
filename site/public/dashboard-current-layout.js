@@ -1,15 +1,10 @@
-const integer = new Intl.NumberFormat('ja-JP');
+import { byId, finiteNumber as finite, integerFormat as integer } from './dashboard-ui-common.js?v=20260930.1';
+
 const jstGoalDateTime = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo',
   month: '2-digit', day: '2-digit',
 });
 
-const byId = (id) => document.getElementById(id);
-const finite = (value) => {
-  if (value === null || value === undefined || value === '') return null;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
-};
 const thousandText = (value) => {
   const number = finite(value);
   return number == null ? '—' : `${integer.format(Math.round(number / 1000))}K`;

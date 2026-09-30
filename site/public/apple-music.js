@@ -1,16 +1,15 @@
-const SVG_NS = 'http://www.w3.org/2000/svg';
+import {
+  byId as element,
+  fullDate as formatFullDate,
+  safeInteger as integer,
+  setNotice as setSharedNotice,
+  shortDate as formatDate,
+  svgElement,
+} from './dashboard-ui-common.js?v=20260930.1';
+
 const REGION_ORDER = Object.freeze(['jp', 'tw', 'hk', 'kr', 'sg', 'th', 'us']);
 let loadPromise = null;
 let lastPayload = null;
-
-function element(id) {
-  return document.getElementById(id);
-}
-
-function integer(value) {
-  const parsed = Number(value);
-  return Number.isSafeInteger(parsed) ? parsed : null;
-}
 
 function trackKey(track) {
   const trackId = integer(track?.track_id);
@@ -18,31 +17,7 @@ function trackKey(track) {
   return String(track?.song_key || track?.apple_music_id || '');
 }
 
-function formatDate(value) {
-  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return String(value || '-');
-  return `${Number(match[2])}/${Number(match[3])}`;
-}
-
-function formatFullDate(value) {
-  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return String(value || '-');
-  return `${Number(match[1])}/${Number(match[2])}/${Number(match[3])}`;
-}
-
-function setNotice(message = '', error = false) {
-  const notice = element('appleMusicNotice');
-  if (!notice) return;
-  notice.textContent = message;
-  notice.hidden = !message;
-  notice.classList.toggle('error', Boolean(error));
-}
-
-function svgElement(name, attributes = {}) {
-  const node = document.createElementNS(SVG_NS, name);
-  for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value));
-  return node;
-}
+const setNotice = (message = '', error = false) => setSharedNotice('appleMusicNotice', message, error);
 
 function regions(payload) {
   return Array.isArray(payload?.regions) ? payload.regions : [];

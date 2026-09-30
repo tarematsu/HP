@@ -1,9 +1,16 @@
+import {
+  byId,
+  cssColor,
+  decimalOneFormat as decimal,
+  finiteNumber as finite,
+  integerFormat as integer,
+  setText,
+  svgElement,
+} from './dashboard-ui-common.js?v=20260930.1';
+
 const HINATA_URL = '/api/hinata';
-const SVG_NS = 'http://www.w3.org/2000/svg';
 const FIVE_MINUTES_MS = 5 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
-const integer = new Intl.NumberFormat('ja-JP');
-const decimal = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
 const jstTime = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo',
   hour: '2-digit',
@@ -28,34 +35,12 @@ let payload = null;
 let chartRows = [];
 let dailyChartRows = [];
 
-const byId = (id) => document.getElementById(id);
-const finite = (value) => {
-  if (value === null || value === undefined || value === '') return null;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
-};
 const numberText = (value) => finite(value) == null ? '—' : integer.format(Number(value));
 const signedText = (value) => {
   const number = finite(value);
   if (number == null) return '—';
   return `${number >= 0 ? '+' : ''}${integer.format(Math.round(number))}`;
 };
-
-function setText(id, value) {
-  const node = byId(id);
-  if (node) node.textContent = String(value);
-}
-
-function cssColor(name, fallback) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
-}
-
-function svgElement(name, attributes = {}, text = null) {
-  const node = document.createElementNS(SVG_NS, name);
-  for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value));
-  if (text != null) node.textContent = String(text);
-  return node;
-}
 
 function renderMetrics(value) {
   const latest = value?.latest || {};

@@ -7,7 +7,7 @@ const entry = readFileSync(new URL('../public/history/history-main.js', import.m
 
 test('past weekly checkbox makes the period chart resolve the effective weekly data mode', () => {
   assert.match(chart, /routeMode === 'daily'/);
-  assert.match(chart, /getElementById\('historyPastWeekMode'\)\?\.checked/);
+  assert.match(chart, /byId\('historyPastWeekMode'\)\?\.checked/);
   assert.match(chart, /return 'weekly'/);
   assert.match(chart, /mode !== latestMode/);
 });

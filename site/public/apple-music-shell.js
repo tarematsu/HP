@@ -1,7 +1,6 @@
 import { mountDashboardShell } from './dashboard-ui-common.js?v=20260930.1';
 
 mountDashboardShell({
-  style: { href: '/apple-music.css?v=20260930.3', key: 'apple-music' },
   tab: {
     view: 'apple-music',
     label: 'Apple Music',

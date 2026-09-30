@@ -1,4 +1,5 @@
-const integer = new Intl.NumberFormat('ja-JP');
+import { byId, integerFormat as integer, setNotice as setSharedNotice } from './dashboard-ui-common.js?v=20260930.1';
+
 const percent = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 const state = {
@@ -11,8 +12,6 @@ const state = {
   rows: [],
   total: 0,
 };
-
-const byId = (id) => document.getElementById(id);
 
 function finiteCount(value) {
   const number = Number(value);
@@ -299,13 +298,7 @@ function render() {
   }
 }
 
-function setNotice(message, error = false) {
-  const notice = byId('playedTracksNotice');
-  if (!notice) return;
-  notice.textContent = message;
-  notice.classList.toggle('error', error);
-  notice.hidden = !message;
-}
+const setNotice = (message, error = false) => setSharedNotice('playedTracksNotice', message, error);
 
 function scrollSelectedPeriod({ smooth = false } = {}) {
   requestAnimationFrame(() => {

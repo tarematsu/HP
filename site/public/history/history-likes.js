@@ -1,4 +1,10 @@
 import {
+  byId as el,
+  decimalOneFormat as number,
+  finiteNumber as finite,
+  setNotice as setSharedNotice,
+} from '../dashboard-ui-common.js?v=20260930.1';
+import {
   displayTrackArtist,
   displayTrackTitle,
 } from './history-track-view.js';
@@ -8,7 +14,6 @@ import {
 
   const CACHE_PREFIX = 'sh.track-like-ranking.v4:';
   const CACHE_MS = 5 * 60_000;
-  const number = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
   const dateTime = new Intl.DateTimeFormat('ja-JP', {
     timeZone: 'UTC',
     year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
@@ -19,14 +24,8 @@ import {
   const MEDALS = ['🥇', '🥈', '🥉'];
 
   const state = { rows: [], summary: {}, controller: null };
-  const el = (id) => document.getElementById(id);
   if (!el('likesView')) return;
 
-  const finite = (value) => {
-    if (value === null || value === undefined || value === '') return null;
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  };
   const fmt = (value) => finite(value) == null ? '—' : number.format(Number(value));
   const fmtSigned = (value) => {
     const parsed = finite(value);
@@ -36,13 +35,7 @@ import {
   };
   const trackName = (row) => displayTrackTitle(row);
   const artistName = (row) => displayTrackArtist(row);
-
-  function setNotice(text, error = false) {
-    const node = el('likesNotice');
-    node.textContent = text;
-    node.hidden = !text;
-    node.classList.toggle('error', error);
-  }
+  const setNotice = (text, error = false) => setSharedNotice('likesNotice', text, error);
 
   function readCache(url) {
     try {

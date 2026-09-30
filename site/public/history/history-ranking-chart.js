@@ -1,3 +1,10 @@
+import {
+  byId,
+  cssColor,
+  finiteNumber as finite,
+  integerFormat as integer,
+} from '../dashboard-ui-common.js?v=20260930.1';
+
 const RANKING_MODE = 'ranking';
 const FEATURED_HOSTS = ['sakuramankai', 'sakurazaka46jp', 'nogizaka46smej'];
 const MISSING_START = '2026-01-26';
@@ -7,7 +14,6 @@ const HOST_COLORS = new Map([
   ['sakurazaka46jp', '#d93f79'],
   ['nogizaka46smej', '#812990'],
 ]);
-const integer = new Intl.NumberFormat('ja-JP');
 
 let rows = [];
 let rankingWeeks = [];
@@ -17,12 +23,6 @@ let drawTimer = 0;
 let resizeTimer = 0;
 let selectedWeekIndex = null;
 let chartModel = null;
-
-function finite(value) {
-  if (value === null || value === undefined || value === '') return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
 
 function hostKey(value) {
   return String(value || '').trim().toLowerCase();
@@ -43,18 +43,13 @@ function activeMode() {
   return String(document.querySelector('#modeTabs button.active[data-mode]')?.dataset?.mode || '');
 }
 
-function cssColor(name, fallback) {
-  if (!name) return fallback;
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
-}
-
 function scheduleDraw(delay = 0) {
   clearTimeout(drawTimer);
   drawTimer = setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(draw)), delay);
 }
 
 function prepareCanvas() {
-  const canvas = document.getElementById('chart');
+  const canvas = byId('chart');
   if (!canvas) return null;
   const context = canvas.getContext('2d');
   if (!context) return null;
@@ -141,10 +136,10 @@ function drawMissingBand(context, weeks, positions, area) {
 }
 
 function hideChart() {
-  const panel = document.getElementById('chartPanel');
+  const panel = byId('chartPanel');
   if (panel) panel.hidden = true;
-  document.getElementById('chartLegend')?.replaceChildren();
-  const detail = document.getElementById('chartDetail');
+  byId('chartLegend')?.replaceChildren();
+  const detail = byId('chartDetail');
   if (detail) detail.textContent = '';
   chartModel = null;
 }
@@ -157,7 +152,7 @@ function draw() {
     return;
   }
 
-  const panel = document.getElementById('chartPanel');
+  const panel = byId('chartPanel');
   if (!panel) return;
   panel.hidden = false;
   const prepared = prepareCanvas();
@@ -177,7 +172,7 @@ function draw() {
   context.strokeStyle = 'rgba(31,45,68,.12)';
   context.fillStyle = cssColor('--muted', '#667287');
   context.lineWidth = 1;
-  context.font = '10.5px system-ui';
+  context.font = '11px system-ui';
   const tickRanks = [...new Set([1, Math.max(1, Math.round((maxRank + 1) / 2)), maxRank])];
   for (const rank of tickRanks) {
     const y = yFor(rank);
@@ -194,7 +189,7 @@ function draw() {
     context.save();
     context.strokeStyle = colors[seriesIndex];
     context.fillStyle = colors[seriesIndex];
-    context.lineWidth = 2.4;
+    context.lineWidth = 2;
     context.beginPath();
     let open = false;
     item.values.forEach((rank, index) => {
@@ -212,20 +207,20 @@ function draw() {
     item.values.forEach((rank, index) => {
       if (rank == null || rank <= 0) return;
       context.beginPath();
-      context.arc(positions[index], yFor(rank), 2.5, 0, Math.PI * 2);
+      context.arc(positions[index], yFor(rank), 3, 0, Math.PI * 2);
       context.fill();
     });
     context.restore();
   });
 
   context.fillStyle = cssColor('--muted', '#667287');
-  context.font = '10px system-ui';
+  context.font = '11px system-ui';
   context.textBaseline = 'top';
   const xTickCount = Math.min(model.weeks.length, width < 520 ? 4 : 6);
   for (const index of tickIndices(model.weeks.length, xTickCount)) {
     const x = positions[index];
     context.beginPath();
-    context.strokeStyle = 'rgba(31,45,68,.16)';
+    context.strokeStyle = 'rgba(31,45,68,.12)';
     context.moveTo(x, area.top + area.height);
     context.lineTo(x, area.top + area.height + 5);
     context.stroke();
@@ -236,23 +231,23 @@ function draw() {
     context.fillText(fullWeek(model.weeks[index]), first ? x + 2 : last ? x - 2 : x, area.top + area.height + 9);
   }
 
-  const title = document.getElementById('chartTitle');
+  const title = byId('chartTitle');
   if (title) title.textContent = chartHosts.length === 1
     ? `${chartHosts[0]} 順位推移`
     : '週間リーダーボード順位';
-  const legend = document.getElementById('chartLegend');
+  const legend = byId('chartLegend');
   if (legend) {
     const items = model.series.map((item, index) => appendLegend(item.host, colors[index]));
     if (hasMissingBand) items.push(appendLegend('欠測', 'rgba(100, 107, 116, .55)', 'rankingMissingLegend'));
     legend.replaceChildren(...items);
   }
-  const foot = document.getElementById('chartFoot');
+  const foot = byId('chartFoot');
   if (foot) foot.textContent = '順位は上ほど高順位です。灰色は欠測期間です。空白週は圏外です。';
-  const start = document.getElementById('chartStartDate');
-  const end = document.getElementById('chartEndDate');
+  const start = byId('chartStartDate');
+  const end = byId('chartEndDate');
   if (start) start.textContent = model.weeks[0] || '—';
   if (end) end.textContent = model.weeks.at(-1) || '—';
-  const detail = document.getElementById('chartDetail');
+  const detail = byId('chartDetail');
   if (detail) {
     if (Number.isInteger(selectedWeekIndex) && model.weeks[selectedWeekIndex]) {
       const week = model.weeks[selectedWeekIndex];
@@ -300,7 +295,7 @@ window.addEventListener('history:ranking-host-selected', (event) => {
   scheduleDraw();
 });
 
-document.getElementById('chart')?.addEventListener('pointerup', (event) => {
+byId('chart')?.addEventListener('pointerup', (event) => {
   if (activeMode() !== RANKING_MODE || !chartModel?.positions?.length) return;
   event.stopImmediatePropagation();
   const bounds = event.currentTarget.getBoundingClientRect();

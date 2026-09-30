@@ -16,8 +16,7 @@ test('dashboard header starts in its final DOM shape before tabs and dashboard c
   assert.ok(headerImport, 'dashboard-header.js must have an explicit deployment version');
   assert.ok(tabsImport, 'dashboard-tabs.js must have an explicit deployment version');
   assert.ok(dashboardEntry.indexOf(headerImport) < dashboardEntry.indexOf(tabsImport));
-  assert.match(headerRepair, /dashboard-fixes\.css\?v=[^']+/);
-  assert.match(headerRepair, /pages-layout\.css\?v=20260928\.1/);
+  assert.doesNotMatch(headerRepair, /\.css\?v=|createElement\('link'\)|dashboardStylesheets/);
   assert.doesNotMatch(headerRepair, /pages-layout-(?:unification|final-fixes)/);
   assert.match(page, /<p id="updated" class="subtle">-<\/p>/);
   assert.match(page, /<nav id="modeTabs" class="mode-tabs dashboard-tabs"/);

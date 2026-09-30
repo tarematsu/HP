@@ -24,16 +24,6 @@ html {
   background: #ffffff;
 }
 
-.top-card,
-.card,
-.metric,
-.guide,
-.summary-cards article {
-  border-color: #d3d3d3;
-  background: rgba(255, 255, 255, .98);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, .06);
-}
-
 .channel-visual,
 .track-visual {
   border-color: #d3d3d3;
@@ -85,7 +75,6 @@ html {
   box-shadow: none;
 }
 
-.metric.featured,
 .daily-total-row {
   background: #f1f1f1;
 }
@@ -120,28 +109,13 @@ td {
   background: #ffffff;
 }
 
-.mode-tabs,
-.range-presets,
-.pill,
-.chart-detail,
-.like-rank-number,
 .like-rank-metrics span,
 th {
   background: #f4f4f4;
 }
 
-.range-presets button.active {
-  background: #ffffff;
-  color: #111111;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
-}
-
 tbody tr:hover {
   background: #fafafa;
-}
-
-.status-message {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .1);
 }
 
 /* Data-dense layout: remove decorative chrome and let the data provide hierarchy. */
@@ -290,19 +264,6 @@ tbody tr:hover {
   padding-left: 16px;
 }
 
-.section-head {
-  margin-bottom: 8px;
-}
-
-.section-head h2 {
-  font-size: .94rem;
-  font-weight: 760;
-}
-
-.host {
-  font-size: .68rem;
-}
-
 .now-playing {
   grid-template-columns: 76px minmax(0, 1fr);
   gap: 12px;
@@ -435,23 +396,14 @@ tbody tr:hover {
 }
 
 .chart-detail {
-  min-height: 0;
-  margin-top: 4px;
-  padding: 3px 0;
   border: 0;
   border-radius: 0;
   background: transparent;
-  font-size: .68rem;
 }
 
 .chart-detail:empty,
 .notice:empty {
   display: none;
-}
-
-.chart-axis,
-.chart-foot {
-  font-size: .62rem;
 }
 
 .history-view,
@@ -474,21 +426,14 @@ tbody tr:hover {
 }
 
 .range-presets button {
-  min-height: 32px;
   padding: 4px 7px;
   border-radius: 0;
-  font-size: .66rem;
 }
 
 .range-presets button.active {
   border-bottom: 2px solid #111111;
   background: transparent;
   box-shadow: none;
-}
-
-.controls label {
-  gap: 2px;
-  font-size: .64rem;
 }
 
 .controls input,
@@ -503,12 +448,6 @@ tbody tr:hover {
   padding: 6px 10px;
   border-radius: 4px;
   font-size: .7rem;
-}
-
-.notice {
-  min-height: 0;
-  margin: 5px 0;
-  font-size: .66rem;
 }
 
 .summary-cards,
@@ -528,7 +467,6 @@ tbody tr:hover {
 }
 
 .summary-cards span {
-  font-size: .64rem;
   font-weight: 650;
 }
 
@@ -563,20 +501,9 @@ table {
   font-size: .7rem;
 }
 
-.like-actions {
-  gap: 5px;
-  margin: 7px 0;
-}
-
-.like-ranking {
-  gap: 0;
-}
-
 .like-rank-item {
-  padding: 7px 0;
   border: 0;
   border-bottom: 1px solid #e6e6e6;
-  border-radius: 0;
 }
 
 .like-rank-number {
@@ -594,7 +521,6 @@ table {
 .like-rank-metrics span {
   padding: 4px 6px;
   border-radius: 3px;
-  font-size: .6rem;
 }
 
 .status-message {
@@ -605,36 +531,12 @@ table {
 }
 
 @media (max-width: 760px) {
-  .shell {
-    padding-inline: 8px;
-  }
-
-  .top-card.dashboard-header {
-    gap: 6px;
-    padding-top: 3px;
-  }
-
-  .mode-tabs.dashboard-tabs {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-  }
-
-  .metrics {
-    gap: 0;
-  }
-
-  .metric,
-  .metric.featured {
-    padding: 8px 7px 9px;
-    border-radius: 0;
-  }
-
   .primary-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .primary-grid > .card:first-child,
   .primary-grid > .card:last-child {
-    padding: 11px 0;
     border-right: 0;
   }
 
@@ -681,14 +583,6 @@ table {
     grid-column: 1 / -1;
     border-bottom: 0;
   }
-
-  .chart-panel,
-  .data-panel,
-  .goal-card,
-  .chart-card {
-    padding: 11px 0;
-    border-radius: 0;
-  }
 }
 
 @media (max-width: 430px) {
@@ -705,16 +599,6 @@ table {
 
   .dashboard-header .channel-copy > .subtle {
     margin-top: 0;
-  }
-
-  .mode-tabs.dashboard-tabs {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-  }
-
-  .mode-tabs.dashboard-tabs button {
-    min-height: 34px;
-    padding: 4px 2px;
-    font-size: .63rem;
   }
 
   .now-playing {

@@ -7,6 +7,10 @@ const buildScript = readFileSync(new URL('../scripts/build-public-assets.mjs', i
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const common = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
 const rangeNavigator = readFileSync(new URL('../public/history/history-range-navigator.js', import.meta.url), 'utf8');
+const currentChart = readFileSync(new URL('../public/dashboard-chart-comparison.js', import.meta.url), 'utf8');
+const firstWeekChart = readFileSync(new URL('../public/first-week-comparison.js', import.meta.url), 'utf8');
+const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
+const rankingChart = readFileSync(new URL('../public/history/history-ranking-chart.js', import.meta.url), 'utf8');
 
 function assetVersion(source, asset) {
   const escaped = asset.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -26,7 +30,7 @@ test('dashboard ships one CSS and one JavaScript browser asset', () => {
   assert.doesNotMatch(html, /(?:app-lite|monochrome|dashboard-root-presentation|dashboard-metrics)\.(?:css|js)\?v=/);
 });
 
-test('build collapses the complete module graph and feature styles into minified assets', () => {
+test('build only bundles and minifies the source-owned module and style graph', () => {
   assert.match(buildScript, /entryPoints:\s*\[resolve\(publicRoot, 'dashboard-metrics\.js'\)\]/);
   assert.match(buildScript, /outfile:\s*resolve\(assetsDir, 'dashboard\.min\.js'\)/);
   assert.match(buildScript, /bundle:\s*true/);
@@ -48,22 +52,23 @@ test('build collapses the complete module graph and feature styles into minified
     buildScript.lastIndexOf("'dashboard-ui-common.css'") > buildScript.indexOf("'hinata.css'"),
     'shared presentation contract must be last in the CSS bundle',
   );
+  assert.doesNotMatch(buildScript, /optimizeBundled|shareCommonUiHelpers|canvasTransforms|onLoad\(|readFile/);
 });
 
-test('bundled pages never request feature styles at runtime', () => {
-  assert.match(header, /dataset\.dashboardCssBundled !== 'true'/);
-  assert.match(common, /dataset\.dashboardCssBundled === 'true'\) return null/);
-  assert.match(rangeNavigator, /dataset\.dashboardCssBundled === 'true'\) return/);
+test('source modules never request feature styles at runtime', () => {
+  assert.doesNotMatch(header, /createElement\('link'\)|stylesheet|\.css\?v=/);
+  assert.doesNotMatch(common, /ensureStylesheet|createElement\('link'\)|\.css\?v=/);
+  assert.doesNotMatch(rangeNavigator, /ensureStylesheet|createElement\('link'\)|\.css\?v=/);
 });
 
-test('Canvas chart normalization is part of the production bundle build', () => {
-  for (const file of [
-    'dashboard-chart-comparison.js',
-    'first-week-comparison.js',
-    'history-period-chart.js',
-    'history-ranking-chart.js',
-  ]) assert.match(buildScript, new RegExp(file.replaceAll('.', '\\.')));
-  assert.match(buildScript, /11px system-ui/);
-  assert.match(buildScript, /context\.lineWidth = 2;/);
-  assert.match(buildScript, /context\.arc\(positions\[index\], yFor\(rank\), 3,/);
+test('Canvas chart normalization lives in source modules instead of build transforms', () => {
+  assert.match(currentChart, /context\.font = '11px system-ui'/);
+  assert.match(currentChart, /drawSeries\(context, current, xFor, yOnline, '#111', 2\)/);
+  assert.match(firstWeekChart, /context\.font = '11px system-ui'/);
+  assert.match(firstWeekChart, /context\.lineWidth = 2/);
+  assert.match(periodChart, /context\.font = '11px system-ui'/);
+  assert.match(periodChart, /width: 2/);
+  assert.match(rankingChart, /context\.font = '11px system-ui'/);
+  assert.match(rankingChart, /context\.lineWidth = 2/);
+  assert.match(rankingChart, /context\.arc\(positions\[index\], yFor\(rank\), 3,/);
 });

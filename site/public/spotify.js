@@ -1,3 +1,13 @@
+import {
+  byId as element,
+  fullDate as formatDate,
+  integerFormat as numberFormat,
+  safeInteger as integer,
+  setNotice as setSharedNotice,
+  shortDate,
+  svgElement,
+} from './dashboard-ui-common.js?v=20260930.1';
+
 const SAKURAZAKA_KEY = 'sakurazaka46';
 const SAKURAZAKA_NAME = '櫻坂46';
 const TREND_ARTIST_LIMIT = 10;
@@ -8,9 +18,6 @@ const TREND_COLORS = Object.freeze([
   '#7570b3', '#e7298a', '#66a61e', '#e6ab02', '#a6761d',
   '#1f78b4', '#b15928',
 ]);
-const SVG_NS = 'http://www.w3.org/2000/svg';
-
-const numberFormat = new Intl.NumberFormat('ja-JP');
 const compactNumberFormat = new Intl.NumberFormat('ja-JP', {
   notation: 'compact',
   maximumFractionDigits: 1,
@@ -18,46 +25,13 @@ const compactNumberFormat = new Intl.NumberFormat('ja-JP', {
 let requestSequence = 0;
 let readModelPromise = null;
 
-function element(id) {
-  return document.getElementById(id);
-}
-
-function setNotice(message = '', error = false) {
-  const notice = element('spotifyNotice');
-  if (!notice) return;
-  notice.textContent = message;
-  notice.hidden = !message;
-  notice.classList.toggle('error', Boolean(error));
-}
-
-function formatDate(value) {
-  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return '-';
-  return `${Number(match[1])}/${Number(match[2])}/${Number(match[3])}`;
-}
-
-function formatTrendDate(value) {
-  const match = String(value || '').match(/^\d{4}-(\d{2})-(\d{2})$/);
-  if (!match) return String(value || '');
-  return `${Number(match[1])}/${Number(match[2])}`;
-}
-
-function integer(value) {
-  if (value == null || value === '') return null;
-  const number = Number(value);
-  return Number.isSafeInteger(number) ? number : null;
-}
+const setNotice = (message = '', error = false) => setSharedNotice('spotifyNotice', message, error);
+const formatTrendDate = (value) => shortDate(value, '');
 
 function formatDelta(value) {
   const number = integer(value);
   if (number == null) return '-';
   return number > 0 ? `+${numberFormat.format(number)}` : numberFormat.format(number);
-}
-
-function svgElement(name, attributes = {}) {
-  const node = document.createElementNS(SVG_NS, name);
-  for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value));
-  return node;
 }
 
 function renderRows(payload = {}) {

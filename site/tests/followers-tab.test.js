@@ -47,7 +47,8 @@ test('followers tab keeps the fixed accounts and renders a dynamic multi-series 
 });
 
 test('new follower targets keep pre-registration history sparse instead of inventing zeroes', () => {
-  assert.match(runtime, /if \(value == null \|\| value === ''\) return null/);
+  assert.match(runtime, /safeInteger as integer/);
+  assert.match(runtime, /const value = followerValue\(row\?\.\[handle\]\)/);
   assert.match(runtime, /if \(value == null\) continue/);
   assert.match(runtime, /return parsed == null \? '-' :/);
 });
