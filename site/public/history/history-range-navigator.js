@@ -1,3 +1,5 @@
+import { byId } from '../dashboard-ui-common.js?v=20260930.1';
+
 (() => {
   'use strict';
 
@@ -10,23 +12,13 @@
     { key: 'all', months: null },
   ]);
 
-  const rangePresets = document.getElementById('rangePresets');
-  const fromInput = document.getElementById('from');
-  const toInput = document.getElementById('to');
-  const chart = document.getElementById('chart');
+  const rangePresets = byId('rangePresets');
+  const fromInput = byId('from');
+  const toInput = byId('to');
+  const chart = byId('chart');
   if (!rangePresets || !fromInput || !toInput || !chart) return;
 
   let activePeriod = 'all';
-
-  function ensureStylesheet() {
-    if (document.documentElement.dataset.dashboardCssBundled === 'true') return;
-    if (document.querySelector('link[data-history-range-navigator]')) return;
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = '/history/history-range-navigator.css?v=20260925.1';
-    link.dataset.historyRangeNavigator = '1';
-    document.head.append(link);
-  }
 
   function todayUtc() {
     return new Date().toISOString().slice(0, 10);
@@ -65,7 +57,7 @@
   }
 
   function requestReload() {
-    const loadButton = document.getElementById('load');
+    const loadButton = byId('load');
     if (!loadButton) return;
     loadButton.dispatchEvent(new Event('click', { bubbles: true }));
   }
@@ -115,8 +107,8 @@
   }
 
   function syncArrowState() {
-    const previous = document.getElementById('historyRangePrevious');
-    const next = document.getElementById('historyRangeNext');
+    const previous = byId('historyRangePrevious');
+    const next = byId('historyRangeNext');
     if (!previous || !next) return;
 
     const summaryMode = ['daily', 'weekly', 'monthly'].includes(location.hash.slice(1) || 'weekly');
@@ -132,7 +124,7 @@
   }
 
   function mountNavigator() {
-    if (document.getElementById('historyChartNavigator')) return;
+    if (byId('historyChartNavigator')) return;
     const wrapper = document.createElement('div');
     wrapper.id = 'historyChartNavigator';
     wrapper.className = 'history-chart-navigator';
@@ -168,7 +160,6 @@
     });
   }
 
-  ensureStylesheet();
   initializeRangeControls();
   mountNavigator();
   setActivePeriod('all');
