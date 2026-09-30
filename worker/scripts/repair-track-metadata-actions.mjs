@@ -32,10 +32,10 @@ function wrangler(database, command, options = {}) {
 }
 
 function rows(output) {
-  const text = String(output || '').trim();
-  const starts = [text.indexOf('['), text.indexOf('{')].filter((index) => index >= 0);
-  if (!starts.length) throw new Error(`Wrangler did not return JSON: ${text.slice(0, 300)}`);
-  const payload = JSON.parse(text.slice(Math.min(...starts)));
+  const textValue = String(output || '').trim();
+  const starts = [textValue.indexOf('['), textValue.indexOf('{')].filter((index) => index >= 0);
+  if (!starts.length) throw new Error(`Wrangler did not return JSON: ${textValue.slice(0, 300)}`);
+  const payload = JSON.parse(textValue.slice(Math.min(...starts)));
   const containers = Array.isArray(payload) ? payload : [payload];
   return containers.flatMap((container) => (
     container?.results || container?.result?.results || container?.result?.[0]?.results || []
@@ -70,7 +70,13 @@ function complete(row) {
   const spotifyId = text(row?.spotify_id);
   const title = text(row?.title);
   const artist = text(row?.artist);
-  return Boolean(spotifyId && title && artist && title !== spotifyId && artist !== spotifyId && !/^JP[A-Z0-9]{8,}$/i.test(artist));
+  const thumbnailUrl = text(row?.thumbnail_url);
+  return Boolean(
+    spotifyId && title && artist && thumbnailUrl
+    && title !== spotifyId
+    && artist !== spotifyId
+    && !/^JP[A-Z0-9]{8,}$/i.test(artist)
+  );
 }
 
 function activeQueueRows() {
@@ -90,18 +96,33 @@ function activeQueueRows() {
   LIMIT ${candidateLimit}`);
 }
 
+function canonicalGapRows() {
+  return query(factsDatabase, `SELECT spotify_id,isrc,NULL AS duration_ms,fetched_at AS observed_at
+    FROM sh_track_canonical_metadata
+    WHERE track_id IS NOT NULL
+      AND spotify_id IS NOT NULL AND TRIM(spotify_id)<>''
+      AND (
+        title IS NULL OR TRIM(title)=''
+        OR artist IS NULL OR TRIM(artist)=''
+        OR thumbnail_url IS NULL OR TRIM(thumbnail_url)=''
+      )
+    ORDER BY track_id ASC
+    LIMIT ${candidateScanLimit}`);
+}
+
 function candidateRows() {
   const cutoff = now - lookbackMs;
-  // Always prioritize tracks in the live queue. The current-state like table is
-  // efficient for backlog discovery, but tracks with no recent like event can be
-  // absent from it and otherwise remain title-less on the Pages dashboard.
+  // Always prioritize tracks in the live queue, then drain every canonical
+  // presentation gap regardless of age. Recent likes remain a bounded fallback
+  // so newly observed provider identities are picked up quickly too.
   const active = activeQueueRows();
+  const canonicalGaps = canonicalGapRows();
   const latest = query(buddiesDatabase, `SELECT spotify_id,isrc,observed_at
     FROM sh_track_like_current INDEXED BY idx_sh_track_like_current_observed
     WHERE spotify_id IS NOT NULL AND TRIM(spotify_id)<>'' AND observed_at>=${cutoff}
     ORDER BY observed_at DESC LIMIT ${candidateScanLimit}`);
   const bySpotify = new Map();
-  for (const row of [...active, ...latest]) {
+  for (const row of [...active, ...canonicalGaps, ...latest]) {
     const spotifyId = text(row?.spotify_id);
     if (!spotifyId || bySpotify.has(spotifyId)) continue;
     bySpotify.set(spotifyId, row);
@@ -167,19 +188,21 @@ async function spotifyMetadata(candidate) {
     const separator = rawTitle.lastIndexOf(' by ');
     const title = separator > 0 ? text(rawTitle.slice(0, separator)) : rawTitle;
     let artist = text(payload.author_name) || (separator > 0 ? text(rawTitle.slice(separator + 4)) : null);
+    let thumbnailUrl = text(payload.thumbnail_url);
     let apple = null;
-    if (!artist) {
+    if (!artist || !thumbnailUrl) {
       apple = await appleMetadata(title, candidate.duration_ms);
-      artist = text(apple?.artistName);
+      artist ||= text(apple?.artistName);
+      thumbnailUrl ||= text(apple?.artworkUrl100);
     }
-    if (!title || !artist) return null;
+    if (!title || !artist || !thumbnailUrl) return null;
     return {
       spotify_id: spotifyId,
       isrc: normalizeIsrc(candidate.isrc),
       title,
       artist,
       display_title: `${title} — ${artist}`,
-      thumbnail_url: text(payload.thumbnail_url) || text(apple?.artworkUrl100),
+      thumbnail_url: thumbnailUrl,
       spotify_url: spotifyUrl,
       source: apple ? 'spotify_oembed_itunes_actions' : 'spotify_oembed_actions',
       fetched_at: now,
