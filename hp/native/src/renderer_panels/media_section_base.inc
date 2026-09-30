@@ -231,8 +231,8 @@ UINT NativeMediaPhaseIntervalMs(bool tver) noexcept {
 
 const wchar_t* NativeMediaYoutubeNavigationUrl() noexcept {
   NativeMediaObserveXCyclePhase(false);
-  if (gNativeMediaPowerSaving || !NativeMediaXRuntimeAllowed() ||
-      !NativeMediaXSlotEnabled(true)) {
+  if (gNativeMediaPowerSaving || !NativeMediaXSlotEnabled(true) ||
+      !NativeMediaXRuntimeAllowed()) {
     return kNativeMediaYoutubeContentUrl;
   }
   const ULONGLONG deadline = NativeMediaStartupXDeadlineTick();
