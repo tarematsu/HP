@@ -13,6 +13,7 @@ on:
       - '.github/workflows/run-runtime-offline-maintenance.yml'
       - 'scripts/cloudflare-d1-write-guard.mjs'
       - 'worker/scripts/publish-recent-daily-summaries-actions.mjs'
+      - 'worker/scripts/run-minute-facts-gap-scan-actions.mjs'
       - 'worker/scripts/run-runtime-offline-maintenance-actions.mjs'
       - 'worker/scripts/remote-d1-adapter.mjs'
       - 'worker/src/recent-daily-summary-publication.js'
@@ -83,7 +84,7 @@ jobs:
           npx wrangler d1 execute "$OTHER_DATABASE_NAME" --remote --json --command \
             "SELECT model_key,revision FROM sh_read_model_revision WHERE model_key IN ('history:daily','history:weekly','history:monthly','history:broadcasts','host-history:summary') ORDER BY model_key" \
             > pages-revisions-before.json
-      - name: Publish recent daily summaries, then run budget-aware maintenance
+      - name: Scan minute-fact gaps, publish summaries, then run budget-aware maintenance
         shell: bash
         env:
           RUNTIME_MAINTENANCE_D1_ALLOWED: ${{ steps.d1-budget.outputs.allowed }}
@@ -95,7 +96,12 @@ jobs:
           RUNTIME_MAINTENANCE_D1_WRITE_LIMIT: ${{ steps.d1-budget.outputs.limit }}
         run: |
           set -o pipefail
-          node scripts/publish-recent-daily-summaries-actions.mjs 2>&1 | tee runtime-offline-maintenance.log
+          if [[ "$RUNTIME_MAINTENANCE_D1_ALLOWED" == 'true' ]]; then
+            node scripts/run-minute-facts-gap-scan-actions.mjs 2>&1 | tee runtime-offline-maintenance.log
+          else
+            echo "Minute-fact gap scan deferred by D1 budget guard." | tee runtime-offline-maintenance.log
+          fi
+          node scripts/publish-recent-daily-summaries-actions.mjs 2>&1 | tee -a runtime-offline-maintenance.log
           node scripts/run-runtime-offline-maintenance-actions.mjs 2>&1 | tee -a runtime-offline-maintenance.log
       - name: Detect changed Pages source revisions
         id: pages-revision-diff
