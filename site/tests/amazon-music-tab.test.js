@@ -15,8 +15,8 @@ const api = readFileSync(new URL('../functions/api/amazon-music.js', import.meta
 
 test('Amazon Music is a dashboard route backed only by the Worker materialized read model', () => {
   assert.match(tabs, /'amazon-music':\s*\{/);
-  assert.match(tabs, /import\('\/amazon-music-shell\.js\?v=20260929\.1'\)/);
-  assert.match(tabs, /import\('\/amazon-music\.js\?v=20260929\.1'\)/);
+  assert.match(tabs, /import\('\/amazon-music-shell\.js\?v=20261001\.2'\)/);
+  assert.match(tabs, /import\('\/amazon-music\.js\?v=20261001\.2'\)/);
   assert.match(tabs, /async function showLazyView/);
   assert.match(shell, /mountDashboardShell/);
   assert.match(shell, /dashboardChartHost/);
@@ -40,6 +40,9 @@ test('Amazon Music API treats an ungenerated read model as an uncached empty suc
   assert.equal(response.headers.get('cache-control'), 'no-store');
   const payload = await response.json();
   assert.equal(payload.ok, true);
+  assert.equal(payload.version, 3);
+  assert.equal(payload.artist_name, '坂道3グループ');
+  assert.deepEqual(payload.artists, ['乃木坂46', '櫻坂46', '日向坂46']);
   assert.equal(payload.track_count, 0);
   assert.equal(payload.follower, null);
   assert.deepEqual(payload.tracks, []);
@@ -83,8 +86,10 @@ test('Amazon Music title comparison and artist modes apply the requested table/c
   assert.match(titleTracks, /'櫻坂46'/);
   assert.match(titleTracks, /'日向坂46'/);
   assert.match(titleTracks, /'是非に及ばず'/);
+  assert.match(titleTracks, /'Lonesome rabbit'/);
   assert.match(titleTracks, /'愛MUST BE'/);
-  assert.match(titleTracks, /'クリフハンガー'/);
+  assert.match(titleTracks, /'Kind of love'/);
+  assert.match(titleTracks, /'イチャイチャ虫'/);
 });
 
 test('Amazon Music rank chart keeps first place at the top and fits mobile width', () => {
