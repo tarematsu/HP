@@ -3,5 +3,5 @@
   "database_name": "stationhead-buddies",
   "database_id": "f361aae0-05f0-42bc-8784-77100e80133d",
   "migrations_dir": "database/buddies-migrations",
-  "schema": "database/buddies-migrations/015_track_history_dirty_days.sql"
+  "schema": "database/buddies-migrations/016_retire_comments_and_redundant_indexes.sql"
 }
