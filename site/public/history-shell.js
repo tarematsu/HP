@@ -43,6 +43,7 @@ const weekly = dashboardDataCard({
   title: 'Buddies週間実績',
   kicker: 'BUDDIES WEEKLY METRICS',
   bodyHtml: '<div class="table-wrap"><table class="weekly-ranking-table"><thead id="rankingWeeklyThead"></thead><tbody id="rankingWeeklyTbody"></tbody></table></div>',
+  hidden: true,
 });
 
 mountDashboardShell({
@@ -54,5 +55,3 @@ mountDashboardShell({
     html: `<div id="guide" hidden aria-hidden="true"><p class="kicker"></p><h2 id="guideTitle"></h2><p id="guideText"></p></div>${controls}<p id="notice" class="notice" role="status"></p>${summary}${chart}${data}${weekly}`,
   },
 });
-
-document.getElementById('rankingWeeklyPanel')?.setAttribute('hidden', '');
