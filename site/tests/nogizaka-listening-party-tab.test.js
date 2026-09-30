@@ -5,7 +5,12 @@ import test from 'node:test';
 const shell = readFileSync(new URL('../public/nogizaka-listening-party-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/nogizaka-listening-party.js', import.meta.url), 'utf8');
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+const tabLayout = readFileSync(new URL('../public/pages-tabs-layout.css', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/nogizaka-listening-party.js', import.meta.url), 'utf8');
+
+test('dashboard tabs are capped at seven equal-width columns', () => {
+  assert.match(tabLayout, /grid-template-columns:\s*repeat\(7,\s*minmax\(0,\s*1fr\)\)\s*!important/);
+});
 
 test('Nogizaka tab is mounted immediately before Hinata when available', () => {
   assert.match(shell, /view: 'nogizaka'/);
