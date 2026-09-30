@@ -8,7 +8,7 @@ const JSON_HEADERS = {
 const MAX_POINTS = 120000;
 const SERIES_CACHE_TTL_MS = 5 * 60 * 1000;
 const SERIES_CACHE_MAX = 8;
-const SERIES_CACHE_VERSION = 10;
+const SERIES_CACHE_VERSION = 11;
 const DUPLICATE_START_TOLERANCE_MS = 15 * 60 * 1000;
 const DUPLICATE_NAME_TOLERANCE_MS = 6 * 60 * 60 * 1000;
 const SUMMARY_MISMATCH_RATIO = 0.45;
@@ -178,7 +178,7 @@ export function decodeSakurazakaSeriesRows(rows, source) {
     }
     result.push({
       series_key: String(row.series_key || `${row.event_name}:${row.started_at}`),
-      event_name: String(row.event_name || '公式ステヘ'),
+      event_name: String(row.event_name || '公式リスパ'),
       started_at: Number(row.started_at) || null,
       samples,
       source: String(row.source || source),
@@ -204,7 +204,7 @@ function hasSeriesSamples(row) {
 
 function genericEventName(value) {
   const name = normalizedEventName(value);
-  return !name || name === '公式ステヘ';
+  return !name || name === '公式リスパ';
 }
 
 function similarEventNames(leftValue, rightValue) {

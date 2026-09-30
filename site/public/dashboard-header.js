@@ -25,22 +25,6 @@ document.addEventListener('focusout', (event) => {
 }, { capture: true });
 document.addEventListener('pointerdown', clearKeyboardNavigation, { capture: true });
 
-const DASHBOARD_TITLE = '#櫻坂46_ステへ統計';
-document.title = DASHBOARD_TITLE;
-const DASHBOARD_TITLE_SEARCH_URL = `https://x.com/search?q=${encodeURIComponent(DASHBOARD_TITLE)}&src=typed_query`;
-const channelName = byId('channelName');
-if (channelName) {
-  const link = document.createElement('a');
-  link.dataset.dashboardTitleLink = 'true';
-  link.href = DASHBOARD_TITLE_SEARCH_URL;
-  link.target = '_blank';
-  link.rel = 'noopener noreferrer';
-  link.textContent = DASHBOARD_TITLE;
-  link.style.color = 'inherit';
-  link.style.textDecoration = 'none';
-  channelName.replaceChildren(link);
-}
-
 const JST_TIME = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo',
   hour: '2-digit',

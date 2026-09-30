@@ -410,8 +410,8 @@ import {
     el('chartPanel').hidden = state.mode === 'ranking';
     el('rankingWeeklyPanel').hidden = state.mode !== 'ranking';
     setText('chartFoot', state.mode === 'broadcasts'
-      ? '横軸は各放送の開始からの経過時間です。'
-      : '左軸は同接（平均・最大・最小）、右軸は各期間の再生数増加です。');
+      ? '各線は1回の公式リスパです。横軸は各開催の開始からの経過時間です。'
+      : '');
   }
 
   function resetData() {

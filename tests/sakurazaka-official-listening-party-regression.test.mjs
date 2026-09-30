@@ -89,7 +89,15 @@ test('pending ROCK IN listening party stays visible without samples and keeps it
   assert.equal(replaced[0].samples.length, 1);
 });
 
-test('Pages labels official Stationhead events as official listening parties', () => {
+test('Pages stores listening-party labels at their owning sources without late rewrites', () => {
+  const registry = readFileSync(
+    new URL('../site/public/dashboard-tab-registry.js', import.meta.url),
+    'utf8',
+  );
+  const history = readFileSync(
+    new URL('../site/public/history/history-lite.js', import.meta.url),
+    'utf8',
+  );
   const chart = readFileSync(
     new URL('../site/public/history/history-broadcasts.js', import.meta.url),
     'utf8',
@@ -98,9 +106,11 @@ test('Pages labels official Stationhead events as official listening parties', (
     new URL('../site/public/history/history-broadcast-table.js', import.meta.url),
     'utf8',
   );
-  assert.match(chart, /button\.textContent = '公式リスパ'/);
-  assert.match(table, /tableTitle\.textContent = '公式リスパ一覧'/);
-  assert.match(chart, /公式リスパ 同接推移/);
+  assert.match(registry, /mode: 'broadcasts', label: 'リスパ'/);
+  assert.match(history, /broadcasts: \{ title: '公式リスパ比較', table: '公式リスパ一覧', chart: '公式リスパ 同接推移（開始0分比較）' \}/);
+  assert.doesNotMatch(chart, /button\.textContent = '公式リスパ'/);
+  assert.doesNotMatch(chart, /chartTitle'\)\.textContent/);
+  assert.doesNotMatch(table, /tableTitle\.textContent/);
   assert.match(chart, /CACHE_REVISION = '9'/);
   assert.match(chart, /API_REVISION = '3'/);
   assert.match(chart, /revision: API_REVISION/);

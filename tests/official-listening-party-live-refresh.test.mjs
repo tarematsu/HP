@@ -20,7 +20,7 @@ test('official listening party uses live refresh only while collection is active
   assert.match(summary, /document\.getElementById\('load'\)\?\.click\(\)/);
   assert.doesNotMatch(summary, /scheduleLiveRefresh\(0\);\s*$/m);
   assert.match(historyEntry, /history-broadcast-summary\.js\?v=20260930\.1/);
-  assert.match(historyEntry, /history-broadcasts\.js\?v=20260927\.1&r/);
+  assert.match(historyEntry, /history-broadcasts\.js\?v=20261001\.1/);
 });
 
 test('ended official listening parties are materialized into the canonical read model', () => {

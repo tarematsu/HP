@@ -40,6 +40,6 @@ test('official listening-party chart no longer fetches or mutates table enrichme
 });
 
 test('broadcast runtime URLs remain stable while the response contract is consolidated', () => {
-  assert.match(historyMain, /history-broadcasts\.js\?v=20260927\.1/);
-  assert.match(historyMain, /history-broadcast-table\.js\?v=20260924\.1/);
+  assert.match(historyMain, /history-broadcasts\.js\?v=20261001\.1/);
+  assert.match(historyMain, /history-broadcast-table\.js\?v=20261001\.1/);
 });

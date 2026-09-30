@@ -16,15 +16,15 @@ const controls = dashboardControls({
 });
 
 const summary = dashboardSummary([
-  dashboardSummaryItem({ label: '<span id="periodLabel">期間数</span>', valueId: 'periods' }),
-  dashboardSummaryItem({ label: '<span id="maxLabel">平均同接</span>', valueId: 'maxListener' }),
-  dashboardSummaryItem({ label: '<span id="streamLabel">再生数増加</span>', valueId: 'streamGrowth' }),
-  dashboardSummaryItem({ label: '<span id="memberLabel">メンバー増加数</span>', valueId: 'memberGrowth' }),
+  dashboardSummaryItem({ label: '<span id="periodLabel"></span>', valueId: 'periods' }),
+  dashboardSummaryItem({ label: '<span id="maxLabel"></span>', valueId: 'maxListener' }),
+  dashboardSummaryItem({ label: '<span id="streamLabel"></span>', valueId: 'streamGrowth' }),
+  dashboardSummaryItem({ label: '<span id="memberLabel"></span>', valueId: 'memberGrowth' }),
 ], { id: 'summaryCards', ariaLabel: '集計概要' });
 
 const chart = dashboardChartCard({
   id: 'chartPanel',
-  title: '主要指標の推移',
+  title: '',
   titleId: 'chartTitle',
   kicker: 'TREND',
   trailingHtml: dashboardLegend({ id: 'chartLegend', className: 'chart-legend' }),
@@ -40,7 +40,7 @@ const dataTable = dashboardTable({
 });
 
 const data = dashboardDataCard({
-  title: '集計一覧',
+  title: '',
   titleId: 'tableTitle',
   kicker: 'DATA',
   trailingHtml: '<button id="csv" class="button" type="button">CSV</button>',

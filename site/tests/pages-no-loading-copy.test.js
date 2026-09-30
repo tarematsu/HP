@@ -28,10 +28,10 @@ test('Pages does not render transient loading copy', () => {
 test('silent loading changes are cache busted through the bundled Pages entry', () => {
   assert.match(historyEntry, /history-chart-stability\.js\?v=20260925\.1/);
   assert.doesNotMatch(historyEntry, /history-table-cleanup|history-page-fixes|history-summary-average-labels/);
-  assert.match(historyEntry, /history-lite\.js\?v=20260930\.1/);
+  assert.match(historyEntry, /history-lite\.js\?v=20261001\.1/);
   assert.match(historyEntry, /unofficial-listening-parties\.js\?v=20260927\.1/);
-  assert.match(historyEntry, /history-broadcasts\.js\?v=20260927\.1/);
-  assert.match(tabs, /history-main\.js\?v=20260928\.1/);
+  assert.match(historyEntry, /history-broadcasts\.js\?v=20261001\.1/);
+  assert.match(tabs, /history-main\.js\?v=20261001\.1/);
   assert.match(tabs, /first-week-comparison-shell\.js\?v=20260929\.1/);
   assert.match(tabs, /first-week-comparison\.js\?v=20260929\.1/);
   assert.match(tabs, /played-tracks-shell\.js\?v=20260928\.1/);

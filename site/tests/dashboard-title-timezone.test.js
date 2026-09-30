@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const fetchCache = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
@@ -9,11 +10,11 @@ const dashboard = readFileSync(new URL('../public/dashboard-client.js', import.m
 const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 const historyData = readFileSync(new URL('../public/history/history-data-client.js', import.meta.url), 'utf8');
 
-test('dashboard title is the hashtag, browser title, and links to an X search for the same text', () => {
-  assert.match(header, /const DASHBOARD_TITLE = '#櫻坂46_ステへ統計'/);
-  assert.match(header, /document\.title = DASHBOARD_TITLE/);
-  assert.match(header, /https:\/\/x\.com\/search\?q=\$\{encodeURIComponent\(DASHBOARD_TITLE\)\}&src=typed_query/);
-  assert.match(header, /dataset\.dashboardTitleLink = 'true'/);
+test('dashboard title is final in initial HTML and links to an X search for the same text', () => {
+  assert.match(page, /<title>#櫻坂46_ステへ統計<\/title>/);
+  assert.match(page, /<h1 id="channelName"><a data-dashboard-title-link="true"[^>]*>#櫻坂46_ステへ統計<\/a><\/h1>/);
+  assert.match(page, /https:\/\/x\.com\/search\?q=%23%E6%AB%BB%E5%9D%8246_%E3%82%B9%E3%83%86%E3%81%B8%E7%B5%B1%E8%A8%88&amp;src=typed_query/);
+  assert.doesNotMatch(header, /DASHBOARD_TITLE|document\.title\s*=|channelName\.replaceChildren|dashboardTitleLink/);
 });
 
 test('header shows the dashboard materialization time in JST without seconds', () => {

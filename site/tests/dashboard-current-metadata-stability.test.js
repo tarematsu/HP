@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const buildScript = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
+const historyApi = readFileSync(new URL('../functions/api/history.js', import.meta.url), 'utf8');
 const rootPresentation = readFileSync(new URL('../public/dashboard-root-presentation.css', import.meta.url), 'utf8');
-const officialCopy = readFileSync(new URL('../public/official-listening-party-copy.js', import.meta.url), 'utf8');
+const officialCopyUrl = new URL('../public/official-listening-party-copy.js', import.meta.url);
 
 test('dashboard metrics use one initial bundled stylesheet rule across views', () => {
   assert.match(html, /assets\/dashboard\.min\.css\?v=\d{8}\.\d+/);
@@ -24,13 +25,10 @@ test('dashboard does not supplement queue metadata in the browser', () => {
   assert.doesNotMatch(metrics, /restoreKnownMetadata|const known = new Map/);
 });
 
-test('2025 year-end listening party copy loads only before the broadcast renderer', () => {
+test('2025 year-end listening party copy comes from the history API source', () => {
+  assert.equal(existsSync(officialCopyUrl), false);
   assert.doesNotMatch(metrics, /official-listening-party-copy\.js/);
-  assert.match(historyEntry, /official-listening-party-copy\.js\?v=20260923\.1/);
-  assert.ok(
-    historyEntry.indexOf('official-listening-party-copy.js') < historyEntry.indexOf('history-broadcast-summary.js'),
-  );
-  assert.match(officialCopy, /YEAR_END_2025_CONTENT = '2025年にリリースした曲\(29曲\)'/);
-  assert.match(officialCopy, /eventName\.includes\('THANK YOU 2025'\)/);
-  assert.match(officialCopy, /row\.broadcast_content = YEAR_END_2025_CONTENT/);
+  assert.doesNotMatch(historyEntry, /official-listening-party-copy\.js/);
+  assert.match(historyApi, /content: '2025年にリリースした曲', tracks: 29/);
+  assert.doesNotMatch(historyApi, /2025年にリリースした曲\(29曲\)/);
 });
