@@ -162,6 +162,7 @@ const expectedMigrations = [
   'database/facts-migrations/063_finalize_stream_5m_once.sql',
   'database/facts-migrations/064_retire_redundant_indexes.sql',
   'database/facts-migrations/065_direct_5m_stream_history.sql',
+  'database/facts-migrations/066_pages_canonical_track_identity.sql',
 ];
 
 test('MINUTE_DB deployment selects changed migrations through the current schema tip', () => {
