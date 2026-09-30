@@ -15,7 +15,9 @@ test('music collector keeps hourly Amazon update detection and gated 10-minute d
     '5 * * * *',
     '2,12,22,32,42,52 * * * *',
   ]);
-  assert.deepEqual(value.d1_databases.map(({ binding }) => binding), ['MINUTE_DB']);
+  assert.deepEqual(value.d1_databases.map(({ binding }) => binding), ['MINUTE_DB', 'OTHER_DB']);
+  assert.equal(value.d1_databases.find(({ binding }) => binding === 'MINUTE_DB')?.database_name, 'stationhead-minute');
+  assert.equal(value.d1_databases.find(({ binding }) => binding === 'OTHER_DB')?.database_name, 'stationhead-other');
   assert.deepEqual(value.r2_buckets, [{
     binding: 'PAGES_RESPONSE_R2',
     bucket_name: 'sh-pages-responses',
@@ -23,13 +25,16 @@ test('music collector keeps hourly Amazon update detection and gated 10-minute d
   assert.equal(value.queues, undefined);
 });
 
-test('scheduled entry removes daily Amazon collection and gates 100k scans behind hourly updates', () => {
+test('scheduled entry separates canonical identity from service storage', () => {
   const source = readFileSync(new URL('../src/amazon-music-entry.js', import.meta.url), 'utf8');
   assert.match(source, /APPLE_MUSIC_PROBE_CRON = '15 \* \* \* \*'/);
   assert.match(source, /AMAZON_MUSIC_TOP_SCAN_CRON = '5 \* \* \* \*'/);
   assert.match(source, /AMAZON_MUSIC_DEEP_SCAN_CRON = '2,12,22,32,42,52 \* \* \* \*'/);
-  assert.match(source, /cron === AMAZON_MUSIC_TOP_SCAN_CRON[\s\S]*checkAmazonUpdateAndQueue100k/);
-  assert.match(source, /cron === AMAZON_MUSIC_DEEP_SCAN_CRON[\s\S]*continueQueuedAmazon100kScan/);
+  assert.match(source, /amazonMusicServiceEnv\(env\)/);
+  assert.match(source, /persistAppleMusicModelToOther\(env, scheduledTime\)/);
+  assert.match(source, /persistAmazonMusicModelToOther\(env, scheduledTime\)/);
+  assert.match(source, /cron === AMAZON_MUSIC_TOP_SCAN_CRON[\s\S]*checkAmazonMusic/);
+  assert.match(source, /cron === AMAZON_MUSIC_DEEP_SCAN_CRON[\s\S]*continueAmazonMusic/);
   assert.doesNotMatch(source, /AMAZON_MUSIC_DAILY_CRON|collectAmazonMusicSnapshot/);
 });
 
