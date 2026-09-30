@@ -28,35 +28,40 @@ test('main page references only existing local static assets', async () => {
   }
 });
 
-test('dashboard HTML keeps accessibility, privacy and all public sections', async () => {
+test('dashboard skeleton and shell modules keep accessibility, privacy and all public sections', async () => {
   const html = await text('public/index.html');
+  const registry = await text('public/dashboard-tab-registry.js');
+  const currentShell = await text('public/current-shell.js');
+  const historyShell = await text('public/history-shell.js');
+  const likesShell = await text('public/likes-shell.js');
+  const shellSource = [currentShell, historyShell, likesShell].join('\n');
   assert.match(html, /<html lang="ja"(?:\s[^>]*)?>/);
   assert.match(html, /name="viewport"/);
   assert.match(html, /noindex,nofollow/);
   for (const id of [
-    'channelName', 'channelFallback', 'trackFallback', 'updated', 'online', 'members',
-    'totalStreams', 'membersYesterdayDelta', 'membersDayBeforeDelta',
-    'streamsYesterdayDelta', 'streamsDayBeforeDelta', 'nowPlayingLink', 'queue',
-    'metricGoalCompact', 'streamGoal', 'goalEta', 'audienceChart', 'historyView', 'likesView',
-    'likesRankingList', 'likesTbody',
-  ]) assert.match(html, new RegExp(`id="${id}"`));
-  assert.doesNotMatch(html, /id="streamCount"|id="goalMilestones"|goal-card/);
-  assert.match(html, /data-view="current" class="active" aria-current="page">現在/);
-  assert.match(html, /data-view="history" data-mode="daily">過去/);
-  assert.match(html, /data-view="likes" data-mode="likes">いいね/);
-  assert.match(html, /rel="noopener noreferrer"/);
+    'trackFallback', 'online', 'members', 'totalStreams', 'membersYesterdayDelta', 'membersDayBeforeDelta',
+    'streamsYesterdayDelta', 'streamsDayBeforeDelta', 'nowPlayingLink', 'queue', 'metricGoalCompact', 'streamGoal',
+    'goalEta', 'audienceChart', 'historyView', 'likesView', 'likesRankingList', 'likesTbody',
+  ]) assert.match(shellSource, new RegExp(`(?:id=\\"${id}\\"|id: '${id}')`));
+  for (const id of ['channelName', 'channelFallback', 'updated']) assert.match(html, new RegExp(`id="${id}"`));
+  assert.doesNotMatch(shellSource, /id="streamCount"|id="goalMilestones"|goal-card/);
+  assert.match(registry, /view: 'current', label: '現在', active: true/);
+  assert.match(registry, /view: 'history', mode: 'daily', label: '過去'/);
+  assert.match(registry, /view: 'likes', mode: 'likes', label: 'いいね'/);
+  assert.match(currentShell, /rel="noopener noreferrer"/);
   assert.doesNotMatch(html, /href="\/history/);
+  assert.doesNotMatch(html, /id="currentView"|id="historyView"|id="likesView"/);
 });
 
 test('dashboard current page renders online history and direct five-minute playback counts from one payload', async () => {
-  const html = await text('public/index.html');
+  const currentShell = await text('public/current-shell.js');
   const client = await text('public/dashboard-client.js');
   const entry = await text('public/dashboard-metrics.js');
   const chart = await text('public/dashboard-chart-comparison.js');
   const detail = await text('public/dashboard-chart-detail.js');
-  assert.match(html, /id="audienceChart"/);
-  assert.match(html, /class="online-key">オンライン<\/span>/);
-  assert.doesNotMatch(html, /<h2>オンライン数<\/h2>|コメント勢い/);
+  assert.match(currentShell, /id="audienceChart"/);
+  assert.match(currentShell, /class="online-key">オンライン<\/span>/);
+  assert.doesNotMatch(currentShell, /<h2>オンライン数<\/h2>|コメント勢い/);
   assert.match(client, /const DASHBOARD_URL = '\/api\/dashboard\?history=0'/);
   assert.match(client, /payload\.queue/);
   assert.doesNotMatch(entry, /dashboard-details-client\.js/);
@@ -70,13 +75,13 @@ test('dashboard current page renders online history and direct five-minute playb
 });
 
 test('dashboard displays completed UTC-day changes from the unified materialized response', async () => {
-  const html = await text('public/index.html');
+  const currentShell = await text('public/current-shell.js');
   const entry = await text('public/dashboard-metrics.js');
   const renderer = await text('public/dashboard-daily-summaries.js');
   const criticalEndpoint = await text('functions/api/dashboard.js');
   const loader = await text('functions/lib/dashboard-daily-summaries.js');
-  assert.match(html, />総メンバー数</);
-  assert.match(html, />累計再生数</);
+  assert.match(currentShell, />総メンバー数</);
+  assert.match(currentShell, />累計再生数</);
   assert.match(entry, /dashboard-daily-summaries\.js\?v=20260930\.2/);
   assert.match(renderer, /renderDashboardDailySummaries/);
   assert.match(renderer, /dashboard:payload/);
