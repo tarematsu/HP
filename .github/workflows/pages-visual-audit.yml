@@ -26,10 +26,15 @@ jobs:
         working-directory: worker
         run: npm ci --ignore-scripts --no-audit --no-fund
 
-      - name: Inspect Nogizaka production D1
+      - name: Force one immediate Nogizaka news check and verify
         working-directory: worker
         run: |
           set -euo pipefail
+          npx wrangler d1 execute stationhead-other --remote \
+            --config wrangler.nogizaka46smej.jsonc \
+            --command "UPDATE sh_official_news_monitor_state SET last_check_at=0,updated_at=0 WHERE id='official-news:nogizaka46smej';" \
+            --json
+          sleep 75
           npx wrangler d1 execute stationhead-other --remote \
             --config wrangler.nogizaka46smej.jsonc \
             --command "SELECT news_id,scheduled_at,status,detected_at,updated_at FROM sh_nogizaka_official_news_announcements WHERE news_id='102280'; SELECT last_check_at,last_success_at,last_error,updated_at FROM sh_official_news_monitor_state WHERE id='official-news:nogizaka46smej';" \
