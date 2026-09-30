@@ -1,0 +1,56 @@
+name: Repair low listener anomalies
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/repair-low-listener-anomalies.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      FACTS_DATABASE_NAME: stationhead-minute
+      OTHER_DATABASE_NAME: stationhead-other
+      PAGES_RESPONSE_BUCKET: sh-pages-responses
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Repair low listener minute facts and summaries
+        run: node scripts/repair-low-listener-anomalies.mjs
+      - name: Republish affected history models
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import {
+            HISTORY_READ_MODEL_VARIANTS,
+            runPagesHistoryReadModelActions,
+          } from './scripts/run-pages-history-read-model-actions.mjs';
+          const wanted = new Set(['history:daily', 'history:weekly', 'history:monthly']);
+          const variants = HISTORY_READ_MODEL_VARIANTS.filter((variant) => wanted.has(variant.key));
+          const result = await runPagesHistoryReadModelActions({
+            variants,
+            forceAll: true,
+            reuseOnly: false,
+          });
+          console.log(JSON.stringify({ event: 'listener_repair_read_model_publish', result }));
+          NODE
