@@ -91,7 +91,7 @@ test('track-specific archive aggregation and runtime are removed', () => {
   assert.doesNotMatch(historyClient, /TRACK_COLUMNS|trackDate|trackWeekMode|mode === 'tracks'|\/api\/track-history|aggregateCompleteTrackRows|history:track-rows/);
 });
 
-test('history visual tokens and panel sizing match the main dashboard', () => {
+test('history inherits dashboard visual tokens instead of duplicating the base theme', () => {
   for (const declaration of [
     '--bg: #f6f8fb',
     '--panel: #ffffff',
@@ -105,9 +105,9 @@ test('history visual tokens and panel sizing match the main dashboard', () => {
   ]) {
     const pattern = new RegExp(declaration.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
     assert.match(mainStyles, pattern);
-    assert.match(historyStyles, pattern);
+    assert.doesNotMatch(historyStyles, pattern);
   }
-  assert.match(historyStyles, /\.button \{[^}]*min-height:\s*44px/);
+  assert.doesNotMatch(historyStyles, /:root\s*\{|\.button \{/);
   assert.match(historyStyles, /\.chart-panel \{[^}]*padding:\s*18px/);
   assert.match(historyStyles, /\.data-panel \{[^}]*padding:\s*18px/);
 });
