@@ -16,21 +16,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Inspect Nogizaka official HTML with production headers
+      - uses: actions/checkout@v4
+      - name: Compare Nogizaka official list URL variants
         shell: bash
         run: |
           set -euo pipefail
           ua='stationhead-monitor/1.0'
-          curl --fail --silent --show-error -A "$ua" -H 'Accept: text/html,application/xhtml+xml' 'https://www.nogizaka46.com/s/n46/news/list' -o /tmp/list.html
-          curl --fail --silent --show-error -A "$ua" -H 'Accept: text/html,application/xhtml+xml' 'https://www.nogizaka46.com/s/n46/news/detail/102280' -o /tmp/detail.html
-          echo "list_bytes=$(wc -c </tmp/list.html) detail_bytes=$(wc -c </tmp/detail.html)"
-          echo '--- list matches ---'
-          grep -Eio '.{0,120}(102280|STATIONHEAD).{0,180}' /tmp/list.html | head -20 || true
-          echo '--- detail matches ---'
-          grep -Eio '.{0,120}(2026年9月30日|21:30|STATIONHEAD).{0,180}' /tmp/detail.html | head -30 || true
-          echo '--- href forms ---'
-          grep -Eo 'href=["'"'][^"'"']*102280[^"'"']*["'"']' /tmp/list.html | head -10 || true
+          for suffix in '' '?dy=20' '?dy=44' '?ima=0000' '?dy=20&ima=0000'; do
+            file="/tmp/list$(printf '%s' "$suffix" | tr '?&=' '___').html"
+            curl --fail --silent --show-error -A "$ua" -H 'Accept: text/html,application/xhtml+xml' "https://www.nogizaka46.com/s/n46/news/list${suffix}" -o "$file"
+            echo "=== ${suffix:-default} bytes=$(wc -c <"$file") details=$(grep -Eo '/s/n46/news/detail/[0-9]+' "$file" | wc -l) ==="
+            grep -Eo '/s/n46/news/detail/[0-9]+' "$file" | head -10 || true
+            grep -q '102280' "$file" && echo 'HAS_102280=yes' || echo 'HAS_102280=no'
+            grep -Eiq 'stationhead' "$file" && echo 'HAS_STATIONHEAD=yes' || echo 'HAS_STATIONHEAD=no'
+          done
           exit 1
