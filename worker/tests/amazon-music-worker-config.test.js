@@ -8,11 +8,11 @@ function config() {
   return JSON.parse(readFileSync(new URL('../wrangler.amazon-music.jsonc', import.meta.url), 'utf8'));
 }
 
-test('music collector uses one minute cron and gates work internally', () => {
+test('music collector uses one combined cron and gates work internally', () => {
   const value = config();
   assert.equal(value.name, 'sh-amazon-music-collector');
   assert.equal(value.main, 'src/amazon-music-entry.js');
-  assert.deepEqual(value.triggers.crons, ['* * * * *']);
+  assert.deepEqual(value.triggers.crons, ['2,5,12,15,22,32,42,52 * * * *']);
   assert.deepEqual(value.d1_databases.map(({ binding }) => binding), ['MINUTE_DB', 'OTHER_DB']);
   assert.equal(value.d1_databases.find(({ binding }) => binding === 'MINUTE_DB')?.database_name, 'stationhead-minute');
   assert.equal(value.d1_databases.find(({ binding }) => binding === 'OTHER_DB')?.database_name, 'stationhead-other');
@@ -35,7 +35,7 @@ test('single Amazon cron preserves the previous minute schedule', () => {
 
 test('scheduled entry separates canonical identity from service storage', () => {
   const source = readFileSync(new URL('../src/amazon-music-entry.js', import.meta.url), 'utf8');
-  assert.match(source, /AMAZON_MUSIC_CRON = '\* \* \* \* \*'/);
+  assert.match(source, /AMAZON_MUSIC_CRON = '2,5,12,15,22,32,42,52 \* \* \* \*'/);
   assert.match(source, /amazonMusicDueTasks/);
   assert.match(source, /minute === 15/);
   assert.match(source, /minute === 5/);
