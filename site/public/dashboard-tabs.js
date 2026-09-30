@@ -85,6 +85,7 @@ function markRouteReady() {
 }
 
 function updateTabs(mode) {
+  if (HISTORY_MODES.has(mode)) return;
   tabs?.querySelectorAll('button').forEach((button) => {
     const selected = button.dataset.view === mode || button.dataset.mode === mode;
     button.classList.toggle('active', selected);
