@@ -20,7 +20,7 @@ function isConfirmationRunToken(value) {
   return String(value || '').endsWith(':confirm');
 }
 
-async function syncCollectionRoster(db) {
+export async function syncCollectionRoster(db) {
   const writes = [];
   const artistsByKey = new Map([
     ...SPOTIFY_CURRENT_TOP20_ARTISTS,
@@ -31,14 +31,17 @@ async function syncCollectionRoster(db) {
     writes.push(
       db.prepare(`INSERT INTO sh_spotify_artists (artist_key,spotify_artist_id,artist_name)
         VALUES (?,?,?) ON CONFLICT(artist_key) DO UPDATE SET
-          spotify_artist_id=excluded.spotify_artist_id,artist_name=excluded.artist_name`)
+          spotify_artist_id=excluded.spotify_artist_id,artist_name=excluded.artist_name
+        WHERE sh_spotify_artists.spotify_artist_id IS NOT excluded.spotify_artist_id
+          OR sh_spotify_artists.artist_name IS NOT excluded.artist_name`)
         .bind(artist.artist_key, artist.spotify_artist_id, artist.artist_name),
     );
   }
   for (const artist of SPOTIFY_CURRENT_TOP20_ARTISTS) {
     writes.push(
       db.prepare(`INSERT INTO sh_spotify_top20_history (ranking_date,artist_key,rank)
-        VALUES (?,?,?) ON CONFLICT(ranking_date,artist_key) DO UPDATE SET rank=excluded.rank`)
+        VALUES (?,?,?) ON CONFLICT(ranking_date,artist_key) DO UPDATE SET rank=excluded.rank
+        WHERE sh_spotify_top20_history.rank IS NOT excluded.rank`)
         .bind(SPOTIFY_TOP20_RANKING_DATE, artist.artist_key, artist.rank),
     );
   }
@@ -98,8 +101,7 @@ export async function refreshArtistCatalog(db, artist, releases, seenAt) {
   return changed;
 }
 
-function albumQueueMessage(snapshotDate, runToken, row, collectionArtists) {
-  const targetByKey = new Map(collectionArtists.map((artist) => [artist.artist_key, artist]));
+function albumQueueMessage(snapshotDate, runToken, row, targetByKey) {
   const targets = String(row?.target_keys || '').split(',')
     .map((value) => targetByKey.get(value.trim())).filter(Boolean)
     .map(({ artist_key, spotify_artist_id }) => ({ artist_key, spotify_artist_id }));
@@ -150,8 +152,9 @@ export async function queueActiveReleases(env, snapshotDate, runToken, collectio
     FROM sh_spotify_releases r
     INNER JOIN sh_spotify_release_targets t ON t.album_id=r.album_id
     WHERE t.is_active=1 GROUP BY r.album_id ORDER BY r.album_id`).all();
+  const targetByKey = new Map(collectionArtists.map((artist) => [artist.artist_key, artist]));
   const bodies = resultsOf(query)
-    .map((row) => albumQueueMessage(snapshotDate, runToken, row, collectionArtists)).filter(Boolean);
+    .map((row) => albumQueueMessage(snapshotDate, runToken, row, targetByKey)).filter(Boolean);
   if (!bodies.length) throw new Error('Spotify catalog contains no active releases to collect');
   await env.OTHER_DB.prepare(`UPDATE sh_spotify_collection_runs
     SET albums_queued=?,albums_completed=0,status='queued',updated_at=?
