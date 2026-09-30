@@ -48,40 +48,41 @@ test('dashboard HTML keeps accessibility, privacy and all public sections', asyn
   assert.doesNotMatch(html, /href="\/history/);
 });
 
-test('dashboard current page renders online history without comment velocity', async () => {
+test('dashboard current page renders online history and direct five-minute playback counts from one payload', async () => {
   const html = await text('public/index.html');
   const client = await text('public/dashboard-client.js');
+  const entry = await text('public/dashboard-metrics.js');
   const chart = await text('public/dashboard-chart-comparison.js');
   const detail = await text('public/dashboard-chart-detail.js');
-  const detailsClient = await text('public/dashboard-details-client.js');
   assert.match(html, /id="audienceChart"/);
   assert.match(html, /class="online-key">オンライン<\/span>/);
   assert.doesNotMatch(html, /<h2>オンライン数<\/h2>|コメント勢い/);
   assert.match(client, /const DASHBOARD_URL = '\/api\/dashboard\?history=0'/);
   assert.match(client, /payload\.queue/);
-  assert.match(detailsClient, /\/api\/dashboard-details\?channel_id=/);
+  assert.doesNotMatch(entry, /dashboard-details-client\.js/);
   assert.match(chart, /payload\?\.history/);
-  assert.match(chart, /dashboard:details/);
+  assert.match(chart, /payload\?\.stream_5m_history/);
+  assert.match(chart, /dashboard:payload/);
   assert.match(chart, /online_member_count/);
-  assert.doesNotMatch(chart, /comment_velocity|commentVelocity|コメント\/2分/);
+  assert.doesNotMatch(chart, /再生数増加\/分（5分平均）|comment_velocity|commentVelocity|コメント\/2分/);
+  assert.match(detail, /再生数 \+\$\{numberText\(streamRow\.stream_delta\)\}/);
   assert.doesNotMatch(detail, /comment_velocity|commentVelocity|コメント勢い/);
 });
 
-test('dashboard displays completed UTC-day changes from the deferred details response', async () => {
+test('dashboard displays completed UTC-day changes from the unified materialized response', async () => {
   const html = await text('public/index.html');
   const entry = await text('public/dashboard-metrics.js');
   const renderer = await text('public/dashboard-daily-summaries.js');
-  const endpoint = await text('functions/api/dashboard-details.js');
   const criticalEndpoint = await text('functions/api/dashboard.js');
   const loader = await text('functions/lib/dashboard-daily-summaries.js');
   assert.match(html, />総メンバー数</);
   assert.match(html, />累計再生数</);
-  assert.match(entry, /dashboard-daily-summaries\.js\?v=20260930\.1/);
+  assert.match(entry, /dashboard-daily-summaries\.js\?v=20260930\.2/);
   assert.match(renderer, /renderDashboardDailySummaries/);
-  assert.match(renderer, /dashboard:details/);
+  assert.match(renderer, /dashboard:payload/);
   assert.match(renderer, /payload\?\.daily_summaries/);
-  assert.match(endpoint, /daily_summaries/);
-  assert.doesNotMatch(criticalEndpoint, /daily_summaries|augmentDashboardChartData/);
+  assert.match(criticalEndpoint, /daily_summaries/);
+  assert.match(criticalEndpoint, /augmentDashboardChartData/);
   assert.match(loader, /FROM sh_daily_summary/);
   assert.match(renderer, /member_growth/);
   assert.match(renderer, /stream_growth/);
