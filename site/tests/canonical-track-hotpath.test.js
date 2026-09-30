@@ -45,6 +45,8 @@ test('Stationhead aliases resolve through indexed sh_tracks before canonical met
   const { db, queries } = fakeDb();
   const rows = await canonicalizeTrackRows(db, [{
     stationhead_track_id: 9001,
+    isrc: 'JPAAA0000042',
+    spotify_id: 'spotify-42',
     title: null,
     artist: null,
   }]);
@@ -64,4 +66,26 @@ test('Stationhead aliases resolve through indexed sh_tracks before canonical met
     queries.every(({ sql }) => !/LEFT JOIN sh_track_canonical_metadata/.test(sql)),
     'Stationhead lookup must not join the canonical view before track_id is resolved',
   );
+  assert.ok(
+    queries.every(({ sql }) => !/WHERE track_id IS NOT NULL AND (?:isrc|spotify_id) IN/.test(sql)),
+    'resolved Stationhead rows must not trigger redundant provider alias scans',
+  );
+});
+
+test('canonical track_id suppresses Stationhead, ISRC, and Spotify fallback queries', async () => {
+  const { db, queries } = fakeDb();
+  const rows = await canonicalizeTrackRows(db, [{
+    track_id: 42,
+    stationhead_track_id: 9001,
+    isrc: 'JPAAA0000042',
+    spotify_id: 'spotify-42',
+    title: null,
+    artist: null,
+  }]);
+
+  assert.equal(rows[0].title, 'Canonical Song');
+  assert.equal(rows[0].artist, '櫻坂46');
+  assert.equal(queries.length, 1);
+  assert.match(queries[0].sql, /FROM sh_track_canonical_metadata WHERE track_id IN/);
+  assert.deepEqual(queries[0].bindings, [42]);
 });

@@ -134,6 +134,13 @@ async function legacyRowsDuringMigration(db, spotifyIds, isrcs) {
   }
 }
 
+function coveredKeys(rows) {
+  return {
+    isrcs: new Set((rows || []).map((row) => normalizedIsrc(row?.isrc)).filter(Boolean)),
+    spotifyIds: new Set((rows || []).map((row) => text(row?.spotify_id)).filter(Boolean)),
+  };
+}
+
 /**
  * Read presentation metadata from the single MINUTE_DB canonical view.
  *
@@ -157,12 +164,25 @@ export async function loadReadModelTrackMetadata(env, spotifyIds, isrcs, trackId
   const db = env?.MINUTE_DB;
   if (!db?.prepare) return [];
   try {
-    const [byTrackId, byIsrc, bySpotify] = await Promise.all([
-      canonicalRowsByTrackId(db, requestedTrackIds),
-      canonicalRowsByIsrc(db, requestedIsrcs),
-      canonicalRowsBySpotify(db, requestedSpotifyIds),
-    ]);
-    return uniqueRows([...byTrackId, ...byIsrc, ...bySpotify]);
+    // Resolve the strongest identity first, then query only alias keys that are
+    // still uncovered. In the common case where callers supply track_id plus
+    // provider aliases for the same rows, this turns three canonical view
+    // queries into one.
+    const byTrackId = await canonicalRowsByTrackId(db, requestedTrackIds);
+    let resolved = uniqueRows(byTrackId);
+    let covered = coveredKeys(resolved);
+
+    const remainingIsrcs = requestedIsrcs.filter((isrc) => !covered.isrcs.has(isrc));
+    const byIsrc = await canonicalRowsByIsrc(db, remainingIsrcs);
+    if (byIsrc.length) {
+      resolved = uniqueRows([...resolved, ...byIsrc]);
+      covered = coveredKeys(resolved);
+    }
+
+    const remainingSpotifyIds = requestedSpotifyIds
+      .filter((spotifyId) => !covered.spotifyIds.has(spotifyId));
+    const bySpotify = await canonicalRowsBySpotify(db, remainingSpotifyIds);
+    return uniqueRows([...resolved, ...bySpotify]);
   } catch (error) {
     if (!canonicalUnavailable(error)) throw error;
     const fallback = env?.BUDDIES_DB;

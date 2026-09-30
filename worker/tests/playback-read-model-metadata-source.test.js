@@ -51,7 +51,7 @@ test('playback read-model hydration reads canonical MINUTE_DB metadata only', as
   assert.equal(rows[0].title, 'Song');
   assert.equal(rows[0].artist, 'Artist');
   assert.equal(rows[0].thumbnail_url, 'https://img.example/cover.jpg');
-  assert.deepEqual(calls.map((call) => call.name), ['minute', 'minute']);
+  assert.deepEqual(calls.map((call) => call.name), ['minute']);
   assert.ok(calls.every(({ sql }) => /sh_track_canonical_metadata/.test(sql)));
 });
 
