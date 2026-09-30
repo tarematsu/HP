@@ -13,11 +13,13 @@ const workerRoot = resolve(import.meta.dirname, '..');
 const wranglerScript = resolve(workerRoot, 'node_modules/wrangler/bin/wrangler.js');
 
 function integer(value) {
+  if (value == null || value === '') return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
 }
 
 function finite(value) {
+  if (value == null || value === '') return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -64,8 +66,11 @@ function appendFlag(value, flag = REPAIR_FLAG) {
   if (typeof value === 'string' && value.trim()) {
     try {
       const parsed = JSON.parse(value);
-      if (Array.isArray(parsed)) for (const item of parsed) if (item) flags.add(String(item));
-      else flags.add(value);
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) if (item) flags.add(String(item));
+      } else {
+        flags.add(value);
+      }
     } catch {
       for (const item of value.split(',')) if (item.trim()) flags.add(item.trim());
     }
