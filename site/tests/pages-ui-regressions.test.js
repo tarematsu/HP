@@ -101,11 +101,12 @@ test('official stream fallback does not duplicate an existing minute-fact series
 });
 
 test('integrated likes UI contains no playback totals or weekly play merge', () => {
+  const shell = readFileSync(new URL('../public/likes-shell.js', import.meta.url), 'utf8');
   const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   const source = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
-  assert.match(page, /id="likesView"/);
-  assert.match(page, /id="likesRankingList"/);
-  assert.doesNotMatch(page, /今週再生|再生曲|href="\/history/);
+  assert.match(shell, /id: 'likesView'/);
+  assert.match(shell, /id="likesRankingList"/);
+  assert.doesNotMatch([shell, page].join('\n'), /今週再生|再生曲|href="\/history/);
   assert.doesNotMatch(source, /week_play_count|completeWeekPlayCount|attachWeeklyPlays|play_count_excluded/);
   assert.match(source, /ranking_only=1/);
 });
