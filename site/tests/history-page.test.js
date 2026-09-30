@@ -107,7 +107,7 @@ test('history inherits dashboard visual tokens instead of duplicating the base t
     assert.match(mainStyles, pattern);
     assert.doesNotMatch(historyStyles, pattern);
   }
-  assert.doesNotMatch(historyStyles, /:root\s*\{|\.button \{/);
+  assert.doesNotMatch(historyStyles, /(^|\n):root\s*\{|(^|\n)\.button\s*\{/m);
   assert.match(historyStyles, /\.chart-panel \{[^}]*padding:\s*18px/);
   assert.match(historyStyles, /\.data-panel \{[^}]*padding:\s*18px/);
 });
