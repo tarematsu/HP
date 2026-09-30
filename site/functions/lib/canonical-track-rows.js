@@ -93,6 +93,10 @@ function applyCanonical(row, canonical) {
   };
 }
 
+function applyCanonicalIndexes(rows, indexes) {
+  return rows.map((row) => applyCanonical(row, preferredCanonical(row, indexes)));
+}
+
 /**
  * Resolve Pages/read-model song rows to the single canonical identity:
  * sh_tracks.id. Provider IDs remain aliases only and are used as a bounded
@@ -121,7 +125,29 @@ export async function canonicalizeTrackRows(db, rows = [], { chunkSize = DEFAULT
         FROM sh_track_canonical_metadata WHERE track_id IS NOT NULL AND spotify_id IN (${placeholders(chunk.length)})`, boundedChunkSize),
     ]);
     const indexes = canonicalIndexes([...byTrack, ...byStationhead, ...byIsrc, ...bySpotify]);
-    return rows.map((row) => applyCanonical(row, preferredCanonical(row, indexes)));
+    return applyCanonicalIndexes(rows, indexes);
+  } catch (error) {
+    if (missingCanonicalSchema(error)) return rows;
+    throw error;
+  }
+}
+
+/**
+ * Full Pages publications can span years of already-materialized rows. Loading
+ * the compact canonical catalog once is cheaper than issuing per-day alias
+ * lookups, and keeps old R2 day models canonical at publication time without a
+ * request-time D1 join.
+ */
+export async function canonicalizeTrackRowsFromCatalog(db, rows = []) {
+  if (!db?.prepare || !Array.isArray(rows) || !rows.length) return rows;
+  try {
+    const result = await db.prepare(`SELECT c.track_id,t.stationhead_track_id,
+        c.isrc,c.spotify_id,c.title,c.artist,c.thumbnail_url
+      FROM sh_track_canonical_metadata c
+      LEFT JOIN sh_tracks t ON t.id=c.track_id
+      WHERE c.track_id IS NOT NULL`).all();
+    const catalog = Array.isArray(result?.results) ? result.results : [];
+    return applyCanonicalIndexes(rows, canonicalIndexes(catalog));
   } catch (error) {
     if (missingCanonicalSchema(error)) return rows;
     throw error;
