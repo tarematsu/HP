@@ -5,6 +5,8 @@ import test from 'node:test';
 const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
 const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 const sharedRoute = readFileSync(new URL('../public/dashboard-standalone-route.js', import.meta.url), 'utf8');
+const rankChart = readFileSync(new URL('../public/dashboard-rank-chart.js', import.meta.url), 'utf8');
+const tableDom = readFileSync(new URL('../public/dashboard-table-dom.js', import.meta.url), 'utf8');
 const historyToggle = readFileSync(new URL('../public/history/history-past-toggle-shell.js', import.meta.url), 'utf8');
 
 const shellFiles = [
@@ -60,7 +62,13 @@ test('dashboard exposes shared runtime primitives for repeated view rendering wo
   for (const helper of ['signedInteger', 'evenlySpacedIndexes', 'appendEmptyState']) {
     assert.match(sharedUi, new RegExp(`export function ${helper}\\(`));
   }
-  for (const name of runtimeFiles) {
+  assert.match(rankChart, /appendEmptyState/);
+  assert.match(rankChart, /evenlySpacedIndexes/);
+  for (const name of ['amazon-music.js', 'apple-music.js']) {
+    assert.match(runtimes[name], /renderRankHistoryChart/);
+    assert.doesNotMatch(runtimes[name], /appendEmptyState|evenlySpacedIndexes|svgElement/);
+  }
+  for (const name of ['followers.js', 'spotify.js']) {
     assert.match(runtimes[name], /appendEmptyState/);
     assert.match(runtimes[name], /evenlySpacedIndexes/);
     assert.doesNotMatch(runtimes[name], /const empty = document\.createElement/);
@@ -69,6 +77,8 @@ test('dashboard exposes shared runtime primitives for repeated view rendering wo
     assert.match(runtimes[name], /signedInteger/);
     assert.doesNotMatch(runtimes[name], /function formatDelta\s*\(/);
   }
+  assert.match(tableDom, /export function appendTableRow/);
+  assert.match(tableDom, /export function replaceTableHeader/);
   assert.doesNotMatch(runtimes['followers.js'], /function (?:appendText|tickIndexes)\s*\(/);
 });
 
