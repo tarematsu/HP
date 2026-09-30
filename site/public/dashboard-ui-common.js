@@ -24,17 +24,10 @@ export function setText(id, value) {
   if (node && node.textContent !== text) node.textContent = text;
 }
 
-function normalizeNoticeText(message) {
-  return String(message || '')
-    .replace(/取得できませんでした。/g, '取得に失敗しました。')
-    .replace(/取得に失敗しました:\s*/g, '取得に失敗しました：')
-    .replace(/^取得失敗:\s*/g, 'データの取得に失敗しました：');
-}
-
 export function setNotice(id, message = '', error = false) {
   const node = byId(id);
   if (!node) return;
-  const text = normalizeNoticeText(message);
+  const text = String(message || '');
   if (node.textContent !== text) node.textContent = text;
   node.hidden = !text;
   node.classList.toggle('error', Boolean(error));
