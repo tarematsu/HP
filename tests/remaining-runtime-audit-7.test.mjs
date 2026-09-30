@@ -4,7 +4,6 @@ import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 
 import { loadQueueComparisonState } from '../site/functions/lib/ingest.js';
-import { COMMENT_VELOCITY_UPDATE_SQL } from '../site/functions/lib/comment-counts.js';
 import {
   BROADCAST_SUMMARY_SQL,
   parseBroadcastSummaryRows,
@@ -49,37 +48,9 @@ test('queue items and latest likes share one D1 read batch', async () => {
   assert.equal(state.latestRows[0].like_count, 4);
 });
 
-test('comment velocity is derived from compact minute counters', () => {
-  const db = new DatabaseSync(':memory:');
-  db.exec(`
-    CREATE TABLE sh_comment_minute_counts (
-      station_id INTEGER NOT NULL,
-      bucket_start INTEGER NOT NULL,
-      comment_count INTEGER NOT NULL,
-      PRIMARY KEY(station_id,bucket_start)
-    );
-    CREATE TABLE sh_channel_snapshots (
-      id INTEGER PRIMARY KEY,
-      station_id INTEGER,
-      observed_at INTEGER,
-      comment_velocity INTEGER
-    );
-    INSERT INTO sh_channel_snapshots VALUES (1,7,100000,NULL);
-    INSERT INTO sh_channel_snapshots VALUES (2,7,200000,NULL);
-    INSERT INTO sh_comment_minute_counts VALUES (7,80000,1);
-    INSERT INTO sh_comment_minute_counts VALUES (7,190000,2);
-    INSERT INTO sh_comment_minute_counts VALUES (7,200000,3);
-    INSERT INTO sh_comment_minute_counts VALUES (7,79999,99);
-    INSERT INTO sh_comment_minute_counts VALUES (8,200000,99);
-  `);
-
-  db.prepare(COMMENT_VELOCITY_UPDATE_SQL).run(
-    7, 80000, 200000,
-    7, 200000,
-    7, 80000, 200000,
-  );
-  assert.equal(db.prepare('SELECT comment_velocity FROM sh_channel_snapshots WHERE id=2').get().comment_velocity, 6);
-  assert.equal(db.prepare('SELECT comment_velocity FROM sh_channel_snapshots WHERE id=1').get().comment_velocity, null);
+test('Stationhead comment velocity runtime is retired', () => {
+  const ingest = readFileSync(new URL('../site/functions/lib/ingest.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(ingest, /saveCommentCounts|COMMENT_VELOCITY_UPDATE_SQL/);
 });
 
 test('broadcast summary reports empty range and setup state in one query', () => {
