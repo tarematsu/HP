@@ -1,3 +1,5 @@
+import { appendTableRow } from './dashboard-table-dom.js?v=20261001.1';
+
 const PLACES = Object.freeze([
   'BUDDIES STATIONHEAD',
   'LOCKEY Stationhead',
@@ -77,22 +79,12 @@ function mountView() {
 
   const tbody = section.querySelector('#unofficialListeningTbody');
   for (const event of EVENTS) {
-    const row = document.createElement('tr');
-    for (const value of [event.date, event.time, event.type, event.name, event.place]) {
-      const cell = document.createElement('td');
-      cell.textContent = value;
-      row.append(cell);
-    }
-
-    const sourceCell = document.createElement('td');
     const sourceLink = document.createElement('a');
     sourceLink.href = event.source;
     sourceLink.target = '_blank';
     sourceLink.rel = 'noopener noreferrer';
     sourceLink.textContent = 'X告知';
-    sourceCell.append(sourceLink);
-    row.append(sourceCell);
-    tbody.append(row);
+    appendTableRow(tbody, [event.date, event.time, event.type, event.name, event.place, { node: sourceLink }]);
   }
 }
 
