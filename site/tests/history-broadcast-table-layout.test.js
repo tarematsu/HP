@@ -18,18 +18,21 @@ test('official listening party table uses the shared read-model column contract'
   }
   assert.match(table, /official-listening-party-ui\.js\?v=20261001\.1/);
   assert.match(table, /createOfficialPartyHeaderRow\(\{ layoutMarker: true \}\)/);
+  assert.match(table, /createOfficialPartyDataRow\(values, row\?\.source_url\)/);
+  assert.match(table, /officialPartyNumberText\(average, decimal\)/);
   assert.match(table, /splitOfficialEventName\(row\?\.event_name/);
   assert.match(table, /durationLabel\(durationMinutes\(row\)\)/);
   assert.match(table, /row\?\.estimated_streams/);
   assert.match(table, /row\?\.broadcast_content/);
-  assert.doesNotMatch(table, /DATE_PREFIX|function elapsedLabel|function splitEvent|コメント数|comment_count/);
+  assert.doesNotMatch(table, /DATE_PREFIX|function numberText|function createCell|function elapsedLabel|function splitEvent|createOfficialSourceCell|コメント数|comment_count/);
 });
 
-test('official listening party source URLs are owned by the server read model and shared source-cell renderer', () => {
+test('official listening party source URLs are owned by the server read model and shared row renderer', () => {
   for (const id of ['M01328', 'M01519', 'M01523', 'M01667', 'M01853', 'R00518', 'R00621']) {
     assert.match(historyApi, new RegExp(`https://sakurazaka46\\.com/s/s46/news/detail/${id}`));
   }
-  assert.match(table, /createOfficialSourceCell\(row\?\.source_url\)/);
+  assert.match(table, /createOfficialPartyDataRow\(values, row\?\.source_url\)/);
+  assert.match(partyUi, /createOfficialSourceCell\(sourceUrl/);
   assert.match(partyUi, /link\.textContent = label/);
   assert.match(partyUi, /link\.target = '_blank'/);
   assert.match(partyUi, /link\.rel = 'noopener noreferrer'/);
