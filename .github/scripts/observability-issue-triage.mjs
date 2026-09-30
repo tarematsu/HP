@@ -214,16 +214,20 @@ function containedHistoricalDailyTrend({
   const containedPaces = violations.map((row) => {
     const key = D1_VIOLATION_KEYS[String(row[0] || '').trim().toLowerCase()];
     const pace = key ? paces[key] : null;
-    if (!pace || pace.current.violationSource !== 'actual' || pace.state === 'failure') return null;
+    const source = pace?.current?.violationSource;
+    if (!pace || !['actual', 'projected'].includes(source) || pace.state === 'failure') return null;
     return pace;
   });
   if (containedPaces.some((pace) => !pace)) return null;
 
   return {
     contained: true,
-    evidence: containedPaces.map((pace) => (
-      `${pace.current.metric} remain above the UTC-day limit, but ${pace.evidence.replace(`${pace.current.metric} increased`, 'increased')}`
-    )).join('; '),
+    evidence: containedPaces.map((pace) => {
+      const prefix = pace.current.violationSource === 'projected'
+        ? `${pace.current.metric} remain projected above the UTC-day limit`
+        : `${pace.current.metric} remain above the UTC-day limit`;
+      return `${prefix}, but ${pace.evidence.replace(`${pace.current.metric} increased`, 'increased')}`;
+    }).join('; '),
   };
 }
 

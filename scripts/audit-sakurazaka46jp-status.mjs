@@ -51,6 +51,31 @@ async function pageStatus(url) {
   };
 }
 
+function validCollectionState(payload, expectedHandle) {
+  if (payload?.handle !== expectedHandle) return false;
+  if (payload.collection_active !== true) return true;
+  return Boolean(payload.latest_main);
+}
+
+function validatePayload(payload, expectedHandle) {
+  if (payload.handle !== expectedHandle) throw new Error(`unexpected handle: ${payload.handle}`);
+  if (!Number.isInteger(payload.sample_count) || payload.sample_count < 0) {
+    throw new Error(`status endpoint returned invalid main sample count: ${payload.sample_count}`);
+  }
+  if (payload.collection_active === true) {
+    if (!payload.latest_main) throw new Error('active collection has no latest main sample');
+    if (payload.sample_count < 1) {
+      throw new Error(`active collection returned no main samples: ${payload.sample_count}`);
+    }
+  }
+  if ((payload.samples || []).some((sample) => sample.raw_valid !== 1)) {
+    throw new Error('recent Sakurazaka main samples contain invalid raw JSON');
+  }
+  if ((payload.chats || []).some((sample) => sample.raw_valid !== 1)) {
+    throw new Error('recent Sakurazaka chat samples contain invalid raw JSON');
+  }
+}
+
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const apiUrl = `${options.baseUrl}/api/sakurazaka46jp-status`;
@@ -65,12 +90,13 @@ async function main() {
         event: 'sakurazaka46jp_status_probe',
         attempt,
         handle: payload.handle || null,
+        collection_active: payload.collection_active === true,
         latest_main: payload.latest_main?.observed_at || null,
         latest_chat: payload.latest_chat?.observed_at || null,
         samples: payload.sample_count ?? null,
         chats: payload.chat_sample_count ?? null,
       }));
-      if (payload.handle === options.expectedHandle && payload.latest_main) break;
+      if (validCollectionState(payload, options.expectedHandle)) break;
     } catch (error) {
       lastError = error;
       console.error(JSON.stringify({
@@ -93,24 +119,15 @@ async function main() {
   await writeFile(options.outPath, `${JSON.stringify(report, null, 2)}\n`);
 
   if (!payload) throw lastError || new Error('Sakurazaka collection status was not found');
-  if (payload.handle !== options.expectedHandle) throw new Error(`unexpected handle: ${payload.handle}`);
-  if (!payload.latest_main) throw new Error('latest main collection sample was not found');
-  if (!Number.isInteger(payload.sample_count) || payload.sample_count < 1) {
-    throw new Error(`status endpoint returned no main samples: ${payload.sample_count}`);
-  }
-  if ((payload.samples || []).some((sample) => sample.raw_valid !== 1)) {
-    throw new Error('recent Sakurazaka main samples contain invalid raw JSON');
-  }
-  if ((payload.chats || []).some((sample) => sample.raw_valid !== 1)) {
-    throw new Error('recent Sakurazaka chat samples contain invalid raw JSON');
-  }
+  validatePayload(payload, options.expectedHandle);
   if (!page.ok || !page.title_present) {
     throw new Error(`confirmation page validation failed: HTTP ${page.status}`);
   }
   console.log(JSON.stringify({
     event: 'sakurazaka46jp_status_audit_ok',
     handle: payload.handle,
-    latest_main: payload.latest_main.observed_at,
+    collection_active: payload.collection_active === true,
+    latest_main: payload.latest_main?.observed_at || null,
     latest_chat: payload.latest_chat?.observed_at || null,
     sample_count: payload.sample_count,
     chat_sample_count: payload.chat_sample_count,

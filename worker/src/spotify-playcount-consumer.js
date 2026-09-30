@@ -1,3 +1,4 @@
+import { spotifyDailyFinalizeStatement } from './spotify-playcount-daily-write.js';
 import {
   activeRunMatches,
   batchStatements,
@@ -233,20 +234,7 @@ async function finalizeAttempt(db, message) {
 
   const now = Date.now();
   await db.batch([
-    db.prepare(`INSERT INTO sh_spotify_playcount_daily (
-        snapshot_date,track_id,playcount,delta,collected_at,is_carried_forward
-      )
-      SELECT ?,c.track_id,c.playcount,
-        CASE WHEN p.playcount IS NULL THEN NULL ELSE c.playcount-p.playcount END,
-        c.collected_at,0
-      FROM sh_spotify_playcount_candidates c
-      LEFT JOIN sh_spotify_playcount_daily_canonical p
-        ON p.snapshot_date=? AND p.track_id=c.track_id
-      WHERE c.snapshot_date=? AND c.run_token=?
-      ON CONFLICT(snapshot_date,track_id) DO UPDATE SET
-        playcount=excluded.playcount,delta=excluded.delta,
-        collected_at=excluded.collected_at,is_carried_forward=0`)
-      .bind(message.snapshot_date, previousDate, message.snapshot_date, message.run_token),
+    spotifyDailyFinalizeStatement(db, message, previousDate),
     db.prepare(`DELETE FROM sh_spotify_playcount_daily
       WHERE snapshot_date=? AND track_id IN (
         SELECT source_track_id FROM sh_spotify_track_aliases
