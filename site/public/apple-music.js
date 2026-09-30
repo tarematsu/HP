@@ -1,5 +1,7 @@
 import {
+  appendEmptyState,
   byId as element,
+  evenlySpacedIndexes,
   fullDate as formatFullDate,
   safeInteger as integer,
   setNotice as setSharedNotice,
@@ -109,10 +111,7 @@ function renderRankChart(payload) {
   renderJapanLegend(series);
   const dates = [...new Set(series.flatMap((item) => item.points.map((point) => point.date)))].sort();
   if (!series.length || !dates.length) {
-    const empty = document.createElement('p');
-    empty.className = 'apple-rank-empty';
-    empty.textContent = '順位履歴はまだありません。';
-    container.append(empty);
+    appendEmptyState(container, '順位履歴はまだありません。', { className: 'apple-rank-empty' });
     return;
   }
 
@@ -144,28 +143,21 @@ function renderRankChart(payload) {
       y2: y,
       class: 'apple-rank-grid',
     }));
-    const label = svgElement('text', {
+    svg.append(svgElement('text', {
       x: margin.left - 8,
       y: y + 4,
       'text-anchor': 'end',
       class: 'apple-rank-axis-label',
-    });
-    label.textContent = rankLabel(rank);
-    svg.append(label);
+    }, rankLabel(rank)));
   }
 
-  const dateTicks = [...new Set(dates.length <= 1
-    ? [0]
-    : [0, 0.5, 1].map((ratio) => Math.round((dates.length - 1) * ratio)))];
-  for (const index of dateTicks) {
-    const label = svgElement('text', {
+  for (const index of evenlySpacedIndexes(dates.length, 3)) {
+    svg.append(svgElement('text', {
       x: xFor(dates[index]),
       y: height - 9,
       'text-anchor': index === 0 ? 'start' : index === dates.length - 1 ? 'end' : 'middle',
       class: 'apple-rank-axis-label',
-    });
-    label.textContent = formatDate(dates[index]);
-    svg.append(label);
+    }, formatDate(dates[index])));
   }
 
   series.forEach((item, index) => {
@@ -183,9 +175,7 @@ function renderRankChart(payload) {
     }
     const path = svgElement('path', { d: d.trim(), class: 'apple-rank-line' });
     path.style.setProperty('--apple-rank-hue', String((index * 43) % 360));
-    const title = svgElement('title');
-    title.textContent = `${rankLabel(item.currentRank)} ${item.title}`;
-    path.append(title);
+    path.append(svgElement('title', {}, `${rankLabel(item.currentRank)} ${item.title}`));
     svg.append(path);
   });
   container.append(svg);

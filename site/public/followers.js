@@ -1,10 +1,13 @@
 import {
+  appendEmptyState,
   byId,
+  evenlySpacedIndexes,
   fullDate as fullDateLabel,
   integerFormat as numberFormat,
   safeInteger as integer,
   setNotice as setSharedNotice,
   shortDate as dateLabel,
+  signedInteger,
   svgElement as createSvgNode,
 } from './dashboard-ui-common.js?v=20260930.1';
 
@@ -62,12 +65,6 @@ function formatFollower(value) {
   return parsed == null ? '-' : numberFormat.format(parsed);
 }
 
-function formatDelta(value) {
-  const parsed = integer(value);
-  if (parsed == null) return '-';
-  return `${parsed > 0 ? '+' : ''}${numberFormat.format(parsed)}`;
-}
-
 function normalizeRows(rows, handles) {
   const byDate = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
@@ -116,23 +113,6 @@ function normalizeAccounts(accounts, rows, handles) {
   });
 }
 
-function appendText(svg, text, x, y, className, anchor = 'start') {
-  const node = createSvgNode('text', { x, y, class: className, 'text-anchor': anchor });
-  node.textContent = text;
-  svg.append(node);
-  return node;
-}
-
-function tickIndexes(length) {
-  if (length <= 1) return [0];
-  const count = Math.min(6, length);
-  const indexes = new Set([0, length - 1]);
-  for (let index = 1; index < count - 1; index += 1) {
-    indexes.add(Math.round((length - 1) * index / (count - 1)));
-  }
-  return [...indexes].sort((a, b) => a - b);
-}
-
 function renderChart(rows, handles) {
   const container = byId('followersChart');
   if (!container) return;
@@ -141,10 +121,10 @@ function renderChart(rows, handles) {
     .map((handle) => followerValue(row[handle]))
     .filter((value) => value != null));
   if (!rows.length || !values.length) {
-    const empty = document.createElement('div');
-    empty.className = 'followers-empty';
-    empty.textContent = '0時の初回収集後にグラフを表示します。';
-    container.append(empty);
+    appendEmptyState(container, '0時の初回収集後にグラフを表示します。', {
+      className: 'followers-empty',
+      tagName: 'div',
+    });
     return;
   }
 
@@ -183,11 +163,21 @@ function renderChart(rows, handles) {
       y2: yy,
       class: 'followers-grid-line',
     }));
-    appendText(svg, numberFormat.format(Math.round(value)), padding.left - 10, yy + 4, 'followers-axis-label', 'end');
+    svg.append(createSvgNode('text', {
+      x: padding.left - 10,
+      y: yy + 4,
+      class: 'followers-axis-label',
+      'text-anchor': 'end',
+    }, numberFormat.format(Math.round(value))));
   }
 
-  for (const index of tickIndexes(rows.length)) {
-    appendText(svg, dateLabel(rows[index].date), x(index), height - 13, 'followers-axis-label', 'middle');
+  for (const index of evenlySpacedIndexes(rows.length, 6)) {
+    svg.append(createSvgNode('text', {
+      x: x(index),
+      y: height - 13,
+      class: 'followers-axis-label',
+      'text-anchor': 'middle',
+    }, dateLabel(rows[index].date)));
   }
 
   handles.forEach((handle, seriesIndex) => {
@@ -203,9 +193,7 @@ function renderChart(rows, handles) {
       d: path,
       class: `followers-line followers-line-${styleIndex}`,
     });
-    const title = createSvgNode('title');
-    title.textContent = handle;
-    line.append(title);
+    line.append(createSvgNode('title', {}, handle));
     svg.append(line);
 
     const latest = points.at(-1);
@@ -215,9 +203,7 @@ function renderChart(rows, handles) {
       r: 4,
       class: `followers-endpoint followers-endpoint-${styleIndex}`,
     });
-    const pointTitle = createSvgNode('title');
-    pointTitle.textContent = `${handle} ${fullDateLabel(latest.row.date)} ${numberFormat.format(latest.value)}`;
-    point.append(pointTitle);
+    point.append(createSvgNode('title', {}, `${handle} ${fullDateLabel(latest.row.date)} ${numberFormat.format(latest.value)}`));
     svg.append(point);
   });
 
@@ -257,10 +243,10 @@ function renderTable(accounts) {
     const current = document.createElement('td');
     current.textContent = formatFollower(account.followers);
     const day = document.createElement('td');
-    day.textContent = formatDelta(account.previous_day_delta);
+    day.textContent = signedInteger(account.previous_day_delta);
     if (integer(account.previous_day_delta) > 0) day.classList.add('followers-delta-positive');
     const week = document.createElement('td');
-    week.textContent = formatDelta(account.previous_week_delta);
+    week.textContent = signedInteger(account.previous_week_delta);
     if (integer(account.previous_week_delta) > 0) week.classList.add('followers-delta-positive');
     row.append(handle, current, day, week);
     body.append(row);

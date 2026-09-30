@@ -18,6 +18,33 @@ export function safeInteger(value) {
   return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
+export function signedInteger(value, fallback = '-') {
+  const parsed = safeInteger(value);
+  if (parsed == null) return String(fallback);
+  return `${parsed > 0 ? '+' : ''}${integerFormat.format(parsed)}`;
+}
+
+export function evenlySpacedIndexes(length, count = 5) {
+  const size = Number.isInteger(length) ? Math.max(0, length) : 0;
+  if (!size) return [];
+  if (size === 1) return [0];
+  const tickCount = Math.max(2, Math.min(size, Number.isInteger(count) ? count : 5));
+  const indexes = new Set([0, size - 1]);
+  for (let index = 1; index < tickCount - 1; index += 1) {
+    indexes.add(Math.round((size - 1) * index / (tickCount - 1)));
+  }
+  return [...indexes].sort((left, right) => left - right);
+}
+
+export function appendEmptyState(container, message, { className = 'shared-empty', tagName = 'p' } = {}) {
+  if (!container) return null;
+  const node = document.createElement(tagName);
+  node.className = className;
+  node.textContent = String(message || '');
+  container.append(node);
+  return node;
+}
+
 export function setText(id, value) {
   const node = byId(id);
   const text = String(value);
