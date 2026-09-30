@@ -1,0 +1,55 @@
+name: Repair 2026-09-29 daily read model
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/repair-2026-09-29-daily-read-model.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      FACTS_DATABASE_NAME: stationhead-minute
+      BUDDIES_DATABASE_NAME: stationhead-buddies
+      OTHER_DATABASE_NAME: stationhead-other
+      PAGES_RESPONSE_BUCKET: sh-pages-responses
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Rebuild daily history read model only
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import {
+            HISTORY_READ_MODEL_VARIANTS,
+            runPagesHistoryReadModelActions,
+          } from './scripts/run-pages-history-read-model-actions.mjs';
+          const daily = HISTORY_READ_MODEL_VARIANTS.find((variant) => variant.key === 'history:daily');
+          if (!daily) throw new Error('history:daily variant missing');
+          const result = await runPagesHistoryReadModelActions({
+            variants: [daily],
+            forceAll: true,
+            reuseOnly: false,
+          });
+          console.log(JSON.stringify({ event: 'targeted_daily_history_rebuild', result }));
+          NODE
