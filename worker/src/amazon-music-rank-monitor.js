@@ -1,3 +1,4 @@
+import { resolveAmazonMusicTracks } from './amazon-music-track-identity.js';
 import { extractAmazonMusicTracks } from './amazon-music-web-client.js';
 
 const AMAZON_HOST = 'music.amazon.co.jp';
@@ -9,13 +10,13 @@ const OVERALL_CHART_PAGE_URL = `${AMAZON_ORIGIN}/popular/songs/browsePanel/popul
 const OVERALL_CHART_INITIAL_URL = `${CATALOG_SKILL_BASE}/showChartsWidget?genreTitle=browsePanel&genreId=popularTracks&widgetId=top-songs&userHash=%7B%22level%22%3A%22LIBRARY_MEMBER%22%7D`;
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 const RETRY_ATTEMPTS = 6;
-const TOP_STATE_KEY = 'amazon-music/rank-monitor/top-1000.json';
-const DEEP_STATE_KEY = 'amazon-music/rank-monitor/deep-100k.json';
-const GROUP_STATE_KEY = 'amazon-music/rank-monitor/sakamichi-ranks.json';
 
 export const AMAZON_MUSIC_TOP_SCAN_RANK = 1_000;
 export const AMAZON_MUSIC_DEEP_SCAN_TARGET_RANK = 100_000;
 export const AMAZON_MUSIC_DEEP_SCAN_PAGES_PER_RUN = 100;
+export const AMAZON_MUSIC_TOP_STATE_KEY = 'amazon-music/rank-monitor/top-1000.json';
+export const AMAZON_MUSIC_DEEP_STATE_KEY = 'amazon-music/rank-monitor/deep-100k.json';
+export const AMAZON_MUSIC_GROUP_KNOWN_KEY = 'amazon-music/rank-monitor/sakamichi-100k-known.json';
 
 const GROUP_ALIASES = Object.freeze([
   ['櫻坂46', ['櫻坂46', 'Sakurazaka46', 'Sakurazaka 46']],
@@ -114,7 +115,7 @@ function outerHeaders() {
   };
 }
 
-function amazonHeaders(configuration) {
+function amazonHeaders(configuration, pageUrl = OVERALL_CHART_PAGE_URL) {
   const csrf = object(configuration?.csrf) || {};
   return {
     'x-amzn-authentication': JSON.stringify({
@@ -142,7 +143,7 @@ function amazonHeaders(configuration) {
       rndNonce: csrf.rnd == null ? '' : String(csrf.rnd),
     }),
     'x-amzn-music-domain': AMAZON_HOST,
-    'x-amzn-page-url': OVERALL_CHART_PAGE_URL,
+    'x-amzn-page-url': pageUrl,
     'x-amzn-feature-flags': 'hd-supported,uhd-supported',
   };
 }
@@ -158,7 +159,7 @@ async function primeWebPlayer(fetchImpl, configuration) {
         interface: 'DeeplinkInterface.v1_0.DeeplinkClientInformation',
         deeplink: `/artists/${artistId}`,
       }),
-      headers: JSON.stringify({ ...amazonHeaders(configuration), 'x-amzn-page-url': pageUrl }),
+      headers: JSON.stringify(amazonHeaders(configuration, pageUrl)),
     }),
   });
   await responseJson(response, 'Amazon Music /showHome');
@@ -220,8 +221,11 @@ export async function scanAmazonChart(fetchImpl = fetch, options = {}) {
       scannedTracks += 1;
       tracks.push({ ...track, rank: scannedTracks });
     }
-    if (scannedTracks >= stopRank) break;
     const next = nextChartsWidgetUrl(document);
+    if (scannedTracks >= stopRank) {
+      url = next;
+      break;
+    }
     if (!next || seenUrls.has(next)) {
       exhausted = true;
       url = null;
@@ -234,8 +238,7 @@ export async function scanAmazonChart(fetchImpl = fetch, options = {}) {
     tracks,
     scanned_tracks: scannedTracks,
     pages_scanned: pagesScanned,
-    next_url: scannedTracks >= stopRank || exhausted ? null : url,
-    continuation_url: url,
+    continuation_url: exhausted ? null : url,
     exhausted,
   };
 }
@@ -302,34 +305,19 @@ async function saveChartUpdate(db, observedAt, previousHash, currentHash, change
   return true;
 }
 
-async function resolveTrackIds(db, amazonIds) {
-  const ids = [...new Set(amazonIds.map(text).filter(Boolean))];
-  const result = new Map();
-  if (!db?.prepare || !ids.length) return result;
-  for (let offset = 0; offset < ids.length; offset += 80) {
-    const chunk = ids.slice(offset, offset + 80);
-    const placeholders = chunk.map(() => '?').join(',');
-    const rows = await db.prepare(`SELECT alias_value, track_id FROM sh_track_aliases
-      WHERE alias_type='amazon_music_id' AND alias_value IN (${placeholders})`)
-      .bind(...chunk)
-      .all();
-    for (const row of rows?.results || []) result.set(String(row.alias_value), Number(row.track_id));
-  }
-  return result;
-}
-
 async function saveGroupChanges(db, observedAt, changes) {
   if (!db?.prepare || !changes.length) return 0;
-  const trackIds = await resolveTrackIds(db, changes.map((item) => item.amazon_music_id));
-  const statements = changes.map((item) => db.prepare(`INSERT OR IGNORE INTO amazon_music_group_rank_history
-    (observed_at, group_name, amazon_music_id, track_id, rank, change_type, title, artist)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+  const resolved = await resolveAmazonMusicTracks(db, changes, observedAt);
+  const statements = changes.map((item, index) => db.prepare(`INSERT OR IGNORE INTO amazon_music_group_rank_history
+    (observed_at, group_name, amazon_music_id, track_id, rank, previous_rank, change_type, title, artist)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(
       observedAt,
       item.group_name,
       item.amazon_music_id,
-      trackIds.get(item.amazon_music_id) ?? null,
+      Number.isSafeInteger(Number(resolved[index]?.trackId)) ? Number(resolved[index].trackId) : null,
       item.rank ?? null,
+      item.previous_rank ?? null,
       item.change_type,
       item.title ?? null,
       item.artist ?? null,
@@ -347,26 +335,12 @@ function groupStateMap(state) {
   return map;
 }
 
-function diffGroupRanks(previousState, currentTracks, { allowExit = false } = {}) {
-  const previous = groupStateMap(previousState);
-  const current = new Map(currentTracks.map((item) => [String(item.amazon_music_id), item]));
-  const changes = [];
-  for (const item of current.values()) {
-    const before = previous.get(String(item.amazon_music_id));
-    if (!before) {
-      changes.push({ ...item, change_type: 'enter' });
-    } else if (Number(before.rank) !== Number(item.rank)) {
-      changes.push({ ...item, change_type: 'move' });
-    }
+function rankChange(before, item) {
+  if (!before) return { ...item, previous_rank: null, change_type: 'enter' };
+  if (Number(before.rank) !== Number(item.rank)) {
+    return { ...item, previous_rank: Number(before.rank) || null, change_type: 'move' };
   }
-  if (allowExit) {
-    for (const before of previous.values()) {
-      if (!current.has(String(before.amazon_music_id))) {
-        changes.push({ ...before, rank: null, change_type: 'exit' });
-      }
-    }
-  }
-  return changes;
+  return null;
 }
 
 export async function monitorAmazonTop1000(env, observedAt = Date.now(), fetchImpl = fetch) {
@@ -381,27 +355,17 @@ export async function monitorAmazonTop1000(env, observedAt = Date.now(), fetchIm
     throw new Error(`Amazon top-1000 scan incomplete: ${scan.scanned_tracks}`);
   }
 
-  const previous = await getJson(r2, TOP_STATE_KEY);
+  const previous = await getJson(r2, AMAZON_MUSIC_TOP_STATE_KEY);
   const currentHash = await sha256(rankSignature(scan.tracks));
   const previousHash = text(previous?.hash);
   const updated = Boolean(previousHash && previousHash !== currentHash);
   const changedCount = updated ? changedPositions(previous?.tracks, scan.tracks) : 0;
+  if (updated) await saveChartUpdate(env?.MINUTE_DB, observedAt, previousHash, currentHash, changedCount);
 
-  if (updated) {
-    await saveChartUpdate(env?.MINUTE_DB, observedAt, previousHash, currentHash, changedCount);
-  }
-
-  const priorGroups = await getJson(r2, GROUP_STATE_KEY);
-  const currentGroups = groupTracks(scan.tracks);
-  if (priorGroups) {
-    const changes = diffGroupRanks(priorGroups, currentGroups, { allowExit: true });
-    if (changes.length) await saveGroupChanges(env?.MINUTE_DB, observedAt, changes);
-  }
-  await putJson(r2, GROUP_STATE_KEY, { observed_at: observedAt, scope: 'top-1000', tracks: currentGroups });
-  await putJson(r2, TOP_STATE_KEY, {
+  await putJson(r2, AMAZON_MUSIC_TOP_STATE_KEY, {
     observed_at: observedAt,
     hash: currentHash,
-    tracks: scan.tracks.map(({ rank, amazon_music_id, title, artist }) => ({ rank, amazon_music_id, title, artist })),
+    tracks: scan.tracks.map(({ rank, amazon_music_id }) => ({ rank, amazon_music_id })),
   });
 
   return {
@@ -411,18 +375,29 @@ export async function monitorAmazonTop1000(env, observedAt = Date.now(), fetchIm
     initialized: !previousHash,
     updated,
     changed_positions: changedCount,
-    sakamichi_tracks: currentGroups.length,
   };
 }
 
 export async function continueAmazon100kScan(env, observedAt = Date.now(), fetchImpl = fetch) {
   const r2 = env?.PAGES_RESPONSE_R2;
   if (!r2?.put) throw new Error('PAGES_RESPONSE_R2 binding is required');
-  const previous = await getJson(r2, DEEP_STATE_KEY);
-  const startRank = previous?.complete ? 0 : Math.max(0, Number(previous?.scanned_tracks) || 0);
-  const startUrl = previous?.complete ? null : text(previous?.next_url);
-  const cycle = previous?.complete ? (Number(previous?.cycle) || 0) + 1 : Math.max(1, Number(previous?.cycle) || 1);
-  const seen = previous?.complete ? new Map() : groupStateMap({ tracks: previous?.cycle_tracks });
+  const previous = await getJson(r2, AMAZON_MUSIC_DEEP_STATE_KEY);
+  const startingNewCycle = !previous || Boolean(previous.complete);
+  const startRank = startingNewCycle ? 0 : Math.max(0, Number(previous.scanned_tracks) || 0);
+  const startUrl = startingNewCycle ? null : text(previous.next_url);
+  if (!startingNewCycle && startRank > 0 && !startUrl) {
+    throw new Error('Amazon deep-scan continuation URL is missing');
+  }
+
+  const cycle = startingNewCycle
+    ? Math.max(1, (Number(previous?.cycle) || 0) + 1)
+    : Math.max(1, Number(previous?.cycle) || 1);
+  const cycleMap = startingNewCycle
+    ? new Map()
+    : groupStateMap({ tracks: previous?.cycle_tracks });
+  const reported = new Set(startingNewCycle ? [] : (previous?.reported_ids || []).map(String));
+  const knownState = await getJson(r2, AMAZON_MUSIC_GROUP_KNOWN_KEY);
+  const known = groupStateMap(knownState);
 
   const scan = await scanAmazonChart(fetchImpl, {
     startRank,
@@ -430,23 +405,42 @@ export async function continueAmazon100kScan(env, observedAt = Date.now(), fetch
     stopRank: AMAZON_MUSIC_DEEP_SCAN_TARGET_RANK,
     maxPages: AMAZON_MUSIC_DEEP_SCAN_PAGES_PER_RUN,
   });
-  for (const item of groupTracks(scan.tracks)) seen.set(String(item.amazon_music_id), item);
+  const batchGroupTracks = groupTracks(scan.tracks);
+  const changes = [];
+  for (const item of batchGroupTracks) {
+    const id = String(item.amazon_music_id);
+    cycleMap.set(id, item);
+    if (!knownState || reported.has(id)) continue;
+    const change = rankChange(known.get(id), item);
+    if (change) changes.push(change);
+    reported.add(id);
+  }
 
   const complete = scan.scanned_tracks >= AMAZON_MUSIC_DEEP_SCAN_TARGET_RANK || scan.exhausted;
-  const cycleTracks = [...seen.values()].sort((a, b) => Number(a.rank) - Number(b.rank));
-  const knownState = await getJson(r2, 'amazon-music/rank-monitor/sakamichi-100k-known.json');
-  const changes = diffGroupRanks(knownState, cycleTracks, { allowExit: complete && Boolean(knownState) });
-
+  if (complete && knownState) {
+    for (const [id, before] of known.entries()) {
+      if (cycleMap.has(id) || reported.has(id)) continue;
+      changes.push({
+        ...before,
+        rank: null,
+        previous_rank: Number(before.rank) || null,
+        change_type: 'exit',
+      });
+      reported.add(id);
+    }
+  }
   if (knownState && changes.length) await saveGroupChanges(env?.MINUTE_DB, observedAt, changes);
+
+  const cycleTracks = [...cycleMap.values()].sort((a, b) => Number(a.rank) - Number(b.rank));
   if (complete) {
-    await putJson(r2, 'amazon-music/rank-monitor/sakamichi-100k-known.json', {
+    await putJson(r2, AMAZON_MUSIC_GROUP_KNOWN_KEY, {
       observed_at: observedAt,
       cycle,
       tracks: cycleTracks,
     });
   }
 
-  await putJson(r2, DEEP_STATE_KEY, {
+  await putJson(r2, AMAZON_MUSIC_DEEP_STATE_KEY, {
     observed_at: observedAt,
     cycle,
     scanned_tracks: scan.scanned_tracks,
@@ -454,6 +448,7 @@ export async function continueAmazon100kScan(env, observedAt = Date.now(), fetch
     complete,
     exhausted: scan.exhausted,
     cycle_tracks: cycleTracks,
+    reported_ids: [...reported],
   });
 
   return {
