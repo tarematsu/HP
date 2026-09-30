@@ -19,7 +19,8 @@ test('current and likes views use explicit user-facing metric names in static ma
     assert.match(staticUi, new RegExp(label));
   }
   assert.doesNotMatch(staticUi, /最大いいね数/);
-  assert.match(likesShell, /likes-summary[^>]*grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
+  assert.match(likesShell, /class="summary-cards likes-summary"/);
+  assert.doesNotMatch(likesShell, /likes-summary[^>]*style=/);
   assert.doesNotMatch(historyEntry, /pages-terminology/);
   assert.doesNotMatch(metrics, /pages-terminology/);
 });
