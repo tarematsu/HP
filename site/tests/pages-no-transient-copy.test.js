@@ -35,5 +35,7 @@ test('history static copy and tab state each have one owner', () => {
   assert.doesNotMatch(broadcasts, /chartTitle'\)\.textContent|chartFoot'\)\.textContent/);
   assert.doesNotMatch(broadcastTable, /tableTitle\.textContent/);
   assert.doesNotMatch(periodChart, /chartTitle/);
-  assert.doesNotMatch(periodChart, /chartFoot/);
+  assert.match(periodChart, /foot\.textContent = hasMissingBand/);
+  assert.match(periodChart, /灰色は欠測期間です。/);
+  assert.doesNotMatch(history, /左軸は同接（平均・最大・最小）、右軸は各期間の再生数増加です。/);
 });
