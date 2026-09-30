@@ -1,5 +1,5 @@
 import { mkdir, readFile, stat } from 'node:fs/promises';
-import { basename, dirname, resolve, relative } from 'node:path';
+import { dirname, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
@@ -29,165 +29,6 @@ const cssFiles = [
   'history/history-range-navigator.css',
   'dashboard-ui-common.css',
 ];
-
-const canvasTransforms = new Map([
-  ['dashboard-chart-comparison.js', [
-    ["context.font = 'bold 10px system-ui';", "context.font = '600 11px system-ui';"],
-    ["context.font = '10px system-ui';", "context.font = '11px system-ui';"],
-    ["context.strokeStyle = 'rgba(31,45,68,.10)';", "context.strokeStyle = 'rgba(31,45,68,.12)';"],
-    ["drawSeries(context, current, xFor, yOnline, '#111', 2.5);", "drawSeries(context, current, xFor, yOnline, '#111', 2);"],
-    ["context.arc(xFor(minRow.observed_at), yOnline(currentMin), 3.5,", "context.arc(xFor(minRow.observed_at), yOnline(currentMin), 3,"],
-    ["context.arc(xFor(maxRow.observed_at), yOnline(currentMax), 3.5,", "context.arc(xFor(maxRow.observed_at), yOnline(currentMax), 3,"],
-  ]],
-  ['first-week-comparison.js', [
-    ["context.font = '10.5px system-ui';", "context.font = '11px system-ui';"],
-    ['context.lineWidth = 1.8;', 'context.lineWidth = 2;'],
-  ]],
-  ['history-period-chart.js', [
-    ["context.font = '10.5px system-ui';", "context.font = '11px system-ui';"],
-    ["context.font = width < 480 ? '9px system-ui' : '10px system-ui';", "context.font = '11px system-ui';"],
-    ["context.strokeStyle = 'rgba(31,45,68,.24)';", "context.strokeStyle = 'rgba(31,45,68,.12)';"],
-    ["{ key: 'listener_avg', label: '平均同接', color: '#000000', width: 2.6 }", "{ key: 'listener_avg', label: '平均同接', color: '#000000', width: 2 }"],
-    ["{ key: 'listener_max', label: '最大同接', color: cssColor('--orange', '#c56a18'), width: 1.9 }", "{ key: 'listener_max', label: '最大同接', color: cssColor('--orange', '#c56a18'), width: 2 }"],
-    ["{ key: 'listener_min', label: '最小同接', color: cssColor('--blue', '#2776b9'), width: 1.9 }", "{ key: 'listener_min', label: '最小同接', color: cssColor('--blue', '#2776b9'), width: 2 }"],
-  ]],
-  ['history-ranking-chart.js', [
-    ["context.font = '10.5px system-ui';", "context.font = '11px system-ui';"],
-    ["context.font = '10px system-ui';", "context.font = '11px system-ui';"],
-    ["context.strokeStyle = 'rgba(31,45,68,.16)';", "context.strokeStyle = 'rgba(31,45,68,.12)';"],
-    ['context.lineWidth = 2.4;', 'context.lineWidth = 2;'],
-    ['context.arc(positions[index], yFor(rank), 2.5,', 'context.arc(positions[index], yFor(rank), 3,'],
-  ]],
-]);
-
-function normalizeCanvasPresentation(source, file) {
-  let next = source;
-  for (const [before, after] of canvasTransforms.get(file) || []) next = next.replaceAll(before, after);
-  return next;
-}
-
-function stripFiniteHelper(source) {
-  return source
-    .replace(/const finite = \(value\) => \{\n  if \(value === null \|\| value === undefined \|\| value === ''\) return null;\n  const (?:number|parsed) = Number\(value\);\n  return Number\.isFinite\((?:number|parsed)\) \? (?:number|parsed) : null;\n};\n/, '')
-    .replace(/function finite\(value\) \{\n  if \(value === null \|\| value === undefined \|\| value === ''\) return null;\n  const parsed = Number\(value\);\n  return Number\.isFinite\(parsed\) \? parsed : null;\n}\n\n/, '');
-}
-
-function stripCssColorHelper(source) {
-  return source.replace(/function cssColor\(name, fallback\) \{\n(?:  if \(!name\) return fallback;\n)?  return getComputedStyle\(document\.documentElement\)\.getPropertyValue\(name\)\.trim\(\) \|\| fallback;\n}\n\n/, '');
-}
-
-function shareCommonUiHelpers(source, file) {
-  let next = source;
-  let imports = '';
-
-  if (file === 'spotify.js' || file === 'amazon-music.js') {
-    imports = "import { byId as element, integerFormat as numberFormat, safeInteger as integer, svgElement } from './dashboard-ui-common.js?v=20260930.1';\n";
-    next = next
-      .replace("const SVG_NS = 'http://www.w3.org/2000/svg';\n", '')
-      .replace("const numberFormat = new Intl.NumberFormat('ja-JP');\n", '')
-      .replace(/function element\(id\) \{\n  return document\.getElementById\(id\);\n}\n\n/, '')
-      .replace(/function integer\(value\) \{\n  if \(value == null \|\| value === ''\) return null;\n  const (?:number|parsed) = Number\(value\);\n  return Number\.isSafeInteger\((?:number|parsed)\) \? (?:number|parsed) : null;\n}\n\n/, '')
-      .replace(/function svgElement\(name, attributes = \{}\) \{\n  const node = document\.createElementNS\(SVG_NS, name\);\n  for \(const \[key, value\] of Object\.entries\(attributes\)\) node\.setAttribute\(key, String\(value\)\);\n  return node;\n}\n\n/, '');
-  } else if (file === 'apple-music.js') {
-    imports = "import { byId as element, svgElement } from './dashboard-ui-common.js?v=20260930.1';\n";
-    next = next
-      .replace("const SVG_NS = 'http://www.w3.org/2000/svg';\n", '')
-      .replace(/function element\(id\) \{\n  return document\.getElementById\(id\);\n}\n\n/, '')
-      .replace(/function svgElement\(name, attributes = \{}\) \{\n  const node = document\.createElementNS\(SVG_NS, name\);\n  for \(const \[key, value\] of Object\.entries\(attributes\)\) node\.setAttribute\(key, String\(value\)\);\n  return node;\n}\n\n/, '');
-  } else if (file === 'followers.js') {
-    imports = "import { integerFormat as numberFormat, svgElement as createSvgNode } from './dashboard-ui-common.js?v=20260930.1';\n";
-    next = next
-      .replace("const SVG_NS = 'http://www.w3.org/2000/svg';\n", '')
-      .replace("const numberFormat = new Intl.NumberFormat('ja-JP');\n", '')
-      .replace(/function createSvgNode\(name, attributes = \{}\) \{\n  const node = document\.createElementNS\(SVG_NS, name\);\n  for \(const \[key, value\] of Object\.entries\(attributes\)\) node\.setAttribute\(key, String\(value\)\);\n  return node;\n}\n/, '');
-  } else if (file === 'hinata.js') {
-    imports = "import { byId, cssColor, decimalOneFormat as decimal, finiteNumber as finite, integerFormat as integer, setText, svgElement } from './dashboard-ui-common.js?v=20260930.1';\n";
-    next = stripFiniteHelper(next)
-      .replace("const SVG_NS = 'http://www.w3.org/2000/svg';\n", '')
-      .replace("const integer = new Intl.NumberFormat('ja-JP');\n", '')
-      .replace("const decimal = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });\n", '')
-      .replace(/const byId = \(id\) => document\.getElementById\(id\);\n/, '')
-      .replace(/function setText\(id, value\) \{\n  const node = byId\(id\);\n  if \(node\) node\.textContent = String\(value\);\n}\n\n/, '')
-      .replace(/function svgElement\(name, attributes = \{}, text = null\) \{\n  const node = document\.createElementNS\(SVG_NS, name\);\n  for \(const \[key, value\] of Object\.entries\(attributes\)\) node\.setAttribute\(key, String\(value\)\);\n  if \(text != null\) node\.textContent = String\(text\);\n  return node;\n}\n\n/, '');
-    next = stripCssColorHelper(next);
-  } else if (file === 'played-tracks.js') {
-    imports = "import { byId, integerFormat as integer, setNotice as setSharedNotice } from './dashboard-ui-common.js?v=20260930.1';\n";
-    next = next
-      .replace("const integer = new Intl.NumberFormat('ja-JP');\n", '')
-      .replace(/const byId = \(id\) => document\.getElementById\(id\);\n\n/, '')
-      .replace(/function setNotice\(message, error = false\) \{\n  const notice = byId\('playedTracksNotice'\);\n  if \(!notice\) return;\n  notice\.textContent = message;\n  notice\.classList\.toggle\('error', error\);\n  notice\.hidden = !message;\n}\n\n/, "const setNotice = (message, error = false) => setSharedNotice('playedTracksNotice', message, error);\n\n");
-  } else if (file === 'history-lite.js') {
-    imports = "import { byId as el, decimalOneFormat as decimal, finiteNumber as finite, integerFormat as integer, setText } from '../dashboard-ui-common.js?v=20260930.1';\n";
-    next = stripFiniteHelper(next)
-      .replace("  const integer = new Intl.NumberFormat('ja-JP');\n", '')
-      .replace("  const decimal = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });\n", '')
-      .replace(/  const el = \(id\) => document\.getElementById\(id\);\n/, '')
-      .replace(/  function setText\(id, value\) \{\n    const node = el\(id\);\n    if \(node\) node\.textContent = String\(value\);\n  }\n\n/, '');
-  } else if (file === 'history-period-chart.js' || file === 'history-ranking-chart.js') {
-    imports = "import { cssColor, finiteNumber as finite, integerFormat as integer } from '../dashboard-ui-common.js?v=20260930.1';\n";
-    next = stripCssColorHelper(stripFiniteHelper(next))
-      .replace("const integer = new Intl.NumberFormat('ja-JP');\n", '');
-  } else if (file === 'history-broadcasts.js') {
-    imports = "import { cssColor, decimalOneFormat as number, finiteNumber as finite } from '../dashboard-ui-common.js?v=20260930.1';\n";
-    next = stripCssColorHelper(stripFiniteHelper(next))
-      .replace("  const number = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });\n", '');
-  } else if (file === 'history-likes.js') {
-    imports = "import { byId as el, decimalOneFormat as number, finiteNumber as finite, setNotice as setSharedNotice } from '../dashboard-ui-common.js?v=20260930.1';\n";
-    next = stripFiniteHelper(next)
-      .replace("  const number = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });\n", '')
-      .replace(/  const el = \(id\) => document\.getElementById\(id\);\n/, '')
-      .replace(/  function setNotice\(text, error = false\) \{\n    const node = el\('likesNotice'\);\n    node\.textContent = text;\n    node\.hidden = !text;\n    node\.classList\.toggle\('error', error\);\n  }\n\n/, "  const setNotice = (text, error = false) => setSharedNotice('likesNotice', text, error);\n\n");
-  } else if (file === 'first-week-comparison.js') {
-    imports = "import { integerFormat as number } from './dashboard-ui-common.js?v=20260930.1';\n";
-    next = next.replace("const number = new Intl.NumberFormat('ja-JP');\n", '');
-  } else if (file === 'dashboard-current-layout.js') {
-    imports = "import { byId, finiteNumber as finite, integerFormat as integer } from './dashboard-ui-common.js?v=20260930.1';\n";
-    next = stripFiniteHelper(next)
-      .replace("const integer = new Intl.NumberFormat('ja-JP');\n", '')
-      .replace(/const byId = \(id\) => document\.getElementById\(id\);\n/, '');
-  }
-
-  return imports ? `${imports}${next}` : next;
-}
-
-function optimizeBundledModule(source, path) {
-  const file = basename(path);
-  let next = shareCommonUiHelpers(normalizeCanvasPresentation(source, file), file);
-
-  if (file === 'dashboard-header.js') {
-    const runtimeStart = next.indexOf('const KEYBOARD_NAVIGATION_CLASS');
-    if (runtimeStart >= 0) next = next.slice(runtimeStart);
-  }
-
-  if (file === 'dashboard-ui-common.js') {
-    next = next.replace(
-      /export function ensureStylesheet\([\s\S]*?\n}\n\nfunction firstMatch/,
-      'function firstMatch',
-    );
-    next = next.replace(
-      "export function mountDashboardShell({ style, tab, view } = {}) {\n  ensureStylesheet('/dashboard-ui-common.css?v=20260930.1', 'dashboard-ui-common');\n  if (style?.href && style?.key) ensureStylesheet(style.href, style.key);\n",
-      'export function mountDashboardShell({ tab, view } = {}) {\n',
-    );
-  }
-
-  if (next.includes('mountDashboardShell({')) {
-    next = next.replace(/^\s*style:\s*\{[^}\n]*\},\n/gm, '');
-  }
-
-  if (file === 'history-past-toggle-shell.js') {
-    next = next
-      .replace(/^import \{ ensureStylesheet \}[^\n]*\n\n/, '')
-      .replace(/^ensureStylesheet\([^\n]*\);\n/m, '');
-  }
-
-  if (file === 'history-range-navigator.js') {
-    next = next
-      .replace(/\n  function ensureStylesheet\(\) \{[\s\S]*?\n  }\n\n  function todayUtc/, '\n  function todayUtc')
-      .replace(/\n  ensureStylesheet\(\);/, '');
-  }
-
-  return next;
-}
 
 function optimizeAppLiteCss(source) {
   return source
@@ -265,10 +106,6 @@ const browserModuleResolver = {
         : resolve(args.resolveDir, clean);
       return { path };
     });
-    buildApi.onLoad({ filter: /\.m?js$/ }, async (args) => ({
-      contents: optimizeBundledModule(await readFile(args.path, 'utf8'), args.path),
-      loader: 'js',
-    }));
   },
 };
 
