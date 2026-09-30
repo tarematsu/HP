@@ -11,9 +11,17 @@ const migration = readFileSync(
   'utf8',
 );
 
-test('daily followers reuse the Buddies minute cron and Buddies auth database', () => {
+test('Sakurazaka minute cron is the shared scheduler while Buddies stays independent', () => {
   assert.equal(sakurazakaConfig.main, 'src/sakurazaka-followers-entry.js');
   assert.deepEqual(sakurazakaConfig.triggers?.crons, ['* * * * *']);
+  assert.deepEqual(sakurazakaConfig.services, [
+    { binding: 'NOGIZAKA_SCHEDULED', service: 'sh-nogizaka46smej' },
+    { binding: 'OHISAMA_SCHEDULED', service: 'sh-ohisama-collector' },
+    { binding: 'SPOTIFY_PLAYCOUNT_SCHEDULED', service: 'sh-spotify-playcount-collector' },
+  ]);
+  assert.match(sakurazakaEntry, /dispatchScheduledService/);
+  assert.match(sakurazakaEntry, /minute % 5 === 0/);
+  assert.match(sakurazakaEntry, /minute === 0/);
   assert.doesNotMatch(sakurazakaEntry, /SAKURAZAKA_QUEUE\.send/);
   assert.match(sakurazakaEntry, /stationhead_daily_followers_legacy_queue_drained/);
 

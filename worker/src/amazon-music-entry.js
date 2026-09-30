@@ -10,6 +10,7 @@ import {
   persistAppleMusicModelToOther,
 } from './music-service-other-store.js';
 
+export const AMAZON_MUSIC_CRON = '2,5,12,15,22,32,42,52 * * * *';
 export const AMAZON_MUSIC_TOP_SCAN_CRON = '5 * * * *';
 export const AMAZON_MUSIC_DEEP_SCAN_CRON = '2,12,22,32,42,52 * * * *';
 export const APPLE_MUSIC_PROBE_CRON = '15 * * * *';
@@ -47,13 +48,48 @@ async function continueAmazonMusic(env, scheduledTime) {
   return { ...result, other_db: persisted };
 }
 
+export function amazonMusicDueTasks(scheduledTime) {
+  const minute = new Date(Number(scheduledTime) || Date.now()).getUTCMinutes();
+  return {
+    apple: minute === 15,
+    top500: minute === 5,
+    deep100k: minute % 10 === 2,
+  };
+}
+
+function unifiedScheduledRuns(env, scheduledTime) {
+  const due = amazonMusicDueTasks(scheduledTime);
+  const runs = [];
+  if (due.apple) {
+    runs.push(loggedRun(
+      'apple-music-collection',
+      () => collectAppleMusic(env, scheduledTime),
+    ));
+  }
+  if (due.top500) {
+    runs.push(loggedRun(
+      'amazon-music-top-500-monitor',
+      () => checkAmazonMusic(env, scheduledTime),
+    ));
+  }
+  if (due.deep100k) {
+    runs.push(loggedRun(
+      'amazon-music-100k-scan',
+      () => continueAmazonMusic(env, scheduledTime),
+    ));
+  }
+  return runs;
+}
+
 export default {
   async scheduled(controller, env, ctx) {
     const scheduledTime = Number(controller?.scheduledTime) || Date.now();
     const cron = String(controller?.cron || '');
 
     let run;
-    if (cron === APPLE_MUSIC_PROBE_CRON) {
+    if (cron === AMAZON_MUSIC_CRON) {
+      run = Promise.all(unifiedScheduledRuns(env, scheduledTime));
+    } else if (cron === APPLE_MUSIC_PROBE_CRON) {
       run = loggedRun(
         'apple-music-collection',
         () => collectAppleMusic(env, scheduledTime),

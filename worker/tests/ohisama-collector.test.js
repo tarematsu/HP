@@ -97,14 +97,14 @@ test('ohisama auth acquisition is fixed to ILYS while collection remains ohisama
   assert.match(source, /env\.CHANNEL_ALIAS \|\| 'ohisama'/);
 });
 
-test('ohisama Worker config binds its own D1 plus the shared follower registry DB', () => {
+test('ohisama Worker config binds its own D1 while scheduling is delegated', () => {
   const config = JSON.parse(readFileSync(
     new URL('../wrangler.ohisama-collector.jsonc', import.meta.url),
     'utf8',
   ));
   assert.equal(config.name, 'sh-ohisama-collector');
-  assert.equal(config.main, 'src/ohisama-pages-entry.js');
-  assert.deepEqual(config.triggers.crons, ['*/5 * * * *']);
+  assert.equal(config.main, 'src/ohisama-service-entry.js');
+  assert.equal(config.triggers, undefined);
   assert.deepEqual(config.d1_databases.map(({ binding, database_name }) => ({ binding, database_name })), [
     { binding: 'OHISAMA_DB', database_name: 'stationhead-ohisama' },
     { binding: 'OTHER_DB', database_name: 'stationhead-other' },
@@ -114,4 +114,8 @@ test('ohisama Worker config binds its own D1 plus the shared follower registry D
   ]);
   assert.equal(config.queues, undefined);
   assert.equal(config.durable_objects, undefined);
+
+  const serviceEntry = readFileSync(new URL('../src/ohisama-service-entry.js', import.meta.url), 'utf8');
+  assert.match(serviceEntry, /handleInternalScheduled/);
+  assert.match(serviceEntry, /OHISAMA_COLLECTOR_CRON/);
 });
