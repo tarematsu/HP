@@ -4,6 +4,7 @@ import {
   finiteNumber as finite,
   integerFormat as integer,
 } from './dashboard-ui-common.js?v=20260930.1';
+import { downloadCsv } from './csv-download.js?v=20261001.1';
 
 const API_URL = '/api/nogizaka-listening-party';
 const MIN_REFRESH_MS = 15_000;
@@ -268,11 +269,6 @@ function drawChart(payload) {
   endLabel.textContent = `${payload?.collection_active ? '現在' : '最長'} ${durationLabel(maxMinute)}`;
 }
 
-function csvValue(value) {
-  const text = String(value ?? '');
-  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
-}
-
 function exportCsv() {
   const row = latestPayload?.row;
   if (!row) return;
@@ -288,13 +284,11 @@ function exportCsv() {
     row.distinct_tracks ?? '', row.estimated_streams ?? '', row.broadcast_content ?? '',
     identity.name, row.source_url ?? '',
   ];
-  const content = `\ufeff${headers.map(csvValue).join(',')}\n${values.map(csvValue).join(',')}\n`;
-  const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `nogizaka-listening-party-${latestPayload.date || 'today'}.csv`;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(link.href), 0);
+  downloadCsv(
+    `nogizaka-listening-party-${latestPayload.date || 'today'}.csv`,
+    [headers, values],
+    { quoteAll: false, trailingNewline: true },
+  );
 }
 
 function render(payload) {
