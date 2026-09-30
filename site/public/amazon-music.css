@@ -3,7 +3,7 @@
 .amazon-summary .negative { color: #b42318; }
 .amazon-mode-switch.mode-tabs { display: flex; grid-template-columns: none; overflow-x: auto; margin: 0 0 10px; }
 .amazon-mode-switch button { flex: 0 0 auto; width: auto; }
-.amazon-mode-switch button.is-active { background: var(--accent); color: #241927; border-color: transparent; }
+.amazon-mode-switch button.is-active { border-bottom-color: var(--text); background: transparent; color: var(--text); }
 .amazon-rank-panel { overflow: hidden; }
 .amazon-rank-chart { --shared-chart-min-height: 280px; }
 .amazon-rank-svg { overflow: visible; }

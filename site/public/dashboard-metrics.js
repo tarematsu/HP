@@ -5,8 +5,8 @@ import './likes-shell.js?v=20260930.1';
 import './legacy-listening-party-route.js?v=20260926.1';
 import './dashboard-header.js?v=20260928.1';
 import './dashboard-tab-order.js?v=20260929.1';
-import './dashboard-hinata-route.js?v=20260930.1';
-import './dashboard-followers-route.js?v=20260930.2';
+import './hinata-shell.js?v=20260930.6';
+import './followers-shell.js?v=20260930.3';
 import './dashboard-tabs.js?v=20260930.1';
 
 const IMAGE_RETRY_DELAYS = [5_000, 30_000, 120_000];

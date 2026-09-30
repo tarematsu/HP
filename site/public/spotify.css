@@ -90,7 +90,7 @@
 }
 
 #spotifyTableTitle {
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .spotify-table th:first-child,

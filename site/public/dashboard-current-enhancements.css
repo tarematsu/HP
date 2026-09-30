@@ -106,39 +106,6 @@
 }
 
 @media (max-width: 760px) {
-  .top-card.dashboard-header {
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: stretch !important;
-  }
-
-  .dashboard-header .channel,
-  .dashboard-header .channel-copy,
-  #modeTabs.mode-tabs.dashboard-tabs {
-    width: 100% !important;
-    min-width: 0 !important;
-  }
-
-  #modeTabs.mode-tabs.dashboard-tabs {
-    display: grid !important;
-    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-    grid-template-rows: repeat(2, minmax(32px, auto)) !important;
-    grid-auto-flow: row !important;
-    gap: 0 !important;
-  }
-
-  #modeTabs.mode-tabs.dashboard-tabs > button {
-    width: 100% !important;
-    min-width: 0 !important;
-    min-height: 32px !important;
-    padding: 4px 2px !important;
-    overflow: hidden !important;
-    white-space: nowrap !important;
-    text-overflow: clip !important;
-    font-size: 10px !important;
-    letter-spacing: -.035em !important;
-  }
-
   .metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   }
@@ -195,11 +162,6 @@
 }
 
 @media (max-width: 360px) {
-  #modeTabs.mode-tabs.dashboard-tabs > button {
-    font-size: 9px !important;
-    padding-inline: 1px !important;
-  }
-
   .metric,
   .metric.featured {
     padding-inline: 5px !important;

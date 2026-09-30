@@ -19,8 +19,7 @@ const liveLegend = dashboardLegend({
 });
 
 const dailyTable = dashboardTable({
-  className: 'hinata-daily-table',
-  wrapClassName: 'table-fit-mobile',
+  className: 'hinata-daily-table daily-stats-table',
   headers: ['日付', '平均同接', '最小同接', '最大同接', '再生数（開始）', '再生数（終了）', '再生数増加', 'メンバー数（開始）', 'メンバー数（終了）', 'メンバー増加数'],
   bodyId: 'hinataDailyTbody',
 });

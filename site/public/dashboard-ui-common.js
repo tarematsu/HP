@@ -130,6 +130,7 @@ export function dashboardSectionHead({ kicker = '', title = '', titleId = '', tr
   const headingHtml = kicker || title
     ? `<div>${kicker ? `<p class="kicker">${kicker}</p>` : ''}${title ? `<h2${titleId ? ` id="${titleId}"` : ''}>${title}</h2>` : ''}</div>`
     : '';
+  if (!headingHtml && !trailingHtml) return '';
   return `<div class="${joinClasses('section-head', className)}">${headingHtml}${trailingHtml}</div>`;
 }
 

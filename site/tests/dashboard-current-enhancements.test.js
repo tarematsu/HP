@@ -34,10 +34,8 @@ test('current metrics are statically ordered while current-only renderers load l
 });
 
 test('shared mobile layout owns tab count and current metric columns', () => {
-  assert.match(sharedLayout, /#modeTabs\.mode-tabs\.dashboard-tabs[\s\S]*repeat\(8, minmax\(0, 1fr\)\) !important/);
   assert.match(sharedLayout, /\.metrics\s*\{[\s\S]*repeat\(3, minmax\(0, 1fr\)\) !important/);
   assert.doesNotMatch(sharedLayout, /#currentView/);
-  assert.match(sharedLayout, /@media \(max-width: 760px\)[\s\S]*grid-template-rows:\s*minmax\(44px, auto\) !important/);
 });
 
 test('current chart draws online axes, direct five-minute playback bars and JST labels from one renderer', () => {

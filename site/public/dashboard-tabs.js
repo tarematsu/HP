@@ -1,5 +1,21 @@
 const HISTORY_MODES = new Set(['daily', 'weekly', 'monthly', 'ranking', 'broadcasts']);
 const LAZY_VIEWS = Object.freeze({
+  hinata: {
+    viewId: 'hinataView',
+    runtime: () => import(location.origin + '/hinata.js?v=20260930.5'),
+    loadExport: 'loadHinataView',
+    noticeId: 'hinataNotice',
+    errorLabel: 'hinata',
+    errorMessage: '日向坂データの初期化に失敗しました。再読み込みしてください。',
+  },
+  followers: {
+    viewId: 'followersView',
+    runtime: () => import(location.origin + '/followers.js?v=20260930.3'),
+    loadExport: 'loadFollowersView',
+    noticeId: 'followersNotice',
+    errorLabel: 'followers',
+    errorMessage: 'フォロワーデータの初期化に失敗しました。再読み込みしてください。',
+  },
   'first-week': {
     viewId: 'firstWeekView',
     shell: () => import('/first-week-comparison-shell.js?v=20260929.1'),
@@ -85,7 +101,6 @@ function markRouteReady() {
 }
 
 function updateTabs(mode) {
-  if (HISTORY_MODES.has(mode)) return;
   tabs?.querySelectorAll('button').forEach((button) => {
     const selected = button.dataset.view === mode || button.dataset.mode === mode;
     button.classList.toggle('active', selected);

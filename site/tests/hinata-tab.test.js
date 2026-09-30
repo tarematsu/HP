@@ -3,16 +3,16 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-const route = readFileSync(new URL('../public/dashboard-hinata-route.js', import.meta.url), 'utf8');
+const route = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../public/hinata-shell.js', import.meta.url), 'utf8');
 const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
-const sharedRoute = readFileSync(new URL('../public/dashboard-standalone-route.js', import.meta.url), 'utf8');
+const sharedRoute = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/hinata.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/hinata.css', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/hinata.js', import.meta.url), 'utf8');
 
 test('Pages mounts a dedicated Hinata dashboard tab after Amazon Music', () => {
-  assert.match(metrics, /dashboard-hinata-route\.js/);
+  assert.match(metrics, /hinata-shell\.js/);
   assert.match(shell, /mountDashboardShell/);
   assert.match(shell, /view: 'hinata'/);
   assert.match(shell, /anchorSelectors: \['\[data-view="amazon-music"\]', '\[data-view="spotify"\]'\]/);
@@ -22,10 +22,10 @@ test('Pages mounts a dedicated Hinata dashboard tab after Amazon Music', () => {
   assert.match(shell, /総再生数/);
   assert.match(shell, /総メンバー数/);
   assert.match(shell, /日次データ/);
-  assert.match(route, /registerStandaloneDashboardRoute/);
-  assert.match(route, /mode: 'hinata'/);
+  assert.match(route, /hinata: \{/);
+  assert.match(route, /viewId: 'hinataView'/);
   assert.match(sharedUi, /export function mountDashboardShell/);
-  assert.match(sharedRoute, /location\.hash === `#\$\{mode\}`/);
+  assert.match(sharedRoute, /function modeFromLocation\(\)/);
 });
 
 test('Hinata tab composes the same metrics, chart, table and data-card components as other tabs', () => {

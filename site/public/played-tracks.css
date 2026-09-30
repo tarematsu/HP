@@ -38,7 +38,7 @@
   gap: 7px;
   width: max-content;
   min-width: 100%;
-  padding: 5px 45%;
+  padding: 5px 0;
   box-sizing: border-box;
 }
 
@@ -52,7 +52,7 @@
   background: transparent;
   color: inherit;
   font: inherit;
-  opacity: .38;
+  opacity: .7;
   text-align: center;
   cursor: pointer;
   transition: opacity .15s ease, border-color .15s ease, background .15s ease, transform .15s ease;
@@ -163,10 +163,6 @@
     justify-self: start;
     min-height: var(--pages-control-height-mobile, 32px);
     font-size: var(--dashboard-label-size, 10px);
-  }
-
-  .played-tracks-period-strip {
-    padding-inline: calc(50vw - 38px);
   }
 
   .played-tracks-chart-wrap {
