@@ -663,10 +663,10 @@ export async function collectAppleMusicPlaylists(env, now = Date.now(), fetchImp
   const model = publicModel(entries, appleModel, observedAt, seedResults, candidates.length);
 
   let bytesWritten = 0;
-  bytesWritten += await putJson(r2, STATE_KEY, state, { scanDate: date, observedAt });
   bytesWritten += await putJson(r2, LATEST_KEY, model, { scanDate: date, observedAt });
   const published = await publishReadModel(r2, model, observedAt);
   bytesWritten += published.bytes;
+  bytesWritten += await putJson(r2, STATE_KEY, state, { scanDate: date, observedAt });
 
   return {
     ok: true,
