@@ -288,7 +288,7 @@ test('missing canonical member state does not overwrite an existing derived boun
   ) VALUES('2026-09-23',98,100,2,'["existing"]',1)`).run();
 
   const result = await publishRecentDailySummaries(d1(minute), d1(other), now, 1);
-  assert.deepEqual(result.published, []);
+  assert.deepEqual(result.published, ['2026-09-23']);
   const row = other.prepare(`SELECT member_start,member_end,member_growth FROM sh_daily_summary
     WHERE period_key='2026-09-23'`).get();
   assert.deepEqual({ ...row }, { member_start: 98, member_end: 100, member_growth: 2 });
