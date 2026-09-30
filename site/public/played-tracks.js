@@ -1,4 +1,5 @@
 import { byId, integerFormat as integer, setNotice as setSharedNotice } from './dashboard-ui-common.js?v=20260930.1';
+import { appendTableRow } from './dashboard-table-dom.js?v=20261001.1';
 
 const percent = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
@@ -128,9 +129,7 @@ function renderSummary() {
   if (uniqueNode) uniqueNode.textContent = integer.format(state.rows.length);
 }
 
-function trackCell(row, index) {
-  const cell = document.createElement('td');
-  cell.className = 'track-name-cell';
+function trackContent(row, index) {
   const wrap = document.createElement('div');
   wrap.className = 'played-tracks-track';
   const swatch = document.createElement('span');
@@ -151,8 +150,7 @@ function trackCell(row, index) {
     copy.append(artist);
   }
   wrap.append(swatch, copy);
-  cell.append(wrap);
-  return cell;
+  return wrap;
 }
 
 function renderTable() {
@@ -160,30 +158,20 @@ function renderTable() {
   if (!tbody) return;
   tbody.replaceChildren();
 
-  const totalRow = document.createElement('tr');
-  totalRow.className = 'played-tracks-total-row';
-  const totalLabel = document.createElement('td');
-  totalLabel.textContent = '総再生回数';
-  const totalCount = document.createElement('td');
-  totalCount.className = 'played-tracks-number';
-  totalCount.textContent = integer.format(state.total);
-  const totalShare = document.createElement('td');
-  totalShare.className = 'played-tracks-share';
-  totalShare.textContent = state.total > 0 ? '100.0%' : '—';
-  totalRow.append(totalLabel, totalCount, totalShare);
-  tbody.append(totalRow);
+  appendTableRow(tbody, [
+    '総再生回数',
+    { text: integer.format(state.total), className: 'played-tracks-number' },
+    { text: state.total > 0 ? '100.0%' : '—', className: 'played-tracks-share' },
+  ], { className: 'played-tracks-total-row' });
 
-  state.rows.forEach((row, index) => {
-    const tr = document.createElement('tr');
-    const count = document.createElement('td');
-    count.className = 'played-tracks-number';
-    count.textContent = integer.format(row.play_count);
-    const share = document.createElement('td');
-    share.className = 'played-tracks-share';
-    share.textContent = state.total > 0 ? `${percent.format(row.play_count / state.total * 100)}%` : '—';
-    tr.append(trackCell(row, index), count, share);
-    tbody.append(tr);
-  });
+  state.rows.forEach((row, index) => appendTableRow(tbody, [
+    { node: trackContent(row, index), className: 'track-name-cell' },
+    { text: integer.format(row.play_count), className: 'played-tracks-number' },
+    {
+      text: state.total > 0 ? `${percent.format(row.play_count / state.total * 100)}%` : '—',
+      className: 'played-tracks-share',
+    },
+  ]));
 }
 
 function drawPie() {

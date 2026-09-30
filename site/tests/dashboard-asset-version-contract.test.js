@@ -22,12 +22,12 @@ function assetVersion(source, asset) {
 test('dashboard ships one CSS and one JavaScript browser asset', () => {
   const styles = [...html.matchAll(/<link\s+rel="stylesheet"\s+href="([^"]+)"/g)].map((match) => match[1]);
   const modules = [...html.matchAll(/<script\s+type="module"\s+src="([^"]+)"/g)].map((match) => match[1]);
-  assert.deepEqual(styles, ['/assets/dashboard.min.css?v=20261001.4']);
-  assert.deepEqual(modules, ['/assets/dashboard.min.js?v=20261001.4']);
+  assert.deepEqual(styles, ['/assets/dashboard.min.css?v=20261001.5']);
+  assert.deepEqual(modules, ['/assets/dashboard.min.js?v=20261001.5']);
   assert.match(html, /data-dashboard-css-bundled="true"/);
   assert.match(assetVersion(html, 'assets/dashboard.min.css'), /^\d{8}\.\d+$/);
   assert.match(assetVersion(html, 'assets/dashboard.min.js'), /^\d{8}\.\d+$/);
-  assert.doesNotMatch(html, /(?:app-lite|monochrome|dashboard-root-presentation|dashboard-metrics)\.(?:css|js)\?v=/);
+  assert.doesNotMatch(html, /(?:app-lite|monochrome|dashboard-presentation|dashboard-metrics)\.(?:css|js)\?v=/);
 });
 
 test('build only bundles and minifies the source-owned module and style graph', () => {
@@ -39,7 +39,7 @@ test('build only bundles and minifies the source-owned module and style graph', 
   assert.match(buildScript, /outfile:\s*resolve\(assetsDir, 'dashboard\.min\.css'\)/);
   for (const css of [
     'app-lite.css',
-    'dashboard-root-presentation.css',
+    'dashboard-presentation.css',
     'pages-layout.css',
     'spotify.css',
     'apple-music.css',

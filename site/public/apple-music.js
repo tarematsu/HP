@@ -1,13 +1,12 @@
 import {
-  appendEmptyState,
   byId as element,
-  evenlySpacedIndexes,
   fullDate as formatFullDate,
   safeInteger as integer,
   setNotice as setSharedNotice,
   shortDate as formatDate,
-  svgElement,
 } from './dashboard-ui-common.js?v=20261001.1';
+import { renderRankHistoryChart } from './dashboard-rank-chart.js?v=20261001.1';
+import { appendTableRow, replaceTableHeader } from './dashboard-table-dom.js?v=20261001.1';
 
 const REGION_ORDER = Object.freeze(['jp', 'tw', 'hk', 'kr', 'sg', 'th', 'us']);
 const JAPAN_RANK_LIMIT = 12;
@@ -116,79 +115,32 @@ function renderJapanLegend(series) {
 function renderRankChart(payload) {
   const container = element('appleRankChart');
   if (!container) return;
-  container.replaceChildren();
   const series = japanHistorySeries(payload);
   renderJapanLegend(series);
   const dates = [...new Set(series.flatMap((item) => item.points.map((point) => point.date)))].sort();
-  if (!series.length || !dates.length) {
-    appendEmptyState(container, '順位履歴はまだありません。', { className: 'apple-rank-empty' });
-    return;
-  }
-
-  const width = 960;
-  const height = 400;
-  const margin = { left: 52, right: 16, top: 16, bottom: 36 };
-  const plotWidth = width - margin.left - margin.right;
-  const plotHeight = height - margin.top - margin.bottom;
-  const dateIndex = new Map(dates.map((date, index) => [date, index]));
-  const xFor = (date) => {
-    const index = dateIndex.get(date) ?? 0;
-    return margin.left + (dates.length <= 1 ? plotWidth / 2 : index / (dates.length - 1) * plotWidth);
-  };
-  const yFor = (rank) => margin.top + (rank - 1) / (JAPAN_OUTSIDE_RANK - 1) * plotHeight;
-  const svg = svgElement('svg', {
-    viewBox: `0 0 ${width} ${height}`,
-    role: 'img',
-    'aria-label': '人気曲順位。1位が上、圏外が下。',
-    class: 'apple-rank-svg',
+  renderRankHistoryChart({
+    container,
+    series,
+    dates,
+    width: 960,
+    height: 400,
+    margin: { left: 52, right: 16, top: 16, bottom: 36 },
+    yMax: JAPAN_OUTSIDE_RANK,
+    rankTicks: [1, 3, 5, 10, JAPAN_RANK_LIMIT, JAPAN_OUTSIDE_RANK],
+    dateTickCount: 3,
+    ariaLabel: '人気曲順位。1位が上、圏外が下。',
+    svgClass: 'apple-rank-svg',
+    gridClass: 'apple-rank-grid',
+    axisClass: 'apple-rank-axis-label',
+    lineClass: 'apple-rank-line',
+    emptyClass: 'apple-rank-empty',
+    emptyText: '順位履歴はまだありません。',
+    rankLabel,
+    dateLabel: formatDate,
+    hueVariable: '--apple-rank-hue',
+    hueStep: 43,
+    lineTitle: (item) => `${rankLabel(item.currentRank)} ${item.title}`,
   });
-
-  const rankTicks = [1, 3, 5, 10, JAPAN_RANK_LIMIT, JAPAN_OUTSIDE_RANK];
-  for (const rank of rankTicks) {
-    const y = yFor(rank);
-    svg.append(svgElement('line', {
-      x1: margin.left,
-      y1: y,
-      x2: width - margin.right,
-      y2: y,
-      class: 'apple-rank-grid',
-    }));
-    svg.append(svgElement('text', {
-      x: margin.left - 8,
-      y: y + 4,
-      'text-anchor': 'end',
-      class: 'apple-rank-axis-label',
-    }, rankLabel(rank)));
-  }
-
-  for (const index of evenlySpacedIndexes(dates.length, 3)) {
-    svg.append(svgElement('text', {
-      x: xFor(dates[index]),
-      y: height - 9,
-      'text-anchor': index === 0 ? 'start' : index === dates.length - 1 ? 'end' : 'middle',
-      class: 'apple-rank-axis-label',
-    }, formatDate(dates[index])));
-  }
-
-  series.forEach((item, index) => {
-    let d = '';
-    let previousIndex = null;
-    for (const point of item.points) {
-      if (!Number.isFinite(point.rank)) {
-        previousIndex = null;
-        continue;
-      }
-      const currentIndex = dateIndex.get(point.date);
-      const command = previousIndex != null && currentIndex === previousIndex + 1 ? 'L' : 'M';
-      d += ` ${command} ${xFor(point.date).toFixed(2)} ${yFor(point.rank).toFixed(2)}`;
-      previousIndex = currentIndex;
-    }
-    const path = svgElement('path', { d: d.trim(), class: 'apple-rank-line' });
-    path.style.setProperty('--apple-rank-hue', String((index * 43) % 360));
-    path.append(svgElement('title', {}, `${rankLabel(item.currentRank)} ${item.title}`));
-    svg.append(path);
-  });
-  container.append(svg);
 }
 
 function regionalRows(payload) {
@@ -238,38 +190,16 @@ function renderRegionComparison(payload) {
   const { allRegions, rows } = regionalRows(payload);
 
   const thead = document.createElement('thead');
-  const header = document.createElement('tr');
-  const rankHeader = document.createElement('th');
-  rankHeader.textContent = '順位';
-  const songHeader = document.createElement('th');
-  songHeader.textContent = '曲名';
-  header.append(rankHeader, songHeader);
-  for (const region of allRegions) {
-    const th = document.createElement('th');
-    th.textContent = region.label || region.code.toUpperCase();
-    header.append(th);
-  }
-  thead.append(header);
-
+  replaceTableHeader(thead, ['順位', '曲名', ...allRegions.map((region) => region.label || region.code.toUpperCase())]);
   const tbody = document.createElement('tbody');
-  rows.forEach((item, index) => {
-    const row = document.createElement('tr');
-    const order = document.createElement('td');
-    order.textContent = String(index + 1);
-    order.className = 'apple-list-rank';
-    const title = document.createElement('td');
-    title.textContent = item.title;
-    title.className = 'apple-song-title';
-    row.append(order, title);
-    for (const region of allRegions) {
-      const cell = document.createElement('td');
-      const rank = item.ranks.get(region.code);
-      cell.textContent = rank == null ? '-' : String(rank);
-      cell.className = 'apple-rank-number';
-      row.append(cell);
-    }
-    tbody.append(row);
-  });
+  rows.forEach((item, index) => appendTableRow(tbody, [
+    { text: index + 1, className: 'apple-list-rank' },
+    { text: item.title, className: 'apple-song-title' },
+    ...allRegions.map((region) => ({
+      text: item.ranks.get(region.code) ?? '-',
+      className: 'apple-rank-number',
+    })),
+  ]));
   table.append(thead, tbody);
 }
 

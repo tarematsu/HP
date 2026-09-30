@@ -11,10 +11,7 @@ const assetsDir = resolve(publicRoot, 'assets');
 const cssFiles = [
   'app-lite.css',
   'monochrome.css',
-  'dashboard-root-presentation.css',
-  'dashboard-fixes.css',
-  'screenshot-audit-cleanup.css',
-  'period-display-fixes.css',
+  'dashboard-presentation.css',
   'dashboard-current-enhancements.css',
   'pages-layout.css',
   'pages-tabs-layout.css',

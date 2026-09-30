@@ -9,6 +9,8 @@ const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url
 const shell = readFileSync(new URL('../public/apple-music-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/apple-music.js', import.meta.url), 'utf8');
 const playlistRuntime = readFileSync(new URL('../public/apple-music-playlists.js', import.meta.url), 'utf8');
+const rankChart = readFileSync(new URL('../public/dashboard-rank-chart.js', import.meta.url), 'utf8');
+const tableDom = readFileSync(new URL('../public/dashboard-table-dom.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/apple-music.css', import.meta.url), 'utf8');
 const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
@@ -47,13 +49,7 @@ test('Apple Music playlist UI stays outside the shared dashboard bundle', () => 
 });
 
 test('Apple Music API treats an ungenerated read model as a non-cacheable empty successful dataset', async () => {
-  const response = await appleMusicApi({
-    env: {
-      PAGES_READ_MODEL_SERVICE: {
-        fetch: async () => new Response(null, { status: 404 }),
-      },
-    },
-  });
+  const response = await appleMusicApi({ env: { PAGES_READ_MODEL_SERVICE: { fetch: async () => new Response(null, { status: 404 }) } } });
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('cache-control'), 'no-store');
   const payload = await response.json();
@@ -64,13 +60,7 @@ test('Apple Music API treats an ungenerated read model as a non-cacheable empty 
 });
 
 test('Apple Music playlist API treats an ungenerated read model as an empty successful dataset', async () => {
-  const response = await appleMusicPlaylistsApi({
-    env: {
-      PAGES_READ_MODEL_SERVICE: {
-        fetch: async () => new Response(null, { status: 404 }),
-      },
-    },
-  });
+  const response = await appleMusicPlaylistsApi({ env: { PAGES_READ_MODEL_SERVICE: { fetch: async () => new Response(null, { status: 404 }) } } });
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('cache-control'), 'no-store');
   const payload = await response.json();
@@ -82,13 +72,7 @@ test('Apple Music playlist API treats an ungenerated read model as an empty succ
 });
 
 test('Apple Music API preserves real materialized-service failures', async () => {
-  const response = await appleMusicApi({
-    env: {
-      PAGES_READ_MODEL_SERVICE: {
-        fetch: async () => new Response(null, { status: 500 }),
-      },
-    },
-  });
+  const response = await appleMusicApi({ env: { PAGES_READ_MODEL_SERVICE: { fetch: async () => new Response(null, { status: 500 }) } } });
   assert.equal(response.status, 503);
   assert.equal((await response.json()).ok, false);
 });
@@ -103,16 +87,11 @@ test('Apple Music API streams the materialized payload without request-time cros
     history: [],
   };
   let calls = 0;
-  const service = {
-    async fetch(request) {
-      calls += 1;
-      assert.equal(new URL(request.url).searchParams.get('key'), 'apple-music');
-      return Response.json(applePayload, {
-        headers: { 'x-materialized-at': '1234' },
-      });
-    },
-  };
-
+  const service = { async fetch(request) {
+    calls += 1;
+    assert.equal(new URL(request.url).searchParams.get('key'), 'apple-music');
+    return Response.json(applePayload, { headers: { 'x-materialized-at': '1234' } });
+  } };
   const response = await appleMusicApi({ env: { PAGES_READ_MODEL_SERVICE: service } });
   assert.equal(response.status, 200);
   assert.equal(calls, 1);
@@ -128,13 +107,11 @@ test('Apple Music playlist API streams the independently materialized playlist p
     playlists: [{ id: 'pl.test', name: 'Test' }],
   };
   let calls = 0;
-  const service = {
-    async fetch(request) {
-      calls += 1;
-      assert.equal(new URL(request.url).searchParams.get('key'), 'apple-music-playlists');
-      return Response.json(payload, { headers: { 'x-materialized-at': '5678' } });
-    },
-  };
+  const service = { async fetch(request) {
+    calls += 1;
+    assert.equal(new URL(request.url).searchParams.get('key'), 'apple-music-playlists');
+    return Response.json(payload, { headers: { 'x-materialized-at': '5678' } });
+  } };
   const response = await appleMusicPlaylistsApi({ env: { PAGES_READ_MODEL_SERVICE: service } });
   assert.equal(response.status, 200);
   assert.equal(calls, 1);
@@ -178,13 +155,16 @@ test('Apple Music regional list is Japan-first and keeps other-region-only songs
   assert.match(runtime, /row\.ranks\.get\('jp'\) != null/);
   assert.match(runtime, /row\.ranks\.get\('jp'\) == null/);
   assert.match(runtime, /aBest - bBest \|\| aAverage - bAverage/);
-  assert.match(runtime, /rankHeader\.textContent = '順位'/);
-  assert.match(runtime, /songHeader\.textContent = '曲名'/);
-  assert.match(runtime, /cell\.textContent = rank == null \? '-' : String\(rank\)/);
+  assert.match(runtime, /replaceTableHeader\(thead, \['順位', '曲名'/);
+  assert.match(runtime, /appendTableRow\(tbody, \[/);
+  assert.match(runtime, /text: item\.ranks\.get\(region\.code\) \?\? '-'/);
+  assert.match(runtime, /className: 'apple-rank-number'/);
+  assert.match(tableDom, /export function replaceTableHeader\(/);
 });
 
 test('Apple Music Japan rank chart keeps first place at the top and exposes a current-rank legend', () => {
-  assert.match(runtime, /yFor = \(rank\) => margin\.top \+ \(rank - 1\)/);
+  assert.match(runtime, /renderRankHistoryChart\(/);
+  assert.match(rankChart, /const yFor = \(rank\) => margin\.top \+ \(rank - 1\)/);
   assert.match(runtime, /人気曲順位。1位が上、圏外が下。/);
   assert.match(runtime, /renderJapanLegend/);
   assert.match(shell, /className: 'apple-rank-chart chart-fit'/);

@@ -6,6 +6,7 @@ import {
   finiteNumber as finite,
   setNotice as setSharedNotice,
 } from '../dashboard-ui-common.js?v=20260930.1';
+import { appendTableRow } from '../dashboard-table-dom.js?v=20261001.1';
 import { downloadCsv } from '../csv-download.js?v=20261001.1';
 import {
   displayTrackArtist,
@@ -161,21 +162,13 @@ import {
       return;
     }
     const fragment = document.createDocumentFragment();
-    rows.forEach((item, index) => {
-      const row = document.createElement('tr');
-      for (const value of [
-        index + 1,
-        trackName(item),
-        artistName(item),
-        fmt(item.latest_like_count),
-        item.latest_observed_at ? dateTime.format(new Date(Number(item.latest_observed_at))) : '—',
-      ]) {
-        const cell = document.createElement('td');
-        cell.textContent = String(value);
-        row.appendChild(cell);
-      }
-      fragment.appendChild(row);
-    });
+    rows.forEach((item, index) => appendTableRow(fragment, [
+      index + 1,
+      trackName(item),
+      artistName(item),
+      fmt(item.latest_like_count),
+      item.latest_observed_at ? dateTime.format(new Date(Number(item.latest_observed_at))) : '—',
+    ]));
     body.appendChild(fragment);
   }
 

@@ -7,6 +7,7 @@ import { onRequestGet as amazonMusicApi } from '../functions/api/amazon-music.js
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../public/amazon-music-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/amazon-music.js', import.meta.url), 'utf8');
+const rankChart = readFileSync(new URL('../public/dashboard-rank-chart.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/amazon-music.css', import.meta.url), 'utf8');
 const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
@@ -74,7 +75,8 @@ test('Amazon Music title comparison and artist modes use Worker title-track flag
 });
 
 test('Amazon Music rank chart keeps first place at the top and fits mobile width', () => {
-  assert.match(runtime, /yFor = \(rank\) => margin\.top \+ \(rank - 1\)/);
+  assert.match(runtime, /renderRankHistoryChart\(/);
+  assert.match(rankChart, /const yFor = \(rank\) => margin\.top \+ \(rank - 1\)/);
   assert.match(runtime, /坂道3グループ全楽曲のAmazon Music総合順位推移。1位が上。/);
   assert.match(shell, /className: 'amazon-rank-chart chart-fit'/);
   assert.match(sharedUi, /joinClasses\('shared-svg-chart', className\)/);

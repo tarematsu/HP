@@ -3,6 +3,8 @@ function tableRow(cells, header = false) {
   for (const value of cells || []) {
     const cell = document.createElement(header ? 'th' : 'td');
     if (header) cell.scope = 'col';
+    if (value?.className) cell.className = value.className;
+    if (value?.colSpan) cell.colSpan = value.colSpan;
     if (value?.node?.nodeType) cell.append(value.node);
     else cell.textContent = String(value?.text ?? value ?? '');
     row.append(cell);
@@ -10,9 +12,10 @@ function tableRow(cells, header = false) {
   return row;
 }
 
-export function appendTableRow(container, cells = []) {
+export function appendTableRow(container, cells = [], { className = '' } = {}) {
   if (!container) return null;
   const row = tableRow(cells);
+  if (className) row.className = className;
   container.append(row);
   return row;
 }
