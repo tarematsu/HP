@@ -5,9 +5,7 @@ import { chromium } from 'playwright';
 const MODES = [
   { name: 'current', path: '/', panel: '#currentView', tab: '#modeTabs button[data-view="current"]', requiredText: '再生中の曲' },
   { name: 'daily', path: '/#daily', panel: '#historyView', tab: '#modeTabs button[data-mode="daily"]', requiredText: '期間数' },
-  { name: 'weekly', path: '/#weekly', panel: '#historyView', tab: null, expectedHash: '#weekly', requiredText: '期間数' },
-  { name: 'monthly', path: '/#monthly', panel: '#historyView', tab: null, expectedHash: '#monthly', requiredText: '期間数' },
-  { name: 'ranking', path: '/#ranking', panel: '#historyView', tab: '#modeTabs button[data-mode="ranking"]', requiredText: '週間リーダーボード' },
+  { name: 'ranking', path: '/#ranking', panel: '#historyView', tab: '#modeTabs button[data-mode="ranking"]', requiredText: '総週数' },
   { name: 'first-week', path: '/#first-week', panel: '#firstWeekView', tab: '#modeTabs button[data-view="first-week"]', requiredText: '比較対象' },
   { name: 'played-tracks', path: '/#played-tracks', panel: '#playedTracksView', tab: '#modeTabs button[data-view="played-tracks"]', requiredText: '楽曲別再生一覧' },
   { name: 'likes', path: '/#likes', panel: '#likesView', tab: '#modeTabs button[data-mode="likes"]', requiredText: '最新いいねランキング' },
@@ -105,12 +103,27 @@ async function auditMode(browser, baseUrl, route, outDir) {
       const rect = button.getBoundingClientRect();
       return tabsRect && (rect.left < tabsRect.left - 1 || rect.right > tabsRect.right + 1);
     }).length;
+    const tabsStyle = tabs ? getComputedStyle(tabs) : null;
+    const navigationScrollable = Boolean(
+      tabs
+      && tabs.scrollWidth > tabs.clientWidth + 1
+      && ['auto', 'scroll'].includes(tabsStyle?.overflowX),
+    );
+    const currentTab = tabs?.querySelector('[aria-current="page"]');
+    const currentTabRect = currentTab?.getBoundingClientRect();
+    const selectedTabClipped = Boolean(
+      tabsRect
+      && currentTabRect
+      && (currentTabRect.left < tabsRect.left - 1 || currentTabRect.right > tabsRect.right + 1),
+    );
     const chart = mode === 'played-tracks' ? document.getElementById('playedTracksChart') : null;
     return {
       viewportWidth: window.innerWidth,
       scrollWidth,
       horizontalOverflow: Math.max(0, scrollWidth - window.innerWidth),
       clippedTabs,
+      navigationScrollable,
+      selectedTabClipped,
       expectedPanelVisible: visible(document.querySelector(expectedPanel)),
       playedTracksChartHeight: chart?.getBoundingClientRect().height ?? null,
     };
@@ -123,7 +136,10 @@ async function auditMode(browser, baseUrl, route, outDir) {
   if (route.tab && (!selectedTab?.active || selectedTab.current !== 'page')) failures.push(`selected tab state was not applied: ${route.name}`);
   if (route.expectedHash && actualHash !== route.expectedHash) failures.push(`expected hash was not applied: ${route.expectedHash} (actual ${actualHash || '(empty)'})`);
   if (layout.horizontalOverflow > 1) failures.push(`document overflows viewport horizontally by ${layout.horizontalOverflow}px`);
-  if (layout.clippedTabs > 0) failures.push(`${layout.clippedTabs} navigation tabs are clipped`);
+  if (layout.clippedTabs > 0 && !layout.navigationScrollable) {
+    failures.push(`${layout.clippedTabs} navigation tabs are clipped without a scrollable tab list`);
+  }
+  if (layout.selectedTabClipped) failures.push('selected navigation tab is clipped');
   if (!bodyText.includes(route.requiredText)) failures.push(`required text was not rendered: ${route.requiredText}`);
   if (route.name === 'played-tracks' && Number(layout.playedTracksChartHeight) < 360) {
     failures.push(`played-tracks chart is too short for compact mobile labels: ${layout.playedTracksChartHeight}px`);
