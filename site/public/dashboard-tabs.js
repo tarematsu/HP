@@ -29,18 +29,13 @@ const REGIONAL_MUSIC_SOURCES = Object.freeze(REGIONAL_MUSIC_SOURCE_DEFINITIONS.m
   defaultMode: id,
   modes: Object.freeze([id]),
 })));
-
-const REGIONAL_MUSIC_LAZY_VIEWS = Object.freeze(Object.fromEntries(
-  REGIONAL_MUSIC_SOURCE_DEFINITIONS.map(([id, label]) => [id, Object.freeze({
-    viewId: 'regionalMusicView',
-    shell: () => import('/regional-music-shell.js?v=20261002.1'),
-    runtime: () => import('/regional-music.js?v=20261002.1'),
-    loadExport: 'loadRegionalMusicView',
-    noticeId: 'regionalMusicNotice',
-    errorLabel: `regional music ${id}`,
-    errorMessage: `${label}データの初期化に失敗しました。再読み込みしてください。`,
-  })]),
-));
+const REGIONAL_MUSIC_MODES = new Set(REGIONAL_MUSIC_SOURCE_DEFINITIONS.map(([id]) => id));
+const REGIONAL_MUSIC_VIEW = Object.freeze({
+  viewId: 'regionalMusicView',
+  shell: () => import(location.origin + '/regional-music-shell.js?v=20261002.1'),
+  runtime: () => import(location.origin + '/regional-music.js?v=20261002.1'),
+  noticeId: 'regionalMusicNotice',
+});
 
 const LAZY_VIEWS = Object.freeze({
   hinata: {
@@ -105,14 +100,13 @@ const LAZY_VIEWS = Object.freeze({
   },
   'youtube-music': {
     viewId: 'youtubeMusicView',
-    shell: () => import('/youtube-music-shell.js?v=20261002.1'),
-    runtime: () => import('/youtube-music.js?v=20261002.1'),
+    shell: () => import(location.origin + '/youtube-music-shell.js?v=20261002.1'),
+    runtime: () => import(location.origin + '/youtube-music.js?v=20261002.1'),
     loadExport: 'loadYoutubeMusicView',
     noticeId: 'youtubeMusicNotice',
     errorLabel: 'youtube music',
     errorMessage: 'YouTube Musicデータの初期化に失敗しました。再読み込みしてください。',
   },
-  ...REGIONAL_MUSIC_LAZY_VIEWS,
   nogizaka: {
     viewId: 'nogizakaListeningPartyView',
     shell: () => import('/nogizaka-listening-party-shell.js?v=20260930.1'),
@@ -130,8 +124,8 @@ const LAZY_VIEWS = Object.freeze({
     errorMessage: 'いいねデータの初期化に失敗しました。再読み込みしてください。',
   },
 });
-const VIEW_MODES = new Set(['current', ...HISTORY_MODES, ...Object.keys(LAZY_VIEWS)]);
-const VIEW_IDS = ['currentView', 'historyView', ...Object.values(LAZY_VIEWS).map(({ viewId }) => viewId)];
+const VIEW_MODES = new Set(['current', ...HISTORY_MODES, ...Object.keys(LAZY_VIEWS), ...REGIONAL_MUSIC_MODES]);
+const VIEW_IDS = ['currentView', 'historyView', ...Object.values(LAZY_VIEWS).map(({ viewId }) => viewId), REGIONAL_MUSIC_VIEW.viewId];
 
 const NAVIGATION = Object.freeze([
   Object.freeze({
@@ -370,6 +364,29 @@ async function showLazyView(mode, options = {}) {
   }
 }
 
+async function showRegionalMusicView(mode, options = {}) {
+  setRoute(mode, null, options);
+  try {
+    await loadOnce('regional-music:shell', REGIONAL_MUSIC_VIEW.shell);
+    if (activeMode !== mode) return;
+    showOnly(document.getElementById(REGIONAL_MUSIC_VIEW.viewId));
+    markRouteReady();
+    const runtime = await loadOnce('regional-music:runtime', REGIONAL_MUSIC_VIEW.runtime);
+    if (activeMode !== mode) return;
+    await runtime.loadRegionalMusicView?.(mode);
+  } catch (error) {
+    if (activeMode !== mode) return;
+    markRouteReady();
+    showRuntimeError({
+      ...REGIONAL_MUSIC_VIEW,
+      errorLabel: `regional music ${mode}`,
+      errorMessage: '地域音楽サービスの初期化に失敗しました。再読み込みしてください。',
+    }, error);
+  } finally {
+    releaseUnexpectedSkipLinkFocus();
+  }
+}
+
 async function showHistory(mode, { updateUrl = true, replaceUrl = false, syncRuntime = true } = {}) {
   if (!HISTORY_MODES.has(mode)) {
     showCurrent({ updateUrl, replaceUrl });
@@ -417,6 +434,7 @@ function modeFromLocation() {
 function showMode(mode, options = {}) {
   if (mode === 'current') showCurrent(options);
   else if (HISTORY_MODES.has(mode)) void showHistory(mode, options);
+  else if (REGIONAL_MUSIC_MODES.has(mode)) void showRegionalMusicView(mode, options);
   else void showLazyView(mode, options);
 }
 
