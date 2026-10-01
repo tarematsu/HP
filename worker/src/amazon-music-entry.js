@@ -9,6 +9,8 @@ import {
 import { publishAmazonMusicSakamichiModel } from './amazon-music-sakamichi-publisher.js';
 import { recordAmazonTop500Check } from './amazon-music-top500-history.js';
 import { collectAmazonMusicTrackPlaylists } from './amazon-music-track-playlist-collector.js';
+import { canonicalizeAppleMusicPresentation } from './apple-music-canonical-presentation.js';
+import { canonicalizeAppleMusicPlaylistPresentation } from './apple-music-playlist-canonical-presentation.js';
 import { collectAppleMusicSnapshot } from './apple-music-collector.js';
 import { collectAppleMusicPlaylists } from './apple-music-playlist-collector.js';
 import { appleMusicFetch } from './apple-music-fetch.js';
@@ -40,9 +42,22 @@ function loggedRun(label, operation, { fatal = false } = {}) {
 
 async function collectAppleMusic(env, scheduledTime) {
   const result = await collectAppleMusicSnapshot(env, scheduledTime, appleMusicFetch);
-  if (result?.changed || result?.migrated_track_ids) {
+  const presentation = await canonicalizeAppleMusicPresentation(env, scheduledTime, {
+    force: Boolean(result?.changed || result?.migrated_track_ids),
+  });
+  if (presentation?.updated) result.canonical_presentation = presentation;
+  if (result?.changed || result?.migrated_track_ids || presentation?.presentation_changed) {
     result.other_db = await persistAppleMusicModelToOther(env, scheduledTime);
   }
+  return result;
+}
+
+async function collectAppleMusicPlaylistData(env, scheduledTime) {
+  const result = await collectAppleMusicPlaylists(env, scheduledTime);
+  const presentation = await canonicalizeAppleMusicPlaylistPresentation(env, scheduledTime, {
+    force: !result?.skipped,
+  });
+  if (presentation?.updated) result.canonical_presentation = presentation;
   return result;
 }
 
@@ -112,7 +127,7 @@ function unifiedScheduledRuns(env, scheduledTime) {
   if (due.playlists) {
     runs.push(loggedRun(
       'apple-music-playlist-collection',
-      () => collectAppleMusicPlaylists(env, scheduledTime),
+      () => collectAppleMusicPlaylistData(env, scheduledTime),
     ));
   }
   if (due.amazonTrackPlaylists) {
