@@ -1,4 +1,47 @@
 const HISTORY_MODES = new Set(['daily', 'weekly', 'monthly', 'ranking', 'broadcasts']);
+
+const REGIONAL_MUSIC_SOURCE_DEFINITIONS = Object.freeze([
+  ['genie', 'Genie', 2],
+  ['bugs', 'Bugs!', 2],
+  ['joox', 'JOOX', 2],
+  ['nhaccuatui', 'NhacCuaTui', 2],
+  ['anghami', 'Anghami', 2],
+  ['melon', 'Melon', 2],
+  ['qq_music', 'QQ Music', 2],
+  ['netease_cloud_music', 'NetEase Cloud Music', 3],
+  ['kugou_music', 'Kugou Music', 3],
+  ['naver_vibe', 'Naver VIBE', 3],
+  ['flo', 'FLO', 3],
+  ['yandex_music', 'Yandex Music', 3],
+  ['boomplay', 'Boomplay', 3],
+  ['plern', 'Plern', 4],
+  ['fungjai', 'Fungjai', 4],
+  ['zing_mp3', 'Zing MP3', 4],
+  ['jiosaavn', 'JioSaavn', 4],
+  ['gaana', 'Gaana', 4],
+  ['langit_musik', 'Langit Musik', 4],
+]);
+
+const REGIONAL_MUSIC_SOURCES = Object.freeze(REGIONAL_MUSIC_SOURCE_DEFINITIONS.map(([id, label, row]) => Object.freeze({
+  id,
+  label,
+  row,
+  defaultMode: id,
+  modes: Object.freeze([id]),
+})));
+
+const REGIONAL_MUSIC_LAZY_VIEWS = Object.freeze(Object.fromEntries(
+  REGIONAL_MUSIC_SOURCE_DEFINITIONS.map(([id, label]) => [id, Object.freeze({
+    viewId: 'regionalMusicView',
+    shell: () => import('/regional-music-shell.js?v=20261002.1'),
+    runtime: () => import('/regional-music.js?v=20261002.1'),
+    loadExport: 'loadRegionalMusicView',
+    noticeId: 'regionalMusicNotice',
+    errorLabel: `regional music ${id}`,
+    errorMessage: `${label}データの初期化に失敗しました。再読み込みしてください。`,
+  })]),
+));
+
 const LAZY_VIEWS = Object.freeze({
   hinata: {
     viewId: 'hinataView',
@@ -60,6 +103,16 @@ const LAZY_VIEWS = Object.freeze({
     errorLabel: 'apple music',
     errorMessage: 'Apple Musicデータの初期化に失敗しました。再読み込みしてください。',
   },
+  'youtube-music': {
+    viewId: 'youtubeMusicView',
+    shell: () => import('/youtube-music-shell.js?v=20261002.1'),
+    runtime: () => import('/youtube-music.js?v=20261002.1'),
+    loadExport: 'loadYoutubeMusicView',
+    noticeId: 'youtubeMusicNotice',
+    errorLabel: 'youtube music',
+    errorMessage: 'YouTube Musicデータの初期化に失敗しました。再読み込みしてください。',
+  },
+  ...REGIONAL_MUSIC_LAZY_VIEWS,
   nogizaka: {
     viewId: 'nogizakaListeningPartyView',
     shell: () => import('/nogizaka-listening-party-shell.js?v=20260930.1'),
@@ -99,9 +152,11 @@ const NAVIGATION = Object.freeze([
   Object.freeze({
     id: 'subscriptions',
     sources: Object.freeze([
-      Object.freeze({ id: 'spotify', label: 'Spotify', defaultMode: 'spotify', modes: Object.freeze(['spotify']) }),
-      Object.freeze({ id: 'apple-music', label: 'Apple Music', defaultMode: 'apple-music', modes: Object.freeze(['apple-music']) }),
-      Object.freeze({ id: 'amazon-music', label: 'Amazon Music', defaultMode: 'amazon-music', modes: Object.freeze(['amazon-music']) }),
+      Object.freeze({ id: 'spotify', label: 'Spotify', row: 1, defaultMode: 'spotify', modes: Object.freeze(['spotify']) }),
+      Object.freeze({ id: 'apple-music', label: 'Apple Music', row: 1, defaultMode: 'apple-music', modes: Object.freeze(['apple-music']) }),
+      Object.freeze({ id: 'amazon-music', label: 'Amazon Music', row: 1, defaultMode: 'amazon-music', modes: Object.freeze(['amazon-music']) }),
+      Object.freeze({ id: 'youtube-music', label: 'YouTube Music', row: 1, defaultMode: 'youtube-music', modes: Object.freeze(['youtube-music']) }),
+      ...REGIONAL_MUSIC_SOURCES,
     ]),
   }),
 ]);
@@ -153,19 +208,43 @@ function navigationForMode(mode) {
   return MODE_NAVIGATION.get(mode) || MODE_NAVIGATION.get('current');
 }
 
+function buildSourceButton(source, activeSource) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.dataset.source = source.id;
+  button.textContent = source.label;
+  const selected = source.id === activeSource.id;
+  button.classList.toggle('active', selected);
+  button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+  return button;
+}
+
 function renderSourceTabs(section, activeSource) {
   if (!sourceTabs) return;
   const fragment = document.createDocumentFragment();
-  for (const source of section.sources) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.dataset.source = source.id;
-    button.textContent = source.label;
-    const selected = source.id === activeSource.id;
-    button.classList.toggle('active', selected);
-    button.setAttribute('aria-pressed', selected ? 'true' : 'false');
-    fragment.append(button);
+  const multiline = section.sources.some((source) => Number(source.row) > 0);
+  sourceTabs.classList.toggle('is-multiline', multiline);
+
+  if (multiline) {
+    const rows = new Map();
+    for (const source of section.sources) {
+      const rowNumber = Math.max(1, Number(source.row) || 1);
+      if (!rows.has(rowNumber)) rows.set(rowNumber, []);
+      rows.get(rowNumber).push(source);
+    }
+    for (const [rowNumber, sources] of [...rows.entries()].sort((left, right) => left[0] - right[0])) {
+      const rowNode = document.createElement('div');
+      rowNode.className = 'dashboard-source-row';
+      rowNode.dataset.row = String(rowNumber);
+      rowNode.setAttribute('role', 'group');
+      rowNode.setAttribute('aria-label', rowNumber === 1 ? '主要サービス' : `地域サービス ${rowNumber - 1}`);
+      for (const source of sources) rowNode.append(buildSourceButton(source, activeSource));
+      fragment.append(rowNode);
+    }
+  } else {
+    for (const source of section.sources) fragment.append(buildSourceButton(source, activeSource));
   }
+
   sourceTabs.replaceChildren(fragment);
   sourceTabs.hidden = section.sources.length === 0;
 }
@@ -281,7 +360,7 @@ async function showLazyView(mode, options = {}) {
     }
     const runtime = await loadOnce(`${mode}:runtime`, config.runtime);
     if (activeMode !== mode) return;
-    if (config.loadExport) await runtime[config.loadExport]?.();
+    if (config.loadExport) await runtime[config.loadExport]?.(mode);
   } catch (error) {
     if (activeMode !== mode) return;
     markRouteReady();
