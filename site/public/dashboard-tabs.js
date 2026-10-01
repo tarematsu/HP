@@ -1,4 +1,12 @@
 const HISTORY_MODES = new Set(['daily', 'weekly', 'monthly', 'ranking', 'broadcasts']);
+const REGIONAL_MUSIC_MODES = new Set('genie bugs joox nhaccuatui anghami melon qq_music netease_cloud_music kugou_music naver_vibe flo yandex_music boomplay plern fungjai zing_mp3 jiosaavn gaana langit_musik'.split(' '));
+const REGIONAL_MUSIC_VIEW = Object.freeze({
+  viewId: 'regionalMusicView',
+  shell: () => import(location.origin + '/regional-music-shell.js?v=20261002.1'),
+  runtime: () => import(location.origin + '/regional-music.js?v=20261002.1'),
+  noticeId: 'regionalMusicNotice',
+});
+
 const LAZY_VIEWS = Object.freeze({
   hinata: {
     viewId: 'hinataView',
@@ -60,6 +68,15 @@ const LAZY_VIEWS = Object.freeze({
     errorLabel: 'apple music',
     errorMessage: 'Apple Musicデータの初期化に失敗しました。再読み込みしてください。',
   },
+  'youtube-music': {
+    viewId: 'youtubeMusicView',
+    shell: () => import(location.origin + '/youtube-music-shell.js?v=20261002.1'),
+    runtime: () => import(location.origin + '/youtube-music.js?v=20261002.1'),
+    loadExport: 'loadYoutubeMusicView',
+    noticeId: 'youtubeMusicNotice',
+    errorLabel: 'youtube music',
+    errorMessage: 'YouTube Musicデータの初期化に失敗しました。再読み込みしてください。',
+  },
   nogizaka: {
     viewId: 'nogizakaListeningPartyView',
     shell: () => import('/nogizaka-listening-party-shell.js?v=20260930.1'),
@@ -77,8 +94,8 @@ const LAZY_VIEWS = Object.freeze({
     errorMessage: 'いいねデータの初期化に失敗しました。再読み込みしてください。',
   },
 });
-const VIEW_MODES = new Set(['current', ...HISTORY_MODES, ...Object.keys(LAZY_VIEWS)]);
-const VIEW_IDS = ['currentView', 'historyView', ...Object.values(LAZY_VIEWS).map(({ viewId }) => viewId)];
+const VIEW_MODES = new Set(['current', ...HISTORY_MODES, ...Object.keys(LAZY_VIEWS), ...REGIONAL_MUSIC_MODES]);
+const VIEW_IDS = ['currentView', 'historyView', ...Object.values(LAZY_VIEWS).map(({ viewId }) => viewId), REGIONAL_MUSIC_VIEW.viewId];
 
 const NAVIGATION = Object.freeze([
   Object.freeze({
@@ -102,6 +119,7 @@ const NAVIGATION = Object.freeze([
       Object.freeze({ id: 'spotify', label: 'Spotify', defaultMode: 'spotify', modes: Object.freeze(['spotify']) }),
       Object.freeze({ id: 'apple-music', label: 'Apple Music', defaultMode: 'apple-music', modes: Object.freeze(['apple-music']) }),
       Object.freeze({ id: 'amazon-music', label: 'Amazon Music', defaultMode: 'amazon-music', modes: Object.freeze(['amazon-music']) }),
+      Object.freeze({ id: 'youtube-music', label: 'YouTube Music', defaultMode: 'youtube-music', modes: Object.freeze(['youtube-music']) }),
     ]),
   }),
 ]);
@@ -111,6 +129,7 @@ for (const section of NAVIGATION) {
     for (const mode of source.modes) MODE_NAVIGATION.set(mode, { section, source });
   }
 }
+const SUBSCRIPTIONS = NAVIGATION.find(({ id }) => id === 'subscriptions');
 const BUDDIES_VISIBLE_MODES = new Set(['current', 'daily', 'first-week', 'played-tracks', 'likes', 'broadcasts']);
 
 const currentView = document.getElementById('currentView');
@@ -118,6 +137,7 @@ const historyView = document.getElementById('historyView');
 const tabs = document.getElementById('modeTabs');
 const sectionTabs = document.getElementById('sectionTabs');
 const sourceTabs = document.getElementById('sourceTabs');
+const subscriptionSourceTabsTemplate = document.getElementById('subscriptionSourceTabsTemplate');
 const skipLink = document.querySelector('.skip-link');
 const modulePromises = new Map();
 const lastSourceBySection = new Map(NAVIGATION.map((section) => [section.id, section.sources[0]?.id || '']));
@@ -149,25 +169,42 @@ function visibleTabMode(mode) {
   return mode === 'weekly' || mode === 'monthly' ? 'daily' : mode;
 }
 
+function regionalSource(mode) {
+  return { id: mode, defaultMode: mode, modes: [mode] };
+}
+
 function navigationForMode(mode) {
+  if (REGIONAL_MUSIC_MODES.has(mode)) return { section: SUBSCRIPTIONS, source: regionalSource(mode) };
   return MODE_NAVIGATION.get(mode) || MODE_NAVIGATION.get('current');
 }
 
 function renderSourceTabs(section, activeSource) {
   if (!sourceTabs) return;
-  const fragment = document.createDocumentFragment();
-  for (const source of section.sources) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.dataset.source = source.id;
-    button.textContent = source.label;
-    const selected = source.id === activeSource.id;
-    button.classList.toggle('active', selected);
-    button.setAttribute('aria-pressed', selected ? 'true' : 'false');
-    fragment.append(button);
+  if (section.id === 'subscriptions' && subscriptionSourceTabsTemplate) {
+    const content = subscriptionSourceTabsTemplate.content.cloneNode(true);
+    content.querySelectorAll('button[data-source]').forEach((button) => {
+      const selected = button.dataset.source === activeSource.id;
+      button.classList.toggle('active', selected);
+      button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+    });
+    sourceTabs.classList.add('is-multiline');
+    sourceTabs.replaceChildren(content);
+  } else {
+    const fragment = document.createDocumentFragment();
+    sourceTabs.classList.remove('is-multiline');
+    for (const source of section.sources) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.source = source.id;
+      button.textContent = source.label;
+      const selected = source.id === activeSource.id;
+      button.classList.toggle('active', selected);
+      button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+      fragment.append(button);
+    }
+    sourceTabs.replaceChildren(fragment);
   }
-  sourceTabs.replaceChildren(fragment);
-  sourceTabs.hidden = section.sources.length === 0;
+  sourceTabs.hidden = false;
 }
 
 function syncModeTabs(source) {
@@ -291,6 +328,29 @@ async function showLazyView(mode, options = {}) {
   }
 }
 
+async function showRegionalMusicView(mode, options = {}) {
+  setRoute(mode, null, options);
+  try {
+    await loadOnce('regional-music:shell', REGIONAL_MUSIC_VIEW.shell);
+    if (activeMode !== mode) return;
+    showOnly(document.getElementById(REGIONAL_MUSIC_VIEW.viewId));
+    markRouteReady();
+    const runtime = await loadOnce('regional-music:runtime', REGIONAL_MUSIC_VIEW.runtime);
+    if (activeMode !== mode) return;
+    await runtime.loadRegionalMusicView?.(mode);
+  } catch (error) {
+    if (activeMode !== mode) return;
+    markRouteReady();
+    showRuntimeError({
+      ...REGIONAL_MUSIC_VIEW,
+      errorLabel: `regional music ${mode}`,
+      errorMessage: '地域音楽サービスの初期化に失敗しました。再読み込みしてください。',
+    }, error);
+  } finally {
+    releaseUnexpectedSkipLinkFocus();
+  }
+}
+
 async function showHistory(mode, { updateUrl = true, replaceUrl = false, syncRuntime = true } = {}) {
   if (!HISTORY_MODES.has(mode)) {
     showCurrent({ updateUrl, replaceUrl });
@@ -338,6 +398,7 @@ function modeFromLocation() {
 function showMode(mode, options = {}) {
   if (mode === 'current') showCurrent(options);
   else if (HISTORY_MODES.has(mode)) void showHistory(mode, options);
+  else if (REGIONAL_MUSIC_MODES.has(mode)) void showRegionalMusicView(mode, options);
   else void showLazyView(mode, options);
 }
 
@@ -351,6 +412,7 @@ function activateMode(mode) {
 }
 
 function sourceById(section, sourceId) {
+  if (section?.id === 'subscriptions' && REGIONAL_MUSIC_MODES.has(sourceId)) return regionalSource(sourceId);
   return section?.sources.find((source) => source.id === sourceId) || section?.sources[0] || null;
 }
 

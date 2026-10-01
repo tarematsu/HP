@@ -1,0 +1,75 @@
+.regional-music-view {
+  display: grid;
+  gap: var(--pages-view-gap);
+  min-width: 0;
+}
+
+.regional-music-title-row {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.regional-music-title-row h2 {
+  margin: 0;
+}
+
+.regional-music-region {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 700;
+}
+
+.regional-music-health-list {
+  display: grid;
+  grid-template-columns: minmax(90px, auto) minmax(0, 1fr);
+  gap: 6px 12px;
+  margin: 0;
+}
+
+.regional-music-health-list dt {
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 700;
+}
+
+.regional-music-health-list dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.regional-music-table th,
+.regional-music-table td {
+  white-space: nowrap;
+}
+
+.regional-music-track-table th:nth-child(2),
+.regional-music-track-table td:nth-child(2),
+.regional-music-playlist-table th:first-child,
+.regional-music-playlist-table td:first-child {
+  min-width: 180px;
+  white-space: normal;
+}
+
+@media (max-width: 760px) {
+  .regional-music-view {
+    gap: var(--pages-view-gap-mobile);
+  }
+
+  .regional-music-title-row {
+    align-items: start;
+  }
+
+  .regional-music-health-list {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .regional-music-health-list dd {
+    margin-bottom: 8px;
+  }
+}
