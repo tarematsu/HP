@@ -5,17 +5,6 @@ on:
   # only the bounded backlog/legacy safety net, so once per day is sufficient.
   schedule:
     - cron: '16 0 * * *'
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/run-track-metadata-repair.yml'
-      - 'worker/scripts/repair-track-metadata-actions.mjs'
-      - 'worker/scripts/repair-playback-read-model-actions.mjs'
-      - 'worker/scripts/repair-legacy-ranking-isrc-actions.mjs'
-      - 'worker/scripts/repair-legacy-ranking-all-actions.mjs'
-      - 'worker/scripts/repair-legacy-ranking-metadata-actions.mjs'
-      - 'worker/scripts/report-unresolved-ranking-metadata-actions.mjs'
-      - 'worker/src/isrc-metadata.js'
   workflow_dispatch:
 
 permissions:
