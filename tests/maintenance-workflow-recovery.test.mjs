@@ -153,6 +153,7 @@ test('maintenance workflows use cadence-only Runtime, published-revision drift d
   const localRebuild = read('.github/workflows/run-local-minute-facts-rebuild.yml');
   const summaryRepairWorkflow = read('.github/workflows/repair-pages-summaries.yml');
 
+  assert.match(watchdog, /- "Unified Cloudflare Observability"/);
   assert.match(watchdog, /- "Rebuild pages read models"/);
   assert.match(watchdog, /- "Run runtime offline maintenance"/);
   assert.doesNotMatch(watchdog, /run-local-minute-facts-rebuild\.yml/);
