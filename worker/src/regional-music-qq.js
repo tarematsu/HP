@@ -42,14 +42,11 @@ export function qqSmartboxUrl(query) {
 }
 
 export function qqSingerTracksUrl(singerMid) {
-  const params = new URLSearchParams({
-    singermid: singerMid,
-    order: 'listen',
-    begin: '0',
-    num: String(QQ_TRACK_LIMIT),
-    format: 'json',
-  });
-  return `https://c.y.qq.com/v8/fcg-bin/fcg_v8_singer_track_cp.fcg?${params}`;
+  const data = { comm: { ct:24, cv:0 }, req_1: {
+    module: 'musichall.song_list_server', method: 'GetSingerSongList',
+    param: { singerMid, order:1, begin:0, num:QQ_TRACK_LIMIT },
+  } };
+  return `https://u.y.qq.com/cgi-bin/musicu.fcg?${new URLSearchParams({data:JSON.stringify(data)})}`;
 }
 
 export function qqSingerUrl(singerMid) {
@@ -89,7 +86,7 @@ function qqArtists(track) {
 }
 
 export function parseQqSingerTracks(payload, singerMid, aliases) {
-  const list = payload?.data?.list || payload?.data?.songlist || payload?.list || [];
+  const list = payload?.req_1?.data?.songList || payload?.data?.list || payload?.data?.songlist || payload?.list || [];
   if (!Array.isArray(list)) return [];
   const wanted = aliases.map(normalize);
   const output = [];
@@ -152,6 +149,7 @@ export async function collectQqMusic(env, observedAt = Date.now(), fetchImpl = f
       artists += 1;
 
       const payload = await fetchJson(fetchImpl, qqSingerTracksUrl(singerMid));
+      if (payload?.code || payload?.req_1?.code) throw new Error('catalog API returned a provider error');
       const entries = parseQqSingerTracks(payload, singerMid, artist.aliases);
       for (const entry of entries) {
         await saveRegionalTrack(env, {

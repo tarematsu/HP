@@ -8,7 +8,7 @@ function normalize(value) {
   return String(value || '').normalize('NFKC').toLocaleLowerCase('en-US').replace(/\s+/g, '');
 }
 
-export function langitSearchUrl(query, template = `${LANGIT_ROOT}/search?q={query}`) {
+export function langitSearchUrl(query, template = 'https://play.langitmusik.co.id/cari?search={query}') {
   return String(template).replaceAll('{query}', encodeURIComponent(query));
 }
 
@@ -81,8 +81,8 @@ export async function collectLangitMusik(env, observedAt = Date.now(), fetchImpl
       service: 'langit_musik',
       status: 'pending',
       last_attempt_at: observedAt,
-      last_error_class: 'authorization_required_by_terms',
-      last_error_message: 'Collector code is installed but network collection is disabled. Set LANGIT_MUSIK_AUTHORIZED_COLLECTION=1 only when authorized to automate access.',
+      last_error_class: 'authentication_required',
+      last_error_message: 'The current web-player catalog API requires authentication (HTTP 401); no authenticated catalog integration is configured.',
       entity_counts: { artists: 0, tracks: 0 },
       updated_at: observedAt,
     });
@@ -92,7 +92,7 @@ export async function collectLangitMusik(env, observedAt = Date.now(), fetchImpl
   const failures = [];
   let artists = 0;
   let tracks = 0;
-  const template = env?.LANGIT_MUSIK_SEARCH_URL_TEMPLATE || `${LANGIT_ROOT}/search?q={query}`;
+  const template = env?.LANGIT_MUSIK_SEARCH_URL_TEMPLATE || 'https://play.langitmusik.co.id/cari?search={query}';
 
   for (const [canonicalArtist, artist] of Object.entries(REGIONAL_MUSIC_ARTISTS)) {
     try {

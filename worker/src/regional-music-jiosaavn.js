@@ -32,6 +32,10 @@ export function jioSaavnSongSearchUrl(query, page = 1) {
   return apiUrl('search.getResults', { q: query, query, n: String(JIOSAAVN_TRACK_LIMIT), p: String(page) });
 }
 
+export function jioSaavnArtistDetailUrl(artistId) {
+  return apiUrl('artist.getArtistPageDetails', { artistId:String(artistId) });
+}
+
 export function jioSaavnArtistUrl(artistId) {
   return `https://www.jiosaavn.com/artist/_/${encodeURIComponent(artistId)}`;
 }
@@ -64,7 +68,7 @@ export function parseJioSaavnArtist(payload, aliases) {
 }
 
 function songCandidates(payload) {
-  for (const candidate of [payload?.results, payload?.songs, payload?.songs?.data, payload?.data?.results, payload?.data?.songs, payload?.data]) {
+  for (const candidate of [payload?.results, payload?.topSongs, payload?.songs, payload?.songs?.data, payload?.data?.results, payload?.data?.songs, payload?.data]) {
     if (Array.isArray(candidate)) return candidate;
   }
   return [];
@@ -136,18 +140,23 @@ export async function collectJioSaavn(env, observedAt = Date.now(), fetchImpl = 
     try {
       const profile = await discoverArtist(fetchImpl, artist);
       if (!profile) throw new Error('artist id not found');
+      const detail = await fetchJson(fetchImpl, jioSaavnArtistDetailUrl(profile.id));
+      if (String(detail?.artistId) !== profile.id || !artist.aliases.some(alias => normalize(alias) === normalize(detail?.name))) {
+        throw new Error('artist detail identity could not be verified');
+      }
       await saveRegionalArtist(env, {
         service: 'jiosaavn',
         canonical_artist: canonicalArtist,
         service_artist_id: profile.id,
         display_name: profile.name || artist.aliases[1],
-        profile_url: profile.url || jioSaavnArtistUrl(profile.id),
+        profile_url: detail?.urls?.overview || profile.url || jioSaavnArtistUrl(profile.id),
         observed_at: observedAt,
       });
       artists += 1;
 
-      let entries = [];
+      let entries = parseJioSaavnTracks(detail, artist.aliases, profile.id);
       for (const alias of artist.aliases) {
+        if (entries.length || Array.isArray(detail?.topSongs)) break;
         entries = parseJioSaavnTracks(
           await fetchJson(fetchImpl, jioSaavnSongSearchUrl(alias)),
           artist.aliases,
@@ -168,7 +177,7 @@ export async function collectJioSaavn(env, observedAt = Date.now(), fetchImpl = 
         });
         tracks += 1;
       }
-      if (!entries.length) throw new Error('artist song search returned no matches');
+      if (!entries.length) throw new Error('public artist catalog currently contains no matching songs');
     } catch (error) {
       failures.push({ canonical_artist: canonicalArtist, error: String(error?.message || error) });
     }
@@ -180,7 +189,7 @@ export async function collectJioSaavn(env, observedAt = Date.now(), fetchImpl = 
     status,
     last_attempt_at: observedAt,
     last_success_at: (artists || tracks) ? observedAt : null,
-    last_error_class: failures.length ? 'collection_error' : null,
+    last_error_class: failures.length ? (failures.every(failure => failure.error === 'public artist catalog currently contains no matching songs') ? 'catalog_unavailable' : 'collection_error') : null,
     last_error_message: failures.length ? JSON.stringify(failures).slice(0, 1000) : null,
     entity_counts: { artists, tracks, failures: failures.length },
     updated_at: observedAt,

@@ -1,4 +1,4 @@
-# Verify the public Kugou artist catalog and current search routes.
+# Verify current QQ, JioSaavn and Gaana catalog routes.
 name: Probe regional public responses
 on:
   workflow_dispatch:

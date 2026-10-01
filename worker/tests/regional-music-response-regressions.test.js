@@ -32,3 +32,12 @@ test('Kugou public artist catalog verifies profile and exact collaboration membe
 test('Genie reads listener and play labels supplied as image alt text', () => {
   assert.deepEqual(parseGenieTrackMetrics('<p>35</p><img alt="전체 청취자수"><p>672</p><img alt="전체 재생수"><div>좋아요! 9</div>'), {likes:9,listeners:35,plays:672});
 });
+
+import { qqSingerTracksUrl, parseQqSingerTracks } from '../src/regional-music-qq.js';
+test('QQ uses the current public catalog module and reads its songList', () => {
+  const url = new URL(qqSingerTracksUrl('mid1'));
+  assert.equal(url.hostname, 'u.y.qq.com');
+  assert.equal(JSON.parse(url.searchParams.get('data')).req_1.param.singerMid, 'mid1');
+  const payload = { req_1:{data:{songList:[{songInfo:{mid:'song1',name:'Song',singer:[{mid:'mid1',name:'Sakurazaka46'}]}}]}} };
+  assert.equal(parseQqSingerTracks(payload, 'mid1', ['Sakurazaka46'])[0].track_id, 'song1');
+});
