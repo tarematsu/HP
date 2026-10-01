@@ -8,6 +8,10 @@ function config() {
   return JSON.parse(readFileSync(new URL('../wrangler.amazon-music.jsonc', import.meta.url), 'utf8'));
 }
 
+function trackPlaylistWorkflow() {
+  return readFileSync(new URL('../../.github/workflows/refresh-amazon-music-track-playlists.yml', import.meta.url), 'utf8');
+}
+
 test('music collector keeps one combined Worker cron', () => {
   const value = config();
   assert.equal(value.name, 'sh-amazon-music-collector');
@@ -56,6 +60,15 @@ test('scheduled entry leaves Amazon track-playlist sweeps to Actions', () => {
   assert.match(source, /persistAppleMusicModelToOther\(env, scheduledTime\)/);
   assert.match(source, /persistAmazonMusicModelToOther\(env, scheduledTime\)/);
   assert.doesNotMatch(source, /AMAZON_MUSIC_DAILY_CRON|collectAmazonMusicSnapshot/);
+});
+
+test('track-playlist Action runs full sweeps at 02:00 and 14:00 JST only', () => {
+  const source = trackPlaylistWorkflow();
+  assert.match(source, /schedule:\s*\n\s*#.*02:00 JST.*14:00 JST[\s\S]*cron: '0 5,17 \* \* \*'/);
+  assert.match(source, /workflow_dispatch:/);
+  assert.doesNotMatch(source, /^\s*push:/m);
+  assert.match(source, /processed >= target/);
+  assert.match(source, /timeout-minutes: 60/);
 });
 
 test('Amazon Music bundle participates in Worker checks and deployment', () => {
