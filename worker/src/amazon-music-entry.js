@@ -8,6 +8,7 @@ import {
 } from './amazon-music-150k-extension.js';
 import { publishAmazonMusicSakamichiModel } from './amazon-music-sakamichi-publisher.js';
 import { recordAmazonTop500Check } from './amazon-music-top500-history.js';
+import { collectAmazonMusicTrackPlaylists } from './amazon-music-track-playlist-collector.js';
 import { collectAppleMusicSnapshot } from './apple-music-collector.js';
 import { collectAppleMusicPlaylists } from './apple-music-playlist-collector.js';
 import { appleMusicFetch } from './apple-music-fetch.js';
@@ -93,6 +94,7 @@ export function amazonMusicDueTasks(scheduledTime) {
   return {
     apple: minute === 15,
     playlists: minute === 15 && date.getUTCHours() === 18,
+    amazonTrackPlaylists: minute === 15,
     top500: minute === 5,
     deep100k: minute % 10 === 2,
   };
@@ -111,6 +113,12 @@ function unifiedScheduledRuns(env, scheduledTime) {
     runs.push(loggedRun(
       'apple-music-playlist-collection',
       () => collectAppleMusicPlaylists(env, scheduledTime),
+    ));
+  }
+  if (due.amazonTrackPlaylists) {
+    runs.push(loggedRun(
+      'amazon-music-track-playlist-collection',
+      () => collectAmazonMusicTrackPlaylists(amazonMusicServiceEnv(env), scheduledTime),
     ));
   }
   if (due.top500) {
