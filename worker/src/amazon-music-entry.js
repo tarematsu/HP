@@ -22,6 +22,7 @@ import {
 } from './music-service-other-store.js';
 
 export const AMAZON_MUSIC_CRON = '2,5,12,15,22,32,42,52 * * * *';
+export const AMAZON_MUSIC_TRACK_PLAYLIST_CRON = '*/6 * * * *';
 export const AMAZON_MUSIC_TOP_SCAN_CRON = '5 * * * *';
 export const AMAZON_MUSIC_DEEP_SCAN_CRON = '2,12,22,32,42,52 * * * *';
 export const APPLE_MUSIC_PROBE_CRON = '15 * * * *';
@@ -60,6 +61,14 @@ async function collectAppleMusicPlaylistData(env, scheduledTime) {
   });
   if (presentation?.updated) result.canonical_presentation = presentation;
   return result;
+}
+
+async function collectAmazonMusicTrackPlaylistData(env, scheduledTime) {
+  return collectAmazonMusicTrackPlaylists(
+    amazonMusicServiceEnv(env),
+    scheduledTime,
+    amazonMusicTrackPlaylistFetch,
+  );
 }
 
 async function checkAmazonMusic(env, scheduledTime) {
@@ -110,7 +119,6 @@ export function amazonMusicDueTasks(scheduledTime) {
   return {
     apple: minute === 15,
     playlists: minute === 15 && date.getUTCHours() === 18,
-    amazonTrackPlaylists: minute === 15,
     top500: minute === 5,
     deep100k: minute % 10 === 2,
   };
@@ -129,16 +137,6 @@ function unifiedScheduledRuns(env, scheduledTime) {
     runs.push(loggedRun(
       'apple-music-playlist-collection',
       () => collectAppleMusicPlaylistData(env, scheduledTime),
-    ));
-  }
-  if (due.amazonTrackPlaylists) {
-    runs.push(loggedRun(
-      'amazon-music-track-playlist-collection',
-      () => collectAmazonMusicTrackPlaylists(
-        amazonMusicServiceEnv(env),
-        scheduledTime,
-        amazonMusicTrackPlaylistFetch,
-      ),
     ));
   }
   if (due.top500) {
@@ -164,6 +162,11 @@ export default {
     let run;
     if (cron === AMAZON_MUSIC_CRON) {
       run = Promise.all(unifiedScheduledRuns(env, scheduledTime));
+    } else if (cron === AMAZON_MUSIC_TRACK_PLAYLIST_CRON) {
+      run = loggedRun(
+        'amazon-music-track-playlist-collection',
+        () => collectAmazonMusicTrackPlaylistData(env, scheduledTime),
+      );
     } else if (cron === APPLE_MUSIC_PROBE_CRON) {
       run = loggedRun(
         'apple-music-collection',
