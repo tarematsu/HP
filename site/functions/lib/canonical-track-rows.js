@@ -39,6 +39,34 @@ async function queryChunked(db, values, sqlForChunk, chunkSize) {
   return rows;
 }
 
+function validTrackTitleSql(alias) {
+  return `CASE WHEN ${alias}.title IS NULL OR TRIM(${alias}.title)=''
+      OR TRIM(${alias}.title)=TRIM(${alias}.spotify_id)
+    THEN NULL ELSE TRIM(${alias}.title) END`;
+}
+
+function validTrackArtistSql(alias) {
+  return `CASE WHEN ${alias}.artist IS NULL OR TRIM(${alias}.artist)=''
+      OR TRIM(${alias}.artist)=TRIM(${alias}.spotify_id)
+      OR TRIM(${alias}.artist) GLOB 'JP[A-Z0-9]*'
+    THEN NULL ELSE TRIM(${alias}.artist) END`;
+}
+
+function physicalCanonicalTrackSql(chunk) {
+  return `SELECT
+      t.id AS track_id,
+      t.stationhead_track_id,
+      COALESCE(d.isrc,NULLIF(UPPER(REPLACE(REPLACE(TRIM(t.isrc),'-',''),' ','')),'')) AS isrc,
+      COALESCE(NULLIF(TRIM(d.spotify_id),''),NULLIF(TRIM(t.spotify_id),'')) AS spotify_id,
+      COALESCE(NULLIF(TRIM(d.title),''),${validTrackTitleSql('t')}) AS title,
+      COALESCE(NULLIF(TRIM(d.artist),''),${validTrackArtistSql('t')}) AS artist,
+      d.thumbnail_url
+    FROM sh_tracks t
+    LEFT JOIN sh_track_dictionary d
+      ON d.isrc=UPPER(REPLACE(REPLACE(TRIM(t.isrc),'-',''),' ',''))
+    WHERE t.id IN (${placeholders(chunk.length)})`;
+}
+
 function canonicalRow(row) {
   if (!row || typeof row !== 'object') return null;
   const trackId = positiveInteger(row.track_id);
@@ -124,12 +152,18 @@ function unresolvedRows(rows, indexes) {
   return rows.filter((row) => !preferredCanonical(row, indexes));
 }
 
+async function trackMappings(db, values, column, chunkSize) {
+  if (!values.length) return [];
+  const safeColumn = column === 'isrc' ? 'isrc' : column === 'spotify_id' ? 'spotify_id' : 'stationhead_track_id';
+  return queryChunked(db, values, (chunk) => `SELECT id AS track_id,${safeColumn}
+    FROM sh_tracks WHERE ${safeColumn} IN (${placeholders(chunk.length)})`, chunkSize);
+}
+
 /**
- * Resolve Pages/read-model song rows to the single canonical identity:
- * sh_tracks.id. Provider IDs remain aliases only and are used as a bounded
- * lookup fallback while materializing rows that have not yet been assigned
- * track_id. Callers may provide trusted canonical seed rows that were already
- * read from sh_track_canonical_metadata in the same operation.
+ * Resolve Pages/read-model song rows to sh_tracks.id using only bounded indexed
+ * physical-table lookups. Provider aliases are first mapped through sh_tracks;
+ * presentation fields are then joined from sh_track_dictionary by primary key.
+ * The UNION canonical view is intentionally excluded from this runtime hot path.
  */
 export async function canonicalizeTrackRows(
   db,
@@ -143,63 +177,47 @@ export async function canonicalizeTrackRows(
     const canonicalRows = Array.isArray(seedRows) ? [...seedRows] : [];
     let indexes = canonicalIndexes(canonicalRows);
     let unresolved = unresolvedRows(rows, indexes);
-    const trackIds = [...new Set(unresolved
+    const trackIds = new Set(unresolved
       .map((row) => positiveInteger(row?.track_id))
-      .filter(Boolean))];
+      .filter(Boolean));
+
     const stationheadIds = [...new Set(unresolved
       .filter((row) => positiveInteger(row?.track_id) == null)
       .map((row) => positiveInteger(row?.stationhead_track_id))
       .filter(Boolean))];
-
-    // Resolve Stationhead aliases through the indexed sh_tracks column first.
-    // Alias lookups are staged by identity priority so rows already resolved by
-    // a seed/track_id/Stationhead never trigger redundant provider view scans.
-    const stationheadMappings = await queryChunked(
-      db,
-      stationheadIds,
-      (chunk) => `SELECT id AS track_id,stationhead_track_id
-        FROM sh_tracks WHERE stationhead_track_id IN (${placeholders(chunk.length)})`,
-      boundedChunkSize,
-    );
-
-    const stationheadByTrackId = new Map();
-    for (const mapping of stationheadMappings) {
-      const mappedTrackId = positiveInteger(mapping?.track_id);
-      const stationheadTrackId = positiveInteger(mapping?.stationhead_track_id);
-      if (mappedTrackId != null && stationheadTrackId != null) {
-        stationheadByTrackId.set(mappedTrackId, stationheadTrackId);
-      }
+    for (const mapping of await trackMappings(db, stationheadIds, 'stationhead_track_id', boundedChunkSize)) {
+      const trackId = positiveInteger(mapping?.track_id);
+      if (trackId != null) trackIds.add(trackId);
     }
 
-    const canonicalTrackIds = [...new Set([
-      ...trackIds,
-      ...stationheadByTrackId.keys(),
-    ])].filter((trackId) => !indexes.byTrackId.has(trackId));
-    const byTrack = await queryChunked(db, canonicalTrackIds, (chunk) => `SELECT track_id,NULL AS stationhead_track_id,isrc,spotify_id,title,artist,thumbnail_url
-      FROM sh_track_canonical_metadata WHERE track_id IN (${placeholders(chunk.length)})`, boundedChunkSize);
-    canonicalRows.push(...byTrack.map((row) => ({
-      ...row,
-      stationhead_track_id: stationheadByTrackId.get(positiveInteger(row?.track_id)) || null,
-    })));
-
-    indexes = canonicalIndexes(canonicalRows);
     unresolved = unresolvedRows(rows, indexes);
     const isrcs = [...new Set(unresolved
+      .filter((row) => positiveInteger(row?.track_id) == null)
       .map((row) => normalizedIsrc(row?.isrc))
       .filter(Boolean))];
-    if (isrcs.length) {
-      canonicalRows.push(...await queryChunked(db, isrcs, (chunk) => `SELECT track_id,NULL AS stationhead_track_id,isrc,spotify_id,title,artist,thumbnail_url
-        FROM sh_track_canonical_metadata WHERE track_id IS NOT NULL AND isrc IN (${placeholders(chunk.length)})`, boundedChunkSize));
-      indexes = canonicalIndexes(canonicalRows);
+    for (const mapping of await trackMappings(db, isrcs, 'isrc', boundedChunkSize)) {
+      const trackId = positiveInteger(mapping?.track_id);
+      if (trackId != null) trackIds.add(trackId);
     }
 
     unresolved = unresolvedRows(rows, indexes);
     const spotifyIds = [...new Set(unresolved
+      .filter((row) => positiveInteger(row?.track_id) == null)
       .map((row) => text(row?.spotify_id))
       .filter(Boolean))];
-    if (spotifyIds.length) {
-      canonicalRows.push(...await queryChunked(db, spotifyIds, (chunk) => `SELECT track_id,NULL AS stationhead_track_id,isrc,spotify_id,title,artist,thumbnail_url
-        FROM sh_track_canonical_metadata WHERE track_id IS NOT NULL AND spotify_id IN (${placeholders(chunk.length)})`, boundedChunkSize));
+    for (const mapping of await trackMappings(db, spotifyIds, 'spotify_id', boundedChunkSize)) {
+      const trackId = positiveInteger(mapping?.track_id);
+      if (trackId != null) trackIds.add(trackId);
+    }
+
+    const neededTrackIds = [...trackIds].filter((trackId) => !indexes.byTrackId.has(trackId));
+    if (neededTrackIds.length) {
+      canonicalRows.push(...await queryChunked(
+        db,
+        neededTrackIds,
+        physicalCanonicalTrackSql,
+        boundedChunkSize,
+      ));
       indexes = canonicalIndexes(canonicalRows);
     }
 
@@ -211,32 +229,20 @@ export async function canonicalizeTrackRows(
 }
 
 /**
- * Legacy full-catalog helper retained for compatibility with older callers.
- * New publication paths should prefer bounded canonicalizeTrackRows lookups.
+ * Legacy full-catalog helper retained for offline compatibility. Production
+ * publication paths use canonicalizeTrackRows and never call this function.
  */
 export async function canonicalizeTrackRowsFromCatalog(db, rows = []) {
   if (!supportsCanonicalQueries(db) || !Array.isArray(rows) || !rows.length) return rows;
   try {
-    const canonicalStatement = db.prepare(`SELECT track_id,NULL AS stationhead_track_id,
-        isrc,spotify_id,title,artist,thumbnail_url
-      FROM sh_track_canonical_metadata
-      WHERE track_id IS NOT NULL`);
-    const stationheadStatement = db.prepare(`SELECT id AS track_id,stationhead_track_id
-      FROM sh_tracks
-      WHERE stationhead_track_id IS NOT NULL`);
-    if (typeof canonicalStatement?.all !== 'function' || typeof stationheadStatement?.all !== 'function') return rows;
-    const [canonicalResult, stationheadResult] = await Promise.all([
-      canonicalStatement.all(),
-      stationheadStatement.all(),
-    ]);
-    const stationheadByTrackId = new Map((stationheadResult?.results || [])
-      .map((row) => [positiveInteger(row?.track_id), positiveInteger(row?.stationhead_track_id)])
-      .filter(([trackId, stationheadTrackId]) => trackId != null && stationheadTrackId != null));
-    const catalog = (canonicalResult?.results || []).map((row) => ({
-      ...row,
-      stationhead_track_id: stationheadByTrackId.get(positiveInteger(row?.track_id)) || null,
-    }));
-    return applyCanonicalIndexes(rows, canonicalIndexes(catalog));
+    const tracks = db.prepare(`SELECT id AS track_id,stationhead_track_id,isrc,spotify_id,title,artist
+      FROM sh_tracks WHERE id IS NOT NULL`);
+    if (typeof tracks?.all !== 'function') return rows;
+    const result = await tracks.all();
+    const base = result?.results || [];
+    const trackIds = base.map((row) => positiveInteger(row?.track_id)).filter(Boolean);
+    const canonical = await queryChunked(db, trackIds, physicalCanonicalTrackSql, DEFAULT_CHUNK_SIZE);
+    return applyCanonicalIndexes(rows, canonicalIndexes(canonical));
   } catch (error) {
     if (missingCanonicalSchema(error)) return rows;
     throw error;
