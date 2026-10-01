@@ -117,14 +117,31 @@ function renderArtists(rows) {
   }
 }
 
-function renderTracks(rows) {
+export function regionalTrackRows(rows, orders = []) {
+  const byTrack = new Map();
+  for (const order of orders) {
+    const key = `${order.service}:${order.service_track_id}`;
+    if (!byTrack.has(key)) byTrack.set(key, []);
+    byTrack.get(key).push(order);
+  }
+  return rows.flatMap(item => {
+    const positions = byTrack.get(`${item.service}:${item.service_track_id}`);
+    return positions?.length ? positions.map(order => ({ ...item,
+      canonical_artist: order.canonical_artist, popularity_rank: order.position, rank_source: order.rank_source,
+    })) : [item];
+  }).sort((a,b) => String(a.canonical_artist).localeCompare(String(b.canonical_artist))
+    || (a.popularity_rank ?? Infinity) - (b.popularity_rank ?? Infinity));
+}
+
+function renderTracks(rows, orders = []) {
   const body = replaceBody('regionalMusicTrackBody');
   if (!body) return;
   if (!rows.length) {
     appendEmptyTableRow(body, '楽曲データがありません。', 7);
     return;
   }
-  for (const item of rows) {
+  for (const item of regionalTrackRows(rows, orders)) {
+    const rank = item.rank_source === 'artist_page_order' ? `${valueText(item.popularity_rank)}（掲載順・推定）` : valueText(item.popularity_rank);
     body.append(row([
       ARTIST_LABELS[item.canonical_artist] || item.canonical_artist || '-',
       item.title || item.service_track_id || '-',
@@ -132,7 +149,7 @@ function renderTracks(rows) {
       valueText(item.listeners),
       valueText(item.likes),
       valueText(item.comments),
-      valueText(item.popularity_rank),
+      rank,
     ]));
   }
 }
@@ -207,7 +224,7 @@ function renderService(payload, service) {
 
   renderHealth(state);
   renderArtists(artists);
-  renderTracks(tracks);
+  renderTracks(tracks, payload.artist_track_orders);
   renderPlaylists(playlists, memberships);
 }
 

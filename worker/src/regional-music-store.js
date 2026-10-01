@@ -76,6 +76,17 @@ export async function saveRegionalTrack(env, value) {
     .bind(snapshotDate, value.service, value.service_track_id, observedAt,
       count(value.plays), count(value.listeners), count(value.likes), count(value.comments),
       positive(value.popularity_rank)).run();
+  if (positive(value.popularity_rank) && value.canonical_artist) {
+    const source = value.popularity_rank_source || 'provider_popularity_order';
+    if (!['provider_rank','provider_popularity_order','artist_page_order'].includes(source)) throw new Error('Unknown popularity rank source');
+    await db.prepare(`INSERT INTO regional_music_artist_track_order(
+      snapshot_date,service,canonical_artist,service_artist_id,service_track_id,observed_at,position,rank_source
+    ) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(snapshot_date,service,canonical_artist,service_track_id) DO UPDATE SET
+      service_artist_id=COALESCE(excluded.service_artist_id,service_artist_id),
+      observed_at=excluded.observed_at,position=excluded.position,rank_source=excluded.rank_source`)
+      .bind(snapshotDate,value.service,value.canonical_artist,value.service_artist_id ?? null,
+        value.service_track_id,observedAt,positive(value.popularity_rank),source).run();
+  }
 }
 
 export async function saveRegionalRelease(env, value) {
