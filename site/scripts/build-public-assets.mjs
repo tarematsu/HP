@@ -24,6 +24,7 @@ const cssFiles = [
   'hinata.css',
   'history/history-past-toggle.css',
   'history/history-range-navigator.css',
+  'music-service-common.css',
   'dashboard-ui-common.css',
   'mobile-layout-refinements.css',
 ];
