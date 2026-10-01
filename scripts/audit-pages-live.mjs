@@ -24,12 +24,33 @@ const MODES = [
     notice: '#notice',
   },
   {
+    name: 'hinata',
+    path: '/#hinata',
+    panel: '#hinataView',
+    tab: '#sourceTabs button[data-source="hinata"]',
+    notice: '#hinataNotice',
+  },
+  {
+    name: 'nogizaka',
+    path: '/#nogizaka',
+    panel: '#nogizakaListeningPartyView',
+    tab: '#sourceTabs button[data-source="nogizaka"]',
+    notice: '#nogizakaListeningPartyNotice',
+  },
+  {
     name: 'ranking',
     path: '/#ranking',
     panel: '#historyView',
-    tab: '#modeTabs button[data-mode="ranking"]',
+    tab: '#sourceTabs button[data-source="ranking"]',
     requiredText: '総週数',
     notice: '#notice',
+  },
+  {
+    name: 'followers',
+    path: '/#followers',
+    panel: '#followersView',
+    tab: '#sourceTabs button[data-source="followers"]',
+    notice: '#followersNotice',
   },
   {
     name: 'played-tracks',
@@ -43,9 +64,29 @@ const MODES = [
     name: 'spotify',
     path: '/#spotify',
     panel: '#spotifyView',
-    tab: '#modeTabs button[data-view="spotify"]',
-    requiredText: '櫻坂46の再生数一覧',
+    tab: '#sourceTabs button[data-source="spotify"]',
     notice: '#spotifyNotice',
+  },
+  {
+    name: 'apple-music',
+    path: '/#apple-music',
+    panel: '#appleMusicView',
+    tab: '#sourceTabs button[data-source="apple-music"]',
+    notice: '#appleMusicNotice',
+  },
+  {
+    name: 'amazon-music',
+    path: '/#amazon-music',
+    panel: '#amazonMusicView',
+    tab: '#sourceTabs button[data-source="amazon-music"]',
+    notice: '#amazonMusicNotice',
+  },
+  {
+    name: 'youtube-music',
+    path: '/#youtube-music',
+    panel: '#youtubeMusicView',
+    tab: '#sourceTabs button[data-source="youtube-music"]',
+    notice: '#youtubeMusicNotice',
   },
   {
     name: 'likes',
@@ -70,7 +111,7 @@ const MODES = [
 
 const VIEWPORTS = [
   { name: 'desktop', width: 1440, height: 1000, modes: MODES.map(({ name }) => name) },
-  { name: 'tablet', width: 820, height: 1180, modes: ['current', 'daily', 'likes'] },
+  { name: 'tablet', width: 820, height: 1180, modes: ['current', 'daily', 'hinata', 'followers', 'spotify', 'likes'] },
   { name: 'mobile', width: 390, height: 844, modes: MODES.map(({ name }) => name) },
   { name: 'mobile-compact', width: 320, height: 720, modes: ['current', 'daily', 'likes', 'played-tracks', 'spotify', 'broadcasts'] },
 ];
@@ -228,41 +269,61 @@ async function auditRoute(browser, target, route, viewport, outDir) {
   const selectedTab = await page.locator(route.tab).evaluate((button) => ({
     active: button.classList.contains('active'),
     current: button.getAttribute('aria-current'),
-  })).catch(() => ({ active: false, current: null }));
+    pressed: button.getAttribute('aria-pressed'),
+  })).catch(() => ({ active: false, current: null, pressed: null }));
   const legendItems = route.legendSelector
     ? await page.locator(route.legendSelector).count().catch(() => 0)
     : null;
-  const layout = await page.evaluate((expectedPanel) => {
+  const panelSelectors = [...new Set(MODES.map(({ panel }) => panel))];
+  const layout = await page.evaluate(({ expectedPanel, selectedSelector, panelsToCheck }) => {
     const visible = (element) => {
       if (!element || element.hidden) return false;
       const style = getComputedStyle(element);
       const rect = element.getBoundingClientRect();
       return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
     };
-    const panels = ['#currentView', '#historyView', '#playedTracksView', '#spotifyView', '#likesView']
-      .filter((selector) => visible(document.querySelector(selector)));
+    const panels = panelsToCheck.filter((selector) => visible(document.querySelector(selector)));
     const root = document.documentElement;
     const body = document.body;
     const scrollWidth = Math.max(root.scrollWidth, body?.scrollWidth || 0);
-    const tabs = document.querySelector('#modeTabs');
-    const tabsRect = tabs?.getBoundingClientRect();
-    const clippedTabs = [...(tabs?.querySelectorAll('button') || [])].filter((button) => {
-      const rect = button.getBoundingClientRect();
-      return tabsRect && (rect.left < tabsRect.left - 1 || rect.right > tabsRect.right + 1);
-    }).length;
-    const tabsStyle = tabs ? getComputedStyle(tabs) : null;
-    const navigationScrollable = Boolean(
-      tabs
-      && tabs.scrollWidth > tabs.clientWidth + 1
-      && ['auto', 'scroll'].includes(tabsStyle?.overflowX),
-    );
-    const currentTab = tabs?.querySelector('[aria-current="page"]');
-    const currentTabRect = currentTab?.getBoundingClientRect();
+    const navLists = [...document.querySelectorAll('#sectionTabs, #sourceTabs, #modeTabs, .dashboard-source-row')]
+      .filter(visible);
+    let clippedTabs = 0;
+    let clippedWithoutScroll = 0;
+    let scrollableLists = 0;
+    for (const list of navLists) {
+      const rect = list.getBoundingClientRect();
+      const buttons = [...list.querySelectorAll(':scope > button')].filter(visible);
+      const clipped = buttons.filter((button) => {
+        const buttonRect = button.getBoundingClientRect();
+        return buttonRect.left < rect.left - 1 || buttonRect.right > rect.right + 1;
+      }).length;
+      if (!clipped) continue;
+      clippedTabs += clipped;
+      const style = getComputedStyle(list);
+      const scrollable = list.scrollWidth > list.clientWidth + 1
+        && ['auto', 'scroll'].includes(style.overflowX);
+      if (scrollable) scrollableLists += 1;
+      else clippedWithoutScroll += clipped;
+    }
+    const selected = document.querySelector(selectedSelector);
+    const selectedRect = selected?.getBoundingClientRect();
+    const selectedParent = selected?.parentElement;
+    const selectedParentRect = selectedParent?.getBoundingClientRect();
     const selectedTabClipped = Boolean(
-      tabsRect
-      && currentTabRect
-      && (currentTabRect.left < tabsRect.left - 1 || currentTabRect.right > tabsRect.right + 1),
+      visible(selected)
+      && selectedParentRect
+      && selectedRect
+      && (selectedRect.left < selectedParentRect.left - 1 || selectedRect.right > selectedParentRect.right + 1),
     );
+    const duplicateIds = [...document.querySelectorAll('[id]')]
+      .map((element) => element.id)
+      .filter((id, index, ids) => id && ids.indexOf(id) !== index)
+      .filter((id, index, ids) => ids.indexOf(id) === index);
+    const visibleTables = [...document.querySelectorAll('table')].filter(visible);
+    const tableRows = visibleTables.reduce((sum, table) => sum + table.querySelectorAll('tbody tr').length, 0);
+    const cells = visibleTables.flatMap((table) => [...table.querySelectorAll('tbody td')]);
+    const missingCells = cells.filter((cell) => /^(?:—|-)$/.test(cell.textContent.trim())).length;
     return {
       viewportWidth: window.innerWidth,
       scrollWidth,
@@ -270,19 +331,35 @@ async function auditRoute(browser, target, route, viewport, outDir) {
       visiblePanels: panels,
       expectedPanelVisible: visible(document.querySelector(expectedPanel)),
       clippedTabs,
-      navigationScrollable,
+      clippedWithoutScroll,
+      navigationScrollable: scrollableLists > 0,
       selectedTabClipped,
+      duplicateIds,
+      tableRows,
+      missingCells,
+      tableCells: cells.length,
     };
-  }, route.panel).catch(() => ({
+  }, {
+    expectedPanel: route.panel,
+    selectedSelector: route.tab,
+    panelsToCheck: panelSelectors,
+  }).catch(() => ({
     viewportWidth: viewport.width,
     scrollWidth: null,
     horizontalOverflow: null,
     visiblePanels: [],
     expectedPanelVisible: false,
     clippedTabs: null,
+    clippedWithoutScroll: null,
     navigationScrollable: false,
     selectedTabClipped: null,
+    duplicateIds: [],
+    tableRows: null,
+    missingCells: null,
+    tableCells: null,
   }));
+  const malformedTokens = ['NaN', 'undefined', '[object Object]', 'Invalid Date']
+    .filter((token) => bodyText.includes(token));
   const finalUrl = page.url();
   const screenshotPath = join(
     outDir,
@@ -297,17 +374,21 @@ async function auditRoute(browser, target, route, viewport, outDir) {
   if (!finalUrl.startsWith('https://')) failures.push(`final URL is not HTTPS: ${finalUrl}`);
   if (!mainVisible) failures.push('visible <main> element was not found');
   if (!panelVisible || !layout.expectedPanelVisible) failures.push(`expected panel was not visible: ${route.panel}`);
-  if (!selectedTab.active || selectedTab.current !== 'page') failures.push(`selected tab state was not applied: ${route.name}`);
+  const selectedStateApplied = selectedTab.active
+    && (selectedTab.current === 'page' || selectedTab.pressed === 'true');
+  if (!selectedStateApplied) failures.push(`selected tab state was not applied: ${route.name}`);
   if (layout.visiblePanels.length !== 1 || layout.visiblePanels[0] !== route.panel) {
     failures.push(`unexpected visible panels: ${layout.visiblePanels.join(', ') || 'none'}`);
   }
   if (Number(layout.horizontalOverflow) > 1) {
     failures.push(`document overflows viewport horizontally by ${layout.horizontalOverflow}px`);
   }
-  if (Number(layout.clippedTabs) > 0 && !layout.navigationScrollable) {
-    failures.push(`${layout.clippedTabs} navigation tabs are clipped without a scrollable tab list`);
+  if (Number(layout.clippedWithoutScroll) > 0) {
+    failures.push(`${layout.clippedWithoutScroll} visible navigation tabs are clipped without a scrollable tab list`);
   }
   if (layout.selectedTabClipped) failures.push('selected navigation tab is clipped');
+  if (layout.duplicateIds.length) failures.push(`duplicate DOM ids: ${layout.duplicateIds.join(', ')}`);
+  if (malformedTokens.length) failures.push(`malformed rendered values: ${malformedTokens.join(', ')}`);
   if (bodyText.length < 20) failures.push(`page body is unexpectedly short (${bodyText.length} characters)`);
   if (route.requiredText && !bodyText.includes(route.requiredText)) {
     failures.push(`required text was not rendered: ${route.requiredText}`);
@@ -338,6 +419,12 @@ async function auditRoute(browser, target, route, viewport, outDir) {
     selectedTab,
     legendItems,
     layout,
+    dataQuality: {
+      malformedTokens,
+      tableRows: layout.tableRows,
+      missingCells: layout.missingCells,
+      tableCells: layout.tableCells,
+    },
     bodyLength: bodyText.length,
     bodyDigest: digest(bodyText),
     bodyPreview: bodyText.slice(0, 240),
@@ -401,15 +488,15 @@ function markdownSummary(report) {
     `- Generated: ${report.generatedAt}`,
     `- Result: ${report.ok ? 'PASS' : 'FAIL'}`,
     '',
-    '| Target | Viewport | Mode | HTTP | Panel | Overflow | Result |',
-    '| --- | --- | --- | ---: | :---: | ---: | :---: |',
+    '| Target | Viewport | Mode | HTTP | Panel | Overflow | Missing cells | Result |',
+    '| --- | --- | --- | ---: | :---: | ---: | ---: | :---: |',
   ];
 
   for (const target of report.targets) {
     for (const route of target.routes) {
-      lines.push(`| ${target.baseUrl} | ${route.viewport} | ${route.mode} | ${route.status ?? '-'} | ${route.panelVisible ? 'yes' : 'no'} | ${route.layout.horizontalOverflow ?? '-'} | ${route.ok ? 'PASS' : 'FAIL'} |`);
+      lines.push(`| ${target.baseUrl} | ${route.viewport} | ${route.mode} | ${route.status ?? '-'} | ${route.panelVisible ? 'yes' : 'no'} | ${route.layout.horizontalOverflow ?? '-'} | ${route.dataQuality.missingCells ?? '-'} | ${route.ok ? 'PASS' : 'FAIL'} |`);
     }
-    lines.push(`| ${target.baseUrl} | - | /api/health | ${target.health.status ?? '-'} | - | - | ${target.health.ok ? 'PASS' : 'FAIL'} |`);
+    lines.push(`| ${target.baseUrl} | - | /api/health | ${target.health.status ?? '-'} | - | - | - | ${target.health.ok ? 'PASS' : 'FAIL'} |`);
   }
 
   const failures = report.targets.flatMap((target) => target.failures.map((failure) => `- **${target.name}** ${failure}`));
