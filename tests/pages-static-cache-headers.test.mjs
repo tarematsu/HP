@@ -22,10 +22,9 @@ test('HTML entry points remain no-store', () => {
   }
 });
 
-test('JavaScript and CSS use a longer bounded cache without trapping unversioned imports', () => {
+test('JavaScript and CSS rely on Cloudflare Pages default ETag revalidation', () => {
   for (const pattern of ['/*.js', '/*.css']) {
-    const block = blockFor(pattern);
-    assert.match(block, /Cache-Control:\s*public, max-age=3600, stale-while-revalidate=86400/i, pattern);
-    assert.doesNotMatch(block, /immutable/i, pattern);
+    assert.equal(blockFor(pattern), '', pattern);
   }
+  assert.doesNotMatch(headers, /stale-while-revalidate/i);
 });

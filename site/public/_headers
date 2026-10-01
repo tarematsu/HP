@@ -15,9 +15,3 @@
 
 /sakurazaka46jp/index.html
   Cache-Control: no-store, max-age=0, must-revalidate
-
-/*.js
-  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
-
-/*.css
-  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
