@@ -11,6 +11,8 @@ import { appendTableRow, replaceTableHeader } from './dashboard-table-dom.js?v=2
 const REGION_ORDER = Object.freeze(['jp', 'tw', 'hk', 'kr', 'sg', 'th', 'us']);
 const JAPAN_RANK_LIMIT = 12;
 const JAPAN_OUTSIDE_RANK = JAPAN_RANK_LIMIT + 1;
+const DEFAULT_ARTIST_KEY = 'sakurazaka46';
+let selectedArtistKey = DEFAULT_ARTIST_KEY;
 let loadPromise = null;
 let lastPayload = null;
 
@@ -32,6 +34,44 @@ function trackKey(track) {
 
 const setNotice = (message = '', error = false) => setSharedNotice('appleMusicNotice', message, error);
 
+function artistModels(payload) {
+  const models = Array.isArray(payload?.artists) ? payload.artists.filter((artist) => artist?.key) : [];
+  if (models.length) return models;
+  return [{
+    key: DEFAULT_ARTIST_KEY,
+    artist_key: DEFAULT_ARTIST_KEY,
+    artist_id: payload?.artist_id || null,
+    artist_name: payload?.artist_name || '櫻坂46',
+    snapshot_date: payload?.snapshot_date || null,
+    observed_at: payload?.observed_at || null,
+    regions: Array.isArray(payload?.regions) ? payload.regions : [],
+    failed_regions: Array.isArray(payload?.failed_regions) ? payload.failed_regions : [],
+    history: Array.isArray(payload?.history) ? payload.history : [],
+  }];
+}
+
+function activeArtist(payload) {
+  const artists = artistModels(payload);
+  return artists.find((artist) => artist.key === selectedArtistKey)
+    || artists.find((artist) => artist.key === DEFAULT_ARTIST_KEY)
+    || artists[0];
+}
+
+function activePayload(payload) {
+  const artist = activeArtist(payload);
+  if (!artist) return payload;
+  return {
+    ...payload,
+    artist_id: artist.artist_id,
+    artist_name: artist.artist_name,
+    snapshot_date: artist.snapshot_date,
+    observed_at: artist.observed_at,
+    regions: Array.isArray(artist.regions) ? artist.regions : [],
+    failed_regions: Array.isArray(artist.failed_regions) ? artist.failed_regions : [],
+    history: Array.isArray(artist.history) ? artist.history : [],
+  };
+}
+
 function regions(payload) {
   return Array.isArray(payload?.regions) ? payload.regions : [];
 }
@@ -46,6 +86,20 @@ function orderedRegions(payload) {
     ...REGION_ORDER.map((code) => byCode.get(code)).filter(Boolean),
     ...regions(payload).filter((region) => !REGION_ORDER.includes(region?.code)),
   ];
+}
+
+function renderArtistState(payload) {
+  const artist = activeArtist(payload);
+  const artistName = artist?.artist_name || '櫻坂46';
+  document.querySelectorAll('[data-apple-artist]').forEach((button) => {
+    const active = button.dataset.appleArtist === artist?.key;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  const rankTitle = element('appleJapanRankTitle');
+  if (rankTitle) rankTitle.textContent = `${artistName} 日本の人気曲順位推移`;
+  const tableTitle = element('appleRegionCompareTitle');
+  if (tableTitle) tableTitle.textContent = `${artistName} 地域別人気順位一覧`;
 }
 
 function renderSummary(payload) {
@@ -204,9 +258,11 @@ function renderRegionComparison(payload) {
 }
 
 function render(payload) {
-  renderSummary(payload);
-  renderRankChart(payload);
-  renderRegionComparison(payload);
+  renderArtistState(payload);
+  const selected = activePayload(payload);
+  renderSummary(selected);
+  renderRankChart(selected);
+  renderRegionComparison(selected);
 }
 
 async function fetchPayload() {
@@ -225,7 +281,8 @@ export async function loadAppleMusicView({ force = false } = {}) {
   if (!loadPromise || force) {
     loadPromise = fetchPayload().then((payload) => {
       lastPayload = payload;
-      const failed = Array.isArray(payload?.failed_regions) ? payload.failed_regions : [];
+      const selected = activePayload(payload);
+      const failed = Array.isArray(selected?.failed_regions) ? selected.failed_regions : [];
       setNotice(failed.length ? `一部地域の取得に失敗しました：${failed.map((item) => item.label || item.code).join('、')}` : '');
       render(payload);
       loadPlaylistMemberships(force);
@@ -239,3 +296,13 @@ export async function loadAppleMusicView({ force = false } = {}) {
   }
   return loadPromise;
 }
+
+globalThis.document?.querySelectorAll('[data-apple-artist]').forEach((button) => button.addEventListener('click', () => {
+  selectedArtistKey = button.dataset.appleArtist || DEFAULT_ARTIST_KEY;
+  if (lastPayload) {
+    render(lastPayload);
+    const selected = activePayload(lastPayload);
+    const failed = Array.isArray(selected?.failed_regions) ? selected.failed_regions : [];
+    setNotice(failed.length ? `一部地域の取得に失敗しました：${failed.map((item) => item.label || item.code).join('、')}` : '');
+  }
+}));

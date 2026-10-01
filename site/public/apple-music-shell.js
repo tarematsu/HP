@@ -3,6 +3,7 @@ import {
   dashboardChartHost,
   dashboardDataCard,
   dashboardLegend,
+  dashboardModeTabs,
   dashboardNotice,
   dashboardSummary,
   dashboardSummaryItem,
@@ -20,6 +21,12 @@ const summary = dashboardSummary([
   dashboardSummaryItem({ label: '掲載楽曲数', valueId: 'applePlaylistTrackCount' }),
 ], { className: 'music-service-summary apple-summary', ariaLabel: 'Apple Music概要' });
 
+const artistTabs = dashboardModeTabs([
+  { value: 'sakurazaka46', label: '櫻坂46', active: true },
+  { value: 'nogizaka46', label: '乃木坂46' },
+  { value: 'hinatazaka46', label: '日向坂46' },
+], { dataAttribute: 'apple-artist', ariaLabel: 'Apple Musicアーティスト切替' });
+
 const regionTable = dashboardTable({
   id: 'appleRegionCompareTable',
   className: 'apple-table apple-region-table music-service-track-table',
@@ -27,14 +34,15 @@ const regionTable = dashboardTable({
 });
 
 const rankPanel = dashboardChartCard({
-  title: '日本の人気曲順位推移',
+  title: '櫻坂46 日本の人気曲順位推移',
   titleId: 'appleJapanRankTitle',
   kicker: 'APPLE MUSIC · JAPAN',
+  trailingHtml: artistTabs,
   className: 'apple-rank-panel music-service-panel',
   chartHtml: dashboardChartHost({
     id: 'appleRankChart',
     className: 'apple-rank-chart chart-fit',
-    ariaLabel: '日本のApple Music櫻坂46人気曲順位推移',
+    ariaLabel: 'Apple Music日本の人気曲順位推移',
     role: '',
   }),
   legendHtml: dashboardLegend({
@@ -45,7 +53,7 @@ const rankPanel = dashboardChartCard({
 });
 
 const tracksPanel = dashboardDataCard({
-  title: '地域別人気順位一覧',
+  title: '櫻坂46 地域別人気順位一覧',
   titleId: 'appleRegionCompareTitle',
   kicker: 'TRACKS',
   className: 'apple-data-panel music-service-panel',
