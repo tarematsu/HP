@@ -7,6 +7,7 @@ import { collectJioSaavn } from './regional-music-jiosaavn.js';
 import { collectJooxArtists } from './regional-music-joox.js';
 import { collectKugouMusic } from './regional-music-kugou.js';
 import { collectMelon } from './regional-music-melon.js';
+import { collectNaverVibe } from './regional-music-vibe.js';
 import { collectNeteaseCloudMusic } from './regional-music-netease.js';
 import { collectNhacCuaTui } from './regional-music-nhaccuatui.js';
 import { collectQqMusic } from './regional-music-qq.js';
@@ -25,6 +26,7 @@ const DAILY_COLLECTORS = Object.freeze([
   collectQqMusic,
   collectNeteaseCloudMusic,
   collectKugouMusic,
+  collectNaverVibe,
   collectFlo,
   collectYandexMusic,
   collectJioSaavn,
