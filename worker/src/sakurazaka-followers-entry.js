@@ -21,7 +21,9 @@ async function runSharedTargets(env, scheduledAt) {
   const tasks = [
     ['nogizaka46smej', dispatchScheduledService(env?.NOGIZAKA_SCHEDULED, NOGIZAKA_CRON, scheduledAt)],
   ];
-  if (minute % 5 === 0) {
+  // Buddies owns the 00/05/10/... slots. Run Ohisama one minute later so
+  // Stationhead auth/channel requests cannot contend with the primary collector.
+  if (minute % 5 === 1) {
     tasks.push(['ohisama', dispatchScheduledService(env?.OHISAMA_SCHEDULED, OHISAMA_CRON, scheduledAt)]);
   }
   if (minute === 0) {
