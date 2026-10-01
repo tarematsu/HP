@@ -23,6 +23,7 @@ test('deployment workflow changes redeploy all active Workers in dependency orde
     'sh-ohisama-collector',
     'sh-spotify-playcount-collector',
     'sh-amazon-music-collector',
+    'sh-regional-music-collector',
     'sh-runtime-orchestrator',
   ]);
   assert.deepEqual(result.commands, [
@@ -33,6 +34,7 @@ test('deployment workflow changes redeploy all active Workers in dependency orde
     'deploy:ohisama-collector',
     'deploy:spotify-playcount',
     'deploy:amazon-music',
+    'deploy:regional-music',
     'deploy:runtime',
   ]);
 });

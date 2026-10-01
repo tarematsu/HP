@@ -1,4 +1,4 @@
-export const API_CONTRACT_VERSION = 17;
+export const API_CONTRACT_VERSION = 18;
 
 export const API_GROUPS = Object.freeze({
   status: Object.freeze([
@@ -27,6 +27,7 @@ export const API_GROUPS = Object.freeze({
     { path: '/api/apple-music', methods: ['GET'], description: 'Latest Sakurazaka Apple Music regional artist-popularity read model' },
     { path: '/api/apple-music-playlists', methods: ['GET'], description: 'Public Apple Music playlist memberships discovered from music.apple.com pages' },
     { path: '/api/followers', methods: ['GET'], description: 'Daily Stationhead follower history and comparison for tracked accounts' },
+    { path: '/api/regional-music', methods: ['GET'], description: 'Regional music-service artist, track, playlist, and collector-health read model' },
   ]),
 });
 
@@ -80,6 +81,7 @@ export function materializedApiKey(input) {
     return 'spotify-playcounts';
   }
   if (pathname === '/api/followers' && onlyParameters(url)) return 'followers';
+  if (pathname === '/api/regional-music' && onlyParameters(url)) return 'regional-music';
   return null;
 }
 
@@ -101,8 +103,9 @@ export function apiCacheTtlSeconds(request) {
 }
 
 export function materializedResponseCadenceSeconds(modelKey) {
-  if (String(modelKey || '') === 'followers') return 0;
-  const variant = materializedVariantsByKey.get(String(modelKey || ''));
+  const key = String(modelKey || '');
+  if (key === 'followers' || key === 'regional-music') return 0;
+  const variant = materializedVariantsByKey.get(key);
   if (variant?.event_driven === true) return 0;
   const cadenceMinutes = Number(variant?.cadence_minutes);
   if (!Number.isFinite(cadenceMinutes) || cadenceMinutes <= 0) return API_EDGE_TTL_SECONDS;
@@ -110,13 +113,14 @@ export function materializedResponseCadenceSeconds(modelKey) {
 }
 
 export function materializedResponseMaximumAge(modelKey, env = {}) {
-  if (String(modelKey || '') === 'followers') return Number.MAX_SAFE_INTEGER;
-  const variant = materializedVariantsByKey.get(String(modelKey || ''));
+  const key = String(modelKey || '');
+  if (key === 'followers' || key === 'regional-music') return Number.MAX_SAFE_INTEGER;
+  const variant = materializedVariantsByKey.get(key);
   if (variant?.event_driven === true || variant?.revision_driven === true) {
     return Number.MAX_SAFE_INTEGER;
   }
   const configured = Number(env.PAGES_RESPONSE_MAX_AGE_MS);
-  const cadenceMs = materializedResponseCadenceSeconds(modelKey) * 1000;
+  const cadenceMs = materializedResponseCadenceSeconds(key) * 1000;
   const graceMs = API_EDGE_TTL_SECONDS * 1000;
   const minimum = cadenceMs + graceMs;
   const fallback = Math.max(MATERIALIZED_RESPONSE_MAX_AGE_MS, minimum);
