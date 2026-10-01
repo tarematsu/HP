@@ -62,9 +62,10 @@ test('archive removes the track playback tab and its aggregation runtime', () =>
   assert.doesNotMatch(historyClient, /aggregateCompleteTrackRows|再生数ランキング|history:track-rows/);
 });
 
-test('sparse daily summaries draw visible point markers without global canvas patches', () => {
+test('sparse daily summaries draw visible point markers through the shared canvas renderer', () => {
+  assert.match(periodChart, /drawDashboardLine/);
   assert.match(periodChart, /mode === 'daily' && lineCount === 0/);
-  assert.match(periodChart, /context\.arc\(x, y, 3/);
+  assert.match(periodChart, /context\.arc\(positions\[index\], listenerY\(value\), 3/);
   assert.match(periodChart, /context\.fill\(\)/);
   assert.doesNotMatch(historyClient, /CanvasRenderingContext2D\.prototype|beginPathWithDailyPoints|strokeWithDailyPoints/);
 });
