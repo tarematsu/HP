@@ -82,7 +82,6 @@ test('feature tabs share one lazy route registry and loader', () => {
   assert.match(tabsClient, /function loadOnce\(key, importer\)/);
   assert.match(tabsClient, /async function showLazyView\(mode, options = \{}\)/);
   for (const [mode, shell, runtime] of [
-    ['first-week', 'first-week-comparison-shell.js', 'first-week-comparison.js'],
     ['played-tracks', 'played-tracks-shell.js', 'played-tracks.js'],
     ['spotify', 'spotify-shell.js', 'spotify.js'],
     ['amazon-music', 'amazon-music-shell.js', 'amazon-music.js'],
@@ -92,6 +91,8 @@ test('feature tabs share one lazy route registry and loader', () => {
     assert.match(tabsClient, new RegExp(shell.replaceAll('.', '\\.')));
     assert.match(tabsClient, new RegExp(runtime.replaceAll('.', '\\.')));
   }
+  assert.doesNotMatch(tabsClient, /'first-week': \{|first-week-comparison-shell|first-week-comparison\.js/);
+  assert.match(tabsClient, /mode === 'first-week'[\s\S]*#broadcasts/);
   assert.doesNotMatch(tabsClient, /function ensureSpotifyShell|function showSpotify|function showAppleMusic|function showPlayedTracks/);
 });
 
