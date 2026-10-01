@@ -42,6 +42,12 @@ jobs:
         working-directory: worker
         run: node --test tests/regional-music-service-registry.test.js tests/regional-music-youtube-music.test.js
 
+      - name: Expand regional music artist constraint in production D1
+        working-directory: worker
+        run: >-
+          npm exec -- wrangler d1 execute stationhead-other --remote --yes
+          --file ../database/other-migrations/065_regional_music_aobazaka_artist.sql
+
       - name: Run YouTube Music collector once against production bindings
         working-directory: worker
         shell: bash
