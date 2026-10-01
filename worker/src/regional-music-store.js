@@ -34,13 +34,15 @@ export async function saveRegionalArtist(env, value) {
 
   const snapshotDate = value.snapshot_date || regionalMusicSnapshotDate(observedAt);
   await db.prepare(`INSERT INTO regional_music_artist_daily(
-    snapshot_date,service,canonical_artist,observed_at,followers,likes
-  ) VALUES(?,?,?,?,?,?) ON CONFLICT(snapshot_date,service,canonical_artist) DO UPDATE SET
+    snapshot_date,service,canonical_artist,observed_at,followers,likes,monthly_audience,total_views
+  ) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(snapshot_date,service,canonical_artist) DO UPDATE SET
     observed_at=excluded.observed_at,
     followers=COALESCE(excluded.followers,followers),
-    likes=COALESCE(excluded.likes,likes)`)
+    likes=COALESCE(excluded.likes,likes),
+    monthly_audience=COALESCE(excluded.monthly_audience,monthly_audience),
+    total_views=COALESCE(excluded.total_views,total_views)`)
     .bind(snapshotDate, value.service, value.canonical_artist, observedAt,
-      count(value.followers), count(value.likes)).run();
+      count(value.followers), count(value.likes), count(value.monthly_audience), count(value.total_views)).run();
 }
 
 export async function saveRegionalTrack(env, value) {
@@ -74,6 +76,22 @@ export async function saveRegionalTrack(env, value) {
     .bind(snapshotDate, value.service, value.service_track_id, observedAt,
       count(value.plays), count(value.listeners), count(value.likes), count(value.comments),
       positive(value.popularity_rank)).run();
+}
+
+export async function saveRegionalRelease(env, value) {
+  const observedAt = Number(value.observed_at) || Date.now();
+  return dbOf(env).prepare(`INSERT INTO regional_music_releases(
+    service,service_release_id,canonical_artist,title,release_type,release_year,release_url,first_seen_at,last_seen_at
+  ) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(service,service_release_id) DO UPDATE SET
+    canonical_artist=excluded.canonical_artist,
+    title=COALESCE(excluded.title,title),
+    release_type=CASE WHEN excluded.release_type='unknown' THEN release_type ELSE excluded.release_type END,
+    release_year=COALESCE(excluded.release_year,release_year),
+    release_url=COALESCE(excluded.release_url,release_url),
+    last_seen_at=excluded.last_seen_at`)
+    .bind(value.service, value.service_release_id, value.canonical_artist,
+      value.title ?? null, value.release_type || 'unknown', positive(value.release_year),
+      value.release_url ?? null, observedAt, observedAt).run();
 }
 
 export async function saveRegionalPlaylist(env, value) {
