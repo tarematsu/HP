@@ -28,22 +28,25 @@ export function drawDashboardGrid(context, {
   height,
   width,
   ticks = 4,
+  ratios = null,
   strokeStyle = 'rgba(31,45,68,.12)',
 } = {}) {
   if (!context || !Number.isFinite(width) || !Number.isFinite(height)) return [];
+  const gridRatios = Array.isArray(ratios)
+    ? ratios.filter((ratio) => Number.isFinite(ratio)).map((ratio) => Math.max(0, Math.min(1, ratio)))
+    : Array.from({ length: Math.max(1, ticks) + 1 }, (_, index) => index / Math.max(1, ticks));
   const positions = [];
   context.save();
   context.strokeStyle = strokeStyle;
   context.lineWidth = 1;
-  for (let index = 0; index <= ticks; index += 1) {
-    const ratio = index / Math.max(1, ticks);
+  gridRatios.forEach((ratio, index) => {
     const y = top + height * ratio;
     positions.push({ index, ratio, y });
     context.beginPath();
     context.moveTo(left, y);
     context.lineTo(width - right, y);
     context.stroke();
-  }
+  });
   context.restore();
   return positions;
 }
