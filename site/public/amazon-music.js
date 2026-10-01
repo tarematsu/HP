@@ -158,7 +158,9 @@ function renderRankChart(payload, { containerId, metricKey, emptyText, ariaLabel
 
 function renderSummary(payload) {
   const date = element('amazonSnapshotDate');
+  const count = element('amazonTrackCount');
   if (date) date.textContent = formatFullDate(payload?.snapshot_date);
+  if (count) count.textContent = numberFormat.format((Array.isArray(payload?.tracks) ? payload.tracks : []).length);
 }
 
 function renderTable(payload) {
