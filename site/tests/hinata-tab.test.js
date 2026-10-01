@@ -15,6 +15,7 @@ test('Pages mounts a dedicated Hinata dashboard tab after Amazon Music', () => {
   assert.match(metrics, /hinata-shell\.js/);
   assert.match(shell, /mountDashboardShell/);
   assert.match(shell, /view: 'hinata'/);
+  assert.match(shell, /label: 'Ohisama'/);
   assert.match(shell, /anchorSelectors: \['\[data-view="amazon-music"\]', '\[data-view="spotify"\]'\]/);
   assert.match(shell, /position: 'afterend'/);
   assert.match(shell, /日向坂/);
