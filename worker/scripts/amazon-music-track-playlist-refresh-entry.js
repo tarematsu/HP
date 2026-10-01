@@ -3,6 +3,7 @@ import {
   collectAmazonMusicTrackPlaylists,
 } from '../src/amazon-music-track-playlist-collector.js';
 import { amazonMusicTrackPlaylistFetch } from '../src/amazon-music-track-playlist-fetch.js';
+import { publishAmazonMusicTrackPlaylistModel } from '../src/amazon-music-track-playlist-publisher.js';
 
 async function readJson(r2, key) {
   const object = await r2.get(key);
@@ -16,7 +17,9 @@ export default {
     const url = new URL(request.url);
     if (url.pathname !== '/refresh') return new Response('Not found', { status: 404 });
 
-    const result = await collectAmazonMusicTrackPlaylists(env, Date.now(), amazonMusicTrackPlaylistFetch);
+    const observedAt = Date.now();
+    const result = await collectAmazonMusicTrackPlaylists(env, observedAt, amazonMusicTrackPlaylistFetch);
+    const published = await publishAmazonMusicTrackPlaylistModel(env, observedAt);
     const model = await readJson(env.PAGES_RESPONSE_R2, AMAZON_MUSIC_TRACK_PLAYLIST_MODEL_KEY);
     const tracks = Array.isArray(model?.tracks) ? model.tracks : [];
     const withPlaylists = tracks.filter((track) => Number(track?.playlist_count) > 0);
@@ -45,6 +48,7 @@ export default {
 
     return Response.json({
       ...result,
+      public_model: published,
       playlist_tracks: withPlaylists.length,
       playlist_memberships: memberships,
       samples,
