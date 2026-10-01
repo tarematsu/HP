@@ -106,6 +106,10 @@ test('Pages stores listening-party labels at their owning sources without late r
     new URL('../site/public/history/history-broadcast-table.js', import.meta.url),
     'utf8',
   );
+  const time = readFileSync(
+    new URL('../site/public/dashboard-time.js', import.meta.url),
+    'utf8',
+  );
   assert.match(registry, /mode: 'broadcasts', label: 'リスパ'/);
   assert.match(history, /broadcasts: \{ title: '公式リスパ比較', table: '公式リスパ一覧', chart: '公式リスパ 同接推移（開始0分比較）' \}/);
   assert.doesNotMatch(chart, /button\.textContent = '公式リスパ'/);
@@ -117,7 +121,8 @@ test('Pages stores listening-party labels at their owning sources without late r
   assert.match(chart, /sakurazaka46jp:v1:r\$\{CACHE_REVISION\}:/);
   assert.match(chart, /DATE_PREFIX/);
   assert.match(chart, /rawName\.replace\(DATE_PREFIX, ''\)/);
-  assert.match(chart, /jstDay\.format\(new Date\(startedAt\)\)\.replaceAll\('-', ''\)/);
+  assert.match(chart, /JST_DATE_EN_CA\.format\(new Date\(startedAt\)\)\.replaceAll\('-', ''\)/);
+  assert.match(time, /timeZone: 'Asia\/Tokyo'/);
   assert.match(chart, /return date \? `\$\{date\} \$\{name\}` : name/);
   assert.match(table, /history:data-loaded/);
   assert.doesNotMatch(chart, /getElementById\('more'\)|history:data-loaded|host-history|enhanceBroadcastTable/);
