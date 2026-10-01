@@ -29,12 +29,23 @@ const DEFAULT_HANDLES = Object.freeze([
   'sakurazaka46jp',
   'nogizaka46smej',
 ]);
-const SERIES_STYLES = Object.freeze([
-  Object.freeze({ color: '#111', dash: [] }),
-  Object.freeze({ color: '#555', dash: [10, 6] }),
-  Object.freeze({ color: '#777', dash: [2, 5] }),
-  Object.freeze({ color: '#999', dash: [14, 4, 3, 4] }),
+const GROUP_COLORS = Object.freeze({
+  sakurazaka46: '#f3a6c8',
+  nogizaka46: '#8264b0',
+  hinatazaka46: '#9ecff3',
+});
+const SERIES_DASHES = Object.freeze([
+  Object.freeze([]),
+  Object.freeze([10, 6]),
+  Object.freeze([2, 5]),
+  Object.freeze([14, 4, 3, 4]),
 ]);
+const FALLBACK_MEMBERSHIPS = Object.freeze({
+  sakuramankai: Object.freeze({ affiliation: 'Buddies', group: 'sakurazaka46' }),
+  sakuramankai2: Object.freeze({ affiliation: 'Buddies', group: 'sakurazaka46' }),
+  sakurazaka46jp: Object.freeze({ affiliation: '櫻坂46公式', group: 'sakurazaka46' }),
+  nogizaka46smej: Object.freeze({ affiliation: '乃木坂46公式', group: 'nogizaka46' }),
+});
 
 let currentPayload = null;
 let loadPromise = null;
@@ -75,6 +86,29 @@ function payloadHandles(payload) {
   ]);
 }
 
+function normalizedMembership(value, handle) {
+  const fallback = FALLBACK_MEMBERSHIPS[handle] || null;
+  const affiliation = String(value?.affiliation || value?.label || fallback?.affiliation || '').trim();
+  const group = String(value?.group || fallback?.group || '').trim().toLowerCase();
+  if (!affiliation && !group) return { affiliation: '-', group: '' };
+  return { affiliation: affiliation || '-', group };
+}
+
+function membershipFor(payload, provided, handle) {
+  return normalizedMembership(
+    payload?.memberships?.[handle]
+      || { affiliation: provided?.affiliation, group: provided?.group },
+    handle,
+  );
+}
+
+function seriesStyle(account, index) {
+  return {
+    color: GROUP_COLORS[account?.group] || '#6f7886',
+    dash: SERIES_DASHES[index % SERIES_DASHES.length],
+  };
+}
+
 function followerValue(value) {
   const parsed = integer(value);
   return parsed != null && parsed >= 0 ? parsed : null;
@@ -104,8 +138,8 @@ function normalizeRows(rows, handles) {
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
-function normalizeAccounts(accounts, rows, handles) {
-  const provided = new Map((Array.isArray(accounts) ? accounts : [])
+function normalizeAccounts(payload, rows, handles) {
+  const provided = new Map((Array.isArray(payload?.accounts) ? payload.accounts : [])
     .map((row) => [normalizedHandle(row?.handle), row])
     .filter(([handle]) => handle));
   const latest = rows.at(-1);
@@ -119,11 +153,14 @@ function normalizeAccounts(accounts, rows, handles) {
   const week = latest ? byDate.get(offsetDate(-7)) : null;
   return handles.map((handle) => {
     const row = provided.get(handle) || {};
+    const membership = membershipFor(payload, row, handle);
     const current = followerValue(row.followers ?? latest?.[handle]);
     const previousValue = followerValue(previous?.[handle]);
     const weekValue = followerValue(week?.[handle]);
     return {
       handle,
+      affiliation: membership.affiliation,
+      group: membership.group,
       followers: current,
       previous_day_delta: integer(row.previous_day_delta)
         ?? (current != null && previousValue != null ? current - previousValue : null),
@@ -200,22 +237,22 @@ function drawXAxis(context, { rows, positions, area, width }) {
   });
 }
 
-function drawSeries(context, { rows, handles, positions, yFor }) {
-  handles.forEach((handle, seriesIndex) => {
-    const style = SERIES_STYLES[seriesIndex % SERIES_STYLES.length];
+function drawSeries(context, { rows, accounts, positions, yFor }) {
+  accounts.forEach((account, seriesIndex) => {
+    const style = seriesStyle(account, seriesIndex);
     const points = drawDashboardLine(context, rows, {
       x: (_row, index) => positions[index],
       y: (value) => yFor(value),
-      value: (row) => followerValue(row[handle]),
+      value: (row) => followerValue(row[account.handle]),
       valid: (value) => value != null,
       strokeStyle: style.color,
       lineWidth: 2,
       lineDash: style.dash,
     });
     if (!points) return;
-    const latestIndex = rows.findLastIndex((row) => followerValue(row[handle]) != null);
+    const latestIndex = rows.findLastIndex((row) => followerValue(row[account.handle]) != null);
     if (latestIndex < 0) return;
-    const value = followerValue(rows[latestIndex][handle]);
+    const value = followerValue(rows[latestIndex][account.handle]);
     context.save();
     context.fillStyle = style.color;
     context.beginPath();
@@ -233,16 +270,17 @@ function renderChartDetail() {
     detail.textContent = '';
     return;
   }
-  const values = chartModel.handles
-    .map((handle) => {
-      const value = followerValue(row[handle]);
-      return value == null ? null : `${handle} ${numberFormat.format(value)}`;
+  const values = chartModel.accounts
+    .map((account) => {
+      const value = followerValue(row[account.handle]);
+      return value == null ? null : `${account.handle} ${numberFormat.format(value)}`;
     })
     .filter(Boolean);
   detail.textContent = `${fullDateLabel(row.date)}${values.length ? `　${values.join('　')}` : ''}`;
 }
 
-function renderChart(rows, handles) {
+function renderChart(rows, accounts) {
+  const handles = accounts.map((account) => account.handle);
   const values = rows.flatMap((row) => handles
     .map((handle) => followerValue(row[handle]))
     .filter((value) => value != null));
@@ -270,7 +308,7 @@ function renderChart(rows, handles) {
 
   drawGrid(context, { width, area, bounds });
   drawXAxis(context, { rows, positions, area, width });
-  drawSeries(context, { rows, handles, positions, yFor });
+  drawSeries(context, { rows, accounts, positions, yFor });
 
   context.fillStyle = cssColor('--muted', '#667287');
   context.font = '11px system-ui';
@@ -280,7 +318,7 @@ function renderChart(rows, handles) {
   context.textAlign = 'center';
   context.fillText('日付', width / 2, height - 2);
 
-  chartModel = { rows, handles, positions };
+  chartModel = { rows, accounts, positions };
   renderChartDetail();
 }
 
@@ -290,9 +328,12 @@ function renderLegend(accounts) {
   legend.replaceChildren();
   accounts.forEach((account, index) => {
     const item = document.createElement('span');
-    item.className = `followers-legend-item followers-series-${index % SERIES_STYLES.length}`;
+    item.className = 'followers-legend-item';
     const swatch = document.createElement('i');
+    const style = seriesStyle(account, index);
     swatch.className = 'followers-legend-swatch';
+    swatch.style.borderTopColor = style.color;
+    swatch.style.borderTopStyle = style.dash.length ? (index % 2 ? 'dashed' : 'dotted') : 'solid';
     swatch.setAttribute('aria-hidden', 'true');
     const copy = document.createElement('span');
     copy.className = 'followers-legend-copy';
@@ -313,6 +354,7 @@ function renderTable(accounts) {
   for (const account of accounts) {
     appendTableRow(body, [
       account.handle,
+      { text: account.affiliation, className: 'followers-affiliation' },
       formatFollower(account.followers),
       {
         text: signedInteger(account.previous_day_delta),
@@ -331,11 +373,11 @@ const setNotice = (message = '', error = false) => setSharedNotice('followersNot
 function render(payload) {
   const handles = payloadHandles(payload);
   const rows = normalizeRows(payload?.rows, handles);
-  const accounts = normalizeAccounts(payload?.accounts, rows, handles);
+  const accounts = normalizeAccounts(payload, rows, handles);
   const chart = byId('followersChart');
   if (chart) chart.setAttribute('aria-label', `${handles.length}アカウントのフォロワー数推移`);
   renderLegend(accounts);
-  renderChart(rows, handles);
+  renderChart(rows, accounts);
   renderTable(accounts);
   if (!rows.length) setNotice('フォロワー履歴はまだありません。初回の0時収集後に表示されます。');
   else setNotice('');
@@ -363,7 +405,7 @@ export async function loadFollowersView() {
       })
       .catch((error) => {
         setNotice('フォロワーデータの取得に失敗しました。', true);
-        renderChart([], DEFAULT_HANDLES);
+        renderChart([], DEFAULT_HANDLES.map((handle) => ({ handle, ...normalizedMembership(null, handle) })));
         throw error;
       })
       .finally(() => {
@@ -385,5 +427,6 @@ followersChart?.addEventListener('pointerup', (event) => {
 observeDashboardChartResize(followersChart, () => {
   if (!currentPayload) return;
   const handles = payloadHandles(currentPayload);
-  renderChart(normalizeRows(currentPayload.rows, handles), handles);
+  const rows = normalizeRows(currentPayload.rows, handles);
+  renderChart(rows, normalizeAccounts(currentPayload, rows, handles));
 }, { delay: 180, enabled: () => Boolean(currentPayload) });
