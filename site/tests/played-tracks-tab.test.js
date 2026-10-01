@@ -63,9 +63,12 @@ test('weekly played tracks uses a Monday start and seven-day range', () => {
   assert.match(runtime, /normalizedRows\(payload\.rows, from, to\)/);
 });
 
-test('played tracks chart uses neon colors and limits labels further on narrow screens', () => {
+test('played tracks chart uses the shared Canvas setup, neon colors, and fewer labels on narrow screens', () => {
+  assert.match(runtime, /dashboard-chart-canvas\.js\?v=20261001\.2/);
+  assert.match(runtime, /prepareDashboardCanvas\(canvas/);
+  assert.doesNotMatch(runtime, /getContext\('2d'\)|devicePixelRatio|context\.setTransform/);
   assert.match(runtime, /hsl\(\$\{hue\} 100% 60%\)/);
-  assert.match(runtime, /const labelLimit = rect\.width < 520 \? 3 : 5/);
+  assert.match(runtime, /const labelLimit = width < 520 \? 3 : 5/);
   assert.match(runtime, /if \(index < labelLimit\)/);
   assert.match(runtime, /const rawTitle = trackLabel\(label\.row\)/);
   assert.match(runtime, /integer\.format\(label\.row\.play_count\)/);
