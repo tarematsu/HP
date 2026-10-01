@@ -61,22 +61,75 @@ export function renderObservabilitySystemStatus(issueBody) {
   return `${SYSTEM_STATUS_MARKER}\n- **System status:** ${overall} · **Cloudflare:** ${components.cloudflare} · **Actions runner:** ${components.runner} · **Deployments:** ${components.deployment}`;
 }
 
+function systemIncident(status) {
+  const labels = {
+    cloudflare: 'Cloudflare',
+    runner: 'Actions runner',
+    deployment: 'Deployments',
+  };
+  const unhealthy = Object.entries(status.components)
+    .filter(([, value]) => componentState(value) !== 'success')
+    .map(([key, value]) => `${labels[key]}=${value}`);
+  return unhealthy.join('; ') || 'System component state is incomplete.';
+}
+
+export function synchronizeImmediateTriageWithSystemStatus(issueBody) {
+  const body = String(issueBody || '');
+  const status = observabilitySystemStatus(body);
+  if (status.overall === 'success' || !/^## Immediate triage$/m.test(body)) return body;
+
+  const evidence = systemIncident(status).replaceAll('|', '\\|');
+  const headline = status.overall === 'pending'
+    ? `> **PENDING — system health data is incomplete.** ${evidence}`
+    : `> **ACTION REQUIRED — system health is not green.** ${evidence}`;
+  const priority = status.overall === 'pending' ? 'P2' : 'P1';
+  const area = status.components.runner && componentState(status.components.runner) !== 'success'
+    ? 'GitHub Actions runner health'
+    : status.components.deployment && componentState(status.components.deployment) !== 'success'
+      ? 'Deployment health'
+      : 'Cloudflare observability';
+  const action = status.components.runner && componentState(status.components.runner) !== 'success'
+    ? 'Inspect stale, failed, or missing workflow runs in the runner health block above.'
+    : status.components.deployment && componentState(status.components.deployment) !== 'success'
+      ? 'Inspect the deployment health block above and restore an active deployment.'
+      : 'Inspect the failing Cloudflare gate and detailed diagnostics below.';
+  const drillDown = status.components.runner && componentState(status.components.runner) !== 'success'
+    ? '[runner health](#github-actions-runner-health)'
+    : status.components.deployment && componentState(status.components.deployment) !== 'success'
+      ? '[deployments](#deployment-context)'
+      : '[diagnostics](#diagnostic-observability)';
+
+  let synchronized = body.replace(
+    /(## Immediate triage\s*\n\n)> \*\*(?:HEALTHY|CONTAINED)[^\n]*\*\*(?:[^\n]*)?/,
+    `$1${headline}`,
+  );
+  synchronized = synchronized.replace(
+    '| - | No active incidents | All monitored gates and availability signals are healthy. | Continue routine monitoring. | - |',
+    `| **${priority}** | ${area} | ${evidence} | ${action} | ${drillDown} |`,
+  );
+  return synchronized;
+}
+
 export function synchronizeObservabilitySystemStatus(issueBody) {
   let body = String(issueBody || '');
   const escapedMarker = SYSTEM_STATUS_MARKER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   body = body.replace(new RegExp(`${escapedMarker}\\n- \\*\\*System status:\\*\\*[^\\n]*(?:\\n|$)`, 'g'), '');
   const block = renderObservabilitySystemStatus(body);
   const scopeLine = body.match(/^- \*\*Scope:\*\*[^\n]*$/m);
+  let synchronized;
   if (scopeLine?.index != null) {
     const insertAt = scopeLine.index + scopeLine[0].length;
-    return `${body.slice(0, insertAt)}\n${block}${body.slice(insertAt)}`;
+    synchronized = `${body.slice(0, insertAt)}\n${block}${body.slice(insertAt)}`;
+  } else {
+    const heading = body.match(/^# Cloudflare Observability Status$/m);
+    if (heading?.index != null) {
+      const insertAt = heading.index + heading[0].length;
+      synchronized = `${body.slice(0, insertAt)}\n\n${block}${body.slice(insertAt)}`;
+    } else {
+      synchronized = `${block}\n${body}`.trim();
+    }
   }
-  const heading = body.match(/^# Cloudflare Observability Status$/m);
-  if (heading?.index != null) {
-    const insertAt = heading.index + heading[0].length;
-    return `${body.slice(0, insertAt)}\n\n${block}${body.slice(insertAt)}`;
-  }
-  return `${block}\n${body}`.trim();
+  return synchronizeImmediateTriageWithSystemStatus(synchronized);
 }
 
 export async function publishObservabilitySystemStatusFromEnvironment() {
