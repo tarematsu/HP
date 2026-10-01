@@ -42,7 +42,6 @@ export const MATERIALIZED_API_VARIANTS = Object.freeze([
   Object.freeze({ key: 'dashboard', url: '/api/dashboard?history=0', cadence_minutes: 5 }),
   Object.freeze({ key: 'history:daily', url: '/api/history?mode=daily', cadence_minutes: 1440, revision_driven: true }),
   Object.freeze({ key: 'history:weekly', url: '/api/history?mode=weekly', cadence_minutes: 1440, revision_driven: true }),
-  Object.freeze({ key: 'history:monthly', url: '/api/history?mode=monthly', cadence_minutes: 1440, revision_driven: true }),
   Object.freeze({ key: 'history:broadcasts', url: '/api/history?mode=broadcasts', cadence_minutes: 1440, revision_driven: true }),
   Object.freeze({ key: 'host-history:summary', url: '/api/host-history?mode=summary', cadence_minutes: 1440, revision_driven: true }),
   Object.freeze({
@@ -75,7 +74,7 @@ export function materializedApiKey(input) {
       && onlyParameters(url, ['since', 'queue_revision', 'history'])) return 'dashboard';
   if (pathname === '/api/history' && onlyParameters(url, ['mode', 'from', 'to'])) {
     const mode = String(url.searchParams.get('mode') || 'weekly').trim().toLowerCase();
-    return ['daily', 'weekly', 'monthly', 'broadcasts'].includes(mode) ? `history:${mode}` : null;
+    return ['daily', 'weekly', 'broadcasts'].includes(mode) ? `history:${mode}` : null;
   }
   if (pathname === '/api/host-history' && onlyParameters(url, ['mode'])) {
     const mode = String(url.searchParams.get('mode') || 'summary').trim().toLowerCase();
