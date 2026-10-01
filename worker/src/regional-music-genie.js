@@ -32,7 +32,7 @@ export function findGenieArtistId(html, aliases) {
   const wanted = aliases.map((alias) => String(alias).normalize('NFKC').toLocaleLowerCase('en-US').replace(/\s+/g, ''));
   for (const match of links) {
     const label = visibleHtmlText(match[2]).normalize('NFKC').toLocaleLowerCase('en-US').replace(/\s+/g, '');
-    if (wanted.some((alias) => label.includes(alias))) return match[1];
+    if (wanted.includes(label)) return match[1];
   }
   return null;
 }
