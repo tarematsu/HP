@@ -7,7 +7,10 @@ import './dashboard-header.js?v=20260928.1';
 import './dashboard-tab-order.js?v=20260929.1';
 import './hinata-shell.js?v=20261001.2';
 import './followers-shell.js?v=20261001.1';
-import './dashboard-tabs.js?v=20260930.1';
+
+void import(location.origin + '/dashboard-tabs.js?v=20261002.1').catch((error) => {
+  console.error('dashboard navigation failed to start', error);
+});
 
 const IMAGE_RETRY_DELAYS = [5_000, 30_000, 120_000];
 const imageRetryTimers = new WeakMap();
