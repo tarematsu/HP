@@ -2,6 +2,7 @@ import { collectAnghami } from './regional-music-anghami.js';
 import { collectBugsArtists } from './regional-music-bugs.js';
 import { collectGenie } from './regional-music-genie.js';
 import { collectJooxArtists } from './regional-music-joox.js';
+import { collectMelon } from './regional-music-melon.js';
 import { collectNhacCuaTui } from './regional-music-nhaccuatui.js';
 
 export const REGIONAL_MUSIC_DAILY_CRON = '20 15 * * *';
@@ -12,6 +13,7 @@ const DAILY_COLLECTORS = Object.freeze([
   collectJooxArtists,
   collectNhacCuaTui,
   collectAnghami,
+  collectMelon,
 ]);
 
 export async function collectRegionalMusicDaily(env, scheduledTime, fetchImpl = fetch) {
