@@ -1,3 +1,22 @@
 /* Small late overrides for compact widths found by the screenshot audit. */
 #spotifyHint,
 .spotify-table td:nth-child(n + 3) { white-space: nowrap !important; }
+
+@media (max-width: 760px) {
+  #modeTabs.mode-tabs.dashboard-tabs {
+    display: grid;
+    grid-template-columns: repeat(7, max-content);
+    grid-template-rows: repeat(2, minmax(44px, auto));
+    grid-auto-flow: row;
+    align-items: stretch;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  #modeTabs.mode-tabs.dashboard-tabs > button {
+    width: 100%;
+    min-height: 44px;
+    padding: 6px 9px;
+    white-space: nowrap;
+  }
+}
