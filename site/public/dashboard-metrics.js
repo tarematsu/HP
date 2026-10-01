@@ -87,7 +87,7 @@ function ensureCurrentRuntime() {
     await Promise.all([
       import('./dashboard-current-layout.js?v=20260924.1'),
       import('./dashboard-chart-stability.js?v=20260930.2'),
-      import('./dashboard-chart-comparison.js?v=20260930.2'),
+      import('./dashboard-chart-comparison.js?v=20261001.1'),
       import('./dashboard-chart-detail.js?v=20260930.2'),
       import('./dashboard-daily-summaries.js?v=20260930.2'),
     ]);
