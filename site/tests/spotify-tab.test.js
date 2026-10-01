@@ -235,7 +235,7 @@ test('Spotify tab uses one materialized read model and one shared Canvas rendere
   assert.match(runtime, /nogizaka46: '#8264b0'/);
   assert.match(runtime, /sakurazaka46: '#f3a6c8'/);
   assert.match(runtime, /hinatazaka46: '#9ecff3'/);
-  assert.match(runtime, /renderOverviewChart\(trend, monthlyListenerRows\)/);
+  assert.match(runtime, /overviewTrend\(trend, monthlyListenerRows\)/);
   assert.match(runtime, /lineDash: \[6, 4\]/);
   assert.match(runtime, /metricKey: 'top10_year_delta'/);
   assert.doesNotMatch(runtime, /spotifyTop10TrendCharts|metricKey: 'top10_delta'/);
