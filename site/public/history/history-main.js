@@ -18,7 +18,6 @@ async function importModeRuntime(mode) {
   }
   if (key === 'ranking') {
     await import('/history/history-ranking-chart.js?v=20260930.2&rev=20260930.3');
-    await import('/history/history-ranking-all-host-table.js?v=20260930.1');
     return;
   }
   await import('/unofficial-listening-parties.js?v=20260927.1');
@@ -50,5 +49,6 @@ await import('/history/history-axis-labels.js?v=20260923.6');
 await import('/history/history-chart-stability.js?v=20260925.1');
 await ensureHistoryModeRuntime(initialMode);
 await import('/history/history-range-navigator.js?v=20260925.1');
+await import('/history/history-ranking-simplified.js?v=20261002.1');
 await import('/history/history-lite.js?v=20261001.1');
 window.dispatchEvent(new Event('history:runtime-ready'));
