@@ -4,6 +4,13 @@ import {
   finiteNumber as finite,
   integerFormat as integer,
 } from '../dashboard-ui-common.js?v=20260930.1';
+import {
+  dashboardTickIndexes,
+  drawDashboardGrid,
+  drawDashboardLine,
+  drawDashboardXAxis,
+  prepareDashboardCanvas,
+} from '../dashboard-chart-canvas.js?v=20261001.2';
 
 const RANKING_MODE = 'ranking';
 const FEATURED_HOSTS = ['sakuramankai', 'sakurazaka46jp', 'nogizaka46smej'];
@@ -46,21 +53,6 @@ function activeMode() {
 function scheduleDraw(delay = 0) {
   clearTimeout(drawTimer);
   drawTimer = setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(draw)), delay);
-}
-
-function prepareCanvas() {
-  const canvas = byId('chart');
-  if (!canvas) return null;
-  const context = canvas.getContext('2d');
-  if (!context) return null;
-  const width = Math.max(320, Math.round(canvas.clientWidth || 960));
-  const height = Math.max(260, Math.round(canvas.clientHeight || 360));
-  const ratio = Math.min(2, window.devicePixelRatio || 1);
-  canvas.width = Math.round(width * ratio);
-  canvas.height = Math.round(height * ratio);
-  context.setTransform(ratio, 0, 0, ratio, 0, 0);
-  context.clearRect(0, 0, width, height);
-  return { canvas, context, width, height };
 }
 
 function appendLegend(label, color, datasetKey = '') {
@@ -110,15 +102,6 @@ function fullWeek(value) {
   return match ? `${match[1]}/${Number(match[2])}/${Number(match[3])}` : String(value || '');
 }
 
-function tickIndices(length, count) {
-  if (length <= 1) return [0];
-  const indexes = new Set();
-  for (let index = 0; index < count; index += 1) {
-    indexes.add(Math.round((length - 1) * index / Math.max(1, count - 1)));
-  }
-  return [...indexes].sort((a, b) => a - b);
-}
-
 function drawMissingBand(context, weeks, positions, area) {
   const missingIndexes = weeks
     .map((week, index) => isMissingWeek(week) ? index : -1)
@@ -155,9 +138,15 @@ function draw() {
   const panel = byId('chartPanel');
   if (!panel) return;
   panel.hidden = false;
-  const prepared = prepareCanvas();
+  const canvas = byId('chart');
+  const prepared = prepareDashboardCanvas(canvas, {
+    minimumWidth: 320,
+    minimumHeight: 260,
+    fallbackWidth: 960,
+    fallbackHeight: 360,
+  });
   if (!prepared) return;
-  const { canvas, context, width, height } = prepared;
+  const { context, width, height } = prepared;
   const area = { left: 46, right: 18, top: 18, bottom: 55 };
   area.width = Math.max(1, width - area.left - area.right);
   area.height = Math.max(1, height - area.top - area.bottom);
@@ -169,67 +158,55 @@ function draw() {
   const maxRank = Math.max(1, ...ranks);
   const yFor = (rank) => area.top + ((Math.max(1, Number(rank)) - 1) / Math.max(1, maxRank - 1)) * area.height;
 
-  context.strokeStyle = 'rgba(31,45,68,.12)';
   context.fillStyle = cssColor('--muted', '#667287');
-  context.lineWidth = 1;
   context.font = '11px system-ui';
-  const tickRanks = [...new Set([1, Math.max(1, Math.round((maxRank + 1) / 2)), maxRank])];
-  for (const rank of tickRanks) {
-    const y = yFor(rank);
-    context.beginPath();
-    context.moveTo(area.left, y);
-    context.lineTo(width - area.right, y);
-    context.stroke();
+  context.textBaseline = 'middle';
+  for (const { ratio, y } of drawDashboardGrid(context, {
+    left: area.left,
+    right: area.right,
+    top: area.top,
+    height: area.height,
+    width,
+    ticks: 2,
+  })) {
+    const rank = Math.max(1, Math.round(1 + (maxRank - 1) * ratio));
     context.textAlign = 'right';
     context.fillText(`#${integer.format(rank)}`, area.left - 7, y + 3);
   }
 
   const colors = model.series.map((item, index) => colorForHost(item.host, index));
   model.series.forEach((item, seriesIndex) => {
-    context.save();
-    context.strokeStyle = colors[seriesIndex];
-    context.fillStyle = colors[seriesIndex];
-    context.lineWidth = 2;
-    context.beginPath();
-    let open = false;
-    item.values.forEach((rank, index) => {
-      if (rank == null || rank <= 0) {
-        open = false;
-        return;
-      }
-      const x = positions[index];
-      const y = yFor(rank);
-      if (!open) context.moveTo(x, y);
-      else context.lineTo(x, y);
-      open = true;
+    const values = item.values.map((rank, index) => ({ rank, index }));
+    drawDashboardLine(context, values, {
+      x: (row) => positions[row.index],
+      y: (rank) => yFor(rank),
+      value: (row) => row.rank,
+      valid: (rank) => rank != null && rank > 0,
+      strokeStyle: colors[seriesIndex],
+      lineWidth: 2,
     });
-    context.stroke();
-    item.values.forEach((rank, index) => {
-      if (rank == null || rank <= 0) return;
+    context.save();
+    context.fillStyle = colors[seriesIndex];
+    values.forEach((row) => {
+      if (row.rank == null || row.rank <= 0) return;
       context.beginPath();
-      context.arc(positions[index], yFor(rank), 3, 0, Math.PI * 2);
+      context.arc(positions[row.index], yFor(row.rank), 3, 0, Math.PI * 2);
       context.fill();
     });
     context.restore();
   });
 
-  context.fillStyle = cssColor('--muted', '#667287');
-  context.font = '11px system-ui';
-  context.textBaseline = 'top';
   const xTickCount = Math.min(model.weeks.length, width < 520 ? 4 : 6);
-  for (const index of tickIndices(model.weeks.length, xTickCount)) {
-    const x = positions[index];
-    context.beginPath();
-    context.strokeStyle = 'rgba(31,45,68,.12)';
-    context.moveTo(x, area.top + area.height);
-    context.lineTo(x, area.top + area.height + 5);
-    context.stroke();
-    context.fillStyle = cssColor('--muted', '#667287');
-    const first = index === 0;
-    const last = index === model.weeks.length - 1;
-    context.textAlign = first ? 'left' : last ? 'right' : 'center';
-    context.fillText(fullWeek(model.weeks[index]), first ? x + 2 : last ? x - 2 : x, area.top + area.height + 9);
-  }
+  drawDashboardXAxis(context, {
+    left: area.left,
+    right: area.right,
+    top: area.top + area.height,
+    width,
+    positions,
+    indexes: dashboardTickIndexes(model.weeks.length, xTickCount),
+    labelFor: (index) => fullWeek(model.weeks[index]),
+    fillStyle: cssColor('--muted', '#667287'),
+  });
 
   const title = byId('chartTitle');
   if (title) title.textContent = chartHosts.length === 1

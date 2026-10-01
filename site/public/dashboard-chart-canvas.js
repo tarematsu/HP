@@ -1,4 +1,4 @@
-// Shared canvas primitives used by current, history, and music-service charts.
+// Shared canvas primitives used by every dashboard chart.
 export function prepareDashboardCanvas(canvas, {
   minimumWidth = 320,
   minimumHeight = 260,
@@ -28,22 +28,25 @@ export function drawDashboardGrid(context, {
   height,
   width,
   ticks = 4,
+  ratios = null,
   strokeStyle = 'rgba(31,45,68,.12)',
 } = {}) {
   if (!context || !Number.isFinite(width) || !Number.isFinite(height)) return [];
+  const gridRatios = Array.isArray(ratios)
+    ? ratios.filter((ratio) => Number.isFinite(ratio)).map((ratio) => Math.max(0, Math.min(1, ratio)))
+    : Array.from({ length: Math.max(1, ticks) + 1 }, (_, index) => index / Math.max(1, ticks));
   const positions = [];
   context.save();
   context.strokeStyle = strokeStyle;
   context.lineWidth = 1;
-  for (let index = 0; index <= ticks; index += 1) {
-    const ratio = index / Math.max(1, ticks);
+  gridRatios.forEach((ratio, index) => {
     const y = top + height * ratio;
     positions.push({ index, ratio, y });
     context.beginPath();
     context.moveTo(left, y);
     context.lineTo(width - right, y);
     context.stroke();
-  }
+  });
   context.restore();
   return positions;
 }
@@ -56,6 +59,7 @@ export function drawDashboardLine(context, rows, {
   gap = null,
   strokeStyle = '#111',
   lineWidth = 2,
+  lineDash = [],
 } = {}) {
   if (!context || !Array.isArray(rows) || typeof x !== 'function' || typeof y !== 'function' || typeof value !== 'function') return 0;
   context.save();
@@ -63,6 +67,7 @@ export function drawDashboardLine(context, rows, {
   context.lineWidth = lineWidth;
   context.lineJoin = 'round';
   context.lineCap = 'round';
+  if (typeof context.setLineDash === 'function') context.setLineDash(Array.isArray(lineDash) ? lineDash : []);
   context.beginPath();
   let open = false;
   let previous = null;
@@ -90,6 +95,47 @@ export function drawDashboardLine(context, rows, {
   context.stroke();
   context.restore();
   return points;
+}
+
+export function drawDashboardXAxis(context, {
+  left,
+  right,
+  top,
+  width,
+  positions = [],
+  indexes = [],
+  labels = [],
+  labelFor = null,
+  strokeStyle = 'rgba(31,45,68,.12)',
+  fillStyle = '#667287',
+  font = '11px system-ui',
+  tickSize = 4,
+  labelOffset = 7,
+} = {}) {
+  if (!context || !Number.isFinite(width) || !Number.isFinite(top)) return;
+  context.save();
+  context.strokeStyle = strokeStyle;
+  context.fillStyle = fillStyle;
+  context.lineWidth = 1;
+  context.font = font;
+  context.textBaseline = 'top';
+  context.beginPath();
+  context.moveTo(left, top);
+  context.lineTo(width - right, top);
+  context.stroke();
+  indexes.forEach((index, tickIndex) => {
+    const x = Number(positions[index]);
+    if (!Number.isFinite(x)) return;
+    context.beginPath();
+    context.moveTo(x, top);
+    context.lineTo(x, top + tickSize);
+    context.stroke();
+    const label = typeof labelFor === 'function' ? labelFor(index) : labels[index];
+    if (label == null || label === '') return;
+    context.textAlign = tickIndex === 0 ? 'left' : tickIndex === indexes.length - 1 ? 'right' : 'center';
+    context.fillText(String(label), x, top + labelOffset);
+  });
+  context.restore();
 }
 
 export function dashboardTickIndexes(count, target = 5) {

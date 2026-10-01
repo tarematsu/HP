@@ -8,6 +8,8 @@ const sharedRoute = readFileSync(new URL('../public/dashboard-tabs.js', import.m
 const canvasChart = readFileSync(new URL('../public/dashboard-chart-canvas.js', import.meta.url), 'utf8');
 const currentChart = readFileSync(new URL('../public/dashboard-chart-comparison.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
+const rankingChart = readFileSync(new URL('../public/history/history-ranking-chart.js', import.meta.url), 'utf8');
+const broadcastsChart = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
 const rankChart = readFileSync(new URL('../public/dashboard-rank-chart.js', import.meta.url), 'utf8');
 const tableDom = readFileSync(new URL('../public/dashboard-table-dom.js', import.meta.url), 'utf8');
 const historyToggle = readFileSync(new URL('../public/history/history-past-toggle-shell.js', import.meta.url), 'utf8');
@@ -29,7 +31,16 @@ const shells = Object.fromEntries(shellFiles.map((file) => [
   file,
   readFileSync(new URL(`../public/${file}`, import.meta.url), 'utf8'),
 ]));
-const runtimeFiles = ['amazon-music.js', 'apple-music.js', 'followers.js', 'spotify.js'];
+const runtimeFiles = [
+  'amazon-music.js',
+  'apple-music.js',
+  'followers.js',
+  'spotify.js',
+  'hinata.js',
+  'played-tracks.js',
+  'first-week-comparison.js',
+  'nogizaka-listening-party.js',
+];
 const runtimes = Object.fromEntries(runtimeFiles.map((file) => [
   file,
   readFileSync(new URL(`../public/${file}`, import.meta.url), 'utf8'),
@@ -63,7 +74,7 @@ test('dashboard exposes shared runtime primitives for repeated view rendering wo
   for (const helper of ['signedInteger', 'evenlySpacedIndexes', 'appendEmptyState']) {
     assert.match(sharedUi, new RegExp(`export function ${helper}\\(`));
   }
-  for (const helper of ['prepareDashboardCanvas', 'drawDashboardGrid', 'drawDashboardLine', 'dashboardTickIndexes']) {
+  for (const helper of ['prepareDashboardCanvas', 'drawDashboardGrid', 'drawDashboardLine', 'drawDashboardXAxis', 'dashboardTickIndexes']) {
     assert.match(canvasChart, new RegExp(`export function ${helper}\\(`));
   }
   assert.match(rankChart, /appendEmptyState/);
@@ -75,7 +86,8 @@ test('dashboard exposes shared runtime primitives for repeated view rendering wo
     assert.doesNotMatch(runtimes[name], /appendEmptyState|evenlySpacedIndexes|svgElement/);
   }
   assert.match(runtimes['followers.js'], /appendEmptyState/);
-  assert.match(runtimes['followers.js'], /evenlySpacedIndexes/);
+  assert.match(runtimes['followers.js'], /drawDashboardXAxis/);
+  assert.match(runtimes['followers.js'], /drawDashboardLine/);
   assert.match(runtimes['spotify.js'], /appendEmptyState/);
   assert.match(runtimes['spotify.js'], /drawDashboardGrid/);
   assert.match(runtimes['spotify.js'], /drawDashboardLine/);
@@ -90,15 +102,34 @@ test('dashboard exposes shared runtime primitives for repeated view rendering wo
   assert.doesNotMatch(runtimes['followers.js'], /function (?:appendText|tickIndexes)\s*\(/);
 });
 
-test('current, history, and music subscription graphs reuse the same canvas primitives', () => {
-  for (const source of [currentChart, periodChart, runtimes['spotify.js'], rankChart]) {
-    assert.match(source, /dashboard-chart-canvas\.js\?v=20261001\.1/);
-    assert.match(source, /drawDashboardLine/);
-    assert.match(source, /prepareDashboardCanvas/);
+test('all client Canvas charts reuse the single dashboard canvas foundation', () => {
+  const sources = {
+    current: currentChart,
+    historyPeriod: periodChart,
+    historyRanking: rankingChart,
+    historyBroadcasts: broadcastsChart,
+    spotify: runtimes['spotify.js'],
+    subscriptionRank: rankChart,
+    ohisama: runtimes['hinata.js'],
+    followers: runtimes['followers.js'],
+    playedTracks: runtimes['played-tracks.js'],
+    firstWeek: runtimes['first-week-comparison.js'],
+    nogizakaParty: runtimes['nogizaka-listening-party.js'],
+  };
+  assert.match(canvasChart, /getContext\('2d'\)/);
+  assert.match(canvasChart, /window\.devicePixelRatio/);
+  for (const [name, source] of Object.entries(sources)) {
+    assert.match(source, /dashboard-chart-canvas\.js\?v=20261001\.[12]/, `${name} must import the shared Canvas foundation`);
+    assert.match(source, /prepareDashboardCanvas/, `${name} must share Canvas sizing and DPR setup`);
+    assert.doesNotMatch(source, /getContext\('2d'\)/, `${name} must not initialize Canvas independently`);
+    assert.doesNotMatch(source, /window\.devicePixelRatio/, `${name} must not own DPR logic`);
   }
-  assert.match(currentChart, /drawDashboardGrid/);
-  assert.match(periodChart, /drawDashboardGrid/);
-  assert.match(runtimes['spotify.js'], /drawDashboardGrid/);
+  for (const source of [currentChart, periodChart, rankingChart, broadcastsChart, runtimes['spotify.js'], rankChart, runtimes['hinata.js'], runtimes['followers.js'], runtimes['first-week-comparison.js'], runtimes['nogizaka-listening-party.js']]) {
+    assert.match(source, /drawDashboardLine/);
+  }
+  for (const source of [currentChart, periodChart, rankingChart, broadcastsChart, runtimes['spotify.js'], rankChart, runtimes['hinata.js'], runtimes['followers.js'], runtimes['first-week-comparison.js'], runtimes['nogizaka-listening-party.js']]) {
+    assert.match(source, /drawDashboardGrid/);
+  }
 });
 
 test('all dashboard shells share mounting and reusable UI components without runtime stylesheet loading', () => {

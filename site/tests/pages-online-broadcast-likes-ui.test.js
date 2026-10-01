@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 const daily = readFileSync(new URL('../public/dashboard-daily-summaries.js', import.meta.url), 'utf8');
 const likes = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
 const broadcasts = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
+const canvas = readFileSync(new URL('../public/dashboard-chart-canvas.js', import.meta.url), 'utf8');
 
 test('current online card uses the requested label and three daily averages without the 24h range', () => {
   assert.match(daily, /オンライン数/);
@@ -28,7 +29,9 @@ test('like ranking and track list keep only Sakurazaka46 and unknown artists', (
 
 test('official listening party graph reuses the shared chart palette and guide-line styling', () => {
   assert.match(broadcasts, /SERIES_COLORS/);
-  assert.match(broadcasts, /rgba\(31,45,68,\.12\)/);
+  assert.match(broadcasts, /drawDashboardGrid/);
+  assert.match(broadcasts, /drawDashboardLine/);
+  assert.match(canvas, /strokeStyle = 'rgba\(31,45,68,\.12\)'/);
   assert.match(broadcasts, /cssColor\('--muted'/);
   assert.doesNotMatch(broadcasts, /#ffffff18|#aaa3b5|hsla\(/);
 });

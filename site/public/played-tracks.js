@@ -1,4 +1,5 @@
 import { byId, integerFormat as integer, setNotice as setSharedNotice } from './dashboard-ui-common.js?v=20260930.1';
+import { prepareDashboardCanvas } from './dashboard-chart-canvas.js?v=20261001.2';
 import { appendTableRow } from './dashboard-table-dom.js?v=20261001.1';
 
 const percent = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
@@ -179,31 +180,30 @@ function drawPie() {
   if (!canvas) return;
   const rect = canvas.getBoundingClientRect();
   if (!rect.width || !rect.height) return;
-  const ratio = Math.min(window.devicePixelRatio || 1, 2);
-  const width = Math.max(1, Math.round(rect.width * ratio));
-  const height = Math.max(1, Math.round(rect.height * ratio));
-  if (canvas.width !== width) canvas.width = width;
-  if (canvas.height !== height) canvas.height = height;
-
-  const context = canvas.getContext('2d');
-  if (!context) return;
-  context.setTransform(ratio, 0, 0, ratio, 0, 0);
-  context.clearRect(0, 0, rect.width, rect.height);
+  const prepared = prepareDashboardCanvas(canvas, {
+    minimumWidth: 1,
+    minimumHeight: 1,
+    fallbackWidth: Math.round(rect.width),
+    fallbackHeight: Math.round(rect.height),
+    height: Math.round(rect.height),
+  });
+  if (!prepared) return;
+  const { context, width, height } = prepared;
 
   if (!state.total || !state.rows.length) {
     context.fillStyle = '#666';
     context.font = '14px system-ui, sans-serif';
     context.textAlign = 'center';
     context.textBaseline = 'middle';
-    context.fillText('再生履歴データがありません', rect.width / 2, rect.height / 2);
+    context.fillText('再生履歴データがありません', width / 2, height / 2);
     return;
   }
 
-  const radius = Math.min(rect.width, rect.height) * 0.32;
-  const centerX = rect.width / 2;
-  const centerY = rect.height / 2;
+  const radius = Math.min(width, height) * 0.32;
+  const centerX = width / 2;
+  const centerY = height / 2;
   const topLabels = [];
-  const labelLimit = rect.width < 520 ? 3 : 5;
+  const labelLimit = width < 520 ? 3 : 5;
   let angle = -Math.PI / 2;
   state.rows.forEach((row, index) => {
     const next = angle + Math.PI * 2 * row.play_count / state.total;
@@ -218,11 +218,7 @@ function drawPie() {
     context.stroke();
 
     if (index < labelLimit) {
-      topLabels.push({
-        row,
-        index,
-        midAngle: (angle + next) / 2,
-      });
+      topLabels.push({ row, index, midAngle: (angle + next) / 2 });
     }
     angle = next;
   });
@@ -231,8 +227,8 @@ function drawPie() {
   const elbowRadius = radius * 1.08;
   const minLabelGap = 28;
   const labelMargin = 6;
-  const labelFont = rect.width < 520 ? 11 : 12;
-  const titleLimit = rect.width < 520 ? 14 : 22;
+  const labelFont = width < 520 ? 11 : 12;
+  const titleLimit = width < 520 ? 14 : 22;
   const sides = [
     topLabels.filter(({ midAngle }) => Math.cos(midAngle) >= 0),
     topLabels.filter(({ midAngle }) => Math.cos(midAngle) < 0),
@@ -249,10 +245,10 @@ function drawPie() {
       const elbowY = centerY + Math.sin(label.midAngle) * elbowRadius;
       const desiredY = centerY + Math.sin(label.midAngle) * labelRadius;
       const minY = labelFont * 1.5;
-      const maxY = rect.height - labelFont * 1.5;
+      const maxY = height - labelFont * 1.5;
       const labelY = Math.max(minY, Math.min(maxY, Math.max(desiredY, previousY + minLabelGap)));
       previousY = labelY;
-      const lineEndX = direction > 0 ? rect.width - labelMargin : labelMargin;
+      const lineEndX = direction > 0 ? width - labelMargin : labelMargin;
       const textX = lineEndX + direction * 2;
 
       context.beginPath();

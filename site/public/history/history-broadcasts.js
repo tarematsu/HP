@@ -4,6 +4,12 @@ import {
   decimalOneFormat as number,
   finiteNumber as finite,
 } from '../dashboard-ui-common.js?v=20260930.1';
+import {
+  drawDashboardGrid,
+  drawDashboardLine,
+  drawDashboardXAxis,
+  prepareDashboardCanvas,
+} from '../dashboard-chart-canvas.js?v=20261001.2';
 
 (() => {
   const button = document.querySelector('[data-mode="broadcasts"]');
@@ -153,15 +159,14 @@ import {
 
   function draw() {
     if (!active()) return;
-    const context = canvas.getContext('2d');
-    if (!context) return;
-    const ratio = Math.min(window.devicePixelRatio || 1, 1.5);
-    const width = canvas.clientWidth || 1_000;
-    const height = canvas.clientHeight || 330;
-    canvas.width = Math.round(width * ratio);
-    canvas.height = Math.round(height * ratio);
-    context.setTransform(ratio, 0, 0, ratio, 0, 0);
-    context.clearRect(0, 0, width, height);
+    const prepared = prepareDashboardCanvas(canvas, {
+      minimumWidth: 320,
+      minimumHeight: 260,
+      fallbackWidth: 1_000,
+      fallbackHeight: 330,
+    });
+    if (!prepared) return;
+    const { context, width, height } = prepared;
 
     const available = series.filter((item) => item.points.length);
     if (!available.length) {
@@ -183,48 +188,57 @@ import {
     const xFor = (minute) => area.left + area.width * Math.max(0, Number(minute) || 0) / maxMinute;
     const yFor = (value) => area.top + area.height - area.height * Math.max(0, Number(value) || 0) / maxListener;
 
-    context.lineWidth = 1;
-    context.strokeStyle = 'rgba(31,45,68,.12)';
     context.fillStyle = cssColor('--muted', '#667287');
     context.font = '11px system-ui';
-    for (let index = 0; index <= 4; index += 1) {
-      const y = area.top + area.height * index / 4;
-      context.beginPath();
-      context.moveTo(area.left, y);
-      context.lineTo(width - area.right, y);
-      context.stroke();
+    context.textBaseline = 'middle';
+    for (const { ratio, y } of drawDashboardGrid(context, {
+      left: area.left,
+      right: area.right,
+      top: area.top,
+      height: area.height,
+      width,
+    })) {
       context.textAlign = 'right';
-      context.fillText(number.format(Math.round(maxListener * (1 - index / 4))), area.left - 8, y + 3);
+      context.fillText(number.format(Math.round(maxListener * (1 - ratio))), area.left - 8, y + 3);
     }
 
     const xTickCount = width < 560 ? 4 : 6;
-    for (let index = 0; index <= xTickCount; index += 1) {
+    const tickPositions = Array.from({ length: xTickCount + 1 }, (_, index) => {
       const minute = Math.round(maxMinute * index / xTickCount);
-      const x = xFor(minute);
-      context.textAlign = index === 0 ? 'left' : index === xTickCount ? 'right' : 'center';
-      context.fillText(number.format(minute), x, area.top + area.height + 16);
-    }
+      return xFor(minute);
+    });
+    drawDashboardXAxis(context, {
+      left: area.left,
+      right: area.right,
+      top: area.top + area.height,
+      width,
+      positions: tickPositions,
+      indexes: tickPositions.map((_, index) => index),
+      labelFor: (index) => number.format(Math.round(maxMinute * index / xTickCount)),
+      fillStyle: cssColor('--muted', '#667287'),
+    });
+    context.fillStyle = cssColor('--muted', '#667287');
     context.textAlign = 'center';
+    context.textBaseline = 'alphabetic';
     context.fillText('経過時間（分）', area.left + area.width / 2, height - 5);
 
     available.forEach((item) => {
       const index = series.indexOf(item);
       const today = isTodayEvent(item);
+      const rows = item.drawPoints.map((point) => ({
+        minute: finite(point?.[0]),
+        listener: finite(point?.[1]),
+      }));
       context.save();
-      context.strokeStyle = colorFor(index);
       context.globalAlpha = today ? 1 : (available.length > 12 ? 0.68 : 0.9);
-      context.lineWidth = today ? 3.4 : (available.length > 16 ? 1.15 : 1.7);
-      context.beginPath();
-      let open = false;
-      for (const point of item.drawPoints) {
-        const minute = finite(point?.[0]);
-        const listener = finite(point?.[1]);
-        if (minute == null || listener == null) continue;
-        if (!open) context.moveTo(xFor(minute), yFor(listener));
-        else context.lineTo(xFor(minute), yFor(listener));
-        open = true;
-      }
-      context.stroke();
+      drawDashboardLine(context, rows, {
+        x: (row) => xFor(row.minute),
+        y: (listener) => yFor(listener),
+        value: (row) => row.listener,
+        valid: (listener) => listener != null,
+        strokeStyle: colorFor(index),
+        lineWidth: today ? 3.4 : (available.length > 16 ? 1.15 : 1.7),
+      });
       context.restore();
     });
 

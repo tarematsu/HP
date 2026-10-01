@@ -7,6 +7,13 @@ import {
   integerFormat as integer,
   setText,
 } from './dashboard-ui-common.js?v=20261001.1';
+import {
+  dashboardTickIndexes,
+  drawDashboardGrid,
+  drawDashboardLine,
+  drawDashboardXAxis,
+  prepareDashboardCanvas,
+} from './dashboard-chart-canvas.js?v=20261001.2';
 import { appendTableRow } from './dashboard-table-dom.js?v=20261001.1';
 
 const HINATA_URL = '/api/hinata';
@@ -62,19 +69,16 @@ function canvasWidth(canvas) {
 function prepareCanvas(id, { currentHeight = false } = {}) {
   const canvas = byId(id);
   if (!canvas) return null;
-  const width = Math.max(320, canvasWidth(canvas) || 960);
+  const measuredWidth = Math.max(320, canvasWidth(canvas) || 960);
   const height = currentHeight
-    ? (width < 520 ? 330 : Math.max(350, Math.min(430, Math.round(width * .49))))
+    ? (measuredWidth < 520 ? 330 : Math.max(350, Math.min(430, Math.round(measuredWidth * .49))))
     : Math.max(260, Math.round(canvas.clientHeight || 360));
-  const ratio = Math.min(2, window.devicePixelRatio || 1);
-  canvas.width = Math.round(width * ratio);
-  canvas.height = Math.round(height * ratio);
-  canvas.style.height = `${height}px`;
-  const context = canvas.getContext('2d');
-  if (!context) return null;
-  context.setTransform(ratio, 0, 0, ratio, 0, 0);
-  context.clearRect(0, 0, width, height);
-  return { canvas, context, width, height };
+  return prepareDashboardCanvas(canvas, {
+    minimumWidth: 320,
+    minimumHeight: 260,
+    fallbackWidth: measuredWidth,
+    height,
+  });
 }
 
 function setChartEmpty(canvasId, emptyId, empty) {
@@ -110,19 +114,16 @@ function appendLegend(label, color, className = '') {
 }
 
 function drawGrid(context, { width, area, leftBounds, rightMaximum = null }) {
-  context.strokeStyle = 'rgba(31,45,68,.12)';
   context.fillStyle = cssColor('--muted', '#667287');
-  context.lineWidth = 1;
   context.font = '11px system-ui';
   context.textBaseline = 'middle';
-  for (let index = 0; index <= 4; index += 1) {
-    const ratio = index / 4;
-    const y = area.top + area.height * ratio;
-    context.beginPath();
-    context.moveTo(area.left, y);
-    context.lineTo(width - area.right, y);
-    context.stroke();
-
+  for (const { ratio, y } of drawDashboardGrid(context, {
+    left: area.left,
+    right: area.right,
+    top: area.top,
+    height: area.height,
+    width,
+  })) {
     context.textAlign = 'right';
     const leftValue = leftBounds.maximum - leftBounds.range * ratio;
     context.fillText(integer.format(Math.round(leftValue)), area.left - 6, y);
@@ -134,29 +135,19 @@ function drawGrid(context, { width, area, leftBounds, rightMaximum = null }) {
 }
 
 function drawLine(context, rows, { key, color, width = 2, xFor, yFor, maxGap = Infinity }) {
-  context.save();
-  context.beginPath();
-  context.strokeStyle = color;
-  context.lineWidth = width;
-  context.lineJoin = 'round';
-  context.lineCap = 'round';
-  let open = false;
-  let previousTime = null;
-  for (const row of rows) {
-    const value = finite(row?.[key]);
-    const time = finite(row?.timestamp ?? row?.observed_at);
-    const gap = previousTime != null && time != null && time - previousTime > maxGap;
-    if (value == null || time == null || gap) open = false;
-    if (value == null || time == null) continue;
-    const x = xFor(time);
-    const y = yFor(value);
-    if (!open) context.moveTo(x, y);
-    else context.lineTo(x, y);
-    open = true;
-    previousTime = time;
-  }
-  context.stroke();
-  context.restore();
+  return drawDashboardLine(context, rows, {
+    x: (row) => xFor(finite(row?.timestamp ?? row?.observed_at)),
+    y: (value) => yFor(value),
+    value: (row) => finite(row?.[key]),
+    valid: (value) => value != null,
+    gap: (before, after) => {
+      const previousTime = finite(before?.timestamp ?? before?.observed_at);
+      const nextTime = finite(after?.timestamp ?? after?.observed_at);
+      return previousTime != null && nextTime != null && nextTime - previousTime > maxGap;
+    },
+    strokeStyle: color,
+    lineWidth: width,
+  });
 }
 
 function normalizedHistory(value) {
@@ -308,17 +299,6 @@ function normalizeDailyChartRows(value) {
     .sort((left, right) => left.timestamp - right.timestamp);
 }
 
-function dailyTickIndices(rowCount, plotWidth) {
-  if (rowCount <= 0) return [];
-  const target = Math.min(rowCount, Math.max(4, Math.floor(plotWidth / 140)));
-  if (target <= 1) return [0];
-  const indexes = [];
-  for (let index = 0; index < target; index += 1) {
-    indexes.push(Math.round(index * (rowCount - 1) / (target - 1)));
-  }
-  return [...new Set(indexes)];
-}
-
 function formatPeriodTick(periodKey) {
   const match = String(periodKey || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
   return match ? `${match[1]}/${match[2]}/${match[3]}` : String(periodKey || '');
@@ -428,27 +408,20 @@ function renderDailyChart(value) {
     });
   }
 
-  const xAxisY = area.top + area.height;
-  context.save();
-  context.strokeStyle = 'rgba(31,45,68,.12)';
-  context.fillStyle = cssColor('--muted', '#667287');
-  context.lineWidth = 1;
-  context.font = '11px system-ui';
-  context.textAlign = 'center';
-  context.textBaseline = 'top';
-  context.beginPath();
-  context.moveTo(area.left, xAxisY);
-  context.lineTo(width - area.right, xAxisY);
-  context.stroke();
-  for (const rowIndex of dailyTickIndices(dailyChartRows.length, area.width)) {
-    const x = xFor(dailyChartRows[rowIndex].timestamp);
-    context.beginPath();
-    context.moveTo(x, xAxisY);
-    context.lineTo(x, xAxisY + 4);
-    context.stroke();
-    context.fillText(formatPeriodTick(dailyChartRows[rowIndex].period_key), x, xAxisY + 7);
-  }
-  context.restore();
+  const tickIndexes = dashboardTickIndexes(
+    dailyChartRows.length,
+    Math.min(dailyChartRows.length, Math.max(4, Math.floor(area.width / 140))),
+  );
+  drawDashboardXAxis(context, {
+    left: area.left,
+    right: area.right,
+    top: area.top + area.height,
+    width,
+    positions: dailyChartRows.map((row) => xFor(row.timestamp)),
+    indexes: tickIndexes,
+    labelFor: (index) => formatPeriodTick(dailyChartRows[index].period_key),
+    fillStyle: cssColor('--muted', '#667287'),
+  });
 
   if (legend) {
     const items = listenerSeries

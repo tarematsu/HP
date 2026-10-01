@@ -1,9 +1,10 @@
 import { appendEmptyState } from './dashboard-ui-common.js?v=20260930.1';
 import {
   dashboardTickIndexes,
+  drawDashboardGrid,
   drawDashboardLine,
   prepareDashboardCanvas,
-} from './dashboard-chart-canvas.js?v=20261001.1';
+} from './dashboard-chart-canvas.js?v=20261001.2';
 
 const states = new WeakMap();
 const observers = new WeakMap();
@@ -76,18 +77,21 @@ function paint(options) {
 
   context.font = '500 11px system-ui';
   context.fillStyle = '#667287';
-  context.strokeStyle = 'rgba(31,45,68,.12)';
-  context.lineWidth = 1;
   context.textBaseline = 'middle';
-  for (const rank of rankTicks) {
-    const y = yFor(rank);
-    context.beginPath();
-    context.moveTo(margin.left, y);
-    context.lineTo(width - margin.right, y);
-    context.stroke();
+  const grid = drawDashboardGrid(context, {
+    left: margin.left,
+    right: margin.right,
+    top: margin.top,
+    height: plotHeight,
+    width,
+    ratios: rankTicks.map((rank) => (Number(rank) - 1) / Math.max(1, ceiling - 1)),
+  });
+  grid.forEach(({ index, y }) => {
+    const rank = rankTicks[index];
+    if (rank == null) return;
     context.textAlign = 'right';
     context.fillText(rankLabel(rank), margin.left - 8, y);
-  }
+  });
 
   context.textBaseline = 'alphabetic';
   const dateTicks = dashboardTickIndexes(dates.length, dateTickCount);

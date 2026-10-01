@@ -41,13 +41,12 @@ test('Ohisama composes the canonical metrics, chart and table cards without feat
   assert.doesNotMatch(css, /font-size:|padding:|min-height:|\.hinata-chart|\.hinata-legend/);
 });
 
-test('Ohisama charts use the same DPR-aware Canvas rendering pattern as current and history', () => {
-  assert.match(runtime, /getContext\('2d'\)/);
-  assert.match(runtime, /window\.devicePixelRatio/);
-  assert.match(runtime, /context\.setTransform\(ratio, 0, 0, ratio, 0, 0\)/);
-  assert.match(runtime, /canvas\.width = Math\.round\(width \* ratio\)/);
-  assert.match(runtime, /canvas\.height = Math\.round\(height \* ratio\)/);
-  assert.match(runtime, /context\.clearRect\(0, 0, width, height\)/);
+test('Ohisama charts reuse the canonical dashboard Canvas foundation', () => {
+  assert.match(runtime, /dashboard-chart-canvas\.js\?v=20261001\.2/);
+  for (const helper of ['prepareDashboardCanvas', 'drawDashboardGrid', 'drawDashboardLine', 'drawDashboardXAxis', 'dashboardTickIndexes']) {
+    assert.match(runtime, new RegExp(helper));
+  }
+  assert.doesNotMatch(runtime, /getContext\('2d'\)|window\.devicePixelRatio|context\.setTransform|canvas\.width = Math\.round/);
   assert.doesNotMatch(runtime, /svgElement|createElementNS|viewBox/);
 });
 
