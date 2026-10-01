@@ -1,35 +1,5 @@
 const HISTORY_MODES = new Set(['daily', 'weekly', 'monthly', 'ranking', 'broadcasts']);
-
-const REGIONAL_MUSIC_SOURCE_DEFINITIONS = Object.freeze([
-  ['genie', 'Genie', 2],
-  ['bugs', 'Bugs!', 2],
-  ['joox', 'JOOX', 2],
-  ['nhaccuatui', 'NhacCuaTui', 2],
-  ['anghami', 'Anghami', 2],
-  ['melon', 'Melon', 2],
-  ['qq_music', 'QQ Music', 2],
-  ['netease_cloud_music', 'NetEase Cloud Music', 3],
-  ['kugou_music', 'Kugou Music', 3],
-  ['naver_vibe', 'Naver VIBE', 3],
-  ['flo', 'FLO', 3],
-  ['yandex_music', 'Yandex Music', 3],
-  ['boomplay', 'Boomplay', 3],
-  ['plern', 'Plern', 4],
-  ['fungjai', 'Fungjai', 4],
-  ['zing_mp3', 'Zing MP3', 4],
-  ['jiosaavn', 'JioSaavn', 4],
-  ['gaana', 'Gaana', 4],
-  ['langit_musik', 'Langit Musik', 4],
-]);
-
-const REGIONAL_MUSIC_SOURCES = Object.freeze(REGIONAL_MUSIC_SOURCE_DEFINITIONS.map(([id, label, row]) => Object.freeze({
-  id,
-  label,
-  row,
-  defaultMode: id,
-  modes: Object.freeze([id]),
-})));
-const REGIONAL_MUSIC_MODES = new Set(REGIONAL_MUSIC_SOURCE_DEFINITIONS.map(([id]) => id));
+const REGIONAL_MUSIC_MODES = new Set('genie bugs joox nhaccuatui anghami melon qq_music netease_cloud_music kugou_music naver_vibe flo yandex_music boomplay plern fungjai zing_mp3 jiosaavn gaana langit_musik'.split(' '));
 const REGIONAL_MUSIC_VIEW = Object.freeze({
   viewId: 'regionalMusicView',
   shell: () => import(location.origin + '/regional-music-shell.js?v=20261002.1'),
@@ -146,11 +116,10 @@ const NAVIGATION = Object.freeze([
   Object.freeze({
     id: 'subscriptions',
     sources: Object.freeze([
-      Object.freeze({ id: 'spotify', label: 'Spotify', row: 1, defaultMode: 'spotify', modes: Object.freeze(['spotify']) }),
-      Object.freeze({ id: 'apple-music', label: 'Apple Music', row: 1, defaultMode: 'apple-music', modes: Object.freeze(['apple-music']) }),
-      Object.freeze({ id: 'amazon-music', label: 'Amazon Music', row: 1, defaultMode: 'amazon-music', modes: Object.freeze(['amazon-music']) }),
-      Object.freeze({ id: 'youtube-music', label: 'YouTube Music', row: 1, defaultMode: 'youtube-music', modes: Object.freeze(['youtube-music']) }),
-      ...REGIONAL_MUSIC_SOURCES,
+      Object.freeze({ id: 'spotify', label: 'Spotify', defaultMode: 'spotify', modes: Object.freeze(['spotify']) }),
+      Object.freeze({ id: 'apple-music', label: 'Apple Music', defaultMode: 'apple-music', modes: Object.freeze(['apple-music']) }),
+      Object.freeze({ id: 'amazon-music', label: 'Amazon Music', defaultMode: 'amazon-music', modes: Object.freeze(['amazon-music']) }),
+      Object.freeze({ id: 'youtube-music', label: 'YouTube Music', defaultMode: 'youtube-music', modes: Object.freeze(['youtube-music']) }),
     ]),
   }),
 ]);
@@ -160,6 +129,7 @@ for (const section of NAVIGATION) {
     for (const mode of source.modes) MODE_NAVIGATION.set(mode, { section, source });
   }
 }
+const SUBSCRIPTIONS = NAVIGATION.find(({ id }) => id === 'subscriptions');
 const BUDDIES_VISIBLE_MODES = new Set(['current', 'daily', 'first-week', 'played-tracks', 'likes', 'broadcasts']);
 
 const currentView = document.getElementById('currentView');
@@ -167,6 +137,7 @@ const historyView = document.getElementById('historyView');
 const tabs = document.getElementById('modeTabs');
 const sectionTabs = document.getElementById('sectionTabs');
 const sourceTabs = document.getElementById('sourceTabs');
+const subscriptionSourceTabsTemplate = document.getElementById('subscriptionSourceTabsTemplate');
 const skipLink = document.querySelector('.skip-link');
 const modulePromises = new Map();
 const lastSourceBySection = new Map(NAVIGATION.map((section) => [section.id, section.sources[0]?.id || '']));
@@ -198,49 +169,42 @@ function visibleTabMode(mode) {
   return mode === 'weekly' || mode === 'monthly' ? 'daily' : mode;
 }
 
-function navigationForMode(mode) {
-  return MODE_NAVIGATION.get(mode) || MODE_NAVIGATION.get('current');
+function regionalSource(mode) {
+  return { id: mode, defaultMode: mode, modes: [mode] };
 }
 
-function buildSourceButton(source, activeSource) {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.dataset.source = source.id;
-  button.textContent = source.label;
-  const selected = source.id === activeSource.id;
-  button.classList.toggle('active', selected);
-  button.setAttribute('aria-pressed', selected ? 'true' : 'false');
-  return button;
+function navigationForMode(mode) {
+  if (REGIONAL_MUSIC_MODES.has(mode)) return { section: SUBSCRIPTIONS, source: regionalSource(mode) };
+  return MODE_NAVIGATION.get(mode) || MODE_NAVIGATION.get('current');
 }
 
 function renderSourceTabs(section, activeSource) {
   if (!sourceTabs) return;
-  const fragment = document.createDocumentFragment();
-  const multiline = section.sources.some((source) => Number(source.row) > 0);
-  sourceTabs.classList.toggle('is-multiline', multiline);
-
-  if (multiline) {
-    const rows = new Map();
-    for (const source of section.sources) {
-      const rowNumber = Math.max(1, Number(source.row) || 1);
-      if (!rows.has(rowNumber)) rows.set(rowNumber, []);
-      rows.get(rowNumber).push(source);
-    }
-    for (const [rowNumber, sources] of [...rows.entries()].sort((left, right) => left[0] - right[0])) {
-      const rowNode = document.createElement('div');
-      rowNode.className = 'dashboard-source-row';
-      rowNode.dataset.row = String(rowNumber);
-      rowNode.setAttribute('role', 'group');
-      rowNode.setAttribute('aria-label', rowNumber === 1 ? '主要サービス' : `地域サービス ${rowNumber - 1}`);
-      for (const source of sources) rowNode.append(buildSourceButton(source, activeSource));
-      fragment.append(rowNode);
-    }
+  if (section.id === 'subscriptions' && subscriptionSourceTabsTemplate) {
+    const content = subscriptionSourceTabsTemplate.content.cloneNode(true);
+    content.querySelectorAll('button[data-source]').forEach((button) => {
+      const selected = button.dataset.source === activeSource.id;
+      button.classList.toggle('active', selected);
+      button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+    });
+    sourceTabs.classList.add('is-multiline');
+    sourceTabs.replaceChildren(content);
   } else {
-    for (const source of section.sources) fragment.append(buildSourceButton(source, activeSource));
+    const fragment = document.createDocumentFragment();
+    sourceTabs.classList.remove('is-multiline');
+    for (const source of section.sources) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.source = source.id;
+      button.textContent = source.label;
+      const selected = source.id === activeSource.id;
+      button.classList.toggle('active', selected);
+      button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+      fragment.append(button);
+    }
+    sourceTabs.replaceChildren(fragment);
   }
-
-  sourceTabs.replaceChildren(fragment);
-  sourceTabs.hidden = section.sources.length === 0;
+  sourceTabs.hidden = false;
 }
 
 function syncModeTabs(source) {
@@ -354,7 +318,7 @@ async function showLazyView(mode, options = {}) {
     }
     const runtime = await loadOnce(`${mode}:runtime`, config.runtime);
     if (activeMode !== mode) return;
-    if (config.loadExport) await runtime[config.loadExport]?.(mode);
+    if (config.loadExport) await runtime[config.loadExport]?.();
   } catch (error) {
     if (activeMode !== mode) return;
     markRouteReady();
@@ -448,6 +412,7 @@ function activateMode(mode) {
 }
 
 function sourceById(section, sourceId) {
+  if (section?.id === 'subscriptions' && REGIONAL_MUSIC_MODES.has(sourceId)) return regionalSource(sourceId);
   return section?.sources.find((source) => source.id === sourceId) || section?.sources[0] || null;
 }
 
