@@ -14,28 +14,23 @@ import {
   drawDashboardXAxis,
   prepareDashboardCanvas,
 } from './dashboard-chart-canvas.js?v=20261001.2';
+import {
+  appendDashboardLegendItem,
+  dashboardMissingGapBands,
+  dashboardValueBounds,
+  DASHBOARD_MISSING_KEY,
+  drawDashboardMissingBands,
+  nearestPositionIndex,
+  observeDashboardChartResize,
+  roundedDashboardMaximum,
+} from './dashboard-chart-runtime.js?v=20261001.1';
+import { JST_DATE_TIME_MDHM, JST_TIME_HM } from './dashboard-time.js?v=20261001.1';
 import { appendTableRow } from './dashboard-table-dom.js?v=20261001.1';
 
 const HINATA_URL = '/api/hinata';
 const FIVE_MINUTES_MS = 5 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
 const STREAM_BAR_COLOR = '#168b73';
-const MISSING_FILL = 'rgba(100, 107, 116, .16)';
-const MISSING_KEY = 'rgba(100, 107, 116, .55)';
-const jstTime = new Intl.DateTimeFormat('ja-JP', {
-  timeZone: 'Asia/Tokyo',
-  hour: '2-digit',
-  minute: '2-digit',
-  hourCycle: 'h23',
-});
-const jstDateTime = new Intl.DateTimeFormat('ja-JP', {
-  timeZone: 'Asia/Tokyo',
-  month: 'numeric',
-  day: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit',
-  hourCycle: 'h23',
-});
 
 let payload = null;
 let chartRows = [];
@@ -44,7 +39,6 @@ let liveModel = null;
 let dailyModel = null;
 let liveSelection = null;
 let dailySelection = null;
-let resizeTimer = 0;
 
 const numberText = (value) => finite(value) == null ? '—' : integer.format(Number(value));
 const signedText = (value) => {
@@ -86,31 +80,6 @@ function setChartEmpty(canvasId, emptyId, empty) {
   const message = byId(emptyId);
   if (canvas) canvas.hidden = Boolean(empty);
   if (message) message.hidden = !empty;
-}
-
-function listenerBounds(values) {
-  if (!values.length) return { minimum: 0, maximum: 1, range: 1 };
-  const rawMinimum = Math.min(...values);
-  const rawMaximum = Math.max(...values);
-  const padding = Math.max(1, (rawMaximum - rawMinimum) * 0.08);
-  const minimum = Math.max(0, rawMinimum - padding);
-  const maximum = Math.max(minimum + 1, rawMaximum + padding);
-  return { minimum, maximum, range: maximum - minimum };
-}
-
-function roundedStreamMax(value) {
-  if (!Number.isFinite(value) || value <= 0) return 1;
-  const step = value <= 20 ? 5 : value <= 100 ? 10 : value <= 500 ? 50 : 100;
-  return Math.max(step, Math.ceil(value / step) * step);
-}
-
-function appendLegend(label, color, className = '') {
-  const span = document.createElement('span');
-  if (className) span.className = className;
-  const marker = document.createElement('i');
-  marker.style.background = color;
-  span.append(marker, document.createTextNode(label));
-  return span;
 }
 
 function drawGrid(context, { width, area, leftBounds, rightMaximum = null }) {
@@ -197,7 +166,7 @@ function renderLiveDetail() {
     return;
   }
   const growth = selected.stream_delta_5m == null ? '—' : `+${decimal.format(selected.stream_delta_5m)}`;
-  detail.textContent = `${jstDateTime.format(new Date(selected.observed_at))} JST　オンライン ${numberText(selected.online_member_count)}人　再生数増加 ${growth}/5分`;
+  detail.textContent = `${JST_DATE_TIME_MDHM.format(new Date(selected.observed_at))} JST　オンライン ${numberText(selected.online_member_count)}人　再生数増加 ${growth}/5分`;
 }
 
 function renderChart(value) {
@@ -224,10 +193,10 @@ function renderChart(value) {
   const onlineValues = chartRows
     .map((row) => finite(row.online_member_count))
     .filter((item) => item != null);
-  const bounds = listenerBounds(onlineValues);
+  const bounds = dashboardValueBounds(onlineValues);
   const yOnline = (value) => plotBottom - (Number(value) - bounds.minimum) * area.height / bounds.range;
   const streamRows = chartRows.filter((row) => finite(row.stream_delta_5m) != null && row.stream_delta_5m >= 0);
-  const streamMax = roundedStreamMax(streamRows.length
+  const streamMax = roundedDashboardMaximum(streamRows.length
     ? Math.max(...streamRows.map((row) => row.stream_delta_5m))
     : 0);
   const yStream = (value) => plotBottom - Math.max(0, Number(value)) * area.height / streamMax;
@@ -264,7 +233,7 @@ function renderChart(value) {
   context.textBaseline = 'alphabetic';
   for (let index = 0; index < 5; index += 1) {
     const time = minTime + span * index / 4;
-    context.fillText(jstTime.format(new Date(time)), xFor(time), height - 14);
+    context.fillText(JST_TIME_HM.format(new Date(time)), xFor(time), height - 14);
   }
   context.textAlign = 'left';
   context.fillText('オンライン数（人）', 4, 12);
@@ -302,24 +271,6 @@ function normalizeDailyChartRows(value) {
 function formatPeriodTick(periodKey) {
   const match = String(periodKey || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
   return match ? `${match[1]}/${match[2]}/${match[3]}` : String(periodKey || '');
-}
-
-function drawDailyMissingBands(context, rows, xFor, area) {
-  let hasMissing = false;
-  context.save();
-  context.fillStyle = MISSING_FILL;
-  for (let index = 1; index < rows.length; index += 1) {
-    const previous = rows[index - 1];
-    const current = rows[index];
-    const gap = current.timestamp - previous.timestamp;
-    if (gap <= DAY_MS * 1.5) continue;
-    const left = xFor(previous.timestamp + DAY_MS / 2);
-    const right = xFor(current.timestamp - DAY_MS / 2);
-    context.fillRect(left, area.top, Math.max(1, right - left), area.height);
-    hasMissing = true;
-  }
-  context.restore();
-  return hasMissing;
 }
 
 function renderDailyDetail() {
@@ -365,17 +316,26 @@ function renderDailyChart(value) {
   ];
   const listenerValues = listenerSeries.flatMap(({ key }) =>
     dailyChartRows.map((row) => finite(row?.[key])).filter((item) => item != null));
-  const bounds = listenerBounds(listenerValues);
+  const bounds = dashboardValueBounds(listenerValues);
   const yListener = (value) => area.top + area.height
     - (Number(value) - bounds.minimum) / bounds.range * area.height;
   const streamValues = dailyChartRows
     .map((row) => finite(row.stream_growth))
     .filter((item) => item != null && item >= 0);
-  const streamMax = roundedStreamMax(streamValues.length ? Math.max(...streamValues) : 0);
+  const streamMax = roundedDashboardMaximum(streamValues.length ? Math.max(...streamValues) : 0);
   const yStream = (value) => area.top + area.height
     - Math.max(0, Number(value) || 0) / streamMax * area.height;
 
-  const hasMissing = drawDailyMissingBands(context, dailyChartRows, xFor, area);
+  const positions = dailyChartRows.map((row) => xFor(row.timestamp));
+  const hasMissing = drawDashboardMissingBands(
+    context,
+    dashboardMissingGapBands(dailyChartRows, positions, area, {
+      time: (row) => row.timestamp,
+      maxGap: DAY_MS * 1.5,
+      edgeInset: area.width * DAY_MS / span / 2,
+    }),
+    { top: area.top, height: area.height },
+  );
   drawGrid(context, {
     width,
     area,
@@ -417,7 +377,7 @@ function renderDailyChart(value) {
     right: area.right,
     top: area.top + area.height,
     width,
-    positions: dailyChartRows.map((row) => xFor(row.timestamp)),
+    positions,
     indexes: tickIndexes,
     labelFor: (index) => formatPeriodTick(dailyChartRows[index].period_key),
     fillStyle: cssColor('--muted', '#667287'),
@@ -426,9 +386,9 @@ function renderDailyChart(value) {
   if (legend) {
     const items = listenerSeries
       .filter((series) => dailyChartRows.some((row) => finite(row?.[series.key]) != null))
-      .map((series) => appendLegend(series.label, series.color));
-    if (streamValues.length) items.push(appendLegend('再生数増加', STREAM_BAR_COLOR, 'period-stream-bars'));
-    if (hasMissing) items.push(appendLegend('欠測', MISSING_KEY, 'period-missing-band'));
+      .map((series) => appendDashboardLegendItem(series.label, series.color));
+    if (streamValues.length) items.push(appendDashboardLegendItem('再生数増加', STREAM_BAR_COLOR, { className: 'period-stream-bars' }));
+    if (hasMissing) items.push(appendDashboardLegendItem('欠測', DASHBOARD_MISSING_KEY, { className: 'period-missing-band' }));
     legend.replaceChildren(...items);
   }
 
@@ -439,7 +399,7 @@ function renderDailyChart(value) {
       : '左軸は同接（平均・最大・最小）、右軸は日次の再生数増加です。';
   }
 
-  dailyModel = { canvas, rows: dailyChartRows, xFor };
+  dailyModel = { canvas, rows: dailyChartRows, xFor, positions };
   renderDailyDetail();
 }
 
@@ -503,16 +463,7 @@ byId('hinataChart')?.addEventListener('pointerup', (event) => {
   const plotWidth = Math.max(1, bounds.width - areaLeft - areaRight);
   const ratio = Math.max(0, Math.min(1, (pointer - areaLeft) / plotWidth));
   const target = liveModel.minTime + liveModel.span * ratio;
-  let nearest = 0;
-  let distance = Infinity;
-  chartRows.forEach((row, index) => {
-    const next = Math.abs(row.observed_at - target);
-    if (next < distance) {
-      nearest = index;
-      distance = next;
-    }
-  });
-  liveSelection = nearest;
+  liveSelection = nearestPositionIndex(chartRows.map((row) => row.observed_at), target);
   renderLiveDetail();
 });
 
@@ -520,25 +471,15 @@ byId('hinataDailyChart')?.addEventListener('pointerup', (event) => {
   if (!dailyModel?.rows?.length) return;
   const bounds = dailyModel.canvas.getBoundingClientRect();
   const pointer = event.clientX - bounds.left;
-  let nearest = 0;
-  let distance = Infinity;
-  dailyModel.rows.forEach((row, index) => {
-    const x = dailyModel.xFor(row.timestamp);
-    const next = Math.abs(x - pointer);
-    if (next < distance) {
-      nearest = index;
-      distance = next;
-    }
-  });
-  dailySelection = nearest;
+  dailySelection = nearestPositionIndex(dailyModel.positions, pointer);
   renderDailyDetail();
 });
 
-window.addEventListener('resize', () => {
-  clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => {
-    if (!payload || byId('hinataView')?.hidden) return;
-    renderChart(payload);
-    renderDailyChart(payload);
-  }, 240);
-}, { passive: true });
+const hinataView = byId('hinataView');
+const redraw = () => {
+  if (!payload || hinataView?.hidden) return;
+  renderChart(payload);
+  renderDailyChart(payload);
+};
+observeDashboardChartResize(byId('hinataChart'), redraw, { delay: 240, enabled: () => Boolean(payload && !hinataView?.hidden) });
+observeDashboardChartResize(byId('hinataDailyChart'), redraw, { delay: 240, enabled: () => Boolean(payload && !hinataView?.hidden) });
