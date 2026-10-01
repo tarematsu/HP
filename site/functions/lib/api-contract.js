@@ -52,12 +52,6 @@ export const MATERIALIZED_API_VARIANTS = Object.freeze([
     cadence_minutes: 720,
     event_driven: true,
   }),
-  Object.freeze({
-    key: 'regional-music',
-    url: '/api/regional-music',
-    cadence_minutes: 1440,
-    event_driven: true,
-  }),
 ]);
 
 const materializedVariantsByKey = new Map(MATERIALIZED_API_VARIANTS.map((variant) => [variant.key, variant]));
@@ -114,8 +108,9 @@ export function apiCacheTtlSeconds(request) {
 }
 
 export function materializedResponseCadenceSeconds(modelKey) {
-  if (String(modelKey || '') === 'followers') return 0;
-  const variant = materializedVariantsByKey.get(String(modelKey || ''));
+  const key = String(modelKey || '');
+  if (key === 'followers' || key === 'regional-music') return 0;
+  const variant = materializedVariantsByKey.get(key);
   if (variant?.event_driven === true) return 0;
   const cadenceMinutes = Number(variant?.cadence_minutes);
   if (!Number.isFinite(cadenceMinutes) || cadenceMinutes <= 0) return API_EDGE_TTL_SECONDS;
@@ -123,8 +118,9 @@ export function materializedResponseCadenceSeconds(modelKey) {
 }
 
 export function materializedResponseMaximumAge(modelKey, env = {}) {
-  if (String(modelKey || '') === 'followers') return Number.MAX_SAFE_INTEGER;
-  const variant = materializedVariantsByKey.get(String(modelKey || ''));
+  const key = String(modelKey || '');
+  if (key === 'followers' || key === 'regional-music') return Number.MAX_SAFE_INTEGER;
+  const variant = materializedVariantsByKey.get(key);
   if (variant?.event_driven === true || variant?.revision_driven === true) {
     return Number.MAX_SAFE_INTEGER;
   }
