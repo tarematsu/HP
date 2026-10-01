@@ -5,7 +5,10 @@ import {
 } from './track-metadata-quality.js';
 
 const MAX_KEYS_PER_TYPE = 80;
+const METADATA_LRU_LIMIT = 2_000;
+const METADATA_LRU_TTL_MS = 15 * 60_000;
 const CANONICAL_QUERY_UNAVAILABLE = 'canonical metadata query unavailable';
+const metadataLru = new Map();
 
 function positiveInteger(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -81,17 +84,75 @@ function uniqueRows(rows) {
   return [...byIdentity.values()];
 }
 
-async function canonicalRowsByTrackId(db, trackIds) {
-  if (!trackIds.length) return [];
-  return runRows(db, `SELECT track_id,spotify_id,isrc,title,artist,thumbnail_url,fetched_at
-    FROM sh_track_canonical_metadata
-    WHERE track_id IN (${placeholders(trackIds.length)})`, trackIds);
+function lruKey(type, value) {
+  return value == null || value === '' ? null : `${type}:${value}`;
 }
 
-async function canonicalRowsByIsrc(db, isrcs) {
+function lruGet(key, now = Date.now()) {
+  if (!key) return null;
+  const entry = metadataLru.get(key);
+  if (!entry) return null;
+  if (entry.expiresAt <= now) {
+    metadataLru.delete(key);
+    return null;
+  }
+  metadataLru.delete(key);
+  metadataLru.set(key, entry);
+  return entry.row;
+}
+
+function lruSet(row, now = Date.now()) {
+  if (!row) return;
+  const keys = [
+    lruKey('track', positiveInteger(row.track_id)),
+    lruKey('isrc', normalizedIsrc(row.isrc)),
+    lruKey('spotify', text(row.spotify_id)),
+  ].filter(Boolean);
+  if (!keys.length) return;
+  const entry = { row: { ...row }, expiresAt: now + METADATA_LRU_TTL_MS };
+  for (const key of keys) {
+    metadataLru.delete(key);
+    metadataLru.set(key, entry);
+  }
+  while (metadataLru.size > METADATA_LRU_LIMIT) {
+    metadataLru.delete(metadataLru.keys().next().value);
+  }
+}
+
+function validTrackTitleSql(alias) {
+  return `CASE WHEN ${alias}.title IS NULL OR TRIM(${alias}.title)=''
+      OR TRIM(${alias}.title)=TRIM(${alias}.spotify_id)
+    THEN NULL ELSE TRIM(${alias}.title) END`;
+}
+
+function validTrackArtistSql(alias) {
+  return `CASE WHEN ${alias}.artist IS NULL OR TRIM(${alias}.artist)=''
+      OR TRIM(${alias}.artist)=TRIM(${alias}.spotify_id)
+      OR TRIM(${alias}.artist) GLOB 'JP[A-Z0-9]*'
+    THEN NULL ELSE TRIM(${alias}.artist) END`;
+}
+
+async function directRowsByTrackId(db, trackIds) {
+  if (!trackIds.length) return [];
+  return runRows(db, `SELECT
+      t.id AS track_id,
+      COALESCE(NULLIF(TRIM(d.spotify_id),''),NULLIF(TRIM(t.spotify_id),'')) AS spotify_id,
+      COALESCE(d.isrc,NULLIF(UPPER(REPLACE(REPLACE(TRIM(t.isrc),'-',''),' ','')),'')) AS isrc,
+      COALESCE(NULLIF(TRIM(d.title),''),${validTrackTitleSql('t')}) AS title,
+      COALESCE(NULLIF(TRIM(d.artist),''),${validTrackArtistSql('t')}) AS artist,
+      d.thumbnail_url,
+      CASE WHEN d.isrc IS NOT NULL THEN d.metadata_fetched_at ELSE t.last_seen_at END AS fetched_at
+    FROM sh_tracks t
+    LEFT JOIN sh_track_dictionary d
+      ON d.isrc=UPPER(REPLACE(REPLACE(TRIM(t.isrc),'-',''),' ',''))
+    WHERE t.id IN (${placeholders(trackIds.length)})`, trackIds);
+}
+
+async function directRowsByIsrc(db, isrcs) {
   if (!isrcs.length) return [];
-  return runRows(db, `SELECT track_id,spotify_id,isrc,title,artist,thumbnail_url,fetched_at
-    FROM sh_track_canonical_metadata
+  return runRows(db, `SELECT NULL AS track_id,spotify_id,isrc,title,artist,thumbnail_url,
+      metadata_fetched_at AS fetched_at
+    FROM sh_track_dictionary
     WHERE isrc IN (${placeholders(isrcs.length)})`, isrcs);
 }
 
@@ -145,18 +206,41 @@ async function legacyRowsDuringMigration(db, spotifyIds, isrcs) {
 
 function coveredKeys(rows) {
   return {
+    trackIds: new Set((rows || []).map((row) => positiveInteger(row?.track_id)).filter(Boolean)),
     isrcs: new Set((rows || []).map((row) => normalizedIsrc(row?.isrc)).filter(Boolean)),
     spotifyIds: new Set((rows || []).map((row) => text(row?.spotify_id)).filter(Boolean)),
   };
 }
 
+function cachedRows(requestedTrackIds, requestedSpotifyIds, requestedIsrcs) {
+  const rows = [];
+  const seen = new Set();
+  for (const [type, values] of [
+    ['track', requestedTrackIds],
+    ['spotify', requestedSpotifyIds],
+    ['isrc', requestedIsrcs],
+  ]) {
+    for (const value of values) {
+      const row = lruGet(lruKey(type, value));
+      if (!row) continue;
+      const key = positiveInteger(row.track_id) != null
+        ? `track:${positiveInteger(row.track_id)}`
+        : (normalizedIsrc(row.isrc) ? `isrc:${normalizedIsrc(row.isrc)}` : `spotify:${text(row.spotify_id)}`);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push(row);
+    }
+  }
+  return rows;
+}
+
 /**
- * Read presentation metadata from the single MINUTE_DB canonical owner.
+ * Read presentation metadata from indexed physical MINUTE_DB owners.
  *
- * sh_tracks.id is the primary lookup. Provider identities are bounded alias
- * fallbacks for rows that have not yet been assigned a canonical track id.
- * Source caches are consulted only when the canonical schema itself is unavailable
- * during a rolling migration.
+ * sh_tracks.id is the primary identity. sh_track_dictionary owns presentation
+ * values. The UNION canonical view is intentionally excluded from this hot path
+ * because its anti-joins can amplify rows-read. Provider source caches are used
+ * only as rolling-migration fallbacks.
  */
 export async function loadReadModelTrackMetadata(env, spotifyIds, isrcs, trackIds = []) {
   const requestedTrackIds = [...new Set(
@@ -173,36 +257,39 @@ export async function loadReadModelTrackMetadata(env, spotifyIds, isrcs, trackId
   const db = env?.MINUTE_DB;
   if (!db?.prepare) return [];
   try {
-    // Resolve the strongest identity first, then query only alias keys that are
-    // still uncovered. In the common case where callers supply track_id plus
-    // provider aliases for the same rows, this turns three canonical lookups
-    // into one.
-    const byTrackId = await canonicalRowsByTrackId(db, requestedTrackIds);
-    let resolved = uniqueRows(byTrackId);
+    let resolved = uniqueRows(cachedRows(requestedTrackIds, requestedSpotifyIds, requestedIsrcs));
     let covered = coveredKeys(resolved);
 
+    const remainingTrackIds = requestedTrackIds.filter((trackId) => !covered.trackIds.has(trackId));
+    const byTrackId = await directRowsByTrackId(db, remainingTrackIds);
+    if (byTrackId.length) {
+      resolved = uniqueRows([...resolved, ...byTrackId]);
+      byTrackId.forEach((row) => lruSet(row));
+      covered = coveredKeys(resolved);
+    }
+
     const remainingIsrcs = requestedIsrcs.filter((isrc) => !covered.isrcs.has(isrc));
-    const byIsrc = await canonicalRowsByIsrc(db, remainingIsrcs);
+    const byIsrc = await directRowsByIsrc(db, remainingIsrcs);
     if (byIsrc.length) {
       resolved = uniqueRows([...resolved, ...byIsrc]);
+      byIsrc.forEach((row) => lruSet(row));
       covered = coveredKeys(resolved);
     }
 
     let remainingSpotifyIds = requestedSpotifyIds
       .filter((spotifyId) => !covered.spotifyIds.has(spotifyId));
 
-    // sh_tracks.spotify_id has a dedicated UNIQUE index. Resolve provider-only
-    // rows to the canonical track id there before reading presentation metadata.
     if (remainingSpotifyIds.length) {
       const spotifyMappings = await trackIdsBySpotify(db, remainingSpotifyIds);
       const mappedTrackIds = [...new Set(spotifyMappings
         .map((row) => positiveInteger(row?.track_id))
         .filter(Boolean))]
-        .filter((trackId) => !requestedTrackIds.includes(trackId));
+        .filter((trackId) => !covered.trackIds.has(trackId));
       if (mappedTrackIds.length) {
-        const mappedCanonicalRows = await canonicalRowsByTrackId(db, mappedTrackIds);
-        if (mappedCanonicalRows.length) {
-          resolved = uniqueRows([...resolved, ...mappedCanonicalRows]);
+        const mappedRows = await directRowsByTrackId(db, mappedTrackIds);
+        if (mappedRows.length) {
+          resolved = uniqueRows([...resolved, ...mappedRows]);
+          mappedRows.forEach((row) => lruSet(row));
           covered = coveredKeys(resolved);
           remainingSpotifyIds = remainingSpotifyIds
             .filter((spotifyId) => !covered.spotifyIds.has(spotifyId));
@@ -210,10 +297,8 @@ export async function loadReadModelTrackMetadata(env, spotifyIds, isrcs, trackId
       }
     }
 
-    // Remaining Spotify-only identities can only be dictionary-owned. Use the
-    // indexed dictionary directly instead of filtering the UNION canonical view,
-    // which otherwise scans the view's track branch for every fallback lookup.
     const bySpotify = await dictionaryRowsBySpotify(db, remainingSpotifyIds);
+    bySpotify.forEach((row) => lruSet(row));
     return uniqueRows([...resolved, ...bySpotify]);
   } catch (error) {
     if (!canonicalUnavailable(error)) throw error;
