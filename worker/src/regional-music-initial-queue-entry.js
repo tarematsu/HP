@@ -1,7 +1,11 @@
 import { REGIONAL_MUSIC_DAILY_SERVICES } from './regional-music-dispatch-plan.js';
 
 export default {
-  async fetch(_request, env) {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    if (url.pathname === '/health') return Response.json({ ok: true, ready: true });
+    if (url.pathname !== '/enqueue') return new Response('not found', { status: 404 });
+
     if (!env?.REGIONAL_MUSIC_QUEUE?.sendBatch) {
       return Response.json({ ok: false, error: 'REGIONAL_MUSIC_QUEUE binding is missing' }, { status: 500 });
     }
