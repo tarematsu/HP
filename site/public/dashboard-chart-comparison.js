@@ -1,4 +1,9 @@
 import { finiteNumber as finite, integerFormat as integer } from './dashboard-ui-common.js?v=20260930.1';
+import {
+  drawDashboardGrid,
+  drawDashboardLine,
+  prepareDashboardCanvas,
+} from './dashboard-chart-canvas.js?v=20261001.1';
 
 const DAY_MS = 86_400_000;
 const FIVE_MINUTE_MS = 5 * 60_000;
@@ -93,30 +98,6 @@ function labelBox(context, text, x, y, align, width, height) {
   context.restore();
 }
 
-function drawSeries(context, rows, xFor, yFor, color, width) {
-  context.beginPath();
-  context.strokeStyle = color;
-  context.lineWidth = width;
-  context.lineJoin = 'round';
-  context.lineCap = 'round';
-  let started = false;
-  let previousTime = null;
-  for (const row of rows) {
-    const time = finite(row.observed_at);
-    const value = finite(row.online_member_count);
-    const gap = previousTime != null && time != null && time - previousTime > 20 * 60_000;
-    if (value == null || time == null || gap) started = false;
-    if (value == null || time == null) continue;
-    const x = xFor(time);
-    const y = yFor(value);
-    if (!started) context.moveTo(x, y);
-    else context.lineTo(x, y);
-    started = true;
-    previousTime = time;
-  }
-  context.stroke();
-}
-
 function roundedStreamMax(value) {
   if (!Number.isFinite(value) || value <= 0) return 1;
   const step = value <= 20 ? 5 : value <= 100 ? 10 : value <= 500 ? 50 : 100;
@@ -150,8 +131,8 @@ function drawComparison(payload) {
   const current = normalizeCurrent(payload?.history);
   if (!canvas || !current.length) return false;
 
-  const width = canvasWidth(canvas);
-  if (!width) return false;
+  const measuredWidth = canvasWidth(canvas);
+  if (!measuredWidth) return false;
 
   const minTime = current[0].observed_at;
   const maxTime = current.at(-1).observed_at;
@@ -159,15 +140,15 @@ function drawComparison(payload) {
   const streamAverages = normalizeStreamAverages(payload?.stream_5m_history, minTime, maxTime);
   ensureLegend(previous.length > 0, streamAverages.length > 0);
 
-  const height = width < 520 ? 330 : Math.max(350, Math.min(430, Math.round(width * .49)));
-  const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
-  canvas.width = Math.round(width * pixelRatio);
-  canvas.height = Math.round(height * pixelRatio);
-  canvas.style.height = `${height}px`;
-  const context = canvas.getContext('2d');
-  if (!context) return false;
-  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-  context.clearRect(0, 0, width, height);
+  const targetHeight = measuredWidth < 520 ? 330 : Math.max(350, Math.min(430, Math.round(measuredWidth * .49)));
+  const prepared = prepareDashboardCanvas(canvas, {
+    minimumWidth: 1,
+    minimumHeight: 1,
+    fallbackWidth: measuredWidth,
+    height: targetHeight,
+  });
+  if (!prepared) return false;
+  const { context, width, height } = prepared;
 
   const padding = { left: 50, right: 50, top: 28, bottom: 42 };
   const plotWidth = Math.max(1, width - padding.left - padding.right);
@@ -196,28 +177,32 @@ function drawComparison(payload) {
   const yStream = (value) => plotBottom - Math.max(0, Number(value)) * plotHeight / streamMax;
 
   context.font = '11px system-ui';
-  context.lineWidth = 1;
-  for (let index = 0; index <= 4; index += 1) {
-    const ratio = index / 4;
-    const y = padding.top + plotHeight * ratio;
-    context.strokeStyle = 'rgba(31,45,68,.12)';
-    context.beginPath();
-    context.moveTo(padding.left, y);
-    context.lineTo(width - padding.right, y);
-    context.stroke();
-
-    context.fillStyle = '#667287';
-    context.textBaseline = 'middle';
+  context.fillStyle = '#667287';
+  context.textBaseline = 'middle';
+  for (const { ratio, y } of drawDashboardGrid(context, {
+    left: padding.left,
+    right: padding.right,
+    top: padding.top,
+    height: plotHeight,
+    width,
+  })) {
     context.textAlign = 'right';
     context.fillText(integer.format(Math.round(onlineMax - onlineRange * ratio)), padding.left - 6, y);
-
     context.textAlign = 'left';
     context.fillText(integer.format(Math.round(streamMax * (1 - ratio))), width - padding.right + 6, y);
   }
 
   drawStreamBars(context, streamAverages, xFor, yStream, plotBottom, plotWidth);
-  drawSeries(context, previous, xFor, yOnline, '#969ca6', 2);
-  drawSeries(context, current, xFor, yOnline, '#111', 2);
+  const lineOptions = {
+    x: (row) => xFor(finite(row?.observed_at)),
+    y: (value) => yOnline(value),
+    value: (row) => finite(row?.online_member_count),
+    valid: (value) => value != null,
+    gap: (before, after) => finite(after?.observed_at) - finite(before?.observed_at) > 20 * 60_000,
+    lineWidth: 2,
+  };
+  drawDashboardLine(context, previous, { ...lineOptions, strokeStyle: '#969ca6' });
+  drawDashboardLine(context, current, { ...lineOptions, strokeStyle: '#111' });
 
   context.fillStyle = '#667287';
   context.textAlign = 'center';
@@ -245,30 +230,14 @@ function drawComparison(payload) {
       context.beginPath();
       context.arc(xFor(minRow.observed_at), yOnline(currentMin), 3, 0, Math.PI * 2);
       context.fill();
-      labelBox(
-        context,
-        `最小 ${integer.format(currentMin)}（${jstTime.format(new Date(minRow.observed_at))}）`,
-        xFor(minRow.observed_at) + 5,
-        yOnline(currentMin) + 14,
-        'left',
-        width,
-        height,
-      );
+      labelBox(context, `最小 ${integer.format(currentMin)}（${jstTime.format(new Date(minRow.observed_at))}）`, xFor(minRow.observed_at) + 5, yOnline(currentMin) + 14, 'left', width, height);
     }
     if (maxRow) {
       context.fillStyle = EXTREMA_POINT_COLOR;
       context.beginPath();
       context.arc(xFor(maxRow.observed_at), yOnline(currentMax), 3, 0, Math.PI * 2);
       context.fill();
-      labelBox(
-        context,
-        `最大 ${integer.format(currentMax)}（${jstTime.format(new Date(maxRow.observed_at))}）`,
-        xFor(maxRow.observed_at) - 5,
-        yOnline(currentMax) - 14,
-        'right',
-        width,
-        height,
-      );
+      labelBox(context, `最大 ${integer.format(currentMax)}（${jstTime.format(new Date(maxRow.observed_at))}）`, xFor(maxRow.observed_at) - 5, yOnline(currentMax) - 14, 'right', width, height);
     }
   }
   observedCanvasWidth = width;
