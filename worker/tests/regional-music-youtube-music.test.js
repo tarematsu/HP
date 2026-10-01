@@ -44,6 +44,19 @@ test('artist search requires an exact Sakamichi identity and ignores cover looka
   });
 });
 
+test('artist search accepts Aobazaka46 only for its exact YouTube Music identity', () => {
+  const payload = {
+    contents: [
+      artistResult('青葉坂46 Fan Channel', 'UC-aoba-fan'),
+      artistResult('青葉坂46', 'UC-aoba'),
+    ],
+  };
+  assert.deepEqual(parseYouTubeMusicArtistSearch(payload, 'aobazaka46'), {
+    browseId: 'UC-aoba',
+    name: '青葉坂46',
+  });
+});
+
 test('artist page parses public monthly audience, total views, songs, releases and artist playlist', () => {
   const payload = {
     header: {
