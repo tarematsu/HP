@@ -179,3 +179,47 @@ test('production workflow emits a stable deployment target marker', async () => 
   const workflow = await readFile(new URL('../.github/workflows/deploy-split-pipeline.yml', import.meta.url), 'utf8');
   assert.match(workflow, /DEPLOYMENT_TARGETS_JSON=\$deployment_targets/);
 });
+
+test('history collection searches older pages while retaining newer failures', async (t) => {
+  const { collectDeploymentHealth, DEPLOYMENT_RUN_LOOKBACK } = await import('../.github/scripts/github-deployment-health.mjs');
+  const pages = [];
+  t.mock.method(globalThis, 'fetch', async (url) => ({
+    ok: true,
+    text: async () => String(url).includes('/900/logs')
+      ? 'DEPLOYMENT_TARGETS_JSON={"workers":["sh-sakurazaka46jp","sh-buddies-recovery","sh-buddies-collector","sh-runtime-orchestrator"],"commands":["deploy:sakurazaka46jp","deploy:buddies-recovery","deploy:buddies-collector","deploy:runtime"]}'
+      : 'deployment failed',
+  }));
+  const request = async (_method, path) => {
+    if (path.includes('/workflows/')) {
+      const page = Number(new URL(path, 'https://example.test').searchParams.get('page'));
+      pages.push(page);
+      return { workflow_runs: page === 1
+        ? Array.from({ length: DEPLOYMENT_RUN_LOOKBACK }, (_, i) => run(100 - i, i === 0 ? 'failure' : 'success'))
+        : [run(1, 'success')] };
+    }
+    const id = Number(path.match(/runs\/(\d+)/)[1]);
+    return { jobs: id === 1 ? [
+      { id: 900, name: 'Select deployment targets', conclusion: 'success' },
+      { id: 901, name: 'Deploy affected Workers', conclusion: 'success' },
+    ] : [{ id, name: 'Build and deploy Pages', conclusion: id === 100 ? 'failure' : 'success' }] };
+  };
+  const [summary] = await collectDeploymentHealth(request, { targets: [productionTarget], repository: 'test/repo', token: 'test' });
+  assert.deepEqual(pages, [1, 2]);
+  assert.equal(summary.components.find((c) => c.target === 'sh-sakurazaka46jp').run.id, 1);
+  assert.equal(summary.components.find((c) => c.target === 'Cloudflare Pages (skrzk)').result, 'failure');
+  assert.equal(summary.overall, 'failure');
+});
+
+test('history collection stops at its bound and keeps missing targets unknown', async () => {
+  const { collectDeploymentHealth, DEPLOYMENT_RUN_LOOKBACK, DEPLOYMENT_HISTORY_MAX_PAGES } = await import('../.github/scripts/github-deployment-health.mjs');
+  let pages = 0;
+  const request = async (_method, path) => path.includes('/workflows/')
+    ? (pages += 1, { workflow_runs: Array.from({ length: DEPLOYMENT_RUN_LOOKBACK }, (_, i) => run(pages * 100 + i, 'success')) })
+    : { jobs: [{ id: 1, name: 'Build and deploy Pages', conclusion: 'success' }] };
+  const [summary] = await collectDeploymentHealth(request, { targets: [productionTarget] });
+  assert.equal(pages, DEPLOYMENT_HISTORY_MAX_PAGES);
+  assert.equal(summary.overall, 'degraded');
+  const missing = summary.components.find((c) => c.target === 'sh-sakurazaka46jp');
+  assert.equal(missing.result, 'unknown');
+  assert.match(missing.error, /150 completed runs/);
+});
