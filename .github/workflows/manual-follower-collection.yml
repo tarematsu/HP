@@ -34,30 +34,188 @@ jobs:
         working-directory: worker
         run: npm ci --prefer-offline --no-audit --no-fund
 
-      - name: Verify latest follower snapshot
+      - name: Load follower targets and existing read model
+        working-directory: worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute BUDDIES_DB \
+            --config wrangler.buddies-collector.jsonc \
+            --remote --json \
+            --command "SELECT DISTINCT LOWER(TRIM(h.current_handle)) AS handle FROM sh_broadcast_sessions AS s JOIN sh_hosts AS h ON h.id=s.host_id WHERE s.host_id IS NOT NULL AND h.current_handle IS NOT NULL AND TRIM(h.current_handle)<>'' ORDER BY handle" \
+            > "$RUNNER_TEMP/follower-handles.json"
+
+          if ! npx wrangler r2 object get "sh-pages-responses/pages-response/v1/followers.json" \
+            --remote --file "$RUNNER_TEMP/followers-existing.json" >/dev/null 2>&1; then
+            printf '%s' '{"handles":[],"rows":[]}' > "$RUNNER_TEMP/followers-existing.json"
+          fi
+
+      - name: Fetch Stationhead follower counts
+        working-directory: worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > manual-followers-once.mjs <<'NODE'
+          import fs from 'node:fs';
+          import crypto from 'node:crypto';
+          import {
+            fetchStationheadFollowerProfile,
+            STATIONHEAD_DAILY_FOLLOWER_HANDLES,
+          } from './src/stationhead-daily-followers.js';
+          import { API_BASE, configFromEnv, shHeaders } from './src/collector-config.js';
+          import { normalizeBearer } from './src/shared.js';
+
+          const temp = process.env.RUNNER_TEMP;
+          const parseWranglerRows = (path) => {
+            const payload = JSON.parse(fs.readFileSync(path, 'utf8'));
+            return Array.isArray(payload?.[0]?.results) ? payload[0].results : [];
+          };
+          const normalizeHandle = (value) => String(value || '').trim().toLowerCase();
+          const sqlString = (value) => `'${String(value).replaceAll("'", "''")}'`;
+          const validDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
+          const dateKey = (timestamp) => new Date(timestamp + 9 * 3600000).toISOString().slice(0, 10);
+          const offsetDate = (date, days) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
+
+          const discovered = parseWranglerRows(`${temp}/follower-handles.json`)
+            .map((row) => normalizeHandle(row?.handle))
+            .filter(Boolean);
+          const fixed = [...STATIONHEAD_DAILY_FOLLOWER_HANDLES];
+          const handles = [...new Set([...fixed, ...discovered])];
+
+          const config = configFromEnv({ SH_APP_VERSION: '1.0.0', REQUEST_TIMEOUT_MS: 8000 });
+          const deviceUid = crypto.randomUUID();
+          const guestState = { authToken: '', deviceUid };
+          const tokenResponse = await fetch(`${API_BASE}/web/token`, {
+            method: 'POST',
+            headers: { ...shHeaders(guestState, config), authorization: '' },
+            body: '',
+            signal: AbortSignal.timeout(8000),
+          });
+          const authToken = normalizeBearer(tokenResponse.headers.get('authorization'));
+          if (!tokenResponse.ok || !authToken) throw new Error(`Stationhead guest token failed: ${tokenResponse.status}`);
+          const sessionState = { authToken, deviceUid };
+          const loginResponse = await fetch(`${API_BASE}/web/guest/login`, {
+            method: 'POST',
+            headers: shHeaders(sessionState, config),
+            body: '',
+            signal: AbortSignal.timeout(8000),
+          });
+          if (!loginResponse.ok) throw new Error(`Stationhead guest login failed: ${loginResponse.status}`);
+          const session = { auth_token: authToken, device_uid: deviceUid };
+
+          const settled = await Promise.allSettled(handles.map((handle) =>
+            fetchStationheadFollowerProfile(handle, { session, timeoutMs: 8000, appVersion: '1.0.0' })
+          ));
+          const profiles = [];
+          const failures = [];
+          settled.forEach((result, index) => {
+            if (result.status === 'fulfilled') profiles.push(result.value);
+            else failures.push({ handle: handles[index], error: String(result.reason?.message || result.reason).slice(0, 300) });
+          });
+          const criticalFailures = failures.filter(({ handle }) => fixed.includes(handle));
+          if (criticalFailures.length) {
+            throw new Error(`Fixed follower targets failed: ${criticalFailures.map((item) => `${item.handle}:${item.error}`).join('; ')}`);
+          }
+
+          const now = Date.now();
+          const date = dateKey(now);
+          const followers = Object.fromEntries(profiles.map((profile) => [profile.handle, profile.followers]));
+
+          let existing = { handles: [], rows: [] };
+          try { existing = JSON.parse(fs.readFileSync(`${temp}/followers-existing.json`, 'utf8')); } catch {}
+          const allHandles = [...new Set([...(Array.isArray(existing?.handles) ? existing.handles : []), ...handles])]
+            .map(normalizeHandle).filter(Boolean);
+          const rowsByDate = new Map();
+          for (const row of Array.isArray(existing?.rows) ? existing.rows : []) {
+            if (!validDate(row?.date)) continue;
+            rowsByDate.set(row.date, { ...(rowsByDate.get(row.date) || { date: row.date }), ...row, date: row.date });
+          }
+          rowsByDate.set(date, { ...(rowsByDate.get(date) || { date }), ...followers, date });
+          const rows = [...rowsByDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+          const rowMap = new Map(rows.map((row) => [row.date, row]));
+          const latest = rowMap.get(date) || {};
+          const previous = rowMap.get(offsetDate(date, -1)) || {};
+          const previousWeek = rowMap.get(offsetDate(date, -7)) || {};
+          const accounts = allHandles.map((handle) => {
+            const value = Number.isInteger(latest?.[handle]) ? latest[handle] : null;
+            const day = Number.isInteger(previous?.[handle]) ? previous[handle] : null;
+            const week = Number.isInteger(previousWeek?.[handle]) ? previousWeek[handle] : null;
+            return {
+              handle,
+              followers: value,
+              previous_day_delta: value != null && day != null ? value - day : null,
+              previous_week_delta: value != null && week != null ? value - week : null,
+            };
+          });
+          const model = {
+            ok: true,
+            updated_at: now,
+            latest_date: date,
+            handles: allHandles,
+            rows,
+            accounts,
+            failures,
+          };
+          fs.writeFileSync(`${temp}/followers-next.json`, JSON.stringify(model));
+
+          const targetLines = [];
+          for (const handle of handles) {
+            const sourceMask = (fixed.includes(handle) ? 1 : 0) | (discovered.includes(handle) ? 2 : 0);
+            targetLines.push(`INSERT INTO sh_stationhead_follower_targets(handle,source_mask,first_seen_at) VALUES(${sqlString(handle)},${sourceMask},${now}) ON CONFLICT(handle) DO UPDATE SET source_mask=(sh_stationhead_follower_targets.source_mask | excluded.source_mask);`);
+          }
+          const followersJson = JSON.stringify(followers);
+          const failuresJson = JSON.stringify(failures);
+          targetLines.push(`INSERT INTO sh_stationhead_daily_followers_v2(observed_date_jst,scheduled_at,collected_at,followers_json,failures_json) VALUES(${sqlString(date)},${now},${now},${sqlString(followersJson)},${sqlString(failuresJson)}) ON CONFLICT(observed_date_jst) DO UPDATE SET scheduled_at=excluded.scheduled_at,collected_at=excluded.collected_at,followers_json=excluded.followers_json,failures_json=excluded.failures_json;`);
+          fs.writeFileSync(`${temp}/followers-upsert.sql`, `${targetLines.join('\n')}\n`);
+          fs.writeFileSync(`${temp}/followers-meta.json`, JSON.stringify({ date, now, handles, followers, failures, successes: profiles.length, requests: handles.length }));
+          console.log(JSON.stringify({ date, successes: profiles.length, requests: handles.length, followers, failures }));
+          NODE
+
+          node manual-followers-once.mjs
+          rm -f manual-followers-once.mjs
+
+      - name: Persist follower snapshot to D1 and R2
         working-directory: worker
         shell: bash
         run: |
           set -euo pipefail
           npx wrangler d1 execute OTHER_DB \
             --config wrangler.buddies-collector.jsonc \
-            --remote \
-            --json \
+            --remote --file "$RUNNER_TEMP/followers-upsert.sql" --yes
+
+          updated_at="$(node -e 'const p=require(process.argv[1]);process.stdout.write(String(p.now))' "$RUNNER_TEMP/followers-meta.json")"
+          headers_json='{"content-type":"application/json; charset=utf-8","cache-control":"public, max-age=30, s-maxage=300, stale-while-revalidate=600"}'
+          npx wrangler r2 object put "sh-pages-responses/pages-response/v1/followers.json" \
+            --remote --file "$RUNNER_TEMP/followers-next.json" --force \
+            --content-type "application/json; charset=utf-8" \
+            --cache-control "public, max-age=30, s-maxage=300, stale-while-revalidate=600" \
+            --header "x-amz-meta-version:1" \
+            --header "x-amz-meta-status:200" \
+            --header "x-amz-meta-headers_json:$headers_json" \
+            --header "x-amz-meta-updated_at:$updated_at" \
+            --header "x-amz-meta-cadence_seconds:86400"
+
+      - name: Verify persisted follower snapshot
+        working-directory: worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute OTHER_DB \
+            --config wrangler.buddies-collector.jsonc \
+            --remote --json \
             --command "SELECT observed_date_jst,scheduled_at,collected_at,followers_json,failures_json FROM sh_stationhead_daily_followers_v2 ORDER BY observed_date_jst DESC LIMIT 1" \
-            > "$RUNNER_TEMP/follower-row.json"
-          cat "$RUNNER_TEMP/follower-row.json"
-          node <<'NODE' "$RUNNER_TEMP/follower-row.json"
+            > "$RUNNER_TEMP/follower-verify-d1.json"
+          npx wrangler r2 object get "sh-pages-responses/pages-response/v1/followers.json" \
+            --remote --file "$RUNNER_TEMP/follower-verify-r2.json" >/dev/null
+          node - "$RUNNER_TEMP/follower-verify-d1.json" "$RUNNER_TEMP/follower-verify-r2.json" <<'NODE'
           const fs = require('node:fs');
-          const payload = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-          const row = payload?.[0]?.results?.[0];
-          if (!row) throw new Error('No follower snapshot row found');
-          const jst = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
-          if (row.observed_date_jst !== jst) throw new Error(`Latest follower snapshot is ${row.observed_date_jst}, expected ${jst}`);
-          const age = Date.now() - Number(row.collected_at || 0);
-          if (!Number.isFinite(age) || age < 0 || age > 15 * 60 * 1000) {
-            throw new Error(`Follower snapshot is not fresh; age_ms=${age}`);
-          }
-          const followers = JSON.parse(row.followers_json || '{}');
-          const failures = JSON.parse(row.failures_json || '[]');
-          console.log(JSON.stringify({ ok: true, observed_date_jst: row.observed_date_jst, scheduled_at: row.scheduled_at, collected_at: row.collected_at, followers, failures }));
+          const d1 = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))?.[0]?.results?.[0];
+          const r2 = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
+          const today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+          if (!d1 || d1.observed_date_jst !== today) throw new Error(`D1 follower row missing for ${today}`);
+          if (r2?.latest_date !== today || r2?.ok !== true) throw new Error(`R2 follower model missing for ${today}`);
+          const followers = JSON.parse(d1.followers_json || '{}');
+          const failures = JSON.parse(d1.failures_json || '[]');
+          console.log(`FOLLOWER_COLLECTION_OK date=${today} collected_at=${d1.collected_at} accounts=${Object.keys(followers).length} failures=${failures.length}`);
+          console.log(`FOLLOWERS ${JSON.stringify(followers)}`);
           NODE
