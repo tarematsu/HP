@@ -88,10 +88,12 @@ const NAVIGATION = Object.freeze([
         id: 'buddies',
         label: 'Buddies',
         defaultMode: 'current',
-        modes: Object.freeze(['current', 'daily', 'weekly', 'monthly', 'played-tracks', 'followers', 'likes', 'ranking', 'broadcasts']),
+        modes: Object.freeze(['current', 'daily', 'weekly', 'monthly', 'first-week', 'played-tracks', 'likes', 'broadcasts']),
       }),
-      Object.freeze({ id: 'nogizaka', label: 'nogizaka46smej', defaultMode: 'nogizaka', modes: Object.freeze(['nogizaka']) }),
       Object.freeze({ id: 'hinata', label: 'Ohisama', defaultMode: 'hinata', modes: Object.freeze(['hinata']) }),
+      Object.freeze({ id: 'nogizaka', label: 'nogizaka46smej', defaultMode: 'nogizaka', modes: Object.freeze(['nogizaka']) }),
+      Object.freeze({ id: 'ranking', label: 'リーダーボード', defaultMode: 'ranking', modes: Object.freeze(['ranking']) }),
+      Object.freeze({ id: 'followers', label: 'フォロワー', defaultMode: 'followers', modes: Object.freeze(['followers']) }),
     ]),
   }),
   Object.freeze({
@@ -102,12 +104,6 @@ const NAVIGATION = Object.freeze([
       Object.freeze({ id: 'amazon-music', label: 'Amazon Music', defaultMode: 'amazon-music', modes: Object.freeze(['amazon-music']) }),
     ]),
   }),
-  Object.freeze({
-    id: 'analysis',
-    sources: Object.freeze([
-      Object.freeze({ id: 'first-week', label: '初週比較', defaultMode: 'first-week', modes: Object.freeze(['first-week']) }),
-    ]),
-  }),
 ]);
 const MODE_NAVIGATION = new Map();
 for (const section of NAVIGATION) {
@@ -115,7 +111,7 @@ for (const section of NAVIGATION) {
     for (const mode of source.modes) MODE_NAVIGATION.set(mode, { section, source });
   }
 }
-const BUDDIES_VISIBLE_MODES = new Set(['current', 'daily', 'played-tracks', 'likes', 'ranking', 'broadcasts', 'followers']);
+const BUDDIES_VISIBLE_MODES = new Set(['current', 'daily', 'first-week', 'played-tracks', 'likes', 'broadcasts']);
 
 const currentView = document.getElementById('currentView');
 const historyView = document.getElementById('historyView');
