@@ -205,7 +205,8 @@ function draw() {
       strokeStyle: series.color,
       lineWidth: series.width,
     });
-    if (mode !== 'daily' || pointCount !== 1) return;
+    const lineCount = Math.max(0, pointCount - 1);
+    if (!(mode === 'daily' && lineCount === 0 && pointCount === 1)) return;
     const index = rows.findIndex((row) => finite(row?.[series.key]) != null);
     if (index < 0) return;
     const value = finite(rows[index]?.[series.key]);
