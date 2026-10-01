@@ -12,7 +12,7 @@ const workerDefinitions = [
   { name: 'sh-ohisama-collector', config: 'worker/wrangler.ohisama-collector.jsonc', command: 'deploy:ohisama-collector' },
   { name: 'sh-spotify-playcount-collector', config: 'worker/wrangler.spotify-playcount.jsonc', command: 'deploy:spotify-playcount' },
   { name: 'sh-amazon-music-collector', config: 'worker/wrangler.amazon-music.jsonc', command: 'deploy:amazon-music' },
-  { name: 'sh-regional-music-collector', config: 'worker/wrangler.regional-music.jsonc', command: 'deploy:regional-music' },
+  { name: 'sh-regional-music-collector', config: 'worker/wrangler.regional-music.jsonc', command: 'regional-music:deploy' },
   { name: 'sh-runtime-orchestrator', config: 'worker/wrangler.runtime.jsonc', command: 'deploy:runtime' },
 ];
 
