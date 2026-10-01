@@ -12,7 +12,7 @@ const api = readFileSync(new URL('../functions/api/nogizaka-listening-party.js',
 
 test('Nogizaka tab is mounted immediately before Hinata when available', () => {
   assert.match(shell, /view: 'nogizaka'/);
-  assert.match(shell, /label: '乃木坂'/);
+  assert.match(shell, /label: 'nogizaka46smej'/);
   assert.match(shell, /anchorSelectors: \['\[data-view="hinata"\]', '\[data-mode="broadcasts"\]'\]/);
   assert.match(shell, /position: 'beforebegin'/);
   assert.match(tabs, /nogizaka:\s*\{/);
