@@ -4,7 +4,6 @@ import test from 'node:test';
 import {
   REGIONAL_MUSIC_DAILY_SERVICES,
   REGIONAL_MUSIC_DISPATCH_UTC_HOUR,
-  REGIONAL_MUSIC_READ_MODEL_UTC_MINUTE,
   enqueueRegionalMusicDispatch,
   regionalMusicDispatchForTimestamp,
 } from '../src/regional-music-dispatch-plan.js';
@@ -25,13 +24,8 @@ test('regional services dispatch one per minute from 06:00 through 06:18 JST', (
   assert.equal(regionalMusicDispatchForTimestamp(base + 19 * 60_000), null);
 });
 
-test('regional read model publishes at 06:30 JST after the collection window', () => {
-  assert.equal(REGIONAL_MUSIC_READ_MODEL_UTC_MINUTE, 30);
-  const message = regionalMusicDispatchForTimestamp(Date.UTC(2026, 9, 1, 21, 30, 0));
-  assert.deepEqual(message, {
-    message_type: 'regional-music-publish',
-    scheduled_at: Date.UTC(2026, 9, 1, 21, 30, 0),
-  });
+test('regional scheduler has no fixed-time read-model publication', () => {
+  assert.equal(regionalMusicDispatchForTimestamp(Date.UTC(2026, 9, 1, 21, 30, 0)), null);
   assert.equal(regionalMusicDispatchForTimestamp(Date.UTC(2026, 9, 1, 20, 30, 0)), null);
 });
 
