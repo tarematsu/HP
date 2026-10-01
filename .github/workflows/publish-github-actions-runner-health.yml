@@ -3,7 +3,7 @@ name: Publish GitHub Actions runner health
 on:
   workflow_run:
     # Refresh after every monitored operational workflow that can complete independently.
-    workflows: ["Unified Cloudflare Observability", "Rebuild pages read models", "Run runtime offline maintenance", "Repair track metadata", "Run local minute facts rebuild", "Publish GitHub deployment health"]
+    workflows: ["Unified Cloudflare Observability", "Rebuild pages read models", "Run runtime offline maintenance", "Run data integrity repair", "Repair track metadata", "Run local minute facts rebuild", "Publish GitHub deployment health"]
     types: [completed]
   push:
     branches: [main]
@@ -12,6 +12,7 @@ on:
       - '.github/workflows/publish-github-deployment-health.yml'
       - '.github/workflows/refresh-cloudflare-observability.yml'
       - '.github/workflows/run-runtime-offline-maintenance.yml'
+      - '.github/workflows/run-data-integrity-repair.yml'
       - '.github/workflows/run-pages-read-model-rebuild.yml'
       - '.github/workflows/run-track-metadata-repair.yml'
       - '.github/workflows/run-local-minute-facts-rebuild.yml'

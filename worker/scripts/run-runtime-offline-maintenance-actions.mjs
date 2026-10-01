@@ -26,6 +26,10 @@ function positiveInteger(value, fallback, minimum, maximum) {
   return Math.max(minimum, Math.min(maximum, parsed));
 }
 
+function enabled(value) {
+  return ['1', 'true', 'yes', 'on'].includes(String(value ?? '').trim().toLowerCase());
+}
+
 function remoteDatabase(database, suffix) {
   return createWranglerRemoteD1({
     database,
@@ -42,7 +46,7 @@ function productionEnvironment() {
     OTHER_DB: remoteDatabase(databases.other, 'other'),
     SNAPSHOT_RETENTION_ENABLED: true,
     SNAPSHOT_RETENTION_MS: 30 * 24 * 60 * 60_000,
-    SNAPSHOT_RETENTION_INTERVAL_MS: 6 * 60 * 60_000,
+    SNAPSHOT_RETENTION_INTERVAL_MS: 24 * 60 * 60_000,
     SNAPSHOT_RETENTION_BATCH_SIZE: 500,
     SNAPSHOT_RETENTION_MAX_BATCHES: 1,
     STREAM_GOAL_PREDICTION_INTERVAL_MS: 30 * 60_000,
@@ -175,6 +179,8 @@ export async function runRuntimeOfflineMaintenanceActions(options = {}) {
   const runRollup = options.runRollup || runRollupMaintenance;
   const runRebuilds = options.runRebuilds || runOfflineMinuteRebuilds;
   const runRetention = options.runRetention || pruneOldSnapshots;
+  const lightOnly = options.lightOnly === true || enabled(process.env.RUNTIME_MAINTENANCE_LIGHT_ONLY);
+  const force = options.force === true || enabled(process.env.RUNTIME_MAINTENANCE_FORCE);
   const minimumIntervalMs = positiveInteger(
     options.minimumIntervalMs ?? process.env.RUNTIME_MAINTENANCE_MIN_INTERVAL_MS,
     RUNTIME_MAINTENANCE_MIN_INTERVAL_MS,
@@ -195,7 +201,7 @@ export async function runRuntimeOfflineMaintenanceActions(options = {}) {
       collectorId: OFFLINE_REBUILD_COLLECTOR_ID,
       ...value,
     }));
-  if (minimumIntervalMs > 0 && options.force !== true) {
+  if (minimumIntervalMs > 0 && !force) {
     const previous = await readMaintenanceStatus(env.OTHER_DB);
     if (recentSuccessfulMaintenance(previous, startedAt, minimumIntervalMs)) {
       return {
@@ -229,6 +235,24 @@ export async function runRuntimeOfflineMaintenanceActions(options = {}) {
     ensureTime();
     const prediction = await runPrediction(env, startedAt);
     ensureTime();
+
+    if (lightOnly) {
+      const finishedAt = timestamp(clock, startedAt);
+      await writeMaintenanceStatus(env.OTHER_DB, {
+        status: 'ok',
+        attemptAt: startedAt,
+        successAt: finishedAt,
+        updatedAt: finishedAt,
+      });
+      return {
+        ok: true,
+        event: 'runtime_light_maintenance_actions_complete',
+        elapsed_ms: Math.max(0, finishedAt - startedAt),
+        inbox_recovery: inboxRecovery,
+        prediction,
+      };
+    }
+
     const rollup = await runRollup(env.BUDDIES_DB, env.OTHER_DB, env.MINUTE_DB, startedAt);
     ensureTime();
 

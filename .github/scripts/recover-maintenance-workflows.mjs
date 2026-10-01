@@ -102,9 +102,8 @@ export async function recoverMaintenanceWorkflows({
   const states = Object.fromEntries(entries);
   const dispatched = [];
 
-  // Runtime rollups are the source for Pages history. Recover or finish Runtime
-  // first. Pages itself is normally revision-driven; this watchdog is only a
-  // low-frequency recovery path if the daily fallback run is missed.
+  // Recover the lightweight 30-minute lane first. Heavy repair is independent
+  // and is only expected every four hours.
   if (shouldRecover(states.runtime.state)) {
     await dispatchWorkflow(repository, WORKFLOWS.runtime, token, request);
     dispatched.push('runtime');
@@ -114,6 +113,17 @@ export async function recoverMaintenanceWorkflows({
     return { ok: true, dispatched, states, reason: `runtime-${states.runtime.state}` };
   }
 
+  if (shouldRecover(states.dataRepair.state)) {
+    await dispatchWorkflow(repository, WORKFLOWS.dataRepair, token, request);
+    dispatched.push('dataRepair');
+    return { ok: true, dispatched, states, reason: 'data-repair-recovered' };
+  }
+  if (states.dataRepair.state !== 'fresh') {
+    return { ok: true, dispatched, states, reason: `data-repair-${states.dataRepair.state}` };
+  }
+
+  // Pages is normally revision-driven from the four-hour repair lane. The
+  // daily run remains only as a recovery sweep.
   if (shouldRecover(states.pages.state)) {
     await dispatchWorkflow(
       repository,
@@ -134,9 +144,8 @@ export async function recoverMaintenanceWorkflows({
     return { ok: true, dispatched, states, reason: `pages-${states.pages.state}` };
   }
 
-  // Metadata repair remains event-driven from runtime maintenance. The former
-  // local minute-facts full rebuild is manual-only; normal missing facts are
-  // detected by the bounded gap scanner inside runtime maintenance.
+  // Metadata repair is a daily backlog/legacy safety net. Live unknown tracks
+  // are enriched on the committed metadata path and do not depend on this job.
   if (shouldRecover(states.metadata.state)) {
     await dispatchWorkflow(repository, WORKFLOWS.metadata, token, request);
     dispatched.push('metadata');
