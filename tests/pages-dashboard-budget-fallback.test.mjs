@@ -29,7 +29,7 @@ const BUDGET_GUARDED_HISTORY_KEYS = HISTORY_KEYS.filter((key) => key !== 'histor
 test('D1 budget deferral keeps daily history publishable while reusing heavier history', () => {
   assert.match(workflow, /name: Record D1 budget deferral/);
   assert.match(workflow, /name: Install Worker dependencies\n        run: npm ci/);
-  assert.match(workflow, /name: Refresh reusable history models during D1 budget deferral/);
+  assert.match(workflow, /name: Refresh budget-safe history models during D1 budget deferral/);
   assert.match(
     workflow,
     /if: steps\.d1-write-budget\.outputs\.read_allowed != 'true'[\s\S]*PAGES_READ_MODEL_REUSE_ONLY: 'true'[\s\S]*node scripts\/run-pages-history-read-model-actions\.mjs/,
@@ -38,6 +38,7 @@ test('D1 budget deferral keeps daily history publishable while reusing heavier h
     workflow,
     /name: Publish due pages read models\n        if: steps\.d1-write-budget\.outputs\.read_allowed == 'true'[\s\S]*node scripts\/run-pages-history-read-model-actions\.mjs/,
   );
+  assert.match(workflow, /Daily history remains publishable; heavier history stays reuse-only\./);
   assert.doesNotMatch(workflow, /node scripts\/refresh-pages-dashboard-actions\.mjs/);
   assert.doesNotMatch(workflow, /node scripts\/refresh-pages-realtime-actions\.mjs/);
   assert.doesNotMatch(workflow, /node scripts\/repair-pages-summary-gaps\.mjs/);
