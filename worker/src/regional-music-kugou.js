@@ -128,7 +128,7 @@ export async function collectKugouMusic(env, observedAt = Date.now(), fetchImpl 
         artists += 1;
       }
 
-      for (const entry of entries) {
+      for (const [index, entry] of entries.entries()) {
         await saveRegionalTrack(env, {
           service: 'kugou_music',
           service_track_id: entry.track_id,
@@ -136,6 +136,8 @@ export async function collectKugouMusic(env, observedAt = Date.now(), fetchImpl 
           canonical_artist: canonicalArtist,
           title: entry.title,
           album_name: entry.album_name,
+          popularity_rank: index + 1,
+          popularity_rank_source: 'artist_page_order',
           track_url: entry.hash
             ? `https://www.kugou.com/song/#hash=${encodeURIComponent(entry.hash)}`
             : null,

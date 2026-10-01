@@ -106,7 +106,7 @@ export async function collectGenie(env, observedAt = Date.now(), fetchImpl = fet
       });
       artists += 1;
 
-      for (const trackId of extractGenieTrackIds(profileHtml)) {
+      for (const [index, trackId] of extractGenieTrackIds(profileHtml).entries()) {
         try {
           const trackUrl = genieSongUrl(trackId);
           const songHtml = await fetchHtml(fetchImpl, trackUrl);
@@ -118,6 +118,8 @@ export async function collectGenie(env, observedAt = Date.now(), fetchImpl = fet
             service_artist_id: artistId,
             canonical_artist: canonicalArtist,
             track_url: trackUrl,
+            popularity_rank: index + 1,
+            popularity_rank_source: 'artist_page_order',
             likes: metrics.likes,
             listeners: metrics.listeners,
             plays: metrics.plays,

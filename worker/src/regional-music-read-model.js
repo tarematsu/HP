@@ -21,7 +21,7 @@ async function all(db, sql) {
 export async function loadRegionalMusicReadModel(db) {
   if (typeof db?.prepare !== 'function') throw new Error('OTHER_DB binding is unavailable');
 
-  const [artists, tracks, releases, playlists, memberships, services] = await Promise.all([
+  const [artists, tracks, releases, playlists, memberships, services, artistTrackOrders] = await Promise.all([
     all(db, `SELECT
         p.service,p.canonical_artist,p.service_artist_id,p.display_name,p.profile_url,
         d.snapshot_date,d.observed_at,d.followers,d.likes,d.monthly_audience,d.total_views
@@ -80,9 +80,15 @@ export async function loadRegionalMusicReadModel(db) {
         entity_counts_json,updated_at
       FROM regional_music_collector_state
       ORDER BY service`),
+    all(db, `SELECT o.snapshot_date,o.service,o.canonical_artist,o.service_artist_id,
+        o.service_track_id,o.observed_at,o.position,o.rank_source
+      FROM regional_music_artist_track_order AS o
+      WHERE o.observed_at=(SELECT MAX(x.observed_at) FROM regional_music_artist_track_order AS x
+        WHERE x.service=o.service AND x.canonical_artist=o.canonical_artist)
+      ORDER BY o.service,o.canonical_artist,o.position LIMIT 10000`),
   ]);
 
-  return { artists, tracks, releases, playlists, memberships, services };
+  return { artists, tracks, releases, playlists, memberships, services, artistTrackOrders };
 }
 
 function normalizedCollectorState(row) {
@@ -119,6 +125,7 @@ export function regionalMusicReadModelPayload(snapshot, updatedAt = Date.now()) 
     releases: Array.isArray(snapshot?.releases) ? snapshot.releases : [],
     playlists: Array.isArray(snapshot?.playlists) ? snapshot.playlists : [],
     playlist_memberships: Array.isArray(snapshot?.memberships) ? snapshot.memberships : [],
+    artist_track_orders: Array.isArray(snapshot?.artistTrackOrders) ? snapshot.artistTrackOrders : [],
     services: (Array.isArray(snapshot?.services) ? snapshot.services : []).map(normalizedCollectorState),
   };
 }

@@ -501,13 +501,15 @@ export async function collectYouTubeMusic(env, observedAt = Date.now(), fetchImp
       });
       artists += 1;
 
-      for (const track of parsed.tracks) {
+      for (const [index, track] of parsed.tracks.entries()) {
         await saveRegionalTrack(env, {
           service: YOUTUBE_MUSIC_SERVICE,
           service_artist_id: identity.browseId,
           canonical_artist: canonicalArtist,
           observed_at: observedAt,
           ...track,
+          popularity_rank: index + 1,
+          popularity_rank_source: 'artist_page_order',
         });
         tracks += 1;
       }

@@ -164,7 +164,7 @@ export async function collectJioSaavn(env, observedAt = Date.now(), fetchImpl = 
         );
         if (entries.length) break;
       }
-      for (const entry of entries) {
+      for (const [index, entry] of entries.entries()) {
         await saveRegionalTrack(env, {
           service: 'jiosaavn',
           service_track_id: entry.track_id,
@@ -172,6 +172,8 @@ export async function collectJioSaavn(env, observedAt = Date.now(), fetchImpl = 
           canonical_artist: canonicalArtist,
           title: entry.title,
           album_name: entry.album_name,
+          popularity_rank: Array.isArray(detail?.topSongs) ? index + 1 : null,
+          popularity_rank_source: 'artist_page_order',
           track_url: entry.url,
           observed_at: observedAt,
         });
