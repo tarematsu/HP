@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const audit = readFileSync(new URL('../../scripts/audit-pages-live.mjs', import.meta.url), 'utf8');
+const compactAudit = readFileSync(new URL('../../scripts/audit-pages-mobile-compact.mjs', import.meta.url), 'utf8');
 
 test('production browser audit covers every current dashboard route', () => {
   for (const mode of ['current', 'daily', 'ranking', 'first-week', 'played-tracks', 'spotify', 'likes', 'broadcasts']) {
@@ -48,4 +49,15 @@ test('full-page screenshots reveal content-visibility sections before capture', 
   assert.match(audit, /async function revealLazyContent/);
   assert.match(audit, /window\.scrollTo\(0, document\.documentElement\.scrollHeight\)/);
   assert.ok(audit.indexOf('await revealLazyContent(page)') < audit.indexOf('page.screenshot'));
+});
+
+test('compact production audit follows the current routes and scrollable navigation', () => {
+  assert.doesNotMatch(compactAudit, /name: 'weekly'/);
+  assert.doesNotMatch(compactAudit, /name: 'monthly'/);
+  assert.doesNotMatch(compactAudit, /path: '\\/#weekly'/);
+  assert.doesNotMatch(compactAudit, /path: '\\/#monthly'/);
+  assert.match(compactAudit, /requiredText: '総週数'/);
+  assert.match(compactAudit, /navigationScrollable/);
+  assert.match(compactAudit, /selectedTabClipped/);
+  assert.match(compactAudit, /clippedTabs > 0 && !layout\.navigationScrollable/);
 });
