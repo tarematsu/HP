@@ -9,6 +9,7 @@ import {
   normalizeOhisamaSnapshot,
   registerOhisamaFollowerTarget,
 } from './ohisama-collector-entry.js';
+import { guardedOhisamaAuthRefresh } from './ohisama-auth-refresh-guard.js';
 import { jwtExpiryMs, normalizeBearer } from './shared.js';
 
 const STATE_ID = 'stationhead';
@@ -212,6 +213,17 @@ async function acquireGuestSession(env, fetchImpl = fetch) {
   return persistAuthState(env, state, now, { forceD1: true });
 }
 
+async function refreshGuestSession(env, dependencies = {}, previousToken = '') {
+  const fetchImpl = dependencies.fetch || fetch;
+  return guardedOhisamaAuthRefresh(
+    env,
+    dependencies,
+    () => acquireGuestSession(env, fetchImpl),
+    () => readAuthState(env),
+    previousToken,
+  );
+}
+
 async function ensureSession(env, dependencies = {}) {
   const now = Number((dependencies.now || Date.now)());
   const refreshBeforeMs = positiveNumber(
@@ -223,7 +235,7 @@ async function ensureSession(env, dependencies = {}) {
   const usable = Boolean(state.authToken && state.deviceUid)
     && (!state.tokenExpiresAt || state.tokenExpiresAt - now > refreshBeforeMs);
   if (usable) return state;
-  return acquireGuestSession(env, dependencies.fetch || fetch);
+  return refreshGuestSession(env, dependencies, state.authToken || '');
 }
 
 async function requestChannel(env, dependencies = {}) {
@@ -238,7 +250,7 @@ async function requestChannel(env, dependencies = {}) {
       signal: AbortSignal.timeout(timeoutMs),
     });
     if ((response.status === 401 || response.status === 403) && attempt === 0) {
-      state = await acquireGuestSession(env, fetchImpl);
+      state = await refreshGuestSession(env, dependencies, state.authToken || '');
       continue;
     }
     if (!response.ok) throw new Error(`Stationhead API ${response.status}: channel`);
