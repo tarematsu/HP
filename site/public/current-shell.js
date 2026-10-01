@@ -5,6 +5,7 @@ import {
   dashboardSectionHead,
   mountDashboardShell,
 } from './dashboard-ui-common.js?v=20261001.1';
+import { stationheadPlaybackCards } from './stationhead-playback-shell.js?v=20261001.1';
 
 const currentMetrics = dashboardMetrics([
   dashboardMetric({
@@ -42,16 +43,23 @@ mountDashboardShell({
         <canvas id="audienceChart" width="960" height="360" aria-label="過去24時間のオンライン人数"></canvas>
         <div id="currentChartDetail" class="chart-detail" data-current-chart-detail></div>
       </section>
-      <section class="primary-grid">
-        <article class="card now-card">
-          ${dashboardSectionHead({ kicker: 'NOW PLAYING', title: '再生中の曲', trailingHtml: '<div id="host" class="host"></div>', className: 'now-head' })}
-          <a id="nowPlayingLink" class="now-playing" href="https://stationhead.com/c/buddies" target="_blank" rel="noopener noreferrer" aria-disabled="false"><span class="track-visual" aria-hidden="true"><span id="trackFallback" class="track-fallback">♪</span><img id="trackImage" class="track-image" alt="" width="104" height="104" decoding="async" hidden></span><div class="track-copy"><strong id="trackTitle"></strong><span id="trackArtist" class="subtle"></span><div class="time-row"><span id="trackTime">-</span><span id="trackBites" hidden></span><span id="spotifyHint">Stationheadを開く</span></div><div class="progress" aria-hidden="true"><i id="trackBar"></i></div></div></a>
-        </article>
-        <article class="card queue-card">
-          ${dashboardSectionHead({ kicker: 'UP NEXT', title: '今後の再生予定', trailingHtml: '<span id="queueCount" class="pill">-</span>', className: 'queue-head' })}
-          <div id="queue" class="queue" aria-live="polite"></div>
-        </article>
-      </section>
-      <p id="statusMessage" class="status-message" role="status" hidden></p>`,
+      ${stationheadPlaybackCards({
+        stationUrl: 'https://stationhead.com/c/buddies',
+        ids: {
+          host: 'host',
+          link: 'nowPlayingLink',
+          fallback: 'trackFallback',
+          image: 'trackImage',
+          title: 'trackTitle',
+          artist: 'trackArtist',
+          time: 'trackTime',
+          bites: 'trackBites',
+          hint: 'spotifyHint',
+          bar: 'trackBar',
+          queueCount: 'queueCount',
+          queue: 'queue',
+          status: 'statusMessage',
+        },
+      })}`,
   },
 });

@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const mainPage = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const currentShell = readFileSync(new URL('../public/current-shell.js', import.meta.url), 'utf8');
+const playbackShell = readFileSync(new URL('../public/stationhead-playback-shell.js', import.meta.url), 'utf8');
 const likesShell = readFileSync(new URL('../public/likes-shell.js', import.meta.url), 'utf8');
 const tabRegistry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
 const dashboardEntry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
@@ -17,7 +18,8 @@ const historyLikes = readFileSync(new URL('../public/history/history-likes.js', 
 const trackEndpoint = readFileSync(new URL('../functions/api/track-history.js', import.meta.url), 'utf8');
 
 test('main page renders current track likes from the dashboard response', () => {
-  assert.match(currentShell, /id="trackBites" hidden/);
+  assert.match(currentShell, /bites: 'trackBites'/);
+  assert.match(playbackShell, /id="\$\{value\.bites\}" hidden/);
   assert.equal((mainPage.match(/<script /g) || []).length, 1);
   assert.match(mainPage, /src="\/assets\/dashboard\.min\.js\?v=[^"']+"/);
   assert.match(dashboardEntry, /import\('\/dashboard-client\.js\?v=[^']+'\)/);

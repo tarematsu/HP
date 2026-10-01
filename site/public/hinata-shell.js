@@ -72,3 +72,8 @@ mountDashboardShell({
       })}`,
   },
 });
+
+const extension = document.createElement('script');
+extension.type = 'module';
+extension.src = '/hinata-channel-tabs.js?v=20261001.2';
+document.head.append(extension);
