@@ -63,14 +63,15 @@ test('history rebuild is targeted by source revision with one daily recovery swe
   assert.match(workflow, /PAGES_READ_MODEL_FORCE_ALL/);
   assert.match(workflow, /PAGES_READ_MODEL_DUE_KEYS/);
   assert.match(workflow, /due_keys:/);
-  assert.match(workflow, /Refresh reusable history models during D1 budget deferral/);
+  assert.match(workflow, /Refresh budget-safe history models during D1 budget deferral/);
   assert.match(workflow, /Publish due pages read models/);
   assert.match(workflow, /run-pages-history-read-model-actions\.mjs/);
   assert.doesNotMatch(workflow, /node scripts\/refresh-pages-dashboard-actions\.mjs/);
   assert.doesNotMatch(workflow, /node scripts\/refresh-pages-realtime-actions\.mjs/);
   assert.match(historyRunner, /variant\.key !== 'dashboard' && variant\.event_driven !== true/);
   assert.match(historyRunner, /PAGES_READ_MODEL_DUE_KEYS/);
-  assert.match(historyRunner, /reuseOnlyKeys: variants\.map/);
+  assert.match(historyRunner, /BUDGET_EXEMPT_HISTORY_KEYS = new Set\(\['history:daily'\]\)/);
+  assert.match(historyRunner, /reuseOnlyKeys:[\s\S]*filter\(\(key\) => !BUDGET_EXEMPT_HISTORY_KEYS\.has\(key\)\)/);
   assert.doesNotMatch(historyRunner, /SPOTIFY_MODEL_KEY/);
   assert.match(workflow, /timeout-minutes: 15/);
   assert.match(workflow, /cancel-in-progress: true/);
