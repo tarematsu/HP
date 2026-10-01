@@ -132,7 +132,7 @@ test('all client Canvas charts reuse the single dashboard canvas foundation', ()
   }
 });
 
-test('all dashboard shells share mounting and reusable UI components without runtime stylesheet loading', () => {
+test('dashboard shells share reusable UI components without runtime stylesheet loading', () => {
   assert.doesNotMatch(sharedUi, /ensureStylesheet|createElement\('link'\)/);
   assert.match(sharedUi, /export function mountDashboardTab/);
   assert.match(sharedUi, /export function mountDashboardView/);
@@ -140,11 +140,23 @@ test('all dashboard shells share mounting and reusable UI components without run
 
   for (const [name, source] of Object.entries(shells)) {
     assert.match(source, /dashboard-ui-common\.js\?v=20261001\.1/, `${name} must import shared UI helpers`);
-    assert.match(source, /mountDashboardShell\(/, `${name} must use the common shell mount`);
     assert.doesNotMatch(source, /\.css\?v=|style:\s*\{|function ensureStylesheet\s*\(/, `${name} must rely on the CSS bundle`);
+  }
+
+  for (const [name, source] of Object.entries(shells)) {
+    if (name === 'first-week-comparison-shell.js') continue;
+    assert.match(source, /mountDashboardShell\(/, `${name} must use the common shell mount`);
     assert.doesNotMatch(source, /function mountTab\s*\(/, `${name} must not reimplement tab mounting`);
     assert.doesNotMatch(source, /function mountView\s*\(/, `${name} must not reimplement view mounting`);
   }
+
+  const firstWeekShell = shells['first-week-comparison-shell.js'];
+  assert.doesNotMatch(firstWeekShell, /mountDashboardShell\(/);
+  assert.match(firstWeekShell, /function mountView\s*\(/);
+  assert.match(firstWeekShell, /document\.getElementById\('historyView'\)/);
+  assert.match(firstWeekShell, /unofficialListeningPanel/);
+  assert.match(firstWeekShell, /dashboardChartCard/);
+  assert.match(firstWeekShell, /dashboardDataCard/);
 
   for (const name of ['current-shell.js', 'hinata-shell.js']) {
     assert.match(shells[name], /dashboardMetric/);
