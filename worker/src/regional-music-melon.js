@@ -5,6 +5,7 @@ import {
   saveRegionalCollectorState,
   saveRegionalPlaylist,
   saveRegionalPlaylistMembership,
+  saveRegionalPlaylistSnapshot,
   saveRegionalTrack,
 } from './regional-music-store.js';
 
@@ -45,7 +46,7 @@ export function findMelonArtistId(html, aliases) {
   const links = source.matchAll(/<a\b[^>]*(?:goArtistDetail\(['"]?(\d+)['"]?\)|artistId=(\d+))[^>]*>([\s\S]*?)<\/a>/gi);
   for (const match of links) {
     const label = normalize(visibleHtmlText(match[3]));
-    if (wanted.some((alias) => label.includes(alias))) return match[1] || match[2];
+    if (wanted.includes(label)) return match[1] || match[2];
   }
   return null;
 }
@@ -146,6 +147,7 @@ export async function collectMelon(env, observedAt = Date.now(), fetchImpl = fet
     try {
       const playlistUrl = melonPlaylistUrl(playlist.id);
       const html = await fetchHtml(fetchImpl, playlistUrl);
+      const entries = parseMelonPlaylistEntries(html);
       await saveRegionalPlaylist(env, {
         service: 'melon',
         service_playlist_id: playlist.id,
@@ -155,7 +157,13 @@ export async function collectMelon(env, observedAt = Date.now(), fetchImpl = fet
         owner_name: playlist.owner,
         observed_at: observedAt,
       });
-      for (const entry of parseMelonPlaylistEntries(html)) {
+      await saveRegionalPlaylistSnapshot(env, {
+        service: 'melon',
+        service_playlist_id: playlist.id,
+        item_count: entries.length,
+        observed_at: observedAt,
+      });
+      for (const entry of entries) {
         await saveRegionalTrack(env, {
           service: 'melon',
           service_track_id: entry.track_id,
