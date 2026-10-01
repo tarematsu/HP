@@ -7,6 +7,7 @@ const dashboardEntry = readFileSync(new URL('../public/dashboard-metrics.js', im
 const headerRepair = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const headerCss = readFileSync(new URL('../public/dashboard-presentation.css', import.meta.url), 'utf8');
 const sharedLayout = readFileSync(new URL('../public/pages-layout.css', import.meta.url), 'utf8');
+const mobileRefinements = readFileSync(new URL('../public/mobile-layout-refinements.css', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const historyClient = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 
@@ -31,6 +32,11 @@ test('header and metrics use the canonical layout without obsolete flex bases', 
   assert.match(sharedLayout, /\.top-card\.dashboard-header\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\)/);
   assert.match(sharedLayout, /\.metrics\s*\{[\s\S]*repeat\(3, minmax\(0, 1fr\)\)/);
   assert.doesNotMatch(headerCss, /flex:\s*1 1 (?:360|560)px/);
+});
+
+test('mobile dashboard begins with navigation instead of the channel heading', () => {
+  assert.match(mobileRefinements, /@media \(max-width: 760px\)[\s\S]*\.top-card\.dashboard-header > \.channel\s*\{[\s\S]*display:\s*none !important/);
+  assert.match(mobileRefinements, /@media \(max-width: 760px\)[\s\S]*\.top-card\.dashboard-header\s*\{[\s\S]*padding-top:\s*0 !important/);
 });
 
 test('navigation and summaries are finalized generically by the shared layout', () => {
