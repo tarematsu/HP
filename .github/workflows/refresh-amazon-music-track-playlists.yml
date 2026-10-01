@@ -74,6 +74,7 @@ jobs:
           batches=0
           succeeded_total=0
           failed_total=0
+          degraded=false
 
           while true; do
             batches=$((batches + 1))
@@ -82,7 +83,7 @@ jobs:
             fi
             cat amazon-track-playlist-refresh-result.json
 
-            read -r handled batch_tracks total_tracks succeeded failed < <(
+            read -r handled batch_tracks total_tracks succeeded failed upstream_unavailable < <(
               node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           const result = JSON.parse(readFileSync('amazon-track-playlist-refresh-result.json', 'utf8'));
@@ -92,6 +93,7 @@ jobs:
             Number(result?.total_tracks || 0),
             Number(result?.succeeded || 0),
             Number(result?.failed || 0),
+            result?.upstream_unavailable === true ? 'true' : 'false',
           ].join(' '));
           NODE
             )
@@ -108,6 +110,18 @@ jobs:
             succeeded_total=$((succeeded_total + succeeded))
             failed_total=$((failed_total + failed))
 
+            if (( succeeded <= 0 )); then
+              if [[ "$upstream_unavailable" == true ]]; then
+                degraded=true
+                echo "::warning::Amazon Music related-playlists endpoint is temporarily unavailable; ending this sweep early and preserving error state for the next retry."
+                break
+              fi
+              echo "All Amazon Music track playlist lookups failed for a batch" >&2
+              cat amazon-track-playlist-refresh-result.json >&2
+              cat amazon-track-playlist-refresh.log >&2
+              exit 1
+            fi
+
             echo "Amazon Music playlist sweep: ${processed}/${target} attempts (${succeeded_total} succeeded, ${failed_total} failed)"
             if (( processed >= target )); then
               break
@@ -118,4 +132,8 @@ jobs:
             fi
           done
 
-          echo "Completed Amazon Music playlist sweep: ${processed} attempts across ${batches} batches; ${succeeded_total} succeeded, ${failed_total} failed"
+          if [[ "$degraded" == true ]]; then
+            echo "Ended Amazon Music playlist sweep early after ${processed} attempts across ${batches} batches; ${succeeded_total} succeeded, ${failed_total} failed"
+          else
+            echo "Completed Amazon Music playlist sweep: ${processed} attempts across ${batches} batches; ${succeeded_total} succeeded, ${failed_total} failed"
+          fi
