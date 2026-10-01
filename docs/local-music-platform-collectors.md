@@ -16,25 +16,25 @@ Do not merge unrelated artists solely because a localized service returns a simi
 
 | Region | Service | Initial public signals to collect | Initial status |
 | --- | --- | --- | --- |
-| South Korea | Genie | artist/track presence, track cumulative plays, cumulative listeners, likes, albums | discovery/implementation |
-| South Korea | Bugs! | artist likes, tracks/albums, popularity ordering, MusicPD playlist inclusion | discovery/implementation |
-| South Korea | Melon | artist/track presence, likes, DJ playlists, chart/playlist inclusion where public | discovery |
-| South Korea | Naver VIBE | artist/track presence, public playlist/chart inclusion and public engagement values | discovery |
-| Greater China / SEA | JOOX | artist followers, tracks/albums, popularity/ranking, comments/playlist inclusion where public | discovery/implementation |
-| Mainland China | QQ Music | artist followers/fans where public, tracks, charts, playlists, comments/engagement where public | discovery |
-| Mainland China | NetEase Cloud Music | artist followers, track popularity/comments, playlists, charts where public | discovery |
-| Mainland China | Kugou Music | artist/track presence, public popularity/chart/playlist signals | discovery |
-| Vietnam | NhacCuaTui | artist followers, tracks/albums, popular tracks, user playlist inclusion | discovery/implementation |
-| Middle East / MENA | Anghami | artist/track presence, track plays, likes, playlists where public | discovery/implementation |
+| South Korea | Genie | artist/track presence, track cumulative plays, cumulative listeners, likes, albums | collector implemented; production verification pending |
+| South Korea | Bugs! | artist likes, tracks/albums, popularity ordering, MusicPD playlist inclusion | artist metric collector implemented; playlist expansion pending |
+| South Korea | Melon | artist fans, track likes, DJ playlists, chart/playlist inclusion where public | artist discovery + DJ playlist collector implemented; production verification pending |
+| South Korea | Naver VIBE | artist/track presence, public playlist/chart inclusion and public engagement values | discovery; public web verification is robots-limited |
+| Greater China / SEA | JOOX | artist followers, tracks/albums, popularity/ranking, comments/playlist inclusion where public | follower collector implemented; track/playlist expansion pending |
+| Mainland China | QQ Music | artist followers/fans where public, tracks, charts, playlists, comments/engagement where public | catalog verified for Nogizaka46; collector pending |
+| Mainland China | NetEase Cloud Music | artist followers, track popularity/comments, playlists, charts where public | catalog verified for Nogizaka46; collector pending |
+| Mainland China | Kugou Music | artist/track presence, public popularity/chart/playlist signals | catalog verified for Nogizaka46; collector pending |
+| Vietnam | NhacCuaTui | artist followers, tracks/albums, popular tracks, user playlist inclusion | follower + seed-track play collector implemented; catalog expansion pending |
+| Middle East / MENA | Anghami | artist/track presence, track plays, likes, playlists where public | seed-track metrics + artist discovery collector implemented; catalog expansion pending |
 | Russia/CIS | Yandex Music | artist/track presence, charts/playlists and public engagement values where exposed | discovery |
-| Africa / international emerging markets | Boomplay | artist/track presence, plays/favorites/comments/playlists where public | discovery |
+| Africa / international emerging markets | Boomplay | artist/track presence, plays/favorites/comments/playlists where public | Nogizaka46 catalog presence verified; collector pending |
 | Thailand | Plern | artist/track presence and any public plays/followers/charts/playlists | discovery |
 | Thailand | Fungjai | artist/track presence and public discovery/playlist signals if relevant catalog exists | discovery |
 | Vietnam | Zing MP3 | artist/track presence, charts, playlists and public engagement values | discovery |
 | India | JioSaavn | artist/track presence, playlists/charts and public engagement values | discovery |
 | India | Gaana | artist/track presence, playlists/charts and public engagement values | discovery |
 | Indonesia | Langit Musik | artist/track presence, charts/playlists and public engagement values | discovery |
-| South Korea | FLO | artist/track presence, public charts/playlists/engagement values | discovery |
+| South Korea | FLO | artist/track presence, public charts/playlists/engagement values | discovery; public pages currently unstable in external verification |
 
 ## Canonical collection fields
 
@@ -79,7 +79,7 @@ Collectors should map service-specific data onto shared fields where available. 
 
 Use a service-agnostic schema/read model rather than creating a separate Pages data contract for every provider.
 
-Suggested logical keys:
+Logical keys:
 
 - artist snapshots: `(service, canonical_artist, snapshot_date)`
 - track snapshots: `(service, service_track_id, snapshot_date)`
@@ -129,6 +129,17 @@ The public Pages API should receive pre-materialized R2 read models. Avoid dashb
 - Gaana
 - Langit Musik
 
+## Known service identities / seeds
+
+These are diagnostic seeds, not canonical identity replacements. Discovery must still verify artist ownership before expansion.
+
+- Bugs! artist IDs: Sakurazaka46 `80348696`, Hinatazaka46 `80329579`, Nogizaka46 `80192968`.
+- JOOX HK artist IDs: Sakurazaka46 `l3RBNJqESiqw84k4wFKQig==`, Hinatazaka46 `bBDS6Lsx44ux11K9H6vrKQ==`, Nogizaka46 `rsJfY_jmYjJ3Jrn7pdgwhA==`.
+- Melon validated DJ playlist: `430097431` (`역대 오리콘 차트 명곡`); Nogizaka46 entries are currently observable there.
+- QQ Music Nogizaka46 release seed: album ID `000HNVfX1PSixv`.
+- NetEase Cloud Music Nogizaka46 release seed: album ID `278234837`.
+- Kugou Music Nogizaka46 release seed: `cv1uyy99`.
+
 ## Completion criteria per service
 
 A service is not considered complete merely because an artist page was found. Mark it complete only after:
@@ -144,4 +155,24 @@ A service is not considered complete merely because an artist page was found. Ma
 
 ## Implementation status
 
-This PR is the working implementation PR. Keep this section updated as each collector moves through `discovery -> parser -> persistence -> read model -> Pages -> production verification`.
+Current PR implementation:
+
+- generic D1 schemas for artist, track, playlist-membership and collector-health snapshots;
+- a 19-service registry and three-group alias normalizer;
+- dedicated `sh-regional-music-collector` scheduled Worker, isolated from Spotify/Amazon collection;
+- daily collection at 00:20 JST;
+- Genie: dynamic artist search, artist likes, rotating top-track IDs, cumulative listeners/plays/likes;
+- Bugs!: stable artist IDs and daily artist likes;
+- JOOX: stable artist IDs and daily followers;
+- NhacCuaTui: daily followers plus seed-track plays;
+- Anghami: seed-track plays/likes, artist-ID discovery and artist followers;
+- Melon: artist search/fan metrics plus target-track membership snapshots from validated DJ playlists;
+- regression tests for alias normalization, service registry, parsers and Worker deployment selection.
+
+Still required before this PR is production-complete:
+
+1. expand Phase 1 collectors from seed/top-track coverage to full catalog and discoverable playlists;
+2. implement QQ Music / NetEase Cloud Music / Kugou Music collectors using the verified release seeds, then VIBE/FLO fallbacks;
+3. implement the Phase 3 regional services where public surfaces can be collected reliably;
+4. publish a compact R2 read model and expose it to Pages without live provider requests;
+5. run production verification after D1 migration/Worker deployment and keep the PR draft until real responses are confirmed.
