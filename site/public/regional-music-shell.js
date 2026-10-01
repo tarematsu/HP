@@ -60,7 +60,7 @@ mountDashboardShell({
         <span id="regionalMusicRegion" class="regional-music-region"></span>
       </div>
       ${summary}
-      ${musicServiceSection({ id: 'regionalMusicHealthSection', kicker: 'STATUS', title: '状態', bodyHtml: healthPanel })}
+      <section id="regionalMusicHealthSection" class="music-service-section">${healthPanel}</section>
       ${musicServiceSection({ id: 'regionalMusicArtistSection', kicker: 'ARTISTS', title: 'アーティスト', bodyHtml: artistTable })}
       ${musicServiceSection({ id: 'regionalMusicTrackSection', kicker: 'TRACKS', title: '楽曲', bodyHtml: trackTable })}
       ${musicServiceSection({ id: 'regionalMusicPlaylistSection', kicker: 'PLAYLISTS', title: 'プレイリスト', bodyHtml: playlistTable })}`,

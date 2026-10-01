@@ -8,7 +8,7 @@ const styles = readFileSync(new URL('../public/history/history-lite.css', import
 const sharedLayout = readFileSync(new URL('../public/pages-layout.css', import.meta.url), 'utf8');
 
 test('leaderboard renderer defines only final visible single-host columns', () => {
-  assert.match(history, /const RANKING_COLUMNS = \[[\s\S]*\['ranking_date', '週'\][\s\S]*\['host_name', 'ホスト'\][\s\S]*\['stationhead_channel_name', 'チャンネル'\][\s\S]*\['artist_name', 'アーティスト名'\][\s\S]*\['relation_label', '種別'\][\s\S]*\['rank', '順位'\]/);
+  assert.match(history, /const RANKING_COLUMNS = \[[\s\S]*\['ranking_date', '週'\][\s\S]*\['rank', '順位'\][\s\S]*\['host_name', 'ホスト'\][\s\S]*\['stationhead_channel_name', 'チャンネル'\][\s\S]*\['artist_name', 'アーティスト名'\][\s\S]*\['relation_label', '種別'\]/);
   assert.doesNotMatch(history, /\['previous_rank', '前週順位'\]|\['rank_change', '前週比'\]|\['ranking_type', 'ランキング種別'\]|\['source_sheet', '順位データ出典'\]/);
   assert.match(history, /classList\.toggle\('compact-columns', mode === 'ranking'\)/);
 });

@@ -12,7 +12,7 @@ import {
 const liveLegend = dashboardLegend({
   items: [
     '<span class="online-key">オンライン</span>',
-    '<span class="stream-growth-key">再生数増加</span>',
+    '<span class="stream-key">再生数増加</span>',
   ],
 });
 

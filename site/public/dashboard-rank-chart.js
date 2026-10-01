@@ -41,8 +41,18 @@ function paint(options) {
     dateLabel = (date) => date,
     hueStep = 47,
     latestPoint = null,
+    legendContainer = null,
   } = options;
   if (!container) return null;
+  if (legendContainer) {
+    legendContainer.replaceChildren(...series.map((item, index) => {
+      const label = document.createElement('span');
+      const dot = document.createElement('i');
+      dot.style.background = seriesColor(lineClass, index, hueStep);
+      label.append(dot, `${item.title}${item.currentRank == null ? '' : ` ${item.currentRank}位`}`);
+      return label;
+    }));
+  }
   container.replaceChildren();
   const ceiling = Number(yMax);
   if (!series.length || !dates.length || !Number.isFinite(ceiling) || ceiling <= 1) {

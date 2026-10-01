@@ -18,8 +18,8 @@ const playlistApi = readFileSync(new URL('../functions/api/amazon-music-playlist
 
 test('Amazon Music is a dashboard route backed only by Worker materialized read models', () => {
   assert.match(tabs, /'amazon-music':\s*\{/);
-  assert.match(tabs, /import\('\/amazon-music-shell\.js\?v=20261001\.2'\)/);
-  assert.match(tabs, /import\('\/amazon-music\.js\?v=20261001\.2'\)/);
+  assert.match(tabs, /import\('\/amazon-music-shell\.js\?v=\d{8}\.\d+'\)/);
+  assert.match(tabs, /import\('\/amazon-music\.js\?v=\d{8}\.\d+'\)/);
   assert.match(tabs, /async function showLazyView/);
   assert.match(shell, /mountDashboardShell/);
   assert.match(shell, /dashboardChartHost/);

@@ -1,8 +1,8 @@
 /* Shared presentation contract for every dashboard tab. */
 :root {
-  --dashboard-copy-size: .72rem;
-  --dashboard-small-size: .68rem;
-  --dashboard-label-size: .7rem;
+  --dashboard-copy-size: .875rem;
+  --dashboard-small-size: .75rem;
+  --dashboard-label-size: .875rem;
   --dashboard-axis-font-size: 11px;
   --dashboard-axis-color: color-mix(in srgb, var(--text, #172033) 62%, transparent);
   --dashboard-grid-color: color-mix(in srgb, var(--text, #172033) 12%, transparent);
@@ -228,9 +228,9 @@
 /* Remaining fixed-viewBox SVG charts scale labels and points on narrow screens. */
 @media (max-width: 760px) {
   :root {
-    --dashboard-copy-size: 10px;
-    --dashboard-small-size: 9px;
-    --dashboard-label-size: 11px;
+    --dashboard-copy-size: 12px;
+    --dashboard-small-size: 12px;
+    --dashboard-label-size: 12px;
     --dashboard-svg-visual-scale: 1.45;
   }
 }

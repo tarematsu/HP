@@ -1,3 +1,4 @@
+import { hydratePlaybackAggregates, hydratePlaybackTrackMetadata } from './playback-track-metadata.js';
 import { extractQueue } from './collector-payload.js';
 import { resolveTracksBulk } from './minute-facts-track-resolution.js';
 import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
@@ -318,11 +319,14 @@ async function applyCanonicalTrackIds(catalogDb, playback, previous, observedAt)
       if (trackId != null && key) byKey.set(key, trackId);
     }
   }
-  playback.queue = (playback.queue || []).map((track) => withCanonicalTrackId(track, byKey));
-  return {
-    daily: canonicalizeDaily(previous?.daily, byKey),
-    likes: canonicalizeLikes(previous?.likes, byKey),
-  };
+  playback.queue = await hydratePlaybackTrackMetadata(
+    catalogDb,
+    (playback.queue || []).map((track) => withCanonicalTrackId(track, byKey)),
+    previous?.queue || [],
+  );
+  return hydratePlaybackAggregates(catalogDb,
+    canonicalizeDaily(previous?.daily, byKey),
+    canonicalizeLikes(previous?.likes, byKey), playback.queue);
 }
 
 function playStatement(db, stationId, track, observedAt) {

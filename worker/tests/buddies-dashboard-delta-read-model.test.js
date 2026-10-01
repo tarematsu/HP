@@ -112,6 +112,7 @@ function liveInput(observedAt, track = { track_id: 10, spotify_id: 'sp10' }) {
         duration_ms: 180000,
         title: 'Song',
         artist: '櫻坂46',
+        thumbnail_url: 'https://example.test/song.jpg',
         ...track,
       }],
     },

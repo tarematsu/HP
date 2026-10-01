@@ -1,3 +1,4 @@
+import { hydratePlaybackAggregates, hydratePlaybackTrackMetadata } from './playback-track-metadata.js';
 import { resolveTracksBulk } from './minute-facts-track-resolution.js';
 
 const DAY_MS = 24 * 60 * 60_000;
@@ -251,11 +252,14 @@ async function applyCanonicalTrackIds(catalogDb, metadataDb, queue, previous, ob
       if (trackId != null && key) byKey.set(key, trackId);
     }
   }
-  queue.tracks = (queue.tracks || []).map((track) => withCanonicalTrackId(track, byKey));
-  return {
-    daily: canonicalizeDaily(previous?.daily, byKey),
-    likes: canonicalizeLikes(previous?.likes, byKey),
-  };
+  queue.tracks = await hydratePlaybackTrackMetadata(
+    catalogDb,
+    (queue.tracks || []).map((track) => withCanonicalTrackId(track, byKey)),
+    previous?.queue || [],
+  );
+  return hydratePlaybackAggregates(catalogDb,
+    canonicalizeDaily(previous?.daily, byKey),
+    canonicalizeLikes(previous?.likes, byKey), queue.tracks);
 }
 
 async function loadState(bucket) {

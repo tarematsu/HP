@@ -17,6 +17,7 @@ const PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS = new Set([
   'amazon-music',
   'spotify-playlists',
   'nogizaka-listening-party',
+  'regional-music',
 ]);
 const R2_ONLY_MODEL_KEYS = new Set([
   ...MATERIALIZED_API_VARIANTS

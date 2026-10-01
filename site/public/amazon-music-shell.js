@@ -38,7 +38,8 @@ const rankPanel = dashboardChartCard({
   titleId: 'amazonAllRankTitle',
   kicker: 'AMAZON MUSIC',
   className: 'amazon-rank-panel music-service-panel',
-  chartHtml: dashboardChartHost({
+  trailingHtml: modeButtons,
+  chartHtml: '<div id="amazonRankLegend" class="chart-legend" aria-label="楽曲凡例"></div>' + dashboardChartHost({
     id: 'amazonAllRankChart',
     className: 'amazon-rank-chart chart-fit',
     ariaLabel: '坂道3グループ楽曲のAmazon Music総合順位推移',
@@ -50,7 +51,6 @@ const tracksPanel = dashboardDataCard({
   title: '全楽曲順位',
   titleId: 'amazonTracksTitle',
   kicker: 'TRACKS',
-  trailingHtml: modeButtons,
   className: 'amazon-data-panel music-service-panel',
   bodyHtml: tracksTable,
 });

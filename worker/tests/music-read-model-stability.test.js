@@ -4,7 +4,7 @@ import test from 'node:test';
 
 import { runPagesResponseFetch } from '../src/pages-response-fetch-entry.js';
 
-for (const modelKey of ['apple-music', 'amazon-music']) {
+for (const modelKey of ['apple-music', 'amazon-music', 'regional-music']) {
   test(`${modelKey} is served directly from non-expiring producer R2 without KV fallback`, async () => {
     let r2Calls = 0;
     let kvCalls = 0;

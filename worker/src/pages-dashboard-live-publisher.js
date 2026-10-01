@@ -2,7 +2,8 @@ import { onRequestGet as renderDashboard } from '../../site/functions/api/dashbo
 import { directFiveMinuteStreamHistory } from '../../site/functions/lib/dashboard-chart-support.js';
 import { loadDashboardDailySummaries, utcDayStarts } from '../../site/functions/lib/dashboard-daily-summaries.js';
 import { dashboardGoalPredictions } from '../../site/functions/lib/dashboard-legacy.mjs';
-import { canonicalizeTrackRows } from '../../site/functions/lib/canonical-track-rows.js';
+import { hydratePlaybackTrackMetadata } from './playback-track-metadata.js';
+import { trackNeedsHydration } from './track-metadata-quality.js';
 import { BUDDIES_PLAYBACK_HOT_STATE_KEY } from './buddies-playback-state.js';
 import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
 
@@ -471,7 +472,8 @@ function trackAliases(track) {
 
 async function seedCanonicalIdsFromPlaybackState(bucket, input) {
   const tracks = Array.isArray(input?.queue?.tracks) ? input.queue.tracks : [];
-  if (!tracks.length || tracks.every((track) => positiveInteger(track?.track_id) != null)) return input;
+  if (!tracks.length) return input;
+  if (tracks.every((track) => positiveInteger(track?.track_id) != null && !trackNeedsHydration(track))) return input;
   const state = await readJsonObject(bucket, BUDDIES_PLAYBACK_HOT_STATE_KEY);
   if (![1, 2].includes(Number(state?.version)) || !Array.isArray(state?.queue)) return input;
   const byAlias = new Map();
@@ -482,13 +484,13 @@ async function seedCanonicalIdsFromPlaybackState(bucket, input) {
   }
   if (!byAlias.size) return input;
   const seeded = tracks.map((track) => {
-    if (positiveInteger(track?.track_id) != null) return track;
     let canonical = null;
     for (const alias of trackAliases(track)) {
       canonical = byAlias.get(alias);
       if (canonical) break;
     }
-    if (!canonical) return track;
+    if (!canonical || (positiveInteger(track?.track_id) != null
+        && positiveInteger(track.track_id) !== positiveInteger(canonical.track_id))) return track;
     return {
       ...track,
       track_id: positiveInteger(canonical.track_id),
@@ -503,11 +505,8 @@ async function seedCanonicalIdsFromPlaybackState(bucket, input) {
 async function canonicalInput(env, input, bucket) {
   let seededInput = await seedCanonicalIdsFromPlaybackState(bucket, input);
   const tracks = Array.isArray(seededInput?.queue?.tracks) ? seededInput.queue.tracks : [];
-  if (!tracks.length || tracks.every((track) => positiveInteger(track?.track_id) != null)) return seededInput;
-  const seedRows = tracks.filter((track) => positiveInteger(track?.track_id) != null);
-  const canonicalTracks = seedRows.length
-    ? await canonicalizeTrackRows(env?.MINUTE_DB, tracks, { seedRows })
-    : await canonicalizeTrackRows(env?.MINUTE_DB, tracks);
+  if (!tracks.length) return seededInput;
+  const canonicalTracks = await hydratePlaybackTrackMetadata(env?.MINUTE_DB, tracks);
   seededInput = { ...seededInput, queue: { ...seededInput.queue, tracks: canonicalTracks } };
   return seededInput;
 }

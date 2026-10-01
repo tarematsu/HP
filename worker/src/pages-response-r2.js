@@ -142,6 +142,18 @@ export async function saveMaterializedR2Response(
   return { bytes: body.length, chunks: 1, storage: 'r2', object_key: key };
 }
 
+export async function saveMaterializedActionsR2Response(r2, modelKey, body, status, headers, now, cadenceSeconds) {
+  const key = pagesActionsR2ResponseKey(modelKey);
+  if (!key || typeof r2?.put !== 'function') return null;
+  const envelope = JSON.stringify({
+    version: 1, updated_at: Number(now) || Date.now(),
+    cadence_seconds: Math.max(0, Number(cadenceSeconds) || 0),
+    status: Number(status) || 200, headers: headers || {}, body,
+  });
+  await r2.put(key, envelope, { httpMetadata: { contentType: 'application/json; charset=utf-8' } });
+  return { bytes: body.length, chunks: 1, storage: 'r2', object_key: key };
+}
+
 async function responseFromActionsObject(object, now, maximumAgeMs) {
   if (!object?.body) return null;
   let envelope;
