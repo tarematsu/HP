@@ -111,6 +111,17 @@ function findStep(job, patterns) {
   )) || null;
 }
 
+function minuteDatabaseJob(jobs) {
+  const candidates = jobs.filter((job) => /^(?:Apply MINUTE_DB migrations(?: before deployment)?(?: \/|$)|minute_db$)/i.test(jobName(job)));
+  // Reusable workflows include skipped jobs for unrelated database operations.
+  // Keep any real failure, otherwise use the schema job rather than the first child.
+  return candidates.find((job) => FAILURE_CONCLUSIONS.has(normalizedResult(job.conclusion || job.status)))
+    || candidates.find((job) => /\/ Apply MINUTE_DB schema$/i.test(jobName(job)))
+    || candidates.find((job) => normalizedResult(job.conclusion || job.status) !== 'skipped')
+    || candidates[0]
+    || null;
+}
+
 function firstFailure(jobErrors) {
   return Object.values(jobErrors || {}).find(Boolean) || '';
 }
@@ -179,7 +190,7 @@ export function summarizeDeploymentRun({ target, run, jobs = [], targets = {}, j
   const components = [];
   const upstreamError = firstFailure(jobErrors);
   if (target.kind === 'stationhead') {
-    const databaseJob = findJob(jobs, [/Apply MINUTE_DB migrations/i, /minute_db/i]);
+    const databaseJob = minuteDatabaseJob(jobs);
     const workersJob = findJob(jobs, [/Deploy affected Workers/i, /^workers$/i]);
     const pagesJob = findJob(jobs, [/Build and deploy Pages/i, /^pages$/i]);
 
@@ -361,7 +372,7 @@ async function inspectDeploymentRun(request, target, run, { repository, token })
   const selectJob = findJob(jobs, [/Select deployment targets/i]);
   const workersJob = findJob(jobs, [/Deploy affected Workers/i, /^workers$/i]);
   const pagesJob = findJob(jobs, [/Build and deploy Pages/i, /^pages$/i]);
-  const databaseJob = findJob(jobs, [/Apply MINUTE_DB migrations/i, /minute_db/i]);
+  const databaseJob = minuteDatabaseJob(jobs);
   const workerLog = logs.get(workersJob?.id) || '';
   const parsed = parseDeploymentTargets(logs.get(selectJob?.id) || '');
   const inferred = inferWorkersFromLog(workerLog);
