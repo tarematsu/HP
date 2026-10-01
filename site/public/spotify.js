@@ -13,7 +13,8 @@ import {
   drawDashboardGrid,
   drawDashboardLine,
   prepareDashboardCanvas,
-} from './dashboard-chart-canvas.js?v=20261001.1';
+} from './dashboard-chart-canvas.js?v=20261001.2';
+import { observeDashboardChartResize } from './dashboard-chart-runtime.js?v=20261001.1';
 
 let selectedArtistKey = 'sakurazaka46';
 const TREND_ARTIST_LIMIT = 10;
@@ -31,7 +32,6 @@ const compactNumberFormat = new Intl.NumberFormat('ja-JP', {
 let requestSequence = 0;
 let readModelPromise = null;
 let latestCharts = null;
-let resizeTimer = 0;
 
 const setNotice = (message = '', error = false) => setSharedNotice('spotifyNotice', message, error);
 const formatTrendDate = (value) => shortDate(value, '');
@@ -410,8 +410,6 @@ globalThis.document?.querySelectorAll('[data-spotify-artist]').forEach((button) 
   loadSpotifyView();
 }));
 
-globalThis.window?.addEventListener('resize', () => {
-  if (!latestCharts) return;
-  clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => renderCharts(latestCharts.trend, latestCharts.artistChart), 220);
-}, { passive: true });
+observeDashboardChartResize(element('spotifyView'), () => {
+  if (latestCharts) renderCharts(latestCharts.trend, latestCharts.artistChart);
+}, { delay: 220, enabled: () => Boolean(latestCharts) });
