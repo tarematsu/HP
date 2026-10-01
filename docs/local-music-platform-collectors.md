@@ -4,47 +4,45 @@
 
 Collect public Sakurazaka46, Hinatazaka46, and Nogizaka46 activity from regional/local music streaming services and expose it through the existing Pages/Worker read-model pipeline.
 
-Target artist aliases are normalized before storage/display:
+Target aliases:
 
 - 櫻坂46 / Sakurazaka46 / SAKURAZAKA46
 - 日向坂46 / Hinatazaka46 / HINATAZAKA46
 - 乃木坂46 / Nogizaka46 / NOGIZAKA46
 
-Do not merge unrelated artists solely because a localized service returns a similar name. Prefer stable service-native artist/track/playlist IDs once discovered.
+Exact provider-native artist ownership is verified before a search result is stored. Missing/non-public metrics stay `null`; they are never converted to zero.
 
 ## Target services
 
-| Region | Service | Public signals | Status |
+| Region | Service | Public signals | Collector status |
 | --- | --- | --- | --- |
-| South Korea | Genie | track cumulative plays/listeners/likes, catalog | collector implemented; production verification pending |
-| South Korea | Bugs! | artist likes, catalog, MusicPD playlists | artist metric collector implemented; playlist expansion pending |
-| South Korea | Melon | artist fans, track likes, DJ playlists | artist discovery + DJ playlist collector implemented |
-| South Korea | Naver VIBE | artist likes, catalog, playlist/chart inclusion | exact artist discovery + artist likes + release-track collector implemented |
-| Greater China / SEA | JOOX | artist followers, catalog, rankings/comments/playlists | follower collector implemented; expansion pending |
-| Mainland China | QQ Music | catalog, listen-order ranking, public engagement where exposed | exact artist discovery + listen-ordered track collector implemented |
-| Mainland China | NetEase Cloud Music | hot-track rank, comments, catalog | exact artist discovery + hot tracks + rotating album expansion + comments implemented |
-| Mainland China | Kugou Music | catalog, public popularity/chart signals | exact-alias catalog collector implemented |
-| Vietnam | NhacCuaTui | followers, plays, catalog/playlists | follower + seed-track play collector implemented; expansion pending |
-| MENA | Anghami | track plays/likes, artist followers, catalog/playlists | seed-track metrics + artist discovery/followers implemented; expansion pending |
-| Russia/CIS | Yandex Music | catalog, charts/playlists | no-key JSON search collector implemented |
-| Africa / emerging markets | Boomplay | plays/favorites/comments/catalog/playlists | catalog presence verified; first-party collection surface still pending |
-| Thailand | Plern | catalog and any public metrics/charts/playlists | discovery pending |
-| Thailand | Fungjai | historical local streaming/catalog discovery | no current streaming-catalog collector: service has evolved into a Music Integrator/community platform |
-| Vietnam | Zing MP3 | catalog, charts/playlists/engagement | signed/cookie-dependent web API; stable public collection path pending |
-| India | JioSaavn | artist/catalog/search metadata | exact artist + song catalog collector implemented |
-| India | Gaana | artist/catalog/popularity ordering | current v2 artist search + popularity-sorted top-track collector implemented |
-| Indonesia | Langit Musik | catalog/charts/playlists | automated collector intentionally blocked: published terms prohibit crawling/scraping/automated collection |
-| South Korea | FLO | artist/catalog | exact artist discovery + rotating album catalog collector implemented |
+| South Korea | Genie | cumulative track plays/listeners/likes, catalog | implemented |
+| South Korea | Bugs! | artist likes, catalog, MusicPD playlists | implemented; playlist expansion remains |
+| South Korea | Melon | artist fans, track likes, DJ playlists | implemented |
+| South Korea | Naver VIBE | artist likes, catalog | implemented |
+| Greater China / SEA | JOOX | artist followers, catalog/rankings/playlists | implemented; expansion remains |
+| Mainland China | QQ Music | catalog/listen-order ranking | implemented |
+| Mainland China | NetEase Cloud Music | hot-track rank, comments, catalog | implemented |
+| Mainland China | Kugou Music | catalog/public ordering | implemented |
+| Vietnam | NhacCuaTui | followers, plays, catalog/playlists | implemented; expansion remains |
+| MENA | Anghami | track plays/likes, artist followers | implemented; expansion remains |
+| Russia/CIS | Yandex Music | catalog | implemented |
+| Africa / emerging markets | Boomplay | public web catalog | implemented through first-party search pages + song-page JSON-LD |
+| Thailand | Plern | public catalog when available | implemented; currently reports `pending` while `plern.co` exposes a coming-soon surface |
+| Thailand | Fungjai | legacy artist/music catalog | implemented; current service may return `pending` because Fungjai has evolved into a Music Integrator |
+| Vietnam | Zing MP3 | catalog | implemented with signed web-API support; credentials are configuration, not hard-coded |
+| India | JioSaavn | artist/catalog/search metadata | implemented |
+| India | Gaana | artist/catalog/popularity ordering | implemented |
+| Indonesia | Langit Musik | catalog | implemented but network collection is authorization-gated and disabled by default |
+| South Korea | FLO | artist/catalog | implemented |
 
 ## Canonical collection fields
-
-Collectors map service-specific data onto shared fields where available. Missing or non-public values remain null; never synthesize counts from ranking positions.
 
 ### Artist
 
 - `service`
 - `service_artist_id`
-- `canonical_artist` (`sakurazaka46`, `hinatazaka46`, `nogizaka46`)
+- `canonical_artist`
 - `display_name`
 - `profile_url`
 - `followers`
@@ -56,12 +54,12 @@ Collectors map service-specific data onto shared fields where available. Missing
 - `service_track_id`
 - `service_artist_id`
 - `title`
-- `canonical_track_id` when resolvable through the existing track metadata layer
+- `canonical_track_id` when resolvable
 - `plays`
 - `listeners`
 - `likes`
 - `comments`
-- `popularity_rank` only when the service explicitly publishes an ordering
+- `popularity_rank` only when explicitly published
 - `collected_at`
 
 ### Playlist/chart inclusion
@@ -70,137 +68,102 @@ Collectors map service-specific data onto shared fields where available. Missing
 - `playlist_name`
 - `playlist_url`
 - `service_track_id`
-- `position` when explicitly published
-- `playlist_type` (`official`, `editorial`, `user`, `chart`, `unknown`)
-- `owner_name` when public
+- `position`
+- `playlist_type`
+- `owner_name`
 - `snapshot_date` / `collected_at`
 
-## Storage/read-model direction
+## Architecture
 
-Use a service-agnostic schema/read model rather than creating a separate Pages data contract for every provider.
+Use a service-agnostic snapshot model rather than a separate Pages contract per provider.
 
 Logical keys:
 
 - artist snapshots: `(service, canonical_artist, snapshot_date)`
 - track snapshots: `(service, service_track_id, snapshot_date)`
 - playlist membership snapshots: `(service, service_playlist_id, service_track_id, snapshot_date)`
-- service identity aliases: `(service, entity_type, service_id) -> canonical id`
+- provider identity mapping remains attached to the service-native ID
 
-The public Pages API receives a pre-materialized R2 read model. Pages never live-scrapes providers. `regional-music` is producer-owned by the dedicated collector and is intentionally excluded from the generic GitHub Actions materialization cadence.
+The public Pages API receives a pre-materialized `regional-music` R2 read model. Pages never live-scrapes providers. The dedicated collector owns publication of this model and is isolated from Spotify/Amazon collection.
 
 ## Collector behavior
 
-1. Discover service-native artist IDs for all three groups using listed Japanese and romanized aliases.
-2. Persist stable IDs so normal scheduled runs avoid repeated free-text discovery where possible.
-3. Fetch artist metrics, catalog tracks, track metrics, and playlist/chart membership independently.
-4. Record `null` for values not exposed by the service; do not convert missing values to zero.
-5. Keep service IDs and public URLs for diagnosis and future canonicalization.
-6. Use bounded/rotating batches for large catalog and playlist expansion.
-7. Treat upstream HTTP/layout/API changes as service-specific degraded states without deleting prior good snapshots.
-8. Publish collector health with last attempt/success, entity counts, and latest error class.
-9. Do not implement an automated collector when the provider's published terms explicitly prohibit automated collection.
+1. Search Japanese and romanized aliases for all three groups.
+2. Reject similar-name results unless the provider metadata identifies the target artist.
+3. Persist stable provider IDs where available.
+4. Fetch artist metrics, catalog tracks, track metrics, and playlist/chart membership independently.
+5. Preserve `null` for non-public metrics.
+6. Bound/rotate large catalog expansion.
+7. Isolate upstream failures by service and retain previous good snapshots.
+8. Publish health with last attempt/success, entity counts, and latest error class.
+9. Do not silently bypass provider access controls. Credential/signature based collectors require explicit current configuration.
+10. Langit Musik network collection stays disabled unless `LANGIT_MUSIK_AUTHORIZED_COLLECTION=1` is explicitly configured.
 
-## Rollout order
+## Implementation details
 
-### Phase 1 — public numeric metrics
+All **19 / 19** planned services are connected to the scheduled Worker.
 
-- Genie
-- Bugs!
-- JOOX
-- NhacCuaTui
-- Anghami
+- **Genie:** dynamic artist search, artist likes, top-track IDs, cumulative listeners/plays/likes.
+- **Bugs!:** stable artist IDs and daily artist likes.
+- **JOOX:** stable artist IDs and daily followers.
+- **NhacCuaTui:** followers plus seed-track plays.
+- **Anghami:** seed-track plays/likes, artist-ID discovery and artist followers.
+- **Melon:** artist search/fan metrics plus validated DJ playlist membership snapshots.
+- **QQ Music:** exact-artist discovery plus listen-ordered top tracks.
+- **NetEase Cloud Music:** exact artist discovery, hot-track rank, comments and rotating album catalog expansion.
+- **Kugou Music:** exact-alias catalog search with provider-native track/artist identities.
+- **Naver VIBE:** V4 exact-artist search, artist likes and release-track catalog snapshots.
+- **FLO:** exact artist discovery, album discovery and rotating album-track expansion.
+- **Yandex Music:** no-key JSON search with exact artist filtering and provider IDs.
+- **Boomplay:** public first-party search page -> candidate song IDs -> song-page `MusicRecording` JSON-LD -> exact-artist verification.
+- **Plern:** daily public-surface probe plus structured-data catalog parsing when the service exposes a searchable web catalog again.
+- **Fungjai:** legacy `/artists/{slug}` discovery and `/musics/{slug}` track extraction; returns pending when no streaming catalog is exposed.
+- **Zing MP3:** signed `/api/v2/search/multi` client with visitor-cookie handling and exact artist filtering. `ZING_MP3_API_KEY` and `ZING_MP3_SECRET_KEY` must be configured from an authorized/current client configuration.
+- **JioSaavn:** exact-artist discovery plus song catalog snapshots.
+- **Gaana:** current v2 exact-artist search plus popularity-sorted top tracks.
+- **Langit Musik:** structured-data/legacy share-link parser with explicit authorization gate. No network requests are made unless authorized.
 
-### Phase 2 — China/Korea expansion
+## Known provider identities / seeds
 
-- QQ Music
-- NetEase Cloud Music
-- Kugou Music
-- Melon
-- Naver VIBE
-- FLO
-
-### Phase 3 — remaining regional platforms
-
-- Yandex Music
-- Boomplay
-- Plern
-- Fungjai
-- Zing MP3
-- JioSaavn
-- Gaana
-- Langit Musik
-
-## Known service identities / seeds
-
-These are diagnostic seeds, not canonical identity replacements. Discovery still verifies artist ownership before expansion.
+These are diagnostic seeds, not canonical identity replacements.
 
 - Bugs! artist IDs: Sakurazaka46 `80348696`, Hinatazaka46 `80329579`, Nogizaka46 `80192968`.
 - JOOX HK artist IDs: Sakurazaka46 `l3RBNJqESiqw84k4wFKQig==`, Hinatazaka46 `bBDS6Lsx44ux11K9H6vrKQ==`, Nogizaka46 `rsJfY_jmYjJ3Jrn7pdgwhA==`.
-- Melon validated DJ playlist: `430097431` (`역대 오리콘 차트 명곡`); Nogizaka46 entries are observable there.
+- Melon validated DJ playlist: `430097431`.
 - QQ Music Nogizaka46 release seed: album ID `000HNVfX1PSixv`.
 - NetEase Cloud Music Nogizaka46 release seed: album ID `278234837`.
 - Kugou Music Nogizaka46 release seed: `cv1uyy99`.
-- Naver VIBE Hinatazaka46 artist ID: `2834287`; the collector does not trust the seed and instead discovers artists through the V4 artist search endpoint.
-- Yandex Music Hinatazaka46 artist ID: `7101843`; collection still uses exact-name discovery rather than trusting the seed alone.
+- Naver VIBE Hinatazaka46 artist ID: `2834287`; normal collection still discovers identity through search.
+- Yandex Music Hinatazaka46 artist ID: `7101843`; normal collection still uses exact-name discovery.
 
-## Provider constraints
+## Runtime constraints
 
-- **Langit Musik:** published terms prohibit crawling and other automated methods including bots, scrapers, and spiders for viewing/accessing/collecting service information. Do not deploy an automated collector without an authorized API or explicit permission.
-- **Fungjai:** the current service describes itself as having started as a local streaming service in 2014 and now being a Music Integrator/community platform. A current general music-catalog surface has not been established.
-- **Zing MP3:** current web API access depends on request signatures/API-key/cookie state. Do not hard-code leaked/stale keys or signatures.
-- **Boomplay:** public catalog presence exists, but collection should use a first-party public surface rather than silently depending on a third-party metadata proxy; current clients indicate a logged-in session/cookie is required for stable access.
+- **Plern:** `plern.co` currently exposes a coming-soon page rather than a public music catalog. The collector records `pending/catalog_surface_unavailable` and retries each scheduled run.
+- **Fungjai:** the current public site identifies Fungjai as a Music Integrator. Legacy artist/music URLs are still probed conservatively; no unrelated current event/marketing pages are stored as tracks.
+- **Zing MP3:** signing credentials are intentionally not committed. When credentials are absent the collector records `pending/credentials_required`; when configured it performs the same normalized track snapshot flow as other providers.
+- **Langit Musik:** automatic network access is disabled by default because published terms restrict automated collection. The parser/collector is present for an authorized endpoint or explicit permission, using `LANGIT_MUSIK_AUTHORIZED_COLLECTION=1` and optionally `LANGIT_MUSIK_SEARCH_URL_TEMPLATE`.
 
-## Completion criteria per service
+## Completion criteria
 
-A service is not considered complete merely because an artist page was found. Mark it complete only after:
+A provider is considered implementation-complete when:
 
-- all three groups were searched under Japanese and romanized names;
-- stable service IDs are stored for found artists/tracks/playlists;
-- every safely/publicly exposed metric used by the collector has a parser and regression fixture/test;
-- collection cadence and request bounds are configured;
-- failure/degraded-state behavior is tested;
-- snapshot persistence and R2 read-model publication are implemented;
-- Pages can display service health and values without live scraping;
-- duplicate aliases/localized titles are normalized without collapsing distinct service-native tracks.
+- all three groups are searched under Japanese/romanized aliases;
+- results are ownership-verified;
+- provider IDs and public URLs are retained;
+- safely exposed metrics have parsers/tests;
+- bounded collection cadence is configured;
+- degraded/pending behavior is explicit;
+- snapshots feed the common R2 read model;
+- Pages does not live-scrape the provider.
 
-A service may instead be marked `blocked` when its published terms disallow automated collection or when the only known method requires unstable/non-public authentication material.
+Runtime `pending` is distinct from implementation-incomplete: Plern, Fungjai, Zing MP3, and Langit Musik may legitimately remain pending until their external prerequisites are satisfied.
 
-## Implementation status
+## Production steps
 
-Currently connected to the scheduled Worker: **14 services**.
-
-- Genie: dynamic artist search, artist likes, top-track IDs, cumulative listeners/plays/likes.
-- Bugs!: stable artist IDs and daily artist likes.
-- JOOX: stable artist IDs and daily followers.
-- NhacCuaTui: daily followers plus seed-track plays.
-- Anghami: seed-track plays/likes, artist-ID discovery and artist followers.
-- Melon: artist search/fan metrics plus validated DJ playlist membership snapshots.
-- QQ Music: smartbox exact-artist discovery plus listen-ordered top tracks.
-- NetEase Cloud Music: exact artist discovery, hot-track rank, comments and rotating album catalog expansion.
-- Kugou Music: exact-alias filtered song search with service-native track/artist identities.
-- Naver VIBE: V4 exact-artist search, artist like counts and release-track catalog snapshots.
-- FLO: exact artist discovery, album discovery and rotating album track expansion.
-- Yandex Music: API-key-free JSON search with exact artist filtering and provider artist/album/track IDs.
-- JioSaavn: autocomplete exact-artist discovery plus song-search catalog snapshots.
-- Gaana: current v2 exact-artist search plus popularity-sorted artist top-track snapshots.
-
-Shared implementation:
-
-- generic D1 schemas for artist, track, playlist-membership and collector-health snapshots;
-- all 19 planned services seeded into collector state so the read model exposes pending/blocked reasons before collection succeeds;
-- 19-service registry and three-group alias normalizer;
-- dedicated `sh-regional-music-collector` Worker, isolated from Spotify/Amazon collection;
-- daily run at 00:20 JST;
-- compact `regional-music` R2 read model and Pages API route;
-- direct R2 reads for the producer-owned regional model;
-- regression tests for identity normalization, provider parsers, read model, API contract and Worker deployment selection.
-
-Remaining work:
-
-1. expand Phase 1 seed/top-track collectors toward full catalog and playlist coverage where public and permitted;
-2. find a first-party stable collection surface for Plern;
-3. use Boomplay only if a stable authorized/public first-party collection surface is available;
-4. determine whether Zing MP3 can be collected without unstable/private auth material;
-5. treat Fungjai as discovery-only unless a current streaming catalog returns;
-6. do not automate Langit Musik without permission/authorized API;
-7. deploy migration/Worker only after the draft PR is ready, then verify real provider responses and the first healthy `regional-music` production read model.
+1. keep the PR draft through CI and provider parser verification;
+2. apply the D1 migration;
+3. deploy `sh-regional-music-collector`;
+4. configure authorized Zing MP3 credentials if collection is permitted;
+5. keep Langit Musik disabled unless explicit authorization/API access exists;
+6. run the first collector pass and verify each provider independently;
+7. verify `/api/regional-music` and the R2 materialized object before marking the PR ready.
