@@ -1,4 +1,4 @@
-name: Verify YouTube Music one-off collection
+name: Run YouTube Music collector once
 
 on:
   push:
@@ -11,9 +11,9 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     environment: production
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
@@ -38,14 +38,54 @@ jobs:
         working-directory: worker
         run: npm ci --prefer-offline --no-audit --no-fund
 
-      - name: Show YouTube Music collector state
+      - name: Run focused tests
         working-directory: worker
-        run: >-
-          npm exec -- wrangler d1 execute stationhead-other --remote
-          --command "SELECT service,status,last_attempt_at,last_success_at,last_error_class,last_error_message,entity_counts_json,updated_at FROM regional_music_collector_state WHERE service='youtube_music'"
+        run: node --test tests/regional-music-service-registry.test.js tests/regional-music-youtube-music.test.js
 
-      - name: Show latest YouTube Music artists
+      - name: Run YouTube Music collector once against production bindings
         working-directory: worker
-        run: >-
-          npm exec -- wrangler d1 execute stationhead-other --remote
-          --command "SELECT p.canonical_artist,p.service_artist_id,p.display_name,p.last_seen_at,d.snapshot_date,d.observed_at,d.followers,d.monthly_audience,d.total_views FROM regional_music_artist_profiles p LEFT JOIN regional_music_artist_daily d ON d.rowid=(SELECT d2.rowid FROM regional_music_artist_daily d2 WHERE d2.service=p.service AND d2.canonical_artist=p.canonical_artist ORDER BY d2.observed_at DESC LIMIT 1) WHERE p.service='youtube_music' ORDER BY p.canonical_artist"
+        shell: bash
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/youtube-music-once.log"
+          npm exec -- wrangler dev --remote --test-scheduled --config wrangler.regional-music.jsonc --port 8787 --log-level info >"$log" 2>&1 &
+          pid=$!
+          cleanup() { kill "$pid" 2>/dev/null || true; }
+          trap cleanup EXIT
+
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl -sS -o /dev/null http://127.0.0.1:8787/; then ready=1; break; fi
+            if ! kill -0 "$pid" 2>/dev/null; then cat "$log"; exit 1; fi
+            sleep 2
+          done
+          if [ "$ready" != 1 ]; then cat "$log"; echo "Wrangler remote dev did not become ready" >&2; exit 1; fi
+
+          if ! curl --max-time 900 -fsS "http://127.0.0.1:8787/cdn-cgi/local/scheduled?cron=0+15+*+*+*"; then
+            curl --max-time 900 -fsS "http://127.0.0.1:8787/__scheduled?cron=0+15+*+*+*"
+          fi
+          sleep 3
+          cat "$log"
+
+      - name: Verify collector state in D1
+        working-directory: worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          state="$RUNNER_TEMP/youtube-state.txt"
+          npm exec -- wrangler d1 execute stationhead-other --remote --command "SELECT service,status,last_attempt_at,last_success_at,last_error_class,last_error_message,entity_counts_json,updated_at FROM regional_music_collector_state WHERE service='youtube_music'" | tee "$state"
+          grep -q '"status": "ok"' "$state"
+          grep -q '"artists":4' "$state"
+          grep -q '"failures":0' "$state"
+
+      - name: Verify four YouTube Music targets in D1
+        working-directory: worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          artists="$RUNNER_TEMP/youtube-artists.txt"
+          npm exec -- wrangler d1 execute stationhead-other --remote --command "SELECT p.canonical_artist,p.service_artist_id,p.display_name,p.last_seen_at,d.snapshot_date,d.observed_at,d.followers,d.monthly_audience,d.total_views FROM regional_music_artist_profiles p LEFT JOIN regional_music_artist_daily d ON d.rowid=(SELECT d2.rowid FROM regional_music_artist_daily d2 WHERE d2.service=p.service AND d2.canonical_artist=p.canonical_artist ORDER BY d2.observed_at DESC LIMIT 1) WHERE p.service='youtube_music' ORDER BY p.canonical_artist" | tee "$artists"
+          grep -q '"canonical_artist": "aobazaka46"' "$artists"
+          grep -q '"canonical_artist": "sakurazaka46"' "$artists"
+          grep -q '"canonical_artist": "hinatazaka46"' "$artists"
+          grep -q '"canonical_artist": "nogizaka46"' "$artists"
