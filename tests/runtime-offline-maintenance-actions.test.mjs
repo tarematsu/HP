@@ -39,6 +39,8 @@ test('offline runtime maintenance runs on the thirty-minute cadence without depl
   assert.match(runner, /runtime offline maintenance deadline exceeded/);
   assert.match(runner, /sh_collector_status/);
   assert.match(runner, /other-cron/);
+  assert.match(runner, /minute-offline-rebuild-actions/);
+  assert.match(runner, /OFFLINE_REBUILD_MIN_INTERVAL_MS = 4 \* 60 \* 60_000/);
   assert.match(runner, /recoverStalledMinuteFactJobs/);
   assert.match(runner, /runInboxRecovery/);
   assert.match(runner, /runRollup\(env\.BUDDIES_DB, env\.OTHER_DB, env\.MINUTE_DB, startedAt\)/);
@@ -146,15 +148,19 @@ test('Actions reconciles the minute inbox before other database maintenance', as
       assert.equal(env.BUDDIES_DB, buddiesDb);
       assert.equal(env.MINUTE_DB, minuteDb);
       assert.equal(dependencies.now(), now);
+      assert.equal(dependencies.maxJobs, 1);
+      assert.equal(dependencies.maxPasses, 1);
+      assert.equal(dependencies.totalBudgetMs, 60_000);
       return 'rebuilds';
     },
     runRetention: async () => { calls.push('retention'); return 'retention'; },
   });
 
   assert.deepEqual(calls, ['inbox-recovery', 'prediction', 'rollup', 'rebuilds', 'retention']);
-  assert.deepEqual(writes.map(({ values }) => values[1]), ['running', 'ok']);
+  assert.deepEqual(writes.map(({ values }) => values[1]), ['running', 'ok', 'ok']);
   assert.equal(writes[0].values[0], 'other-cron');
-  assert.equal(writes[1].values[3], now);
+  assert.equal(writes[1].values[0], 'minute-offline-rebuild-actions');
+  assert.equal(writes[2].values[3], now);
   assert.match(writes[0].sql, /ON CONFLICT\(collector_id\)/);
   assert.deepEqual(result, {
     ok: true,
@@ -169,6 +175,32 @@ test('Actions reconciles the minute inbox before other database maintenance', as
   assert.match(runner, /SNAPSHOT_RETENTION_BATCH_SIZE: 500/);
   assert.match(runner, /SNAPSHOT_RETENTION_MAX_BATCHES: 1/);
   assert.match(runner, /STREAM_GOAL_PREDICTION_INTERVAL_MS: 30 \* 60_000/);
+});
+
+test('offline rebuild cadence does not slow the other thirty-minute maintenance tasks', async () => {
+  const calls = [];
+  const writes = [];
+  const now = 20 * 60 * 60_000;
+  const result = await runRuntimeOfflineMaintenanceActions({
+    now: () => now,
+    env: { BUDDIES_DB: {}, MINUTE_DB: {}, OTHER_DB: statusDatabase(writes) },
+    loadRebuildStatus: async () => ({
+      status: 'ok',
+      last_attempt_at: now - 60 * 60_000,
+      last_success_at: now - 60 * 60_000,
+    }),
+    runInboxRecovery: async () => { calls.push('inbox'); return 'inbox'; },
+    runPrediction: async () => { calls.push('prediction'); return 'prediction'; },
+    runRollup: async () => { calls.push('rollup'); return 'rollup'; },
+    runRebuilds: async () => assert.fail('rebuilds must wait for the four-hour cadence'),
+    runRetention: async () => { calls.push('retention'); return 'retention'; },
+  });
+
+  assert.deepEqual(calls, ['inbox', 'prediction', 'rollup', 'retention']);
+  assert.deepEqual(writes.map(({ values }) => values[1]), ['running', 'ok']);
+  assert.equal(result.rebuilds.skipped, true);
+  assert.equal(result.rebuilds.reason, 'rebuild-cadence');
+  assert.equal(result.rebuilds.processed, 0);
 });
 
 test('legacy budget inputs cannot defer runtime read-model maintenance', async () => {
@@ -192,7 +224,7 @@ test('legacy budget inputs cannot defer runtime read-model maintenance', async (
   });
 
   assert.deepEqual(calls, ['inbox', 'prediction', 'rollup', 'rebuilds', 'retention']);
-  assert.deepEqual(writes.map(({ values }) => values[1]), ['running', 'ok']);
+  assert.deepEqual(writes.map(({ values }) => values[1]), ['running', 'ok', 'ok']);
   assert.deepEqual(result, {
     ok: true,
     event: 'runtime_offline_maintenance_actions_complete',
