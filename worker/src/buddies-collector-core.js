@@ -16,6 +16,16 @@ const LIVE_RECOVERY_POLL_INTERVAL_MS = 5 * MINUTE_MS;
 
 export const BUDDIES_COLLECTOR_CRON = '*/5 * * * *';
 
+export function assertBuddiesCollectorCron(controller) {
+  const cron = String(controller?.cron || '');
+  if (cron !== BUDDIES_COLLECTOR_CRON) {
+    throw new Error(
+      `buddies collector cron mismatch: expected "${BUDDIES_COLLECTOR_CRON}", received "${cron || '<empty>'}"`,
+    );
+  }
+  return cron;
+}
+
 function collectorRunId(scheduledAt) {
   const random = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
   return `sh-buddies-collector:${scheduledAt}:${random}`;
@@ -73,10 +83,7 @@ export async function runBuddiesCollectorScheduled(
   ctx,
   dependencies = EMPTY_DEPENDENCIES,
 ) {
-  const cron = String(controller?.cron || '');
-  if (cron !== BUDDIES_COLLECTOR_CRON) {
-    return { skipped: true, reason: 'unsupported-buddies-collector-cron', cron };
-  }
+  assertBuddiesCollectorCron(controller);
 
   const now = dependencies.now || Date.now;
   const scheduledAt = Number(controller?.scheduledTime) || now();
