@@ -24,15 +24,6 @@ const LAZY_VIEWS = Object.freeze({
     errorLabel: 'followers',
     errorMessage: 'フォロワーデータの初期化に失敗しました。再読み込みしてください。',
   },
-  'first-week': {
-    viewId: 'firstWeekView',
-    shell: () => import('/first-week-comparison-shell.js?v=20260929.1'),
-    runtime: () => import('/first-week-comparison.js?v=20260929.1'),
-    loadExport: 'loadFirstWeekComparisonView',
-    noticeId: 'firstWeekNotice',
-    errorLabel: 'first-week',
-    errorMessage: '初週比較データの初期化に失敗しました。再読み込みしてください。',
-  },
   'played-tracks': {
     viewId: 'playedTracksView',
     shell: () => import('/played-tracks-shell.js?v=20260928.1'),
@@ -105,7 +96,7 @@ const NAVIGATION = Object.freeze([
         id: 'buddies',
         label: 'Buddies',
         defaultMode: 'current',
-        modes: Object.freeze(['current', 'daily', 'weekly', 'monthly', 'first-week', 'played-tracks', 'likes', 'broadcasts']),
+        modes: Object.freeze(['current', 'daily', 'weekly', 'monthly', 'played-tracks', 'likes', 'broadcasts']),
       }),
       Object.freeze({ id: 'hinata', label: 'Ohisama', defaultMode: 'hinata', modes: Object.freeze(['hinata']) }),
       Object.freeze({ id: 'nogizaka', label: 'Nogizaka', defaultMode: 'nogizaka', modes: Object.freeze(['nogizaka']) }),
@@ -130,7 +121,7 @@ for (const section of NAVIGATION) {
   }
 }
 const SUBSCRIPTIONS = NAVIGATION.find(({ id }) => id === 'subscriptions');
-const BUDDIES_VISIBLE_MODES = new Set(['current', 'daily', 'first-week', 'played-tracks', 'likes', 'broadcasts']);
+const BUDDIES_VISIBLE_MODES = new Set(['current', 'daily', 'played-tracks', 'likes', 'broadcasts']);
 
 const currentView = document.getElementById('currentView');
 const historyView = document.getElementById('historyView');
@@ -392,6 +383,10 @@ async function showHistory(mode, { updateUrl = true, replaceUrl = false, syncRun
 
 function modeFromLocation() {
   const mode = location.hash.slice(1);
+  if (mode === 'first-week') {
+    history.replaceState(null, '', `${location.pathname}${location.search}#broadcasts`);
+    return 'broadcasts';
+  }
   return VIEW_MODES.has(mode) ? mode : 'current';
 }
 

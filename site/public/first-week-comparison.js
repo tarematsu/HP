@@ -12,6 +12,7 @@ import {
 } from './dashboard-chart-runtime.js?v=20261001.1';
 
 const view = document.getElementById('firstWeekView');
+const historyView = document.getElementById('historyView');
 const canvas = document.getElementById('firstWeekChart');
 const legend = document.getElementById('firstWeekLegend');
 const detail = document.getElementById('firstWeekChartDetail');
@@ -37,7 +38,7 @@ let selectedMinute = null;
 let loading = false;
 
 function active() {
-  return Boolean(view && !view.hidden);
+  return Boolean(view && !view.hidden && historyView && !historyView.hidden);
 }
 
 function escapeHtml(value) {
@@ -288,12 +289,25 @@ function handlePointer(event) {
   draw();
 }
 
+function syncVisibleRuntime() {
+  if (!active()) return;
+  if (series.length) draw();
+  else void load();
+}
+
 canvas?.addEventListener('click', handlePointer);
 canvas?.addEventListener('touchstart', handlePointer, { passive: true });
 observeDashboardChartResize(canvas, draw, {
   delay: 220,
   enabled: () => active() && series.length > 0,
 });
+for (const target of [view, historyView]) {
+  if (!target) continue;
+  new MutationObserver(syncVisibleRuntime).observe(target, {
+    attributes: true,
+    attributeFilter: ['hidden'],
+  });
+}
 
 if (active()) void load();
 

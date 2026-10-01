@@ -27,7 +27,8 @@ test('dashboard starts on current and exposes every visible mode through the sha
   assert.match(likesShell, /id: 'likesView'/);
   assert.match(likesShell, /className: 'likes-view'/);
   for (const mode of ['daily', 'ranking', 'likes', 'broadcasts']) assert.match(registry, new RegExp(`mode: '${mode}'`));
-  for (const view of ['first-week', 'played-tracks', 'spotify']) assert.match(registry, new RegExp(`view: '${view}'`));
+  for (const view of ['played-tracks', 'spotify']) assert.match(registry, new RegExp(`view: '${view}'`));
+  assert.doesNotMatch(registry, /view: 'first-week'|label: '初週比較'/);
   assert.doesNotMatch(registry, /mode: 'weekly'|mode: 'monthly'/);
   assert.doesNotMatch([registry, historyShell].join('\n'), /mode: 'tracks'|id="trackControls"/);
   assert.match(page, /<nav class="dashboard-navigation" aria-label="統計メニュー">/);
@@ -35,13 +36,12 @@ test('dashboard starts on current and exposes every visible mode through the sha
   assert.doesNotMatch(page, /id="currentView"|id="historyView"|id="likesView"/);
 });
 
-test('dashboard reorders the right edge to first-week then Spotify before routing starts', () => {
-  assert.match(dashboardEntry, /dashboard-tab-order\.js\?v=20260929\.1/);
+test('dashboard keeps Spotify at the right edge before routing starts', () => {
+  assert.match(dashboardEntry, /dashboard-tab-order\.js\?v=20261002\.1/);
   assert.match(dashboardEntry, /dashboard-tabs\.js\?v=20260930\.1/);
   assert.ok(dashboardEntry.indexOf('dashboard-tab-order.js') < dashboardEntry.indexOf('dashboard-tabs.js'));
-  assert.match(tabOrder, /tabs\.append\(firstWeek\)/);
+  assert.doesNotMatch(tabOrder, /firstWeek|first-week/);
   assert.match(tabOrder, /tabs\.append\(spotify\)/);
-  assert.ok(tabOrder.indexOf('append(firstWeek)') < tabOrder.indexOf('append(spotify)'));
 });
 
 test('dashboard hides the static page skeleton until the selected route shell is ready', () => {
@@ -82,7 +82,6 @@ test('feature tabs share one lazy route registry and loader', () => {
   assert.match(tabsClient, /function loadOnce\(key, importer\)/);
   assert.match(tabsClient, /async function showLazyView\(mode, options = \{}\)/);
   for (const [mode, shell, runtime] of [
-    ['first-week', 'first-week-comparison-shell.js', 'first-week-comparison.js'],
     ['played-tracks', 'played-tracks-shell.js', 'played-tracks.js'],
     ['spotify', 'spotify-shell.js', 'spotify.js'],
     ['amazon-music', 'amazon-music-shell.js', 'amazon-music.js'],
@@ -92,6 +91,8 @@ test('feature tabs share one lazy route registry and loader', () => {
     assert.match(tabsClient, new RegExp(shell.replaceAll('.', '\\.')));
     assert.match(tabsClient, new RegExp(runtime.replaceAll('.', '\\.')));
   }
+  assert.doesNotMatch(tabsClient, /'first-week': \{|first-week-comparison-shell|first-week-comparison\.js/);
+  assert.match(tabsClient, /mode === 'first-week'[\s\S]*#broadcasts/);
   assert.doesNotMatch(tabsClient, /function ensureSpotifyShell|function showSpotify|function showAppleMusic|function showPlayedTracks/);
 });
 
@@ -100,12 +101,14 @@ test('obsolete unofficial view is not a central dashboard route', () => {
   assert.doesNotMatch(registry, /view: 'unofficial'/);
 });
 
-test('inactive route runtimes are not prefetched from the current tab', () => {
-  assert.doesNotMatch(tabsClient, /modulepreload|preloadModule|scheduleRuntimePrefetch|requestIdleCallback/);
-  assert.doesNotMatch(page, /modulepreload[^>]*(?:history-main|history-likes|spotify|played-tracks|first-week)/);
+test('first-week comparison is loaded with the dashboard instead of behind a route loader', () => {
+  assert.match(dashboardEntry, /import '\.\/first-week-comparison-shell\.js\?v=20261002\.2'/);
+  assert.match(dashboardEntry, /import '\.\/first-week-comparison\.js\?v=20261002\.2'/);
+  assert.doesNotMatch(historyEntry, /first-week-comparison-shell|first-week-comparison\.js/);
+  assert.doesNotMatch(tabsClient, /first-week-comparison-shell|first-week-comparison\.js/);
 });
 
-test('history mode-specific runtimes are lazy-loaded only after history starts', () => {
+test('history mode-specific runtimes remain lazy-loaded after history starts', () => {
   assert.match(historyEntry, /function ensureHistoryModeRuntime/);
   assert.match(historyEntry, /history-period-chart\.js\?v=20261001\.1/);
   assert.match(historyEntry, /history-ranking-chart\.js\?v=20260930\.\d+/);

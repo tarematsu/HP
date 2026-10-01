@@ -8,9 +8,10 @@ const client = readFileSync(new URL('../public/dashboard-client.js', import.meta
 const dashboardEndpoint = readFileSync(new URL('../functions/api/dashboard.js', import.meta.url), 'utf8');
 const contract = readFileSync(new URL('../functions/lib/api-contract.js', import.meta.url), 'utf8');
 
-test('shared bootstrap excludes inactive tab shells and current-only heavy renderers', () => {
+test('shared bootstrap eagerly includes first-week comparison while keeping unrelated heavy renderers lazy', () => {
+  assert.match(entry, /^import '\.\/first-week-comparison-shell\.js\?v=20261002\.2';$/m);
+  assert.match(entry, /^import '\.\/first-week-comparison\.js\?v=20261002\.2';$/m);
   for (const asset of [
-    'first-week-comparison-shell.js',
     'played-tracks-shell.js',
     'spotify-shell.js',
     'dashboard-chart-stability.js',
@@ -23,7 +24,7 @@ test('shared bootstrap excludes inactive tab shells and current-only heavy rende
     assert.doesNotMatch(entry, new RegExp(`^import ['\"](?:\\./|/)${asset.replaceAll('.', '\\.')}`, 'm'), asset);
   }
 
-  assert.match(tabs, /import\('\/first-week-comparison-shell\.js\?v=/);
+  assert.doesNotMatch(tabs, /first-week-comparison-shell|first-week-comparison\.js/);
   assert.match(tabs, /import\('\/played-tracks-shell\.js\?v=/);
   assert.match(tabs, /import\('\/spotify-shell\.js\?v=/);
 });

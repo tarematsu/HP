@@ -6,10 +6,9 @@ const MODES = [
   { name: 'current', path: '/', panel: '#currentView', tab: '#modeTabs button[data-view="current"]', requiredText: '再生中の曲' },
   { name: 'daily', path: '/#daily', panel: '#historyView', tab: '#modeTabs button[data-mode="daily"]', requiredText: '期間数' },
   { name: 'ranking', path: '/#ranking', panel: '#historyView', tab: '#modeTabs button[data-mode="ranking"]', requiredText: '総週数' },
-  { name: 'first-week', path: '/#first-week', panel: '#firstWeekView', tab: '#modeTabs button[data-view="first-week"]', requiredText: '比較対象' },
   { name: 'played-tracks', path: '/#played-tracks', panel: '#playedTracksView', tab: '#modeTabs button[data-view="played-tracks"]', requiredText: '楽曲別再生一覧' },
   { name: 'likes', path: '/#likes', panel: '#likesView', tab: '#modeTabs button[data-mode="likes"]', requiredText: '最新いいねランキング' },
-  { name: 'broadcasts', path: '/#broadcasts', panel: '#historyView', tab: '#modeTabs button[data-mode="broadcasts"]', requiredText: '非公式リスパ一覧' },
+  { name: 'broadcasts', path: '/#broadcasts', panel: '#historyView', tab: '#modeTabs button[data-mode="broadcasts"]', requiredText: '非公式リスパ一覧', additionalRequiredText: '比較対象' },
 ];
 
 function parseArgs(argv) {
@@ -70,6 +69,9 @@ async function auditMode(browser, baseUrl, route, outDir) {
       await page.waitForFunction((hash) => window.location.hash === hash, route.expectedHash, { timeout: 15_000 });
     }
     await page.waitForFunction((text) => document.body?.innerText.includes(text), route.requiredText, { timeout: 15_000 }).catch(() => {});
+    if (route.additionalRequiredText) {
+      await page.waitForFunction((text) => document.body?.innerText.includes(text), route.additionalRequiredText, { timeout: 15_000 }).catch(() => {});
+    }
     await page.evaluate(() => document.fonts?.ready).catch(() => {});
     await page.waitForTimeout(500);
   } catch (error) {
@@ -141,6 +143,9 @@ async function auditMode(browser, baseUrl, route, outDir) {
   }
   if (layout.selectedTabClipped) failures.push('selected navigation tab is clipped');
   if (!bodyText.includes(route.requiredText)) failures.push(`required text was not rendered: ${route.requiredText}`);
+  if (route.additionalRequiredText && !bodyText.includes(route.additionalRequiredText)) {
+    failures.push(`required text was not rendered: ${route.additionalRequiredText}`);
+  }
   if (route.name === 'played-tracks' && Number(layout.playedTracksChartHeight) < 360) {
     failures.push(`played-tracks chart is too short for compact mobile labels: ${layout.playedTracksChartHeight}px`);
   }
