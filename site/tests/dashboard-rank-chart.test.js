@@ -8,6 +8,22 @@ class FakeStyle {
   setProperty(name, value) { this.values.set(name, String(value)); }
 }
 
+class FakeContext {
+  constructor() { this.calls = []; }
+  record(name, ...args) { this.calls.push([name, ...args]); }
+  setTransform(...args) { this.record('setTransform', ...args); }
+  clearRect(...args) { this.record('clearRect', ...args); }
+  save() { this.record('save'); }
+  restore() { this.record('restore'); }
+  beginPath() { this.record('beginPath'); }
+  moveTo(...args) { this.record('moveTo', ...args); }
+  lineTo(...args) { this.record('lineTo', ...args); }
+  stroke() { this.record('stroke'); }
+  fillText(...args) { this.record('fillText', ...args); }
+  arc(...args) { this.record('arc', ...args); }
+  fill() { this.record('fill'); }
+}
+
 class FakeNode {
   constructor(tagName) {
     this.tagName = String(tagName).toUpperCase();
@@ -17,20 +33,30 @@ class FakeNode {
     this.textContent = '';
     this.className = '';
     this.style = new FakeStyle();
+    this.clientWidth = 960;
+    this.clientHeight = 400;
+    this.context = this.tagName === 'CANVAS' ? new FakeContext() : null;
   }
   setAttribute(name, value) { this.attributes.set(name, String(value)); }
-  append(...nodes) { this.children.push(...nodes); }
-  replaceChildren(...nodes) { this.children = [...nodes]; }
+  append(...nodes) {
+    for (const node of nodes) {
+      if (node && typeof node === 'object') node.parentElement = this;
+      this.children.push(node);
+    }
+  }
+  replaceChildren(...nodes) { this.children = []; this.append(...nodes); }
+  getBoundingClientRect() { return { width: this.clientWidth, height: this.clientHeight }; }
+  getContext(kind) { return kind === '2d' ? this.context : null; }
 }
 
+globalThis.window = { devicePixelRatio: 1 };
 globalThis.document = {
   createElement(tagName) { return new FakeNode(tagName); },
-  createElementNS(_namespace, tagName) { return new FakeNode(tagName); },
 };
 
-test('shared rank chart renders grid, dates, paths and latest points', () => {
+test('shared rank chart renders grid, dates, lines and latest points on the dashboard canvas', () => {
   const container = new FakeNode('div');
-  const svg = renderRankHistoryChart({
+  const canvas = renderRankHistoryChart({
     container,
     series: [{
       title: '曲A',
@@ -44,30 +70,20 @@ test('shared rank chart renders grid, dates, paths and latest points', () => {
     yMax: 5,
     rankTicks: [1, 3, 5],
     dateTickCount: 2,
-    gridClass: 'rank-grid',
-    axisClass: 'rank-axis',
     lineClass: 'rank-line',
-    pointClass: 'rank-point',
-    hueVariable: '--rank-hue',
     rankLabel: (rank) => `${rank}位`,
     dateLabel: (date) => date.slice(5),
-    lineTitle: (item) => item.title,
-    latestPoint: {
-      radius: () => 3,
-      title: (item, point) => `${item.title} ${point.rank}位`,
-    },
+    latestPoint: { radius: () => 3 },
   });
 
-  assert.equal(container.children[0], svg);
-  assert.equal(svg.children.filter((node) => node.tagName === 'LINE').length, 3);
-  assert.equal(svg.children.filter((node) => node.tagName === 'TEXT').length, 5);
-  const path = svg.children.find((node) => node.tagName === 'PATH');
-  assert.match(path.attributes.get('d'), /^M .+ L /);
-  assert.equal(path.style.values.get('--rank-hue'), '0');
-  assert.equal(path.children[0].textContent, '曲A');
-  const point = svg.children.find((node) => node.tagName === 'CIRCLE');
-  assert.equal(point.attributes.get('r'), '3');
-  assert.equal(point.children[0].textContent, '曲A 2位');
+  assert.equal(container.children[0], canvas);
+  assert.equal(canvas.tagName, 'CANVAS');
+  assert.match(canvas.className, /shared-dashboard-canvas/);
+  const calls = canvas.context.calls;
+  assert.ok(calls.some(([name]) => name === 'lineTo'));
+  assert.ok(calls.some(([name, text]) => name === 'fillText' && text === '1位'));
+  assert.ok(calls.some(([name, text]) => name === 'fillText' && text === '09-29'));
+  assert.ok(calls.some(([name, , , radius]) => name === 'arc' && radius === 3));
 });
 
 test('shared rank chart renders the configured empty state', () => {
