@@ -2,7 +2,6 @@ import {
   appendEmptyState,
   byId,
   cssColor,
-  evenlySpacedIndexes,
   fullDate as fullDateLabel,
   integerFormat as numberFormat,
   safeInteger as integer,
@@ -10,6 +9,13 @@ import {
   shortDate as dateLabel,
   signedInteger,
 } from './dashboard-ui-common.js?v=20261001.1';
+import {
+  dashboardTickIndexes,
+  drawDashboardGrid,
+  drawDashboardLine,
+  drawDashboardXAxis,
+  prepareDashboardCanvas,
+} from './dashboard-chart-canvas.js?v=20261001.2';
 import { appendTableRow } from './dashboard-table-dom.js?v=20261001.1';
 
 const DEFAULT_HANDLES = Object.freeze([
@@ -133,18 +139,16 @@ function canvasWidth(canvas) {
 function prepareCanvas() {
   const canvas = byId('followersChart');
   if (!canvas) return null;
-  const width = Math.max(320, canvasWidth(canvas) || 960);
-  const height = width < 520 ? 330 : Math.max(350, Math.min(430, Math.round(width * .49)));
-  const ratio = Math.min(2, window.devicePixelRatio || 1);
-  canvas.width = Math.round(width * ratio);
-  canvas.height = Math.round(height * ratio);
-  canvas.style.height = `${height}px`;
-  const context = canvas.getContext('2d');
-  if (!context) return null;
-  context.setTransform(ratio, 0, 0, ratio, 0, 0);
-  context.clearRect(0, 0, width, height);
-  observedCanvasWidth = width;
-  return { canvas, context, width, height };
+  const measuredWidth = Math.max(320, canvasWidth(canvas) || 960);
+  const height = measuredWidth < 520 ? 330 : Math.max(350, Math.min(430, Math.round(measuredWidth * .49)));
+  const prepared = prepareDashboardCanvas(canvas, {
+    minimumWidth: 320,
+    minimumHeight: 1,
+    fallbackWidth: measuredWidth,
+    height,
+  });
+  if (prepared) observedCanvasWidth = prepared.width;
+  return prepared;
 }
 
 function setChartEmpty(empty) {
@@ -172,18 +176,16 @@ function followerBounds(values) {
 }
 
 function drawGrid(context, { width, area, bounds }) {
-  context.strokeStyle = 'rgba(31,45,68,.12)';
   context.fillStyle = cssColor('--muted', '#667287');
-  context.lineWidth = 1;
   context.font = '11px system-ui';
   context.textBaseline = 'middle';
-  for (let index = 0; index <= 4; index += 1) {
-    const ratio = index / 4;
-    const y = area.top + area.height * ratio;
-    context.beginPath();
-    context.moveTo(area.left, y);
-    context.lineTo(width - area.right, y);
-    context.stroke();
+  for (const { ratio, y } of drawDashboardGrid(context, {
+    left: area.left,
+    right: area.right,
+    top: area.top,
+    height: area.height,
+    width,
+  })) {
     context.textAlign = 'right';
     context.fillText(
       numberFormat.format(Math.round(bounds.maximum - bounds.range * ratio)),
@@ -193,64 +195,41 @@ function drawGrid(context, { width, area, bounds }) {
   }
 }
 
-function drawXAxis(context, { rows, positions, area, height }) {
-  const baseline = area.top + area.height;
-  context.save();
-  context.strokeStyle = 'rgba(31,45,68,.12)';
-  context.fillStyle = cssColor('--muted', '#667287');
-  context.lineWidth = 1;
-  context.font = '11px system-ui';
-  context.textAlign = 'center';
-  context.textBaseline = 'top';
-  context.beginPath();
-  context.moveTo(area.left, baseline);
-  context.lineTo(area.left + area.width, baseline);
-  context.stroke();
+function drawXAxis(context, { rows, positions, area, width }) {
   const count = Math.max(4, Math.floor(area.width / 140));
-  for (const index of evenlySpacedIndexes(rows.length, count)) {
-    const x = positions[index];
-    context.beginPath();
-    context.moveTo(x, baseline);
-    context.lineTo(x, baseline + 4);
-    context.stroke();
-    context.fillText(dateLabel(rows[index].date), x, Math.min(height - 15, baseline + 7));
-  }
-  context.restore();
+  drawDashboardXAxis(context, {
+    left: area.left,
+    right: area.right,
+    top: area.top + area.height,
+    width,
+    positions,
+    indexes: dashboardTickIndexes(rows.length, count),
+    labelFor: (index) => dateLabel(rows[index].date),
+    fillStyle: cssColor('--muted', '#667287'),
+  });
 }
 
 function drawSeries(context, { rows, handles, positions, yFor }) {
   handles.forEach((handle, seriesIndex) => {
     const style = SERIES_STYLES[seriesIndex % SERIES_STYLES.length];
-    context.save();
-    context.strokeStyle = style.color;
-    context.fillStyle = style.color;
-    context.lineWidth = 2;
-    context.lineJoin = 'round';
-    context.lineCap = 'round';
-    context.setLineDash(style.dash);
-    context.beginPath();
-    let open = false;
-    let latest = null;
-    rows.forEach((row, index) => {
-      const value = followerValue(row[handle]);
-      if (value == null) {
-        open = false;
-        return;
-      }
-      const x = positions[index];
-      const y = yFor(value);
-      if (!open) context.moveTo(x, y);
-      else context.lineTo(x, y);
-      open = true;
-      latest = { x, y };
+    const points = drawDashboardLine(context, rows, {
+      x: (_row, index) => positions[index],
+      y: (value) => yFor(value),
+      value: (row) => followerValue(row[handle]),
+      valid: (value) => value != null,
+      strokeStyle: style.color,
+      lineWidth: 2,
+      lineDash: style.dash,
     });
-    context.stroke();
-    context.setLineDash([]);
-    if (latest) {
-      context.beginPath();
-      context.arc(latest.x, latest.y, 3, 0, Math.PI * 2);
-      context.fill();
-    }
+    if (!points) return;
+    const latestIndex = rows.findLastIndex((row) => followerValue(row[handle]) != null);
+    if (latestIndex < 0) return;
+    const value = followerValue(rows[latestIndex][handle]);
+    context.save();
+    context.fillStyle = style.color;
+    context.beginPath();
+    context.arc(positions[latestIndex], yFor(value), 3, 0, Math.PI * 2);
+    context.fill();
     context.restore();
   });
 }
@@ -299,7 +278,7 @@ function renderChart(rows, handles) {
   const yFor = (value) => area.top + area.height * (bounds.maximum - value) / bounds.range;
 
   drawGrid(context, { width, area, bounds });
-  drawXAxis(context, { rows, positions, area, height });
+  drawXAxis(context, { rows, positions, area, width });
   drawSeries(context, { rows, handles, positions, yFor });
 
   context.fillStyle = cssColor('--muted', '#667287');
