@@ -1,5 +1,6 @@
 import { runOptimizedOhisamaCollectorScheduled } from './ohisama-collector-optimized.js';
 import { registerOhisamaFollowerTarget } from './ohisama-collector-entry.js';
+import { cachedOhisamaFollowerTargetRegistrar } from './ohisama-follower-target-cache.js';
 import { captureOhisamaPlayback } from './ohisama-playback.js';
 import {
   loadOhisamaPublicationSnapshot,
@@ -33,7 +34,9 @@ function capturingFetch(fetchImpl, onChannelPayload) {
 
 export async function runOhisamaPagesScheduled(controller, env, ctx, dependencies = {}) {
   const registerFollowerTarget = activeBroadcastFollowerRegistrar(
-    dependencies.registerFollowerTarget || registerOhisamaFollowerTarget,
+    cachedOhisamaFollowerTargetRegistrar(
+      dependencies.registerFollowerTarget || registerOhisamaFollowerTarget,
+    ),
   );
   let channelPayload = null;
   const fetchImpl = dependencies.fetch || fetch;
@@ -72,13 +75,15 @@ export async function runOhisamaPagesScheduled(controller, env, ctx, dependencie
   }
 
   try {
-    const readModel = await refreshOptimizedOhisamaReadModel(env, result, result.observed_at);
+    const generated = await refreshOptimizedOhisamaReadModel(env, result, result.observed_at);
+    const { payload: currentReadModel, ...readModel } = generated;
     const publication = await mergeOhisamaPlaybackReadModelWithCadence(
       env,
       playback,
       result,
       result.observed_at,
       previousReadModel,
+      currentReadModel,
     );
     const playbackPublished = Boolean(playback) && publication.published === true;
     console.log(JSON.stringify({
