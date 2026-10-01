@@ -50,16 +50,29 @@ test('previous-day chart ordering follows the primary-key range without a tempor
   assert.doesNotMatch(plan, /TEMP B-TREE/);
 });
 
-test('stream chart uses direct differences between adjacent five-minute samples', () => {
+test('stream chart converts rolling 15-minute growth back to a five-minute equivalent', () => {
   const base = 1_800_000_000_000;
   assert.deepEqual(directFiveMinuteStreamHistory([
     { observed_at: base, current_stream_count: 10 },
-    { observed_at: base + 300_000, current_stream_count: 17 },
-    { observed_at: base + 600_000, current_stream_count: 29 },
+    { observed_at: base + 300_000, current_stream_count: 16 },
+    { observed_at: base + 600_000, current_stream_count: 25 },
+    { observed_at: base + 900_000, current_stream_count: 40 },
+    { observed_at: base + 1_200_000, current_stream_count: 58 },
   ]), [
-    { observed_at: base + 300_000, stream_delta: 7, sample_count: 1 },
-    { observed_at: base + 600_000, stream_delta: 12, sample_count: 1 },
+    { observed_at: base + 900_000, stream_delta: 10, sample_count: 3 },
+    { observed_at: base + 1_200_000, stream_delta: 14, sample_count: 3 },
   ]);
+});
+
+test('15-minute smoothing omits windows with missing buckets or counter resets', () => {
+  const base = 1_800_000_000_000;
+  assert.deepEqual(directFiveMinuteStreamHistory([
+    { observed_at: base, current_stream_count: 100 },
+    { observed_at: base + 300_000, current_stream_count: 110 },
+    { observed_at: base + 600_000, current_stream_count: 90 },
+    { observed_at: base + 900_000, current_stream_count: 120 },
+    { observed_at: base + 1_500_000, current_stream_count: 140 },
+  ]), []);
 });
 
 test('Pages request path no longer reads or averages minute stream facts', () => {
