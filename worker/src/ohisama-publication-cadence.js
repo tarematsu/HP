@@ -8,6 +8,12 @@ export const OHISAMA_PLAYED_CADENCE_MS = 24 * 60 * MINUTE_MS;
 export const OHISAMA_LIKES_CADENCE_MS = 6 * 60 * MINUTE_MS;
 
 const OHISAMA_PAGES_KEY = pagesActionsR2ResponseKey('hinata');
+const DEFAULT_HEADERS = Object.freeze({
+  'content-type': 'application/json; charset=utf-8',
+  'cache-control': 'public, max-age=30, s-maxage=300, stale-while-revalidate=600',
+  'x-content-type-options': 'nosniff',
+  vary: 'accept-encoding',
+});
 const SECTION_CADENCE_MS = Object.freeze({
   current: OHISAMA_CURRENT_CADENCE_MS,
   history: OHISAMA_HISTORY_CADENCE_MS,
@@ -164,13 +170,17 @@ export async function mergeOhisamaPlaybackReadModelWithCadence(
   collection,
   observedAt = Date.now(),
   previousPayload = null,
+  currentPayloadOverride = null,
 ) {
   const bucket = env?.PAGES_RESPONSE_R2;
   if (!OHISAMA_PAGES_KEY || typeof bucket?.get !== 'function' || typeof bucket?.put !== 'function') {
     return { published: false, refreshed: {} };
   }
-  const envelope = await loadEnvelope(bucket);
-  const currentPayload = bodyPayload(envelope);
+
+  const existingEnvelope = await loadEnvelope(bucket);
+  const currentPayload = currentPayloadOverride?.model === 'hinata'
+    ? currentPayloadOverride
+    : bodyPayload(existingEnvelope);
   if (!currentPayload) return { published: false, refreshed: {} };
 
   const built = buildOhisamaCadencedPayload(
@@ -181,7 +191,10 @@ export async function mergeOhisamaPlaybackReadModelWithCadence(
     observedAt,
   );
   const nextEnvelope = {
-    ...envelope,
+    version: 1,
+    status: Number(existingEnvelope?.status) || 200,
+    headers: existingEnvelope?.headers || DEFAULT_HEADERS,
+    ...existingEnvelope,
     updated_at: integer(observedAt),
     cadence_seconds: OHISAMA_PAGES_CADENCE_SECONDS,
     body: JSON.stringify(built.payload),
