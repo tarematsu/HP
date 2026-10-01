@@ -51,9 +51,11 @@ test('Nogizaka listening-party labels are reusable for future Under Live events'
   }), '43rd アンダーライブ セットリスト');
 });
 
-test('Nogizaka public API is read-model-only and never reads D1 on a Pages request', () => {
+test('Nogizaka public API is read-model-only and the active tab loads after source-tab navigation', () => {
   assert.match(runtime, /\/api\/nogizaka-listening-party/);
   assert.match(runtime, /MIN_REFRESH_MS = 15_000/);
+  assert.match(runtime, /const active = \(\) => byId\('nogizakaListeningPartyView'\)\?\.hidden === false/);
+  assert.doesNotMatch(runtime, /#modeTabs button\.active\[data-view="nogizaka"\]/);
   assert.match(api, /PAGES_READ_MODEL_SERVICE/);
   assert.match(api, /_internal\/pages-response\?key=nogizaka-listening-party/);
   assert.doesNotMatch(api, /OTHER_DB|\.prepare\(|sh_nogizaka_official_news_announcements|sh_official_broadcast_/);

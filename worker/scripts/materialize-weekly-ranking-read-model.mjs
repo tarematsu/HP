@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 
 const DAY_MS = 86_400_000;
-const MODEL_VERSION = 2;
+export const WEEKLY_RANKING_MODEL_VERSION = 3;
+const MODEL_VERSION = WEEKLY_RANKING_MODEL_VERSION;
 const CHUNK_STORAGE = 'chunked-json-v1';
 // D1 limits each SQL statement to 100,000 bytes. Keep source chunks well below
 // that so SQL quoting/escaping cannot push an INSERT over the statement limit.
@@ -14,6 +15,7 @@ const CHUNK_MAX_BYTES = 40_000;
 const STATIONHEAD_CHANNEL_BY_HOST = new Map([
   ['sakuramankai', 'Buddies'],
   ['sakurazaka46jp', '櫻坂46'],
+  ['nogizaka46smej', '乃木坂46'],
   ['sbuddies1819', 'ATIN'],
   ['jo1andjam', 'JAM'],
   ['vote6tones', 'team SixTONES'],
@@ -241,9 +243,11 @@ export async function materializeWeeklyRankingReadModel(db, now = Date.now()) {
       channel_name AS host_name,channel_alias AS host_alias,
       source_sheet,quality_score,quality_flags
       FROM sh_channel_rankings
-      WHERE channel_name IS NOT NULL AND trim(channel_name)<>''
+      WHERE lower(trim(channel_name)) IN ('sakuramankai','sakurazaka46jp','nogizaka46smej')
       ORDER BY ranking_date ASC,rank ASC,channel_name ASC`).all(),
-    db.prepare(`SELECT host_name,artist_name,relation_type FROM sh_channel_fandoms ORDER BY host_name`).all(),
+    db.prepare(`SELECT host_name,artist_name,relation_type FROM sh_channel_fandoms
+      WHERE lower(trim(host_name)) IN ('sakuramankai','sakurazaka46jp','nogizaka46smej')
+      ORDER BY host_name`).all(),
     db.prepare(`SELECT period_key,period_start,period_end,sample_count,reliable_sample_count,
       listener_avg,listener_min,listener_max,stream_start,stream_end,stream_growth,
       member_start,member_end,member_growth,likes_max,distinct_tracks,primary_host,

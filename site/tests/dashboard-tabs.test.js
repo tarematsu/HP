@@ -113,7 +113,8 @@ test('history mode-specific runtimes remain lazy-loaded after history starts', (
   assert.match(historyEntry, /history-period-chart\.js\?v=20261001\.1/);
   assert.match(historyEntry, /history-ranking-chart\.js\?v=20260930\.\d+/);
   assert.doesNotMatch(historyEntry, /history-ranking-missing-gap/);
-  assert.match(historyEntry, /history-ranking-all-host-table\.js\?v=20260930\.1/);
+  assert.doesNotMatch(historyEntry, /history-ranking-all-host-table\.js/);
+  assert.match(historyEntry, /history-ranking-simplified\.js\?v=20261002\.1/);
   assert.match(tabsClient, /history-ranking-table-status\.js\?v=20260923\.2/);
   assert.match(tabsClient, /mode === 'ranking'[\s\S]*loadOnce\('ranking-status'/);
   assert.match(historyEntry, /history-broadcasts\.js\?v=20261001\.1/);

@@ -6,13 +6,16 @@ const entry = readFileSync(new URL('../public/history/history-main.js', import.m
 const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 const rankingChart = readFileSync(new URL('../public/history/history-ranking-chart.js', import.meta.url), 'utf8');
 const rankingAllHosts = readFileSync(new URL('../public/history/history-ranking-all-host-table.js', import.meta.url), 'utf8');
+const rankingSimplified = readFileSync(new URL('../public/history/history-ranking-simplified.js', import.meta.url), 'utf8');
+const historyShell = readFileSync(new URL('../public/history-shell.js', import.meta.url), 'utf8');
 const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 const materialized = readFileSync(new URL('../functions/lib/materialized-history.js', import.meta.url), 'utf8');
 const current = readFileSync(new URL('../functions/api/history-current.js', import.meta.url), 'utf8');
 
-test('ranking chart keeps featured comparison and supports one selected all-host series', () => {
+test('ranking runtime loads only the fixed Sakamichi comparison presentation', () => {
   assert.match(entry, /history-ranking-chart\.js\?v=20260930\.2&rev=20260930\.3/);
-  assert.match(entry, /history-ranking-all-host-table\.js\?v=20260930\.1/);
+  assert.doesNotMatch(entry, /history-ranking-all-host-table\.js/);
+  assert.match(entry, /history-ranking-simplified\.js\?v=20261002\.1/);
   assert.doesNotMatch(entry, /history-ranking-missing-gap/);
   assert.match(entry, /runtimeKey\(mode\)/);
   assert.match(entry, /if \(mode === 'ranking' \|\| mode === 'broadcasts'\) return mode/);
@@ -20,18 +23,15 @@ test('ranking chart keeps featured comparison and supports one selected all-host
   assert.match(rankingChart, /\['sakuramankai', '#000000'\]/);
   assert.match(rankingChart, /\['sakurazaka46jp', '#d93f79'\]/);
   assert.match(rankingChart, /\['nogizaka46smej', '#812990'\]/);
-  assert.match(rankingChart, /function colorForHost\(host, index\) \{[\s\S]*if \(chartScope !== 'featured'\) return '#000000';[\s\S]*const preset = HOST_COLORS\.get\(hostKey\(host\)\);[\s\S]*if \(preset\) return preset/);
-  assert.match(rankingChart, /const isDefaultFeatured = detail\.data\.scope !== 'all' && !hostSearch/);
-  assert.match(rankingChart, /chartHosts = isDefaultFeatured \? FEATURED_HOSTS : apiChartHosts/);
-  assert.match(rankingChart, /detail\.data\.chart_hosts/);
-  assert.match(rankingChart, /history:ranking-host-selected/);
-  assert.match(rankingChart, /chartHosts\.length === 1 \? 'single-host' : 'featured-hosts'/);
-  assert.match(rankingChart, /週間リーダーボード順位/);
-  assert.match(rankingChart, /順位推移/);
-  assert.doesNotMatch(rankingChart, /previousFetch|browser\.fetch|response\.clone\(\)\.json/);
+  assert.match(rankingSimplified, /controls\.hidden = rankingMode/);
+  assert.match(rankingSimplified, /moveRankNextToWeek/);
+  assert.match(rankingSimplified, /textContent\.trim\(\) === '順位'/);
+  assert.match(historyShell, /id="rankingScope" type="hidden" value="featured"/);
+  assert.match(historyShell, /id="rankingHost" type="hidden" value=""/);
+  assert.doesNotMatch(historyShell, /<option value="all">全ホスト<\/option>|placeholder="ホスト名"/);
 });
 
-test('all-host table exposes channel, artist, and relation type after host name and supports tap selection', () => {
+test('legacy all-host table module still defines metadata columns for backwards-compatible imports', () => {
   for (const label of ['順位', 'ホスト名', 'チャンネル', 'アーティスト名', '種別', 'ランクイン週数', '平均順位', '最高順位', '最低順位']) {
     assert.match(rankingAllHosts, new RegExp(label));
   }
@@ -39,13 +39,9 @@ test('all-host table exposes channel, artist, and relation type after host name 
   assert.match(rankingAllHosts, /\['artist_name', 'アーティスト名'\]/);
   assert.match(rankingAllHosts, /\['relation_label', '種別'\]/);
   assert.doesNotMatch(rankingAllHosts, /\['fandom_label', 'ファンダム'\]/);
-  assert.match(rankingAllHosts, /data\.host_rankings/);
-  assert.match(rankingAllHosts, /button\.dataset\.rankingHost/);
-  assert.match(rankingAllHosts, /history:ranking-host-selected/);
-  assert.match(rankingAllHosts, /setSelectedHost\(defaultHost\)/);
 });
 
-test('all-host table excludes the three featured hosts and uses shared mobile table presentation', () => {
+test('legacy all-host table uses shared mobile table presentation', () => {
   assert.match(rankingAllHosts, /EXCLUDED_ALL_HOSTS = new Set\(\['sakuramankai', 'sakurazaka46jp', 'nogizaka46smej'\]\)/);
   assert.match(rankingAllHosts, /\.filter\(\(row\) => !EXCLUDED_ALL_HOSTS\.has\(hostKey\(row\?\.host_name\)\)\)/);
   assert.doesNotMatch(rankingAllHosts, /createElement\('style'\)|nth-child\(1\).*width: 5%|font-size: 8px/);

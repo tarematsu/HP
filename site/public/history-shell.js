@@ -12,7 +12,7 @@ import {
 
 const controls = dashboardControls({
   id: 'controls',
-  bodyHtml: '<div id="standardControls" class="control-group standard-controls"><div id="rangePresets" class="range-presets" aria-label="期間プリセット"><button type="button" data-days="30">1ヶ月</button><button type="button" data-days="180">半年</button><button type="button" data-days="365">1年</button><button type="button" data-days="all" class="active">全期間</button></div><input id="from" type="hidden" value="2024-05-01"><input id="to" type="hidden"></div><div id="rankingControls" class="control-group ranking-controls" hidden><label><span>対象</span><select id="rankingScope"><option value="featured">坂道</option><option value="all">全ホスト</option></select></label><label><span>検索</span><input id="rankingHost" type="search" maxlength="100" placeholder="ホスト名"></label></div><button id="load" type="button" hidden aria-hidden="true" tabindex="-1"></button>',
+  bodyHtml: '<div id="standardControls" class="control-group standard-controls"><div id="rangePresets" class="range-presets" aria-label="期間プリセット"><button type="button" data-days="30">1ヶ月</button><button type="button" data-days="180">半年</button><button type="button" data-days="365">1年</button><button type="button" data-days="all" class="active">全期間</button></div><input id="from" type="hidden" value="2024-05-01"><input id="to" type="hidden"></div><div id="rankingControls" hidden style="display:none"><input id="rankingScope" type="hidden" value="featured"><input id="rankingHost" type="hidden" value=""></div><button id="load" type="button" hidden aria-hidden="true" tabindex="-1"></button>',
 });
 
 const summary = dashboardSummary([

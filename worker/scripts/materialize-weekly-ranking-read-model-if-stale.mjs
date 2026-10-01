@@ -2,7 +2,10 @@ import { appendFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { materializeWeeklyRankingReadModel } from './materialize-weekly-ranking-read-model.mjs';
+import {
+  WEEKLY_RANKING_MODEL_VERSION,
+  materializeWeeklyRankingReadModel,
+} from './materialize-weekly-ranking-read-model.mjs';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 
 const RANKING_TYPE = '週間リーダーボード';
@@ -24,8 +27,9 @@ function chunkPointer(payloadJson) {
     if (value?.storage !== CHUNK_STORAGE) return null;
     const generationId = String(value.generation_id || '').trim();
     const chunkCount = finiteInteger(value.chunk_count);
+    const modelVersion = finiteInteger(value.model_version);
     if (!generationId || chunkCount < 1) return null;
-    return { generationId, chunkCount };
+    return { generationId, chunkCount, modelVersion };
   } catch {
     return null;
   }
@@ -50,6 +54,7 @@ export function shouldRefreshWeeklyRankingReadModel(source, stored) {
   if (!stored) return true;
   if (String(stored.source_max_ranking_date || '') !== source.max_ranking_date) return true;
   if (stored.chunk_complete !== true) return true;
+  if (finiteInteger(stored.model_version) !== WEEKLY_RANKING_MODEL_VERSION) return true;
   if (source?.compact_revision != null) {
     return finiteInteger(stored.source_revision) !== finiteInteger(source.compact_revision);
   }
@@ -65,7 +70,8 @@ export async function loadWeeklyRankingSourceRevision(db) {
   const row = await db.prepare(`SELECT
       (SELECT MAX(ranking_date)
        FROM sh_channel_rankings
-       WHERE ranking_type=?) AS max_ranking_date,
+       WHERE ranking_type=?
+         AND lower(trim(channel_name)) IN ('sakuramankai','sakurazaka46jp','nogizaka46smej')) AS max_ranking_date,
       (SELECT revision
        FROM sh_read_model_revision
        WHERE model_key=?) AS compact_revision`).bind(RANKING_TYPE, REVISION_KEY).first();
@@ -105,6 +111,7 @@ export async function loadWeeklyRankingReadModelState(db) {
     source_max_ranking_date: String(stored.source_max_ranking_date || ''),
     source_revision: finiteInteger(stored.source_revision),
     refreshed_at: finiteInteger(stored.refreshed_at),
+    model_version: finiteInteger(pointer?.modelVersion),
     chunk_complete: chunkComplete,
   };
 }
