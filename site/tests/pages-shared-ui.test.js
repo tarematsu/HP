@@ -101,9 +101,12 @@ test('all dashboard shells share mounting and reusable UI components without run
   for (const name of ['history-shell.js', 'likes-shell.js', 'spotify-shell.js', 'apple-music-shell.js', 'played-tracks-shell.js', 'nogizaka-listening-party-shell.js']) {
     assert.match(shells[name], /dashboard(?:Summary|DataCard|ChartCard)/, `${name} must compose shared cards`);
   }
-  for (const name of ['hinata-shell.js', 'followers-shell.js', 'apple-music-shell.js', 'amazon-music-shell.js']) {
-    assert.match(shells[name], /dashboardChartHost/, `${name} must use the shared chart host`);
+  for (const name of ['followers-shell.js', 'apple-music-shell.js', 'amazon-music-shell.js']) {
+    assert.match(shells[name], /dashboardChartHost/, `${name} must use the shared SVG chart host`);
   }
+  assert.match(shells['hinata-shell.js'], /<canvas id="hinataChart"/);
+  assert.match(shells['hinata-shell.js'], /<canvas id="hinataDailyChart"/);
+  assert.doesNotMatch(shells['hinata-shell.js'], /dashboardChartHost/, 'hinata-shell.js must use the canonical Canvas chart path');
 });
 
 test('dashboard shells reuse shared notices tables legends and mode tabs instead of duplicating markup', () => {
@@ -147,7 +150,6 @@ test('shared feature CSS owns generic SVG and numeric-table primitives', () => {
   for (const emptyClass of ['apple-rank-empty', 'amazon-rank-empty', 'followers-empty', 'spotify-trend-empty']) {
     assert.match(sharedCss, new RegExp(`\\.${emptyClass}`), `${emptyClass} must inherit the shared empty-state contract`);
   }
-
   for (const [name, source] of Object.entries({ hinataCss, followersCss, amazonCss, appleCss })) {
     assert.doesNotMatch(source, /\.\w+-view\s*\{[^}]*display:\s*grid/, `${name} must use canonical dashboard view layout`);
     assert.doesNotMatch(source, /\.\w+-view\[hidden\]/, `${name} must use canonical hidden-view behavior`);
