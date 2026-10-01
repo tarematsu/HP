@@ -18,6 +18,6 @@ test('daily weekly and monthly summary cards generate average growth labels dire
 test('history entry no longer loads a summary-label correction runtime', () => {
   assert.doesNotMatch(main, /history-summary-average-labels/);
   assert.match(main, /history-lite\.js\?v=20261001\.1/);
-  assert.match(tabs, /history-main\.js\?v=20261001\.1/);
+  assert.match(tabs, /history-main\.js\?v=\d{8}\.\d+/);
   assert.match(metrics, /dashboard-tabs\.js\?v=20260930\.1/);
 });

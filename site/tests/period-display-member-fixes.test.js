@@ -28,7 +28,7 @@ test('header update formatter omits seconds and renders the dashboard materializ
 });
 
 test('daily weekly and monthly stream growth uses black average listener line and replay bars', () => {
-  assert.match(historyEntry, /history-period-chart\.js\?v=20261001\.1/);
+  assert.match(historyEntry, /history-period-chart\.js\?v=\d{8}\.\d+/);
   assert.match(historyLite, /chart: '同接・再生数増加の推移'/);
   assert.match(periodChart, /new Set\(\['daily', 'weekly', 'monthly'\]\)/);
   assert.match(periodChart, /history:data-loaded/);

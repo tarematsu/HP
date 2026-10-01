@@ -117,7 +117,7 @@ function draw() {
     }
   }
 
-  const targetTicks = Math.min(rows.length, Math.max(4, Math.floor(area.width / 140)));
+  const targetTicks = Math.min(rows.length, Math.max(2, Math.floor(area.width / 140)));
   const xTickIndexes = dashboardTickIndexes(rows.length, targetTicks);
   drawDashboardXAxis(context, {
     left: area.left,
