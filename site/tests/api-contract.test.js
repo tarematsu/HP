@@ -53,7 +53,6 @@ test('materialized response freshness follows event and revision policies', () =
   for (const key of [
     'history:daily',
     'history:weekly',
-    'history:monthly',
     'history:broadcasts',
   ]) {
     assert.equal(materializedResponseCadenceSeconds(key), 1440 * 60, key);
@@ -65,6 +64,7 @@ test('materialized response freshness follows event and revision policies', () =
   assert.equal(materializedResponseMaximumAge('followers'), Number.MAX_SAFE_INTEGER);
   assert.equal(materializedResponseCadenceSeconds('host-history:summary'), 1440 * 60);
   assert.equal(materializedResponseMaximumAge('host-history:summary'), Number.MAX_SAFE_INTEGER);
+  assert.equal(materializedApiKey('https://skrzk.test/api/history?mode=monthly'), null);
   assert.equal(materializedApiKey('https://skrzk.test/api/followers'), 'followers');
   assert.equal(materializedApiKey('https://skrzk.test/api/amazon-music'), null);
   assert.equal(materializedApiKey('https://skrzk.test/api/apple-music'), null);
