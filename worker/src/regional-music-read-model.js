@@ -1,4 +1,5 @@
 import { saveMaterializedR2Response } from './pages-response-r2.js';
+import { regionalMusicService } from './regional-music-service-registry.js';
 
 export const REGIONAL_MUSIC_READ_MODEL_KEY = 'regional-music';
 export const REGIONAL_MUSIC_READ_MODEL_CADENCE_SECONDS = 24 * 60 * 60;
@@ -84,8 +85,13 @@ function normalizedCollectorState(row) {
   } catch {
     entityCounts = {};
   }
+  const service = row?.service ?? null;
+  const definition = regionalMusicService(service);
   return {
-    service: row?.service ?? null,
+    service,
+    region: definition?.region ?? null,
+    phase: definition?.phase ?? null,
+    metrics: definition ? [...definition.metrics] : [],
     status: row?.status ?? 'pending',
     last_attempt_at: row?.last_attempt_at ?? null,
     last_success_at: row?.last_success_at ?? null,
