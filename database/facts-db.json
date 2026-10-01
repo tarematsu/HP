@@ -2,7 +2,7 @@
   "binding": "MINUTE_DB",
   "database_name": "stationhead-minute",
   "database_id": "43c12c1e-886d-4496-9c37-61bc8a15bbd7",
-  "schema": "database/facts-migrations/070_track_identity_cache.sql",
+  "schema": "database/facts-migrations/072_track_identity_cache.sql",
   "migrations": [
     "database/facts-migrations/025_d1_budget_hotpath_index.sql",
     "database/facts-migrations/026_remove_apple_music_compatibility.sql",
@@ -46,6 +46,8 @@
     "database/facts-migrations/067_canonical_track_presentation_integrity.sql",
     "database/facts-migrations/068_retire_legacy_d1_materializations.sql",
     "database/facts-migrations/069_title_identity_lookup_indexes.sql",
-    "database/facts-migrations/070_track_identity_cache.sql"
+    "database/facts-migrations/070_refresh_audition_spotify_artist.sql",
+    "database/facts-migrations/071_normalize_audition_artist_names_ja.sql",
+    "database/facts-migrations/072_track_identity_cache.sql"
   ]
 }
