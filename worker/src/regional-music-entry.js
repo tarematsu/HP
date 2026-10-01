@@ -2,8 +2,11 @@ import { collectAnghami } from './regional-music-anghami.js';
 import { collectBugsArtists } from './regional-music-bugs.js';
 import { collectGenie } from './regional-music-genie.js';
 import { collectJooxArtists } from './regional-music-joox.js';
+import { collectKugouMusic } from './regional-music-kugou.js';
 import { collectMelon } from './regional-music-melon.js';
+import { collectNeteaseCloudMusic } from './regional-music-netease.js';
 import { collectNhacCuaTui } from './regional-music-nhaccuatui.js';
+import { collectQqMusic } from './regional-music-qq.js';
 import { publishRegionalMusicReadModel } from './regional-music-read-model.js';
 
 export const REGIONAL_MUSIC_DAILY_CRON = '20 15 * * *';
@@ -15,6 +18,9 @@ const DAILY_COLLECTORS = Object.freeze([
   collectNhacCuaTui,
   collectAnghami,
   collectMelon,
+  collectQqMusic,
+  collectNeteaseCloudMusic,
+  collectKugouMusic,
 ]);
 
 export async function collectRegionalMusicDaily(env, scheduledTime, fetchImpl = fetch) {
