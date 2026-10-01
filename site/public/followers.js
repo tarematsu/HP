@@ -1,6 +1,7 @@
 import {
   appendEmptyState,
   byId,
+  cssColor,
   evenlySpacedIndexes,
   fullDate as fullDateLabel,
   integerFormat as numberFormat,
@@ -8,8 +9,7 @@ import {
   setNotice as setSharedNotice,
   shortDate as dateLabel,
   signedInteger,
-  svgElement as createSvgNode,
-} from './dashboard-ui-common.js?v=20260930.1';
+} from './dashboard-ui-common.js?v=20261001.1';
 import { appendTableRow } from './dashboard-table-dom.js?v=20261001.1';
 
 const DEFAULT_HANDLES = Object.freeze([
@@ -18,9 +18,19 @@ const DEFAULT_HANDLES = Object.freeze([
   'sakurazaka46jp',
   'nogizaka46smej',
 ]);
+const SERIES_STYLES = Object.freeze([
+  Object.freeze({ color: '#111', dash: [] }),
+  Object.freeze({ color: '#555', dash: [10, 6] }),
+  Object.freeze({ color: '#777', dash: [2, 5] }),
+  Object.freeze({ color: '#999', dash: [14, 4, 3, 4] }),
+]);
+
 let currentPayload = null;
 let loadPromise = null;
 let resizeObserver = null;
+let observedCanvasWidth = 0;
+let chartModel = null;
+let selectedIndex = null;
 
 function validDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
@@ -114,101 +124,194 @@ function normalizeAccounts(accounts, rows, handles) {
   });
 }
 
+function canvasWidth(canvas) {
+  if (!canvas) return 0;
+  const width = Math.round(canvas.getBoundingClientRect().width || canvas.clientWidth || 0);
+  return Number.isFinite(width) && width > 0 ? width : 0;
+}
+
+function prepareCanvas() {
+  const canvas = byId('followersChart');
+  if (!canvas) return null;
+  const width = Math.max(320, canvasWidth(canvas) || 960);
+  const height = width < 520 ? 330 : Math.max(350, Math.min(430, Math.round(width * .49)));
+  const ratio = Math.min(2, window.devicePixelRatio || 1);
+  canvas.width = Math.round(width * ratio);
+  canvas.height = Math.round(height * ratio);
+  canvas.style.height = `${height}px`;
+  const context = canvas.getContext('2d');
+  if (!context) return null;
+  context.setTransform(ratio, 0, 0, ratio, 0, 0);
+  context.clearRect(0, 0, width, height);
+  observedCanvasWidth = width;
+  return { canvas, context, width, height };
+}
+
+function setChartEmpty(empty) {
+  const canvas = byId('followersChart');
+  let message = byId('followersChartEmpty');
+  if (!message && empty && canvas?.parentElement) {
+    message = appendEmptyState(canvas.parentElement, '0時の初回収集後にグラフを表示します。', {
+      className: 'shared-empty',
+      tagName: 'p',
+    });
+    message.id = 'followersChartEmpty';
+  }
+  if (canvas) canvas.hidden = Boolean(empty);
+  if (message) message.hidden = !empty;
+}
+
+function followerBounds(values) {
+  if (!values.length) return { minimum: 0, maximum: 1, range: 1 };
+  const rawMinimum = Math.min(...values);
+  const rawMaximum = Math.max(...values);
+  const padding = Math.max(1, Math.ceil((rawMaximum - rawMinimum || 1) * .08));
+  const minimum = Math.max(0, rawMinimum - padding);
+  const maximum = Math.max(minimum + 1, rawMaximum + padding);
+  return { minimum, maximum, range: maximum - minimum };
+}
+
+function drawGrid(context, { width, area, bounds }) {
+  context.strokeStyle = 'rgba(31,45,68,.12)';
+  context.fillStyle = cssColor('--muted', '#667287');
+  context.lineWidth = 1;
+  context.font = '11px system-ui';
+  context.textBaseline = 'middle';
+  for (let index = 0; index <= 4; index += 1) {
+    const ratio = index / 4;
+    const y = area.top + area.height * ratio;
+    context.beginPath();
+    context.moveTo(area.left, y);
+    context.lineTo(width - area.right, y);
+    context.stroke();
+    context.textAlign = 'right';
+    context.fillText(
+      numberFormat.format(Math.round(bounds.maximum - bounds.range * ratio)),
+      area.left - 6,
+      y,
+    );
+  }
+}
+
+function drawXAxis(context, { rows, positions, area, height }) {
+  const baseline = area.top + area.height;
+  context.save();
+  context.strokeStyle = 'rgba(31,45,68,.12)';
+  context.fillStyle = cssColor('--muted', '#667287');
+  context.lineWidth = 1;
+  context.font = '11px system-ui';
+  context.textAlign = 'center';
+  context.textBaseline = 'top';
+  context.beginPath();
+  context.moveTo(area.left, baseline);
+  context.lineTo(area.left + area.width, baseline);
+  context.stroke();
+  const count = Math.max(4, Math.floor(area.width / 140));
+  for (const index of evenlySpacedIndexes(rows.length, count)) {
+    const x = positions[index];
+    context.beginPath();
+    context.moveTo(x, baseline);
+    context.lineTo(x, baseline + 4);
+    context.stroke();
+    context.fillText(dateLabel(rows[index].date), x, Math.min(height - 15, baseline + 7));
+  }
+  context.restore();
+}
+
+function drawSeries(context, { rows, handles, positions, yFor }) {
+  handles.forEach((handle, seriesIndex) => {
+    const style = SERIES_STYLES[seriesIndex % SERIES_STYLES.length];
+    context.save();
+    context.strokeStyle = style.color;
+    context.fillStyle = style.color;
+    context.lineWidth = 2;
+    context.lineJoin = 'round';
+    context.lineCap = 'round';
+    context.setLineDash(style.dash);
+    context.beginPath();
+    let open = false;
+    let latest = null;
+    rows.forEach((row, index) => {
+      const value = followerValue(row[handle]);
+      if (value == null) {
+        open = false;
+        return;
+      }
+      const x = positions[index];
+      const y = yFor(value);
+      if (!open) context.moveTo(x, y);
+      else context.lineTo(x, y);
+      open = true;
+      latest = { x, y };
+    });
+    context.stroke();
+    context.setLineDash([]);
+    if (latest) {
+      context.beginPath();
+      context.arc(latest.x, latest.y, 3, 0, Math.PI * 2);
+      context.fill();
+    }
+    context.restore();
+  });
+}
+
+function renderChartDetail() {
+  const detail = byId('followersChartDetail');
+  if (!detail) return;
+  const row = Number.isInteger(selectedIndex) ? chartModel?.rows?.[selectedIndex] : null;
+  if (!row) {
+    detail.textContent = '';
+    return;
+  }
+  const values = chartModel.handles
+    .map((handle) => {
+      const value = followerValue(row[handle]);
+      return value == null ? null : `${handle} ${numberFormat.format(value)}`;
+    })
+    .filter(Boolean);
+  detail.textContent = `${fullDateLabel(row.date)}${values.length ? `　${values.join('　')}` : ''}`;
+}
+
 function renderChart(rows, handles) {
-  const container = byId('followersChart');
-  if (!container) return;
-  container.replaceChildren();
   const values = rows.flatMap((row) => handles
     .map((handle) => followerValue(row[handle]))
     .filter((value) => value != null));
   if (!rows.length || !values.length) {
-    appendEmptyState(container, '0時の初回収集後にグラフを表示します。', {
-      className: 'followers-empty',
-      tagName: 'div',
-    });
+    setChartEmpty(true);
+    chartModel = null;
+    selectedIndex = null;
+    renderChartDetail();
     return;
   }
 
-  const width = 960;
-  const height = 360;
-  const padding = { top: 18, right: 24, bottom: 44, left: 76 };
-  const plotWidth = width - padding.left - padding.right;
-  const plotHeight = height - padding.top - padding.bottom;
-  let minimum = Math.min(...values);
-  let maximum = Math.max(...values);
-  if (minimum === maximum) {
-    minimum = Math.max(0, minimum - 1);
-    maximum += 1;
-  } else {
-    const pad = Math.max(1, Math.ceil((maximum - minimum) * 0.06));
-    minimum = Math.max(0, minimum - pad);
-    maximum += pad;
-  }
-  const range = maximum - minimum || 1;
-  const x = (index) => padding.left + (rows.length === 1 ? plotWidth / 2 : plotWidth * index / (rows.length - 1));
-  const y = (value) => padding.top + plotHeight * (maximum - value) / range;
+  setChartEmpty(false);
+  const prepared = prepareCanvas();
+  if (!prepared) return;
+  const { context, width, height } = prepared;
+  const area = { left: 58, right: 24, top: 28, bottom: 42 };
+  area.width = Math.max(1, width - area.left - area.right);
+  area.height = Math.max(1, height - area.top - area.bottom);
+  const bounds = followerBounds(values);
+  const step = rows.length <= 1 ? 0 : area.width / (rows.length - 1);
+  const positions = rows.map((_, index) => rows.length === 1
+    ? area.left + area.width / 2
+    : area.left + step * index);
+  const yFor = (value) => area.top + area.height * (bounds.maximum - value) / bounds.range;
 
-  const svg = createSvgNode('svg', {
-    viewBox: `0 0 ${width} ${height}`,
-    role: 'img',
-    'aria-label': `${handles.length}アカウントのフォロワー数推移`,
-  });
+  drawGrid(context, { width, area, bounds });
+  drawXAxis(context, { rows, positions, area, height });
+  drawSeries(context, { rows, handles, positions, yFor });
 
-  for (let index = 0; index <= 4; index += 1) {
-    const value = minimum + range * (4 - index) / 4;
-    const yy = padding.top + plotHeight * index / 4;
-    svg.append(createSvgNode('line', {
-      x1: padding.left,
-      y1: yy,
-      x2: width - padding.right,
-      y2: yy,
-      class: 'followers-grid-line',
-    }));
-    svg.append(createSvgNode('text', {
-      x: padding.left - 10,
-      y: yy + 4,
-      class: 'followers-axis-label',
-      'text-anchor': 'end',
-    }, numberFormat.format(Math.round(value))));
-  }
+  context.fillStyle = cssColor('--muted', '#667287');
+  context.font = '11px system-ui';
+  context.textAlign = 'left';
+  context.textBaseline = 'alphabetic';
+  context.fillText('フォロワー数', 4, 12);
+  context.textAlign = 'center';
+  context.fillText('日付', width / 2, height - 2);
 
-  for (const index of evenlySpacedIndexes(rows.length, 6)) {
-    svg.append(createSvgNode('text', {
-      x: x(index),
-      y: height - 13,
-      class: 'followers-axis-label',
-      'text-anchor': 'middle',
-    }, dateLabel(rows[index].date)));
-  }
-
-  handles.forEach((handle, seriesIndex) => {
-    const points = rows
-      .map((row, index) => ({ row, index, value: followerValue(row[handle]) }))
-      .filter(({ value }) => value != null);
-    if (!points.length) return;
-    const styleIndex = seriesIndex % 4;
-    const path = points.map(({ index, value }, pointIndex) => (
-      `${pointIndex === 0 ? 'M' : 'L'} ${x(index).toFixed(2)} ${y(value).toFixed(2)}`
-    )).join(' ');
-    const line = createSvgNode('path', {
-      d: path,
-      class: `followers-line followers-line-${styleIndex}`,
-    });
-    line.append(createSvgNode('title', {}, handle));
-    svg.append(line);
-
-    const latest = points.at(-1);
-    const point = createSvgNode('circle', {
-      cx: x(latest.index),
-      cy: y(latest.value),
-      r: 4,
-      class: `followers-endpoint followers-endpoint-${styleIndex}`,
-    });
-    point.append(createSvgNode('title', {}, `${handle} ${fullDateLabel(latest.row.date)} ${numberFormat.format(latest.value)}`));
-    svg.append(point);
-  });
-
-  container.append(svg);
+  chartModel = { rows, handles, positions };
+  renderChartDetail();
 }
 
 function renderLegend(accounts) {
@@ -216,9 +319,9 @@ function renderLegend(accounts) {
   if (!legend) return;
   legend.replaceChildren();
   accounts.forEach((account, index) => {
-    const item = document.createElement('div');
-    item.className = `followers-legend-item followers-series-${index % 4}`;
-    const swatch = document.createElement('span');
+    const item = document.createElement('span');
+    item.className = `followers-legend-item followers-series-${index % SERIES_STYLES.length}`;
+    const swatch = document.createElement('i');
     swatch.className = 'followers-legend-swatch';
     swatch.setAttribute('aria-hidden', 'true');
     const copy = document.createElement('span');
@@ -259,8 +362,6 @@ function render(payload) {
   const handles = payloadHandles(payload);
   const rows = normalizeRows(payload?.rows, handles);
   const accounts = normalizeAccounts(payload?.accounts, rows, handles);
-  const latestDate = byId('followersLatestDate');
-  if (latestDate) latestDate.textContent = rows.length ? fullDateLabel(rows.at(-1).date) : '-';
   const chart = byId('followersChart');
   if (chart) chart.setAttribute('aria-label', `${handles.length}アカウントのフォロワー数推移`);
   renderLegend(accounts);
@@ -302,14 +403,35 @@ export async function loadFollowersView() {
   return loadPromise;
 }
 
+byId('followersChart')?.addEventListener('pointerup', (event) => {
+  if (!chartModel?.positions?.length) return;
+  const canvas = byId('followersChart');
+  const bounds = canvas?.getBoundingClientRect();
+  if (!bounds?.width) return;
+  const pointer = event.clientX - bounds.left;
+  let nearest = 0;
+  let distance = Infinity;
+  chartModel.positions.forEach((position, index) => {
+    const next = Math.abs(position - pointer);
+    if (next < distance) {
+      distance = next;
+      nearest = index;
+    }
+  });
+  selectedIndex = nearest;
+  renderChartDetail();
+});
+
 if (!resizeObserver && typeof ResizeObserver === 'function') {
-  const chart = byId('followersChart');
-  if (chart) {
-    resizeObserver = new ResizeObserver(() => {
-      if (!currentPayload) return;
+  const canvas = byId('followersChart');
+  if (canvas) {
+    resizeObserver = new ResizeObserver((entries) => {
+      const width = Math.round(entries[0]?.contentRect?.width || canvasWidth(canvas));
+      if (!currentPayload || !width || width === observedCanvasWidth) return;
+      observedCanvasWidth = width;
       const handles = payloadHandles(currentPayload);
-      renderChart(normalizeRows(currentPayload.rows, handles), handles);
+      requestAnimationFrame(() => renderChart(normalizeRows(currentPayload.rows, handles), handles));
     });
-    resizeObserver.observe(chart);
+    resizeObserver.observe(canvas);
   }
 }
