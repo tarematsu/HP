@@ -30,7 +30,8 @@ test('dashboard starts on current and exposes every visible mode through the sha
   for (const view of ['first-week', 'played-tracks', 'spotify']) assert.match(registry, new RegExp(`view: '${view}'`));
   assert.doesNotMatch(registry, /mode: 'weekly'|mode: 'monthly'/);
   assert.doesNotMatch([registry, historyShell].join('\n'), /mode: 'tracks'|id="trackControls"/);
-  assert.match(page, /<nav id="modeTabs"[^>]*><\/nav>/);
+  assert.match(page, /<nav class="dashboard-navigation" aria-label="統計メニュー">/);
+  for (const id of ['sectionTabs', 'sourceTabs', 'modeTabs']) assert.match(page, new RegExp(`id="${id}"`));
   assert.doesNotMatch(page, /id="currentView"|id="historyView"|id="likesView"/);
 });
 
