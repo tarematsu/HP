@@ -75,30 +75,31 @@ test('API rejects missing minute database binding', async () => {
   assert.equal((await response.json()).error, 'MINUTE_DB binding missing');
 });
 
-test('dashboard keeps the first-week tab visible while deferring its shell and runtime', () => {
+test('dashboard embeds first-week comparison in the listening-party view', () => {
   const registry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
   const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-  const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+  const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
   const shell = readFileSync(new URL('../public/first-week-comparison-shell.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../public/first-week-comparison.js', import.meta.url), 'utf8');
   const css = readFileSync(new URL('../public/first-week-comparison.css', import.meta.url), 'utf8');
-  assert.match(registry, /view: 'first-week', label: '初週比較'/);
-  assert.doesNotMatch(entry, /^import .*first-week-comparison-shell/m);
-  assert.match(entry, /dashboard-tabs\.js\?v=20260930\.1/);
-  assert.match(tabs, /first-week-comparison-shell\.js\?v=20260929\.1/);
-  assert.doesNotMatch(shell, /\.css\?v=|style:\s*\{/);
+  assert.doesNotMatch(registry, /view: 'first-week'|label: '初週比較'/);
+  assert.match(registry, /mode: 'broadcasts', label: 'リスパ'/);
+  assert.match(entry, /dashboard-tabs\.js\?v=20261002\.1/);
+  assert.match(historyEntry, /first-week-comparison-shell\.js\?v=20261002\.1/);
+  assert.match(historyEntry, /first-week-comparison\.js\?v=20261002\.1/);
+  assert.doesNotMatch(shell, /\.css\?v=|style:\s*\{|mountDashboardShell/);
   assert.match(shell, /dashboard-ui-common\.js\?v=20261001\.1/);
   assert.match(shell, /dashboardChartCard/);
   assert.match(shell, /dashboardDataCard/);
-  assert.match(shell, /mountDashboardShell/);
+  assert.match(shell, /document\.getElementById\('historyView'\)/);
+  assert.match(shell, /unofficialListeningPanel/);
+  assert.match(shell, /data-mode="broadcasts"/);
+  assert.match(shell, /location\.hash === '#first-week'/);
   assert.doesNotMatch(shell, /first-week-metric-toggle|data-first-week-metric|再生数増加/);
-  assert.match(shell, /view: 'first-week'/);
-  assert.match(shell, /label: '初週比較'/);
-  assert.match(shell, /anchorSelector: '\[data-view="spotify"\]'/);
   assert.doesNotMatch(shell, /firstWeekLoad|>更新</);
-  assert.match(tabs, /'first-week'/);
-  assert.match(tabs, /first-week-comparison\.js\?v=20260929\.1/);
   assert.match(runtime, /dashboard-ui-common\.js\?v=20260930\.1/);
+  assert.match(runtime, /const historyView = document\.getElementById\('historyView'\)/);
+  assert.match(runtime, /MutationObserver\(syncVisibleRuntime\)/);
   assert.match(runtime, /sh\.first-week-comparison\.v2/);
   assert.match(runtime, /first-week-comparison\?v=20260926\.2/);
   assert.doesNotMatch(runtime, /firstWeekLoad|loadButton|data-first-week-metric|metricButtons|metric === 'streams'/);
@@ -117,14 +118,12 @@ test('first-week view exposes listener comparison only', () => {
   assert.match(runtime, /detail\.replaceChildren\(\)/);
 });
 
-test('tab order ends with first-week comparison then Spotify', () => {
+test('tab order no longer owns first-week comparison', () => {
   const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
   const order = readFileSync(new URL('../public/dashboard-tab-order.js', import.meta.url), 'utf8');
-  assert.match(entry, /dashboard-tab-order\.js\?v=20260929\.1/);
+  assert.match(entry, /dashboard-tab-order\.js\?v=20261002\.1/);
   assert.ok(entry.indexOf('dashboard-tab-order.js') < entry.indexOf('dashboard-tabs.js'));
-  assert.match(order, /querySelector\('\[data-view="first-week"\]'\)/);
+  assert.doesNotMatch(order, /firstWeek|first-week/);
   assert.match(order, /querySelector\('\[data-view="spotify"\]'\)/);
-  assert.match(order, /tabs\.append\(firstWeek\)/);
   assert.match(order, /tabs\.append\(spotify\)/);
-  assert.ok(order.indexOf('append(firstWeek)') < order.indexOf('append(spotify)'));
 });
