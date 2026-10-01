@@ -21,7 +21,7 @@ import { publishRegionalMusicReadModel } from './regional-music-read-model.js';
 
 export const REGIONAL_MUSIC_DAILY_CRON = '20 15 * * *';
 
-const DAILY_COLLECTORS = Object.freeze([
+export const REGIONAL_MUSIC_DAILY_COLLECTORS = Object.freeze([
   collectGenie,
   collectBugsArtists,
   collectJooxArtists,
@@ -47,7 +47,7 @@ export async function collectRegionalMusicDaily(env, scheduledTime, fetchImpl = 
   const observedAt = Number(scheduledTime) || Date.now();
   const results = [];
 
-  for (const collect of DAILY_COLLECTORS) {
+  for (const collect of REGIONAL_MUSIC_DAILY_COLLECTORS) {
     try {
       results.push(await collect(env, observedAt, fetchImpl));
     } catch (error) {
