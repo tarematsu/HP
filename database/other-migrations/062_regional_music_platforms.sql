@@ -107,8 +107,8 @@ CREATE TABLE IF NOT EXISTS regional_music_collector_state (
 );
 
 -- Seed every planned provider so the public read model reports the complete
--- collection matrix even before the first successful run. Active collectors
--- overwrite these rows on their first attempt.
+-- collection matrix even before the first scheduled attempt. Collectors replace
+-- these initial states as soon as they run.
 INSERT OR IGNORE INTO regional_music_collector_state(
   service,status,last_attempt_at,last_success_at,last_error_class,last_error_message,entity_counts_json,updated_at
 ) VALUES
@@ -124,10 +124,10 @@ INSERT OR IGNORE INTO regional_music_collector_state(
   ('naver_vibe','pending',NULL,NULL,NULL,NULL,'{}',0),
   ('flo','pending',NULL,NULL,NULL,NULL,'{}',0),
   ('yandex_music','pending',NULL,NULL,NULL,NULL,'{}',0),
-  ('boomplay','pending',NULL,NULL,'auth_surface_pending','First-party collection requires a stable public or authorized session surface.','{}',0),
-  ('plern','pending',NULL,NULL,'discovery_pending','Stable public catalog collection surface has not been verified.','{}',0),
-  ('fungjai','pending',NULL,NULL,'service_scope_changed','Current service is not verified as a general streaming catalog.','{}',0),
-  ('zing_mp3','pending',NULL,NULL,'signed_api_pending','Current web API depends on request signing/cookie state; no stable public collector is enabled.','{}',0),
+  ('boomplay','pending',NULL,NULL,NULL,'Public web search/JSON-LD collector has not run yet.','{}',0),
+  ('plern','pending',NULL,NULL,'catalog_surface_unavailable','Collector is installed and will retry while the public Plern catalog surface is unavailable.','{}',0),
+  ('fungjai','pending',NULL,NULL,'catalog_not_available','Collector is installed and probes the legacy artist/music catalog conservatively.','{}',0),
+  ('zing_mp3','pending',NULL,NULL,'credentials_required','Signed collector is installed; authorized/current Zing API credentials must be supplied at runtime.','{}',0),
   ('jiosaavn','pending',NULL,NULL,NULL,NULL,'{}',0),
   ('gaana','pending',NULL,NULL,NULL,NULL,'{}',0),
-  ('langit_musik','pending',NULL,NULL,'terms_restricted','Automated collection is not enabled because published terms prohibit automated crawling/scraping.','{}',0);
+  ('langit_musik','pending',NULL,NULL,'authorization_required_by_terms','Collector is installed but network access remains disabled unless explicitly authorized.','{}',0);
