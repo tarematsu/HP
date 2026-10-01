@@ -7,7 +7,7 @@
   font-variant-numeric: tabular-nums;
 }
 .music-service-meta time { color: var(--text); font-weight: 700; }
-.music-service-section { display: grid; gap: var(--pages-view-gap); min-width: 0; }
+.music-service-section { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pages-view-gap); min-width: 0; }
 .music-service-section > .section-head { margin-bottom: 0 !important; }
 .music-service-panel { min-width: 0; margin: 0; }
 .music-service-playlist-note { margin: 0 0 8px; color: var(--muted); font-size: .72rem; }
