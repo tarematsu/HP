@@ -9,6 +9,7 @@ import {
 import { publishAmazonMusicSakamichiModel } from './amazon-music-sakamichi-publisher.js';
 import { recordAmazonTop500Check } from './amazon-music-top500-history.js';
 import { collectAmazonMusicTrackPlaylists } from './amazon-music-track-playlist-collector.js';
+import { amazonMusicTrackPlaylistFetch } from './amazon-music-track-playlist-fetch.js';
 import { canonicalizeAppleMusicPresentation } from './apple-music-canonical-presentation.js';
 import { canonicalizeAppleMusicPlaylistPresentation } from './apple-music-playlist-canonical-presentation.js';
 import { collectAppleMusicSnapshot } from './apple-music-collector.js';
@@ -133,7 +134,11 @@ function unifiedScheduledRuns(env, scheduledTime) {
   if (due.amazonTrackPlaylists) {
     runs.push(loggedRun(
       'amazon-music-track-playlist-collection',
-      () => collectAmazonMusicTrackPlaylists(amazonMusicServiceEnv(env), scheduledTime),
+      () => collectAmazonMusicTrackPlaylists(
+        amazonMusicServiceEnv(env),
+        scheduledTime,
+        amazonMusicTrackPlaylistFetch,
+      ),
     ));
   }
   if (due.top500) {
