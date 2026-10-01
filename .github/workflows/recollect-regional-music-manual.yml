@@ -1,4 +1,4 @@
-# Recollect after adding artist page order observations.
+# Refresh artist page order and official Genie song titles.
 name: Recollect regional music manually
 
 on:
