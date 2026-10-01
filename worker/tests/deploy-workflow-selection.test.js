@@ -5,11 +5,15 @@ import test from 'node:test';
 
 const selector = fileURLToPath(new URL('../scripts/select-worker-deploys.mjs', import.meta.url));
 
-test('deployment workflow changes redeploy all active Workers in dependency order', () => {
-  const result = JSON.parse(execFileSync(process.execPath, [selector], {
+function select(input) {
+  return JSON.parse(execFileSync(process.execPath, [selector], {
     encoding: 'utf8',
-    input: '.github/workflows/deploy-split-pipeline.yml\n',
+    input,
   }));
+}
+
+test('deployment workflow changes redeploy all active Workers in dependency order', () => {
+  const result = select('.github/workflows/deploy-split-pipeline.yml\n');
 
   assert.deepEqual(result.workers, [
     'sh-sakurazaka46jp',
@@ -31,4 +35,10 @@ test('deployment workflow changes redeploy all active Workers in dependency orde
     'deploy:amazon-music',
     'deploy:runtime',
   ]);
+});
+
+test('Spotify read-model bootstrap changes redeploy the Spotify collector', () => {
+  const result = select('worker/scripts/bootstrap-spotify-read-model.mjs\n');
+  assert.deepEqual(result.workers, ['sh-spotify-playcount-collector']);
+  assert.deepEqual(result.commands, ['deploy:spotify-playcount']);
 });
