@@ -11,6 +11,8 @@ const FOLLOWERS_READ_MODEL_KEY = 'followers';
 const FOLLOWERS_READ_MODEL_CADENCE_SECONDS = 24 * 60 * 60;
 const FOLLOWER_SOURCE_FIXED = 1;
 const FOLLOWER_SOURCE_BUDDIES = 2;
+const FOLLOWER_SOURCE_OHISAMA = 4;
+const FOLLOWER_SOURCE_NOGIZAKA = 8;
 const JSON_HEADERS = Object.freeze({
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'public, max-age=30, s-maxage=300, stale-while-revalidate=600',
@@ -53,6 +55,29 @@ function orderedHandles(values) {
       if (aFixed !== bFixed) return aFixed - bFixed;
       return a.localeCompare(b);
     });
+}
+
+function followerMembership(handleValue, sourceMaskValue) {
+  const handle = normalizedHandle(handleValue);
+  const sourceMask = Number(sourceMaskValue || 0);
+  if (handle === 'sakurazaka46jp') return { affiliation: '櫻坂46公式', group: 'sakurazaka46' };
+  if (handle === 'nogizaka46smej') return { affiliation: '乃木坂46公式', group: 'nogizaka46' };
+  if (handle === 'sakuramankai' || handle === 'sakuramankai2') {
+    return { affiliation: 'Buddies', group: 'sakurazaka46' };
+  }
+  if (sourceMask & FOLLOWER_SOURCE_BUDDIES) return { affiliation: 'Buddies', group: 'sakurazaka46' };
+  if (sourceMask & FOLLOWER_SOURCE_OHISAMA) return { affiliation: 'Ohisama', group: 'hinatazaka46' };
+  if (sourceMask & FOLLOWER_SOURCE_NOGIZAKA) return { affiliation: 'Nogizaka', group: 'nogizaka46' };
+  return null;
+}
+
+function followerMemberships(handles, sourceMasks = {}) {
+  const memberships = {};
+  for (const handle of handles) {
+    const membership = followerMembership(handle, sourceMasks?.[handle]);
+    if (membership) memberships[handle] = membership;
+  }
+  return memberships;
 }
 
 function findAccount(value, handle, depth = 0) {
@@ -157,7 +182,15 @@ async function loadFollowerModel(r2) {
   }
 }
 
-async function publishFollowerReadModel(r2, date, handles, followers, updatedAt, failures = []) {
+async function publishFollowerReadModel(
+  r2,
+  date,
+  handles,
+  followers,
+  updatedAt,
+  failures = [],
+  sourceMasks = {},
+) {
   const existing = await loadFollowerModel(r2);
   const allHandles = orderedHandles([...existing.handles, ...handles, ...Object.keys(followers)]);
   const rows = normalizeFollowerRows(existing.rows, allHandles);
@@ -173,6 +206,7 @@ async function publishFollowerReadModel(r2, date, handles, followers, updatedAt,
     handles: allHandles,
     rows: next,
     accounts: followerSummary(next, allHandles, date),
+    memberships: followerMemberships(allHandles, sourceMasks),
     failures,
   });
   const saved = await saveMaterializedR2Response(
@@ -259,6 +293,7 @@ export async function discoverStationheadFollowerTargets(env, discoveredAt = Dat
   const targetWrites = await runStatements(env.OTHER_DB, mutations);
   return {
     handles: orderedHandles([...desired.keys()]),
+    source_masks: Object.fromEntries(desired),
     target_writes: targetWrites,
     buddies_discovered: resultRows(buddiesResult).length,
     other_d1_reads: 1,
@@ -387,6 +422,7 @@ export async function collectStationheadDailyFollowers(env, scheduledAt = Date.n
     followers,
     collectedAt,
     failures,
+    targetState?.source_masks || {},
   );
 
   const dailyResult = await env.OTHER_DB.prepare(`INSERT INTO sh_stationhead_daily_followers_v2 (
