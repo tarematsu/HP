@@ -2,12 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  loadRegionalMusicReadModel,
   REGIONAL_MUSIC_READ_MODEL_KEY,
   publishRegionalMusicReadModel,
   regionalMusicReadModelPayload,
 } from '../src/regional-music-read-model.js';
 
-test('regional music read model normalizes collector health and service metadata', () => {
+test('regional music read model normalizes collector health and implemented service metadata', () => {
   const payload = regionalMusicReadModelPayload({
     artists: [{ service: 'joox', canonical_artist: 'sakurazaka46', followers: 478 }],
     tracks: [],
@@ -31,13 +32,28 @@ test('regional music read model normalizes collector health and service metadata
   assert.deepEqual(payload.services[0].entity_counts, { artists: 3 });
   assert.equal(payload.services[0].region, 'HK/TH/SEA');
   assert.equal(payload.services[0].phase, 1);
-  assert.deepEqual(payload.services[0].metrics, [
-    'artist_followers', 'catalog', 'rankings', 'comments', 'playlists',
-  ]);
+  assert.deepEqual(payload.services[0].metrics, ['artist_followers']);
   assert.deepEqual(payload.services[1].entity_counts, {});
   assert.equal(payload.services[1].region, null);
   assert.equal(payload.services[1].phase, null);
   assert.deepEqual(payload.services[1].metrics, []);
+});
+
+test('playlist membership query follows the latest playlist snapshot, including an empty snapshot', async () => {
+  const queries = [];
+  const db = {
+    prepare(sql) {
+      queries.push(sql);
+      return { async all() { return { results: [] }; } };
+    },
+  };
+
+  const snapshot = await loadRegionalMusicReadModel(db);
+  assert.deepEqual(snapshot.memberships, []);
+  const membershipQuery = queries.find((sql) => sql.includes('regional_music_playlist_memberships AS m'));
+  assert.ok(membershipQuery);
+  assert.match(membershipQuery, /regional_music_playlist_snapshots AS s/);
+  assert.match(membershipQuery, /MAX\(x\.snapshot_date\)/);
 });
 
 test('regional music publication writes one compact R2 object', async () => {
@@ -65,7 +81,7 @@ test('regional music publication writes one compact R2 object', async () => {
   assert.equal(writes[0].now, 1000);
   assert.equal(writes[0].cadence, 86400);
   assert.equal(writes[0].body.playlist_memberships.length, 1);
-  assert.deepEqual(writes[0].body.services[0].metrics, ['artist_likes', 'catalog', 'playlists']);
+  assert.deepEqual(writes[0].body.services[0].metrics, ['artist_likes']);
   assert.deepEqual(result, {
     storage: 'r2',
     bytes: writes[0].body ? JSON.stringify(writes[0].body).length : 0,
