@@ -108,7 +108,7 @@ test('deployment support changes select the owning Worker', () => {
   assert.deepEqual(select(['worker/scripts/deploy-regional-music.mjs']), {
     changed_paths: ['worker/scripts/deploy-regional-music.mjs'],
     workers: [REGIONAL],
-    commands: ['deploy:regional-music'],
+    commands: ['regional-music:deploy'],
     diagnostics: [],
   });
   assert.deepEqual(select(['database/other-migrations/062_regional_music_platforms.sql']).workers, [REGIONAL]);
@@ -189,7 +189,7 @@ test('manual selection preserves dependency order', () => {
     'deploy:ohisama-collector',
     'deploy:spotify-playcount',
     'deploy:amazon-music',
-    'deploy:regional-music',
+    'regional-music:deploy',
     'deploy:runtime',
   ]);
 });
