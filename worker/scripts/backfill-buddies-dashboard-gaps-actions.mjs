@@ -50,15 +50,15 @@ function mergeHistory(history, rows) {
   }
   let inserted = 0;
   for (const row of rows) {
-    const point = bucketAt(row?.bucket_at ?? row?.observed_at);
+    const point = bucketAt(row?.bucket_at ?? row?.minute_at ?? row?.observed_at);
     if (point == null || byBucket.has(point)) continue;
     byBucket.set(point, {
       observed_at: point,
       listener_count: row?.listener_count ?? null,
       online_member_count: row?.online_member_count ?? null,
       total_member_count: row?.total_member_count ?? null,
-      total_listens: row?.total_listens ?? null,
-      current_stream_count: row?.current_stream_count ?? null,
+      total_listens: row?.total_listens ?? row?.reported_total_listens ?? null,
+      current_stream_count: row?.current_stream_count ?? row?.reported_current_stream_count ?? null,
     });
     inserted += 1;
   }
@@ -68,6 +68,23 @@ function mergeHistory(history, rows) {
       .slice(-300),
     inserted,
   };
+}
+
+function collapseRawFacts(rows) {
+  const byBucket = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const point = bucketAt(row?.minute_at ?? row?.observed_at);
+    if (point == null) continue;
+    const previous = byBucket.get(point);
+    const previousMinute = Number(previous?.minute_at) || 0;
+    const currentMinute = Number(row?.minute_at) || 0;
+    const previousId = Number(previous?.id) || 0;
+    const currentId = Number(row?.id) || 0;
+    if (!previous || currentMinute > previousMinute || (currentMinute === previousMinute && currentId > previousId)) {
+      byBucket.set(point, { ...row, bucket_at: point });
+    }
+  }
+  return [...byBucket.values()].sort((left, right) => left.bucket_at - right.bucket_at);
 }
 
 function readEnvelope() {
@@ -124,9 +141,9 @@ const minuteDb = createWranglerRemoteD1({
   maxRetries: 2,
 });
 
-// Read only inside the missing intervals. Existing dashboard buckets and the
-// rest of the 24-hour window are never scanned or regenerated.
-const recovered = [];
+// First use the compact five-minute rollup. Every query is bounded to an
+// already-detected read-model gap; the complete 24-hour source is never scanned.
+const rollupRows = [];
 for (const gap of gapsBefore) {
   const result = await minuteDb.prepare(`SELECT
       channel_id,bucket_at,observed_at,listener_count,online_member_count,
@@ -136,9 +153,28 @@ for (const gap of gapsBefore) {
     ORDER BY bucket_at ASC`)
     .bind(channelId, gap.after, gap.before)
     .all();
-  recovered.push(...(result?.results || []));
+  rollupRows.push(...(result?.results || []));
 }
 
+// If the read model and its rollup were both missing, inspect only the still
+// missing intervals in authoritative minute facts. This remains a narrow range
+// lookup on the live-fact index instead of rebuilding the dashboard.
+const provisional = mergeHistory(initial.payload.history, rollupRows).history;
+const rawGaps = detectGaps(provisional);
+const rawRows = [];
+for (const gap of rawGaps) {
+  const result = await minuteDb.prepare(`SELECT
+      id,channel_id,minute_at,observed_at,listener_count,online_member_count,
+      total_member_count,reported_total_listens,reported_current_stream_count
+    FROM sh_minute_facts INDEXED BY idx_sh_minute_facts_source_channel_minute_desc
+    WHERE source_code=1 AND channel_id=? AND minute_at>? AND minute_at<?
+    ORDER BY minute_at ASC,id ASC`)
+    .bind(channelId, gap.after, gap.before)
+    .all();
+  rawRows.push(...collapseRawFacts(result?.results || []));
+}
+
+const recovered = [...rollupRows, ...rawRows];
 if (!recovered.length) {
   console.log(JSON.stringify({
     event: 'buddies_dashboard_gap_backfill_skipped',
@@ -150,16 +186,15 @@ if (!recovered.length) {
 }
 
 // The collector may have advanced while D1 was queried. Re-read the public
-// envelope and merge only the recovered missing buckets into that newest state,
-// so this repair does not intentionally replace current values with the older
-// snapshot used for gap detection.
+// envelope and merge only recovered missing buckets into that newest state.
 const latest = readEnvelope();
 const merged = mergeHistory(latest.payload.history, recovered);
 if (!merged.inserted) {
   console.log(JSON.stringify({
     event: 'buddies_dashboard_gap_backfill_skipped',
     reason: 'gaps-already-filled',
-    recovered_rows: recovered.length,
+    rollup_rows_read: rollupRows.length,
+    raw_rows_read: rawRows.length,
     history_rows: latest.payload.history.length,
   }));
   process.exit(0);
@@ -184,16 +219,14 @@ const nextHotState = {
   payload: nextPayload,
 };
 
-// Keep the state used by the next incremental publisher consistent with the
-// public response. The collector normally writes hot state before public R2,
-// so retain that ordering here too.
 uploadJson(hotStateKey, nextHotState);
 uploadJson(dashboardKey, nextEnvelope);
 
 console.log(JSON.stringify({
   event: 'buddies_dashboard_gap_backfill_complete',
   detected_gap_count: gapsBefore.length,
-  source_rows_read: recovered.length,
+  rollup_rows_read: rollupRows.length,
+  raw_rows_read: rawRows.length,
   inserted_rows: merged.inserted,
   history_rows_before: latest.payload.history.length,
   history_rows_after: merged.history.length,
