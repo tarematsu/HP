@@ -42,7 +42,9 @@ test('repair layers use lightweight, four-hour, and daily cadences', () => {
 
   assert.doesNotMatch(runtime, /^\s*push:\s*$/m);
   assert.doesNotMatch(dataRepair, /^\s*push:\s*$/m);
-  assert.doesNotMatch(metadata, /^\s*push:\s*$/m);
+  assert.match(metadata, /^\s*push:\s*$/m);
+  assert.match(metadata, /branches: \[main\]/);
+  assert.match(metadata, /worker\/scripts\/repair-playback-read-model-actions\.mjs/);
   assert.doesNotMatch(metadata, /workflow_run:/);
   assert.doesNotMatch(pages, /workflow_run:/);
   assert.match(runtime, /cancel-in-progress: false/);
