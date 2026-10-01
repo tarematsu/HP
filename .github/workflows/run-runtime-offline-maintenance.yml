@@ -1,22 +1,23 @@
 name: Run runtime offline maintenance
 
 on:
-  # This is the lightweight recovery lane. Expensive integrity repair runs in
-  # run-data-integrity-repair.yml every four hours.
+  # The normal lane is lightweight every 30 minutes. One daily pass performs
+  # aggregate/read-model reconciliation after the four-hour integrity lane has
+  # had time to drain bounded minute rebuilds.
   schedule:
     - cron: '11,41 * * * *'
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/run-runtime-offline-maintenance.yml'
-      - 'worker/scripts/run-runtime-offline-maintenance-actions.mjs'
-      - 'worker/scripts/remote-d1-adapter.mjs'
-      - 'worker/src/minute-facts-inbox.js'
-      - 'worker/src/stream-goal-prediction.js'
+    - cron: '6 0 * * *'
   workflow_dispatch:
+    inputs:
+      deep:
+        description: Run the daily aggregate/read-model repair path
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
+  actions: write
 
 concurrency:
   group: runtime-offline-maintenance
@@ -34,8 +35,11 @@ jobs:
       BUDDIES_DATABASE_NAME: stationhead-buddies
       FACTS_DATABASE_NAME: stationhead-minute
       OTHER_DATABASE_NAME: stationhead-other
+      PAGES_RESPONSE_BUCKET: sh-pages-responses
       RUNTIME_MAINTENANCE_DEADLINE_MS: '720000'
-      RUNTIME_MAINTENANCE_LIGHT_ONLY: 'true'
+      RUNTIME_MAINTENANCE_LIGHT_ONLY: ${{ ((github.event_name == 'schedule' && github.event.schedule == '6 0 * * *') || (github.event_name == 'workflow_dispatch' && inputs.deep)) && 'false' || 'true' }}
+      RUNTIME_MAINTENANCE_FORCE: ${{ ((github.event_name == 'schedule' && github.event.schedule == '6 0 * * *') || (github.event_name == 'workflow_dispatch' && inputs.deep)) && 'true' || 'false' }}
+      RUNTIME_MAINTENANCE_SKIP_REBUILD: ${{ ((github.event_name == 'schedule' && github.event.schedule == '6 0 * * *') || (github.event_name == 'workflow_dispatch' && inputs.deep)) && 'true' || 'false' }}
     steps:
       - uses: actions/checkout@v7
       - name: Resolve Cloudflare account context
@@ -49,11 +53,40 @@ jobs:
           cache-dependency-path: worker/package-lock.json
       - name: Install Worker dependencies
         run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Recover stalled minute jobs and refresh lightweight derived state
+      - name: Repair recent daily summaries
+        if: (github.event_name == 'schedule' && github.event.schedule == '6 0 * * *') || (github.event_name == 'workflow_dispatch' && inputs.deep)
+        shell: bash
+        run: node scripts/publish-recent-daily-summaries-actions.mjs 2>&1 | tee runtime-offline-maintenance.log
+      - name: Recover stalled minute jobs and run due maintenance
         shell: bash
         run: |
           set -o pipefail
-          node scripts/run-runtime-offline-maintenance-actions.mjs 2>&1 | tee runtime-offline-maintenance.log
+          node scripts/run-runtime-offline-maintenance-actions.mjs 2>&1 | tee -a runtime-offline-maintenance.log
+      - name: Detect unpublished Pages source revisions
+        if: (github.event_name == 'schedule' && github.event.schedule == '6 0 * * *') || (github.event_name == 'workflow_dispatch' && inputs.deep)
+        id: pages-revision-drift
+        shell: bash
+        run: |
+          set -euo pipefail
+          due_keys="$(node scripts/detect-pages-read-model-revision-drift-actions.mjs)"
+          echo "due_keys=$due_keys" >> "$GITHUB_OUTPUT"
+          echo "Pages read-model revision drift: ${due_keys:-none}"
+      - name: Trigger changed Pages read models
+        if: steps.pages-revision-drift.outputs.due_keys != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DUE_KEYS: ${{ steps.pages-revision-drift.outputs.due_keys }}
+        run: |
+          set -euo pipefail
+          payload="$(jq -nc --arg keys "$DUE_KEYS" '{ref:"main",inputs:{force_all:"false",due_keys:$keys}}')"
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/run-pages-read-model-rebuild.yml/dispatches" \
+            -d "$payload"
       - name: Upload runtime maintenance failure log
         if: failure()
         uses: actions/upload-artifact@v4
