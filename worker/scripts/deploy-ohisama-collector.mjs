@@ -65,6 +65,40 @@ function applySchema() {
   ]);
 }
 
+function tableColumns(tableName) {
+  const value = wranglerJson([
+    'd1', 'execute', DATABASE_NAME,
+    '--remote', '--yes', '--json',
+    '--command', `PRAGMA table_info(${tableName})`,
+  ], { allowFailure: true });
+  return new Set(resultRows(value).map((row) => String(row?.name || '')).filter(Boolean));
+}
+
+function ensureColumn(tableName, columnName, definition) {
+  if (tableColumns(tableName).has(columnName)) return false;
+  runWrangler([
+    'd1', 'execute', DATABASE_NAME,
+    '--remote', '--yes',
+    '--command', `ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`,
+  ]);
+  return true;
+}
+
+function applyCanonicalTrackIdSchema() {
+  ensureColumn('sh_track_plays', 'track_id', 'INTEGER');
+  ensureColumn('sh_track_like_current', 'track_id', 'INTEGER');
+  ensureColumn('sh_track_like_observations', 'track_id', 'INTEGER');
+  runWrangler([
+    'd1', 'execute', DATABASE_NAME,
+    '--remote', '--yes',
+    '--command', [
+      'CREATE INDEX IF NOT EXISTS idx_sh_track_plays_track_id ON sh_track_plays(track_id, played_at DESC)',
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_sh_track_like_current_track_id ON sh_track_like_current(station_id, track_id)',
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_sh_track_like_observations_track_id ON sh_track_like_observations(station_id, track_id, observed_at)',
+    ].join(';'),
+  ]);
+}
+
 function applyLegacyDailyImport() {
   const existing = wranglerJson([
     'd1', 'execute', DATABASE_NAME,
@@ -129,6 +163,7 @@ function seedBuddiesAuth() {
 
 const { id } = ensureDatabase();
 applySchema();
+applyCanonicalTrackIdSchema();
 const legacyDailyImported = applyLegacyDailyImport();
 const authSeeded = seedBuddiesAuth();
 
@@ -137,6 +172,9 @@ const binding = config.d1_databases?.find((item) => item.binding === 'OHISAMA_DB
 if (!binding) throw new Error('OHISAMA_DB binding is missing from Wrangler config');
 binding.database_name = DATABASE_NAME;
 binding.database_id = id;
+if (!config.d1_databases?.some((item) => item.binding === 'MINUTE_DB')) {
+  throw new Error('MINUTE_DB binding is missing from Wrangler config');
+}
 writeFileSync(generatedConfigUrl, `${JSON.stringify(config, null, 2)}\n`);
 
 try {
@@ -149,6 +187,7 @@ console.log(JSON.stringify({
   event: 'ohisama_collector_worker_deployed',
   script: config.name,
   database_name: DATABASE_NAME,
+  canonical_track_ids: true,
   legacy_daily_imported: legacyDailyImported,
   auth_seeded_from_buddies: authSeeded,
 }));
