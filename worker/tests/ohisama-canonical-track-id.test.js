@@ -20,7 +20,6 @@ test('Ohisama storage schema uses canonical track_id for new data', () => {
   assert.match(schema, /sh_track_plays[\s\S]*track_id INTEGER NOT NULL/);
   assert.match(schema, /PRIMARY KEY\(station_id, track_id\)/);
   assert.match(schema, /PRIMARY KEY\(station_id, track_id, observed_at\)/);
-  assert.match(schema, /idx_sh_track_plays_track_id/);
 });
 
 test('Ohisama deployment migrates existing storage and binds MINUTE_DB', () => {
@@ -29,5 +28,8 @@ test('Ohisama deployment migrates existing storage and binds MINUTE_DB', () => {
   assert.match(deploy, /ensureColumn\('sh_track_plays', 'track_id', 'INTEGER'\)/);
   assert.match(deploy, /ensureColumn\('sh_track_like_current', 'track_id', 'INTEGER'\)/);
   assert.match(deploy, /ensureColumn\('sh_track_like_observations', 'track_id', 'INTEGER'\)/);
+  assert.match(deploy, /idx_sh_track_plays_track_id/);
+  assert.match(deploy, /idx_sh_track_like_current_track_id/);
+  assert.match(deploy, /idx_sh_track_like_observations_track_id/);
   assert.match(deploy, /MINUTE_DB binding is missing from Wrangler config/);
 });
