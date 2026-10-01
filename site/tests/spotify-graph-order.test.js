@@ -5,11 +5,13 @@ import test from 'node:test';
 const shell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
 
-test('Spotify playcount graphs select and render latest-metric order at source', () => {
-  assert.match(runtime, /selectTrendSeriesByLatestMetric\(normalizedSeries, metricKey, maxSeries\)/);
-  assert.match(runtime, /\.sort\(\(a, b\) => \(b\.value - a\.value\)/);
-  assert.match(runtime, /seriesList\.forEach\(\(\{ artistName, points \}, seriesIndex\)/);
-  assert.match(runtime, /アイドル凡例と最新の再生数前日比/);
+test('Spotify graphs restrict rendered series to the three Sakamichi groups', () => {
+  assert.match(runtime, /GRAPH_ARTIST_KEYS = Object\.freeze\(\['nogizaka46', 'sakurazaka46', 'hinatazaka46'\]\)/);
+  assert.match(runtime, /graphTrendSeries\(normalizeTrendSeries\(trend\)\)/);
+  assert.match(runtime, /monthlyListenerTrend\(monthlyListenerRows\)/);
+  assert.match(runtime, /nogizaka46: '#8264b0'/);
+  assert.match(runtime, /sakurazaka46: '#f3a6c8'/);
+  assert.match(runtime, /hinatazaka46: '#9ecff3'/);
   assert.doesNotMatch(shell, /sortLegendByLatestValue|legendNumericValue|MutationObserver/);
 });
 
@@ -21,9 +23,10 @@ test('Spotify renderer emits single-point markers directly on the shared canvas'
   assert.doesNotMatch(shell, /showSinglePointSeries|artistNameFromPoint|MutationObserver/);
 });
 
-test('Spotify accessibility and Daily Top Artist terminology are generated directly', () => {
-  assert.match(runtime, /最新日の全曲合計再生数前日比が大きい女性アイドル上位10組の推移/);
+test('Spotify accessibility labels describe Sakamichi-only graphs directly', () => {
+  assert.match(runtime, /乃木坂46・櫻坂46・日向坂46の全曲合計再生数前日比推移/);
   assert.match(runtime, /Spotify日本 Daily Top Artist の順位データはまだありません。/);
   assert.match(runtime, /Spotify日本 Daily Top Artist の順位推移。1位が上。/);
+  assert.match(shell, /Spotify 月間リスナー推移（坂道3グループ）/);
   assert.doesNotMatch(shell, /alignPlaycountAccessibilityLabels|alignArtistRankTerminology|installGraphPostProcessing/);
 });
