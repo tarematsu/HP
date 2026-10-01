@@ -105,3 +105,29 @@ CREATE TABLE IF NOT EXISTS regional_music_collector_state (
   entity_counts_json TEXT NOT NULL DEFAULT '{}',
   updated_at INTEGER NOT NULL
 );
+
+-- Seed every planned provider so the public read model reports the complete
+-- collection matrix even before the first successful run. Active collectors
+-- overwrite these rows on their first attempt.
+INSERT OR IGNORE INTO regional_music_collector_state(
+  service,status,last_attempt_at,last_success_at,last_error_class,last_error_message,entity_counts_json,updated_at
+) VALUES
+  ('genie','pending',NULL,NULL,NULL,NULL,'{}',0),
+  ('bugs','pending',NULL,NULL,NULL,NULL,'{}',0),
+  ('joox','pending',NULL,NULL,NULL,NULL,'{}',0),
+  ('nhaccuatui','pending',NULL,NULL,NULL,NULL,'{}',0),
+  ('anghami','pending',NULL,NULL,NULL,NULL,'{}',0),
+  ('qq_music','pending',NULL,NULL,NULL,NULL,'{}',0),
+  ('netease_cloud_music','pending',NULL,NULL,NULL,NULL,'{}',0),
+  ('kugou_music','pending',NULL,NULL,NULL,NULL,'{}',0),
+  ('melon','pending',NULL,NULL,NULL,NULL,'{}',0),
+  ('naver_vibe','pending',NULL,NULL,NULL,NULL,'{}',0),
+  ('flo','pending',NULL,NULL,NULL,NULL,'{}',0),
+  ('yandex_music','pending',NULL,NULL,NULL,NULL,'{}',0),
+  ('boomplay','pending',NULL,NULL,'auth_surface_pending','First-party collection requires a stable public or authorized session surface.','{}',0),
+  ('plern','pending',NULL,NULL,'discovery_pending','Stable public catalog collection surface has not been verified.','{}',0),
+  ('fungjai','pending',NULL,NULL,'service_scope_changed','Current service is not verified as a general streaming catalog.','{}',0),
+  ('zing_mp3','pending',NULL,NULL,'signed_api_pending','Current web API depends on request signing/cookie state; no stable public collector is enabled.','{}',0),
+  ('jiosaavn','pending',NULL,NULL,NULL,NULL,'{}',0),
+  ('gaana','pending',NULL,NULL,NULL,NULL,'{}',0),
+  ('langit_musik','pending',NULL,NULL,'terms_restricted','Automated collection is not enabled because published terms prohibit automated crawling/scraping.','{}',0);
