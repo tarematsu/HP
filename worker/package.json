@@ -13,7 +13,7 @@
     "deploy:nogizaka46smej": "node scripts/deploy-nogizaka46smej.mjs",
     "deploy:spotify-playcount": "node scripts/deploy-spotify-playcount.mjs",
     "deploy:amazon-music": "node scripts/deploy-amazon-music.mjs",
-    "deploy:regional-music": "node scripts/deploy-regional-music.mjs",
+    "regional-music:deploy": "node scripts/deploy-regional-music.mjs",
     "deploy:runtime": "node scripts/deploy-runtime.mjs",
     "tail": "wrangler tail --config wrangler.runtime.jsonc",
     "check": "npm run check:syntax && npm run check:bundle",
