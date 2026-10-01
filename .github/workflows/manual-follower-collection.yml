@@ -39,11 +39,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx wrangler d1 execute BUDDIES_DB \
+          if ! npx wrangler d1 execute OTHER_DB \
             --config wrangler.buddies-collector.jsonc \
             --remote --json \
-            --command "SELECT DISTINCT LOWER(TRIM(h.current_handle)) AS handle FROM sh_broadcast_sessions AS s JOIN sh_hosts AS h ON h.id=s.host_id WHERE s.host_id IS NOT NULL AND h.current_handle IS NOT NULL AND TRIM(h.current_handle)<>'' ORDER BY handle" \
-            > "$RUNNER_TEMP/follower-handles.json"
+            --command "SELECT LOWER(TRIM(handle)) AS handle FROM sh_stationhead_follower_targets WHERE handle IS NOT NULL AND TRIM(handle)<>'' ORDER BY handle" \
+            > "$RUNNER_TEMP/follower-handles.json"; then
+            printf '%s' '[{"results":[]}]' > "$RUNNER_TEMP/follower-handles.json"
+          fi
 
           if ! npx wrangler r2 object get "sh-pages-responses/pages-response/v1/followers.json" \
             --remote --file "$RUNNER_TEMP/followers-existing.json" >/dev/null 2>&1; then
@@ -84,19 +86,17 @@ jobs:
 
           const config = configFromEnv({ SH_APP_VERSION: '1.0.0', REQUEST_TIMEOUT_MS: 8000 });
           const deviceUid = crypto.randomUUID();
-          const guestState = { authToken: '', deviceUid };
           const tokenResponse = await fetch(`${API_BASE}/web/token`, {
             method: 'POST',
-            headers: { ...shHeaders(guestState, config), authorization: '' },
+            headers: { ...shHeaders({ authToken: '', deviceUid }, config), authorization: '' },
             body: '',
             signal: AbortSignal.timeout(8000),
           });
           const authToken = normalizeBearer(tokenResponse.headers.get('authorization'));
           if (!tokenResponse.ok || !authToken) throw new Error(`Stationhead guest token failed: ${tokenResponse.status}`);
-          const sessionState = { authToken, deviceUid };
           const loginResponse = await fetch(`${API_BASE}/web/guest/login`, {
             method: 'POST',
-            headers: shHeaders(sessionState, config),
+            headers: shHeaders({ authToken, deviceUid }, config),
             body: '',
             signal: AbortSignal.timeout(8000),
           });
@@ -120,7 +120,6 @@ jobs:
           const now = Date.now();
           const date = dateKey(now);
           const followers = Object.fromEntries(profiles.map((profile) => [profile.handle, profile.followers]));
-
           let existing = { handles: [], rows: [] };
           try { existing = JSON.parse(fs.readFileSync(`${temp}/followers-existing.json`, 'utf8')); } catch {}
           const allHandles = [...new Set([...(Array.isArray(existing?.handles) ? existing.handles : []), ...handles])]
@@ -147,28 +146,20 @@ jobs:
               previous_week_delta: value != null && week != null ? value - week : null,
             };
           });
-          const model = {
-            ok: true,
-            updated_at: now,
-            latest_date: date,
-            handles: allHandles,
-            rows,
-            accounts,
-            failures,
-          };
-          fs.writeFileSync(`${temp}/followers-next.json`, JSON.stringify(model));
+          fs.writeFileSync(`${temp}/followers-next.json`, JSON.stringify({
+            ok: true, updated_at: now, latest_date: date, handles: allHandles, rows, accounts, failures,
+          }));
 
-          const targetLines = [];
+          const sql = [];
           for (const handle of handles) {
-            const sourceMask = (fixed.includes(handle) ? 1 : 0) | (discovered.includes(handle) ? 2 : 0);
-            targetLines.push(`INSERT INTO sh_stationhead_follower_targets(handle,source_mask,first_seen_at) VALUES(${sqlString(handle)},${sourceMask},${now}) ON CONFLICT(handle) DO UPDATE SET source_mask=(sh_stationhead_follower_targets.source_mask | excluded.source_mask);`);
+            const sourceMask = fixed.includes(handle) ? 1 : 2;
+            sql.push(`INSERT INTO sh_stationhead_follower_targets(handle,source_mask,first_seen_at) VALUES(${sqlString(handle)},${sourceMask},${now}) ON CONFLICT(handle) DO UPDATE SET source_mask=(sh_stationhead_follower_targets.source_mask | excluded.source_mask);`);
           }
-          const followersJson = JSON.stringify(followers);
-          const failuresJson = JSON.stringify(failures);
-          targetLines.push(`INSERT INTO sh_stationhead_daily_followers_v2(observed_date_jst,scheduled_at,collected_at,followers_json,failures_json) VALUES(${sqlString(date)},${now},${now},${sqlString(followersJson)},${sqlString(failuresJson)}) ON CONFLICT(observed_date_jst) DO UPDATE SET scheduled_at=excluded.scheduled_at,collected_at=excluded.collected_at,followers_json=excluded.followers_json,failures_json=excluded.failures_json;`);
-          fs.writeFileSync(`${temp}/followers-upsert.sql`, `${targetLines.join('\n')}\n`);
-          fs.writeFileSync(`${temp}/followers-meta.json`, JSON.stringify({ date, now, handles, followers, failures, successes: profiles.length, requests: handles.length }));
-          console.log(JSON.stringify({ date, successes: profiles.length, requests: handles.length, followers, failures }));
+          sql.push(`INSERT INTO sh_stationhead_daily_followers_v2(observed_date_jst,scheduled_at,collected_at,followers_json,failures_json) VALUES(${sqlString(date)},${now},${now},${sqlString(JSON.stringify(followers))},${sqlString(JSON.stringify(failures))}) ON CONFLICT(observed_date_jst) DO UPDATE SET scheduled_at=excluded.scheduled_at,collected_at=excluded.collected_at,followers_json=excluded.followers_json,failures_json=excluded.failures_json;`);
+          fs.writeFileSync(`${temp}/followers-upsert.sql`, `${sql.join('\n')}\n`);
+          fs.writeFileSync(`${temp}/followers-meta.json`, JSON.stringify({ date, now, followers, failures, successes: profiles.length, requests: handles.length }));
+          console.log(`FETCH_OK date=${date} successes=${profiles.length}/${handles.length} failures=${failures.length}`);
+          console.log(`FOLLOWERS ${JSON.stringify(followers)}`);
           NODE
 
           node manual-followers-once.mjs
@@ -183,7 +174,7 @@ jobs:
             --config wrangler.buddies-collector.jsonc \
             --remote --file "$RUNNER_TEMP/followers-upsert.sql" --yes
 
-          updated_at="$(node -e 'const p=require(process.argv[1]);process.stdout.write(String(p.now))' "$RUNNER_TEMP/followers-meta.json")"
+          updated_at="$(node -e 'const fs=require("node:fs");const p=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(String(p.now))' "$RUNNER_TEMP/followers-meta.json")"
           headers_json='{"content-type":"application/json; charset=utf-8","cache-control":"public, max-age=30, s-maxage=300, stale-while-revalidate=600"}'
           npx wrangler r2 object put "sh-pages-responses/pages-response/v1/followers.json" \
             --remote --file "$RUNNER_TEMP/followers-next.json" --force \
