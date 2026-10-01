@@ -381,7 +381,7 @@ export async function runOptimizedOhisamaCollectorScheduled(
     const snapshot = normalizeOhisamaSnapshot(payload, alias);
     const persisted = await persistSnapshot(env, snapshot, state, observedAt);
     const registerTarget = dependencies.registerFollowerTarget || registerOhisamaFollowerTarget;
-    const followerTargetAdded = await registerTarget(env, snapshot, observedAt).catch((error) => {
+    const followerTargetAdded = await registerTarget(env, snapshot, observedAt, state).catch((error) => {
       console.warn(JSON.stringify({
         event: 'ohisama_follower_target_registration_failed',
         handle: snapshot.host_handle || null,

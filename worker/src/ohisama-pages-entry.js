@@ -1,5 +1,6 @@
 import { runOptimizedOhisamaCollectorScheduled } from './ohisama-collector-optimized.js';
 import { registerOhisamaFollowerTarget } from './ohisama-collector-entry.js';
+import { collectInitialStationheadFollowers } from './stationhead-initial-followers.js';
 import { cachedOhisamaFollowerTargetRegistrar } from './ohisama-follower-target-cache.js';
 import { withOhisamaFollowerMembership } from './ohisama-follower-membership.js';
 import { captureOhisamaPlayback } from './ohisama-playback.js';
@@ -20,12 +21,12 @@ export function activeBroadcastFollowerRegistrar(registerFollowerTarget) {
   if (typeof registerFollowerTarget !== 'function') {
     throw new TypeError('registerFollowerTarget must be a function');
   }
-  return async (env, snapshot, observedAt) => {
+  return async (env, snapshot, observedAt, session) => {
     if (snapshot?.is_broadcasting !== 1) return false;
     if (OHISAMA_FOLLOWER_EXCLUDED_HANDLE_SET.has(normalizedFollowerHandle(snapshot?.host_handle))) {
       return false;
     }
-    return registerFollowerTarget(env, snapshot, observedAt);
+    return registerFollowerTarget(env, snapshot, observedAt, session);
   };
 }
 
@@ -47,7 +48,14 @@ export async function runOhisamaPagesScheduled(controller, env, ctx, dependencie
   const registerFollowerTarget = activeBroadcastFollowerRegistrar(
     cachedOhisamaFollowerTargetRegistrar(
       withOhisamaFollowerMembership(
-        dependencies.registerFollowerTarget || registerOhisamaFollowerTarget,
+        async (targetEnv, snapshot, observedAt, session) => {
+          const added = await (dependencies.registerFollowerTarget || registerOhisamaFollowerTarget)(targetEnv, snapshot, observedAt);
+          await (dependencies.collectInitialFollowers || collectInitialStationheadFollowers)(targetEnv, snapshot.host_handle, observedAt, {
+            session: session ? { auth_token: session.authToken, device_uid: session.deviceUid } : undefined,
+            fetchFn: dependencies.fetch,
+          });
+          return added;
+        },
       ),
     ),
   );

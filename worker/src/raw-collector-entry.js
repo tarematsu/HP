@@ -2,6 +2,7 @@ import { ensureAuthControlRow, readAuthState } from './auth-state.js';
 import { API_BASE, configFromEnv, shHeaders } from './collector-config.js';
 import { sanitizeFailureDetail } from './collector-failure.js';
 import { jwtExpiryMs, normalizeBearer } from './shared.js';
+import { registerBuddiesInitialFollowerTarget } from './stationhead-initial-followers.js';
 
 const STATE_ID = 'stationhead';
 const RAW_COLLECTION_QUEUE_OPTIONS = Object.freeze({ contentType: 'json' });
@@ -360,6 +361,15 @@ export async function collectRawChannel(env, dependencies = {}) {
   const ingestResult = inlinePipeline
     ? await ingestInline(env, message, { inline: true })
     : await rawCollectionQueue.send(message, RAW_COLLECTION_QUEUE_OPTIONS);
+  if (config.channelAlias === 'buddies' && message.snapshot) {
+    await registerBuddiesInitialFollowerTarget(env, message.snapshot, observedAt, {
+      auth_token: activeToken,
+      device_uid: state.deviceUid,
+    }).catch((error) => console.warn(JSON.stringify({
+      event: 'buddies_initial_followers_failed',
+      error: String(error?.message || error).slice(0, 300),
+    })));
+  }
   rememberSession(env, {
     ...state,
     authToken: activeToken,
