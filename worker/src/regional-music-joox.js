@@ -39,7 +39,14 @@ export async function collectJooxArtists(env, observedAt = Date.now(), fetchImpl
     try {
       const html = await fetchHtml(fetchImpl, profileUrl);
       const followers = parseJooxFollowers(html);
-      if (followers == null) throw new Error('artist followers not found');
+      if (followers == null) {
+        const data = html.match(/<script\b[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
+        const page = data ? JSON.parse(data[1]) : null;
+        if (page?.page === '/' && page?.query?.region === 'intl') {
+          throw new Error('artist page redirected to region-restricted landing page');
+        }
+        throw new Error('artist followers not published in response');
+      }
       await saveRegionalArtist(env, {
         service: 'joox',
         canonical_artist: canonicalArtist,

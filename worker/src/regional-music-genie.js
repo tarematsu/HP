@@ -28,11 +28,12 @@ function number(value) {
 
 export function findGenieArtistId(html, aliases) {
   const source = String(html || '');
-  const links = source.matchAll(/<a\b[^>]*href=["'][^"']*artistInfo\?xxnm=(\d+)[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi);
+  const links = source.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi);
   const wanted = aliases.map((alias) => String(alias).normalize('NFKC').toLocaleLowerCase('en-US').replace(/\s+/g, ''));
   for (const match of links) {
     const label = visibleHtmlText(match[2]).normalize('NFKC').toLocaleLowerCase('en-US').replace(/\s+/g, '');
-    if (wanted.includes(label)) return match[1];
+    const id = match[1].match(/artistInfo\?xxnm=(\d+)|fnViewArtist\(\s*['"]?(\d+)/i);
+    if (wanted.includes(label) && id) return id[1] || id[2];
   }
   return null;
 }
@@ -40,7 +41,7 @@ export function findGenieArtistId(html, aliases) {
 export function extractGenieTrackIds(html, limit = GENIE_TRACK_BATCH) {
   const ids = [];
   const seen = new Set();
-  for (const match of String(html || '').matchAll(/songInfo\?xgnm=(\d+)/gi)) {
+  for (const match of String(html || '').matchAll(/(?:songInfo\?xgnm=|fnViewSongInfo\(\s*['"]?)(\d+)/gi)) {
     if (seen.has(match[1])) continue;
     seen.add(match[1]);
     ids.push(match[1]);

@@ -1,3 +1,4 @@
+import { visibleHtmlText } from './regional-music-html.js';
 import { REGIONAL_MUSIC_ARTISTS } from './regional-music-service-registry.js';
 import {
   saveRegionalArtist,
@@ -49,8 +50,8 @@ export function parseFungjaiTrackLinks(html, artistSlug, aliases) {
   return output;
 }
 
-function pageRepresentsArtist(html, aliases) {
-  const normalized = normalize(String(html || '').replace(/<[^>]+>/g, ' '));
+export function pageRepresentsArtist(html, aliases) {
+  const normalized = normalize(visibleHtmlText(html));
   return aliases.some((alias) => normalized.includes(normalize(alias)));
 }
 
@@ -65,7 +66,11 @@ async function fetchPage(fetchImpl, url) {
   });
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return { html: await response.text(), url: response.url || url };
+  const html = await response.text();
+  if (/<title>\s*(?:One moment, please|Just a moment)/i.test(html)) {
+    throw new Error('upstream access verification required');
+  }
+  return { html, url: response.url || url };
 }
 
 export async function collectFungjai(env, observedAt = Date.now(), fetchImpl = fetch) {
