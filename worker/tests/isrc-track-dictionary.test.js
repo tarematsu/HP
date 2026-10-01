@@ -59,10 +59,12 @@ test('minute metadata hydration gets presentation only from canonical owners whi
         },
         async all() {
           const wanted = new Set(this.bindings);
-          if (/FROM sh_tracks/.test(sql)) return { results: [] };
+          if (/FROM sh_tracks/.test(sql) || /FROM sh_track_dictionary/.test(sql)) {
+            return { results: [] };
+          }
           return {
-            results: wanted.has('USABC1234567') || wanted.has('new-sp') ? [{
-              track_id: /FROM sh_track_dictionary/.test(sql) ? null : 10,
+            results: wanted.has('USABC1234567') ? [{
+              track_id: 10,
               spotify_id: 'old-sp',
               isrc: 'USABC1234567',
               title: 'Song',
