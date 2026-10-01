@@ -19,7 +19,11 @@ test('Sakurazaka minute cron is the shared scheduler while Buddies stays indepen
     { binding: 'OHISAMA_SCHEDULED', service: 'sh-ohisama-collector' },
     { binding: 'SPOTIFY_PLAYCOUNT_SCHEDULED', service: 'sh-spotify-playcount-collector' },
   ]);
+  assert.ok(sakurazakaConfig.queues?.producers?.some((item) => (
+    item.binding === 'REGIONAL_MUSIC_QUEUE' && item.queue === 'regional-music-daily'
+  )));
   assert.match(sakurazakaEntry, /dispatchScheduledService/);
+  assert.match(sakurazakaEntry, /enqueueRegionalMusicDispatch/);
   assert.match(sakurazakaEntry, /minute % 5 === 1/);
   assert.match(sakurazakaEntry, /Buddies owns the 00\/05\/10/);
   assert.match(sakurazakaEntry, /minute === 0/);
