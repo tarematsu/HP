@@ -5,7 +5,7 @@ import { chromium } from 'playwright';
 const MODES = [
   { name: 'current', path: '/', panel: '#currentView', tab: '#modeTabs button[data-view="current"]', requiredText: '再生中の曲' },
   { name: 'daily', path: '/#daily', panel: '#historyView', tab: '#modeTabs button[data-mode="daily"]', requiredText: '期間数' },
-  { name: 'ranking', path: '/#ranking', panel: '#historyView', tab: '#modeTabs button[data-mode="ranking"]', requiredText: '総週数' },
+  { name: 'ranking', path: '/#ranking', panel: '#historyView', tab: '#sourceTabs button[data-source="ranking"]', requiredText: '総週数' },
   { name: 'played-tracks', path: '/#played-tracks', panel: '#playedTracksView', tab: '#modeTabs button[data-view="played-tracks"]', requiredText: '楽曲別再生一覧' },
   { name: 'likes', path: '/#likes', panel: '#likesView', tab: '#modeTabs button[data-mode="likes"]', requiredText: '最新いいねランキング' },
   { name: 'broadcasts', path: '/#broadcasts', panel: '#historyView', tab: '#modeTabs button[data-mode="broadcasts"]', requiredText: '非公式リスパ一覧', additionalRequiredText: '比較対象' },
@@ -85,11 +85,12 @@ async function auditMode(browser, baseUrl, route, outDir) {
     ? await page.locator(route.tab).evaluate((button) => ({
       active: button.classList.contains('active'),
       current: button.getAttribute('aria-current'),
+      pressed: button.getAttribute('aria-pressed'),
     })).catch(() => ({ active: false, current: null }))
     : null;
   const actualHash = await page.evaluate(() => window.location.hash).catch(() => '');
 
-  const layout = await page.evaluate(({ expectedPanel, mode }) => {
+  const layout = await page.evaluate(({ expectedPanel, mode, selectedTabSelector }) => {
     const visible = (element) => {
       if (!element || element.hidden) return false;
       const style = getComputedStyle(element);
@@ -99,9 +100,11 @@ async function auditMode(browser, baseUrl, route, outDir) {
     const root = document.documentElement;
     const body = document.body;
     const scrollWidth = Math.max(root.scrollWidth, body?.scrollWidth || 0);
-    const tabs = document.querySelector('#modeTabs');
+    const currentTab = document.querySelector(selectedTabSelector);
+    const tabs = currentTab?.parentElement || document.querySelector('#modeTabs');
     const tabsRect = tabs?.getBoundingClientRect();
     const clippedTabs = [...(tabs?.querySelectorAll('button') || [])].filter((button) => {
+      if (!visible(button)) return false;
       const rect = button.getBoundingClientRect();
       return tabsRect && (rect.left < tabsRect.left - 1 || rect.right > tabsRect.right + 1);
     }).length;
@@ -111,10 +114,10 @@ async function auditMode(browser, baseUrl, route, outDir) {
       && tabs.scrollWidth > tabs.clientWidth + 1
       && ['auto', 'scroll'].includes(tabsStyle?.overflowX),
     );
-    const currentTab = tabs?.querySelector('[aria-current="page"]');
     const currentTabRect = currentTab?.getBoundingClientRect();
     const selectedTabClipped = Boolean(
       tabsRect
+      && visible(currentTab)
       && currentTabRect
       && (currentTabRect.left < tabsRect.left - 1 || currentTabRect.right > tabsRect.right + 1),
     );
@@ -129,13 +132,13 @@ async function auditMode(browser, baseUrl, route, outDir) {
       expectedPanelVisible: visible(document.querySelector(expectedPanel)),
       playedTracksChartHeight: chart?.getBoundingClientRect().height ?? null,
     };
-  }, { expectedPanel: route.panel, mode: route.name });
+  }, { expectedPanel: route.panel, mode: route.name, selectedTabSelector: route.tab });
 
   if (!response) failures.push('navigation returned no response');
   else if (response.status() >= 400) failures.push(`document returned HTTP ${response.status()}`);
   if (!mainVisible) failures.push('visible <main> element was not found');
   if (!panelVisible || !layout.expectedPanelVisible) failures.push(`expected panel was not visible: ${route.panel}`);
-  if (route.tab && (!selectedTab?.active || selectedTab.current !== 'page')) failures.push(`selected tab state was not applied: ${route.name}`);
+  if (route.tab && (!selectedTab?.active || (selectedTab.current !== 'page' && selectedTab.pressed !== 'true'))) failures.push(`selected tab state was not applied: ${route.name}`);
   if (route.expectedHash && actualHash !== route.expectedHash) failures.push(`expected hash was not applied: ${route.expectedHash} (actual ${actualHash || '(empty)'})`);
   if (layout.horizontalOverflow > 1) failures.push(`document overflows viewport horizontally by ${layout.horizontalOverflow}px`);
   if (layout.clippedTabs > 0 && !layout.navigationScrollable) {
