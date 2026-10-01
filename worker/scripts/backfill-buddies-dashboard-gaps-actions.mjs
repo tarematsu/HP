@@ -11,6 +11,7 @@ const workerRoot = resolve(import.meta.dirname, '..');
 const wranglerScript = resolve(workerRoot, 'node_modules/wrangler/bin/wrangler.js');
 const responseBucket = process.env.PAGES_RESPONSE_BUCKET || 'sh-pages-responses';
 const factsDatabase = process.env.FACTS_DATABASE_NAME || 'stationhead-minute';
+const buddiesDatabase = process.env.BUDDIES_DATABASE_NAME || 'stationhead-buddies';
 const dashboardKey = pagesActionsR2ResponseKey('dashboard');
 const hotStateKey = 'stationhead/buddies/dashboard-hot-state.json';
 
@@ -70,17 +71,17 @@ function mergeHistory(history, rows) {
   };
 }
 
-function collapseRawFacts(rows) {
+function collapseToBuckets(rows, timeField = 'minute_at') {
   const byBucket = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
-    const point = bucketAt(row?.minute_at ?? row?.observed_at);
+    const point = bucketAt(row?.[timeField] ?? row?.observed_at);
     if (point == null) continue;
     const previous = byBucket.get(point);
-    const previousMinute = Number(previous?.minute_at) || 0;
-    const currentMinute = Number(row?.minute_at) || 0;
+    const previousTime = Number(previous?.[timeField] ?? previous?.observed_at) || 0;
+    const currentTime = Number(row?.[timeField] ?? row?.observed_at) || 0;
     const previousId = Number(previous?.id) || 0;
     const currentId = Number(row?.id) || 0;
-    if (!previous || currentMinute > previousMinute || (currentMinute === previousMinute && currentId > previousId)) {
+    if (!previous || currentTime > previousTime || (currentTime === previousTime && currentId > previousId)) {
       byBucket.set(point, { ...row, bucket_at: point });
     }
   }
@@ -91,10 +92,7 @@ function readEnvelope() {
   const directory = mkdtempSync(join(workerRoot, '.dashboard-gap-read-'));
   try {
     const file = join(directory, 'dashboard.json');
-    wrangler([
-      'r2', 'object', 'get', `${responseBucket}/${dashboardKey}`,
-      '--remote', '--file', file,
-    ]);
+    wrangler(['r2', 'object', 'get', `${responseBucket}/${dashboardKey}`, '--remote', '--file', file]);
     const envelope = JSON.parse(readFileSync(file, 'utf8'));
     const payload = typeof envelope?.body === 'string' ? JSON.parse(envelope.body) : envelope?.body;
     if (Number(envelope?.version) !== 1 || !payload?.ok || !Array.isArray(payload?.history)) {
@@ -124,25 +122,16 @@ function uploadJson(key, value) {
 const initial = readEnvelope();
 const gapsBefore = detectGaps(initial.payload.history);
 if (!gapsBefore.length) {
-  console.log(JSON.stringify({
-    event: 'buddies_dashboard_gap_backfill_skipped',
-    reason: 'no-read-model-gaps',
-    history_rows: initial.payload.history.length,
-  }));
+  console.log(JSON.stringify({ event: 'buddies_dashboard_gap_backfill_skipped', reason: 'no-read-model-gaps', history_rows: initial.payload.history.length }));
   process.exit(0);
 }
 
 const channelId = Number(initial.payload?.latest?.channel_id);
 if (!Number.isFinite(channelId)) throw new Error('dashboard channel_id is unavailable');
-const minuteDb = createWranglerRemoteD1({
-  database: factsDatabase,
-  cwd: workerRoot,
-  wranglerScript,
-  maxRetries: 2,
-});
+const minuteDb = createWranglerRemoteD1({ database: factsDatabase, cwd: workerRoot, wranglerScript, maxRetries: 2 });
+const buddiesDb = createWranglerRemoteD1({ database: buddiesDatabase, cwd: workerRoot, wranglerScript, maxRetries: 2 });
 
-// First use the compact five-minute rollup. Every query is bounded to an
-// already-detected read-model gap; the complete 24-hour source is never scanned.
+// 1) Compact 5-minute rollup: query only the already-detected gaps.
 const rollupRows = [];
 for (const gap of gapsBefore) {
   const result = await minuteDb.prepare(`SELECT
@@ -156,11 +145,9 @@ for (const gap of gapsBefore) {
   rollupRows.push(...(result?.results || []));
 }
 
-// If the read model and its rollup were both missing, inspect only the still
-// missing intervals in authoritative minute facts. This remains a narrow range
-// lookup on the live-fact index instead of rebuilding the dashboard.
-const provisional = mergeHistory(initial.payload.history, rollupRows).history;
-const rawGaps = detectGaps(provisional);
+// 2) Authoritative minute facts: only gaps still absent from the rollup.
+const afterRollup = mergeHistory(initial.payload.history, rollupRows).history;
+const rawGaps = detectGaps(afterRollup);
 const rawRows = [];
 for (const gap of rawGaps) {
   const result = await minuteDb.prepare(`SELECT
@@ -171,22 +158,38 @@ for (const gap of rawGaps) {
     ORDER BY minute_at ASC,id ASC`)
     .bind(channelId, gap.after, gap.before)
     .all();
-  rawRows.push(...collapseRawFacts(result?.results || []));
+  rawRows.push(...collapseToBuckets(result?.results || [], 'minute_at'));
 }
 
-const recovered = [...rollupRows, ...rawRows];
+// 3) Buddies snapshot history: this is a separate exact observation source.
+// Query it only for gaps that remain after both minute sources; never interpolate.
+const afterMinuteSources = mergeHistory(afterRollup, rawRows).history;
+const snapshotGaps = detectGaps(afterMinuteSources);
+const snapshotRows = [];
+for (const gap of snapshotGaps) {
+  const result = await buddiesDb.prepare(`SELECT
+      id,channel_id,observed_at,listener_count,online_member_count,
+      total_member_count,total_listens,current_stream_count
+    FROM sh_channel_snapshots
+    WHERE channel_id=? AND observed_at>? AND observed_at<?
+    ORDER BY observed_at ASC,id ASC`)
+    .bind(channelId, gap.after, gap.before)
+    .all();
+  snapshotRows.push(...collapseToBuckets(result?.results || [], 'observed_at'));
+}
+
+const recovered = [...rollupRows, ...rawRows, ...snapshotRows];
 if (!recovered.length) {
   console.log(JSON.stringify({
     event: 'buddies_dashboard_gap_backfill_skipped',
-    reason: 'source-has-no-gap-rows',
+    reason: 'all-exact-sources-have-no-gap-rows',
     detected_gap_count: gapsBefore.length,
     detected_gaps: gapsBefore,
   }));
   process.exit(0);
 }
 
-// The collector may have advanced while D1 was queried. Re-read the public
-// envelope and merge only recovered missing buckets into that newest state.
+// Collector may advance during the narrow D1 reads. Merge into the newest R2 payload.
 const latest = readEnvelope();
 const merged = mergeHistory(latest.payload.history, recovered);
 if (!merged.inserted) {
@@ -195,6 +198,7 @@ if (!merged.inserted) {
     reason: 'gaps-already-filled',
     rollup_rows_read: rollupRows.length,
     raw_rows_read: rawRows.length,
+    snapshot_rows_read: snapshotRows.length,
     history_rows: latest.payload.history.length,
   }));
   process.exit(0);
@@ -208,16 +212,8 @@ const nextPayload = {
   stream_5m_history: directFiveMinuteStreamHistory(merged.history),
   _targeted_gap_backfill_at: now,
 };
-const nextEnvelope = {
-  ...latest.envelope,
-  updated_at: now,
-  body: JSON.stringify(nextPayload),
-};
-const nextHotState = {
-  version: 1,
-  updated_at: now,
-  payload: nextPayload,
-};
+const nextEnvelope = { ...latest.envelope, updated_at: now, body: JSON.stringify(nextPayload) };
+const nextHotState = { version: 1, updated_at: now, payload: nextPayload };
 
 uploadJson(hotStateKey, nextHotState);
 uploadJson(dashboardKey, nextEnvelope);
@@ -227,6 +223,7 @@ console.log(JSON.stringify({
   detected_gap_count: gapsBefore.length,
   rollup_rows_read: rollupRows.length,
   raw_rows_read: rawRows.length,
+  snapshot_rows_read: snapshotRows.length,
   inserted_rows: merged.inserted,
   history_rows_before: latest.payload.history.length,
   history_rows_after: merged.history.length,
