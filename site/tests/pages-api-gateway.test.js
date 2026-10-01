@@ -26,6 +26,7 @@ const CANONICAL_PATHS = [
   '/api/first-week-comparison',
   '/api/spotify-playcounts',
   '/api/spotify-monthly-listeners',
+  '/api/spotify-playlists',
   '/api/amazon-music',
   '/api/apple-music',
   '/api/apple-music-playlists',
@@ -155,7 +156,7 @@ async function withFixedNow(action) {
 test('Pages API catalog exposes exactly the canonical routes without Worker URLs', async () => {
   const catalog = apiCatalog(NOW);
   assert.equal(catalog.gateway, 'cloudflare-pages');
-  assert.equal(catalog.contract_version, 15);
+  assert.equal(catalog.contract_version, 16);
   assert.equal(catalog.worker_urls_public, false);
   const paths = Object.values(catalog.groups).flat().map(({ path }) => path);
   assert.deepEqual(paths, CANONICAL_PATHS);
