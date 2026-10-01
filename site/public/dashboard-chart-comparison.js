@@ -18,7 +18,7 @@ let observedCanvasWidth = 0;
 
 function normalizeCurrent(rows) {
   const list = Array.isArray(rows) ? rows : [];
-  const latest = list.reduce((maximum, row) => Math.max(maximum, finite(row?.observed_at) || 0), 0;
+  const latest = list.reduce((maximum, row) => Math.max(maximum, finite(row?.observed_at) || 0), 0);
   if (!latest) return [];
   const cutoff = latest - DAY_MS;
   const byTime = new Map();
