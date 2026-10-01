@@ -82,7 +82,7 @@ mountDashboardShell({
     anchorId: 'likesView',
     position: 'beforebegin',
     html: `
-      ${musicServiceMeta({ valueId: 'spotifySnapshotDate' })}
+      ${musicServiceMeta({ label: '集計日', valueId: 'spotifySnapshotDate' })}
       ${dashboardNotice({ id: 'spotifyNotice' })}
       ${summary}
       ${musicServiceSection({ id: 'spotifyTrendSection', kicker: 'TRENDS', title: '推移', bodyHtml: trendPanels })}
