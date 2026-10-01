@@ -44,7 +44,12 @@ async function collectAppleMusic(env, scheduledTime) {
   );
   if (sakamichi) result.sakamichi_artists = sakamichi;
 
-  if (result?.changed || result?.migrated_track_ids || presentation?.presentation_changed) {
+  if (
+    result?.changed
+    || result?.migrated_track_ids
+    || presentation?.presentation_changed
+    || sakamichi?.changed
+  ) {
     result.other_db = await persistAppleMusicModelToOther(env, scheduledTime);
   }
   return result;
