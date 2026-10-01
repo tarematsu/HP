@@ -18,16 +18,17 @@ test('Spotify graphs restrict rendered series to the three Sakamichi groups in S
 
 test('Spotify renderer emits single-point markers directly on the shared canvas', () => {
   assert.match(runtime, /plotted\.length === 1/);
-  assert.match(runtime, /drawDashboardLine/);
+  assert.match(runtime, /drawSinglePoint/);
   assert.match(runtime, /context\.arc\(xFor\(row\.date\), yFor\(row\.value\), 3/);
   assert.doesNotMatch(runtime, /spotify-single-point-line|createElementNS|svgElement/);
   assert.doesNotMatch(shell, /showSinglePointSeries|artistNameFromPoint|MutationObserver/);
 });
 
-test('Spotify accessibility labels describe Sakamichi-only graphs directly', () => {
-  assert.match(runtime, /櫻坂46・乃木坂46・日向坂46の全曲合計再生数前日比推移/);
+test('Spotify accessibility labels describe the combined Sakamichi overview directly', () => {
+  assert.match(runtime, /櫻坂46・乃木坂46・日向坂46の全曲合計再生数前日比とSpotify月間リスナー推移/);
+  assert.match(runtime, /左軸が再生数前日比、右軸が月間リスナー/);
   assert.match(runtime, /Spotify日本 Daily Top Artist の順位データはまだありません。/);
   assert.match(runtime, /Spotify日本 Daily Top Artist の順位推移。1位が上。/);
-  assert.match(shell, /Spotify 月間リスナー推移（坂道3グループ）/);
+  assert.match(shell, /Spotify 全曲合計再生数前日比・月間リスナー推移（坂道3グループ）/);
   assert.doesNotMatch(shell, /alignPlaycountAccessibilityLabels|alignArtistRankTerminology|installGraphPostProcessing/);
 });
