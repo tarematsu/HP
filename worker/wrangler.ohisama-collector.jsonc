@@ -3,6 +3,7 @@
   "name": "sh-ohisama-collector",
   "main": "src/ohisama-service-entry.js",
   "compatibility_date": "2026-06-24",
+
   "workers_dev": false,
   "preview_urls": false,
   "observability": {
