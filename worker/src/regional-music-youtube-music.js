@@ -1,5 +1,5 @@
 import { parseCompactCount } from './regional-music-html.js';
-import { REGIONAL_MUSIC_ARTISTS, normalizeArtistAlias } from './regional-music-service-registry.js';
+import { YOUTUBE_MUSIC_ARTISTS, normalizeArtistAlias } from './regional-music-service-registry.js';
 import {
   saveRegionalArtist,
   saveRegionalCollectorState,
@@ -156,7 +156,7 @@ function exactArtistName(value, artist) {
 }
 
 export function parseYouTubeMusicArtistSearch(payload, canonicalArtist) {
-  const artist = REGIONAL_MUSIC_ARTISTS[canonicalArtist];
+  const artist = YOUTUBE_MUSIC_ARTISTS[canonicalArtist];
   if (!artist) return null;
   let match = null;
   walk(payload, (node) => {
@@ -211,7 +211,7 @@ function parseTrack(renderer, canonicalArtist) {
   if (!videoId || !title) return null;
   const musicVideoType = firstValueByKey(renderer, 'musicVideoType');
   if (musicVideoType && musicVideoType !== 'MUSIC_VIDEO_TYPE_ATV') return null;
-  const artist = REGIONAL_MUSIC_ARTISTS[canonicalArtist];
+  const artist = YOUTUBE_MUSIC_ARTISTS[canonicalArtist];
   const text = allRendererText(renderer);
   if (artist && !artist.aliases.some((alias) => normalizeArtistAlias(text).includes(normalizeArtistAlias(alias)))) {
     return null;
@@ -246,7 +246,7 @@ function parsePlaylistShelf(renderer) {
 }
 
 export function parseYouTubeMusicArtistPage(payload, canonicalArtist) {
-  const artist = REGIONAL_MUSIC_ARTISTS[canonicalArtist];
+  const artist = YOUTUBE_MUSIC_ARTISTS[canonicalArtist];
   const header = payload?.header?.musicImmersiveHeaderRenderer || firstObjectByKey(payload, 'musicImmersiveHeaderRenderer');
   if (!header) throw new Error('YouTube Music artist header missing');
   const name = runsText(header.title);
@@ -319,7 +319,7 @@ export async function collectYouTubeMusic(env, observedAt = Date.now(), fetchImp
   let memberships = 0;
   const visitorData = await fetchVisitorData(fetchImpl);
 
-  for (const [canonicalArtist, artist] of Object.entries(REGIONAL_MUSIC_ARTISTS)) {
+  for (const [canonicalArtist, artist] of Object.entries(YOUTUBE_MUSIC_ARTISTS)) {
     try {
       const search = await requestYtm(fetchImpl, 'search', {
         query: artist.displayName,
