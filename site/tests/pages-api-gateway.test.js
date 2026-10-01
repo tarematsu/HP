@@ -30,6 +30,7 @@ const CANONICAL_PATHS = [
   '/api/amazon-music',
   '/api/apple-music',
   '/api/apple-music-playlists',
+  '/api/regional-music',
   '/api/followers',
 ];
 
