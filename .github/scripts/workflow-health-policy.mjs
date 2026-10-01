@@ -24,6 +24,7 @@ export const WORKFLOW_HEALTH_POLICIES = Object.freeze([
     cadenceMinutes: 30,
     staleAfterMinutes: 75,
     stalledAfterMinutes: 25,
+    ignoreExpectedWorkflowRunSkips: true,
     recoverBeforeStale: true,
   }),
   freeze({
@@ -42,6 +43,7 @@ export const WORKFLOW_HEALTH_POLICIES = Object.freeze([
     cadenceMinutes: 1440,
     staleAfterMinutes: 1500,
     stalledAfterMinutes: 25,
+    ignoreExpectedWorkflowRunSkips: true,
     recoverBeforeStale: true,
   }),
   freeze({
