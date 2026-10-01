@@ -11,6 +11,14 @@ import {
   drawDashboardXAxis,
   prepareDashboardCanvas,
 } from '../dashboard-chart-canvas.js?v=20261001.2';
+import {
+  appendDashboardLegendItem,
+  dashboardMissingIndexBands,
+  DASHBOARD_MISSING_KEY,
+  drawDashboardMissingBands,
+  nearestPositionIndex,
+  observeDashboardChartResize,
+} from '../dashboard-chart-runtime.js?v=20261001.1';
 
 const RANKING_MODE = 'ranking';
 const FEATURED_HOSTS = ['sakuramankai', 'sakurazaka46jp', 'nogizaka46smej'];
@@ -27,7 +35,6 @@ let rankingWeeks = [];
 let chartHosts = [];
 let chartScope = 'featured';
 let drawTimer = 0;
-let resizeTimer = 0;
 let selectedWeekIndex = null;
 let chartModel = null;
 
@@ -53,15 +60,6 @@ function activeMode() {
 function scheduleDraw(delay = 0) {
   clearTimeout(drawTimer);
   drawTimer = setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(draw)), delay);
-}
-
-function appendLegend(label, color, datasetKey = '') {
-  const span = document.createElement('span');
-  if (datasetKey) span.dataset[datasetKey] = 'true';
-  const marker = document.createElement('i');
-  marker.style.background = color;
-  span.append(marker, document.createTextNode(label));
-  return span;
 }
 
 function colorForHost(host, index) {
@@ -102,22 +100,6 @@ function fullWeek(value) {
   return match ? `${match[1]}/${Number(match[2])}/${Number(match[3])}` : String(value || '');
 }
 
-function drawMissingBand(context, weeks, positions, area) {
-  const missingIndexes = weeks
-    .map((week, index) => isMissingWeek(week) ? index : -1)
-    .filter((index) => index >= 0);
-  if (!missingIndexes.length) return false;
-
-  const step = positions.length > 1 ? area.width / (positions.length - 1) : area.width;
-  const left = Math.max(area.left, positions[missingIndexes[0]] - step / 2);
-  const right = Math.min(area.left + area.width, positions[missingIndexes.at(-1)] + step / 2);
-  context.save();
-  context.fillStyle = 'rgba(100, 107, 116, .16)';
-  context.fillRect(left, area.top, Math.max(1, right - left), area.height);
-  context.restore();
-  return true;
-}
-
 function hideChart() {
   const panel = byId('chartPanel');
   if (panel) panel.hidden = true;
@@ -153,7 +135,15 @@ function draw() {
   const positions = model.weeks.map((_, index) => area.left
     + area.width * index / Math.max(1, model.weeks.length - 1));
 
-  const hasMissingBand = drawMissingBand(context, model.weeks, positions, area);
+  const step = positions.length > 1 ? area.width / (positions.length - 1) : area.width;
+  const hasMissingBand = drawDashboardMissingBands(
+    context,
+    dashboardMissingIndexBands(model.weeks, positions, area, {
+      isMissing: (week) => isMissingWeek(week),
+      step,
+    }),
+    { top: area.top, height: area.height },
+  );
   const ranks = model.series.flatMap((item) => item.values.filter((value) => value != null && value > 0));
   const maxRank = Math.max(1, ...ranks);
   const yFor = (rank) => area.top + ((Math.max(1, Number(rank)) - 1) / Math.max(1, maxRank - 1)) * area.height;
@@ -214,8 +204,8 @@ function draw() {
     : '週間リーダーボード順位';
   const legend = byId('chartLegend');
   if (legend) {
-    const items = model.series.map((item, index) => appendLegend(item.host, colors[index]));
-    if (hasMissingBand) items.push(appendLegend('欠測', 'rgba(100, 107, 116, .55)', 'rankingMissingLegend'));
+    const items = model.series.map((item, index) => appendDashboardLegendItem(item.host, colors[index]));
+    if (hasMissingBand) items.push(appendDashboardLegendItem('欠測', DASHBOARD_MISSING_KEY, { datasetKey: 'rankingMissingLegend' }));
     legend.replaceChildren(...items);
   }
   const foot = byId('chartFoot');
@@ -272,27 +262,16 @@ window.addEventListener('history:ranking-host-selected', (event) => {
   scheduleDraw();
 });
 
-byId('chart')?.addEventListener('pointerup', (event) => {
+const rankingChart = byId('chart');
+rankingChart?.addEventListener('pointerup', (event) => {
   if (activeMode() !== RANKING_MODE || !chartModel?.positions?.length) return;
   event.stopImmediatePropagation();
   const bounds = event.currentTarget.getBoundingClientRect();
-  const pointer = event.clientX - bounds.left;
-  let nearest = 0;
-  let distance = Infinity;
-  chartModel.positions.forEach((position, index) => {
-    const next = Math.abs(position - pointer);
-    if (next < distance) {
-      distance = next;
-      nearest = index;
-    }
-  });
-  selectedWeekIndex = nearest;
+  selectedWeekIndex = nearestPositionIndex(chartModel.positions, event.clientX - bounds.left);
   draw();
 }, true);
 
-window.addEventListener('resize', () => {
-  clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => {
-    if (activeMode() === RANKING_MODE && chartHosts.length) draw();
-  }, 240);
-}, { passive: true });
+observeDashboardChartResize(rankingChart, draw, {
+  delay: 240,
+  enabled: () => activeMode() === RANKING_MODE && chartHosts.length > 0,
+});
