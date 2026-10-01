@@ -57,11 +57,18 @@ jobs:
           done
           if [ "$ready" != 1 ]; then cat "$log"; echo "Wrangler remote dev did not become ready" >&2; exit 1; fi
 
-          if ! curl -fsS --max-time 1500 "http://127.0.0.1:8787/cdn-cgi/local/scheduled?cron=0+21+*+*+*"; then
-            curl -fsS --max-time 1500 "http://127.0.0.1:8787/__scheduled?cron=0+21+*+*+*"
+          if ! curl -fsS "http://127.0.0.1:8787/cdn-cgi/local/scheduled?cron=0+21+*+*+*"; then
+            curl -fsS "http://127.0.0.1:8787/__scheduled?cron=0+21+*+*+*"
           fi
-          sleep 2
+
+          complete=0
+          for _ in $(seq 1 750); do
+            if grep -q 'regional-music-daily-complete' "$log"; then complete=1; break; fi
+            if ! kill -0 "$pid" 2>/dev/null; then cat "$log"; exit 1; fi
+            sleep 2
+          done
           cat "$log"
+          if [ "$complete" != 1 ]; then echo "Regional music collector did not complete" >&2; exit 1; fi
 
       - name: Verify regional music read model
         shell: bash
