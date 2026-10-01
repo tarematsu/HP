@@ -30,6 +30,7 @@ const ALL_VARIANTS = [
   'history:broadcasts',
   'host-history:summary',
   'spotify-playcounts',
+  'regional-music',
 ];
 
 const TWELVE_HOUR_VARIANTS = [

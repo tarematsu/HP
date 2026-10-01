@@ -25,6 +25,7 @@ export const API_GROUPS = Object.freeze({
     { path: '/api/amazon-music', methods: ['GET'], description: 'Latest Sakurazaka Amazon Music follower and track-rank read model' },
     { path: '/api/apple-music', methods: ['GET'], description: 'Latest Sakurazaka Apple Music regional artist-popularity read model' },
     { path: '/api/apple-music-playlists', methods: ['GET'], description: 'Public Apple Music playlist memberships discovered from music.apple.com pages' },
+    { path: '/api/regional-music', methods: ['GET'], description: 'Latest regional music-service artist, track, playlist, and collector snapshots for Sakamichi groups' },
     { path: '/api/followers', methods: ['GET'], description: 'Daily Stationhead follower history and comparison for tracked accounts' },
   ]),
 });
@@ -49,6 +50,12 @@ export const MATERIALIZED_API_VARIANTS = Object.freeze([
     key: 'spotify-playcounts',
     url: '/api/spotify-playcounts',
     cadence_minutes: 720,
+    event_driven: true,
+  }),
+  Object.freeze({
+    key: 'regional-music',
+    url: '/api/regional-music',
+    cadence_minutes: 1440,
     event_driven: true,
   }),
 ]);
@@ -84,6 +91,7 @@ export function materializedApiKey(input) {
   if (pathname === '/api/spotify-playcounts' && onlyParameters(url, ['artist'])) {
     return 'spotify-playcounts';
   }
+  if (pathname === '/api/regional-music' && onlyParameters(url)) return 'regional-music';
   if (pathname === '/api/followers' && onlyParameters(url)) return 'followers';
   return null;
 }

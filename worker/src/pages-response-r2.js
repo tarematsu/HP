@@ -3,6 +3,7 @@ const ACTIONS_RESPONSE_KEY_PREFIX = 'pages-response/actions-v2/';
 const TRACK_HISTORY_MODEL_KEY = 'track-history';
 const TRACK_HISTORY_STATUS_MODEL_KEY = 'track-history-status';
 const FOLLOWERS_MODEL_KEY = 'followers';
+const REGIONAL_MUSIC_MODEL_KEY = 'regional-music';
 const FOLLOWER_HANDLES = Object.freeze([
   'sakuramankai',
   'sakuramankai2',
@@ -159,8 +160,8 @@ export async function loadMaterializedR2Response(
   now = Date.now(),
   maximumAgeMs = Number.MAX_SAFE_INTEGER,
 ) {
-  // Actions owns the general materialized API variants. Track history and the
-  // daily follower comparison are Worker-owned and use the direct Worker key.
+  // Actions owns the general materialized API variants. Track history,
+  // followers, and regional music are Worker-owned direct R2 models.
   if (modelKey === TRACK_HISTORY_STATUS_MODEL_KEY) {
     return (await loadActionsEnvelope(r2, modelKey, now, maximumAgeMs))
       || loadWorkerR2Response(r2, modelKey, now, maximumAgeMs);
@@ -171,6 +172,9 @@ export async function loadMaterializedR2Response(
   if (modelKey === FOLLOWERS_MODEL_KEY) {
     return (await loadWorkerR2Response(r2, modelKey, now, maximumAgeMs))
       || emptyFollowersResponse(now);
+  }
+  if (modelKey === REGIONAL_MUSIC_MODEL_KEY) {
+    return loadWorkerR2Response(r2, modelKey, now, maximumAgeMs);
   }
   return loadActionsEnvelope(r2, modelKey, now, maximumAgeMs);
 }
