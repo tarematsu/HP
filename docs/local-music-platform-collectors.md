@@ -19,7 +19,7 @@ Do not merge unrelated artists solely because a localized service returns a simi
 | South Korea | Genie | track cumulative plays/listeners/likes, catalog | collector implemented; production verification pending |
 | South Korea | Bugs! | artist likes, catalog, MusicPD playlists | artist metric collector implemented; playlist expansion pending |
 | South Korea | Melon | artist fans, track likes, DJ playlists | artist discovery + DJ playlist collector implemented |
-| South Korea | Naver VIBE | catalog, playlist/chart inclusion | album-track API verified; reliable artist discovery still pending |
+| South Korea | Naver VIBE | artist likes, catalog, playlist/chart inclusion | exact artist discovery + artist likes + release-track collector implemented |
 | Greater China / SEA | JOOX | artist followers, catalog, rankings/comments/playlists | follower collector implemented; expansion pending |
 | Mainland China | QQ Music | catalog, listen-order ranking, public engagement where exposed | exact artist discovery + listen-ordered track collector implemented |
 | Mainland China | NetEase Cloud Music | hot-track rank, comments, catalog | exact artist discovery + hot tracks + rotating album expansion + comments implemented |
@@ -140,7 +140,7 @@ These are diagnostic seeds, not canonical identity replacements. Discovery still
 - QQ Music Nogizaka46 release seed: album ID `000HNVfX1PSixv`.
 - NetEase Cloud Music Nogizaka46 release seed: album ID `278234837`.
 - Kugou Music Nogizaka46 release seed: `cv1uyy99`.
-- Naver VIBE Hinatazaka46 artist ID: `2834287`; album tracks are exposed under `/vibeWeb/musicapiweb/album/{albumId}/tracks`.
+- Naver VIBE Hinatazaka46 artist ID: `2834287`; the collector does not trust the seed and instead discovers artists through the V4 artist search endpoint.
 - Yandex Music Hinatazaka46 artist ID: `7101843`; collection still uses exact-name discovery rather than trusting the seed alone.
 
 ## Provider constraints
@@ -148,8 +148,7 @@ These are diagnostic seeds, not canonical identity replacements. Discovery still
 - **Langit Musik:** published terms prohibit crawling and other automated methods including bots, scrapers, and spiders for viewing/accessing/collecting service information. Do not deploy an automated collector without an authorized API or explicit permission.
 - **Fungjai:** the current service describes itself as having started as a local streaming service in 2014 and now being a Music Integrator/community platform. A current general music-catalog surface has not been established.
 - **Zing MP3:** current web API access depends on request signatures/API-key/cookie state. Do not hard-code leaked/stale keys or signatures.
-- **Boomplay:** public catalog presence exists, but collection should use a first-party public surface rather than silently depending on a third-party metadata proxy.
-- **Naver VIBE:** known album endpoints are not enough; artist identity discovery must be reliable before scheduled collection is enabled.
+- **Boomplay:** public catalog presence exists, but collection should use a first-party public surface rather than silently depending on a third-party metadata proxy; current clients indicate a logged-in session/cookie is required for stable access.
 
 ## Completion criteria per service
 
@@ -168,7 +167,7 @@ A service may instead be marked `blocked` when its published terms disallow auto
 
 ## Implementation status
 
-Currently connected to the scheduled Worker: **13 services**.
+Currently connected to the scheduled Worker: **14 services**.
 
 - Genie: dynamic artist search, artist likes, top-track IDs, cumulative listeners/plays/likes.
 - Bugs!: stable artist IDs and daily artist likes.
@@ -179,6 +178,7 @@ Currently connected to the scheduled Worker: **13 services**.
 - QQ Music: smartbox exact-artist discovery plus listen-ordered top tracks.
 - NetEase Cloud Music: exact artist discovery, hot-track rank, comments and rotating album catalog expansion.
 - Kugou Music: exact-alias filtered song search with service-native track/artist identities.
+- Naver VIBE: V4 exact-artist search, artist like counts and release-track catalog snapshots.
 - FLO: exact artist discovery, album discovery and rotating album track expansion.
 - Yandex Music: API-key-free JSON search with exact artist filtering and provider artist/album/track IDs.
 - JioSaavn: autocomplete exact-artist discovery plus song-search catalog snapshots.
@@ -187,6 +187,7 @@ Currently connected to the scheduled Worker: **13 services**.
 Shared implementation:
 
 - generic D1 schemas for artist, track, playlist-membership and collector-health snapshots;
+- all 19 planned services seeded into collector state so the read model exposes pending/blocked reasons before collection succeeds;
 - 19-service registry and three-group alias normalizer;
 - dedicated `sh-regional-music-collector` Worker, isolated from Spotify/Amazon collection;
 - daily run at 00:20 JST;
@@ -197,8 +198,8 @@ Shared implementation:
 Remaining work:
 
 1. expand Phase 1 seed/top-track collectors toward full catalog and playlist coverage where public and permitted;
-2. finish Naver VIBE artist discovery;
-3. find first-party stable collection surfaces for Boomplay and Plern;
+2. find a first-party stable collection surface for Plern;
+3. use Boomplay only if a stable authorized/public first-party collection surface is available;
 4. determine whether Zing MP3 can be collected without unstable/private auth material;
 5. treat Fungjai as discovery-only unless a current streaming catalog returns;
 6. do not automate Langit Musik without permission/authorized API;
