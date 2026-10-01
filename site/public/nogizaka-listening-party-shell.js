@@ -25,7 +25,7 @@ const partyTable = dashboardTable({
 mountDashboardShell({
   tab: {
     view: 'nogizaka',
-    label: 'nogizaka46smej',
+    label: 'Nogizaka',
     anchorSelectors: ['[data-view="hinata"]', '[data-mode="broadcasts"]'],
     position: 'beforebegin',
   },
