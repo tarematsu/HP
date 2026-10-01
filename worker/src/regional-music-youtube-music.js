@@ -11,11 +11,11 @@ import {
 } from './regional-music-store.js';
 
 export const YOUTUBE_MUSIC_SERVICE = 'youtube_music';
-export const YOUTUBE_MUSIC_API_KEY = 'AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30';
 export const YOUTUBE_MUSIC_ARTIST_FILTER = 'EgWKAQIgAWoMEA4QChADEAQQCRAF';
 
 const YTM_ROOT = 'https://music.youtube.com';
 const YTM_API = `${YTM_ROOT}/youtubei/v1`;
+const YTM_USER_AGENT = 'Mozilla/5.0 compatible; skrzk-pages-collector/1.0';
 
 function walk(value, visitor) {
   if (!value || typeof value !== 'object') return;
@@ -101,16 +101,49 @@ function context(observedAt) {
   };
 }
 
-async function requestYtm(fetchImpl, endpoint, body, observedAt) {
-  const response = await fetchImpl(`${YTM_API}/${endpoint}?alt=json&key=${YOUTUBE_MUSIC_API_KEY}`, {
+export function parseYouTubeMusicVisitorData(html) {
+  const source = String(html || '');
+  const matches = source.matchAll(/ytcfg\.set\s*\(\s*({.+?})\s*\)\s*;/g);
+  for (const match of matches) {
+    try {
+      const config = JSON.parse(match[1]);
+      const visitorData = String(config?.VISITOR_DATA || '').trim();
+      if (visitorData) return visitorData;
+    } catch {
+      // Ignore unrelated or partial ytcfg payloads and continue scanning.
+    }
+  }
+  return null;
+}
+
+async function fetchVisitorData(fetchImpl) {
+  try {
+    const response = await fetchImpl(YTM_ROOT, {
+      headers: {
+        accept: 'text/html,application/xhtml+xml',
+        'user-agent': YTM_USER_AGENT,
+      },
+    });
+    if (!response.ok) return null;
+    return parseYouTubeMusicVisitorData(await response.text());
+  } catch {
+    return null;
+  }
+}
+
+async function requestYtm(fetchImpl, endpoint, body, observedAt, visitorData = null) {
+  const headers = {
+    accept: '*/*',
+    'content-type': 'application/json',
+    origin: YTM_ROOT,
+    referer: `${YTM_ROOT}/`,
+    'user-agent': YTM_USER_AGENT,
+  };
+  if (visitorData) headers['x-goog-visitor-id'] = visitorData;
+
+  const response = await fetchImpl(`${YTM_API}/${endpoint}?alt=json`, {
     method: 'POST',
-    headers: {
-      accept: '*/*',
-      'content-type': 'application/json',
-      origin: YTM_ROOT,
-      referer: `${YTM_ROOT}/`,
-      'user-agent': 'Mozilla/5.0 compatible; skrzk-pages-collector/1.0',
-    },
+    headers,
     body: JSON.stringify({ ...context(observedAt), ...body }),
   });
   if (!response.ok) throw new Error(`YouTube Music ${endpoint} HTTP ${response.status}`);
@@ -284,17 +317,18 @@ export async function collectYouTubeMusic(env, observedAt = Date.now(), fetchImp
   let releases = 0;
   let playlists = 0;
   let memberships = 0;
+  const visitorData = await fetchVisitorData(fetchImpl);
 
   for (const [canonicalArtist, artist] of Object.entries(REGIONAL_MUSIC_ARTISTS)) {
     try {
       const search = await requestYtm(fetchImpl, 'search', {
         query: artist.displayName,
         params: YOUTUBE_MUSIC_ARTIST_FILTER,
-      }, observedAt);
+      }, observedAt, visitorData);
       const identity = parseYouTubeMusicArtistSearch(search, canonicalArtist);
       if (!identity?.browseId) throw new Error(`exact artist search result missing for ${artist.displayName}`);
 
-      const page = await requestYtm(fetchImpl, 'browse', { browseId: identity.browseId }, observedAt);
+      const page = await requestYtm(fetchImpl, 'browse', { browseId: identity.browseId }, observedAt, visitorData);
       const parsed = parseYouTubeMusicArtistPage(page, canonicalArtist);
       await saveRegionalArtist(env, {
         service: YOUTUBE_MUSIC_SERVICE,
