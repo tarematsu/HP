@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import collector, {
-  isOneTimeFollowerBackfillMinute,
+  isFollowerCatchupMinute,
   runAlarmCoordinatedBuddiesCollectorScheduled,
   runBuddiesCollectorScheduled,
   runBuddiesCollectorScheduledWithFollowers,
@@ -66,17 +66,18 @@ test('JST midnight adds one follower snapshot as independent waitUntil work', as
   assert.deepEqual(calls, ['collector', 'followers']);
 });
 
-test('October 1 one-time backfill opens on the next non-hour minute between 02:00 and 04:59 JST', () => {
-  assert.equal(isOneTimeFollowerBackfillMinute(Date.UTC(2026, 8, 30, 17, 53)), true);
-  assert.equal(isOneTimeFollowerBackfillMinute(Date.UTC(2026, 8, 30, 18, 0)), false);
-  assert.equal(isOneTimeFollowerBackfillMinute(Date.UTC(2026, 8, 30, 20, 1)), false);
-  assert.equal(isOneTimeFollowerBackfillMinute(Date.UTC(2026, 9, 1, 17, 53)), false);
+test('follower catch-up checks run every five minutes except on the hour', () => {
+  assert.equal(isFollowerCatchupMinute(Date.UTC(2026, 9, 1, 1, 5)), true);
+  assert.equal(isFollowerCatchupMinute(Date.UTC(2026, 9, 1, 14, 55)), true);
+  assert.equal(isFollowerCatchupMinute(Date.UTC(2026, 9, 1, 1, 0)), false);
+  assert.equal(isFollowerCatchupMinute(Date.UTC(2026, 9, 1, 1, 3)), false);
+  assert.equal(isFollowerCatchupMinute(Number.NaN), false);
 });
 
-test('October 1 one-time backfill schedules follower work independently from the minute collector', async () => {
+test('same-day follower catch-up schedules follower work independently from the minute collector', async () => {
   const waitUntil = [];
   const calls = [];
-  const controller = { cron: '* * * * *', scheduledTime: Date.UTC(2026, 8, 30, 17, 53) };
+  const controller = { cron: '* * * * *', scheduledTime: Date.UTC(2026, 9, 1, 2, 25) };
   const result = await runBuddiesCollectorScheduledWithFollowers(
     controller,
     {},
