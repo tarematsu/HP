@@ -5,6 +5,9 @@ import test from 'node:test';
 const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
 const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 const sharedRoute = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+const canvasChart = readFileSync(new URL('../public/dashboard-chart-canvas.js', import.meta.url), 'utf8');
+const currentChart = readFileSync(new URL('../public/dashboard-chart-comparison.js', import.meta.url), 'utf8');
+const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
 const rankChart = readFileSync(new URL('../public/dashboard-rank-chart.js', import.meta.url), 'utf8');
 const tableDom = readFileSync(new URL('../public/dashboard-table-dom.js', import.meta.url), 'utf8');
 const historyToggle = readFileSync(new URL('../public/history/history-past-toggle-shell.js', import.meta.url), 'utf8');
@@ -60,17 +63,24 @@ test('dashboard exposes shared runtime primitives for repeated view rendering wo
   for (const helper of ['signedInteger', 'evenlySpacedIndexes', 'appendEmptyState']) {
     assert.match(sharedUi, new RegExp(`export function ${helper}\\(`));
   }
+  for (const helper of ['prepareDashboardCanvas', 'drawDashboardGrid', 'drawDashboardLine', 'dashboardTickIndexes']) {
+    assert.match(canvasChart, new RegExp(`export function ${helper}\\(`));
+  }
   assert.match(rankChart, /appendEmptyState/);
-  assert.match(rankChart, /evenlySpacedIndexes/);
+  assert.match(rankChart, /drawDashboardLine/);
+  assert.match(rankChart, /prepareDashboardCanvas/);
+  assert.doesNotMatch(rankChart, /svgElement|evenlySpacedIndexes/);
   for (const name of ['amazon-music.js', 'apple-music.js']) {
     assert.match(runtimes[name], /renderRankHistoryChart/);
     assert.doesNotMatch(runtimes[name], /appendEmptyState|evenlySpacedIndexes|svgElement/);
   }
-  for (const name of ['followers.js', 'spotify.js']) {
-    assert.match(runtimes[name], /appendEmptyState/);
-    assert.match(runtimes[name], /evenlySpacedIndexes/);
-    assert.doesNotMatch(runtimes[name], /const empty = document\.createElement/);
-  }
+  assert.match(runtimes['followers.js'], /appendEmptyState/);
+  assert.match(runtimes['followers.js'], /evenlySpacedIndexes/);
+  assert.match(runtimes['spotify.js'], /appendEmptyState/);
+  assert.match(runtimes['spotify.js'], /drawDashboardGrid/);
+  assert.match(runtimes['spotify.js'], /drawDashboardLine/);
+  assert.match(runtimes['spotify.js'], /prepareDashboardCanvas/);
+  assert.doesNotMatch(runtimes['spotify.js'], /svgElement|evenlySpacedIndexes/);
   for (const name of ['amazon-music.js', 'followers.js', 'spotify.js']) {
     assert.match(runtimes[name], /signedInteger/);
     assert.doesNotMatch(runtimes[name], /function formatDelta\s*\(/);
@@ -78,6 +88,17 @@ test('dashboard exposes shared runtime primitives for repeated view rendering wo
   assert.match(tableDom, /export function appendTableRow/);
   assert.match(tableDom, /export function replaceTableHeader/);
   assert.doesNotMatch(runtimes['followers.js'], /function (?:appendText|tickIndexes)\s*\(/);
+});
+
+test('current, history, and music subscription graphs reuse the same canvas primitives', () => {
+  for (const source of [currentChart, periodChart, runtimes['spotify.js'], rankChart]) {
+    assert.match(source, /dashboard-chart-canvas\.js\?v=20261001\.1/);
+    assert.match(source, /drawDashboardLine/);
+    assert.match(source, /prepareDashboardCanvas/);
+  }
+  assert.match(currentChart, /drawDashboardGrid/);
+  assert.match(periodChart, /drawDashboardGrid/);
+  assert.match(runtimes['spotify.js'], /drawDashboardGrid/);
 });
 
 test('all dashboard shells share mounting and reusable UI components without runtime stylesheet loading', () => {
@@ -102,7 +123,7 @@ test('all dashboard shells share mounting and reusable UI components without run
     assert.match(shells[name], /dashboard(?:Summary|DataCard|ChartCard)/, `${name} must compose shared cards`);
   }
   for (const name of ['followers-shell.js', 'apple-music-shell.js', 'amazon-music-shell.js']) {
-    assert.match(shells[name], /dashboardChartHost/, `${name} must use the shared SVG chart host`);
+    assert.match(shells[name], /dashboardChartHost/, `${name} must use the shared chart host`);
   }
   assert.match(shells['hinata-shell.js'], /<canvas id="hinataChart"/);
   assert.match(shells['hinata-shell.js'], /<canvas id="hinataDailyChart"/);
@@ -142,9 +163,10 @@ test('Hinata and followers use the same lazy route registry as other tabs', () =
   assert.match(sharedRoute, /const VIEW_IDS = \['currentView', 'historyView', \.\.\.Object\.values\(LAZY_VIEWS\)/);
 });
 
-test('shared feature CSS owns generic SVG and numeric-table primitives', () => {
+test('shared feature CSS owns generic chart-host and numeric-table primitives', () => {
   assert.match(sharedCss, /\.shared-svg-chart\s*\{/);
-  assert.match(sharedCss, /\.shared-svg-chart svg\s*\{/);
+  assert.match(sharedCss, /\.shared-svg-chart :is\(svg, canvas\)/);
+  assert.match(sharedCss, /\.shared-dashboard-canvas/);
   assert.match(sharedCss, /\.shared-numeric-table th/);
   assert.match(sharedCss, /font-variant-numeric:\s*tabular-nums/);
   for (const emptyClass of ['apple-rank-empty', 'amazon-rank-empty', 'followers-empty', 'spotify-trend-empty']) {

@@ -56,23 +56,14 @@
   white-space: nowrap;
 }
 
-.spotify-trend-svg {
-  display: block;
+.spotify-trend-scroll,
+.spotify-trend-canvas {
   width: 100%;
   min-width: 0;
-  max-width: 100%;
-  height: auto;
-  aspect-ratio: 960 / 340;
-  overflow: visible;
 }
 
-.spotify-trend-line {
-  stroke: var(--spotify-trend-color);
-}
-
-.spotify-trend-point {
-  fill: var(--spotify-trend-color);
-  stroke: var(--card, #fff);
+.spotify-trend-canvas {
+  display: block;
 }
 
 .spotify-trend-empty {

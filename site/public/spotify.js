@@ -1,15 +1,19 @@
 import {
   appendEmptyState,
   byId as element,
-  evenlySpacedIndexes,
   fullDate as formatDate,
   integerFormat as numberFormat,
   safeInteger as integer,
   setNotice as setSharedNotice,
   shortDate,
   signedInteger,
-  svgElement,
 } from './dashboard-ui-common.js?v=20260930.1';
+import {
+  dashboardTickIndexes,
+  drawDashboardGrid,
+  drawDashboardLine,
+  prepareDashboardCanvas,
+} from './dashboard-chart-canvas.js?v=20261001.1';
 
 let selectedArtistKey = 'sakurazaka46';
 const TREND_ARTIST_LIMIT = 10;
@@ -26,6 +30,8 @@ const compactNumberFormat = new Intl.NumberFormat('ja-JP', {
 });
 let requestSequence = 0;
 let readModelPromise = null;
+let latestCharts = null;
+let resizeTimer = 0;
 
 const setNotice = (message = '', error = false) => setSharedNotice('spotifyNotice', message, error);
 const formatTrendDate = (value) => shortDate(value, '');
@@ -71,9 +77,7 @@ export function selectTrendSeriesByLatestMetric(seriesList = [], metricKey, limi
   for (const series of seriesList) {
     for (const point of Array.isArray(series?.points) ? series.points : []) {
       const snapshotDate = String(point?.snapshot_date || '');
-      if (integer(point?.[metricKey]) != null && snapshotDate > latestSnapshotDate) {
-        latestSnapshotDate = snapshotDate;
-      }
+      if (integer(point?.[metricKey]) != null && snapshotDate > latestSnapshotDate) latestSnapshotDate = snapshotDate;
     }
   }
   if (!latestSnapshotDate) return [];
@@ -90,27 +94,35 @@ export function selectTrendSeriesByLatestMetric(seriesList = [], metricKey, limi
   return selected.map(({ series }) => series);
 }
 
-function xAxis(dates, margin, width) {
-  const plotWidth = width - margin.left - margin.right;
-  const dateIndex = new Map(dates.map((date, index) => [date, index]));
-  const xForIndex = (index) => margin.left + (dates.length <= 1
-    ? plotWidth / 2
-    : index / (dates.length - 1) * plotWidth);
-  const xTicks = evenlySpacedIndexes(dates.length, 5);
-  return { dateIndex, xForIndex, xTicks };
+function trendFrame(container, ariaLabel) {
+  const chart = document.createElement('section');
+  chart.className = 'spotify-trend-series spotify-trend-combined';
+  const legend = document.createElement('div');
+  legend.className = 'spotify-trend-legend';
+  const scroll = document.createElement('div');
+  scroll.className = 'spotify-trend-scroll chart-fit';
+  const canvas = document.createElement('canvas');
+  canvas.className = 'spotify-trend-canvas shared-dashboard-canvas';
+  canvas.setAttribute('role', 'img');
+  canvas.setAttribute('aria-label', ariaLabel);
+  scroll.append(canvas);
+  chart.append(legend, scroll);
+  container.append(chart);
+  return { chart, legend, canvas };
 }
 
-function appendDateTicks(svg, dates, axis, height) {
-  for (const index of axis.xTicks) {
-    const label = svgElement('text', {
-      x: axis.xForIndex(index),
-      y: height - 12,
-      'text-anchor': index === 0 ? 'start' : index === dates.length - 1 ? 'end' : 'middle',
-      class: 'spotify-trend-axis-label',
-    });
-    label.textContent = formatTrendDate(dates[index]);
-    svg.append(label);
-  }
+function legendItem(artistName, latestText, color) {
+  const item = document.createElement('span');
+  item.className = 'spotify-trend-legend-item';
+  item.style.setProperty('--spotify-trend-color', color);
+  const name = document.createElement('span');
+  name.className = 'spotify-trend-name';
+  name.textContent = artistName;
+  const latest = document.createElement('strong');
+  latest.className = 'spotify-trend-latest';
+  latest.textContent = latestText;
+  item.append(name, latest);
+  return item;
 }
 
 function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel, maxSeries = null }) {
@@ -137,124 +149,76 @@ function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel, maxSe
   if (yMin < 0) yMin = Math.floor(yMin * 1.08);
   if (yMax > 0) yMax = Math.ceil(yMax * 1.08);
   const yRange = Math.max(1, yMax - yMin);
-  const width = 960;
-  const height = 340;
-  const margin = { left: 72, right: 22, top: 18, bottom: 40 };
-  const plotHeight = height - margin.top - margin.bottom;
-  const yForValue = (value) => margin.top + (yMax - value) / yRange * plotHeight;
-  const axis = xAxis(dates, margin, width);
-
-  const chart = document.createElement('section');
-  chart.className = 'spotify-trend-series spotify-trend-combined';
-  const legend = document.createElement('div');
-  legend.className = 'spotify-trend-legend';
+  const { legend, canvas } = trendFrame(container, ariaLabel);
   legend.setAttribute('aria-label', 'アイドル凡例と最新の再生数前日比');
   seriesList.forEach(({ artistName, points }, seriesIndex) => {
     const color = TREND_COLORS[seriesIndex % TREND_COLORS.length];
     const latest = [...points].reverse().find((point) => integer(point?.[metricKey]) != null);
-    const item = document.createElement('span');
-    item.className = 'spotify-trend-legend-item';
-    item.style.setProperty('--spotify-trend-color', color);
-    const name = document.createElement('span');
-    name.className = 'spotify-trend-name';
-    name.textContent = artistName;
-    const latestValue = document.createElement('strong');
-    latestValue.className = 'spotify-trend-latest';
-    latestValue.textContent = signedInteger(latest?.[metricKey]);
-    item.append(name, latestValue);
-    legend.append(item);
+    legend.append(legendItem(artistName, signedInteger(latest?.[metricKey]), color));
   });
 
-  const scroll = document.createElement('div');
-  scroll.className = 'spotify-trend-scroll chart-fit';
-  const svg = svgElement('svg', {
-    viewBox: `0 0 ${width} ${height}`,
-    role: 'img',
-    'aria-label': ariaLabel,
-    class: 'spotify-trend-svg',
+  const measuredWidth = Math.max(1, Math.round(canvas.parentElement?.getBoundingClientRect?.().width || 960));
+  const targetHeight = measuredWidth < 520 ? 300 : Math.max(300, Math.min(380, Math.round(measuredWidth * .42)));
+  const prepared = prepareDashboardCanvas(canvas, {
+    minimumWidth: 1,
+    minimumHeight: 1,
+    fallbackWidth: measuredWidth,
+    height: targetHeight,
   });
-  for (let tick = 0; tick <= 4; tick += 1) {
-    const value = yMax - yRange * tick / 4;
-    const y = yForValue(value);
-    svg.append(svgElement('line', {
-      x1: margin.left,
-      y1: y,
-      x2: width - margin.right,
-      y2: y,
-      class: 'spotify-trend-grid',
-    }));
-    const label = svgElement('text', {
-      x: margin.left - 8,
-      y: y + 4,
-      'text-anchor': 'end',
-      class: 'spotify-trend-axis-label',
-    });
-    label.textContent = compactNumberFormat.format(Math.round(value));
-    svg.append(label);
+  if (!prepared) return;
+  const { context, width, height } = prepared;
+  const margin = { left: 72, right: 22, top: 18, bottom: 40 };
+  const plotWidth = Math.max(1, width - margin.left - margin.right);
+  const plotHeight = Math.max(1, height - margin.top - margin.bottom);
+  const dateIndex = new Map(dates.map((date, index) => [date, index]));
+  const xFor = (date) => margin.left + (dates.length <= 1
+    ? plotWidth / 2
+    : (dateIndex.get(date) || 0) / (dates.length - 1) * plotWidth);
+  const yFor = (value) => margin.top + (yMax - value) / yRange * plotHeight;
+
+  context.font = '500 11px system-ui';
+  context.fillStyle = '#667287';
+  context.textBaseline = 'middle';
+  for (const { ratio, y } of drawDashboardGrid(context, {
+    left: margin.left,
+    right: margin.right,
+    top: margin.top,
+    height: plotHeight,
+    width,
+  })) {
+    const value = yMax - yRange * ratio;
+    context.textAlign = 'right';
+    context.fillText(compactNumberFormat.format(Math.round(value)), margin.left - 8, y);
   }
-  appendDateTicks(svg, dates, axis, height);
+  context.textBaseline = 'alphabetic';
+  for (const index of dashboardTickIndexes(dates.length, 5)) {
+    context.textAlign = index === 0 ? 'left' : index === dates.length - 1 ? 'right' : 'center';
+    context.fillText(formatTrendDate(dates[index]), xFor(dates[index]), height - 10);
+  }
 
-  seriesList.forEach(({ artistName, points }, seriesIndex) => {
+  seriesList.forEach(({ points }, seriesIndex) => {
     const color = TREND_COLORS[seriesIndex % TREND_COLORS.length];
     const byDate = new Map(points.map((point) => [String(point.snapshot_date), point]));
-    const plotted = [];
-    let pathData = '';
-    let drawing = false;
-    for (const date of dates) {
-      const value = integer(byDate.get(date)?.[metricKey]);
-      if (value == null) {
-        drawing = false;
-        continue;
-      }
-      const x = axis.xForIndex(axis.dateIndex.get(date));
-      const y = yForValue(value);
-      plotted.push({ x, y });
-      pathData += `${drawing ? ' L' : ' M'} ${x.toFixed(2)} ${y.toFixed(2)}`;
-      drawing = true;
-    }
-    if (plotted.length > 1 && pathData) {
-      const path = svgElement('path', { d: pathData.trim(), class: 'spotify-trend-line' });
-      path.style.setProperty('--spotify-trend-color', color);
-      const title = svgElement('title');
-      title.textContent = artistName;
-      path.append(title);
-      svg.append(path);
-    } else if (plotted.length === 1) {
-      const [{ x, y }] = plotted;
-      const marker = svgElement('line', {
-        x1: x - 5,
-        x2: x + 5,
-        y1: y,
-        y2: y,
-        class: 'spotify-trend-line spotify-single-point-line',
-      });
-      marker.style.setProperty('--spotify-trend-color', color);
-      const title = svgElement('title');
-      title.textContent = `${artistName}（取得済み1点）`;
-      marker.append(title);
-      svg.append(marker);
-    }
-    for (const point of points) {
-      const value = integer(point?.[metricKey]);
-      const index = axis.dateIndex.get(String(point.snapshot_date));
-      if (value == null || index == null) continue;
-      const circle = svgElement('circle', {
-        cx: axis.xForIndex(index),
-        cy: yForValue(value),
-        r: plotted.length === 1 ? 3.4 : 2.4,
-        class: 'spotify-trend-point',
-      });
-      circle.style.setProperty('--spotify-trend-color', color);
-      const title = svgElement('title');
-      title.textContent = `${artistName} ${formatDate(point.snapshot_date)} ${signedInteger(value)}`;
-      circle.append(title);
-      svg.append(circle);
+    const rows = dates.map((date) => ({ date, value: integer(byDate.get(date)?.[metricKey]) }));
+    const plotted = rows.filter((row) => row.value != null);
+    drawDashboardLine(context, rows, {
+      x: (row) => xFor(row.date),
+      y: (value) => yFor(value),
+      value: (row) => row.value,
+      valid: (value) => value != null,
+      strokeStyle: color,
+      lineWidth: 2,
+    });
+    if (plotted.length === 1) {
+      const [row] = plotted;
+      context.save();
+      context.fillStyle = color;
+      context.beginPath();
+      context.arc(xFor(row.date), yFor(row.value), 3, 0, Math.PI * 2);
+      context.fill();
+      context.restore();
     }
   });
-
-  scroll.append(svg);
-  chart.append(legend, scroll);
-  container.append(chart);
 }
 
 export function normalizeArtistRankSeries(chart = {}, trend = {}) {
@@ -302,108 +266,82 @@ function renderArtistRankChart(chart = {}, trend = {}) {
   }
 
   const maxRank = Math.min(200, Math.max(20, Math.ceil(Math.max(...ranks) / 10) * 10));
-  const width = 960;
-  const height = 340;
-  const margin = { left: 72, right: 22, top: 18, bottom: 40 };
-  const plotHeight = height - margin.top - margin.bottom;
-  const yForRank = (rank) => margin.top + (rank - 1) / Math.max(1, maxRank - 1) * plotHeight;
-  const axis = xAxis(dates, margin, width);
-  const rankTicks = [...new Set([1, ...[0.25, 0.5, 0.75, 1]
-    .map((ratio) => Math.max(1, Math.round(maxRank * ratio)))])].sort((a, b) => a - b);
-
-  const chartElement = document.createElement('section');
-  chartElement.className = 'spotify-trend-series spotify-trend-combined';
-  const legend = document.createElement('div');
-  legend.className = 'spotify-trend-legend';
+  const { legend, canvas } = trendFrame(container, 'Spotify日本 Daily Top Artist の順位推移。1位が上。');
   legend.setAttribute('aria-label', 'アーティスト凡例と最新順位');
   for (const series of seriesList) {
     const latest = series.points.at(-1);
     const color = TREND_COLORS[series.colorIndex % TREND_COLORS.length];
-    const item = document.createElement('span');
-    item.className = 'spotify-trend-legend-item';
-    item.style.setProperty('--spotify-trend-color', color);
-    const name = document.createElement('span');
-    name.className = 'spotify-trend-name';
-    name.textContent = series.artistName;
-    const latestValue = document.createElement('strong');
-    latestValue.className = 'spotify-trend-latest';
-    latestValue.textContent = latest ? `${numberFormat.format(latest.rank)}位` : '-';
-    item.append(name, latestValue);
-    legend.append(item);
+    legend.append(legendItem(series.artistName, latest ? `${numberFormat.format(latest.rank)}位` : '-', color));
   }
 
-  const scroll = document.createElement('div');
-  scroll.className = 'spotify-trend-scroll chart-fit';
-  const svg = svgElement('svg', {
-    viewBox: `0 0 ${width} ${height}`,
-    role: 'img',
-    'aria-label': 'Spotify日本 Daily Top Artist の順位推移。1位が上。',
-    class: 'spotify-trend-svg',
+  const measuredWidth = Math.max(1, Math.round(canvas.parentElement?.getBoundingClientRect?.().width || 960));
+  const targetHeight = measuredWidth < 520 ? 300 : Math.max(300, Math.min(380, Math.round(measuredWidth * .42)));
+  const prepared = prepareDashboardCanvas(canvas, {
+    minimumWidth: 1,
+    minimumHeight: 1,
+    fallbackWidth: measuredWidth,
+    height: targetHeight,
   });
-  for (const rank of rankTicks) {
-    const y = yForRank(rank);
-    svg.append(svgElement('line', {
-      x1: margin.left,
-      y1: y,
-      x2: width - margin.right,
-      y2: y,
-      class: 'spotify-trend-grid',
-    }));
-    const label = svgElement('text', {
-      x: margin.left - 8,
-      y: y + 4,
-      'text-anchor': 'end',
-      class: 'spotify-trend-axis-label',
-    });
-    label.textContent = `${numberFormat.format(rank)}位`;
-    svg.append(label);
+  if (!prepared) return;
+  const { context, width, height } = prepared;
+  const margin = { left: 72, right: 22, top: 18, bottom: 40 };
+  const plotWidth = Math.max(1, width - margin.left - margin.right);
+  const plotHeight = Math.max(1, height - margin.top - margin.bottom);
+  const dateIndex = new Map(dates.map((date, index) => [date, index]));
+  const xFor = (date) => margin.left + (dates.length <= 1
+    ? plotWidth / 2
+    : (dateIndex.get(date) || 0) / (dates.length - 1) * plotWidth);
+  const yFor = (rank) => margin.top + (rank - 1) / Math.max(1, maxRank - 1) * plotHeight;
+
+  context.font = '500 11px system-ui';
+  context.fillStyle = '#667287';
+  context.textBaseline = 'middle';
+  for (const { ratio, y } of drawDashboardGrid(context, {
+    left: margin.left,
+    right: margin.right,
+    top: margin.top,
+    height: plotHeight,
+    width,
+  })) {
+    const rank = Math.max(1, Math.round(1 + (maxRank - 1) * ratio));
+    context.textAlign = 'right';
+    context.fillText(`${numberFormat.format(rank)}位`, margin.left - 8, y);
   }
-  appendDateTicks(svg, dates, axis, height);
+  context.textBaseline = 'alphabetic';
+  for (const index of dashboardTickIndexes(dates.length, 5)) {
+    context.textAlign = index === 0 ? 'left' : index === dates.length - 1 ? 'right' : 'center';
+    context.fillText(formatTrendDate(dates[index]), xFor(dates[index]), height - 10);
+  }
 
   for (const series of seriesList) {
     const color = TREND_COLORS[series.colorIndex % TREND_COLORS.length];
     const byDate = new Map(series.points.map((point) => [point.chart_date, point]));
-    let pathData = '';
-    let drawing = false;
-    for (const date of dates) {
-      const point = byDate.get(date);
-      if (!point) {
-        drawing = false;
-        continue;
-      }
-      const x = axis.xForIndex(axis.dateIndex.get(date));
-      const y = yForRank(point.rank);
-      pathData += `${drawing ? ' L' : ' M'} ${x.toFixed(2)} ${y.toFixed(2)}`;
-      drawing = true;
-    }
-    if (pathData) {
-      const path = svgElement('path', { d: pathData.trim(), class: 'spotify-trend-line' });
-      path.style.setProperty('--spotify-trend-color', color);
-      const title = svgElement('title');
-      title.textContent = series.artistName;
-      path.append(title);
-      svg.append(path);
-    }
-    for (const point of series.points) {
-      const index = axis.dateIndex.get(point.chart_date);
-      if (index == null) continue;
-      const circle = svgElement('circle', {
-        cx: axis.xForIndex(index),
-        cy: yForRank(point.rank),
-        r: 2.4,
-        class: 'spotify-trend-point',
-      });
-      circle.style.setProperty('--spotify-trend-color', color);
-      const title = svgElement('title');
-      title.textContent = `${series.artistName} ${formatDate(point.chart_date)} ${numberFormat.format(point.rank)}位`;
-      circle.append(title);
-      svg.append(circle);
-    }
+    const rows = dates.map((date) => ({ date, rank: integer(byDate.get(date)?.rank) }));
+    drawDashboardLine(context, rows, {
+      x: (row) => xFor(row.date),
+      y: (rank) => yFor(rank),
+      value: (row) => row.rank,
+      valid: (rank) => rank != null,
+      strokeStyle: color,
+      lineWidth: 2,
+    });
   }
+}
 
-  scroll.append(svg);
-  chartElement.append(legend, scroll);
-  container.append(chartElement);
+function renderCharts(trend, artistChart) {
+  renderTrendChart(trend, {
+    containerId: 'spotifyTrendCharts',
+    metricKey: 'total_delta',
+    ariaLabel: '最新日の全曲合計再生数前日比が大きい女性アイドル上位10組の推移',
+    maxSeries: TREND_ARTIST_LIMIT,
+  });
+  renderTrendChart(trend, {
+    containerId: 'spotifyTop10YearTrendCharts',
+    metricKey: 'top10_year_delta',
+    ariaLabel: '今年リリース曲のうち再生数前日比上位10曲の合計が最新日に大きい女性アイドル上位10組の推移',
+    maxSeries: TREND_ARTIST_LIMIT,
+  });
+  renderArtistRankChart(artistChart, trend);
 }
 
 function render(payload, trend, artistChart) {
@@ -422,19 +360,8 @@ function render(payload, trend, artistChart) {
   if (deltaLabel) deltaLabel.textContent = `${artistName}の再生数前日比合計`;
   document.querySelectorAll('[data-spotify-artist]').forEach((button) => button.classList.toggle('active', button.dataset.spotifyArtist === selectedArtistKey));
 
-  renderTrendChart(trend, {
-    containerId: 'spotifyTrendCharts',
-    metricKey: 'total_delta',
-    ariaLabel: '最新日の全曲合計再生数前日比が大きい女性アイドル上位10組の推移',
-    maxSeries: TREND_ARTIST_LIMIT,
-  });
-  renderTrendChart(trend, {
-    containerId: 'spotifyTop10YearTrendCharts',
-    metricKey: 'top10_year_delta',
-    ariaLabel: '今年リリース曲のうち再生数前日比上位10曲の合計が最新日に大きい女性アイドル上位10組の推移',
-    maxSeries: TREND_ARTIST_LIMIT,
-  });
-  renderArtistRankChart(artistChart, trend);
+  latestCharts = { trend, artistChart };
+  renderCharts(trend, artistChart);
   renderRows(payload || {});
 
   if (!payload?.track_count) {
@@ -482,3 +409,9 @@ globalThis.document?.querySelectorAll('[data-spotify-artist]').forEach((button) 
   selectedArtistKey = button.dataset.spotifyArtist;
   loadSpotifyView();
 }));
+
+globalThis.window?.addEventListener('resize', () => {
+  if (!latestCharts) return;
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => renderCharts(latestCharts.trend, latestCharts.artistChart), 220);
+}, { passive: true });

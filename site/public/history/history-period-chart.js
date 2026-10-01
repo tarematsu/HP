@@ -4,6 +4,11 @@ import {
   finiteNumber as finite,
   integerFormat as integer,
 } from '../dashboard-ui-common.js?v=20260930.1';
+import {
+  drawDashboardGrid,
+  drawDashboardLine,
+  prepareDashboardCanvas,
+} from '../dashboard-chart-canvas.js?v=20261001.1';
 
 const SUMMARY_MODES = new Set(['daily', 'weekly', 'monthly']);
 
@@ -17,9 +22,7 @@ let chartModel = null;
 function activeMode() {
   const active = document.querySelector('#modeTabs button.active[data-mode]');
   const routeMode = String(active?.dataset?.mode || latestMode || '');
-  if (routeMode === 'daily' && byId('historyPastWeekMode')?.checked) {
-    return 'weekly';
-  }
+  if (routeMode === 'daily' && byId('historyPastWeekMode')?.checked) return 'weekly';
   return routeMode;
 }
 
@@ -28,21 +31,6 @@ function scheduleDraw(delay = 0) {
   drawTimer = setTimeout(() => {
     requestAnimationFrame(() => requestAnimationFrame(draw));
   }, delay);
-}
-
-function prepareCanvas() {
-  const canvas = byId('chart');
-  if (!canvas) return null;
-  const context = canvas.getContext('2d');
-  if (!context) return null;
-  const width = Math.max(320, Math.round(canvas.clientWidth || 960));
-  const height = Math.max(260, Math.round(canvas.clientHeight || 360));
-  const ratio = Math.min(2, window.devicePixelRatio || 1);
-  canvas.width = Math.round(width * ratio);
-  canvas.height = Math.round(height * ratio);
-  context.setTransform(ratio, 0, 0, ratio, 0, 0);
-  context.clearRect(0, 0, width, height);
-  return { canvas, context, width, height };
 }
 
 function listenerBounds(values) {
@@ -118,9 +106,15 @@ function draw() {
       .some((key) => finite(row?.[key]) != null));
   if (!rows.length) return;
 
-  const prepared = prepareCanvas();
+  const canvas = byId('chart');
+  const prepared = prepareDashboardCanvas(canvas, {
+    minimumWidth: 320,
+    minimumHeight: 260,
+    fallbackWidth: 960,
+    fallbackHeight: 360,
+  });
   if (!prepared) return;
-  const { canvas, context, width, height } = prepared;
+  const { context, width, height } = prepared;
   const area = { left: 58, right: 70, top: 18, bottom: 42 };
   area.width = Math.max(1, width - area.left - area.right);
   area.height = Math.max(1, height - area.top - area.bottom);
@@ -145,17 +139,15 @@ function draw() {
   const streamY = (value) => area.top + area.height
     - Math.max(0, Number(value) || 0) / streamCeiling * area.height;
 
-  context.strokeStyle = 'rgba(31,45,68,.12)';
   context.fillStyle = cssColor('--muted', '#667287');
-  context.lineWidth = 1;
   context.font = '11px system-ui';
-  for (let index = 0; index <= 4; index += 1) {
-    const ratio = index / 4;
-    const y = area.top + area.height * ratio;
-    context.beginPath();
-    context.moveTo(area.left, y);
-    context.lineTo(width - area.right, y);
-    context.stroke();
+  for (const { ratio, y } of drawDashboardGrid(context, {
+    left: area.left,
+    right: area.right,
+    top: area.top,
+    height: area.height,
+    width,
+  })) {
     if (listenerValues.length) {
       context.textAlign = 'right';
       const value = lBounds.maximum - lBounds.range * ratio;
@@ -204,42 +196,27 @@ function draw() {
     context.restore();
   }
 
-  const drawLine = (series) => {
-    if (!rows.some((row) => finite(row?.[series.key]) != null)) return;
-    context.save();
-    context.strokeStyle = series.color;
-    context.fillStyle = series.color;
-    context.lineWidth = series.width;
-    context.beginPath();
-    let open = false;
-    let lineCount = 0;
-    const points = [];
-    rows.forEach((row, index) => {
-      const value = finite(row?.[series.key]);
-      if (value == null) {
-        open = false;
-        return;
-      }
-      const point = [positions[index], listenerY(value)];
-      points.push(point);
-      if (!open) context.moveTo(point[0], point[1]);
-      else {
-        context.lineTo(point[0], point[1]);
-        lineCount += 1;
-      }
-      open = true;
+  listenerSeries.forEach((series) => {
+    const pointCount = drawDashboardLine(context, rows, {
+      x: (_row, index) => positions[index],
+      y: (value) => listenerY(value),
+      value: (row) => finite(row?.[series.key]),
+      valid: (value) => value != null,
+      strokeStyle: series.color,
+      lineWidth: series.width,
     });
-    context.stroke();
-    if (mode === 'daily' && lineCount === 0) {
-      for (const [x, y] of points) {
-        context.beginPath();
-        context.arc(x, y, 3, 0, Math.PI * 2);
-        context.fill();
-      }
-    }
+    const lineCount = Math.max(0, pointCount - 1);
+    if (!(mode === 'daily' && lineCount === 0 && pointCount === 1)) return;
+    const index = rows.findIndex((row) => finite(row?.[series.key]) != null);
+    if (index < 0) return;
+    const value = finite(rows[index]?.[series.key]);
+    context.save();
+    context.fillStyle = series.color;
+    context.beginPath();
+    context.arc(positions[index], listenerY(value), 3, 0, Math.PI * 2);
+    context.fill();
     context.restore();
-  };
-  listenerSeries.forEach(drawLine);
+  });
 
   const detail = byId('chartDetail');
   if (detail) {

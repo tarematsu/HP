@@ -209,10 +209,11 @@ test('Spotify API reports missing D1 only on the producer path', async () => {
   assert.equal(missing.status, 503);
 });
 
-test('Spotify tab uses only the materialized Spotify read model for its three graphs', () => {
+test('Spotify tab uses only the materialized Spotify read model and the shared dashboard canvas renderer for its three client graphs', () => {
   const shell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
   const styles = readFileSync(new URL('../public/spotify.css', import.meta.url), 'utf8');
+  const sharedCanvas = readFileSync(new URL('../public/dashboard-chart-canvas.js', import.meta.url), 'utf8');
   const sharedLayout = readFileSync(new URL('../public/pages-layout.css', import.meta.url), 'utf8');
   const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
   const dashboard = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
@@ -243,13 +244,22 @@ test('Spotify tab uses only the materialized Spotify read model for its three gr
   assert.equal((runtime.match(/maxSeries: TREND_ARTIST_LIMIT/g) || []).length, 2);
   assert.match(runtime, /renderArtistRankChart/);
   assert.match(runtime, /model\?\.artist_chart/);
-  assert.match(runtime, /latestValue\.textContent = latest \? `\$\{numberFormat\.format\(latest\.rank\)\}位` : '-'/);
+  assert.match(runtime, /legendItem\(series\.artistName, latest \? `\$\{numberFormat\.format\(latest\.rank\)\}位` : '-'/);
   assert.match(runtime, /spotify-trend-scroll chart-fit/);
+  assert.match(runtime, /dashboard-chart-canvas\.js\?v=20261001\.1/);
+  assert.match(runtime, /drawDashboardGrid/);
+  assert.match(runtime, /drawDashboardLine/);
+  assert.match(runtime, /prepareDashboardCanvas/);
+  assert.doesNotMatch(runtime, /svgElement|createElementNS/);
   assert.match(runtime, /fetch\('\/api\/spotify-playcounts'\)/);
   assert.doesNotMatch(runtime, /homepanel-cloud|SPOTIFY_ARTIST_CHART_URL|fetchArtistChart/);
 
+  assert.match(sharedCanvas, /export function prepareDashboardCanvas/);
+  assert.match(sharedCanvas, /export function drawDashboardGrid/);
+  assert.match(sharedCanvas, /export function drawDashboardLine/);
   assert.match(styles, /\.spotify-trend-legend/);
-  assert.match(styles, /aspect-ratio: 960 \/ 340/);
+  assert.match(styles, /\.spotify-trend-canvas/);
+  assert.doesNotMatch(styles, /aspect-ratio:\s*960 \/ 340/);
   assert.match(sharedLayout, /\.chart-fit > :is\(svg, canvas\)[\s\S]*min-width:\s*0 !important/);
   assert.match(tabs, /import\('\/spotify-shell\.js\?v=20260929\.1'\)/);
   assert.match(tabs, /import\('\/spotify\.js\?v=20260929\.1'\)/);

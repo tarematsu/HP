@@ -13,11 +13,11 @@ test('Spotify playcount graphs select and render latest-metric order at source',
   assert.doesNotMatch(shell, /sortLegendByLatestValue|legendNumericValue|MutationObserver/);
 });
 
-test('Spotify renderer emits single-point markers without DOM repair', () => {
+test('Spotify renderer emits single-point markers directly on the shared canvas', () => {
   assert.match(runtime, /plotted\.length === 1/);
-  assert.match(runtime, /spotify-single-point-line/);
-  assert.match(runtime, /r: plotted\.length === 1 \? 3\.4 : 2\.4/);
-  assert.match(runtime, /取得済み1点/);
+  assert.match(runtime, /drawDashboardLine/);
+  assert.match(runtime, /context\.arc\(xFor\(row\.date\), yFor\(row\.value\), 3/);
+  assert.doesNotMatch(runtime, /spotify-single-point-line|createElementNS|svgElement/);
   assert.doesNotMatch(shell, /showSinglePointSeries|artistNameFromPoint|MutationObserver/);
 });
 

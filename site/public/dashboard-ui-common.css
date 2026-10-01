@@ -21,11 +21,15 @@
   touch-action: manipulation;
 }
 
-.shared-svg-chart svg {
+.shared-svg-chart :is(svg, canvas),
+.shared-dashboard-canvas {
   display: block;
   width: 100%;
   height: auto;
   min-width: 0;
+}
+
+.shared-svg-chart svg {
   min-height: var(--shared-chart-min-height, 220px);
 }
 
@@ -57,7 +61,7 @@
   white-space: nowrap;
 }
 
-/* Feature renderers keep their semantic classes; geometry and typography live here. */
+/* SVG-only feature renderers retain semantic classes; Canvas charts use dashboard-chart-canvas.js. */
 :is(
   .shared-rank-grid,
   .amazon-rank-grid,
@@ -221,11 +225,7 @@
   background: rgba(31, 45, 68, .055);
 }
 
-/*
- * SVG charts use fixed 960-1000px viewBoxes, while the canonical current/history/
- * first-week canvas charts draw at CSS-pixel width. Scale SVG labels and points at
- * narrower viewports so both rendering paths keep roughly the same physical size.
- */
+/* Remaining fixed-viewBox SVG charts scale labels and points on narrow screens. */
 @media (max-width: 760px) {
   :root {
     --dashboard-copy-size: 10px;
@@ -235,32 +235,8 @@
   }
 }
 
-@media (max-width: 640px) {
-  :root {
-    --dashboard-svg-visual-scale: 1.7;
-  }
-}
-
-@media (max-width: 560px) {
-  :root {
-    --dashboard-svg-visual-scale: 1.95;
-  }
-}
-
-@media (max-width: 480px) {
-  :root {
-    --dashboard-svg-visual-scale: 2.25;
-  }
-}
-
-@media (max-width: 400px) {
-  :root {
-    --dashboard-svg-visual-scale: 2.7;
-  }
-}
-
-@media (max-width: 340px) {
-  :root {
-    --dashboard-svg-visual-scale: 3.15;
-  }
-}
+@media (max-width: 640px) { :root { --dashboard-svg-visual-scale: 1.7; } }
+@media (max-width: 560px) { :root { --dashboard-svg-visual-scale: 1.95; } }
+@media (max-width: 480px) { :root { --dashboard-svg-visual-scale: 2.25; } }
+@media (max-width: 400px) { :root { --dashboard-svg-visual-scale: 2.7; } }
+@media (max-width: 340px) { :root { --dashboard-svg-visual-scale: 3.15; } }
