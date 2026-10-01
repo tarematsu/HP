@@ -154,13 +154,12 @@ function analyzeRows(requests, rows) {
     if (!matches.length) continue;
     const spotifyIds = new Set(matches.map((row) => text(row?.spotify_id)).filter(Boolean));
     const isrcs = new Set(matches.map((row) => normalizedIsrc(row?.isrc)).filter(Boolean));
-    if (spotifyIds.size > 1 || isrcs.size > 1) {
-      blocked.add(key);
-      continue;
-    }
     const spotifyId = spotifyIds.size === 1 ? [...spotifyIds][0] : null;
     const isrc = isrcs.size === 1 ? [...isrcs][0] : null;
-    if (!spotifyId && !isrc) continue;
+    if (!spotifyId && !isrc) {
+      if (spotifyIds.size > 1 || isrcs.size > 1) blocked.add(key);
+      continue;
+    }
 
     const compatible = matches.filter((row) => {
       const rowSpotify = text(row?.spotify_id);
