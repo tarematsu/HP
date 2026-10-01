@@ -12,6 +12,8 @@ const workerRoot = resolve(import.meta.dirname, '..');
 const wranglerScript = resolve(workerRoot, 'node_modules/wrangler/bin/wrangler.js');
 const RUNTIME_MAINTENANCE_COLLECTOR_ID = 'other-cron';
 const RUNTIME_MAINTENANCE_MIN_INTERVAL_MS = 10 * 60_000;
+const OFFLINE_REBUILD_COLLECTOR_ID = 'minute-offline-rebuild-actions';
+const OFFLINE_REBUILD_MIN_INTERVAL_MS = 4 * 60 * 60_000;
 const databases = {
   buddies: process.env.BUDDIES_DATABASE_NAME || 'stationhead-buddies',
   minute: process.env.FACTS_DATABASE_NAME || 'stationhead-minute',
@@ -74,10 +76,10 @@ function inboxRecoveryOptions(options, startedAt) {
   };
 }
 
-async function loadMaintenanceStatus(db) {
+async function loadMaintenanceStatus(db, collectorId = RUNTIME_MAINTENANCE_COLLECTOR_ID) {
   if (!db?.prepare) return null;
   const statement = db.prepare(`SELECT status,last_attempt_at,last_success_at
-    FROM sh_collector_status WHERE collector_id=? LIMIT 1`).bind(RUNTIME_MAINTENANCE_COLLECTOR_ID);
+    FROM sh_collector_status WHERE collector_id=? LIMIT 1`).bind(collectorId);
   if (typeof statement?.first !== 'function') return null;
   return statement.first();
 }
@@ -96,6 +98,7 @@ function recentSuccessfulMaintenance(row, startedAt, minimumIntervalMs) {
 }
 
 async function writeMaintenanceStatus(db, {
+  collectorId = RUNTIME_MAINTENANCE_COLLECTOR_ID,
   status,
   attemptAt,
   successAt = null,
@@ -126,7 +129,7 @@ async function writeMaintenanceStatus(db, {
       failure_hint=excluded.failure_hint,
       updated_at=excluded.updated_at
   `).bind(
-    RUNTIME_MAINTENANCE_COLLECTOR_ID,
+    collectorId,
     status,
     attemptAt,
     successAt,
@@ -137,6 +140,23 @@ async function writeMaintenanceStatus(db, {
     failureHint,
     updatedAt,
   ).run();
+}
+
+function skippedOfflineRebuildSummary() {
+  return {
+    event: 'offline_minute_rebuild_summary',
+    skipped: true,
+    reason: 'rebuild-cadence',
+    passes: 0,
+    processed: 0,
+    processed_rebuild: 0,
+    processed_live: 0,
+    failed: 0,
+    dead: 0,
+    skipped_budget: 0,
+    duration_ms: 0,
+    budget_exhausted: false,
+  };
 }
 
 export async function runRuntimeOfflineMaintenanceActions(options = {}) {
@@ -161,7 +181,20 @@ export async function runRuntimeOfflineMaintenanceActions(options = {}) {
     0,
     30 * 60_000,
   );
+  const rebuildMinimumIntervalMs = positiveInteger(
+    options.rebuildMinimumIntervalMs ?? process.env.OFFLINE_REBUILD_MIN_INTERVAL_MS,
+    OFFLINE_REBUILD_MIN_INTERVAL_MS,
+    0,
+    24 * 60 * 60_000,
+  );
   const readMaintenanceStatus = options.loadMaintenanceStatus || loadMaintenanceStatus;
+  const readRebuildStatus = options.loadRebuildStatus
+    || ((db) => loadMaintenanceStatus(db, OFFLINE_REBUILD_COLLECTOR_ID));
+  const writeRebuildStatus = options.writeRebuildStatus
+    || ((db, value) => writeMaintenanceStatus(db, {
+      collectorId: OFFLINE_REBUILD_COLLECTOR_ID,
+      ...value,
+    }));
   if (minimumIntervalMs > 0 && options.force !== true) {
     const previous = await readMaintenanceStatus(env.OTHER_DB);
     if (recentSuccessfulMaintenance(previous, startedAt, minimumIntervalMs)) {
@@ -198,7 +231,31 @@ export async function runRuntimeOfflineMaintenanceActions(options = {}) {
     ensureTime();
     const rollup = await runRollup(env.BUDDIES_DB, env.OTHER_DB, env.MINUTE_DB, startedAt);
     ensureTime();
-    const rebuilds = await runRebuilds(env, { now: clock });
+
+    let rebuilds;
+    const previousRebuild = rebuildMinimumIntervalMs > 0 && options.forceRebuild !== true
+      ? await readRebuildStatus(env.OTHER_DB)
+      : null;
+    if (rebuildMinimumIntervalMs > 0
+        && options.forceRebuild !== true
+        && recentSuccessfulMaintenance(previousRebuild, startedAt, rebuildMinimumIntervalMs)) {
+      rebuilds = skippedOfflineRebuildSummary();
+    } else {
+      rebuilds = await runRebuilds(env, {
+        now: clock,
+        maxJobs: 1,
+        maxPasses: 1,
+        totalBudgetMs: 60_000,
+      });
+      const rebuildFinishedAt = timestamp(clock, startedAt);
+      await writeRebuildStatus(env.OTHER_DB, {
+        status: 'ok',
+        attemptAt: startedAt,
+        successAt: rebuildFinishedAt,
+        updatedAt: rebuildFinishedAt,
+      });
+    }
+
     ensureTime();
     const retention = await runRetention(env, startedAt);
     const finishedAt = timestamp(clock, startedAt);
