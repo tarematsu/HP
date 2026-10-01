@@ -9,6 +9,7 @@ import {
   dashboardTable,
   mountDashboardShell,
 } from './dashboard-ui-common.js?v=20261001.1';
+import './history/history-table-gaps.js?v=20261002.1';
 
 const controls = dashboardControls({
   id: 'controls',
@@ -34,6 +35,7 @@ const chart = dashboardChartCard({
 });
 
 const dataTable = dashboardTable({
+  className: 'history-data-table',
   headId: 'thead',
   bodyId: 'tbody',
   numeric: false,
