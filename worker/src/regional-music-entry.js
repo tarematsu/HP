@@ -285,6 +285,9 @@ async function ensureRegionalMusicAttemptRecorded(env, service, scheduledTime, r
 }
 
 export async function runRegionalMusicQueue(batch, env, fetchImpl = fetch, dependencies = {}) {
+  // Cloudflare passes ExecutionContext as the third queue-handler argument.
+  // Test callers may inject fetch explicitly; runtime context must use global fetch.
+  if (typeof fetchImpl !== 'function') fetchImpl = fetch;
   const collectService = dependencies.collectService || collectRegionalMusicService;
   const publishReadModel = dependencies.publishReadModel || publishRegionalMusicReadModel;
   const completionForRun = dependencies.completionForRun || regionalMusicDailyCompletion;
