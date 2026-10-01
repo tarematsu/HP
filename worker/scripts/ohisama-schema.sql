@@ -79,8 +79,6 @@ CREATE TABLE IF NOT EXISTS sh_track_plays (
 
 CREATE INDEX IF NOT EXISTS idx_sh_track_plays_period
   ON sh_track_plays(period_key DESC, played_at DESC);
-CREATE INDEX IF NOT EXISTS idx_sh_track_plays_track_id
-  ON sh_track_plays(track_id, played_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sh_track_plays_track_key
   ON sh_track_plays(track_key, played_at DESC);
 
@@ -110,8 +108,6 @@ CREATE TABLE IF NOT EXISTS sh_track_like_current (
 
 CREATE INDEX IF NOT EXISTS idx_sh_track_like_current_count
   ON sh_track_like_current(like_count DESC, observed_at DESC);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_sh_track_like_current_track_id
-  ON sh_track_like_current(station_id, track_id);
 
 CREATE TABLE IF NOT EXISTS sh_track_like_observations (
   station_id INTEGER NOT NULL,
@@ -128,5 +124,3 @@ CREATE TABLE IF NOT EXISTS sh_track_like_observations (
 
 CREATE INDEX IF NOT EXISTS idx_sh_track_like_observations_time
   ON sh_track_like_observations(observed_at DESC);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_sh_track_like_observations_track_id
-  ON sh_track_like_observations(station_id, track_id, observed_at);
