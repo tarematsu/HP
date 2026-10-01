@@ -21,28 +21,32 @@ test('all music subscription tabs share one overview-trend-track-playlist skelet
   }
   assert.match(commonShell, /export function musicServiceMeta/);
   assert.match(commonShell, /export function musicServiceSection/);
-  assert.match(commonShell, /export function musicServicePlaylistCard/);
+  assert.match(commonShell, /section-head music-service-section-heading/);
 });
 
-test('music subscription presentation uses one shared responsive style contract', () => {
-  assert.match(commonCss, /\.music-service-view/);
+test('music subscription presentation reuses canonical panels with one small responsive contract', () => {
   assert.match(commonCss, /\.music-service-meta/);
-  assert.match(commonCss, /\.music-service-summary\.summary-cards/);
-  assert.match(commonCss, /\.music-service-section-heading/);
+  assert.match(commonCss, /\.music-service-section/);
+  assert.match(commonCss, /\.music-service-panel/);
   assert.match(commonCss, /\.music-service-playlist-table/);
   assert.match(commonCss, /@media \(max-width: 760px\)/);
 });
 
 test('playlist detail code remains lazy while all three services render into the common section', () => {
-  for (const [source, service] of [[spotify, 'spotify'], [amazon, 'amazon']]) {
+  for (const [source, service, mount] of [
+    [spotify, 'spotify', 'spotifyPlaylistMount'],
+    [amazon, 'amazon', 'amazonPlaylistMount'],
+  ]) {
     assert.match(source, /function playlistModuleUrl\(\)/);
     assert.match(source, /\['\/music-service-playlists\.js', 'v=20261001\.1'\]\.join\('\?'\)/);
     assert.match(source, /import\(playlistModuleUrl\(\)\)/);
     assert.match(source, new RegExp(`loadMusicServicePlaylists\\?\\.\\('${service}'\\)`));
+    assert.match(source, new RegExp(`id="${mount}"`));
   }
   assert.match(apple, /id="applePlaylistMount"/);
   assert.match(playlistRuntime, /'\/api\/spotify-playlists'/);
   assert.match(playlistRuntime, /'\/api\/amazon-music-playlists'/);
   assert.match(playlistRuntime, /'\/api\/apple-music-playlists'/);
   assert.match(playlistRuntime, /normalizedTracks/);
+  assert.match(playlistRuntime, /dashboardDataCard/);
 });
