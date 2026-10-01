@@ -177,7 +177,7 @@ export function observeDashboardChartResize(target, redraw, {
       observer.disconnect();
     };
   }
-  if (typeof window !== 'undefined') {
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function' && typeof window.removeEventListener === 'function') {
     window.addEventListener('resize', schedule, { passive: true });
     return () => {
       clearTimeout(timer);

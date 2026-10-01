@@ -51,10 +51,9 @@ test('current online chart no longer renders comment velocity', async () => {
 test('online extrema labels omit borders, use shared gray points, and include JST time', async () => {
   const source = await text('public/dashboard-chart-comparison.js');
   assert.match(source, /const EXTREMA_POINT_COLOR = '#888'/);
-  assert.match(source, /const jstTime = new Intl\.DateTimeFormat/);
-  assert.match(source, /timeZone: 'Asia\/Tokyo'/);
-  assert.match(source, /`最小 \$\{[^}]+\}（\$\{jstTime\.format/);
-  assert.match(source, /`最大 \$\{[^}]+\}（\$\{jstTime\.format/);
+  assert.match(source, /JST_TIME_HM/);
+  assert.match(source, /`最小 \$\{[^}]+\}（\$\{JST_TIME_HM\.format/);
+  assert.match(source, /`最大 \$\{[^}]+\}（\$\{JST_TIME_HM\.format/);
   assert.match(source, /if \(minRow\) \{[\s\S]*context\.fillStyle = EXTREMA_POINT_COLOR/);
   assert.match(source, /if \(maxRow\) \{[\s\S]*context\.fillStyle = EXTREMA_POINT_COLOR/);
   assert.doesNotMatch(source, /strokeRect\(/);
@@ -65,8 +64,8 @@ test('online comparison chart waits for a real canvas width and redraws after la
   assert.match(source, /function canvasWidth\(canvas\)/);
   assert.match(source, /if \(!width\) return false/);
   assert.doesNotMatch(source, /bounds\.width \|\| 900/);
-  assert.match(source, /new ResizeObserver/);
-  assert.match(source, /observer\.observe\(canvas\)/);
+  assert.match(source, /observeDashboardChartResize/);
+  assert.doesNotMatch(source, /new ResizeObserver/);
 });
 
 test('chart detail shows the nearest direct five-minute playback count when available', async () => {

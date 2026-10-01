@@ -246,10 +246,11 @@ test('Spotify tab uses only the materialized Spotify read model and the shared d
   assert.match(runtime, /model\?\.artist_chart/);
   assert.match(runtime, /legendItem\(series\.artistName, latest \? `\$\{numberFormat\.format\(latest\.rank\)\}位` : '-'/);
   assert.match(runtime, /spotify-trend-scroll chart-fit/);
-  assert.match(runtime, /dashboard-chart-canvas\.js\?v=20261001\.1/);
+  assert.match(runtime, /dashboard-chart-canvas\.js\?v=20261001\.2/);
   assert.match(runtime, /drawDashboardGrid/);
   assert.match(runtime, /drawDashboardLine/);
   assert.match(runtime, /prepareDashboardCanvas/);
+  assert.match(runtime, /observeDashboardChartResize/);
   assert.doesNotMatch(runtime, /svgElement|createElementNS/);
   assert.match(runtime, /fetch\('\/api\/spotify-playcounts'\)/);
   assert.doesNotMatch(runtime, /homepanel-cloud|SPOTIFY_ARTIST_CHART_URL|fetchArtistChart/);

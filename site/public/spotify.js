@@ -410,6 +410,8 @@ globalThis.document?.querySelectorAll('[data-spotify-artist]').forEach((button) 
   loadSpotifyView();
 }));
 
-observeDashboardChartResize(element('spotifyView'), () => {
-  if (latestCharts) renderCharts(latestCharts.trend, latestCharts.artistChart);
-}, { delay: 220, enabled: () => Boolean(latestCharts) });
+if (typeof document !== 'undefined') {
+  observeDashboardChartResize(element('spotifyView'), () => {
+    if (latestCharts) renderCharts(latestCharts.trend, latestCharts.artistChart);
+  }, { delay: 220, enabled: () => Boolean(latestCharts) });
+}

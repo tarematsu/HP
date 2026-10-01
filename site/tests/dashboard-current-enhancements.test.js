@@ -50,13 +50,13 @@ test('current chart fully overlays direct five-minute playback bars on the onlin
   assert.doesNotMatch(chart, /sectionGap|streamTop|streamPlotHeight|onlinePlotHeight/);
   assert.doesNotMatch(chart, /再生数増加\/分（5分平均）|stream_minute_history|コメント\/2分|comment_velocity|commentVelocity|rgba\(22,139,115/);
   assert.match(chart, /時刻（JST）/);
-  assert.match(chart, /timeZone: 'Asia\/Tokyo'/);
+  assert.match(chart, /JST_TIME_HM/);
   assert.match(chart, /drawSeries\(context, current, xFor, yOnline, '#111', 2\)/);
   assert.match(chart, /const EXTREMA_POINT_COLOR = '#888'/);
   assert.match(chart, /if \(minRow\) \{[\s\S]*context\.fillStyle = EXTREMA_POINT_COLOR/);
   assert.match(chart, /if \(maxRow\) \{[\s\S]*context\.fillStyle = EXTREMA_POINT_COLOR/);
-  assert.match(chart, /`最小 \$\{integer\.format\(currentMin\)\}（\$\{jstTime\.format/);
-  assert.match(chart, /`最大 \$\{integer\.format\(currentMax\)\}（\$\{jstTime\.format/);
+  assert.match(chart, /`最小 \$\{integer\.format\(currentMin\)\}（\$\{JST_TIME_HM\.format/);
+  assert.match(chart, /`最大 \$\{integer\.format\(currentMax\)\}（\$\{JST_TIME_HM\.format/);
   assert.doesNotMatch(chart, /strokeRect\(/);
 });
 

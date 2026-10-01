@@ -78,7 +78,8 @@ test('period chart paints known missing read-model rows as a gray band without r
   assert.match(chartSource, /row\?\.known_missing === true/);
   assert.match(chartSource, /\['listener_avg', 'listener_max', 'listener_min', 'stream_growth'\]/);
   assert.match(chartSource, /\.some\(\(key\) => finite\(row\?\.\[key\]\) != null\)/);
-  assert.match(chartSource, /rgba\(100, 107, 116, \.16\)/);
-  assert.match(chartSource, /appendLegend\('欠測'/);
+  assert.match(chartSource, /dashboardMissingIndexBands/);
+  assert.match(chartSource, /drawDashboardMissingBands/);
+  assert.match(chartSource, /appendDashboardLegendItem\('欠測'/);
   assert.match(chartSource, /灰色は欠測期間です。/);
 });

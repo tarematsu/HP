@@ -16,10 +16,10 @@ test('Ohisama and followers chart headers omit update-time pills', () => {
 
 test('Ohisama daily Canvas marks date gaps with the same missing-period treatment as history', () => {
   assert.doesNotMatch(shell, /hinata-missing-periods\.js/);
-  assert.match(runtime, /const MISSING_FILL = 'rgba\(100, 107, 116, \.16\)'/);
-  assert.match(runtime, /const MISSING_KEY = 'rgba\(100, 107, 116, \.55\)'/);
-  assert.match(runtime, /gap <= DAY_MS \* 1\.5/);
-  assert.match(runtime, /context\.fillRect\(left, area\.top, Math\.max\(1, right - left\), area\.height\)/);
-  assert.match(runtime, /appendLegend\('欠測', MISSING_KEY, 'period-missing-band'\)/);
+  assert.match(runtime, /dashboardMissingGapBands/);
+  assert.match(runtime, /DASHBOARD_MISSING_KEY/);
+  assert.match(runtime, /maxGap: DAY_MS \* 1\.5/);
+  assert.match(runtime, /drawDashboardMissingBands/);
+  assert.match(runtime, /appendDashboardLegendItem\('欠測', DASHBOARD_MISSING_KEY/);
   assert.match(runtime, /灰色は欠測期間です/);
 });
