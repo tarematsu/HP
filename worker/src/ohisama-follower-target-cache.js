@@ -40,14 +40,14 @@ export function cachedOhisamaFollowerTargetRegistrar(registerFollowerTarget) {
   if (typeof registerFollowerTarget !== 'function') {
     throw new TypeError('registerFollowerTarget must be a function');
   }
-  return async (env, snapshot, observedAt) => {
+  return async (env, snapshot, observedAt, session) => {
     const handle = normalizedHandle(snapshot?.host_handle);
     if (!handle) return false;
 
     const handles = await loadHandles(env?.PAGES_RESPONSE_R2);
     if (handles.has(handle)) return false;
 
-    const added = await registerFollowerTarget(env, snapshot, observedAt);
+    const added = await registerFollowerTarget(env, snapshot, observedAt, session);
     handles.add(handle);
     await saveHandles(env?.PAGES_RESPONSE_R2, handles, observedAt).catch(() => false);
     return added;

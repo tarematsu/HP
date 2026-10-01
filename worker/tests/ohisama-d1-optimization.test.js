@@ -211,7 +211,11 @@ test('Ohisama collector uses R2 auth hot state and skips the per-run D1 state wr
     {
       now: () => observedAt,
       fetch: async () => fetchResponse,
-      registerFollowerTarget: async () => false,
+      registerFollowerTarget: async (_env, _snapshot, _observedAt, session) => {
+        assert.equal(session.authToken, 'cached-token');
+        assert.equal(session.deviceUid, 'cached-device');
+        return false;
+      },
     },
   );
 

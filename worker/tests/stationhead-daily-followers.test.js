@@ -43,6 +43,9 @@ test('daily follower schedule fires only at the JST midnight minute', () => {
 });
 
 test('profile extraction requires a non-negative follower count', () => {
+  for (const missing of [null, '', false]) {
+    assert.throws(() => followerProfileFromPayload(followerPayload('sakuramankai', missing, 99), 'sakuramankai'), /followers missing/);
+  }
   assert.deepEqual(
     followerProfileFromPayload(followerPayload('sakuramankai', 1234, 99), 'sakuramankai'),
     { handle: 'sakuramankai', account_id: 99, followers: 1234 },

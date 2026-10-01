@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 import { collectInitialStationheadFollowers, registerBuddiesInitialFollowerTarget } from '../src/stationhead-initial-followers.js';
+import { activeBroadcastFollowerRegistrar } from '../src/ohisama-pages-entry.js';
+import { cachedOhisamaFollowerTargetRegistrar } from '../src/ohisama-follower-target-cache.js';
+import { withOhisamaFollowerMembership } from '../src/ohisama-follower-membership.js';
 
 function fixture() {
   const values = new Map();
@@ -42,6 +45,38 @@ test('failed initial fetch remains eligible for retry', async () => {
     session: {}, fetchProfile: async () => { throw new Error('temporary'); },
   }), /temporary/);
   assert.equal(JSON.parse(values.get(pagesR2ResponseKey('followers'))).handles.includes('newhost'), false);
+});
+
+test('initial collection keeps missing historical counts sparse', async () => {
+  const { env, values } = fixture();
+  const model = JSON.parse(values.get(pagesR2ResponseKey('followers')));
+  model.rows[0].newhost = null;
+  values.set(pagesR2ResponseKey('followers'), JSON.stringify(model));
+  await collectInitialStationheadFollowers(env, 'newhost', Date.parse('2026-10-02T01:00:00Z'), {
+    session: {}, fetchProfile: async () => ({ followers: 42 }),
+  });
+  const result = JSON.parse(values.get(pagesR2ResponseKey('followers')));
+  assert.equal(Object.hasOwn(result.rows[0], 'newhost'), false);
+  assert.equal(result.accounts.find(account => account.handle === 'newhost').previous_day_delta, null);
+});
+
+test('Ohisama registrar forwards live credentials through every wrapper without saved auth', async () => {
+  const { env } = fixture();
+  const session = { authToken: 'live-token', deviceUid: 'live-device' };
+  const registrar = activeBroadcastFollowerRegistrar(cachedOhisamaFollowerTargetRegistrar(withOhisamaFollowerMembership(
+    async (targetEnv, snapshot, observedAt, state) => {
+      assert.equal(state, session);
+      return collectInitialStationheadFollowers(targetEnv, snapshot.host_handle, observedAt, {
+        session: { auth_token: state.authToken, device_uid: state.deviceUid },
+        fetchFn: async (_url, init) => {
+          assert.equal(init.headers.authorization, 'Bearer live-token');
+          assert.equal(init.headers['sth-device-uid'], 'live-device');
+          return Response.json({ account: { handle: 'newhost', followers: 42 } });
+        },
+      });
+    },
+  )));
+  assert.equal(await registrar(env, { host_handle: 'newhost', is_broadcasting: 1 }, Date.now(), session), true);
 });
 
 test('Buddies registers a live host once and skips inactive broadcasts', async () => {

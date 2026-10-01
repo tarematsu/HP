@@ -90,8 +90,8 @@ export function withOhisamaFollowerMembership(registerFollowerTarget) {
   if (typeof registerFollowerTarget !== 'function') {
     throw new TypeError('registerFollowerTarget must be a function');
   }
-  return async (env, snapshot, observedAt) => {
-    const added = await registerFollowerTarget(env, snapshot, observedAt);
+  return async (env, snapshot, observedAt, session) => {
+    const added = await registerFollowerTarget(env, snapshot, observedAt, session);
     await publishOhisamaFollowerMembership(env, snapshot?.host_handle, observedAt).catch((error) => {
       console.warn(JSON.stringify({
         event: 'ohisama_follower_membership_publish_failed',

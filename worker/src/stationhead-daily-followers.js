@@ -26,6 +26,7 @@ export const STATIONHEAD_DAILY_FOLLOWER_HANDLES = Object.freeze([
 ]);
 
 function nonNegativeInteger(value) {
+  if (value == null || typeof value === 'boolean' || String(value).trim() === '') return null;
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
 }

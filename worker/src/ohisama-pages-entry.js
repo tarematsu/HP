@@ -21,12 +21,12 @@ export function activeBroadcastFollowerRegistrar(registerFollowerTarget) {
   if (typeof registerFollowerTarget !== 'function') {
     throw new TypeError('registerFollowerTarget must be a function');
   }
-  return async (env, snapshot, observedAt) => {
+  return async (env, snapshot, observedAt, session) => {
     if (snapshot?.is_broadcasting !== 1) return false;
     if (OHISAMA_FOLLOWER_EXCLUDED_HANDLE_SET.has(normalizedFollowerHandle(snapshot?.host_handle))) {
       return false;
     }
-    return registerFollowerTarget(env, snapshot, observedAt);
+    return registerFollowerTarget(env, snapshot, observedAt, session);
   };
 }
 
@@ -48,9 +48,12 @@ export async function runOhisamaPagesScheduled(controller, env, ctx, dependencie
   const registerFollowerTarget = activeBroadcastFollowerRegistrar(
     cachedOhisamaFollowerTargetRegistrar(
       withOhisamaFollowerMembership(
-        async (targetEnv, snapshot, observedAt) => {
+        async (targetEnv, snapshot, observedAt, session) => {
           const added = await (dependencies.registerFollowerTarget || registerOhisamaFollowerTarget)(targetEnv, snapshot, observedAt);
-          await (dependencies.collectInitialFollowers || collectInitialStationheadFollowers)(targetEnv, snapshot.host_handle, observedAt);
+          await (dependencies.collectInitialFollowers || collectInitialStationheadFollowers)(targetEnv, snapshot.host_handle, observedAt, {
+            session: session ? { auth_token: session.authToken, device_uid: session.deviceUid } : undefined,
+            fetchFn: dependencies.fetch,
+          });
           return added;
         },
       ),
