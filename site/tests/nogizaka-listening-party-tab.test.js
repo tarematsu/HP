@@ -7,8 +7,8 @@ const shell = readFileSync(new URL('../public/nogizaka-listening-party-shell.js'
 const runtime = readFileSync(new URL('../public/nogizaka-listening-party.js', import.meta.url), 'utf8');
 const partyUi = readFileSync(new URL('../public/official-listening-party-ui.js', import.meta.url), 'utf8');
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
-const tabLayout = readFileSync(new URL('../public/pages-layout.css', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/nogizaka-listening-party.js', import.meta.url), 'utf8');
+const publisher = readFileSync(new URL('../../worker/src/nogizaka-pages-read-model.js', import.meta.url), 'utf8');
 
 test('Nogizaka tab is mounted immediately before Hinata when available', () => {
   assert.match(shell, /view: 'nogizaka'/);
@@ -51,25 +51,22 @@ test('Nogizaka listening-party labels are reusable for future Under Live events'
   }), '43rd アンダーライブ セットリスト');
 });
 
-test('Nogizaka live view composites the materialized series with only the realtime probe tail', () => {
+test('Nogizaka public API is read-model-only and never reads D1 on a Pages request', () => {
   assert.match(runtime, /\/api\/nogizaka-listening-party/);
   assert.match(runtime, /MIN_REFRESH_MS = 15_000/);
-  assert.match(runtime, /collection_active/);
-  assert.match(api, /sh_nogizaka_official_news_announcements/);
-  assert.match(api, /FROM sh_official_broadcast_summary/);
-  assert.match(api, /FROM sh_official_broadcast_series/);
-  assert.match(api, /async function loadLiveProbes/);
-  assert.match(api, /if \(event\.status === 'active'\) \{[\s\S]*loadLiveProbes\(env, event\.id, observedAfter\)/);
-  assert.match(api, /mergePoints\(basePoints, realtimePoints\)/);
-  assert.match(api, /official_broadcast_series\+official_news_live/);
-  assert.match(api, /broadcast_content: formatNogizakaBroadcastContent\(event\)/);
-  assert.match(api, /event_name: `\$\{day\.replaceAll\('-', ''\)\} \$\{row\.broadcast_content\}`/);
+  assert.match(api, /PAGES_READ_MODEL_SERVICE/);
+  assert.match(api, /_internal\/pages-response\?key=nogizaka-listening-party/);
+  assert.doesNotMatch(api, /OTHER_DB|\.prepare\(|sh_nogizaka_official_news_announcements|sh_official_broadcast_/);
 });
 
-test('Nogizaka completed view is read-model-only and never loads probes outside the active branch', () => {
-  assert.match(api, /const \[summary, readSeries\] = await Promise\.all/);
-  assert.match(api, /let probes = \[\];\s*if \(event\.status === 'active'\)/);
-  assert.doesNotMatch(api, /Promise\.all\(\[\s*loadLiveProbes/);
-  assert.match(api, /else if \(readSeries\) source = 'official_broadcast_series'/);
-  assert.match(api, /const points = live \? mergePoints\(basePoints, realtimePoints\) : basePoints/);
+test('Nogizaka producer builds the listening-party model from bounded D1 read models', () => {
+  assert.match(publisher, /sh_nogizaka_official_news_announcements/);
+  assert.match(publisher, /FROM sh_official_broadcast_summary/);
+  assert.match(publisher, /FROM sh_official_broadcast_series/);
+  assert.doesNotMatch(publisher, /sh_nogizaka_official_news_station_probes/);
+  assert.match(publisher, /pagesActionsR2ResponseKey\(NOGIZAKA_LISTENING_PARTY_MODEL_KEY\)/);
+  assert.match(publisher, /broadcast_content: formatNogizakaBroadcastContent\(event\)/);
+  assert.match(publisher, /event_name: `\$\{day\.replaceAll\('-', ''\)\} \$\{row\.broadcast_content\}`/);
+  assert.match(publisher, /source = readSeries/);
+  assert.match(publisher, /refresh_hint_ms: NOGIZAKA_LISTENING_PARTY_CADENCE_SECONDS \* 1000/);
 });
