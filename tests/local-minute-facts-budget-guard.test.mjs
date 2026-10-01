@@ -9,18 +9,14 @@ const workflow = readFileSync(
   'utf8',
 );
 
-test('manual local minute facts rebuild reserves D1 read headroom for higher-priority read models', () => {
-  assert.match(workflow, /D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT: '4000'/);
-  assert.match(workflow, /D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT: '3000000'/);
-  assert.match(workflow, /D1_ACTIONS_READ_PROJECTION_MINUTES: '60'/);
-  assert.match(workflow, /name: Check D1 Actions read and write budgets\n        id: d1-budget\n        run: node \.\.\/scripts\/cloudflare-d1-write-guard\.mjs/);
-  assert.match(workflow, /allowed: \$\{\{ steps\.d1-budget\.outputs\.allowed \}\}/);
-  assert.match(workflow, /rebuild:\n    needs: d1-budget/);
-  assert.match(
-    workflow,
-    /if: needs\.d1-budget\.result == 'success' && needs\.d1-budget\.outputs\.allowed == 'true'/,
-  );
-  assert.match(workflow, /Local minute facts rebuild: deferred/);
+test('manual local minute facts rebuild is not gated by D1 budget telemetry', () => {
+  assert.doesNotMatch(workflow, /D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT/);
+  assert.doesNotMatch(workflow, /D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT/);
+  assert.doesNotMatch(workflow, /D1_ACTIONS_READ_PROJECTION_MINUTES/);
+  assert.doesNotMatch(workflow, /cloudflare-d1-write-guard\.mjs/);
+  assert.doesNotMatch(workflow, /d1-budget/);
+  assert.match(workflow, /rebuild:\n    uses: \.\/\.github\/workflows\/database\.yml/);
+  assert.match(workflow, /operation: minute-facts-local-rebuild/);
 });
 
 test('full rebuild is manual-only and has no automatic trigger', () => {
