@@ -29,6 +29,7 @@ export {
 };
 
 let dashboardPublisherPromise = null;
+let dashboardFallbackPublisherPromise = null;
 
 async function publishCurrentDashboard(env, input, fact) {
   try {
@@ -40,7 +41,19 @@ async function publishCurrentDashboard(env, input, fact) {
       minute_at: fact?.minute_at ?? null,
       error: String(error?.message || error).slice(0, 600),
     }));
-    return { skipped: true, reason: 'publish-failed' };
+    try {
+      const fallback = await (
+        dashboardFallbackPublisherPromise ||= import('./pages-dashboard-live-fallback.js')
+      );
+      return await fallback.publishDashboardFallbackFromMinuteFact(env, input, fact, { cause: error });
+    } catch (fallbackError) {
+      console.error(JSON.stringify({
+        event: 'pages_dashboard_live_fallback_failed',
+        minute_at: fact?.minute_at ?? null,
+        error: String(fallbackError?.message || fallbackError).slice(0, 600),
+      }));
+      return { skipped: true, reason: 'publish-failed' };
+    }
   }
 }
 
@@ -256,10 +269,10 @@ export async function saveOptimizedLiveMinuteFact(env, input) {
     });
   }
 
-  // The live five-minute fact is now durable.  Publish the current-tab read
-  // model immediately from this committed fact.  Publication failures are
-  // deliberately non-fatal: the minute fact remains authoritative and the
-  // existing watchdog/Actions path can rebuild the dashboard later.
+  // The live five-minute fact is now durable. Publish the current-tab read
+  // model immediately. The primary path may use optional recovery/enrichment;
+  // if that fails, a D1-free R2 fallback still advances the current tab while
+  // keeping the authoritative collection successful.
   const dashboardPublication = await publishCurrentDashboard(env, input, fact);
   return {
     skipped: false,
