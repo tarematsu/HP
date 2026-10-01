@@ -2,6 +2,7 @@ import {
   AMAZON_MUSIC_TRACK_PLAYLIST_MODEL_KEY,
   collectAmazonMusicTrackPlaylists,
 } from '../src/amazon-music-track-playlist-collector.js';
+import { amazonMusicTrackPlaylistFetch } from '../src/amazon-music-track-playlist-fetch.js';
 
 async function readJson(r2, key) {
   const object = await r2.get(key);
@@ -15,7 +16,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname !== '/refresh') return new Response('Not found', { status: 404 });
 
-    const result = await collectAmazonMusicTrackPlaylists(env, Date.now());
+    const result = await collectAmazonMusicTrackPlaylists(env, Date.now(), amazonMusicTrackPlaylistFetch);
     const model = await readJson(env.PAGES_RESPONSE_R2, AMAZON_MUSIC_TRACK_PLAYLIST_MODEL_KEY);
     const tracks = Array.isArray(model?.tracks) ? model.tracks : [];
     const withPlaylists = tracks.filter((track) => Number(track?.playlist_count) > 0);

@@ -48,7 +48,8 @@ test('scheduled entry separates canonical identity from service storage', () => 
   assert.match(source, /minute === 15/);
   assert.match(source, /getUTCHours\(\) === 18/);
   assert.match(source, /collectAppleMusicPlaylists\(env, scheduledTime\)/);
-  assert.match(source, /collectAmazonMusicTrackPlaylists\(amazonMusicServiceEnv\(env\), scheduledTime\)/);
+  assert.match(source, /from '\.\/amazon-music-track-playlist-fetch\.js'/);
+  assert.match(source, /collectAmazonMusicTrackPlaylists\(\s*amazonMusicServiceEnv\(env\),\s*scheduledTime,\s*amazonMusicTrackPlaylistFetch,\s*\)/);
   assert.match(source, /minute === 5/);
   assert.match(source, /minute % 10 === 2/);
   assert.match(source, /amazonMusicServiceEnv\(env\)/);
