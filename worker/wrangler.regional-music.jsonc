@@ -18,6 +18,9 @@
   "triggers": {
     "crons": ["0 21 * * *"]
   },
+  "vars": {
+    "REGIONAL_MUSIC_REGIONAL_ONLY": "1"
+  },
   "d1_databases": [
     {
       "binding": "OTHER_DB",
