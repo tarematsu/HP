@@ -24,8 +24,15 @@ class CanonicalDb {
         if (/FROM sh_tracks/.test(sql)) {
           return {
             results: db.rows
-              .filter((row) => wanted.has(row.spotify_id))
+              .filter((row) => row.track_id != null && wanted.has(row.spotify_id))
               .map((row) => ({ track_id: row.track_id, spotify_id: row.spotify_id })),
+          };
+        }
+        if (/FROM sh_track_dictionary/.test(sql)) {
+          return {
+            results: db.rows
+              .filter((row) => wanted.has(row.spotify_id))
+              .map((row) => ({ ...row, track_id: null })),
           };
         }
         if (db.missing) throw new Error('no such table: sh_track_canonical_metadata');
@@ -38,7 +45,7 @@ class CanonicalDb {
   }
 }
 
-test('loader reads presentation metadata only from the canonical MINUTE_DB view', async () => {
+test('loader reads presentation metadata only from the canonical MINUTE_DB owner', async () => {
   const db = new CanonicalDb([{
     track_id: 7,
     spotify_id: 'sp1',
@@ -61,7 +68,7 @@ test('loader reads presentation metadata only from the canonical MINUTE_DB view'
   assert.equal(db.queries.length, 1);
   for (const { sql } of db.queries) {
     assert.match(sql, /FROM sh_track_canonical_metadata/);
-    assert.doesNotMatch(sql, /sh_track_metadata|sh_isrc_metadata|sh_track_dictionary/);
+    assert.doesNotMatch(sql, /sh_track_metadata|sh_isrc_metadata/);
   }
 });
 
@@ -138,14 +145,39 @@ test('Spotify-only identities resolve through indexed sh_tracks before canonical
   assert.ok(db.queries.every(({ sql }) => !/FROM sh_track_canonical_metadata[\s\S]*WHERE spotify_id IN/.test(sql)));
 });
 
-test('unknown Spotify identities retain the bounded canonical-view fallback', async () => {
+test('dictionary-only Spotify identities use the indexed dictionary instead of the canonical view', async () => {
+  const db = new CanonicalDb([{
+    track_id: null,
+    spotify_id: 'dict-only',
+    isrc: 'JPTEST000099',
+    title: 'Dictionary Song',
+    artist: 'Artist',
+    thumbnail_url: 'cover-dict',
+    fetched_at: 40,
+  }]);
+
+  const rows = await loadReadModelTrackMetadata({ MINUTE_DB: db }, ['dict-only'], []);
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].track_id, null);
+  assert.equal(rows[0].title, 'Dictionary Song');
+  assert.equal(db.queries.length, 2);
+  assert.match(db.queries[0].sql, /FROM sh_tracks/);
+  assert.match(db.queries[1].sql, /FROM sh_track_dictionary/);
+  assert.match(db.queries[1].sql, /TRIM\(spotify_id\)<>''/);
+  assert.match(db.queries[1].sql, /spotify_id IN/);
+  assert.ok(db.queries.every(({ sql }) => !/FROM sh_track_canonical_metadata[\s\S]*WHERE spotify_id IN/.test(sql)));
+});
+
+test('unknown Spotify identities retain the bounded indexed dictionary fallback', async () => {
   const db = new CanonicalDb();
   const rows = await loadReadModelTrackMetadata({ MINUTE_DB: db }, ['missing'], []);
   assert.deepEqual(rows, []);
   assert.equal(db.queries.length, 2);
   assert.match(db.queries[0].sql, /FROM sh_tracks/);
-  assert.match(db.queries[1].sql, /FROM sh_track_canonical_metadata/);
-  assert.match(db.queries[1].sql, /WHERE spotify_id IN/);
+  assert.match(db.queries[1].sql, /FROM sh_track_dictionary/);
+  assert.match(db.queries[1].sql, /WHERE spotify_id IS NOT NULL/);
+  assert.match(db.queries[1].sql, /spotify_id IN/);
 });
 
 test('BUDDIES metadata is not blended into unresolved canonical metadata', async () => {
@@ -192,6 +224,6 @@ test('loader enforces the existing eighty-key bound per identifier type', async 
   assert.equal(db.queries.length, 2);
   assert.match(db.queries[0].sql, /FROM sh_tracks/);
   assert.equal(db.queries[0].bindings.length, 80);
-  assert.match(db.queries[1].sql, /FROM sh_track_canonical_metadata/);
+  assert.match(db.queries[1].sql, /FROM sh_track_dictionary/);
   assert.equal(db.queries[1].bindings.length, 80);
 });
