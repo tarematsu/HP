@@ -38,8 +38,13 @@ module.cron_expression = lambda event: (
 
 # Cloudflare telemetry reports Cron Trigger invocations as eventType=scheduled.
 # Normalize that representation so Cron recovery and CPU policy are applied to
-# the invocation class that actually produced the event.
-_CRON_CPU_BUDGET_MS = float(os.environ.get("CRON_CPU_BUDGET_MS", "100"))
+# the invocation class that actually produced the event. Keep the default Cron
+# budget identical to the declared HTTP/Cron policy; an explicit environment
+# override remains available when Cloudflare policy intentionally differs.
+_CRON_CPU_BUDGET_MS = float(os.environ.get(
+    "CRON_CPU_BUDGET_MS",
+    str(module.audit.STATELESS_CPU_BUDGET_MS),
+))
 _original_invocation_class = module.audit.invocation_class
 _original_cpu_budget_ms = module.audit.cpu_budget_ms
 
