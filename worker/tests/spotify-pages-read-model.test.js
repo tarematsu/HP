@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { spotifyMonthlyListenersSql } from '../../site/functions/api/spotify-monthly-listeners.js';
 import {
   spotifyArtistChartSql,
   spotifyPlaycountAllSql,
@@ -78,6 +79,15 @@ function db() {
           streak: 3,
           observed_at: 456,
         }];
+      } else if (sql === spotifyMonthlyListenersSql()) {
+        results = [{
+          snapshot_date: '2026-09-29',
+          artist_key: 'sakurazaka46',
+          artist_name: '櫻坂46',
+          monthly_listeners: 345678,
+          collected_at: 789,
+          current_rank: 1,
+        }];
       } else {
         assert.fail(`unexpected SQL: ${sql}`);
       }
@@ -109,11 +119,12 @@ test('Spotify read model writes all Sakamichi detail groups and skips unchanged 
     nogizaka46: '2026-09-29',
     hinatazaka46: '2026-09-29',
   });
+  assert.equal(first.monthly_listener_revision, '2026-09-29:789:1');
   const envelope = JSON.parse(writes[0].body);
   assert.equal(envelope.version, 1);
   assert.equal(envelope.cadence_seconds, 0);
   assert.equal(envelope.updated_at, 1000);
-  assert.equal(envelope.renderer_revision, 'spotify-event-v2');
+  assert.equal(envelope.renderer_revision, 'spotify-event-v3');
   const body = JSON.parse(envelope.body);
   assert.deepEqual(Object.keys(body.groups), ['sakurazaka46', 'nogizaka46', 'hinatazaka46']);
   assert.equal(body.groups.sakurazaka46.total_delta, 25);
@@ -123,6 +134,14 @@ test('Spotify read model writes all Sakamichi detail groups and skips unchanged 
   assert.equal(body.groups.nogizaka46.tracks[0].track_id, 42);
   assert.equal(body.groups.hinatazaka46.tracks[0].track_id, 43);
   assert.equal(body.artist_chart.latest_chart_date, '2026-09-29');
+  assert.deepEqual(body.monthly_listener_rows, [{
+    snapshot_date: '2026-09-29',
+    artist_key: 'sakurazaka46',
+    artist_name: '櫻坂46',
+    monthly_listeners: 345678,
+    collected_at: 789,
+    current_rank: 1,
+  }]);
 
   const second = await publishSpotifyPagesReadModel(env, { now: 2000 });
   assert.equal(second.published, false);

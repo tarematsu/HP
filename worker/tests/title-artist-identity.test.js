@@ -61,6 +61,43 @@ test('title and artist recover provider identities from the local dictionary', a
   assert.equal(resolved[0].thumbnail_url, 'https://img.example/udagawa.jpg');
 });
 
+test('resolved canonical identities do not trigger metadata title scans', async () => {
+  const sqlCalls = [];
+  const db = {
+    prepare(sql) {
+      sqlCalls.push(sql);
+      return {
+        bind() { return this; },
+        async all() {
+          if (sql.includes('FROM sh_tracks')) {
+            return { results: [{
+              spotify_id: 'spotify-known',
+              isrc: 'JPSR02600002',
+              title: 'Known Song',
+              artist: '櫻坂46',
+              thumbnail_url: 'https://img.example/known.jpg',
+              fetched_at: 30,
+            }] };
+          }
+          return { results: [] };
+        },
+      };
+    },
+  };
+
+  const rows = await loadTitleArtistIdentityRows(db, [{ title: 'Known Song', artist: '櫻坂46' }]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].spotify_id, 'spotify-known');
+  assert.equal(
+    sqlCalls.some((sql) => sql.includes('FROM sh_track_metadata') && sql.includes('TRIM(title)')),
+    false,
+  );
+  assert.equal(
+    sqlCalls.some((sql) => sql.includes('FROM sh_isrc_metadata') && sql.includes('TRIM(title)')),
+    false,
+  );
+});
+
 test('normalization matches compatible title and artist presentation', () => {
   assert.equal(
     trackTitleArtistKey({ title: 'ＡＢＣ  Song', artist: 'ARTIST' }),

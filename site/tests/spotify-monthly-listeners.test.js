@@ -9,11 +9,18 @@ import {
   spotifyMonthlyListenersTrend,
 } from '../functions/api/spotify-monthly-listeners.js';
 
-test('monthly listener API reads the dedicated daily table', () => {
+test('monthly listener materializer reads the dedicated daily table', () => {
   const sql = spotifyMonthlyListenersSql();
   assert.match(sql, /FROM sh_spotify_artist_monthly_listeners_daily daily/);
   assert.match(sql, /INNER JOIN sh_spotify_artists artist/);
   assert.match(sql, /current_rank\.rank AS current_rank/);
+});
+
+test('public monthly listener API is storage-only and does not query D1', () => {
+  const source = readFileSync(new URL('../functions/api/spotify-monthly-listeners.js', import.meta.url), 'utf8');
+  assert.match(source, /PAGES_READ_MODEL_SERVICE/);
+  assert.match(source, /_internal\/pages-response\?key=spotify-playcounts/);
+  assert.doesNotMatch(source, /OTHER_DB|\.prepare\(/);
 });
 
 test('monthly listener trend keeps valid nonnegative daily snapshots', () => {

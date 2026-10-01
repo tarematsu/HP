@@ -13,6 +13,7 @@ const COLORS = Object.freeze([
   '#f3a6c8', '#8264b0', '#9ecff3', '#ef8a62', '#67a9cf',
   '#a6d854', '#ffd92f', '#e78ac3', '#8da0cb', '#66c2a5',
 ]);
+const SPOTIFY_READ_MODEL_URL = 'https://pages-read-model.internal/_internal/pages-response?key=spotify-playcounts';
 
 function json(data, status = 200, headers = {}) {
   return new Response(JSON.stringify(data), {
@@ -172,21 +173,34 @@ export function spotifyMonthlyListenersSvg(rows = []) {
   return parts.join('');
 }
 
-export async function onRequestGet({ env, request }) {
-  if (!env?.OTHER_DB?.prepare) {
-    return json({ ok: false, error: 'OTHER_DB binding missing' }, 503, {
-      'cache-control': 'no-store',
-    });
+async function materializedMonthlyListenerRows(env) {
+  const service = env?.PAGES_READ_MODEL_SERVICE;
+  if (typeof service?.fetch !== 'function') {
+    throw new Error('PAGES_READ_MODEL_SERVICE binding missing');
   }
+  const response = await service.fetch(new Request(SPOTIFY_READ_MODEL_URL, {
+    method: 'GET',
+    headers: { accept: 'application/json' },
+  }));
+  if (!response?.ok) {
+    throw new Error(`Spotify read model returned HTTP ${response?.status || 503}`);
+  }
+  const payload = await response.json().catch(() => null);
+  if (!payload || !Array.isArray(payload.monthly_listener_rows)) {
+    throw new Error('Spotify read model does not contain monthly listener history');
+  }
+  return payload.monthly_listener_rows;
+}
+
+export async function onRequestGet({ env, request }) {
   try {
-    const result = await env.OTHER_DB.prepare(spotifyMonthlyListenersSql()).all();
-    const rows = Array.isArray(result?.results) ? result.results : [];
+    const rows = await materializedMonthlyListenerRows(env);
     const format = request?.url ? new URL(request.url).searchParams.get('format') : null;
     if (format === 'svg') return new Response(spotifyMonthlyListenersSvg(rows), { headers: SVG_HEADERS });
     return json({ ok: true, ...spotifyMonthlyListenersTrend(rows) });
   } catch (error) {
     console.error('spotify monthly listeners failed', error);
-    return json({ ok: false, error: error?.message || 'spotify monthly listeners error' }, 500, {
+    return json({ ok: false, error: error?.message || 'spotify monthly listeners error' }, 503, {
       'cache-control': 'no-store',
     });
   }

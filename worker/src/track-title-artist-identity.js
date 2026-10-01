@@ -66,32 +66,77 @@ async function safeRows(db, sql, bindings) {
   }
 }
 
-async function candidateRows(db, titles, canonicalOnly = false) {
-  if (!titles.length) return [];
+async function canonicalCandidateRows(db, titles) {
   const rows = [];
   for (let offset = 0; offset < titles.length; offset += QUERY_BINDING_CHUNK_SIZE) {
     const part = titles.slice(offset, offset + QUERY_BINDING_CHUNK_SIZE);
     const marks = placeholders(part.length);
     const where = `WHERE title IS NOT NULL AND artist IS NOT NULL
         AND TRIM(title) COLLATE NOCASE IN (${marks})`;
-    if (canonicalOnly) {
-      rows.push(...await safeRows(db, `SELECT spotify_id,isrc,title,artist,
-          thumbnail_url,fetched_at
-        FROM sh_track_canonical_metadata ${where}`, part));
-      continue;
-    }
+    rows.push(...await safeRows(db, `SELECT spotify_id,isrc,title,artist,
+        thumbnail_url,fetched_at
+      FROM sh_track_canonical_metadata ${where}`, part));
+  }
+  return rows;
+}
+
+async function primaryCandidateRows(db, titles) {
+  const rows = [];
+  for (let offset = 0; offset < titles.length; offset += QUERY_BINDING_CHUNK_SIZE) {
+    const part = titles.slice(offset, offset + QUERY_BINDING_CHUNK_SIZE);
+    const marks = placeholders(part.length);
+    const where = `WHERE title IS NOT NULL AND artist IS NOT NULL
+        AND TRIM(title) COLLATE NOCASE IN (${marks})`;
     rows.push(...await safeRows(db, `SELECT spotify_id,isrc,title,artist,
         NULL AS thumbnail_url,last_seen_at AS fetched_at
       FROM sh_tracks ${where}`, part));
     rows.push(...await safeRows(db, `SELECT spotify_id,isrc,title,artist,
-        thumbnail_url,fetched_at
-      FROM sh_track_metadata ${where}`, part));
-    rows.push(...await safeRows(db, `SELECT spotify_id,isrc,title,artist,
         thumbnail_url,metadata_fetched_at AS fetched_at
       FROM sh_track_dictionary ${where}`, part));
+  }
+  return rows;
+}
+
+async function fallbackTitleCandidateRows(db, titles) {
+  const rows = [];
+  for (let offset = 0; offset < titles.length; offset += QUERY_BINDING_CHUNK_SIZE) {
+    const part = titles.slice(offset, offset + QUERY_BINDING_CHUNK_SIZE);
+    const marks = placeholders(part.length);
+    const where = `WHERE title IS NOT NULL AND artist IS NOT NULL
+        AND TRIM(title) COLLATE NOCASE IN (${marks})`;
+    rows.push(...await safeRows(db, `SELECT spotify_id,isrc,title,artist,
+        thumbnail_url,fetched_at
+      FROM sh_track_metadata ${where}`, part));
     rows.push(...await safeRows(db, `SELECT NULL AS spotify_id,isrc,title,artist,
-        NULL AS thumbnail_url,fetched_at
+        thumbnail_url,fetched_at
       FROM sh_isrc_metadata ${where}`, part));
+  }
+  return rows;
+}
+
+async function metadataRowsByIdentity(db, resolvedRows) {
+  const spotifyIds = [...new Set((resolvedRows || [])
+    .filter((row) => !text(row?.thumbnail_url))
+    .map((row) => text(row?.spotify_id))
+    .filter(Boolean))];
+  const isrcs = [...new Set((resolvedRows || [])
+    .filter((row) => !text(row?.thumbnail_url))
+    .map((row) => normalizedIsrc(row?.isrc))
+    .filter(Boolean))];
+  const rows = [];
+  for (let offset = 0; offset < spotifyIds.length; offset += QUERY_BINDING_CHUNK_SIZE) {
+    const part = spotifyIds.slice(offset, offset + QUERY_BINDING_CHUNK_SIZE);
+    rows.push(...await safeRows(db, `SELECT spotify_id,isrc,title,artist,
+        thumbnail_url,fetched_at
+      FROM sh_track_metadata
+      WHERE spotify_id IN (${placeholders(part.length)})`, part));
+  }
+  for (let offset = 0; offset < isrcs.length; offset += QUERY_BINDING_CHUNK_SIZE) {
+    const part = isrcs.slice(offset, offset + QUERY_BINDING_CHUNK_SIZE);
+    rows.push(...await safeRows(db, `SELECT NULL AS spotify_id,isrc,title,artist,
+        thumbnail_url,fetched_at
+      FROM sh_isrc_metadata
+      WHERE isrc IN (${placeholders(part.length)})`, part));
   }
   return rows;
 }
@@ -167,14 +212,39 @@ export async function loadTitleArtistIdentityRows(
   const titles = titleVariants(tracks, boundedLimit);
   if (!titles.length) return [];
   const sources = Array.isArray(databases) ? databases : [databases];
-  const rows = [];
+  const uniqueSources = [];
   const seen = new Set();
   for (const db of sources) {
     if (!db || seen.has(db)) continue;
     seen.add(db);
-    rows.push(...await candidateRows(db, titles, canonicalOnly));
+    uniqueSources.push(db);
   }
-  return resolveRows(tracks, rows, boundedLimit);
+
+  if (canonicalOnly) {
+    const canonicalRows = [];
+    for (const db of uniqueSources) canonicalRows.push(...await canonicalCandidateRows(db, titles));
+    return resolveRows(tracks, canonicalRows, boundedLimit);
+  }
+
+  const primaryRows = [];
+  for (const db of uniqueSources) primaryRows.push(...await primaryCandidateRows(db, titles));
+  const primaryResolved = resolveRows(tracks, primaryRows, boundedLimit);
+
+  const identityMetadataRows = [];
+  for (const db of uniqueSources) {
+    identityMetadataRows.push(...await metadataRowsByIdentity(db, primaryResolved));
+  }
+  const indexedRows = [...primaryRows, ...identityMetadataRows];
+  const indexedResolved = resolveRows(tracks, indexedRows, boundedLimit);
+  const identifiedTracks = attachTitleArtistIdentity(tracks, indexedResolved);
+  const unresolvedTitles = titleVariants(identifiedTracks, boundedLimit);
+  if (!unresolvedTitles.length) return indexedResolved;
+
+  const fallbackRows = [];
+  for (const db of uniqueSources) {
+    fallbackRows.push(...await fallbackTitleCandidateRows(db, unresolvedTitles));
+  }
+  return resolveRows(tracks, [...indexedRows, ...fallbackRows], boundedLimit);
 }
 
 export function attachTitleArtistIdentity(tracks, rows = []) {
