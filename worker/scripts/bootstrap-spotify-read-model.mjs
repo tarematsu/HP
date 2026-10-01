@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { spotifyMonthlyListenersSql } from '../../site/functions/api/spotify-monthly-listeners.js';
 import {
   spotifyArtistChartSql,
   spotifyPlaycountAllSql,
@@ -18,7 +19,7 @@ const otherDatabase = process.env.OTHER_DATABASE_NAME || 'stationhead-other';
 const responseBucket = process.env.PAGES_RESPONSE_BUCKET || 'sh-pages-responses';
 
 export const SPOTIFY_READ_MODEL_KEY = 'spotify-playcounts';
-export const SPOTIFY_RENDERER_REVISION = 'spotify-event-v2';
+export const SPOTIFY_RENDERER_REVISION = 'spotify-event-v3';
 
 const RESPONSE_HEADERS = Object.freeze({
   'content-type': 'application/json; charset=utf-8',
@@ -56,13 +57,29 @@ function groupSnapshotDates(model) {
   };
 }
 
+function monthlyListenerRevision(monthlyListenerRows) {
+  let latestDate = '';
+  let latestCollectedAt = 0;
+  for (const row of monthlyListenerRows || []) {
+    const date = String(row?.snapshot_date || '');
+    const collectedAt = Number(row?.collected_at || 0);
+    if (date > latestDate) latestDate = date;
+    if (Number.isFinite(collectedAt) && collectedAt > latestCollectedAt) latestCollectedAt = collectedAt;
+  }
+  return `${latestDate}:${latestCollectedAt}:${monthlyListenerRows?.length || 0}`;
+}
+
 export async function loadSpotifyReadModelFromD1(db) {
-  const [latestResult, trendResult, artistChartResult] = await Promise.all([
+  const [latestResult, trendResult, artistChartResult, monthlyListenersResult] = await Promise.all([
     db.prepare(spotifyPlaycountAllSql()).all(),
     db.prepare(spotifyTrendSql()).all(),
     db.prepare(spotifyArtistChartSql()).all(),
+    db.prepare(spotifyMonthlyListenersSql()).all(),
   ]);
-  return spotifyReadModelAll(rows(latestResult), rows(trendResult), rows(artistChartResult));
+  return {
+    ...spotifyReadModelAll(rows(latestResult), rows(trendResult), rows(artistChartResult)),
+    monthly_listener_rows: rows(monthlyListenersResult),
+  };
 }
 
 export function spotifyBootstrapEnvelope(model, now = Date.now()) {
@@ -75,6 +92,7 @@ export function spotifyBootstrapEnvelope(model, now = Date.now()) {
     snapshots.hinatazaka46 ?? '',
     model.artist_chart?.latest_chart_date ?? '',
     model.artist_chart?.latest_observed_at ?? '',
+    monthlyListenerRevision(model.monthly_listener_rows),
   ].join(':');
   const updatedAt = Number(now);
   return {
@@ -161,6 +179,7 @@ export async function bootstrapSpotifyReadModel(options = {}) {
       snapshot_date: snapshots.sakurazaka46,
       snapshot_dates: snapshots,
       chart_date: model.artist_chart?.latest_chart_date ?? null,
+      monthly_listener_revision: monthlyListenerRevision(model.monthly_listener_rows),
     };
   }
 
@@ -175,6 +194,7 @@ export async function bootstrapSpotifyReadModel(options = {}) {
     snapshot_date: snapshots.sakurazaka46,
     snapshot_dates: snapshots,
     chart_date: model.artist_chart?.latest_chart_date ?? null,
+    monthly_listener_revision: monthlyListenerRevision(model.monthly_listener_rows),
   };
 }
 
