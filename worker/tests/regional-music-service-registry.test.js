@@ -4,12 +4,20 @@ import test from 'node:test';
 import {
   REGIONAL_MUSIC_COLLECTOR_CONCURRENCY,
   REGIONAL_MUSIC_DAILY_COLLECTORS,
+  REGIONAL_MUSIC_DAILY_CRON,
   REGIONAL_MUSIC_SERVICE_COLLECTORS,
+  YOUTUBE_MUSIC_DAILY_COLLECTORS,
+  YOUTUBE_MUSIC_DAILY_CRON,
+  collectRegionalServicesDaily,
+  collectYouTubeMusicDaily,
   runRegionalMusicCollectors,
+  scheduledCollectorForCron,
 } from '../src/regional-music-entry.js';
 import {
   canonicalRegionalArtist,
+  REGIONAL_MUSIC_ARTISTS,
   REGIONAL_MUSIC_SERVICES,
+  YOUTUBE_MUSIC_ARTISTS,
   regionalMusicServicesByPhase,
 } from '../src/regional-music-service-registry.js';
 
@@ -17,6 +25,7 @@ test('regional music registry covers all planned services and keeps the 19 regio
   assert.equal(Object.keys(REGIONAL_MUSIC_SERVICES).length, 20);
   assert.equal(REGIONAL_MUSIC_SERVICE_COLLECTORS.length, 19);
   assert.equal(new Set(REGIONAL_MUSIC_SERVICE_COLLECTORS).size, 19);
+  assert.equal(YOUTUBE_MUSIC_DAILY_COLLECTORS.length, 1);
   assert.equal(REGIONAL_MUSIC_DAILY_COLLECTORS.length, 20);
   assert.equal(new Set(REGIONAL_MUSIC_DAILY_COLLECTORS).size, 20);
   assert.equal(
@@ -49,6 +58,29 @@ test('regional music registry covers all planned services and keeps the 19 regio
     'gaana',
     'langit_musik',
   ]);
+});
+
+test('YouTube Music alone targets Aobazaka46 in addition to the three existing groups', () => {
+  assert.deepEqual(Object.keys(REGIONAL_MUSIC_ARTISTS), [
+    'sakurazaka46',
+    'hinatazaka46',
+    'nogizaka46',
+  ]);
+  assert.deepEqual(Object.keys(YOUTUBE_MUSIC_ARTISTS), [
+    'sakurazaka46',
+    'hinatazaka46',
+    'nogizaka46',
+    'aobazaka46',
+  ]);
+  assert.equal(YOUTUBE_MUSIC_ARTISTS.aobazaka46.displayName, '青葉坂46');
+  assert.equal(Object.hasOwn(REGIONAL_MUSIC_ARTISTS, 'aobazaka46'), false);
+});
+
+test('scheduled regional collection splits YouTube Music at midnight JST from regional services at 06:00 JST', () => {
+  assert.equal(YOUTUBE_MUSIC_DAILY_CRON, '0 15 * * *');
+  assert.equal(REGIONAL_MUSIC_DAILY_CRON, '0 21 * * *');
+  assert.equal(scheduledCollectorForCron(YOUTUBE_MUSIC_DAILY_CRON), collectYouTubeMusicDaily);
+  assert.equal(scheduledCollectorForCron(REGIONAL_MUSIC_DAILY_CRON), collectRegionalServicesDaily);
 });
 
 test('regional music runner bounds concurrency and preserves collector order', async () => {
@@ -90,5 +122,6 @@ test('Sakamichi artist aliases normalize to canonical keys', () => {
   assert.equal(canonicalRegionalArtist('Hinatazaka46'), 'hinatazaka46');
   assert.equal(canonicalRegionalArtist('乃木坂46'), 'nogizaka46');
   assert.equal(canonicalRegionalArtist(' Nogizaka46 '), 'nogizaka46');
+  assert.equal(canonicalRegionalArtist('青葉坂46'), null);
   assert.equal(canonicalRegionalArtist('not-the-artist'), null);
 });
