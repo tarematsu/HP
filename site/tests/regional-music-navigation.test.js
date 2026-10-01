@@ -39,3 +39,8 @@ test('regional service views share the materialized read model endpoint', () => 
   assert.match(shell, /regionalMusicPlaylistBody/);
   assert.match(build, /'regional-music\.css'/);
 });
+
+test('dashboard navigation stays outside the initial bundle and uses the current deployment version', () => {
+  assert.match(build, /args\.path === '\.\/dashboard-tabs\.js\?v=20260930\.1'/);
+  assert.match(build, /path: '\/dashboard-tabs\.js\?v=20261002\.1', external: true/);
+});
