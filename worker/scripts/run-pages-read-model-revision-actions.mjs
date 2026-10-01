@@ -10,7 +10,6 @@ import {
 const COMPACT_REVISION_KEYS = new Set([
   'history:daily',
   'history:weekly',
-  'history:monthly',
   'history:broadcasts',
   'host-history:summary',
 ]);
