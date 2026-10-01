@@ -33,10 +33,14 @@ test('music subscription presentation uses one shared responsive style contract'
   assert.match(commonCss, /@media \(max-width: 760px\)/);
 });
 
-test('Spotify and Amazon use the shared playlist renderer while Apple keeps its lazy loader', () => {
-  assert.match(spotify, /loadMusicServicePlaylists\('spotify'\)/);
-  assert.match(amazon, /loadMusicServicePlaylists\('amazon'\)/);
-  assert.match(apple, /id=\\"applePlaylistMount\\"/);
+test('playlist detail code remains lazy while all three services render into the common section', () => {
+  for (const [source, service] of [[spotify, 'spotify'], [amazon, 'amazon']]) {
+    assert.match(source, /function playlistModuleUrl\(\)/);
+    assert.match(source, /\['\/music-service-playlists\.js', 'v=20261001\.1'\]\.join\('\?'\)/);
+    assert.match(source, /import\(playlistModuleUrl\(\)\)/);
+    assert.match(source, new RegExp(`loadMusicServicePlaylists\\?\\.\\('${service}'\\)`));
+  }
+  assert.match(apple, /id="applePlaylistMount"/);
   assert.match(playlistRuntime, /'\/api\/spotify-playlists'/);
   assert.match(playlistRuntime, /'\/api\/amazon-music-playlists'/);
   assert.match(playlistRuntime, /'\/api\/apple-music-playlists'/);
