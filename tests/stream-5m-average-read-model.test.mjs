@@ -30,16 +30,17 @@ test('legacy minute-average triggers and table are retired', () => {
   assert.match(migration, /DROP TABLE IF EXISTS sh_stream_5m_average_read_model/);
 });
 
-test('five-minute playback counts are direct adjacent cumulative differences', () => {
+test('five-minute playback values use a rolling 15-minute average normalized back to five minutes', () => {
   const base = Date.UTC(2026, 8, 30, 0, 0, 0);
   assert.deepEqual(directFiveMinuteStreamHistory([
     { observed_at: base, current_stream_count: 100 },
     { observed_at: base + 5 * 60_000, current_stream_count: 112 },
     { observed_at: base + 10 * 60_000, current_stream_count: 127 },
-    { observed_at: base + 20 * 60_000, current_stream_count: 180 },
+    { observed_at: base + 15 * 60_000, current_stream_count: 145 },
+    { observed_at: base + 20 * 60_000, current_stream_count: 160 },
   ]), [
-    { observed_at: base + 5 * 60_000, stream_delta: 12, sample_count: 1 },
-    { observed_at: base + 10 * 60_000, stream_delta: 15, sample_count: 1 },
+    { observed_at: base + 15 * 60_000, stream_delta: 15, sample_count: 3 },
+    { observed_at: base + 20 * 60_000, stream_delta: 16, sample_count: 3 },
   ]);
 });
 
