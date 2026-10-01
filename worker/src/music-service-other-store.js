@@ -70,23 +70,61 @@ export async function persistMusicServiceTrackRefs(db, service, tracks, observed
   return statements.length;
 }
 
+function appleArtistModels(model) {
+  const artists = Array.isArray(model?.artists) ? model.artists.filter(Boolean) : [];
+  if (artists.length) return artists;
+  return [{
+    key: 'sakurazaka46',
+    artist_key: 'sakurazaka46',
+    artist_name: text(model?.artist_name) || '櫻坂46',
+    snapshot_date: model?.snapshot_date || null,
+    observed_at: model?.observed_at || null,
+    regions: Array.isArray(model?.regions) ? model.regions : [],
+  }];
+}
+
+function latestAppleSnapshotDate(model) {
+  const dates = appleArtistModels(model)
+    .map((artist) => text(artist?.snapshot_date))
+    .filter((date) => /^\d{4}-\d{2}-\d{2}$/u.test(date));
+  return dates.sort().at(-1) || text(model?.snapshot_date);
+}
+
+function latestAppleObservedAt(model, fallback) {
+  const values = [
+    Number(model?.observed_at),
+    ...appleArtistModels(model).map((artist) => Number(artist?.observed_at)),
+    Number(fallback),
+  ].filter((value) => Number.isFinite(value) && value > 0);
+  return values.length ? Math.max(...values) : Date.now();
+}
+
 function appleCurrentRows(model) {
   const refs = [];
-  const snapshots = [];
-  for (const region of Array.isArray(model?.regions) ? model.regions : []) {
-    const code = text(region?.code);
-    if (!code) continue;
-    const ranks = [];
-    for (const track of Array.isArray(region?.tracks) ? region.tracks : []) {
-      const trackId = integer(track?.track_id);
-      const appleId = text(track?.apple_music_id);
-      const rank = integer(track?.rank);
-      if (trackId == null || rank == null) continue;
-      ranks.push({ track_id: trackId, rank });
-      if (appleId) refs.push({ source_track_id: appleId, track_id: trackId });
+  const byRegion = new Map();
+  for (const artistModel of appleArtistModels(model)) {
+    const artistKey = text(artistModel?.key || artistModel?.artist_key) || 'sakurazaka46';
+    for (const region of Array.isArray(artistModel?.regions) ? artistModel.regions : []) {
+      const code = text(region?.code);
+      if (!code) continue;
+      if (!byRegion.has(code)) byRegion.set(code, []);
+      const ranks = byRegion.get(code);
+      for (const track of Array.isArray(region?.tracks) ? region.tracks : []) {
+        const trackId = integer(track?.track_id);
+        const appleId = text(track?.apple_music_id);
+        const rank = integer(track?.rank);
+        if (trackId == null || rank == null) continue;
+        ranks.push({ artist_key: artistKey, track_id: trackId, rank });
+        if (appleId) refs.push({ source_track_id: appleId, track_id: trackId });
+      }
     }
-    snapshots.push({ region_code: code, ranks });
   }
+  const snapshots = [...byRegion]
+    .map(([regionCode, ranks]) => ({
+      region_code: regionCode,
+      ranks: ranks.sort((a, b) => String(a.artist_key).localeCompare(String(b.artist_key)) || a.rank - b.rank),
+    }))
+    .sort((a, b) => a.region_code.localeCompare(b.region_code));
   return { refs, snapshots };
 }
 
@@ -94,9 +132,9 @@ export async function persistAppleMusicModelToOther(env, observedAt = Date.now()
   const db = env?.OTHER_DB;
   if (!db?.prepare) return { persisted: false, reason: 'other-db-missing' };
   const model = await getJson(env?.PAGES_RESPONSE_R2, APPLE_MODEL_KEY);
-  const snapshotDate = text(model?.snapshot_date);
+  const snapshotDate = latestAppleSnapshotDate(model);
   if (!snapshotDate) return { persisted: false, reason: 'model-missing' };
-  const now = Number(model?.observed_at) || Number(observedAt) || Date.now();
+  const now = latestAppleObservedAt(model, observedAt);
   const { refs, snapshots } = appleCurrentRows(model);
   await persistMusicServiceTrackRefs(db, 'apple_music', refs, now);
   const statements = snapshots.map((snapshot) => db.prepare(`INSERT INTO apple_music_rank_snapshots(
@@ -108,7 +146,7 @@ export async function persistAppleMusicModelToOther(env, observedAt = Date.now()
        OR apple_music_rank_snapshots.observed_at<excluded.observed_at`)
     .bind(snapshotDate, snapshot.region_code, now, JSON.stringify(snapshot.ranks)));
   await runBatches(db, statements);
-  return { persisted: true, refs: refs.length, snapshots: statements.length };
+  return { persisted: true, refs: refs.length, snapshots: statements.length, snapshot_date: snapshotDate };
 }
 
 function amazonCurrentRows(model) {
