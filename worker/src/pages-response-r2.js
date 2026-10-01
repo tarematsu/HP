@@ -9,10 +9,15 @@ const FOLLOWER_HANDLES = Object.freeze([
   'sakurazaka46jp',
   'nogizaka46smej',
 ]);
+const FOLLOWER_EXCLUDED_HANDLES = new Set(['46fm', 'buddy46']);
 
 function normalizedModelKey(value) {
   const key = String(value || '').trim();
   return key && key.length <= 256 ? key : null;
+}
+
+function normalizedFollowerHandle(value) {
+  return String(value || '').trim().toLowerCase();
 }
 
 function hexModelKey(value) {
@@ -65,6 +70,50 @@ function emptyFollowersResponse(now) {
       'x-materialized-cadence-seconds': '60',
     },
   });
+}
+
+function sanitizeFollowersPayload(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
+  const handles = Array.isArray(payload.handles)
+    ? payload.handles.filter((handle) => !FOLLOWER_EXCLUDED_HANDLES.has(normalizedFollowerHandle(handle)))
+    : payload.handles;
+  const accounts = Array.isArray(payload.accounts)
+    ? payload.accounts.filter((row) => !FOLLOWER_EXCLUDED_HANDLES.has(normalizedFollowerHandle(row?.handle)))
+    : payload.accounts;
+  const rows = Array.isArray(payload.rows)
+    ? payload.rows.map((row) => {
+      if (!row || typeof row !== 'object' || Array.isArray(row)) return row;
+      const next = { ...row };
+      for (const handle of FOLLOWER_EXCLUDED_HANDLES) delete next[handle];
+      return next;
+    })
+    : payload.rows;
+  const memberships = objectOrNull(payload.memberships);
+  let sanitizedMemberships = memberships ?? undefined;
+  if (memberships) {
+    sanitizedMemberships = { ...memberships };
+    for (const handle of FOLLOWER_EXCLUDED_HANDLES) delete sanitizedMemberships[handle];
+  }
+  return {
+    ...payload,
+    ...(handles === undefined ? {} : { handles }),
+    ...(accounts === undefined ? {} : { accounts }),
+    ...(rows === undefined ? {} : { rows }),
+    ...(sanitizedMemberships === undefined ? {} : { memberships: sanitizedMemberships }),
+  };
+}
+
+async function sanitizeFollowersResponse(response) {
+  if (!response) return response;
+  try {
+    const payload = await response.clone().json();
+    return new Response(JSON.stringify(sanitizeFollowersPayload(payload)), {
+      status: response.status,
+      headers: response.headers,
+    });
+  } catch {
+    return response;
+  }
 }
 
 export async function saveMaterializedR2Response(
@@ -169,8 +218,10 @@ export async function loadMaterializedR2Response(
     return loadWorkerR2Response(r2, modelKey, now, maximumAgeMs);
   }
   if (modelKey === FOLLOWERS_MODEL_KEY) {
-    return (await loadWorkerR2Response(r2, modelKey, now, maximumAgeMs))
-      || emptyFollowersResponse(now);
+    return sanitizeFollowersResponse(
+      (await loadWorkerR2Response(r2, modelKey, now, maximumAgeMs))
+        || emptyFollowersResponse(now),
+    );
   }
   return loadActionsEnvelope(r2, modelKey, now, maximumAgeMs);
 }

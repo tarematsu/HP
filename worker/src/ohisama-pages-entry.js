@@ -9,12 +9,22 @@ import {
 } from './ohisama-publication-cadence.js';
 import { refreshOptimizedOhisamaReadModel } from './ohisama-read-model-optimized.js';
 
+export const OHISAMA_FOLLOWER_EXCLUDED_HANDLES = Object.freeze(['46fm', 'buddy46']);
+const OHISAMA_FOLLOWER_EXCLUDED_HANDLE_SET = new Set(OHISAMA_FOLLOWER_EXCLUDED_HANDLES);
+
+function normalizedFollowerHandle(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
 export function activeBroadcastFollowerRegistrar(registerFollowerTarget) {
   if (typeof registerFollowerTarget !== 'function') {
     throw new TypeError('registerFollowerTarget must be a function');
   }
   return async (env, snapshot, observedAt) => {
     if (snapshot?.is_broadcasting !== 1) return false;
+    if (OHISAMA_FOLLOWER_EXCLUDED_HANDLE_SET.has(normalizedFollowerHandle(snapshot?.host_handle))) {
+      return false;
+    }
     return registerFollowerTarget(env, snapshot, observedAt);
   };
 }

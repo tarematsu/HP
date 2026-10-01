@@ -119,6 +119,37 @@ test('followers read model reads its Worker-owned key directly with one R2 get',
   assert.deepEqual(await response.json(), { source: 'followers-worker' });
 });
 
+test('followers response excludes 46fm and buddy46 from all public fields', async () => {
+  const expected = pagesR2ResponseKey('followers');
+  const response = await loadMaterializedR2Response({
+    async get(key) {
+      return key === expected ? workerObject({
+        ok: true,
+        handles: ['sakuramankai', '46fm', 'buddy46'],
+        rows: [{ date: '2026-10-01', sakuramankai: 100, '46fm': 20, buddy46: 30 }],
+        accounts: [
+          { handle: 'sakuramankai', followers: 100 },
+          { handle: '46FM', followers: 20 },
+          { handle: 'buddy46', followers: 30 },
+        ],
+        memberships: {
+          sakuramankai: { affiliation: 'Buddies', group: 'sakurazaka46' },
+          '46fm': { affiliation: 'Ohisama', group: 'hinatazaka46' },
+          buddy46: { affiliation: 'Ohisama', group: 'hinatazaka46' },
+        },
+      }) : null;
+    },
+  }, 'followers', NOW, Number.MAX_SAFE_INTEGER);
+
+  const payload = await response.json();
+  assert.deepEqual(payload.handles, ['sakuramankai']);
+  assert.deepEqual(payload.accounts.map((row) => row.handle), ['sakuramankai']);
+  assert.deepEqual(payload.memberships, {
+    sakuramankai: { affiliation: 'Buddies', group: 'sakurazaka46' },
+  });
+  assert.deepEqual(payload.rows, [{ date: '2026-10-01', sakuramankai: 100 }]);
+});
+
 test('followers read model returns an empty materialized response before first collection', async () => {
   const expected = pagesR2ResponseKey('followers');
   const calls = [];
