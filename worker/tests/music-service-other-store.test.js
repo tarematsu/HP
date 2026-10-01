@@ -75,7 +75,7 @@ test('Amazon DB router splits mixed batches without changing result order', asyn
   assert.deepEqual(other.batches, [1]);
 });
 
-test('Apple model persists only sh_tracks.id ranks and source-id refs to other DB', async () => {
+test('legacy Apple model persists canonical ranks with an explicit primary artist key', async () => {
   const db = fakeDb('other');
   const model = {
     snapshot_date: '2026-09-30',
@@ -100,7 +100,60 @@ test('Apple model persists only sh_tracks.id ranks and source-id refs to other D
   assert.deepEqual(ref.values.slice(0, 3), ['apple_music', 'APPLE1', 41]);
   const snapshot = db.calls.find((call) => call.sql.includes('apple_music_rank_snapshots'));
   assert.equal(snapshot.values[0], '2026-09-30');
-  assert.deepEqual(JSON.parse(snapshot.values[3]), [{ track_id: 41, rank: 1 }]);
+  assert.deepEqual(JSON.parse(snapshot.values[3]), [
+    { artist_key: 'sakurazaka46', track_id: 41, rank: 1 },
+  ]);
+});
+
+test('combined Apple model persists all three artists and uses the newest artist snapshot date', async () => {
+  const db = fakeDb('other');
+  const model = {
+    snapshot_date: '2026-09-30',
+    observed_at: 1000,
+    artists: [
+      {
+        key: 'sakurazaka46',
+        snapshot_date: '2026-09-30',
+        observed_at: 1000,
+        regions: [{ code: 'jp', tracks: [{ apple_music_id: 'SAKU1', track_id: 41, rank: 1 }] }],
+      },
+      {
+        key: 'nogizaka46',
+        snapshot_date: '2026-10-02',
+        observed_at: 3000,
+        regions: [{ code: 'jp', tracks: [{ apple_music_id: 'NOGI1', track_id: 51, rank: 2 }] }],
+      },
+      {
+        key: 'hinatazaka46',
+        snapshot_date: '2026-10-01',
+        observed_at: 2000,
+        regions: [{ code: 'jp', tracks: [{ apple_music_id: 'HINA1', track_id: 61, rank: 3 }] }],
+      },
+    ],
+  };
+  const result = await persistAppleMusicModelToOther({
+    OTHER_DB: db,
+    PAGES_RESPONSE_R2: r2With('apple-music/read-model/latest.json', model),
+  }, 2500);
+
+  assert.equal(result.persisted, true);
+  assert.equal(result.refs, 3);
+  assert.equal(result.snapshots, 1);
+  assert.equal(result.snapshot_date, '2026-10-02');
+  const refs = db.calls.filter((call) => call.sql.includes('music_service_track_refs'));
+  assert.deepEqual(refs.map((call) => call.values.slice(0, 3)), [
+    ['apple_music', 'SAKU1', 41],
+    ['apple_music', 'NOGI1', 51],
+    ['apple_music', 'HINA1', 61],
+  ]);
+  const snapshot = db.calls.find((call) => call.sql.includes('apple_music_rank_snapshots'));
+  assert.equal(snapshot.values[0], '2026-10-02');
+  assert.equal(snapshot.values[2], 3000);
+  assert.deepEqual(JSON.parse(snapshot.values[3]), [
+    { artist_key: 'hinatazaka46', track_id: 61, rank: 3 },
+    { artist_key: 'nogizaka46', track_id: 51, rank: 2 },
+    { artist_key: 'sakurazaka46', track_id: 41, rank: 1 },
+  ]);
 });
 
 test('Amazon completed model preserves provider editions independently of canonical song ID', async () => {

@@ -4,6 +4,7 @@ import {
 } from './amazon-music-daily-50k.js';
 import { canonicalizeAppleMusicPresentation } from './apple-music-canonical-presentation.js';
 import { collectAppleMusicSnapshot } from './apple-music-collector.js';
+import { collectAdditionalAppleMusicArtists } from './apple-music-sakamichi-collector.js';
 import { appleMusicFetch } from './apple-music-fetch.js';
 import {
   amazonMusicServiceEnv,
@@ -34,7 +35,21 @@ async function collectAppleMusic(env, scheduledTime) {
     force: Boolean(result?.changed || result?.migrated_track_ids),
   });
   if (presentation?.updated) result.canonical_presentation = presentation;
-  if (result?.changed || result?.migrated_track_ids || presentation?.presentation_changed) {
+
+  const sakamichi = await collectAdditionalAppleMusicArtists(
+    env,
+    scheduledTime,
+    appleMusicFetch,
+    { primaryResult: result },
+  );
+  if (sakamichi) result.sakamichi_artists = sakamichi;
+
+  if (
+    result?.changed
+    || result?.migrated_track_ids
+    || presentation?.presentation_changed
+    || sakamichi?.changed
+  ) {
     result.other_db = await persistAppleMusicModelToOther(env, scheduledTime);
   }
   return result;

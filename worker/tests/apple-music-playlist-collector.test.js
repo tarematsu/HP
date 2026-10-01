@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
+  APPLE_MUSIC_PLAYLIST_ARTISTS,
   APPLE_MUSIC_PLAYLIST_PAGES_MODEL_KEY,
   APPLE_MUSIC_PLAYLIST_SEEDS,
   collectAppleMusicPlaylists,
@@ -72,6 +73,17 @@ class FakeR2 {
   }
 }
 
+test('playlist target list contains the three Sakamichi groups', () => {
+  assert.deepEqual(
+    APPLE_MUSIC_PLAYLIST_ARTISTS.map(({ key, id, name }) => ({ key, id, name })),
+    [
+      { key: 'sakurazaka46', id: '1541126420', name: '櫻坂46' },
+      { key: 'nogizaka46', id: '571990937', name: '乃木坂46' },
+      { key: 'hinatazaka46', id: '1456116642', name: '日向坂46' },
+    ],
+  );
+});
+
 test('playlist link discovery keeps only public music.apple.com playlist URLs', () => {
   const links = extractAppleMusicPlaylistLinks(`
     <a href="/jp/playlist/foo/pl.one123?l=ja">one</a>
@@ -84,7 +96,7 @@ test('playlist link discovery keeps only public music.apple.com playlist URLs', 
   ]);
 });
 
-test('playlist parser keeps only Sakurazaka recordings and captures position/catalog id', () => {
+test('playlist parser keeps targeted Sakamichi recordings and captures identity, position and catalog id', () => {
   const parsed = parseAppleMusicPlaylistPage(PLAYLIST_HTML, `${PLAYLIST_URL}?l=ja`);
   assert.equal(parsed.id, 'pl.abc123');
   assert.equal(parsed.name, 'テストプレイリスト');
@@ -95,6 +107,9 @@ test('playlist parser keeps only Sakurazaka recordings and captures position/cat
     title: 'UDAGAWA GENERATION',
     url: 'https://music.apple.com/jp/album/example/1800000000?i=1800000001',
     position: 4,
+    artist_key: 'sakurazaka46',
+    artist_id: '1541126420',
+    artist_name: '櫻坂46',
   }]);
   assert.deepEqual(parsed.related_urls, ['https://music.apple.com/jp/playlist/related/pl.related999']);
 });
@@ -127,7 +142,27 @@ test('playlist parser falls back to serialized-server-data track lockups', () =>
     title: 'UDAGAWA GENERATION',
     url: 'https://music.apple.com/jp/album/example/1800000000?i=1800000001',
     position: 1,
+    artist_key: 'sakurazaka46',
+    artist_id: '1541126420',
+    artist_name: '櫻坂46',
   }]);
+});
+
+test('playlist parser recognizes Nogizaka46 and Hinatazaka46 by public artist identity', () => {
+  const html = `<!doctype html><html><head><script type="application/ld+json">${JSON.stringify({
+    '@type': 'MusicPlaylist',
+    name: '坂道テスト',
+    track: [
+      { '@type': 'MusicRecording', name: 'Nogi Song', byArtist: { name: '乃木坂46', url: 'https://music.apple.com/jp/artist/-/571990937' }, url: 'https://music.apple.com/jp/song/nogi/2001' },
+      { '@type': 'MusicRecording', name: 'Hinata Song', byArtist: { name: '日向坂46', url: 'https://music.apple.com/jp/artist/-/1456116642' }, url: 'https://music.apple.com/jp/song/hinata/2002' },
+      { '@type': 'MusicRecording', name: 'Other', byArtist: { name: 'Other Artist' }, url: 'https://music.apple.com/jp/song/other/2003' },
+    ],
+  })}</script></head></html>`;
+  const parsed = parseAppleMusicPlaylistPage(html, PLAYLIST_URL);
+  assert.deepEqual(parsed.tracks.map((track) => [track.artist_key, track.apple_music_id]), [
+    ['nogizaka46', '2001'],
+    ['hinatazaka46', '2002'],
+  ]);
 });
 
 test('daily playlist collection crawls only public Apple Music pages and publishes a track reverse index', async () => {
@@ -156,6 +191,7 @@ test('daily playlist collection crawls only public Apple Music pages and publish
   assert.equal(result.skipped, false);
   assert.equal(result.matched_playlists, 1);
   assert.equal(result.matched_tracks, 1);
+  assert.equal(result.matched_tracks_by_artist.sakurazaka46, 1);
   assert.ok(requests.length >= APPLE_MUSIC_PLAYLIST_SEEDS.length + 1);
   assert.ok(requests.every((url) => url.startsWith('https://music.apple.com/')));
   assert.ok(requests.every((url) => !url.includes('api.music.apple.com')));
@@ -167,6 +203,7 @@ test('daily playlist collection crawls only public Apple Music pages and publish
   assert.equal(payload.coverage.matched_playlists, 1);
   assert.equal(payload.tracks[0].track_id, 42);
   assert.equal(payload.tracks[0].title, 'UDAGAWA GENERATION');
+  assert.equal(payload.tracks[0].artist_key, 'sakurazaka46');
   assert.equal(payload.tracks[0].playlists[0].id, 'pl.abc123');
 
   const callsBeforeSecondRun = requests.length;

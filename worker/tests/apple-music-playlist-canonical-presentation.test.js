@@ -170,13 +170,13 @@ test('Apple Music playlist presentation canonicalizes provider titles and resolv
     [202, 'マモリビト'],
   ]);
   assert.deepEqual(stored.tracks.map((track) => track.key).sort(), ['track:101', 'track:202']);
-  assert.equal(stored.canonical_presentation_version, 1);
+  assert.equal(stored.canonical_presentation_version, 2);
 
   const publicKey = pagesActionsR2ResponseKey(APPLE_MUSIC_PLAYLIST_PAGES_MODEL_KEY);
   const envelope = JSON.parse(r2.values.get(publicKey));
   const publicModel = JSON.parse(envelope.body);
   assert.equal(publicModel.playlists[0].tracks[0].title, '五月雨よ');
-  assert.equal(envelope.renderer_revision, 'apple-music-playlists-v2');
+  assert.equal(envelope.renderer_revision, 'apple-music-playlists-v3');
 
   const writesAfterFirst = r2.putCount;
   const second = await canonicalizeAppleMusicPlaylistPresentation({
