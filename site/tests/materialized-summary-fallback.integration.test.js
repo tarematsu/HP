@@ -6,12 +6,11 @@ import { onRequest } from '../functions/_middleware.js';
 const CASES = [
   ['history:daily', '/api/history?mode=daily'],
   ['history:weekly', '/api/history?mode=weekly'],
-  ['history:monthly', '/api/history?mode=monthly'],
   ['history:broadcasts', '/api/history?mode=broadcasts'],
   ['host-history:summary', '/api/host-history?mode=summary'],
 ];
 
-test('completed history models fail closed instead of reading live Pages databases', async () => {
+test('completed materialized history models fail closed instead of reading live Pages databases', async () => {
   const originalCaches = globalThis.caches;
   let cacheWrites = 0;
   globalThis.caches = {
@@ -54,6 +53,42 @@ test('completed history models fail closed instead of reading live Pages databas
       assert.equal(liveCalls, 0, modelKey);
     }
     assert.equal(cacheWrites, 0);
+  } finally {
+    globalThis.caches = originalCaches;
+  }
+});
+
+test('monthly history is no longer a materialized model', async () => {
+  const originalCaches = globalThis.caches;
+  globalThis.caches = {
+    default: {
+      async match() { return undefined; },
+      async put() {},
+    },
+  };
+  try {
+    let serviceCalls = 0;
+    let liveCalls = 0;
+    const response = await onRequest({
+      request: new Request('https://skrzk.test/api/history?mode=monthly'),
+      env: {
+        PAGES_READ_MODEL_SERVICE: {
+          async fetch() {
+            serviceCalls += 1;
+            return Response.json({ ok: false }, { status: 503 });
+          },
+        },
+      },
+      async next() {
+        liveCalls += 1;
+        return Response.json({ ok: true, mode: 'monthly', source: 'live-api' });
+      },
+      waitUntil() {},
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { ok: true, mode: 'monthly', source: 'live-api' });
+    assert.equal(serviceCalls, 0);
+    assert.equal(liveCalls, 1);
   } finally {
     globalThis.caches = originalCaches;
   }
