@@ -4,6 +4,7 @@ import {
   spotifyReadModelAll,
   spotifyTrendSql,
 } from '../../site/functions/api/spotify-playcounts.js';
+import { spotifyMonthlyListenersSql } from '../../site/functions/api/spotify-monthly-listeners.js';
 import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
 
 export const SPOTIFY_READ_MODEL_KEY = 'spotify-playcounts';
@@ -38,6 +39,18 @@ function groupSnapshotDates(model) {
   };
 }
 
+function monthlyListenerRevision(monthlyListenerRows) {
+  let latestDate = '';
+  let latestCollectedAt = 0;
+  for (const row of monthlyListenerRows) {
+    const date = String(row?.snapshot_date || '');
+    const collectedAt = Number(row?.collected_at || 0);
+    if (date > latestDate) latestDate = date;
+    if (Number.isFinite(collectedAt) && collectedAt > latestCollectedAt) latestCollectedAt = collectedAt;
+  }
+  return `${latestDate}:${latestCollectedAt}:${monthlyListenerRows.length}`;
+}
+
 export function spotifyReadModelRefreshMessage(reason, detail = {}) {
   return {
     message_type: SPOTIFY_READ_MODEL_REFRESH_TYPE,
@@ -61,12 +74,17 @@ export async function publishSpotifyPagesReadModel(env, options = {}) {
     throw new Error('PAGES_RESPONSE_R2 binding is required for Spotify read-model refresh');
   }
 
-  const [latestResult, trendResult, artistChartResult] = await Promise.all([
+  const [latestResult, trendResult, artistChartResult, monthlyListenersResult] = await Promise.all([
     db.prepare(spotifyPlaycountAllSql()).all(),
     db.prepare(spotifyTrendSql()).all(),
     db.prepare(spotifyArtistChartSql()).all(),
+    db.prepare(spotifyMonthlyListenersSql()).all(),
   ]);
-  const model = spotifyReadModelAll(rows(latestResult), rows(trendResult), rows(artistChartResult));
+  const monthlyListenerRows = rows(monthlyListenersResult);
+  const model = {
+    ...spotifyReadModelAll(rows(latestResult), rows(trendResult), rows(artistChartResult)),
+    monthly_listener_rows: monthlyListenerRows,
+  };
   const body = JSON.stringify({ ok: true, ...model });
   const key = pagesActionsR2ResponseKey(SPOTIFY_READ_MODEL_KEY);
   if (!key) throw new Error('Spotify read-model R2 key is unavailable');
@@ -81,6 +99,7 @@ export async function publishSpotifyPagesReadModel(env, options = {}) {
       snapshot_date: snapshots.sakurazaka46,
       snapshot_dates: snapshots,
       chart_date: model.artist_chart?.latest_chart_date ?? null,
+      monthly_listener_revision: monthlyListenerRevision(monthlyListenerRows),
     };
   }
 
@@ -98,8 +117,9 @@ export async function publishSpotifyPagesReadModel(env, options = {}) {
       snapshots.hinatazaka46 ?? '',
       model.artist_chart?.latest_chart_date ?? '',
       model.artist_chart?.latest_observed_at ?? '',
+      monthlyListenerRevision(monthlyListenerRows),
     ].join(':'),
-    renderer_revision: 'spotify-event-v2',
+    renderer_revision: 'spotify-event-v3',
     body,
   };
   await r2.put(key, JSON.stringify(envelope), {
@@ -112,6 +132,7 @@ export async function publishSpotifyPagesReadModel(env, options = {}) {
     snapshot_date: snapshots.sakurazaka46,
     snapshot_dates: snapshots,
     chart_date: model.artist_chart?.latest_chart_date ?? null,
+    monthly_listener_revision: monthlyListenerRevision(monthlyListenerRows),
   };
 }
 
