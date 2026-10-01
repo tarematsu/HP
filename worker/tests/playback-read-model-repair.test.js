@@ -24,13 +24,18 @@ function queueDb(canonicalMetadata, updates, metadataCalls = []) {
               }] }),
             }] };
           }
-          if (/FROM sh_track_canonical_metadata/.test(sql)) {
+          if (/FROM sh_track_canonical_metadata|FROM sh_track_dictionary/.test(sql)) {
             metadataCalls.push({ sql, bindings: this.bindings });
             const wanted = new Set(this.bindings);
             const key = /WHERE track_id IN/.test(sql)
               ? 'track_id'
               : (/WHERE isrc IN/.test(sql) ? 'isrc' : 'spotify_id');
-            return { results: canonicalMetadata.filter((row) => wanted.has(row[key])) };
+            const rows = canonicalMetadata.filter((row) => wanted.has(row[key]));
+            return {
+              results: /FROM sh_track_dictionary/.test(sql)
+                ? rows.map((row) => ({ ...row, track_id: null }))
+                : rows,
+            };
           }
           return { results: [] };
         },
@@ -48,7 +53,7 @@ function forbiddenDb(calls) {
   return {
     prepare(sql) {
       calls.push(sql);
-      throw new Error('BUDDIES_DB must not supplement a working canonical view');
+      throw new Error('BUDDIES_DB must not supplement a working canonical owner');
     },
   };
 }
@@ -85,7 +90,7 @@ test('metadata sync repairs an already persisted sparse playback queue', async (
   });
 });
 
-test('playback repair does not blend BUDDIES metadata into an available canonical view', async () => {
+test('playback repair does not blend BUDDIES metadata into an available canonical owner', async () => {
   const updates = [];
   const sourceCalls = [];
   const minuteDb = queueDb([{
@@ -138,7 +143,7 @@ test('playback repair scans incomplete tracks once and preserves first-seen uniq
           if (/FROM sh_queue_read_model_current/.test(sql)) {
             return { results: [{ channel_id: 1, queue_json: JSON.stringify(queue) }] };
           }
-          if (/FROM sh_track_canonical_metadata/.test(sql)) {
+          if (/FROM sh_track_canonical_metadata|FROM sh_track_dictionary/.test(sql)) {
             metadataCalls.push(this.bindings);
             return { results: [] };
           }

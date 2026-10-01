@@ -46,7 +46,7 @@ test('source-priority migration treats Stationhead as provisional and adds ISRC 
   assert.match(priorityMigration, /UPDATE sh_isrc_metadata[\s\S]*SET fetched_at=0/);
 });
 
-test('minute metadata hydration gets presentation only from canonical view while sh_tracks resolves identity', async () => {
+test('minute metadata hydration gets presentation only from canonical owners while sh_tracks resolves identity', async () => {
   const statements = [];
   const MINUTE_DB = {
     prepare(sql) {
@@ -59,9 +59,11 @@ test('minute metadata hydration gets presentation only from canonical view while
         },
         async all() {
           const wanted = new Set(this.bindings);
-          if (/FROM sh_tracks/.test(sql)) return { results: [] };
+          if (/FROM sh_tracks/.test(sql) || /FROM sh_track_dictionary/.test(sql)) {
+            return { results: [] };
+          }
           return {
-            results: wanted.has('USABC1234567') || wanted.has('new-sp') ? [{
+            results: wanted.has('USABC1234567') ? [{
               track_id: 10,
               spotify_id: 'old-sp',
               isrc: 'USABC1234567',
@@ -83,12 +85,17 @@ test('minute metadata hydration gets presentation only from canonical view while
   );
   assert.equal(rows.length, 1);
   assert.ok(statements.every((sql) => (
-    /FROM sh_track_canonical_metadata/.test(sql) || /FROM sh_tracks/.test(sql)
+    /FROM sh_track_canonical_metadata/.test(sql)
+    || /FROM sh_track_dictionary/.test(sql)
+    || /FROM sh_tracks/.test(sql)
   )));
-  assert.ok(statements.every((sql) => !/sh_track_metadata|sh_isrc_metadata|sh_track_dictionary/.test(sql)));
+  assert.ok(statements.every((sql) => !/sh_track_metadata|sh_isrc_metadata/.test(sql)));
   assert.ok(statements.filter((sql) => /FROM sh_tracks/.test(sql)).every((sql) => (
     /SELECT id AS track_id,spotify_id/.test(sql)
     && !/title|artist|thumbnail_url/.test(sql)
+  )));
+  assert.ok(statements.filter((sql) => /FROM sh_track_dictionary/.test(sql)).every((sql) => (
+    /spotify_id IN/.test(sql) && /TRIM\(spotify_id\)<>''/.test(sql)
   )));
 
   const hydrated = attachReadModelTrackMetadata({

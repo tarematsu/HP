@@ -18,8 +18,15 @@ function metadataDb(rows, calls, name) {
           if (/FROM sh_tracks/.test(sql)) {
             return {
               results: rows
-                .filter((row) => wanted.has(row.spotify_id))
+                .filter((row) => row.track_id != null && wanted.has(row.spotify_id))
                 .map((row) => ({ track_id: row.track_id, spotify_id: row.spotify_id })),
+            };
+          }
+          if (/FROM sh_track_dictionary/.test(sql)) {
+            return {
+              results: rows
+                .filter((row) => wanted.has(row.spotify_id))
+                .map((row) => ({ ...row, track_id: null })),
             };
           }
           const key = sql.includes('WHERE track_id IN')
@@ -82,8 +89,9 @@ test('missing canonical metadata is not filled from BUDDIES_DB', async () => {
   assert.deepEqual(rows.map((row) => row.spotify_id), ['sp1']);
   assert.deepEqual(calls.map((call) => call.name), ['minute', 'minute', 'minute']);
   assert.match(calls[1].sql, /FROM sh_tracks/);
-  assert.match(calls[2].sql, /FROM sh_track_canonical_metadata/);
-  assert.match(calls[2].sql, /WHERE spotify_id IN/);
+  assert.match(calls[2].sql, /FROM sh_track_dictionary/);
+  assert.match(calls[2].sql, /WHERE spotify_id IS NOT NULL/);
+  assert.match(calls[2].sql, /spotify_id IN/);
   assert.deepEqual(calls[2].bindings, ['sp2']);
 });
 

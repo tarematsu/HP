@@ -153,6 +153,7 @@ test('maintenance workflows use cadence-only Runtime, published-revision drift d
   const localRebuild = read('.github/workflows/run-local-minute-facts-rebuild.yml');
   const summaryRepairWorkflow = read('.github/workflows/repair-pages-summaries.yml');
 
+  assert.match(watchdog, /- "Unified Cloudflare Observability"/);
   assert.match(watchdog, /- "Rebuild pages read models"/);
   assert.match(watchdog, /- "Run runtime offline maintenance"/);
   assert.doesNotMatch(watchdog, /run-local-minute-facts-rebuild\.yml/);
@@ -175,7 +176,7 @@ test('recovery watchdog remains offset and budget-safe', () => {
 
   assert.match(workflow, /cron: '10,25,40,55 \* \* \* \*'/);
   assert.match(workflow, /actions: write/);
-  assert.doesNotMatch(workflow, /CLOUDFLARE|wrangler|d1 execute/i);
+  assert.doesNotMatch(workflow, /CLOUDFLARE_(?:API_TOKEN|ACCOUNT_ID)|wrangler|d1 execute/i);
   assert.match(script, /RECOVERY_WORKFLOWS/);
   assert.match(script, /force_all: 'true'/);
   assert.doesNotMatch(script, /localMinute/);

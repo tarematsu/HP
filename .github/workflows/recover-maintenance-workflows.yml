@@ -4,6 +4,7 @@ on:
   workflow_run:
     workflows:
       - "Publish GitHub Actions runner health"
+      - "Unified Cloudflare Observability"
       - "Rebuild pages read models"
       - "Run runtime offline maintenance"
     types: [completed]
