@@ -27,7 +27,6 @@ const ALL_VARIANTS = [
   'dashboard',
   'history:daily',
   'history:weekly',
-  'history:monthly',
   'history:broadcasts',
   'host-history:summary',
   'spotify-playcounts',
@@ -56,22 +55,26 @@ test('track-history read-model generation is absent from scheduled Actions', () 
   assert.doesNotMatch(workflow, /PAGES_READ_MODEL_MAX_STEPS|Rebuild track history|track-history generation/);
 });
 
-test('history rebuild is targeted by source revision with one daily recovery sweep', () => {
+test('history rebuild is revision targeted and never budget gated', () => {
   assert.doesNotMatch(workflow, /workflow_run:/);
   assert.match(workflow, /cron: '26 0 \* \* \*'/);
   assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/);
   assert.match(workflow, /PAGES_READ_MODEL_FORCE_ALL/);
   assert.match(workflow, /PAGES_READ_MODEL_DUE_KEYS/);
   assert.match(workflow, /due_keys:/);
-  assert.match(workflow, /Refresh reusable history models during D1 budget deferral/);
   assert.match(workflow, /Publish due pages read models/);
   assert.match(workflow, /run-pages-history-read-model-actions\.mjs/);
+  assert.doesNotMatch(workflow, /cloudflare-d1-write-guard\.mjs/);
+  assert.doesNotMatch(workflow, /PAGES_READ_MODEL_REUSE_ONLY/);
+  assert.doesNotMatch(workflow, /D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT/);
   assert.doesNotMatch(workflow, /node scripts\/refresh-pages-dashboard-actions\.mjs/);
   assert.doesNotMatch(workflow, /node scripts\/refresh-pages-realtime-actions\.mjs/);
   assert.match(historyRunner, /variant\.key !== 'dashboard' && variant\.event_driven !== true/);
   assert.match(historyRunner, /PAGES_READ_MODEL_DUE_KEYS/);
-  assert.match(historyRunner, /BUDGET_EXEMPT_HISTORY_KEYS = new Set\(\['history:daily'\]\)/);
-  assert.match(historyRunner, /reuseOnlyKeys:[\s\S]*filter\(\(key\) => !BUDGET_EXEMPT_HISTORY_KEYS\.has\(key\)\)/);
+  assert.doesNotMatch(historyRunner, /BUDGET_EXEMPT_HISTORY_KEYS/);
+  assert.doesNotMatch(historyRunner, /PAGES_READ_MODEL_REUSE_ONLY/);
+  assert.match(historyRunner, /reuseOnly: _ignoredReuseOnly/);
+  assert.match(historyRunner, /reuseOnlyKeys: _ignoredReuseOnlyKeys/);
   assert.doesNotMatch(historyRunner, /SPOTIFY_MODEL_KEY/);
   assert.match(workflow, /timeout-minutes: 15/);
   assert.match(workflow, /cancel-in-progress: true/);
