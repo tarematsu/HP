@@ -23,7 +23,7 @@ test('stops Actions work at or above the 4000-row hourly limit', () => {
   assert.equal(guardDecision(4001).allowed, false);
 });
 
-test('daily read pressure blocks D1-heavy Actions before the free-tier ceiling', () => {
+test('daily read pressure blocks explicitly guarded D1-heavy Actions before the free-tier ceiling', () => {
   assert.deepEqual(combinedGuardDecision(100, 3_499_999, 4000, 3_500_000), {
     allowed: true,
     rowsWritten: 100,
@@ -41,7 +41,7 @@ test('daily read pressure blocks D1-heavy Actions before the free-tier ceiling',
   assert.equal(blocked.readAllowed, false);
 });
 
-test('projected daily burn rate blocks Actions before actual reads reach the limit', async () => {
+test('projected daily burn rate blocks explicitly guarded Actions before actual reads reach the limit', async () => {
   const projection = projectedDailyRows(200_000, 60 * 60_000, 60);
   assert.equal(projection, 4_800_000);
   const decision = combinedGuardDecision(100, 200_000, 4000, 3_500_000, projection);
@@ -77,19 +77,24 @@ test('unavailable write telemetry fails closed without failing the workflow step
   });
 });
 
-test('history read-model workflow gates D1-heavy generation while existing R2 stays active', async () => {
-  const workflow = await readFile(new URL('../.github/workflows/run-pages-read-model-rebuild.yml', import.meta.url), 'utf8');
-  assert.match(workflow, /D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT: '4000'/);
-  assert.match(workflow, /D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT: '3500000'/);
-  assert.match(workflow, /D1_ACTIONS_READ_PROJECTION_MINUTES: '60'/);
-  assert.match(workflow, /id: d1-write-budget/);
-  assert.match(workflow, /outputs\.rows_read/);
-  assert.match(workflow, /outputs\.projected_rows_read/);
-  assert.match(workflow, /Summarize D1 budget decision/);
-  assert.match(workflow, /outputs\.reason/);
-  assert.match(workflow, /telemetry-unavailable/);
-  assert.match(workflow, /if: steps\.d1-write-budget\.outputs\.read_allowed == 'true'/);
-  assert.match(workflow, /Existing R2 responses remain active/);
-  assert.match(workflow, /PAGES_READ_MODEL_REUSE_ONLY: 'true'/);
-  assert.doesNotMatch(workflow, /worker.*retry|retry.*worker/i);
+test('all non-track-history read-model workflows are outside the D1 budget guard', async () => {
+  const paths = [
+    '../.github/workflows/run-pages-read-model-rebuild.yml',
+    '../.github/workflows/repair-pages-summaries.yml',
+    '../.github/workflows/run-local-minute-facts-rebuild.yml',
+    '../.github/workflows/run-runtime-offline-maintenance.yml',
+  ];
+  for (const path of paths) {
+    const workflow = await readFile(new URL(path, import.meta.url), 'utf8');
+    assert.doesNotMatch(workflow, /cloudflare-d1-write-guard\.mjs/, path);
+    assert.doesNotMatch(workflow, /D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT/, path);
+    assert.doesNotMatch(workflow, /D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT/, path);
+    assert.doesNotMatch(workflow, /D1_ACTIONS_READ_PROJECTION_MINUTES/, path);
+    assert.doesNotMatch(workflow, /PAGES_READ_MODEL_REUSE_ONLY/, path);
+  }
+
+  const pages = await readFile(new URL('../.github/workflows/run-pages-read-model-rebuild.yml', import.meta.url), 'utf8');
+  assert.match(pages, /Publish due pages read models/);
+  assert.match(pages, /Publish compact track ranking to R2/);
+  assert.doesNotMatch(pages, /worker.*retry|retry.*worker/i);
 });

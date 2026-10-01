@@ -14,10 +14,6 @@ import {
   overdueVariantKeys,
   runPagesReadModelActions,
 } from '../worker/scripts/run-pages-read-model-actions.mjs';
-import {
-  BUDGET_SAFE_VARIANTS,
-  REUSE_ONLY_VARIANTS,
-} from '../worker/scripts/refresh-pages-dashboard-actions.mjs';
 
 const workflow = readFileSync(new URL('../.github/workflows/run-pages-read-model-rebuild.yml', import.meta.url), 'utf8');
 const runner = readFileSync(new URL('../worker/scripts/run-pages-read-model-actions.mjs', import.meta.url), 'utf8');
@@ -38,7 +34,6 @@ function allMaterializedVariants() {
     'dashboard',
     'history:daily',
     'history:weekly',
-    'history:monthly',
     'history:broadcasts',
     'host-history:summary',
     'spotify-playcounts',
@@ -52,7 +47,7 @@ function twelveHourVariants() {
   ];
 }
 
-test('Pages history recovery is daily while normal publication is revision-targeted', () => {
+test('Pages history recovery is daily while normal publication is revision-targeted and unguarded', () => {
   assert.match(workflow, /cron: '26 0 \* \* \*'/);
   assert.doesNotMatch(workflow, /workflow_run:/);
   assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/);
@@ -64,13 +59,14 @@ test('Pages history recovery is daily while normal publication is revision-targe
   assert.match(workflow, /PAGES_READ_MODEL_DUE_KEYS/);
   assert.match(workflow, /due_keys:/);
   assert.match(workflow, /PAGES_READ_MODEL_RETRY_OVERDUE: 'true'/);
-  assert.match(workflow, /steps\.d1-write-budget\.outputs\.read_allowed == 'true'/);
-  assert.match(workflow, /steps\.d1-write-budget\.outputs\.read_allowed != 'true'/);
-  assert.doesNotMatch(workflow, /steps\.d1-write-budget\.outputs\.allowed == 'true'/);
-  assert.doesNotMatch(workflow, /steps\.d1-write-budget\.outputs\.allowed != 'true'/);
+  assert.doesNotMatch(workflow, /cloudflare-d1-write-guard\.mjs/);
+  assert.doesNotMatch(workflow, /D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT/);
+  assert.doesNotMatch(workflow, /D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT/);
+  assert.doesNotMatch(workflow, /PAGES_READ_MODEL_REUSE_ONLY/);
   assert.doesNotMatch(workflow, /PAGES_READ_MODEL_MAX_STEPS|Rebuild track history/);
   assert.match(workflow, /Publish due pages read models/);
   assert.match(workflow, /run-pages-history-read-model-actions\.mjs/);
+  assert.match(workflow, /Remove retired monthly history read model/);
   assert.match(runner, /export async function runPagesReadModelActions/);
   assert.doesNotMatch(runner, /runSplitTrackHistoryCycleStep|MAX_TRACK_HISTORY_STEPS|while \(steps < maxSteps/);
   assert.match(runner, /variant\.cadence_minutes/);
@@ -117,6 +113,7 @@ test('contract cadence metadata remains compatible with recovery tooling', () =>
   assert.deepEqual([...dueVariantKeys(DAY + 746 * MINUTE)], twelveHourVariants());
   assert.deepEqual([...dueVariantKeys(DAY + 1466 * MINUTE)], allMaterializedVariants());
   assert.equal(materializedApiKey('https://pages.test/api/track-history'), null);
+  assert.equal(materializedApiKey('https://pages.test/api/history?mode=monthly'), null);
 });
 
 test('historical range requests resolve to the canonical R2 model', () => {
@@ -313,7 +310,7 @@ test('unchanged historical input reuses the existing body without rerendering', 
   assert.equal(uploaded.envelope.updated_at, DAY);
 });
 
-test('reuse-only refresh never rerenders a changed historical model', async () => {
+test('reuse-only primitive remains available for explicit callers', async () => {
   let handlerCalls = 0;
   let uploadCalls = 0;
   const result = await materializeVariant({
@@ -346,34 +343,6 @@ test('reuse-only refresh never rerenders a changed historical model', async () =
   assert.equal(result.deferred, true);
   assert.equal(result.defer_reason, 'source-revision-changed');
   assert.equal(result.object_key, null);
-});
-
-test('budget deferral refreshes dashboard normally and only reuses historical models', async () => {
-  assert.deepEqual(BUDGET_SAFE_VARIANTS.map(({ key }) => key), allMaterializedVariants());
-  assert.deepEqual(
-    REUSE_ONLY_VARIANTS.map(({ key }) => key),
-    allMaterializedVariants().filter((key) => key !== 'dashboard'),
-  );
-
-  const calls = [];
-  await runPagesReadModelActions({
-    startedAt: DAY + 19 * MINUTE,
-    deadlineMs: DAY + 30 * MINUTE,
-    now: () => DAY + 19 * MINUTE,
-    env: { MINUTE_DB: {}, DB: {}, BUDDIES_DB: {}, OTHER_DB: {} },
-    variants: BUDGET_SAFE_VARIANTS,
-    dueKeys: BUDGET_SAFE_VARIANTS.map(({ key }) => key),
-    reuseOnlyKeys: REUSE_ONLY_VARIANTS.map(({ key }) => key),
-    materializeVariant: async (variant, _env, _now, dependencies) => {
-      calls.push({ key: variant.key, reuseOnly: dependencies.reuseOnly === true });
-      return { key: variant.key };
-    },
-  });
-
-  assert.deepEqual(calls, allMaterializedVariants().map((key) => ({
-    key,
-    reuseOnly: key !== 'dashboard',
-  })));
 });
 
 test('renderer changes force a fresh read model even when source rows are unchanged', async () => {

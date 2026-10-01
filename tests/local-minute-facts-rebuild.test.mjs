@@ -120,7 +120,8 @@ test('full local rebuild remains available only as a manual emergency path', () 
   assert.match(caller, /cancel-in-progress: false/);
   assert.match(caller, /Never cancel an upload that may already have committed part of its window/);
   assert.match(runtimeMaintenance, /run-minute-facts-gap-scan-actions\.mjs/);
-  assert.match(runtimeMaintenance, /Minute-fact gap scan deferred by D1 budget guard/);
+  assert.doesNotMatch(runtimeMaintenance, /Minute-fact gap scan deferred by D1 budget guard/);
+  assert.doesNotMatch(runtimeMaintenance, /cloudflare-d1-write-guard\.mjs|RUNTIME_MAINTENANCE_D1_ALLOWED/);
   assert.match(
     workflow,
     /if: \(github\.event_name == 'push' && inputs\.operation == ''\) \|\| inputs\.operation == 'buddies-db'/,

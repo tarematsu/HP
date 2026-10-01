@@ -47,7 +47,6 @@ test('Actions R2 keys use a CLI-safe hexadecimal model identifier', () => {
     'dashboard',
     'history:daily',
     'history:weekly',
-    'history:monthly',
     'history:broadcasts',
     'host-history:summary',
   ]) {
