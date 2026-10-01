@@ -26,7 +26,7 @@ function ensurePlaylistTable() {
     titleId: 'applePlaylistTitle',
     kicker: 'PLAYLISTS',
     className: 'apple-data-panel music-service-panel',
-    bodyHtml: `<p class="music-service-playlist-note">Apple Music公式サイト上で検出できた、櫻坂46楽曲を含む公開プレイリストを表示します。</p>${table}`,
+    bodyHtml: `<p class="music-service-playlist-note">Apple Music公式サイト上で検出できた公開プレイリストを、櫻坂46楽曲ごとに表示します。</p>${table}`,
   });
   const panel = holder.firstElementChild;
   if (!panel) return null;
