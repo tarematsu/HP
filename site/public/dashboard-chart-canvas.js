@@ -64,7 +64,7 @@ export function drawDashboardLine(context, rows, {
   context.lineWidth = lineWidth;
   context.lineJoin = 'round';
   context.lineCap = 'round';
-  context.setLineDash(Array.isArray(lineDash) ? lineDash : []);
+  if (typeof context.setLineDash === 'function') context.setLineDash(Array.isArray(lineDash) ? lineDash : []);
   context.beginPath();
   let open = false;
   let previous = null;
@@ -115,22 +115,23 @@ export function drawDashboardXAxis(context, {
   context.fillStyle = fillStyle;
   context.lineWidth = 1;
   context.font = font;
-  context.textAlign = 'center';
   context.textBaseline = 'top';
   context.beginPath();
   context.moveTo(left, top);
   context.lineTo(width - right, top);
   context.stroke();
-  for (const index of indexes) {
+  indexes.forEach((index, tickIndex) => {
     const x = Number(positions[index]);
-    if (!Number.isFinite(x)) continue;
+    if (!Number.isFinite(x)) return;
     context.beginPath();
     context.moveTo(x, top);
     context.lineTo(x, top + tickSize);
     context.stroke();
     const label = typeof labelFor === 'function' ? labelFor(index) : labels[index];
-    if (label != null && label !== '') context.fillText(String(label), x, top + labelOffset);
-  }
+    if (label == null || label === '') return;
+    context.textAlign = tickIndex === 0 ? 'left' : tickIndex === indexes.length - 1 ? 'right' : 'center';
+    context.fillText(String(label), x, top + labelOffset);
+  });
   context.restore();
 }
 
