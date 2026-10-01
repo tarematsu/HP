@@ -16,12 +16,14 @@ import { collectNhacCuaTui } from './regional-music-nhaccuatui.js';
 import { collectPlern } from './regional-music-plern.js';
 import { collectQqMusic } from './regional-music-qq.js';
 import { collectYandexMusic } from './regional-music-yandex.js';
+import { collectYouTubeMusic } from './regional-music-youtube-music.js';
 import { collectZingMp3 } from './regional-music-zing.js';
 import { publishRegionalMusicReadModel } from './regional-music-read-model.js';
 
 export const REGIONAL_MUSIC_DAILY_CRON = '20 15 * * *';
 
 export const REGIONAL_MUSIC_DAILY_COLLECTORS = Object.freeze([
+  collectYouTubeMusic,
   collectGenie,
   collectBugsArtists,
   collectJooxArtists,
