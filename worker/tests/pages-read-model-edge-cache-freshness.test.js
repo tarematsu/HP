@@ -53,3 +53,44 @@ test('materialized L1 cache remains usable inside the sixty second freshness win
   assert.equal(response.headers.get('x-api-source'), 'edge-cache');
   assert.deepEqual(await response.json(), { source: 'edge' });
 });
+
+test('unchanged older models are cached from the time R2 was checked', async () => {
+  let now = Date.UTC(2026, 9, 2);
+  const generatedAt = now - 3600_000;
+  let saved;
+  let reads = 0;
+  const dependencies = {
+    now: () => now,
+    cache: {
+      match: async () => saved?.clone(),
+      put: async (_key, response) => { saved = response; },
+    },
+    loadR2Response: async () => {
+      reads += 1;
+      return materialized({ value: reads }, generatedAt);
+    },
+  };
+  await runPagesResponseFetch(request(), {}, dependencies);
+  now += 30_000;
+  const cached = await runPagesResponseFetch(request(), {}, dependencies);
+  assert.equal(reads, 1);
+  assert.equal(cached.headers.get('x-materialized-at'), String(generatedAt));
+  assert.equal(cached.headers.get('x-api-source'), 'edge-cache');
+  now += 31_000;
+  await runPagesResponseFetch(request(), {}, dependencies);
+  assert.equal(reads, 2);
+});
+
+test('a recent cache insertion cannot make an expired source fresh', async () => {
+  const now = Date.UTC(2026, 9, 2);
+  const expired = materialized({ source: 'expired' }, now - 365 * 86400_000);
+  expired.headers.set('x-pages-edge-cached-at', String(now));
+  let reads = 0;
+  const result = await runPagesResponseFetch(new Request('https://internal.test/_internal/pages-response?key=dashboard'), {}, {
+    now: () => now,
+    cache: { match: async () => expired, put: async () => {} },
+    loadR2Response: async () => { reads += 1; return materialized({ source: 'fresh' }, now); },
+  });
+  assert.equal(reads, 1);
+  assert.deepEqual(await result.json(), { source: 'fresh' });
+});
