@@ -88,7 +88,8 @@ test('history runtime is embedded, lazy, and has one chart owner per mode', () =
   assert.doesNotMatch(runtime, /prepareCanvas|drawSummaryChart|chartModel|history-broadcasts\.js/);
   assert.match(period, /history:data-loaded/);
   assert.match(ranking, /history:data-loaded/);
-  assert.match(ranking, /function drawMissingBand\(/);
+  assert.match(ranking, /dashboardMissingIndexBands/);
+  assert.match(ranking, /drawDashboardMissingBands/);
   assert.doesNotMatch(period, /previousFetch|browser\.fetch|response\.clone\(\)\.json/);
   assert.doesNotMatch(ranking, /previousFetch|browser\.fetch|response\.clone\(\)\.json/);
 });

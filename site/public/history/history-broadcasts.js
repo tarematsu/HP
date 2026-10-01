@@ -10,6 +10,12 @@ import {
   drawDashboardXAxis,
   prepareDashboardCanvas,
 } from '../dashboard-chart-canvas.js?v=20261001.2';
+import {
+  appendDashboardLegendItem,
+  nearestSortedPoint,
+  observeDashboardChartResize,
+} from '../dashboard-chart-runtime.js?v=20261001.1';
+import { JST_DATE_EN_CA } from '../dashboard-time.js?v=20261001.1';
 
 (() => {
   const button = document.querySelector('[data-mode="broadcasts"]');
@@ -25,9 +31,6 @@ import {
   const MAX_DRAW_POINTS = 2_400;
   const CACHE_REVISION = '9';
   const API_REVISION = '3';
-  const jstDay = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
-  });
   const DATE_PREFIX = /^\s*(\d{4})[./-](\d{1,2})[./-](\d{1,2})\s*/u;
   const SERIES_COLORS = [
     ['--accent', '#d93f79'],
@@ -51,7 +54,6 @@ import {
   let loadedMeta = null;
   let controller = null;
   let loadTimer = 0;
-  let resizeTimer = 0;
 
   const active = () => button.classList.contains('active');
   const escape = (value) => String(value ?? '')
@@ -75,7 +77,7 @@ import {
     const name = rawName.replace(DATE_PREFIX, '').trim() || '公式リスパ';
     const startedAt = Number(item?.started_at);
     const date = Number.isFinite(startedAt)
-      ? jstDay.format(new Date(startedAt)).replaceAll('-', '')
+      ? JST_DATE_EN_CA.format(new Date(startedAt)).replaceAll('-', '')
       : prefixedDate
         ? `${prefixedDate[1]}${prefixedDate[2].padStart(2, '0')}${prefixedDate[3].padStart(2, '0')}`
         : '';
@@ -85,7 +87,7 @@ import {
   function isTodayEvent(item) {
     const startedAt = Number(item?.started_at);
     return Number.isFinite(startedAt)
-      && jstDay.format(new Date(startedAt)) === jstDay.format(new Date());
+      && JST_DATE_EN_CA.format(new Date(startedAt)) === JST_DATE_EN_CA.format(new Date());
   }
 
   function missingSuffix(item) {
@@ -124,23 +126,6 @@ import {
     });
   }
 
-  function nearestPoint(points, targetMinute) {
-    if (!points?.length) return null;
-    let low = 0;
-    let high = points.length - 1;
-    while (low < high) {
-      const middle = Math.floor((low + high) / 2);
-      if (Number(points[middle][0]) < targetMinute) low = middle + 1;
-      else high = middle;
-    }
-    const current = points[low];
-    const previous = low > 0 ? points[low - 1] : null;
-    if (!previous) return current;
-    return Math.abs(Number(previous[0]) - targetMinute) <= Math.abs(Number(current[0]) - targetMinute)
-      ? previous
-      : current;
-  }
-
   function renderDetail(minute) {
     const detail = byId('chartDetail');
     if (!detail) return;
@@ -151,10 +136,15 @@ import {
     const values = series.map((item, index) => ({
       item,
       index,
-      point: nearestPoint(item.points, minute),
+      point: nearestSortedPoint(item.points, minute),
     })).filter(({ point }) => point && Math.abs(Number(point[0]) - minute) <= 5);
     detail.innerHTML = `<time>開始から ${elapsedLabel(minute)}</time><div class="chart-detail-values broadcast-detail-values">${values.map(({ item, index, point }) =>
       `<div><i style="background:${colorFor(index)}"></i><strong>${escape(eventLabel(item))}</strong><span>${number.format(Number(point[1]) || 0)}人</span></div>`).join('')}</div>`;
+  }
+
+  function renderLegend() {
+    legend.replaceChildren(...series.map((item, index) =>
+      appendDashboardLegendItem(`${eventLabel(item)}${missingSuffix(item)}`, colorFor(index))));
   }
 
   function draw() {
@@ -174,8 +164,7 @@ import {
       context.fillStyle = cssColor('--muted', '#667287');
       context.textAlign = 'center';
       context.fillText('表示できる公式リスパデータがありません', width / 2, height / 2);
-      legend.innerHTML = series.map((item, index) =>
-        `<span><i style="background:${colorFor(index)}"></i>${escape(eventLabel(item))}${missingSuffix(item)}</span>`).join('');
+      renderLegend();
       renderDetail(null);
       return;
     }
@@ -255,8 +244,7 @@ import {
       context.restore();
     }
 
-    legend.innerHTML = series.map((item, index) =>
-      `<span><i style="background:${colorFor(index)}"></i>${escape(eventLabel(item))}${missingSuffix(item)}</span>`).join('');
+    renderLegend();
     byId('chartStartDate').textContent = '開始 0分';
     byId('chartEndDate').textContent = `最長 ${elapsedLabel(maxMinute)}`;
     renderDetail(selectedMinute);
@@ -372,12 +360,10 @@ import {
       loadedKey = '';
       scheduleLoad(160);
     }));
-  window.addEventListener('resize', () => {
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => {
-      if (active() && series.length) draw();
-    }, 260);
-  }, { passive: true });
+  observeDashboardChartResize(canvas, draw, {
+    delay: 260,
+    enabled: () => active() && series.length > 0,
+  });
 
   if (active()) {
     notice.textContent = '';

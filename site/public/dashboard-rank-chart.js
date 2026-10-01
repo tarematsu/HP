@@ -5,9 +5,10 @@ import {
   drawDashboardLine,
   prepareDashboardCanvas,
 } from './dashboard-chart-canvas.js?v=20261001.2';
+import { observeDashboardChartResize } from './dashboard-chart-runtime.js?v=20261001.1';
 
 const states = new WeakMap();
-const observers = new WeakMap();
+const observedContainers = new WeakSet();
 
 function textAnchor(index, length) {
   if (index === 0) return 'left';
@@ -135,17 +136,12 @@ function paint(options) {
 }
 
 function ensureResizeObserver(container) {
-  if (!container || observers.has(container) || typeof ResizeObserver === 'undefined') return;
-  let queued = 0;
-  const observer = new ResizeObserver((entries) => {
+  if (!container || observedContainers.has(container)) return;
+  observeDashboardChartResize(container, () => {
     const state = states.get(container);
-    const width = Math.round(entries[0]?.contentRect?.width || 0);
-    if (!state || !width || width === state.lastWidth) return;
-    cancelAnimationFrame(queued);
-    queued = requestAnimationFrame(() => paint(state.options));
-  });
-  observer.observe(container);
-  observers.set(container, observer);
+    if (state) paint(state.options);
+  }, { delay: 120, enabled: () => Boolean(states.get(container)) });
+  observedContainers.add(container);
 }
 
 export function renderRankHistoryChart(options = {}) {

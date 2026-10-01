@@ -62,10 +62,10 @@ test('ranking chart fills missing weeks and paints the missing band in the same 
   assert.match(rankingChart, /rankingWeeks\.map\(isoDate\)\.filter\(\(week\) => week && week >= firstWeek\)/);
   assert.doesNotMatch(rankingChart, /weeklyRange|mondayOnOrAfter|mondayOnOrBefore|rankingFrom|rankingTo/);
   assert.match(rankingChart, /function fullWeek\(value\)/);
-  assert.match(rankingChart, /function drawMissingBand\(context, weeks, positions, area\)/);
-  assert.match(rankingChart, /const hasMissingBand = drawMissingBand\(context, model\.weeks, positions, area\)/);
-  assert.match(rankingChart, /context\.fillStyle = 'rgba\(100, 107, 116, \.16\)'/);
-  assert.match(rankingChart, /appendLegend\('欠測', 'rgba\(100, 107, 116, \.55\)'/);
+  assert.match(rankingChart, /dashboardMissingIndexBands/);
+  assert.match(rankingChart, /const hasMissingBand = drawDashboardMissingBands/);
+  assert.match(rankingChart, /DASHBOARD_MISSING_KEY/);
+  assert.match(rankingChart, /appendDashboardLegendItem\('欠測', DASHBOARD_MISSING_KEY/);
   assert.match(rankingChart, /history:ranking-chart-drawn/);
   assert.doesNotMatch(rankingChart, /DOMNodeInserted|MutationObserver/);
 });

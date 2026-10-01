@@ -42,7 +42,8 @@ test('period charts draw at least four responsive x-axis dates with years', () =
   assert.match(chart, /function formatPeriodTick\(periodKey, mode\)/);
   assert.match(chart, /mode === 'monthly'/);
   assert.match(chart, /`\$\{match\[1\]\}\/\$\{match\[2\]\}\/\$\{match\[3\]\}`/);
-  assert.match(chart, /Math\.max\(4, Math\.floor\(plotWidth \/ 140\)\)/);
-  assert.match(chart, /xAxisTickIndices\(rows\.length, area\.width\)/);
-  assert.match(chart, /fillText\(formatPeriodTick\(rows\[rowIndex\]\?\.period_key, mode\)/);
+  assert.match(chart, /const targetTicks = Math\.min\(rows\.length, Math\.max\(4, Math\.floor\(area\.width \/ 140\)\)\)/);
+  assert.match(chart, /dashboardTickIndexes\(rows\.length, targetTicks\)/);
+  assert.match(chart, /drawDashboardXAxis\(context/);
+  assert.match(chart, /labelFor: \(index\) => formatPeriodTick\(rows\[index\]\?\.period_key, mode\)/);
 });

@@ -68,8 +68,8 @@ test('history has one specialized canvas renderer per mode and hides paint until
   assert.match(periodChart, /history:data-loaded/);
   assert.match(periodChart, /history:period-chart-drawn/);
   assert.match(rankingChart, /history:data-loaded/);
-  assert.match(rankingChart, /function drawMissingBand\(/);
-  assert.match(rankingChart, /drawMissingBand\(context, model\.weeks, positions, area\)/);
+  assert.match(rankingChart, /dashboardMissingIndexBands/);
+  assert.match(rankingChart, /drawDashboardMissingBands/);
   assert.doesNotMatch(periodChart, /window\.fetch|response\.clone\(\)\.json/);
   assert.doesNotMatch(rankingChart, /window\.fetch|response\.clone\(\)\.json/);
   assert.match(historyStability, /history:period-chart-drawn/);

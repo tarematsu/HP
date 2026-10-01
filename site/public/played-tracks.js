@@ -1,5 +1,6 @@
 import { byId, integerFormat as integer, setNotice as setSharedNotice } from './dashboard-ui-common.js?v=20260930.1';
 import { prepareDashboardCanvas } from './dashboard-chart-canvas.js?v=20261001.2';
+import { observeDashboardChartResize } from './dashboard-chart-runtime.js?v=20261001.1';
 import { appendTableRow } from './dashboard-table-dom.js?v=20261001.1';
 
 const percent = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
@@ -431,12 +432,10 @@ byId('playedTracksPeriodStrip')?.addEventListener('click', (event) => {
   void selectPeriod(button.dataset.period);
 });
 
-if ('ResizeObserver' in window) {
-  const canvas = byId('playedTracksChart');
-  if (canvas) new ResizeObserver(() => { if (state.loadedRangeKey) drawPie(); }).observe(canvas);
-} else {
-  window.addEventListener('resize', () => { if (state.loadedRangeKey) drawPie(); });
-}
+observeDashboardChartResize(byId('playedTracksChart'), drawPie, {
+  delay: 180,
+  enabled: () => Boolean(state.loadedRangeKey),
+});
 
 void loadPlayedTracks();
 

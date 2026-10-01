@@ -5,6 +5,11 @@ import {
   drawDashboardXAxis,
   prepareDashboardCanvas,
 } from './dashboard-chart-canvas.js?v=20261001.2';
+import {
+  appendDashboardLegendItem,
+  nearestSortedPoint,
+  observeDashboardChartResize,
+} from './dashboard-chart-runtime.js?v=20261001.1';
 
 const view = document.getElementById('firstWeekView');
 const canvas = document.getElementById('firstWeekChart');
@@ -30,7 +35,6 @@ const SERIES_COLORS = [
 let series = [];
 let selectedMinute = null;
 let loading = false;
-let resizeTimer = 0;
 
 function active() {
   return Boolean(view && !view.hidden);
@@ -71,23 +75,6 @@ function elapsedLabel(minutes) {
   return `${mins}分`;
 }
 
-function nearestPoint(points, targetMinute) {
-  if (!Array.isArray(points) || !points.length) return null;
-  let low = 0;
-  let high = points.length - 1;
-  while (low < high) {
-    const middle = Math.floor((low + high) / 2);
-    if (Number(points[middle]?.[0]) < targetMinute) low = middle + 1;
-    else high = middle;
-  }
-  const current = points[low];
-  const previous = low > 0 ? points[low - 1] : null;
-  if (!previous) return current;
-  return Math.abs(Number(previous[0]) - targetMinute) <= Math.abs(Number(current?.[0]) - targetMinute)
-    ? previous
-    : current;
-}
-
 function renderDetail() {
   if (!detail) return;
   if (selectedMinute == null) {
@@ -98,7 +85,7 @@ function renderDetail() {
   const values = series.map((item, index) => ({
     item,
     index,
-    point: nearestPoint(item.points, selectedMinute),
+    point: nearestSortedPoint(item.points, selectedMinute),
   })).filter(({ point }) => {
     if (!point || pointValue(point) == null) return false;
     return Math.abs(Number(point[0]) - selectedMinute) <= 10;
@@ -130,11 +117,11 @@ function renderTable() {
 
 function renderLegend() {
   if (!legend) return;
-  legend.innerHTML = series
+  const items = series
     .map((item, index) => ({ item, index }))
     .filter(({ item }) => item.points.some((point) => pointValue(point) != null))
-    .map(({ item, index }) => `<span><i style="background:${colorFor(index)}"></i>${escapeHtml(item.title)}</span>`)
-    .join('');
+    .map(({ item, index }) => appendDashboardLegendItem(item.title, colorFor(index)));
+  legend.replaceChildren(...items);
 }
 
 function draw() {
@@ -303,12 +290,10 @@ function handlePointer(event) {
 
 canvas?.addEventListener('click', handlePointer);
 canvas?.addEventListener('touchstart', handlePointer, { passive: true });
-window.addEventListener('resize', () => {
-  clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => {
-    if (active() && series.length) draw();
-  }, 220);
-}, { passive: true });
+observeDashboardChartResize(canvas, draw, {
+  delay: 220,
+  enabled: () => active() && series.length > 0,
+});
 
 if (active()) void load();
 

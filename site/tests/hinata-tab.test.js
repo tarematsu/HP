@@ -102,6 +102,6 @@ test('Hinata daily chart mirrors history axes, line gaps and Canvas legend treat
   assert.match(runtime, /listener_min/);
   assert.match(runtime, /stream_growth/);
   assert.match(runtime, /maxGap: DAY_MS \* 1\.5/);
-  assert.match(runtime, /appendLegend\('再生数増加', STREAM_BAR_COLOR/);
+  assert.match(runtime, /appendDashboardLegendItem\('再生数増加', STREAM_BAR_COLOR/);
   assert.match(runtime, /renderDailyChart\(value\)/);
 });

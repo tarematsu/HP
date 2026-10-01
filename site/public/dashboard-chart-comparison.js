@@ -3,18 +3,20 @@ import {
   drawDashboardGrid,
   drawDashboardLine,
   prepareDashboardCanvas,
-} from './dashboard-chart-canvas.js?v=20261001.1';
+} from './dashboard-chart-canvas.js?v=20261001.2';
+import {
+  dashboardValueBounds,
+  observeDashboardChartResize,
+  roundedDashboardMaximum,
+} from './dashboard-chart-runtime.js?v=20261001.1';
+import { JST_TIME_HM } from './dashboard-time.js?v=20261001.1';
 
 const DAY_MS = 86_400_000;
 const FIVE_MINUTE_MS = 5 * 60_000;
 const EXTREMA_POINT_COLOR = '#888';
 const STREAM_BAR_COLOR = '#168b73';
-const jstTime = new Intl.DateTimeFormat('ja-JP', {
-  timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-});
 let lastPayload = null;
 let redrawTimer = 0;
-let observedCanvasWidth = 0;
 
 function normalizeCurrent(rows) {
   const list = Array.isArray(rows) ? rows : [];
@@ -110,12 +112,6 @@ function drawSeries(context, rows, xFor, yFor, color, width) {
   });
 }
 
-function roundedStreamMax(value) {
-  if (!Number.isFinite(value) || value <= 0) return 1;
-  const step = value <= 20 ? 5 : value <= 100 ? 10 : value <= 500 ? 50 : 100;
-  return Math.max(step, Math.ceil(value / step) * step);
-}
-
 function drawStreamBars(context, rows, xFor, yFor, baseline, plotWidth) {
   if (!rows.length) return;
   const bucketWidth = plotWidth * FIVE_MINUTE_MS / DAY_MS;
@@ -173,19 +169,16 @@ function drawComparison(payload) {
     .map((row) => row.online_member_count)
     .filter((value) => value != null);
   const currentOnline = current.map((row) => row.online_member_count).filter((value) => value != null);
-  const onlineRawMin = onlineValues.length ? Math.min(...onlineValues) : 0;
-  const onlineRawMax = onlineValues.length ? Math.max(...onlineValues) : 1;
-  const onlineRawRange = Math.max(1, onlineRawMax - onlineRawMin);
-  const onlinePadding = Math.max(1, Math.ceil(onlineRawRange * .08));
-  const onlineMin = Math.max(0, onlineRawMin - onlinePadding);
-  const onlineMax = onlineRawMax + onlinePadding;
-  const onlineRange = Math.max(1, onlineMax - onlineMin);
+  const onlineBounds = dashboardValueBounds(onlineValues, { minimumPadding: 1 });
+  const onlineMin = onlineBounds.minimum;
+  const onlineMax = onlineBounds.maximum;
+  const onlineRange = onlineBounds.range;
   const yOnline = (value) => plotBottom - (Number(value) - onlineMin) * plotHeight / onlineRange;
 
   const streamRawMax = streamAverages.length
     ? Math.max(...streamAverages.map((row) => row.stream_delta))
     : 0;
-  const streamMax = roundedStreamMax(streamRawMax);
+  const streamMax = roundedDashboardMaximum(streamRawMax);
   const yStream = (value) => plotBottom - Math.max(0, Number(value)) * plotHeight / streamMax;
 
   context.font = '11px system-ui';
@@ -213,7 +206,7 @@ function drawComparison(payload) {
   context.textBaseline = 'alphabetic';
   for (let index = 0; index < 5; index += 1) {
     const time = minTime + timeSpan * index / 4;
-    context.fillText(jstTime.format(new Date(time)), xFor(time), height - 14);
+    context.fillText(JST_TIME_HM.format(new Date(time)), xFor(time), height - 14);
   }
 
   context.fillStyle = '#667287';
@@ -234,17 +227,16 @@ function drawComparison(payload) {
       context.beginPath();
       context.arc(xFor(minRow.observed_at), yOnline(currentMin), 3, 0, Math.PI * 2);
       context.fill();
-      labelBox(context, `最小 ${integer.format(currentMin)}（${jstTime.format(new Date(minRow.observed_at))}）`, xFor(minRow.observed_at) + 5, yOnline(currentMin) + 14, 'left', drawWidth, height);
+      labelBox(context, `最小 ${integer.format(currentMin)}（${JST_TIME_HM.format(new Date(minRow.observed_at))}）`, xFor(minRow.observed_at) + 5, yOnline(currentMin) + 14, 'left', drawWidth, height);
     }
     if (maxRow) {
       context.fillStyle = EXTREMA_POINT_COLOR;
       context.beginPath();
       context.arc(xFor(maxRow.observed_at), yOnline(currentMax), 3, 0, Math.PI * 2);
       context.fill();
-      labelBox(context, `最大 ${integer.format(currentMax)}（${jstTime.format(new Date(maxRow.observed_at))}）`, xFor(maxRow.observed_at) - 5, yOnline(currentMax) - 14, 'right', drawWidth, height);
+      labelBox(context, `最大 ${integer.format(currentMax)}（${JST_TIME_HM.format(new Date(maxRow.observed_at))}）`, xFor(maxRow.observed_at) - 5, yOnline(currentMax) - 14, 'right', drawWidth, height);
     }
   }
-  observedCanvasWidth = drawWidth;
   return true;
 }
 
@@ -255,19 +247,9 @@ function scheduleDraw(payload = lastPayload) {
   redrawTimer = setTimeout(() => drawComparison(lastPayload), 280);
 }
 
-function installCanvasResizeObserver() {
-  const canvas = document.getElementById('audienceChart');
-  if (!canvas || typeof ResizeObserver === 'undefined') return;
-  const observer = new ResizeObserver((entries) => {
-    const width = Math.round(entries[0]?.contentRect?.width || canvasWidth(canvas));
-    if (!width || width === observedCanvasWidth || !lastPayload?.ok) return;
-    observedCanvasWidth = width;
-    clearTimeout(redrawTimer);
-    requestAnimationFrame(() => drawComparison(lastPayload));
-  });
-  observer.observe(canvas);
-}
-
-installCanvasResizeObserver();
+const audienceChart = document.getElementById('audienceChart');
+observeDashboardChartResize(audienceChart, () => drawComparison(lastPayload), {
+  delay: 80,
+  enabled: () => Boolean(lastPayload?.ok),
+});
 window.addEventListener('dashboard:payload', (event) => scheduleDraw(event?.detail?.payload));
-window.addEventListener('resize', () => scheduleDraw(), { passive: true });

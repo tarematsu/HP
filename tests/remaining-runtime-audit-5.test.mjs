@@ -7,11 +7,17 @@ test('Sakurazaka comparison reuses shared formatters and canonical cache keys', 
     new URL('../site/public/history/history-broadcasts.js', import.meta.url),
     'utf8',
   );
+  const time = readFileSync(
+    new URL('../site/public/dashboard-time.js', import.meta.url),
+    'utf8',
+  );
   assert.match(source, /decimalOneFormat as number/);
   assert.doesNotMatch(source, /const number = new Intl\.NumberFormat/);
-  assert.match(source, /const jstDay = new Intl\.DateTimeFormat\('en-CA'/);
-  assert.match(source, /timeZone: 'Asia\/Tokyo'/);
-  assert.match(source, /jstDay\.format\(new Date\(startedAt\)\)\.replaceAll\('-', ''\)/);
+  assert.match(source, /JST_DATE_EN_CA/);
+  assert.match(time, /formatter = new Intl\.DateTimeFormat\(locale, normalizedOptions\)/);
+  assert.match(time, /timeZone: 'Asia\/Tokyo'/);
+  assert.match(time, /JST_DATE_EN_CA = dashboardDateTimeFormatter\([\s\S]*?'en-CA'\)/);
+  assert.match(source, /JST_DATE_EN_CA\.format\(new Date\(startedAt\)\)\.replaceAll\('-', ''\)/);
   assert.match(source, /return date \? `\$\{date\} \$\{name\}` : name/);
   assert.match(source, /sakurazaka46jp:v1:/);
   assert.match(source, /\/api\/sakurazaka46jp\?/);

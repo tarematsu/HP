@@ -5,10 +5,21 @@ import {
   integerFormat as integer,
 } from '../dashboard-ui-common.js?v=20260930.1';
 import {
+  dashboardTickIndexes,
   drawDashboardGrid,
   drawDashboardLine,
+  drawDashboardXAxis,
   prepareDashboardCanvas,
-} from '../dashboard-chart-canvas.js?v=20261001.1';
+} from '../dashboard-chart-canvas.js?v=20261001.2';
+import {
+  appendDashboardLegendItem,
+  dashboardMissingIndexBands,
+  dashboardValueBounds,
+  DASHBOARD_MISSING_KEY,
+  drawDashboardMissingBands,
+  nearestPositionIndex,
+  observeDashboardChartResize,
+} from '../dashboard-chart-runtime.js?v=20261001.1';
 
 const SUMMARY_MODES = new Set(['daily', 'weekly', 'monthly']);
 
@@ -16,7 +27,6 @@ let latestMode = '';
 let latestRows = [];
 let selectedIndex = null;
 let drawTimer = 0;
-let resizeTimer = 0;
 let chartModel = null;
 
 function activeMode() {
@@ -33,67 +43,11 @@ function scheduleDraw(delay = 0) {
   }, delay);
 }
 
-function listenerBounds(values) {
-  if (!values.length) return { minimum: 0, maximum: 1, range: 1 };
-  const rawMinimum = Math.min(...values);
-  const rawMaximum = Math.max(...values);
-  const padding = Math.max(1, (rawMaximum - rawMinimum) * 0.08);
-  const minimum = Math.max(0, rawMinimum - padding);
-  const maximum = Math.max(minimum + 1, rawMaximum + padding);
-  return { minimum, maximum, range: maximum - minimum };
-}
-
-function appendLegend(label, color, className = '') {
-  const span = document.createElement('span');
-  if (className) span.className = className;
-  const marker = document.createElement('i');
-  marker.style.background = color;
-  span.append(marker, document.createTextNode(label));
-  return span;
-}
-
-function drawMissingBands(context, rows, positions, area) {
-  if (!rows.length || !positions.length) return false;
-  const step = area.width / Math.max(1, rows.length);
-  let segmentStart = -1;
-  let painted = false;
-  const paint = (start, end) => {
-    const left = Math.max(area.left, positions[start] - step / 2);
-    const right = Math.min(area.left + area.width, positions[end] + step / 2);
-    context.fillRect(left, area.top, Math.max(1, right - left), area.height);
-    painted = true;
-  };
-
-  context.save();
-  context.fillStyle = 'rgba(100, 107, 116, .16)';
-  for (let index = 0; index <= rows.length; index += 1) {
-    const missing = index < rows.length && rows[index]?.known_missing === true;
-    if (missing && segmentStart < 0) segmentStart = index;
-    if (!missing && segmentStart >= 0) {
-      paint(segmentStart, index - 1);
-      segmentStart = -1;
-    }
-  }
-  context.restore();
-  return painted;
-}
-
 function formatPeriodTick(periodKey, mode) {
   const text = String(periodKey || '');
   if (mode === 'monthly' && /^\d{4}-\d{2}$/.test(text)) return text.replace('-', '/');
   const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
   return match ? `${match[1]}/${match[2]}/${match[3]}` : text;
-}
-
-function xAxisTickIndices(rowCount, plotWidth) {
-  if (rowCount <= 0) return [];
-  const target = Math.min(rowCount, Math.max(4, Math.floor(plotWidth / 140)));
-  if (target <= 1) return [0];
-  const indexes = [];
-  for (let index = 0; index < target; index += 1) {
-    indexes.push(Math.round(index * (rowCount - 1) / (target - 1)));
-  }
-  return [...new Set(indexes)];
 }
 
 function draw() {
@@ -120,7 +74,11 @@ function draw() {
   area.height = Math.max(1, height - area.top - area.bottom);
   const step = area.width / Math.max(1, rows.length);
   const positions = rows.map((_, index) => area.left + step * (index + 0.5));
-  const hasMissingBand = drawMissingBands(context, rows, positions, area);
+  const hasMissingBand = drawDashboardMissingBands(
+    context,
+    dashboardMissingIndexBands(rows, positions, area),
+    { top: area.top, height: area.height },
+  );
 
   const listenerSeries = [
     { key: 'listener_avg', label: '平均同接', color: '#000000', width: 2 },
@@ -131,7 +89,7 @@ function draw() {
   const listenerValues = listenerSeries.flatMap(({ key }) =>
     rows.map((row) => finite(row?.[key])).filter((value) => value != null));
   const streamValues = rows.map((row) => finite(row?.stream_growth)).filter((value) => value != null && value >= 0);
-  const lBounds = listenerBounds(listenerValues);
+  const lBounds = dashboardValueBounds(listenerValues);
   const streamMax = Math.max(1, ...streamValues);
   const streamCeiling = Math.max(1, streamMax * 1.08);
   const listenerY = (value) => area.top + area.height
@@ -159,28 +117,18 @@ function draw() {
     }
   }
 
-  const xAxisY = area.top + area.height;
-  const xTickIndexes = xAxisTickIndices(rows.length, area.width);
-  context.save();
-  context.strokeStyle = 'rgba(31,45,68,.12)';
-  context.fillStyle = cssColor('--muted', '#667287');
-  context.lineWidth = 1;
-  context.font = '11px system-ui';
-  context.textAlign = 'center';
-  context.textBaseline = 'top';
-  context.beginPath();
-  context.moveTo(area.left, xAxisY);
-  context.lineTo(width - area.right, xAxisY);
-  context.stroke();
-  for (const rowIndex of xTickIndexes) {
-    const x = positions[rowIndex];
-    context.beginPath();
-    context.moveTo(x, xAxisY);
-    context.lineTo(x, xAxisY + 4);
-    context.stroke();
-    context.fillText(formatPeriodTick(rows[rowIndex]?.period_key, mode), x, xAxisY + 7);
-  }
-  context.restore();
+  const targetTicks = Math.min(rows.length, Math.max(4, Math.floor(area.width / 140)));
+  const xTickIndexes = dashboardTickIndexes(rows.length, targetTicks);
+  drawDashboardXAxis(context, {
+    left: area.left,
+    right: area.right,
+    top: area.top + area.height,
+    width,
+    positions,
+    indexes: xTickIndexes,
+    labelFor: (index) => formatPeriodTick(rows[index]?.period_key, mode),
+    fillStyle: cssColor('--muted', '#667287'),
+  });
 
   if (streamValues.length) {
     const barWidth = Math.max(2, Math.min(18, step * 0.58));
@@ -239,9 +187,9 @@ function draw() {
   if (legend) {
     const items = listenerSeries
       .filter((series) => rows.some((row) => finite(row?.[series.key]) != null))
-      .map((series) => appendLegend(series.label, series.color));
-    if (streamValues.length) items.push(appendLegend('再生数増加', streamColor, 'period-stream-bars'));
-    if (hasMissingBand) items.push(appendLegend('欠測', 'rgba(100, 107, 116, .55)', 'period-missing-band'));
+      .map((series) => appendDashboardLegendItem(series.label, series.color));
+    if (streamValues.length) items.push(appendDashboardLegendItem('再生数増加', streamColor, { className: 'period-stream-bars' }));
+    if (hasMissingBand) items.push(appendDashboardLegendItem('欠測', DASHBOARD_MISSING_KEY, { className: 'period-missing-band' }));
     legend.replaceChildren(...items);
   }
   const foot = byId('chartFoot');
@@ -277,22 +225,11 @@ chart?.addEventListener('pointerup', (event) => {
   event.stopImmediatePropagation();
   const bounds = chart.getBoundingClientRect();
   const pointer = event.clientX - bounds.left;
-  let nearest = 0;
-  let distance = Infinity;
-  chartModel.positions.forEach((position, index) => {
-    const next = Math.abs(position - pointer);
-    if (next < distance) {
-      distance = next;
-      nearest = index;
-    }
-  });
-  selectedIndex = nearest;
+  selectedIndex = nearestPositionIndex(chartModel.positions, pointer);
   draw();
 }, true);
 
-window.addEventListener('resize', () => {
-  clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => {
-    if (SUMMARY_MODES.has(activeMode())) draw();
-  }, 240);
-}, { passive: true });
+observeDashboardChartResize(chart, draw, {
+  delay: 240,
+  enabled: () => SUMMARY_MODES.has(activeMode()),
+});
