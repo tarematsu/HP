@@ -53,6 +53,21 @@ test('ohisama normalization keeps aggregate metrics and the active host identity
   assert.equal('chat' in value, false);
 });
 
+test('ohisama normalization accepts alternate broadcaster account shapes', () => {
+  const value = normalizeOhisamaSnapshot({
+    id: 46,
+    alias: 'ohisama',
+    current_station_id: 101,
+    current_station: {
+      id: 101,
+      is_broadcasting: null,
+      broadcaster: { id: 88, handle: 'AlternateHost' },
+    },
+  });
+  assert.equal(value.host_account_id, 88);
+  assert.equal(value.host_handle, 'alternatehost');
+});
+
 test('ohisama active host is permanently added to the follower target registry', async () => {
   let bound = null;
   let runs = 0;
@@ -83,10 +98,17 @@ test('ohisama active host is permanently added to the follower target registry',
   assert.equal(runs, 1);
 
   assert.equal(await registerOhisamaFollowerTarget(env, {
-    is_broadcasting: 0,
-    host_handle: 'idlehost',
-  }, 123457), false);
-  assert.equal(runs, 1);
+  is_broadcasting: 0,
+  host_handle: 'idlehost',
+}, 123457), true);
+  assert.deepEqual(bound, ['idlehost', 4, 123457]);
+  assert.equal(runs, 2);
+
+  assert.equal(await registerOhisamaFollowerTarget(env, {
+    is_broadcasting: 1,
+    host_handle: null,
+  }, 123458), false);
+  assert.equal(runs, 2);
 });
 
 test('ohisama auth acquisition is fixed to ILYS while collection remains ohisama', () => {

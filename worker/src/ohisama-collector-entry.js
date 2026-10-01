@@ -61,8 +61,31 @@ export function normalizeOhisamaSnapshot(channel, expectedAlias = 'ohisama') {
 
   const station = channel.current_station || {};
   const party = station.streaming_party || channel.streaming_party || {};
-  const host = station.host || channel.host || {};
-  const hostAccount = host.account || {};
+  const hostSources = [
+    station.host,
+    channel.host,
+    station.current_host,
+    channel.current_host,
+    station.broadcaster,
+    station.dj,
+    station.account,
+    station.host_account,
+  ].filter((value) => value && typeof value === 'object' && !Array.isArray(value));
+  const hostIdentities = hostSources.flatMap((value) => {
+    const account = value.account;
+    return account && typeof account === 'object' && !Array.isArray(account)
+      ? [account, value]
+      : [value];
+  });
+  const hostAccountId = nullableNumber(firstDefined(
+    ...hostIdentities.flatMap((value) => [value.account_id, value.id]),
+  ));
+  const hostHandle = normalizedHandle(firstDefined(
+    ...hostIdentities.flatMap((value) => [value.handle, value.username]),
+    station.host_handle,
+    station.host_username,
+    channel.host_handle,
+  ));
   return {
     channel_id: channelId,
     station_id: nullableNumber(firstDefined(channel.current_station_id, station.id)),
@@ -74,8 +97,8 @@ export function normalizeOhisamaSnapshot(channel, expectedAlias = 'ohisama') {
     reported_total_listens: nullableNumber(station.total_listens),
     stream_goal: nullableNumber(party.stream_goal),
     reported_current_stream_count: nullableNumber(party.current_stream_count),
-    host_account_id: nullableNumber(firstDefined(host.account_id, hostAccount.id)),
-    host_handle: normalizedHandle(firstDefined(hostAccount.handle, host.handle, station.host_handle)),
+    host_account_id: hostAccountId,
+    host_handle: hostHandle,
   };
 }
 
@@ -274,7 +297,7 @@ async function persistSnapshot(env, snapshot, state, observedAt) {
 }
 
 export async function registerOhisamaFollowerTarget(env, snapshot, observedAt) {
-  if (snapshot?.is_broadcasting !== 1 || !snapshot?.host_handle) return false;
+  if (!snapshot?.host_handle) return false;
   if (typeof env?.OTHER_DB?.prepare !== 'function') return false;
   const result = await env.OTHER_DB.prepare(`INSERT INTO sh_stationhead_follower_targets(
       handle,source_mask,first_seen_at
