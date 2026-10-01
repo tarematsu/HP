@@ -6,6 +6,7 @@ import {
   YOUTUBE_MUSIC_SERVICE,
   parseYouTubeMusicArtistPage,
   parseYouTubeMusicArtistSearch,
+  parseYouTubeMusicVisitorData,
 } from '../src/regional-music-youtube-music.js';
 
 function artistResult(name, browseId) {
@@ -22,6 +23,12 @@ function artistResult(name, browseId) {
 test('YouTube Music collector uses the public artist search filter and stable service key', () => {
   assert.equal(YOUTUBE_MUSIC_SERVICE, 'youtube_music');
   assert.equal(YOUTUBE_MUSIC_ARTIST_FILTER, 'EgWKAQIgAWoMEA4QChADEAQQCRAF');
+});
+
+test('visitor data is discovered from the public YouTube Music page without account credentials', () => {
+  const html = '<script>ytcfg.set({"OTHER":"x"});</script><script>ytcfg.set({"VISITOR_DATA":"visitor-123"});</script>';
+  assert.equal(parseYouTubeMusicVisitorData(html), 'visitor-123');
+  assert.equal(parseYouTubeMusicVisitorData('<html></html>'), null);
 });
 
 test('artist search requires an exact Sakamichi identity and ignores cover lookalikes', () => {
