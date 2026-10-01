@@ -71,7 +71,7 @@ export function parseQqSingerId(payload, aliases) {
   for (const root of roots) {
     for (const item of candidates(root)) {
       const label = normalize(item?.name || item?.singername || item?.singer_name || item?.title);
-      if (!label || !wanted.some((alias) => label === alias || label.includes(alias))) continue;
+      if (!label || !wanted.includes(label)) continue;
       const mid = item?.mid || item?.singermid || item?.singer_mid || item?.id;
       if (mid != null && String(mid)) return String(mid);
     }
