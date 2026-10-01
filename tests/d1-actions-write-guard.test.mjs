@@ -77,15 +77,24 @@ test('unavailable write telemetry fails closed without failing the workflow step
   });
 });
 
-test('Pages history read-model workflow is intentionally outside the D1 budget guard', async () => {
-  const workflow = await readFile(new URL('../.github/workflows/run-pages-read-model-rebuild.yml', import.meta.url), 'utf8');
-  assert.doesNotMatch(workflow, /cloudflare-d1-write-guard\.mjs/);
-  assert.doesNotMatch(workflow, /D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT/);
-  assert.doesNotMatch(workflow, /D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT/);
-  assert.doesNotMatch(workflow, /D1_ACTIONS_READ_PROJECTION_MINUTES/);
-  assert.doesNotMatch(workflow, /id: d1-write-budget/);
-  assert.doesNotMatch(workflow, /PAGES_READ_MODEL_REUSE_ONLY/);
-  assert.match(workflow, /Publish due pages read models/);
-  assert.match(workflow, /Publish compact track ranking to R2/);
-  assert.doesNotMatch(workflow, /worker.*retry|retry.*worker/i);
+test('all non-track-history read-model workflows are outside the D1 budget guard', async () => {
+  const paths = [
+    '../.github/workflows/run-pages-read-model-rebuild.yml',
+    '../.github/workflows/repair-pages-summaries.yml',
+    '../.github/workflows/run-local-minute-facts-rebuild.yml',
+    '../.github/workflows/run-runtime-offline-maintenance.yml',
+  ];
+  for (const path of paths) {
+    const workflow = await readFile(new URL(path, import.meta.url), 'utf8');
+    assert.doesNotMatch(workflow, /cloudflare-d1-write-guard\.mjs/, path);
+    assert.doesNotMatch(workflow, /D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT/, path);
+    assert.doesNotMatch(workflow, /D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT/, path);
+    assert.doesNotMatch(workflow, /D1_ACTIONS_READ_PROJECTION_MINUTES/, path);
+    assert.doesNotMatch(workflow, /PAGES_READ_MODEL_REUSE_ONLY/, path);
+  }
+
+  const pages = await readFile(new URL('../.github/workflows/run-pages-read-model-rebuild.yml', import.meta.url), 'utf8');
+  assert.match(pages, /Publish due pages read models/);
+  assert.match(pages, /Publish compact track ranking to R2/);
+  assert.doesNotMatch(pages, /worker.*retry|retry.*worker/i);
 });
