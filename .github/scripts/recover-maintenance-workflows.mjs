@@ -122,8 +122,19 @@ export async function recoverMaintenanceWorkflows({
     return { ok: true, dispatched, states, reason: `data-repair-${states.dataRepair.state}` };
   }
 
-  // Pages is normally revision-driven from the four-hour repair lane. The
-  // daily run remains only as a recovery sweep.
+  // Daily aggregate/read-model repair has its own workflow and health state so
+  // a later lightweight runtime success cannot hide a deep-repair failure.
+  if (shouldRecover(states.dailyDeep.state)) {
+    await dispatchWorkflow(repository, WORKFLOWS.dailyDeep, token, request);
+    dispatched.push('dailyDeep');
+    return { ok: true, dispatched, states, reason: 'daily-deep-recovered' };
+  }
+  if (states.dailyDeep.state !== 'fresh') {
+    return { ok: true, dispatched, states, reason: `daily-deep-${states.dailyDeep.state}` };
+  }
+
+  // Pages is normally revision-driven from the daily deep repair. The daily
+  // Pages run remains only as an independent recovery sweep.
   if (shouldRecover(states.pages.state)) {
     await dispatchWorkflow(
       repository,

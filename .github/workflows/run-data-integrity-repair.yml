@@ -2,7 +2,7 @@ name: Run data integrity repair
 
 on:
   # This lane owns only source-gap discovery and one bounded minute rebuild.
-  # Aggregate/read-model repair is the daily deep path in Runtime maintenance.
+  # Aggregate/read-model repair lives in the separate daily deep workflow.
   schedule:
     - cron: '31 */4 * * *'
   workflow_dispatch:
@@ -27,6 +27,7 @@ jobs:
       FACTS_DATABASE_NAME: stationhead-minute
       OTHER_DATABASE_NAME: stationhead-other
       RUNTIME_MAINTENANCE_DEADLINE_MS: '720000'
+      RUNTIME_MAINTENANCE_COLLECTOR_ID: data-integrity-repair-actions
       RUNTIME_MAINTENANCE_FORCE: 'true'
       RUNTIME_MAINTENANCE_REBUILD_ONLY: 'true'
     steps:

@@ -6,6 +6,7 @@ import { runRuntimeOfflineMaintenanceActions } from '../worker/scripts/run-runti
 
 const workflow = readFileSync(new URL('../.github/workflows/run-runtime-offline-maintenance.yml', import.meta.url), 'utf8');
 const dataRepairWorkflow = readFileSync(new URL('../.github/workflows/run-data-integrity-repair.yml', import.meta.url), 'utf8');
+const dailyDeepWorkflow = readFileSync(new URL('../.github/workflows/run-daily-deep-repair.yml', import.meta.url), 'utf8');
 const runner = readFileSync(new URL('../worker/scripts/run-runtime-offline-maintenance-actions.mjs', import.meta.url), 'utf8');
 const deployed = readFileSync(new URL('../worker/src/runtime-orchestrator-deployed-entry.js', import.meta.url), 'utf8');
 const runtime = JSON.parse(readFileSync(new URL('../worker/wrangler.runtime.jsonc', import.meta.url), 'utf8'));
@@ -27,34 +28,44 @@ function statusDatabase(writes) {
   };
 }
 
-test('repair responsibilities are split across 30-minute, four-hour, and daily runtime modes', () => {
+test('repair responsibilities are split across independent 30-minute, four-hour, and daily workflows', () => {
   assert.doesNotMatch(workflow, /workflow_run:/);
   assert.match(workflow, /cron: '11,41 \* \* \* \*'/);
-  assert.match(workflow, /cron: '6 0 \* \* \*'/);
-  assert.match(workflow, /RUNTIME_MAINTENANCE_LIGHT_ONLY:/);
-  assert.match(workflow, /RUNTIME_MAINTENANCE_SKIP_REBUILD:/);
-  assert.match(workflow, /publish-recent-daily-summaries-actions\.mjs/);
-  assert.match(workflow, /detect-pages-read-model-revision-drift-actions\.mjs/);
+  assert.match(workflow, /RUNTIME_MAINTENANCE_COLLECTOR_ID: other-cron/);
+  assert.match(workflow, /RUNTIME_MAINTENANCE_LIGHT_ONLY: 'true'/);
+  assert.match(workflow, /RUNTIME_MAINTENANCE_SKIP_REBUILD: 'true'/);
+  assert.doesNotMatch(workflow, /publish-recent-daily-summaries-actions\.mjs/);
+  assert.doesNotMatch(workflow, /detect-pages-read-model-revision-drift-actions\.mjs/);
   assert.doesNotMatch(workflow, /run-minute-facts-gap-scan-actions\.mjs/);
   assert.match(workflow, /cancel-in-progress: false/);
 
   assert.match(dataRepairWorkflow, /cron: '31 \*\/4 \* \* \*'/);
   assert.match(dataRepairWorkflow, /run-minute-facts-gap-scan-actions\.mjs/);
   assert.match(dataRepairWorkflow, /run-runtime-offline-maintenance-actions\.mjs/);
+  assert.match(dataRepairWorkflow, /RUNTIME_MAINTENANCE_COLLECTOR_ID: data-integrity-repair-actions/);
   assert.match(dataRepairWorkflow, /RUNTIME_MAINTENANCE_REBUILD_ONLY: 'true'/);
   assert.match(dataRepairWorkflow, /RUNTIME_MAINTENANCE_FORCE: 'true'/);
   assert.doesNotMatch(dataRepairWorkflow, /publish-recent-daily-summaries-actions\.mjs/);
   assert.doesNotMatch(dataRepairWorkflow, /detect-pages-read-model-revision-drift-actions\.mjs/);
 
+  assert.match(dailyDeepWorkflow, /cron: '46 0 \* \* \*'/);
+  assert.match(dailyDeepWorkflow, /RUNTIME_MAINTENANCE_COLLECTOR_ID: daily-deep-repair-actions/);
+  assert.match(dailyDeepWorkflow, /RUNTIME_MAINTENANCE_SKIP_REBUILD: 'true'/);
+  assert.match(dailyDeepWorkflow, /publish-recent-daily-summaries-actions\.mjs/);
+  assert.match(dailyDeepWorkflow, /detect-pages-read-model-revision-drift-actions\.mjs/);
+  assert.match(dailyDeepWorkflow, /steps\.pages-revision-drift\.outputs\.due_keys != ''/);
+
   assert.match(runner, /RUNTIME_MAINTENANCE_LIGHT_ONLY/);
   assert.match(runner, /RUNTIME_MAINTENANCE_REBUILD_ONLY/);
   assert.match(runner, /RUNTIME_MAINTENANCE_SKIP_REBUILD/);
+  assert.match(runner, /RUNTIME_MAINTENANCE_COLLECTOR_ID/);
   assert.match(runner, /OFFLINE_REBUILD_MIN_INTERVAL_MS = 4 \* 60 \* 60_000/);
 });
 
 test('runtime read-model maintenance has no D1 budget guard', () => {
   assert.doesNotMatch(workflow, /cloudflare-d1-write-guard\.mjs/);
   assert.doesNotMatch(dataRepairWorkflow, /cloudflare-d1-write-guard\.mjs/);
+  assert.doesNotMatch(dailyDeepWorkflow, /cloudflare-d1-write-guard\.mjs/);
   assert.doesNotMatch(runner, /d1BudgetSkip|runtime_offline_maintenance_actions_budget_skipped|d1-budget-guard/);
 });
 
@@ -86,6 +97,7 @@ test('four-hour rebuild-only mode never invokes prediction, rollup, or retention
     now: () => now,
     force: true,
     rebuildOnly: true,
+    collectorId: 'data-integrity-repair-actions',
     env: { BUDDIES_DB: {}, MINUTE_DB: {}, OTHER_DB: statusDatabase(writes) },
     runInboxRecovery: async () => { calls.push('inbox'); return 'inbox'; },
     runPrediction: async () => assert.fail('prediction must not run in rebuild-only mode'),
@@ -101,6 +113,7 @@ test('four-hour rebuild-only mode never invokes prediction, rollup, or retention
   });
 
   assert.deepEqual(calls, ['inbox', 'rebuilds']);
+  assert.equal(writes[0].values[0], 'data-integrity-repair-actions');
   assert.equal(result.event, 'runtime_rebuild_maintenance_actions_complete');
   assert.equal(result.rebuilds, 'rebuilds');
 });
@@ -113,6 +126,7 @@ test('daily deep mode repairs aggregates but leaves minute rebuilds to the four-
     now: () => now,
     force: true,
     skipRebuild: true,
+    collectorId: 'daily-deep-repair-actions',
     env: { BUDDIES_DB: {}, MINUTE_DB: {}, OTHER_DB: statusDatabase(writes) },
     runInboxRecovery: async () => { calls.push('inbox'); return 'inbox'; },
     runPrediction: async () => { calls.push('prediction'); return 'prediction'; },
@@ -122,6 +136,7 @@ test('daily deep mode repairs aggregates but leaves minute rebuilds to the four-
   });
 
   assert.deepEqual(calls, ['inbox', 'prediction', 'rollup', 'retention']);
+  assert.equal(writes[0].values[0], 'daily-deep-repair-actions');
   assert.equal(result.rebuilds.skipped, true);
   assert.equal(result.rebuilds.reason, 'separate-integrity-repair');
 });
@@ -151,7 +166,7 @@ test('recent successful lightweight attempt coalesces before any work', async ()
   assert.equal(result.reason, 'recent-success');
 });
 
-test('full maintenance remains available for the daily deep pass', async () => {
+test('full maintenance remains available for the daily deep pass with sustainable retention throughput', async () => {
   const calls = [];
   const writes = [];
   const now = 1_000;
@@ -181,8 +196,8 @@ test('full maintenance remains available for the daily deep pass', async () => {
   assert.deepEqual(calls, ['inbox', 'prediction', 'rollup', 'rebuilds', 'retention']);
   assert.equal(result.event, 'runtime_offline_maintenance_actions_complete');
   assert.match(runner, /SNAPSHOT_RETENTION_INTERVAL_MS: 24 \* 60 \* 60_000/);
-  assert.match(runner, /SNAPSHOT_RETENTION_BATCH_SIZE: 500/);
-  assert.match(runner, /SNAPSHOT_RETENTION_MAX_BATCHES: 1/);
+  assert.doesNotMatch(runner, /SNAPSHOT_RETENTION_BATCH_SIZE:/);
+  assert.doesNotMatch(runner, /SNAPSHOT_RETENTION_MAX_BATCHES:/);
 });
 
 test('offline rebuild remains independently limited to four hours', async () => {
