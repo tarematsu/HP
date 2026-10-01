@@ -41,3 +41,17 @@ test('QQ uses the current public catalog module and reads its songList', () => {
   const payload = { req_1:{data:{songList:[{songInfo:{mid:'song1',name:'Song',singer:[{mid:'mid1',name:'Sakurazaka46'}]}}]}} };
   assert.equal(parseQqSingerTracks(payload, 'mid1', ['Sakurazaka46'])[0].track_id, 'song1');
 });
+
+import { validateNeteaseResponse } from '../src/regional-music-netease.js';
+import { gaanaArtistSearchUrl, gaanaArtistTracksUrl } from '../src/regional-music-gaana.js';
+test('NetEase login/access errors cannot be treated as missing artists', () => {
+  assert.throws(() => validateNeteaseResponse({code:301}), /rejected.*301/);
+  assert.throws(() => validateNeteaseResponse({code:460}), /rejected.*460/);
+  assert.equal(validateNeteaseResponse({code:200}).code, 200);
+});
+test('Gaana uses routes published by the current official web client', () => {
+  const search = new URL(gaanaArtistSearchUrl('Sakurazaka46'));
+  assert.equal(search.hostname,'gsearch.gaana.com');
+  assert.equal(search.searchParams.get('query'),'Sakurazaka46');
+  assert.equal(new URL(gaanaArtistTracksUrl('123')).pathname,'/home/artist/tracks/123');
+});

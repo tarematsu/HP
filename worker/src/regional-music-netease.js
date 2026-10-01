@@ -133,7 +133,7 @@ async function requestJson(fetchImpl, url, options = {}) {
     },
   });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return response.json();
+  return validateNeteaseResponse(await response.json());
 }
 
 async function discoverArtist(fetchImpl, artist) {
@@ -255,4 +255,11 @@ export async function collectNeteaseCloudMusic(env, observedAt = Date.now(), fet
     updated_at: observedAt,
   });
   return { service: 'netease_cloud_music', status, artists, albums, tracks, tracks_with_comments: comments, failures };
+}
+
+export function validateNeteaseResponse(payload) {
+  if (payload?.code != null && Number(payload.code) !== 200) {
+    throw new Error(`provider catalog request rejected (code ${Number(payload.code)})`);
+  }
+  return payload;
 }

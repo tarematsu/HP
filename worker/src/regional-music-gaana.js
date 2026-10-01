@@ -13,25 +13,15 @@ function normalize(value) {
 
 export function gaanaArtistSearchUrl(query) {
   const params = new URLSearchParams({
-    country: 'IN',
-    page: '0',
-    secType: 'artist',
-    type: 'search',
-    keyword: query,
+    geoLocation:'IN', query, content_filter:'2', include:'artist', isRegSrch:'0',
+    webVersion:'mix', rType:'web', autocomplete:'0', startIndex:'0',
   });
-  return `https://gaana.com/apiv2?${params}`;
+  return `https://gsearch.gaana.com/vichitih/go/v2/?${params}`;
 }
 
 export function gaanaArtistTracksUrl(artistId) {
-  const params = new URLSearchParams({
-    language: '',
-    order: '0',
-    page: '0',
-    sortBy: 'popularity',
-    type: 'artistTrackList',
-    id: artistId,
-  });
-  return `https://gaana.com/apiv2?${params}`;
+  const params = new URLSearchParams({ sortBy:'popularity', sortOrder:'0', request_type:'web', pkc:'true', st:'hls', song_type:'new', limit:'0,20' });
+  return `https://a1api.gaana.com/home/artist/tracks/${encodeURIComponent(artistId)}?${params}`;
 }
 
 export function gaanaArtistUrl(seokey) {
@@ -111,7 +101,10 @@ async function fetchJson(fetchImpl, url) {
     },
   });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return response.json();
+  const body = await response.text();
+  if (!body.trim()) throw new Error('current public search endpoint returned an empty catalog response');
+  if (/^\s*</.test(body)) throw new Error('current catalog endpoint returned website HTML instead of JSON');
+  return JSON.parse(body);
 }
 
 async function discoverArtist(fetchImpl, artist) {
