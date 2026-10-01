@@ -1,18 +1,25 @@
 import {
   appendEmptyTableRow,
   byId,
+  dashboardControls,
+  dashboardDataCard,
+  dashboardModeTabs,
+  dashboardNotice,
+  dashboardSummary,
+  dashboardSummaryItem,
+  dashboardTable,
   finiteNumber as finite,
   integerFormat as integer,
   setText,
 } from './dashboard-ui-common.js?v=20261001.1';
 import { appendTableRow } from './dashboard-table-dom.js?v=20261001.1';
+import { stationheadPlaybackCards } from './stationhead-playback-shell.js?v=20261001.1';
 
 const HINATA_URL = '/api/hinata';
 const REFRESH_INTERVAL_MS = 5 * 60_000;
 const state = {
   payload: null,
   selectedPlayedPeriod: '',
-  refreshTimer: 0,
 };
 const jstDateTime = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo',
@@ -26,6 +33,124 @@ const jstDateTime = new Intl.DateTimeFormat('ja-JP', {
 function numberText(value) {
   const parsed = finite(value);
   return parsed == null ? '—' : integer.format(Math.round(parsed));
+}
+
+function mountChannelLayout() {
+  const root = byId('hinataView');
+  if (!root || root.dataset.channelTabsMounted === '1') return root;
+
+  const metrics = byId('hinataOnline')?.closest('.metrics');
+  const liveCard = byId('hinataChart')?.closest('.card');
+  const dailyCard = byId('hinataDailyChart')?.closest('.card');
+  const dailyData = byId('hinataDailyTbody')?.closest('.card');
+  if (!metrics || !liveCard || !dailyCard || !dailyData) return null;
+
+  const controls = dashboardControls({
+    className: 'played-tracks-controls',
+    ariaLabel: 'Ohisama再生履歴の表示期間',
+    bodyHtml: '<div class="played-tracks-period-scroller" aria-label="再生履歴の表示期間"><div class="played-tracks-period-strip" id="hinataPlayedPeriodStrip" role="list"></div></div>',
+  });
+  const playedSummary = dashboardSummary([
+    dashboardSummaryItem({ label: '総再生回数', valueId: 'hinataPlayedTotal' }),
+    dashboardSummaryItem({ label: '楽曲数', valueId: 'hinataPlayedUnique' }),
+  ], { className: 'played-tracks-summary', ariaLabel: 'Ohisama再生履歴集計概要' });
+  const playedTable = dashboardTable({
+    className: 'played-tracks-table',
+    wrapClassName: 'table-fit-mobile',
+    colgroupHtml: '<colgroup><col><col class="col-number"><col class="col-number"></colgroup>',
+    headers: ['曲名', '回数', '割合'],
+    bodyId: 'hinataPlayedTbody',
+  });
+  const likesSummary = dashboardSummary([
+    dashboardSummaryItem({ label: '最終取得', valueId: 'hinataLikesLatestAt', valueClassName: 'summary-date' }),
+    dashboardSummaryItem({ label: '対象楽曲数', valueId: 'hinataLikesTrackCount' }),
+    dashboardSummaryItem({ label: '合計いいね数', valueId: 'hinataLikesTotalLikes' }),
+  ], { className: 'likes-summary', ariaLabel: 'Ohisamaいいね集計概要' });
+  const likesTable = dashboardTable({
+    wrapClassName: 'table-fit-mobile',
+    colgroupHtml: '<colgroup><col class="col-compact"><col><col class="col-artist"><col class="col-number"><col class="col-date"></colgroup>',
+    headers: ['順位', '曲名', 'アーティスト', '最新いいね数', '最終取得'],
+    bodyId: 'hinataLikesTbody',
+  });
+
+  const tabsHost = document.createElement('div');
+  tabsHost.innerHTML = dashboardModeTabs([
+    { value: 'current', label: '現在', active: true },
+    { value: 'history', label: '過去' },
+    { value: 'played-tracks', label: '再生履歴' },
+    { value: 'likes', label: 'いいね' },
+  ], {
+    dataAttribute: 'hinata-section',
+    className: 'hinata-subtabs',
+    ariaLabel: 'Ohisama表示切替',
+  });
+  const tabs = tabsHost.firstElementChild;
+
+  const noticeHost = document.createElement('div');
+  noticeHost.innerHTML = dashboardNotice({ id: 'hinataChannelNotice' });
+  const notice = noticeHost.firstElementChild;
+
+  const currentPanel = document.createElement('div');
+  currentPanel.dataset.hinataPanel = 'current';
+  currentPanel.append(metrics, liveCard);
+  const playbackHost = document.createElement('div');
+  playbackHost.innerHTML = stationheadPlaybackCards({
+    stationUrl: 'https://stationhead.com/c/ohisama',
+    ids: {
+      host: 'hinataHost',
+      link: 'hinataNowPlayingLink',
+      fallback: 'hinataTrackFallback',
+      image: 'hinataTrackImage',
+      title: 'hinataTrackTitle',
+      artist: 'hinataTrackArtist',
+      time: 'hinataTrackTime',
+      bites: 'hinataTrackBites',
+      hint: 'hinataSpotifyHint',
+      bar: 'hinataTrackBar',
+      queueCount: 'hinataQueueCount',
+      queue: 'hinataQueue',
+      status: 'hinataPlaybackStatus',
+    },
+  });
+  currentPanel.append(...playbackHost.children);
+
+  const historyPanel = document.createElement('div');
+  historyPanel.dataset.hinataPanel = 'history';
+  historyPanel.hidden = true;
+  historyPanel.append(dailyCard, dailyData);
+
+  const playedPanel = document.createElement('div');
+  playedPanel.dataset.hinataPanel = 'played-tracks';
+  playedPanel.hidden = true;
+  playedPanel.innerHTML = `${controls}${playedSummary}${dashboardDataCard({
+    title: '楽曲別再生一覧',
+    kicker: 'DATA',
+    bodyHtml: playedTable,
+  })}`;
+
+  const likesPanel = document.createElement('div');
+  likesPanel.dataset.hinataPanel = 'likes';
+  likesPanel.hidden = true;
+  likesPanel.innerHTML = `${likesSummary}${dashboardDataCard({
+    title: '最新いいねランキング',
+    kicker: 'TOP TRACKS',
+    bodyHtml: '<ol id="hinataLikesRankingList" class="like-ranking"></ol>',
+  })}${dashboardDataCard({
+    title: '楽曲別一覧',
+    kicker: 'DATA',
+    bodyHtml: likesTable,
+  })}`;
+
+  const primaryNotice = byId('hinataNotice');
+  const anchor = primaryNotice?.nextSibling || root.firstChild;
+  root.insertBefore(tabs, anchor);
+  root.insertBefore(notice, tabs.nextSibling);
+  root.insertBefore(currentPanel, notice.nextSibling);
+  root.insertBefore(historyPanel, currentPanel.nextSibling);
+  root.insertBefore(playedPanel, historyPanel.nextSibling);
+  root.insertBefore(likesPanel, playedPanel.nextSibling);
+  root.dataset.channelTabsMounted = '1';
+  return root;
 }
 
 function reducedImage(source, size = 200) {
@@ -146,7 +271,6 @@ function renderPlayback(payload) {
       host.append(label, link);
     }
   }
-
   if (!current) {
     setText('hinataTrackTitle', 'キュー情報がありません');
     setText('hinataTrackArtist', '');
@@ -215,8 +339,11 @@ function renderPlayedPeriod(payload) {
 }
 
 function renderPlayed(payload) {
-  const strip = byId('hinataPlayedPeriodStrip');
   const rows = playedRows(payload);
+  if (!state.selectedPlayedPeriod || !rows.some((row) => row.period_key === state.selectedPlayedPeriod)) {
+    state.selectedPlayedPeriod = rows[0]?.period_key || '';
+  }
+  const strip = byId('hinataPlayedPeriodStrip');
   if (strip) {
     strip.replaceChildren(...rows.map((row) => {
       const button = document.createElement('button');
@@ -284,6 +411,7 @@ function render(payload) {
   const notice = byId('hinataChannelNotice');
   if (notice) {
     notice.hidden = true;
+    notice.classList.remove('error');
     notice.textContent = '';
   }
 }
@@ -316,12 +444,14 @@ function selectSection(section) {
   root.querySelectorAll('[data-hinata-panel]').forEach((panel) => {
     panel.hidden = panel.dataset.hinataPanel !== section;
   });
+  requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
 }
 
-byId('hinataView')?.querySelectorAll('[data-hinata-section]').forEach((button) => {
+const root = mountChannelLayout();
+root?.querySelectorAll('[data-hinata-section]').forEach((button) => {
   button.addEventListener('click', () => selectSection(button.dataset.hinataSection || 'current'));
 });
 selectSection('current');
 void refresh();
-state.refreshTimer = setInterval(() => { if (!document.hidden) void refresh(); }, REFRESH_INTERVAL_MS);
+setInterval(() => { if (!document.hidden) void refresh(); }, REFRESH_INTERVAL_MS);
 setInterval(() => { if (!document.hidden && state.payload) updatePlaybackProgress(); }, 1_000);
