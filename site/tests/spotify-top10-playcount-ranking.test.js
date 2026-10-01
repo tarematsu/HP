@@ -59,7 +59,7 @@ test('Spotify playcount Top 10 is ranked only from the newest snapshot date', ()
   );
 });
 
-test('Spotify daily artist rank graph keeps only the three Sakamichi groups', () => {
+test('Spotify daily artist rank graph keeps only the three Sakamichi groups in Sakurazaka-first order', () => {
   const trend = {
     rosterFirst: [{
       snapshot_date: '2026-09-29', artist_name: 'Roster First', current_rank: 1,
@@ -91,6 +91,6 @@ test('Spotify daily artist rank graph keeps only the three Sakamichi groups', ()
   };
 
   const ranked = normalizeArtistRankSeries(chart, trend);
-  assert.deepEqual(ranked.map((item) => item.artistKey), ['nogizaka46', 'sakurazaka46', 'hinatazaka46']);
+  assert.deepEqual(ranked.map((item) => item.artistKey), ['sakurazaka46', 'nogizaka46', 'hinatazaka46']);
   assert.deepEqual(ranked.map((item) => item.colorIndex), [0, 1, 2]);
 });
