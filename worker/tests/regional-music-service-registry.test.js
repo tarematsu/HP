@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
@@ -7,6 +8,7 @@ import {
   REGIONAL_MUSIC_DAILY_COLLECTORS,
   REGIONAL_MUSIC_DAILY_CRON,
   REGIONAL_MUSIC_SERVICE_COLLECTORS,
+  REGIONAL_MUSIC_SERVICE_COLLECTORS_BY_ID,
   YOUTUBE_MUSIC_DAILY_COLLECTORS,
   YOUTUBE_MUSIC_DAILY_CRON,
   collectRegionalServicesDaily,
@@ -14,6 +16,7 @@ import {
   runRegionalMusicCollectors,
   scheduledCollectorForCron,
 } from '../src/regional-music-entry.js';
+import { REGIONAL_MUSIC_DAILY_SERVICES } from '../src/regional-music-dispatch-plan.js';
 import {
   canonicalRegionalArtist,
   REGIONAL_MUSIC_ARTISTS,
@@ -22,10 +25,13 @@ import {
   regionalMusicServicesByPhase,
 } from '../src/regional-music-service-registry.js';
 
+const regionalConfig = JSON.parse(readFileSync(new URL('../wrangler.regional-music.jsonc', import.meta.url), 'utf8'));
+
 test('regional music registry covers all planned services and keeps the 19 regional collectors explicit', () => {
   assert.equal(Object.keys(REGIONAL_MUSIC_SERVICES).length, 20);
   assert.equal(REGIONAL_MUSIC_SERVICE_COLLECTORS.length, 19);
   assert.equal(new Set(REGIONAL_MUSIC_SERVICE_COLLECTORS).size, 19);
+  assert.deepEqual(Object.keys(REGIONAL_MUSIC_SERVICE_COLLECTORS_BY_ID), REGIONAL_MUSIC_DAILY_SERVICES);
   assert.equal(YOUTUBE_MUSIC_DAILY_COLLECTORS.length, 1);
   assert.equal(REGIONAL_MUSIC_DAILY_COLLECTORS.length, 20);
   assert.equal(new Set(REGIONAL_MUSIC_DAILY_COLLECTORS).size, 20);
@@ -77,11 +83,20 @@ test('YouTube Music alone targets Aobazaka46 in addition to the three existing g
   assert.equal(Object.hasOwn(REGIONAL_MUSIC_ARTISTS, 'aobazaka46'), false);
 });
 
-test('scheduled regional collection splits YouTube Music at midnight JST from regional services at 06:00 JST', () => {
+test('production cron keeps YouTube Music standalone while regional services move to the shared minute queue', () => {
   assert.equal(YOUTUBE_MUSIC_DAILY_CRON, '0 15 * * *');
   assert.equal(REGIONAL_MUSIC_DAILY_CRON, '0 21 * * *');
   assert.equal(scheduledCollectorForCron(YOUTUBE_MUSIC_DAILY_CRON), collectYouTubeMusicDaily);
   assert.equal(scheduledCollectorForCron(REGIONAL_MUSIC_DAILY_CRON), collectRegionalServicesDaily);
+  assert.deepEqual(regionalConfig.triggers?.crons, [YOUTUBE_MUSIC_DAILY_CRON]);
+  assert.deepEqual(regionalConfig.queues?.consumers, [{
+    queue: 'regional-music-daily',
+    max_batch_size: 1,
+    max_batch_timeout: 1,
+    max_retries: 2,
+    dead_letter_queue: 'regional-music-daily-dlq',
+    max_concurrency: 1,
+  }]);
 });
 
 test('regional music runner bounds concurrency and preserves collector order', async () => {
