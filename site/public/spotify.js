@@ -25,13 +25,6 @@ const GRAPH_ARTIST_COLORS = Object.freeze({
   sakurazaka46: '#f3a6c8',
   hinatazaka46: '#9ecff3',
 });
-const TREND_COLORS = Object.freeze([
-  '#f3a6c8', '#8264b0', '#9ecff3', '#ef8a62', '#67a9cf',
-  '#a6d854', '#ffd92f', '#e78ac3', '#8da0cb', '#fc8d62',
-  '#66c2a5', '#e5c494', '#b3b3b3', '#1b9e77', '#d95f02',
-  '#7570b3', '#e7298a', '#66a61e', '#e6ab02', '#a6761d',
-  '#1f78b4', '#b15928',
-]);
 const compactNumberFormat = new Intl.NumberFormat('ja-JP', {
   notation: 'compact',
   maximumFractionDigits: 1,
@@ -87,8 +80,8 @@ function graphTrendSeries(seriesList = []) {
   return seriesList.filter((series) => GRAPH_ARTIST_KEY_SET.has(String(series?.artistKey || '')));
 }
 
-function graphTrendColor(series, fallbackIndex = 0) {
-  return GRAPH_ARTIST_COLORS[series?.artistKey] || TREND_COLORS[fallbackIndex % TREND_COLORS.length];
+function graphTrendColor(series) {
+  return GRAPH_ARTIST_COLORS[series?.artistKey] || '#667287';
 }
 
 function monthlyListenerTrend(rows = []) {
@@ -164,54 +157,32 @@ function legendItem(artistName, latestText, color) {
   return item;
 }
 
-function renderTrendChart(trend = {}, {
-  containerId,
-  metricKey,
-  ariaLabel,
-  maxSeries = null,
-  emptyText = 'Spotify再生数の推移データはまだありません。',
-  legendLabel = 'アイドル凡例と最新の再生数前日比',
-  latestFormatter = signedInteger,
-  zeroBaseline = true,
-}) {
+function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel, latestFormatter = signedInteger }) {
   const container = element(containerId);
   if (!container) return;
   container.replaceChildren();
 
-  const normalizedSeries = graphTrendSeries(normalizeTrendSeries(trend));
-  const seriesList = Number.isInteger(maxSeries) && maxSeries > 0
-    ? selectTrendSeriesByLatestMetric(normalizedSeries, metricKey, maxSeries)
-    : normalizedSeries;
+  const seriesList = graphTrendSeries(normalizeTrendSeries(trend));
   const dates = [...new Set(seriesList.flatMap((series) =>
     series.points.map((point) => String(point.snapshot_date))))].sort();
   const values = seriesList.flatMap((series) =>
     series.points.map((point) => integer(point?.[metricKey]))).filter((value) => value != null);
   if (!dates.length || !values.length) {
-    appendEmptyState(container, emptyText, { className: 'spotify-trend-empty' });
+    appendEmptyState(container, 'Spotify推移データはまだありません。', { className: 'spotify-trend-empty' });
     return;
   }
 
-  let yMin;
-  let yMax;
-  if (zeroBaseline) {
-    yMin = Math.min(0, ...values);
-    yMax = Math.max(0, ...values);
-    if (yMin === yMax) yMax = yMin + 1;
-    if (yMin < 0) yMin = Math.floor(yMin * 1.08);
-    if (yMax > 0) yMax = Math.ceil(yMax * 1.08);
-  } else {
-    const rawMin = Math.min(...values);
-    const rawMax = Math.max(...values);
-    const padding = Math.max(1, Math.ceil(Math.max(rawMax - rawMin, rawMax * .02) * .12));
-    yMin = Math.max(0, rawMin - padding);
-    yMax = Math.max(yMin + 1, rawMax + padding);
-  }
+  let yMin = Math.min(0, ...values);
+  let yMax = Math.max(0, ...values);
+  if (yMin === yMax) yMax = yMin + 1;
+  if (yMin < 0) yMin = Math.floor(yMin * 1.08);
+  if (yMax > 0) yMax = Math.ceil(yMax * 1.08);
   const yRange = Math.max(1, yMax - yMin);
   const { legend, canvas } = trendFrame(container, ariaLabel);
-  legend.setAttribute('aria-label', legendLabel);
-  seriesList.forEach((series, seriesIndex) => {
+  legend.setAttribute('aria-label', 'アーティスト凡例と最新値');
+  seriesList.forEach((series) => {
     const { artistName, points } = series;
-    const color = graphTrendColor(series, seriesIndex);
+    const color = graphTrendColor(series);
     const latest = [...points].reverse().find((point) => integer(point?.[metricKey]) != null);
     legend.append(legendItem(artistName, latestFormatter(latest?.[metricKey]), color));
   });
@@ -255,9 +226,9 @@ function renderTrendChart(trend = {}, {
     context.fillText(formatTrendDate(dates[index]), xFor(dates[index]), height - 10);
   }
 
-  seriesList.forEach((series, seriesIndex) => {
+  seriesList.forEach((series) => {
     const { points } = series;
-    const color = graphTrendColor(series, seriesIndex);
+    const color = graphTrendColor(series);
     const byDate = new Map(points.map((point) => [String(point.snapshot_date), point]));
     const rows = dates.map((date) => ({ date, value: integer(byDate.get(date)?.[metricKey]) }));
     const plotted = rows.filter((row) => row.value != null);
@@ -330,7 +301,7 @@ function renderArtistRankChart(chart = {}, trend = {}) {
   legend.setAttribute('aria-label', 'アーティスト凡例と最新順位');
   for (const series of seriesList) {
     const latest = series.points.at(-1);
-    const color = graphTrendColor(series, series.colorIndex);
+    const color = graphTrendColor(series);
     legend.append(legendItem(series.artistName, latest ? `${numberFormat.format(latest.rank)}位` : '-', color));
   }
 
@@ -374,7 +345,7 @@ function renderArtistRankChart(chart = {}, trend = {}) {
   }
 
   for (const series of seriesList) {
-    const color = graphTrendColor(series, series.colorIndex);
+    const color = graphTrendColor(series);
     const byDate = new Map(series.points.map((point) => [point.chart_date, point]));
     const rows = dates.map((date) => ({ date, rank: integer(byDate.get(date)?.rank) }));
     drawDashboardLine(context, rows, {
@@ -393,22 +364,17 @@ function renderCharts(trend, artistChart, monthlyListenerRows) {
     containerId: 'spotifyTrendCharts',
     metricKey: 'total_delta',
     ariaLabel: '乃木坂46・櫻坂46・日向坂46の全曲合計再生数前日比推移',
-    maxSeries: TREND_ARTIST_LIMIT,
   });
   renderTrendChart(monthlyListenerTrend(monthlyListenerRows), {
     containerId: 'spotifyMonthlyListenerTrendCharts',
     metricKey: 'monthly_listeners',
     ariaLabel: '乃木坂46・櫻坂46・日向坂46のSpotify月間リスナー推移',
-    emptyText: 'Spotify月間リスナーの推移データはまだありません。',
-    legendLabel: '坂道3グループの凡例と最新月間リスナー数',
     latestFormatter: formatInteger,
-    zeroBaseline: false,
   });
   renderTrendChart(trend, {
     containerId: 'spotifyTop10YearTrendCharts',
     metricKey: 'top10_year_delta',
     ariaLabel: '乃木坂46・櫻坂46・日向坂46の今年リリース上位10曲合計の再生数前日比推移',
-    maxSeries: TREND_ARTIST_LIMIT,
   });
   renderArtistRankChart(artistChart, trend);
 }
