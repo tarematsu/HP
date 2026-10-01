@@ -33,6 +33,7 @@ test('the dedicated buddies Worker owns scheduled raw collection', () => {
 
   assert.equal(collector.name, 'sh-buddies-collector');
   assert.equal(collector.main, 'src/buddies-collector-entry.js');
+  assert.deepEqual(collector.triggers.crons, ['*/5 * * * *']);
   assert.deepEqual(collector.queues.consumers, []);
   assert.equal(recovery.name, 'sh-buddies-recovery');
   assert.equal(recovery.queues.consumers.length, 3);
@@ -48,7 +49,7 @@ test('dedicated scheduled surface invokes collection with the BUDDIES_DB alias',
   const database = { name: 'buddies' };
   const calls = [];
   const result = await runBuddiesCollectorScheduled({
-    cron: '* * * * *',
+    cron: '*/5 * * * *',
     scheduledTime: 123,
   }, {
     BUDDIES_DB: database,
