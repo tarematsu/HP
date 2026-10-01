@@ -31,7 +31,17 @@ test('production browser audit captures desktop tablet and mobile layouts', () =
   assert.match(audit, /name: 'mobile-compact', width: 320, height: 720/);
   assert.match(audit, /horizontalOverflow/);
   assert.match(audit, /clippedTabs/);
+  assert.match(audit, /navigationScrollable/);
+  assert.match(audit, /selectedTabClipped/);
   assert.match(audit, /visiblePanels/);
+  assert.match(audit, /clippedTabs\) > 0 && !layout\.navigationScrollable/);
+});
+
+test('production browser audit follows current rendered labels', () => {
+  assert.match(audit, /requiredText: '総週数'/);
+  assert.match(audit, /requiredText: '櫻坂46の再生数一覧'/);
+  assert.doesNotMatch(audit, /requiredText: '週間リーダーボード'/);
+  assert.doesNotMatch(audit, /requiredText: '櫻坂46 再生数一覧'/);
 });
 
 test('full-page screenshots reveal content-visibility sections before capture', () => {
