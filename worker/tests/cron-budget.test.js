@@ -23,9 +23,9 @@ test('active production Workers stay within the account-wide Free cron limit', (
   ];
   const counts = configs.map((value) => value.triggers?.crons?.length || 0);
 
-  // Independent Cron owners: shared Sakurazaka scheduler, Buddies, two Amazon lanes, Homepanel.
-  assert.deepEqual(counts, [1, 0, 1, 0, 0, 2, 0, 1]);
-  assert.equal(counts.reduce((sum, count) => sum + count, 0), 5);
+  // Independent Cron owners: shared Sakurazaka scheduler, Buddies, Amazon, Homepanel.
+  assert.deepEqual(counts, [1, 0, 1, 0, 0, 1, 0, 1]);
+  assert.equal(counts.reduce((sum, count) => sum + count, 0), 4);
   assert.equal(counts.reduce((sum, count) => sum + count, 0) <= 5, true);
 });
 
