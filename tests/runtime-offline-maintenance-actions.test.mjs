@@ -45,22 +45,18 @@ test('offline runtime maintenance runs on the thirty-minute cadence without depl
   assert.match(runner, /runOfflineMinuteRebuilds/);
 });
 
-test('offline runtime maintenance leaves reserved D1 read headroom for read models', () => {
-  assert.match(workflow, /D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT: '4000'/);
-  assert.match(workflow, /D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT: '2750000'/);
-  assert.match(workflow, /D1_ACTIONS_READ_PROJECTION_MINUTES: '60'/);
-  assert.match(workflow, /id: d1-budget/);
-  assert.match(workflow, /RUNTIME_MAINTENANCE_D1_ALLOWED/);
-  assert.match(workflow, /RUNTIME_MAINTENANCE_D1_PROJECTED_ROWS_READ/);
-  assert.match(workflow, /Summarize D1 budget decision/);
-  assert.match(runner, /runtime_offline_maintenance_actions_budget_skipped/);
-  assert.ok(
-    runner.indexOf('runInboxRecovery(') < runner.indexOf('const budget = d1BudgetSkip(options)'),
-    'bounded inbox recovery must precede the heavy-work budget exit',
-  );
+test('runtime read-model maintenance has no D1 budget guard', () => {
+  assert.doesNotMatch(workflow, /cloudflare-d1-write-guard\.mjs/);
+  assert.doesNotMatch(workflow, /D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT/);
+  assert.doesNotMatch(workflow, /D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT/);
+  assert.doesNotMatch(workflow, /D1_ACTIONS_READ_PROJECTION_MINUTES/);
+  assert.doesNotMatch(workflow, /id: d1-budget/);
+  assert.doesNotMatch(workflow, /RUNTIME_MAINTENANCE_D1_ALLOWED/);
+  assert.doesNotMatch(workflow, /Summarize D1 budget decision/);
+  assert.doesNotMatch(runner, /d1BudgetSkip|runtime_offline_maintenance_actions_budget_skipped|d1-budget-guard/);
 });
 
-test('recent budget-deferred maintenance coalesces from last attempt even when success is older', async () => {
+test('recent successful attempt coalesces even when the prior success is older', async () => {
   const writes = [];
   const calls = [];
   const now = 2_000_000;
@@ -175,20 +171,9 @@ test('Actions reconciles the minute inbox before other database maintenance', as
   assert.match(runner, /STREAM_GOAL_PREDICTION_INTERVAL_MS: 30 \* 60_000/);
 });
 
-test('budget pressure still repairs stale minute inbox state before deferring heavy work', async () => {
+test('legacy budget inputs cannot defer runtime read-model maintenance', async () => {
   const calls = [];
   const writes = [];
-  const fail = async () => assert.fail('D1-heavy maintenance must not run');
-  const inboxRecovery = {
-    processed: 21,
-    finalized_count: 21,
-    released_count: 0,
-    requeued_count: 0,
-    pending_count: 0,
-    processing_count: 0,
-    dead_count: 0,
-    oldest_pending_minute: null,
-  };
   const result = await runRuntimeOfflineMaintenanceActions({
     now: () => 2_000,
     d1Allowed: false,
@@ -199,40 +184,24 @@ test('budget pressure still repairs stale minute inbox state before deferring he
     d1RowsWritten: 100,
     d1WriteLimit: 4_000,
     env: { BUDDIES_DB: {}, MINUTE_DB: {}, OTHER_DB: statusDatabase(writes) },
-    runInboxRecovery: async (_env, options) => {
-      calls.push('inbox-recovery');
-      assert.deepEqual(options, { now: 2_000, limit: 1000, deadLimit: 100 });
-      return inboxRecovery;
-    },
-    runPrediction: fail,
-    runRollup: fail,
-    runRebuilds: fail,
-    runRetention: fail,
+    runInboxRecovery: async () => { calls.push('inbox'); return 'inbox'; },
+    runPrediction: async () => { calls.push('prediction'); return 'prediction'; },
+    runRollup: async () => { calls.push('rollup'); return 'rollup'; },
+    runRebuilds: async () => { calls.push('rebuilds'); return 'rebuilds'; },
+    runRetention: async () => { calls.push('retention'); return 'retention'; },
   });
 
-  assert.deepEqual(calls, ['inbox-recovery']);
+  assert.deepEqual(calls, ['inbox', 'prediction', 'rollup', 'rebuilds', 'retention']);
   assert.deepEqual(writes.map(({ values }) => values[1]), ['running', 'ok']);
-  assert.equal(writes[1].values[3], null);
-  assert.equal(writes[1].values[4], null);
-  assert.equal(writes[1].values[5], 'runtime_offline_maintenance_deferred');
-  assert.equal(writes[1].values[6], 'd1-budget-guard');
-  assert.match(writes[1].values[7], /projected-read-budget-exceeded/);
   assert.deepEqual(result, {
     ok: true,
-    skipped: true,
-    event: 'runtime_offline_maintenance_actions_budget_skipped',
-    reason: 'd1-actions-budget',
+    event: 'runtime_offline_maintenance_actions_complete',
     elapsed_ms: 0,
-    last_success_preserved: true,
-    inbox_recovery: inboxRecovery,
-    budget: {
-      reason: 'projected-read-budget-exceeded',
-      rows_read: 200_000,
-      projected_rows_read: 4_800_000,
-      read_limit: 3_500_000,
-      rows_written: 100,
-      write_limit: 4_000,
-    },
+    inbox_recovery: 'inbox',
+    prediction: 'prediction',
+    rollup: 'rollup',
+    rebuilds: 'rebuilds',
+    retention: 'retention',
   });
 });
 
