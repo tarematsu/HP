@@ -6,6 +6,8 @@ import {
   saveRegionalTrack,
 } from './regional-music-store.js';
 
+const NHACCUATUI_ORIGIN = 'https://www.nhaccuatui.com';
+
 export const NHACCUATUI_SEEDS = Object.freeze({
   sakurazaka46: Object.freeze({
     id: 'a0qQaCjo4LuZ',
@@ -23,6 +25,10 @@ export const NHACCUATUI_SEEDS = Object.freeze({
     url: 'https://www.nhaccuatui.com/bai-hat/ima-hanashitai-darekagairu-nogizaka46.Be2uz8tZNdmu.html',
   }),
 });
+
+function normalizeArtistName(value) {
+  return String(value || '').normalize('NFKC').trim().toLocaleLowerCase('en-US').replace(/\s+/g, '');
+}
 
 function number(value) {
   if (!value) return null;
@@ -44,12 +50,21 @@ export function parseNhacCuaTuiMetrics(html, artistName) {
 export function findNhacCuaTuiArtistHref(html, artistName) {
   const source = String(html || '');
   const anchors = source.matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi);
-  const wanted = String(artistName || '').toLocaleLowerCase('en-US');
+  const wanted = normalizeArtistName(artistName);
   for (const match of anchors) {
     if (!/nghe-si|artist/i.test(match[1])) continue;
-    if (visibleHtmlText(match[2]).toLocaleLowerCase('en-US').includes(wanted)) return match[1];
+    if (normalizeArtistName(visibleHtmlText(match[2])) === wanted) return match[1];
   }
   return null;
+}
+
+export function absoluteNhacCuaTuiUrl(href) {
+  if (!href) return null;
+  try {
+    return new URL(href, NHACCUATUI_ORIGIN).toString();
+  } catch {
+    return null;
+  }
 }
 
 async function fetchHtml(fetchImpl, url) {
@@ -73,14 +88,15 @@ export async function collectNhacCuaTui(env, observedAt = Date.now(), fetchImpl 
       const html = await fetchHtml(fetchImpl, seed.url);
       const metrics = parseNhacCuaTuiMetrics(html, artistName);
       const artistHref = findNhacCuaTuiArtistHref(html, artistName);
-      const serviceArtistId = artistHref || `name:${artistName}`;
+      const profileUrl = absoluteNhacCuaTuiUrl(artistHref) || seed.url;
+      const serviceArtistId = profileUrl !== seed.url ? profileUrl : `name:${artistName}`;
 
       await saveRegionalArtist(env, {
         service: 'nhaccuatui',
         canonical_artist: canonicalArtist,
         service_artist_id: serviceArtistId,
         display_name: artistName,
-        profile_url: artistHref || seed.url,
+        profile_url: profileUrl,
         followers: metrics.followers,
         observed_at: observedAt,
       });
