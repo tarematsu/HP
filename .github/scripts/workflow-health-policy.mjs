@@ -37,6 +37,15 @@ export const WORKFLOW_HEALTH_POLICIES = Object.freeze([
     recoverBeforeStale: true,
   }),
   freeze({
+    key: 'dailyDeep',
+    name: 'Daily deep repair',
+    workflow: 'run-daily-deep-repair.yml',
+    cadenceMinutes: 1440,
+    staleAfterMinutes: 1500,
+    stalledAfterMinutes: 25,
+    recoverBeforeStale: true,
+  }),
+  freeze({
     key: 'metadata',
     name: 'Track metadata repair',
     workflow: 'run-track-metadata-repair.yml',
