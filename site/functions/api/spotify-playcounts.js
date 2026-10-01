@@ -1,3 +1,5 @@
+import { canonicalizeTrackRows } from '../lib/canonical-track-rows.js';
+
 const SAKURAZAKA = Object.freeze({ key: 'sakurazaka46', name: '櫻坂46' });
 const NOGIZAKA = Object.freeze({ key: 'nogizaka46', name: '乃木坂46' });
 const HINATAZAKA = Object.freeze({ key: 'hinatazaka46', name: '日向坂46' });
@@ -143,6 +145,28 @@ function normalizedTrackName(value) {
     .toLocaleLowerCase('ja-JP')
     .replace(/\s+/gu, ' ')
     .trim();
+}
+
+export async function canonicalizeSpotifyPlaycountRows(db, rows = []) {
+  if (!Array.isArray(rows) || !rows.length) return rows;
+  const candidates = rows.map((row) => ({
+    ...row,
+    title: String(row?.name || '').trim() || null,
+    spotify_id: String(row?.spotify_track_id || '').trim() || null,
+  }));
+  const canonical = await canonicalizeTrackRows(db, candidates);
+  return canonical.map((row, index) => {
+    const original = rows[index] || {};
+    const trackId = integer(row?.track_id) ?? integer(original?.track_id);
+    const name = String(row?.title || original?.name || '').trim();
+    if (trackId === integer(original?.track_id)
+        && name === String(original?.name || '').trim()) return original;
+    return {
+      ...original,
+      track_id: trackId,
+      name: name || String(original?.name || '').trim(),
+    };
+  });
 }
 
 function dedupeTrackRows(rows = []) {
@@ -337,7 +361,8 @@ export async function onRequestGet({ env, request }) {
       env.OTHER_DB.prepare(spotifyTrendSql()).all(),
       env.OTHER_DB.prepare(spotifyArtistChartSql()).all(),
     ]);
-    const latestRows = Array.isArray(latestResult?.results) ? latestResult.results : [];
+    const sourceLatestRows = Array.isArray(latestResult?.results) ? latestResult.results : [];
+    const latestRows = await canonicalizeSpotifyPlaycountRows(env?.MINUTE_DB, sourceLatestRows);
     const trendRows = Array.isArray(trendResult?.results) ? trendResult.results : [];
     const artistChartRows = Array.isArray(artistChartResult?.results) ? artistChartResult.results : [];
     return json({
