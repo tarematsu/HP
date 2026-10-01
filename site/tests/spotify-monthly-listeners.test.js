@@ -77,8 +77,9 @@ test('Spotify monthly listeners share one dual-axis canvas with total playcount 
   assert.match(shell, /id="spotifyTrendCharts"/);
   assert.doesNotMatch(shell, /spotifyMonthlyListenerTrendCharts/);
   assert.doesNotMatch(shell, /spotify-monthly-listeners\?format=svg|<img[^>]+Spotify月間リスナー/);
-  assert.match(runtime, /renderOverviewChart\(trend, monthlyListenerRows\)/);
+  assert.match(runtime, /overviewTrend\(trend, monthlyListenerRows\)/);
   assert.match(runtime, /monthlyListenerTrend\(monthlyListenerRows\)/);
+  assert.match(runtime, /secondaryMetricKey: 'monthly_listeners'/);
   assert.match(runtime, /lineDash: \[6, 4\]/);
   assert.match(runtime, /左軸が再生数前日比、右軸が月間リスナー/);
   assert.match(runtime, /drawDashboardLine/);
