@@ -31,3 +31,10 @@ test('the read model exposes per-artist order and provenance', () => {
   const orders = [{service:'genie',canonical_artist:'sakurazaka46',service_track_id:'song',position:1,rank_source:'artist_page_order'}];
   assert.deepEqual(regionalMusicReadModelPayload({artistTrackOrders:orders},1).artist_track_orders,orders);
 });
+
+import { parseGenieTrackTitle } from '../src/regional-music-genie.js';
+test('Genie stores its official song title instead of displaying the service ID', () => {
+  assert.equal(parseGenieTrackTitle(`<meta property="og:title" content="What's &#39;KAZOKU&#39;? / Sakurazaka46 - genie">`), "What's 'KAZOKU'?");
+  assert.equal(parseGenieTrackTitle(`<meta content="Title / Part Two / Nogizaka46 - genie" property="og:title">`), 'Title / Part Two');
+  assert.equal(parseGenieTrackTitle('<title>genie</title>'),null);
+});

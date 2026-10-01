@@ -1,5 +1,5 @@
 import { REGIONAL_MUSIC_ARTISTS } from './regional-music-service-registry.js';
-import { visibleHtmlText } from './regional-music-html.js';
+import { visibleHtmlText, decodeBasicHtml } from './regional-music-html.js';
 import {
   saveRegionalArtist,
   saveRegionalCollectorState,
@@ -48,6 +48,15 @@ export function extractGenieTrackIds(html, limit = GENIE_TRACK_BATCH) {
     if (ids.length >= limit) break;
   }
   return ids;
+}
+
+export function parseGenieTrackTitle(html) {
+  const meta = String(html || '').match(/<meta\b[^>]*property=["']og:title["'][^>]*>/i)?.[0];
+  const content = meta?.match(/\bcontent=(["'])([\s\S]*?)\1/i)?.[2];
+  if (!content) return null;
+  const caption = decodeBasicHtml(content).trim();
+  const separator = caption.lastIndexOf(' / ');
+  return (separator > 0 ? caption.slice(0,separator) : caption.replace(/\s+-\s+genie$/i,'')) || null;
 }
 
 export function parseGenieArtistLikes(html) {
@@ -118,6 +127,7 @@ export async function collectGenie(env, observedAt = Date.now(), fetchImpl = fet
             service_artist_id: artistId,
             canonical_artist: canonicalArtist,
             track_url: trackUrl,
+            title: parseGenieTrackTitle(songHtml),
             popularity_rank: index + 1,
             popularity_rank_source: 'artist_page_order',
             likes: metrics.likes,

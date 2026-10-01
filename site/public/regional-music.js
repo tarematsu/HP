@@ -100,6 +100,12 @@ async function loadReadModel() {
   return readModelPromise;
 }
 
+const ARTIST_DISPLAY_ORDER = ['sakurazaka46','nogizaka46','hinatazaka46','aobazaka46'];
+function artistPosition(artist) {
+  const index = ARTIST_DISPLAY_ORDER.indexOf(artist);
+  return index < 0 ? ARTIST_DISPLAY_ORDER.length : index;
+}
+
 function renderArtists(rows) {
   const body = replaceBody('regionalMusicArtistBody');
   if (!body) return;
@@ -107,7 +113,7 @@ function renderArtists(rows) {
     appendEmptyTableRow(body, 'アーティストデータがありません。', 4);
     return;
   }
-  for (const item of rows) {
+  for (const item of [...rows].sort((a,b) => artistPosition(a.canonical_artist)-artistPosition(b.canonical_artist))) {
     body.append(row([
       ARTIST_LABELS[item.canonical_artist] || item.display_name || item.canonical_artist || '-',
       valueText(item.followers),
@@ -129,7 +135,7 @@ export function regionalTrackRows(rows, orders = []) {
     return positions?.length ? positions.map(order => ({ ...item,
       canonical_artist: order.canonical_artist, popularity_rank: order.position, rank_source: order.rank_source,
     })) : [item];
-  }).sort((a,b) => String(a.canonical_artist).localeCompare(String(b.canonical_artist))
+  }).sort((a,b) => artistPosition(a.canonical_artist)-artistPosition(b.canonical_artist)
     || (a.popularity_rank ?? Infinity) - (b.popularity_rank ?? Infinity));
 }
 
