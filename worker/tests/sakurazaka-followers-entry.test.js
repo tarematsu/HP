@@ -26,7 +26,7 @@ test('Sakurazaka minute cron is the shared scheduler while Buddies stays indepen
   assert.match(sakurazakaEntry, /stationhead_daily_followers_legacy_queue_drained/);
 
   assert.equal(buddiesConfig.main, 'src/buddies-collector-entry.js');
-  assert.deepEqual(buddiesConfig.triggers?.crons, ['* * * * *']);
+  assert.deepEqual(buddiesConfig.triggers?.crons, ['*/5 * * * *']);
   assert.ok(buddiesConfig.d1_databases.some((item) => item.binding === 'BUDDIES_DB'));
   assert.ok(buddiesConfig.d1_databases.some((item) => item.binding === 'OTHER_DB'));
   assert.match(buddiesEntry, /isJstFollowerCollectionMinute\(scheduledAt\)/);

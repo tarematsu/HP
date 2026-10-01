@@ -9,7 +9,7 @@ import productionApp, {
 
 test('production cron delegates only to the primary collection app', async () => {
   const calls = [];
-  const controller = { scheduledTime: 300_000, cron: '* * * * *' };
+  const controller = { scheduledTime: 300_000, cron: '*/5 * * * *' };
   const env = { marker: true };
   const ctx = {};
   const result = await runProductionScheduled(controller, env, ctx, {
@@ -56,7 +56,7 @@ test('collector, recovery, and runtime Wrangler configurations own disjoint pipe
   assert.equal(collector.main, 'src/buddies-collector-entry.js');
   assert.equal(recovery.main, 'src/buddies-recovery-entry.js');
   assert.equal(runtime.main, 'src/runtime-orchestrator-deployed-entry.js');
-  assert.deepEqual(collector.triggers?.crons, ['* * * * *']);
+  assert.deepEqual(collector.triggers?.crons, ['*/5 * * * *']);
   assert.equal(recovery.triggers, undefined);
   assert.equal(runtime.triggers, undefined);
   assert.deepEqual(runtime.durable_objects, {

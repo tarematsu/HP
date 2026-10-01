@@ -45,7 +45,7 @@
     "QUEUE_LIKES_REPAIR_ENABLED": false,
     "COLLECTOR_TELEMETRY_INTERVAL_MS": 300000
   },
-  "triggers": { "crons": ["* * * * *"] },
+  "triggers": { "crons": ["*/5 * * * *"] },
   "r2_buckets": [
     { "binding": "PAGES_RESPONSE_R2", "bucket_name": "sh-pages-responses" }
   ],

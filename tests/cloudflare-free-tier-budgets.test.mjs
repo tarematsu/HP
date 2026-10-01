@@ -81,7 +81,7 @@ test('Cloudflare resource budgets are fixed at 100 percent of included usage', (
 });
 
 test('collector coordination and runtime live-job DO fit daily budgets without runtime cron', () => {
-  const collectorScheduledRequests = 24 * 60;
+  const collectorScheduledRequests = 24 * 12;
   const collectorStatusRequests = 24 * 6 * 2 + 24 * 2;
   const maximumRuntimeD1StateRequests = 24 * 60 * 9;
   const runtimeLiveJobDoRequests = 24 * 60 * 2;
@@ -108,7 +108,7 @@ test('collector coordination and runtime live-job DO fit daily budgets without r
   assert.ok(maximumDoRowsWritten < 100_000);
   assert.ok(maximumQueueOperations < 10_000);
 
-  assert.deepEqual(collector.triggers.crons, ['* * * * *']);
+  assert.deepEqual(collector.triggers.crons, ['*/5 * * * *']);
   assert.equal(runtime.triggers, undefined);
   assert.deepEqual(runtime.durable_objects, {
     bindings: [{ name: 'MINUTE_LIVE_JOB_COORDINATOR', class_name: 'MinuteLiveJobCoordinator' }],
