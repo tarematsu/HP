@@ -1,3 +1,5 @@
+import { canonicalizeTrackRows } from './canonical-track-rows.js';
+
 export const TRACK_RANKING_SQL = `SELECT
   current.track_identity,current.track_id,
   current.title AS current_title,current.artist AS current_artist,
@@ -18,8 +20,6 @@ export const TRACK_RANKING_SUMMARY_SQL = `SELECT
 FROM sh_track_ranking_current
 WHERE latest_like_count>0`;
 
-const CANONICAL_CHUNK_SIZE = 80;
-
 function text(value) {
   const normalized = String(value ?? '').trim();
   return normalized || null;
@@ -33,10 +33,6 @@ function positiveInteger(value) {
 
 function normalizedIsrc(value) {
   return String(value || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-}
-
-function placeholders(count) {
-  return Array.from({ length: count }, () => '?').join(',');
 }
 
 function placeholder(value, type) {
@@ -79,111 +75,6 @@ async function safeRun(db, sql, bindings) {
     if (/no such table|no such column|no such index/i.test(String(error?.message || error))) return null;
     throw error;
   }
-}
-
-async function queryRows(db, sql, bindings) {
-  const statement = db.prepare(sql).bind(...bindings);
-  const result = await statement.all();
-  return Array.isArray(result?.results) ? result.results : [];
-}
-
-async function queryChunked(db, values, sqlForChunk) {
-  const rows = [];
-  for (let offset = 0; offset < values.length; offset += CANONICAL_CHUNK_SIZE) {
-    const chunk = values.slice(offset, offset + CANONICAL_CHUNK_SIZE);
-    rows.push(...await queryRows(db, sqlForChunk(chunk), chunk));
-  }
-  return rows;
-}
-
-function canonicalRow(raw) {
-  if (!raw || typeof raw !== 'object') return null;
-  const trackId = positiveInteger(raw.track_id);
-  const isrc = normalizedIsrc(raw.isrc) || null;
-  const spotifyId = text(raw.spotify_id);
-  if (trackId == null && !isrc && !spotifyId) return null;
-  return {
-    track_id: trackId,
-    isrc,
-    spotify_id: spotifyId,
-    title: text(raw.title),
-    artist: text(raw.artist),
-    thumbnail_url: text(raw.thumbnail_url),
-  };
-}
-
-function canonicalIndexes(rows) {
-  const byTrackId = new Map();
-  const byIsrc = new Map();
-  const bySpotify = new Map();
-  for (const raw of rows) {
-    const row = canonicalRow(raw);
-    if (!row) continue;
-    if (row.track_id != null) byTrackId.set(row.track_id, row);
-    if (row.isrc) byIsrc.set(row.isrc, row);
-    if (row.spotify_id) bySpotify.set(row.spotify_id, row);
-  }
-  return { byTrackId, byIsrc, bySpotify };
-}
-
-function preferredCanonical(row, indexes) {
-  const trackId = positiveInteger(row?.track_id);
-  if (trackId != null && indexes.byTrackId.has(trackId)) return indexes.byTrackId.get(trackId);
-  const isrc = rowIsrc(row);
-  if (isrc && indexes.byIsrc.has(isrc)) return indexes.byIsrc.get(isrc);
-  const spotifyId = rowSpotifyId(row);
-  return spotifyId ? indexes.bySpotify.get(spotifyId) || null : null;
-}
-
-function unresolvedRows(rows, indexes) {
-  return rows.filter((row) => !preferredCanonical(row, indexes));
-}
-
-function applyCanonical(row, canonical) {
-  if (!canonical) return row;
-  return {
-    ...row,
-    track_id: positiveInteger(row.track_id) ?? canonical.track_id,
-    title: canonical.title || row.title || null,
-    artist: canonical.artist || row.artist || null,
-    thumbnail_url: canonical.thumbnail_url || row.thumbnail_url || null,
-    isrc: canonical.isrc || rowIsrc(row),
-    spotify_id: canonical.spotify_id || rowSpotifyId(row),
-  };
-}
-
-async function hydrateRankingCanonicalMetadata(db, rows) {
-  if (!rows.length) return rows;
-
-  const canonicalRows = [];
-  const trackIds = [...new Set(rows.map((row) => positiveInteger(row.track_id)).filter(Boolean))];
-  if (trackIds.length) {
-    canonicalRows.push(...await queryChunked(db, trackIds, (chunk) => `SELECT
-      track_id,isrc,spotify_id,title,artist,thumbnail_url
-      FROM sh_track_canonical_metadata
-      WHERE track_id IN (${placeholders(chunk.length)})`));
-  }
-
-  let indexes = canonicalIndexes(canonicalRows);
-  const isrcs = [...new Set(unresolvedRows(rows, indexes).map(rowIsrc).filter(Boolean))];
-  if (isrcs.length) {
-    canonicalRows.push(...await queryChunked(db, isrcs, (chunk) => `SELECT
-      track_id,isrc,spotify_id,title,artist,thumbnail_url
-      FROM sh_track_canonical_metadata
-      WHERE isrc IN (${placeholders(chunk.length)})`));
-    indexes = canonicalIndexes(canonicalRows);
-  }
-
-  const spotifyIds = [...new Set(unresolvedRows(rows, indexes).map(rowSpotifyId).filter(Boolean))];
-  if (spotifyIds.length) {
-    canonicalRows.push(...await queryChunked(db, spotifyIds, (chunk) => `SELECT
-      track_id,isrc,spotify_id,title,artist,thumbnail_url
-      FROM sh_track_canonical_metadata
-      WHERE spotify_id IN (${placeholders(chunk.length)})`));
-    indexes = canonicalIndexes(canonicalRows);
-  }
-
-  return rows.map((row) => applyCanonical(row, preferredCanonical(row, indexes)));
 }
 
 function enrichRanking(rows) {
@@ -249,7 +140,9 @@ export async function loadTrackRanking(db, { limit = 500, persist = true } = {})
     db.prepare(TRACK_RANKING_SUMMARY_SQL).first(),
   ]);
   const baseRows = result.results || [];
-  const hydratedRows = await hydrateRankingCanonicalMetadata(db, baseRows);
+  // canonicalizeTrackRows resolves aliases through indexed sh_tracks and joins
+  // sh_track_dictionary directly, avoiding the UNION canonical view hot path.
+  const hydratedRows = await canonicalizeTrackRows(db, baseRows);
   const rows = enrichRanking(hydratedRows);
   if (persist) await persistRecoveredIdentity(db, baseRows, rows);
   return {
