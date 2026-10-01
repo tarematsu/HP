@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const currentShell = readFileSync(new URL('../public/current-shell.js', import.meta.url), 'utf8');
+const playbackShell = readFileSync(new URL('../public/stationhead-playback-shell.js', import.meta.url), 'utf8');
 const likesShell = readFileSync(new URL('../public/likes-shell.js', import.meta.url), 'utf8');
 const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
@@ -15,9 +16,12 @@ test('history no longer loads a post-render UI tweak runtime', () => {
 });
 
 test('current chart is statically before now playing without a redundant heading block', () => {
-  assert.ok(currentShell.indexOf('class="card chart-card"') < currentShell.indexOf('class="primary-grid"'));
-  const chartCard = currentShell.slice(currentShell.indexOf('class="card chart-card"'), currentShell.indexOf('class="primary-grid"'));
+  const chartIndex = currentShell.indexOf('class="card chart-card"');
+  const playbackIndex = currentShell.indexOf('stationheadPlaybackCards({');
+  assert.ok(chartIndex >= 0 && playbackIndex > chartIndex);
+  const chartCard = currentShell.slice(chartIndex, playbackIndex);
   assert.doesNotMatch(chartCard, /LAST 24 HOURS|オンライン数<\/h2>/);
+  assert.match(playbackShell, /class="primary-grid"/);
 });
 
 test('likes update control is removed and CSV stays in the song-table shared data card', () => {
