@@ -21,15 +21,11 @@ function musicServicePlaylistWorkflow() {
   return readFileSync(new URL('../../.github/workflows/refresh-music-service-playlists.yml', import.meta.url), 'utf8');
 }
 
-test('music collector schedules daily 02:00 JST ranking scan, bounded continuation, and Apple probe', () => {
+test('music collector keeps one cron while routing daily 50k and Apple work internally', () => {
   const value = config();
   assert.equal(value.name, 'sh-amazon-music-collector');
   assert.equal(value.main, 'src/amazon-music-entry.js');
-  assert.deepEqual(value.triggers.crons, [
-    '0 17 * * *',
-    '12,22,32,42,52 17-20 * * *',
-    '15 * * * *',
-  ]);
+  assert.deepEqual(value.triggers.crons, ['0,12,15,22,32,42,52 * * * *']);
   assert.deepEqual(value.d1_databases.map(({ binding }) => binding), ['MINUTE_DB', 'OTHER_DB']);
   assert.equal(value.d1_databases.find(({ binding }) => binding === 'MINUTE_DB')?.database_name, 'stationhead-minute');
   assert.equal(value.d1_databases.find(({ binding }) => binding === 'OTHER_DB')?.database_name, 'stationhead-other');
@@ -72,8 +68,7 @@ test('active 50k scan restarts only when its Top500 baseline changes', () => {
 
 test('scheduled entry leaves every playlist sweep to Actions', () => {
   const source = readFileSync(new URL('../src/amazon-music-entry.js', import.meta.url), 'utf8');
-  assert.match(source, /AMAZON_MUSIC_DAILY_START_CRON = '0 17 \* \* \*'/);
-  assert.match(source, /AMAZON_MUSIC_SCAN_CONTINUE_CRON = '12,22,32,42,52 17-20 \* \* \*'/);
+  assert.match(source, /AMAZON_MUSIC_CRON = '0,12,15,22,32,42,52 \* \* \* \*'/);
   assert.doesNotMatch(source, /AMAZON_MUSIC_TOP_SCAN_CRON/);
   assert.doesNotMatch(source, /amazon-music-top-500-monitor/);
   assert.doesNotMatch(source, /checkAmazonUpdateAndQueue100k/);
