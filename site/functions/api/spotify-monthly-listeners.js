@@ -117,9 +117,8 @@ export function selectMonthlyListenerSeries(trend = {}, limit = 10) {
 }
 
 export function spotifyMonthlyListenersSvg(rows = []) {
-  const graphRows = rows.filter((row) => GRAPH_ARTIST_KEY_SET.has(String(row?.artist_key || '').trim()));
-  const { trend } = spotifyMonthlyListenersTrend(graphRows);
-  const series = selectMonthlyListenerSeries(trend, GRAPH_ARTIST_KEYS.length);
+  const { trend } = spotifyMonthlyListenersTrend(rows);
+  const series = selectMonthlyListenerSeries(trend);
   const dates = [...new Set(series.flatMap((item) => item.points.map((point) => point.snapshot_date)))].sort();
   const values = series.flatMap((item) => item.points.map((point) => integer(point.monthly_listeners)))
     .filter((value) => value != null);
@@ -204,7 +203,10 @@ export async function onRequestGet({ env, request }) {
   try {
     const rows = await materializedMonthlyListenerRows(env);
     const format = request?.url ? new URL(request.url).searchParams.get('format') : null;
-    if (format === 'svg') return new Response(spotifyMonthlyListenersSvg(rows), { headers: SVG_HEADERS });
+    if (format === 'svg') {
+      const graphRows = rows.filter((row) => GRAPH_ARTIST_KEY_SET.has(String(row?.artist_key || '').trim()));
+      return new Response(spotifyMonthlyListenersSvg(graphRows), { headers: SVG_HEADERS });
+    }
     return json({ ok: true, ...spotifyMonthlyListenersTrend(rows) });
   } catch (error) {
     console.error('spotify monthly listeners failed', error);
