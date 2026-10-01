@@ -1,6 +1,10 @@
 name: Repair track metadata
 
 on:
+  # Unknown tracks are enriched on the live committed-metadata path. This job is
+  # only the bounded backlog/legacy safety net, so once per day is sufficient.
+  schedule:
+    - cron: '16 0 * * *'
   push:
     branches: [main]
     paths:
@@ -12,12 +16,6 @@ on:
       - 'worker/scripts/repair-legacy-ranking-metadata-actions.mjs'
       - 'worker/scripts/report-unresolved-ranking-metadata-actions.mjs'
       - 'worker/src/isrc-metadata.js'
-  # Runtime maintenance already runs every 30 minutes. Trigger from its successful
-  # completion instead of maintaining a second 30-minute cron; the recovery
-  # watchdog dispatches this workflow if the event chain is missed or stale.
-  workflow_run:
-    workflows: ["Run runtime offline maintenance"]
-    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -29,7 +27,6 @@ concurrency:
 
 jobs:
   repair:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     name: Consolidate and repair track metadata
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -48,7 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.sha }}
       - name: Resolve Cloudflare account context
         uses: ./.github/actions/cloudflare-context
         with:
