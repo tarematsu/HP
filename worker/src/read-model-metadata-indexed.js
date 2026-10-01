@@ -148,7 +148,7 @@ async function directRowsByTrackId(db, trackIds) {
     WHERE t.id IN (${placeholders(trackIds.length)})`, trackIds);
 }
 
-async function directRowsByIsrc(db, isrcs) {
+async function dictionaryRowsByIsrc(db, isrcs) {
   if (!isrcs.length) return [];
   return runRows(db, `SELECT NULL AS track_id,spotify_id,isrc,title,artist,thumbnail_url,
       metadata_fetched_at AS fetched_at
@@ -156,11 +156,26 @@ async function directRowsByIsrc(db, isrcs) {
     WHERE isrc IN (${placeholders(isrcs.length)})`, isrcs);
 }
 
-async function trackIdsBySpotify(db, spotifyIds) {
-  if (!spotifyIds.length) return [];
-  return runRows(db, `SELECT id AS track_id,spotify_id
+function mappingValue(row, column) {
+  return column === 'isrc' ? normalizedIsrc(row?.isrc) : text(row?.spotify_id);
+}
+
+async function trackIdsByProvider(db, values, column) {
+  if (!values.length) return [];
+  const safeColumn = column === 'isrc' ? 'isrc' : 'spotify_id';
+  const direct = await runRows(db, `SELECT id AS track_id,${safeColumn}
     FROM sh_tracks
-    WHERE spotify_id IN (${placeholders(spotifyIds.length)})`, spotifyIds);
+    WHERE ${safeColumn} IN (${placeholders(values.length)})`, values);
+  const found = new Set(direct.map((row) => mappingValue(row, safeColumn)).filter(Boolean));
+  const missing = values.filter((value) => !found.has(
+    safeColumn === 'isrc' ? normalizedIsrc(value) : text(value),
+  ));
+  if (!missing.length) return direct;
+  const aliases = await runRows(db, `SELECT track_id,alias_value AS ${safeColumn}
+    FROM sh_track_aliases
+    WHERE alias_type=?
+      AND alias_value IN (${placeholders(missing.length)})`, [safeColumn, ...missing]);
+  return [...direct, ...aliases];
 }
 
 async function dictionaryRowsBySpotify(db, spotifyIds) {
@@ -234,13 +249,24 @@ function cachedRows(requestedTrackIds, requestedSpotifyIds, requestedIsrcs) {
   return rows;
 }
 
+function mappedTrackIds(mappings, covered) {
+  return [...new Set((mappings || [])
+    .map((row) => positiveInteger(row?.track_id))
+    .filter(Boolean))]
+    .filter((trackId) => !covered.trackIds.has(trackId));
+}
+
+function appendResolved(resolved, rows) {
+  if (!rows.length) return resolved;
+  rows.forEach((row) => lruSet(row));
+  return uniqueRows([...resolved, ...rows]);
+}
+
 /**
  * Read presentation metadata from indexed physical MINUTE_DB owners.
- *
- * sh_tracks.id is the primary identity. sh_track_dictionary owns presentation
- * values. The UNION canonical view is intentionally excluded from this hot path
- * because its anti-joins can amplify rows-read. Provider source caches are used
- * only as rolling-migration fallbacks.
+ * sh_tracks.id is the primary identity and sh_track_dictionary owns canonical
+ * presentation. Provider aliases are used only for unresolved identities; the
+ * UNION canonical view is excluded from the steady-state hot path.
  */
 export async function loadReadModelTrackMetadata(env, spotifyIds, isrcs, trackIds = []) {
   const requestedTrackIds = [...new Set(
@@ -261,45 +287,33 @@ export async function loadReadModelTrackMetadata(env, spotifyIds, isrcs, trackId
     let covered = coveredKeys(resolved);
 
     const remainingTrackIds = requestedTrackIds.filter((trackId) => !covered.trackIds.has(trackId));
-    const byTrackId = await directRowsByTrackId(db, remainingTrackIds);
-    if (byTrackId.length) {
-      resolved = uniqueRows([...resolved, ...byTrackId]);
-      byTrackId.forEach((row) => lruSet(row));
-      covered = coveredKeys(resolved);
-    }
+    resolved = appendResolved(resolved, await directRowsByTrackId(db, remainingTrackIds));
+    covered = coveredKeys(resolved);
 
-    const remainingIsrcs = requestedIsrcs.filter((isrc) => !covered.isrcs.has(isrc));
-    const byIsrc = await directRowsByIsrc(db, remainingIsrcs);
-    if (byIsrc.length) {
-      resolved = uniqueRows([...resolved, ...byIsrc]);
-      byIsrc.forEach((row) => lruSet(row));
+    let remainingIsrcs = requestedIsrcs.filter((isrc) => !covered.isrcs.has(isrc));
+    if (remainingIsrcs.length) {
+      const isrcMappings = await trackIdsByProvider(db, remainingIsrcs, 'isrc');
+      const ids = mappedTrackIds(isrcMappings, covered);
+      resolved = appendResolved(resolved, await directRowsByTrackId(db, ids));
+      covered = coveredKeys(resolved);
+      remainingIsrcs = remainingIsrcs.filter((isrc) => !covered.isrcs.has(isrc));
+      resolved = appendResolved(resolved, await dictionaryRowsByIsrc(db, remainingIsrcs));
       covered = coveredKeys(resolved);
     }
 
     let remainingSpotifyIds = requestedSpotifyIds
       .filter((spotifyId) => !covered.spotifyIds.has(spotifyId));
-
     if (remainingSpotifyIds.length) {
-      const spotifyMappings = await trackIdsBySpotify(db, remainingSpotifyIds);
-      const mappedTrackIds = [...new Set(spotifyMappings
-        .map((row) => positiveInteger(row?.track_id))
-        .filter(Boolean))]
-        .filter((trackId) => !covered.trackIds.has(trackId));
-      if (mappedTrackIds.length) {
-        const mappedRows = await directRowsByTrackId(db, mappedTrackIds);
-        if (mappedRows.length) {
-          resolved = uniqueRows([...resolved, ...mappedRows]);
-          mappedRows.forEach((row) => lruSet(row));
-          covered = coveredKeys(resolved);
-          remainingSpotifyIds = remainingSpotifyIds
-            .filter((spotifyId) => !covered.spotifyIds.has(spotifyId));
-        }
-      }
+      const spotifyMappings = await trackIdsByProvider(db, remainingSpotifyIds, 'spotify_id');
+      const ids = mappedTrackIds(spotifyMappings, covered);
+      resolved = appendResolved(resolved, await directRowsByTrackId(db, ids));
+      covered = coveredKeys(resolved);
+      remainingSpotifyIds = remainingSpotifyIds
+        .filter((spotifyId) => !covered.spotifyIds.has(spotifyId));
     }
 
-    const bySpotify = await dictionaryRowsBySpotify(db, remainingSpotifyIds);
-    bySpotify.forEach((row) => lruSet(row));
-    return uniqueRows([...resolved, ...bySpotify]);
+    resolved = appendResolved(resolved, await dictionaryRowsBySpotify(db, remainingSpotifyIds));
+    return uniqueRows(resolved);
   } catch (error) {
     if (!canonicalUnavailable(error)) throw error;
     const fallback = env?.BUDDIES_DB;
