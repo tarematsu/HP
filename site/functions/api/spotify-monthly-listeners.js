@@ -47,6 +47,13 @@ function compact(value) {
   return String(number);
 }
 
+export function spotifyMonthlyListenersReadModelSql() {
+  return `SELECT rows_json,source_snapshot_date,updated_at
+    FROM sh_spotify_monthly_listeners_read_model
+    WHERE model_key='current'
+    LIMIT 1`;
+}
+
 export function spotifyMonthlyListenersSql() {
   return `WITH latest_ranking_date AS (
     SELECT MAX(ranking_date) AS ranking_date FROM sh_spotify_top20_history
@@ -66,6 +73,21 @@ export function spotifyMonthlyListenersSql() {
   INNER JOIN sh_spotify_artists artist ON artist.artist_key=daily.artist_key
   LEFT JOIN current_rank ON current_rank.artist_key=daily.artist_key
   ORDER BY daily.snapshot_date ASC,artist.artist_name COLLATE NOCASE ASC`;
+}
+
+async function monthlyListenerRows(db) {
+  try {
+    const materialized = await db.prepare(spotifyMonthlyListenersReadModelSql()).all();
+    const row = Array.isArray(materialized?.results) ? materialized.results[0] : null;
+    if (row?.rows_json) {
+      const parsed = JSON.parse(String(row.rows_json));
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (error) {
+    if (!/no such table|no such column/i.test(String(error?.message || error))) throw error;
+  }
+  const fallback = await db.prepare(spotifyMonthlyListenersSql()).all();
+  return Array.isArray(fallback?.results) ? fallback.results : [];
 }
 
 export function spotifyMonthlyListenersTrend(rows = []) {
@@ -179,8 +201,7 @@ export async function onRequestGet({ env, request }) {
     });
   }
   try {
-    const result = await env.OTHER_DB.prepare(spotifyMonthlyListenersSql()).all();
-    const rows = Array.isArray(result?.results) ? result.results : [];
+    const rows = await monthlyListenerRows(env.OTHER_DB);
     const format = request?.url ? new URL(request.url).searchParams.get('format') : null;
     if (format === 'svg') return new Response(spotifyMonthlyListenersSvg(rows), { headers: SVG_HEADERS });
     return json({ ok: true, ...spotifyMonthlyListenersTrend(rows) });
