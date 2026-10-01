@@ -61,16 +61,24 @@ export function normalizeOhisamaSnapshot(channel, expectedAlias = 'ohisama') {
 
   const station = channel.current_station || {};
   const party = station.streaming_party || channel.streaming_party || {};
-  const hostSources = [
-    station.host,
-    channel.host,
-    station.current_host,
-    channel.current_host,
-    station.broadcaster,
-    station.dj,
-    station.account,
-    station.host_account,
-  ].filter((value) => value && typeof value === 'object' && !Array.isArray(value));
+  const broadcastHosts = Array.isArray(station.broadcast?.broadcasters)
+  ? station.broadcast.broadcasters.filter((value) => (
+    value && typeof value === 'object' && !Array.isArray(value) && value.is_host !== false
+  ))
+  : [];
+const hostSources = [
+  station.host,
+  channel.host,
+  station.current_host,
+  channel.current_host,
+  station.broadcaster,
+  station.dj,
+  station.account,
+  station.host_account,
+  station.owner,
+  channel.owner,
+  ...broadcastHosts,
+].filter((value) => value && typeof value === 'object' && !Array.isArray(value));
   const hostIdentities = hostSources.flatMap((value) => {
     const account = value.account;
     return account && typeof account === 'object' && !Array.isArray(account)

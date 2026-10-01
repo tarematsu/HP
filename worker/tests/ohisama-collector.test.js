@@ -68,6 +68,31 @@ test('ohisama normalization accepts alternate broadcaster account shapes', () =>
   assert.equal(value.host_handle, 'alternatehost');
 });
 
+test('ohisama normalization reads syndicated station owner and host broadcaster', () => {
+  const value = normalizeOhisamaSnapshot({
+    id: 322,
+    alias: 'ohisama',
+    current_station_id: 5290918,
+    current_station: {
+      id: 5290918,
+      is_broadcasting: true,
+      owner_id: 5298487,
+      owner: { id: 5298487, handle: 'HinataPR0211' },
+      broadcast: {
+        broadcasters: [
+          {
+            account_id: 5298487,
+            is_host: true,
+            account: { id: 5298487, handle: 'HinataPR0211' },
+          },
+        ],
+      },
+    },
+  });
+  assert.equal(value.host_account_id, 5298487);
+  assert.equal(value.host_handle, 'hinatapr0211');
+});
+
 test('ohisama active host is permanently added to the follower target registry', async () => {
   let bound = null;
   let runs = 0;
