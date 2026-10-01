@@ -20,7 +20,8 @@ test('Sakurazaka minute cron is the shared scheduler while Buddies stays indepen
     { binding: 'SPOTIFY_PLAYCOUNT_SCHEDULED', service: 'sh-spotify-playcount-collector' },
   ]);
   assert.match(sakurazakaEntry, /dispatchScheduledService/);
-  assert.match(sakurazakaEntry, /minute % 5 === 0/);
+  assert.match(sakurazakaEntry, /minute % 5 === 1/);
+  assert.match(sakurazakaEntry, /Buddies owns the 00\/05\/10/);
   assert.match(sakurazakaEntry, /minute === 0/);
   assert.doesNotMatch(sakurazakaEntry, /SAKURAZAKA_QUEUE\.send/);
   assert.match(sakurazakaEntry, /stationhead_daily_followers_legacy_queue_drained/);
