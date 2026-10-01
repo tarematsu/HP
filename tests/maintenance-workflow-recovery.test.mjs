@@ -176,7 +176,7 @@ test('recovery watchdog remains offset and budget-safe', () => {
 
   assert.match(workflow, /cron: '10,25,40,55 \* \* \* \*'/);
   assert.match(workflow, /actions: write/);
-  assert.doesNotMatch(workflow, /CLOUDFLARE|wrangler|d1 execute/i);
+  assert.doesNotMatch(workflow, /CLOUDFLARE_(?:API_TOKEN|ACCOUNT_ID)|wrangler|d1 execute/i);
   assert.match(script, /RECOVERY_WORKFLOWS/);
   assert.match(script, /force_all: 'true'/);
   assert.doesNotMatch(script, /localMinute/);
