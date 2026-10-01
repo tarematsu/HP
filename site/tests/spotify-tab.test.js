@@ -209,7 +209,7 @@ test('Spotify API reports missing D1 only on the producer path', async () => {
   assert.equal(missing.status, 503);
 });
 
-test('Spotify tab uses only the materialized Spotify read model and the shared dashboard canvas renderer for its three client graphs', () => {
+test('Spotify tab uses one materialized read model and one shared Canvas renderer for all four graphs', () => {
   const shell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
   const styles = readFileSync(new URL('../public/spotify.css', import.meta.url), 'utf8');
@@ -218,32 +218,33 @@ test('Spotify tab uses only the materialized Spotify read model and the shared d
   const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
   const dashboard = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 
-  assert.match(shell, /Spotify 全曲合計の再生数前日比推移（上位10組）/);
-  assert.match(shell, /Spotify 今年リリース上位10曲合計の再生数前日比推移（上位10組）/);
-  assert.doesNotMatch(shell, /最新前日比 上位10アーティスト/);
-  assert.match(shell, /Spotify Daily Top Artist（日本）の順位推移/);
-  assert.doesNotMatch(shell, /Spotify デイリートップアーティスト\(日本\) 順位推移/);
+  assert.match(shell, /Spotify 全曲合計の再生数前日比推移（坂道3グループ）/);
+  assert.match(shell, /Spotify 月間リスナー推移（坂道3グループ）/);
+  assert.match(shell, /Spotify 今年リリース上位10曲合計の再生数前日比推移（坂道3グループ）/);
+  assert.match(shell, /Spotify Daily Top Artist（日本）の順位推移（坂道3グループ）/);
   assert.match(shell, /集計日/);
   assert.match(shell, /櫻坂46の楽曲数/);
   assert.match(shell, /櫻坂46の再生数前日比合計/);
   assert.match(shell, /headers: \['順位', '曲名', '累計再生数', '前日比'\]/);
-  assert.match(shell, /最新日の全曲合計再生数前日比が大きい女性アイドル上位10組の推移/);
-  assert.doesNotMatch(shell, / - 再生数推移/);
   assert.match(shell, /id="spotifyTrendCharts"/);
-  assert.doesNotMatch(shell, /id="spotifyTop10TrendCharts"/);
+  assert.match(shell, /id="spotifyMonthlyListenerTrendCharts"/);
   assert.match(shell, /id="spotifyTop10YearTrendCharts"/);
   assert.match(shell, /id="spotifyArtistRankTrendCharts"/);
+  assert.doesNotMatch(shell, /spotify-monthly-listeners\?format=svg/);
 
-  assert.match(runtime, /const TREND_ARTIST_LIMIT = 10/);
+  assert.match(runtime, /GRAPH_ARTIST_KEYS = Object\.freeze\(\['nogizaka46', 'sakurazaka46', 'hinatazaka46'\]\)/);
+  assert.match(runtime, /nogizaka46: '#8264b0'/);
+  assert.match(runtime, /sakurazaka46: '#f3a6c8'/);
+  assert.match(runtime, /hinatazaka46: '#9ecff3'/);
   assert.match(runtime, /metricKey: 'total_delta'/);
+  assert.match(runtime, /metricKey: 'monthly_listeners'/);
   assert.doesNotMatch(runtime, /spotifyTop10TrendCharts|metricKey: 'top10_delta'/);
   assert.match(runtime, /metricKey: 'top10_year_delta'/);
-  assert.match(runtime, /normalizeTrendSeries\(trend\)/);
-  assert.match(runtime, /selectTrendSeriesByLatestMetric\(normalizedSeries, metricKey, maxSeries\)/);
-  assert.doesNotMatch(runtime, /normalizedSeries\.slice\(0, maxSeries\)/);
-  assert.equal((runtime.match(/maxSeries: TREND_ARTIST_LIMIT/g) || []).length, 2);
+  assert.match(runtime, /graphTrendSeries\(normalizeTrendSeries\(trend\)\)/);
+  assert.match(runtime, /monthlyListenerTrend\(monthlyListenerRows\)/);
   assert.match(runtime, /renderArtistRankChart/);
   assert.match(runtime, /model\?\.artist_chart/);
+  assert.match(runtime, /model\?\.monthly_listener_rows/);
   assert.match(runtime, /legendItem\(series\.artistName, latest \? `\$\{numberFormat\.format\(latest\.rank\)\}位` : '-'/);
   assert.match(runtime, /spotify-trend-scroll chart-fit/);
   assert.match(runtime, /dashboard-chart-canvas\.js\?v=20261001\.2/);
