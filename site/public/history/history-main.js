@@ -21,6 +21,8 @@ async function importModeRuntime(mode) {
     await import('/history/history-ranking-all-host-table.js?v=20260930.1');
     return;
   }
+  await import('/first-week-comparison-shell.js?v=20261002.1');
+  await import('/first-week-comparison.js?v=20261002.1');
   await import('/unofficial-listening-parties.js?v=20260927.1');
   await import('/history/history-broadcast-summary.js?v=20260930.1');
   await import('/history/history-broadcasts.js?v=20261001.1');
