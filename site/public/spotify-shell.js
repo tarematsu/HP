@@ -8,11 +8,7 @@ import {
   dashboardTable,
   mountDashboardShell,
 } from './dashboard-ui-common.js?v=20261001.1';
-import {
-  musicServiceMeta,
-  musicServicePlaylistCard,
-  musicServiceSection,
-} from './music-service-shell.js?v=20261001.1';
+import { musicServiceMeta, musicServiceSection } from './music-service-shell.js?v=20261001.1';
 
 const summary = dashboardSummary([
   dashboardSummaryItem({ label: '楽曲数', labelId: 'spotifyTrackCountLabel', valueId: 'spotifyTrackCount' }),
@@ -91,17 +87,7 @@ mountDashboardShell({
       ${summary}
       ${musicServiceSection({ id: 'spotifyTrendSection', kicker: 'TRENDS', title: '推移', bodyHtml: trendPanels })}
       ${musicServiceSection({ id: 'spotifyTrackSection', kicker: 'TRACKS', title: '楽曲', bodyHtml: tracksPanel })}
-      ${musicServiceSection({
-        id: 'spotifyPlaylistSection',
-        kicker: 'PLAYLISTS',
-        title: 'プレイリスト',
-        bodyHtml: musicServicePlaylistCard({
-          tableId: 'spotifyPlaylistTable',
-          titleId: 'spotifyPlaylistTitle',
-          note: 'Spotify公開ページ上で検出できた、櫻坂46楽曲を含むプレイリストを表示します。',
-          className: 'spotify-data-panel',
-        }),
-      })}`,
+      ${musicServiceSection({ id: 'spotifyPlaylistSection', kicker: 'PLAYLISTS', title: 'プレイリスト', bodyHtml: '<div id="spotifyPlaylistMount"></div>' })}`,
   },
 });
 
