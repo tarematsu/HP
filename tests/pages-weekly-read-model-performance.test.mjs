@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { buildWeeklyRankingReadModel } from '../worker/scripts/materialize-weekly-ranking-read-model.mjs';
+import {
+  WEEKLY_RANKING_MODEL_VERSION,
+  buildWeeklyRankingReadModel,
+} from '../worker/scripts/materialize-weekly-ranking-read-model.mjs';
 import {
   shouldRefreshWeeklyRankingReadModel,
   sourceRevision,
@@ -32,6 +35,7 @@ test('weekly leaderboard read model materializes missing weeks and fandom metada
     relation_type: 'fandom',
   }], [], 1234);
 
+  assert.equal(model.version, WEEKLY_RANKING_MODEL_VERSION);
   assert.deepEqual(model.ranking_weeks, ['2026-09-07', '2026-09-14', '2026-09-21']);
   assert.equal(model.source_max_ranking_date, '2026-09-21');
   assert.equal(model.refreshed_at, 1234);
@@ -52,6 +56,16 @@ test('Pages leaderboard reads only the weekly materialized model', () => {
   assert.doesNotMatch(source, /FROM sh_channel_rankings|FROM sh_channel_fandoms|summaryLoader\s*\(/);
 });
 
+test('weekly leaderboard producer reads only the three Sakamichi hosts', () => {
+  const source = readFileSync(
+    new URL('../worker/scripts/materialize-weekly-ranking-read-model.mjs', import.meta.url),
+    'utf8',
+  );
+  assert.match(source, /lower\(trim\(channel_name\)\) IN \('sakuramankai','sakurazaka46jp','nogizaka46smej'\)/);
+  assert.match(source, /lower\(trim\(host_name\)\) IN \('sakuramankai','sakurazaka46jp','nogizaka46smej'\)/);
+  assert.match(source, /\['nogizaka46smej', '乃木坂46'\]/);
+});
+
 test('weekly leaderboard read model refresh is chained to import and uses a compact source revision', () => {
   const workflow = readFileSync(
     new URL('../.github/workflows/materialize-weekly-ranking-read-model.yml', import.meta.url),
@@ -69,6 +83,7 @@ test('weekly leaderboard read model refresh is chained to import and uses a comp
   assert.match(gate, /sh_weekly_ranking_revision_state/);
   assert.doesNotMatch(gate, /MAX\(imported_at\)|MAX\(verified_at\)/);
   assert.match(gate, /materializeWeeklyRankingReadModel/);
+  assert.match(gate, /WEEKLY_RANKING_MODEL_VERSION/);
 });
 
 test('weekly leaderboard freshness gate skips current compact revision and rebuilds same-week changes', () => {
@@ -76,36 +91,37 @@ test('weekly leaderboard freshness gate skips current compact revision and rebui
     max_ranking_date: '2026-09-21',
     compact_revision: 10,
   };
-  assert.equal(sourceRevision(source), '2026-09-21:r10');
-  assert.equal(shouldRefreshWeeklyRankingReadModel(source, {
+  const current = {
     source_max_ranking_date: '2026-09-21',
     source_revision: 10,
     refreshed_at: 200,
+    model_version: WEEKLY_RANKING_MODEL_VERSION,
     chunk_complete: true,
-  }), false);
+  };
+  assert.equal(sourceRevision(source), '2026-09-21:r10');
+  assert.equal(shouldRefreshWeeklyRankingReadModel(source, current), false);
   assert.equal(shouldRefreshWeeklyRankingReadModel({
     ...source,
     compact_revision: 11,
   }, {
-    source_max_ranking_date: '2026-09-21',
-    source_revision: 10,
+    ...current,
     refreshed_at: 999,
-    chunk_complete: true,
   }), true);
   assert.equal(shouldRefreshWeeklyRankingReadModel({
     ...source,
     max_ranking_date: '2026-09-28',
   }, {
-    source_max_ranking_date: '2026-09-21',
-    source_revision: 10,
+    ...current,
     refreshed_at: 999,
-    chunk_complete: true,
   }), true);
   assert.equal(shouldRefreshWeeklyRankingReadModel(source, {
-    source_max_ranking_date: '2026-09-21',
-    source_revision: 10,
+    ...current,
     refreshed_at: 999,
     chunk_complete: false,
+  }), true);
+  assert.equal(shouldRefreshWeeklyRankingReadModel(source, {
+    ...current,
+    model_version: WEEKLY_RANKING_MODEL_VERSION - 1,
   }), true);
 });
 
