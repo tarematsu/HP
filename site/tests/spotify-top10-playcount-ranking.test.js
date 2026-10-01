@@ -59,7 +59,7 @@ test('Spotify playcount Top 10 is ranked only from the newest snapshot date', ()
   );
 });
 
-test('Spotify daily artist rank graph orders by the actual latest chart rank', () => {
+test('Spotify daily artist rank graph keeps only the three Sakamichi groups', () => {
   const trend = {
     rosterFirst: [{
       snapshot_date: '2026-09-29', artist_name: 'Roster First', current_rank: 1,
@@ -69,18 +69,28 @@ test('Spotify daily artist rank graph orders by the actual latest chart rank', (
       snapshot_date: '2026-09-29', artist_name: '櫻坂46', current_rank: 16,
       total_delta: 1, top10_year_delta: 1,
     }],
+    nogizaka46: [{
+      snapshot_date: '2026-09-29', artist_name: '乃木坂46', current_rank: 10,
+      total_delta: 1, top10_year_delta: 1,
+    }],
+    hinatazaka46: [{
+      snapshot_date: '2026-09-29', artist_name: '日向坂46', current_rank: 20,
+      total_delta: 1, top10_year_delta: 1,
+    }],
   };
   const chart = {
     days: [{
       chart_date: '2026-09-29',
       entries: [
-        { artist_key: 'rosterFirst', artist_name: 'Roster First', rank: 60 },
+        { artist_key: 'rosterFirst', artist_name: 'Roster First', rank: 1 },
         { artist_key: 'sakurazaka46', artist_name: '櫻坂46', rank: 12 },
+        { artist_key: 'nogizaka46', artist_name: '乃木坂46', rank: 8 },
+        { artist_key: 'hinatazaka46', artist_name: '日向坂46', rank: 18 },
       ],
     }],
   };
 
   const ranked = normalizeArtistRankSeries(chart, trend);
-  assert.deepEqual(ranked.map((item) => item.artistKey), ['sakurazaka46', 'rosterFirst']);
-  assert.deepEqual(ranked.map((item) => item.colorIndex), [0, 1]);
+  assert.deepEqual(ranked.map((item) => item.artistKey), ['nogizaka46', 'sakurazaka46', 'hinatazaka46']);
+  assert.deepEqual(ranked.map((item) => item.colorIndex), [0, 1, 2]);
 });

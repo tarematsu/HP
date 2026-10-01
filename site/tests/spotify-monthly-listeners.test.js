@@ -3,9 +3,8 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
-  selectMonthlyListenerSeries,
+  onRequestGet,
   spotifyMonthlyListenersSql,
-  spotifyMonthlyListenersSvg,
   spotifyMonthlyListenersTrend,
 } from '../functions/api/spotify-monthly-listeners.js';
 
@@ -21,6 +20,7 @@ test('public monthly listener API is storage-only and does not query D1', () => 
   assert.match(source, /PAGES_READ_MODEL_SERVICE/);
   assert.match(source, /_internal\/pages-response\?key=spotify-playcounts/);
   assert.doesNotMatch(source, /OTHER_DB|\.prepare\(/);
+  assert.doesNotMatch(source, /image\/svg\+xml|spotifyMonthlyListenersSvg|format === 'svg'/);
 });
 
 test('monthly listener trend keeps valid nonnegative daily snapshots', () => {
@@ -44,35 +44,40 @@ test('monthly listener trend keeps valid nonnegative daily snapshots', () => {
   }]);
 });
 
-test('monthly listener chart selects the latest top ten instead of historical maxima', () => {
-  const trend = Object.fromEntries(Array.from({ length: 12 }, (_, index) => [
-    `artist-${index}`,
-    [
-      { snapshot_date: '2026-10-01', artist_name: `Artist ${index}`, monthly_listeners: 1000000 - index },
-      { snapshot_date: '2026-10-02', artist_name: `Artist ${index}`, monthly_listeners: index * 1000 },
-    ],
-  ]));
-  const selected = selectMonthlyListenerSeries(trend, 10);
-  assert.equal(selected.length, 10);
-  assert.equal(selected[0].artistKey, 'artist-11');
-  assert.equal(selected.at(-1).artistKey, 'artist-2');
+test('monthly listener endpoint returns JSON even when a legacy format query is present', async () => {
+  const rows = [
+    {
+      snapshot_date: '2026-10-01', artist_key: 'sakurazaka46', artist_name: '櫻坂46',
+      monthly_listeners: 450738, collected_at: 1000, current_rank: 12,
+    },
+  ];
+  const response = await onRequestGet({
+    env: {
+      PAGES_READ_MODEL_SERVICE: {
+        async fetch() {
+          return new Response(JSON.stringify({ monthly_listener_rows: rows }), {
+            headers: { 'content-type': 'application/json' },
+          });
+        },
+      },
+    },
+    request: new Request('https://skrzk.test/api/spotify-monthly-listeners?format=svg'),
+  });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type'), /application\/json/);
+  const payload = await response.json();
+  assert.equal(payload.ok, true);
+  assert.equal(payload.trend.sakurazaka46[0].monthly_listeners, 450738);
 });
 
-test('monthly listener endpoint can render the graph as SVG', () => {
-  const svg = spotifyMonthlyListenersSvg([
-    { snapshot_date: '2026-10-01', artist_key: 'mei', artist_name: 'ME:I', monthly_listeners: 450000 },
-    { snapshot_date: '2026-10-02', artist_key: 'mei', artist_name: 'ME:I', monthly_listeners: 450738 },
-  ]);
-  assert.match(svg, /^<svg/);
-  assert.match(svg, /ME:I/);
-  assert.match(svg, /polyline/);
-  assert.match(svg, /450,738/);
-});
-
-test('Spotify shell mounts the server-rendered monthly listener chart', () => {
+test('Spotify shell mounts monthly listeners on the shared canvas chart container', () => {
   const shell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
-  assert.match(shell, /Spotify 月間リスナー推移（上位10組）/);
-  assert.match(shell, /\/api\/spotify-monthly-listeners\?format=svg/);
-  assert.match(shell, /class="chart-fit"/);
-  assert.doesNotMatch(shell, /initSpotifyMonthlyListeners/);
+  const runtime = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
+  assert.match(shell, /Spotify 月間リスナー推移（坂道3グループ）/);
+  assert.match(shell, /id="spotifyMonthlyListenerTrendCharts"/);
+  assert.doesNotMatch(shell, /spotify-monthly-listeners\?format=svg|<img[^>]+Spotify月間リスナー/);
+  assert.match(runtime, /monthlyListenerTrend\(monthlyListenerRows\)/);
+  assert.match(runtime, /metricKey: 'monthly_listeners'/);
+  assert.match(runtime, /latestFormatter: formatInteger/);
+  assert.match(runtime, /drawDashboardLine/);
 });
