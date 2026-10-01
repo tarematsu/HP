@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { findGenieArtistId, extractGenieTrackIds } from '../src/regional-music-genie.js';
+import { findGenieArtistId, extractGenieTrackIds, parseGenieTrackMetrics } from '../src/regional-music-genie.js';
 import { parseJioSaavnTracks, jioSaavnSongSearchUrl } from '../src/regional-music-jiosaavn.js';
 import { pageRepresentsArtist } from '../src/regional-music-fungjai.js';
 
@@ -27,4 +27,8 @@ test('Kugou public artist catalog verifies profile and exact collaboration membe
   assert.equal(parseKugouArtistPage(html, ['櫻坂46','Sakurazaka46']).length, 1);
   assert.deepEqual(parseKugouArtistPage(html, ['Nogizaka46']), []);
   assert.deepEqual(parseKugouSearchTracks({ data:{info:[songs[1]]} }, ['Sakurazaka46']), []);
+});
+
+test('Genie reads listener and play labels supplied as image alt text', () => {
+  assert.deepEqual(parseGenieTrackMetrics('<p>35</p><img alt="전체 청취자수"><p>672</p><img alt="전체 재생수"><div>좋아요! 9</div>'), {likes:9,listeners:35,plays:672});
 });

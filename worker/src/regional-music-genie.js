@@ -56,7 +56,7 @@ export function parseGenieArtistLikes(html) {
 }
 
 export function parseGenieTrackMetrics(html) {
-  const text = visibleHtmlText(html);
+  const text = visibleHtmlText(String(html || '').replace(/<img\b[^>]*alt=["']([^"']*)["'][^>]*>/gi, ' $1 '));
   const likes = number(text.match(/좋아요!\s*([0-9][0-9,]*)/u)?.[1]);
   const listeners = number(text.match(/([0-9][0-9,]*)\s*전체 청취자수/u)?.[1]);
   const plays = number(text.match(/([0-9][0-9,]*)\s*전체 재생수/u)?.[1]);
@@ -110,6 +110,7 @@ export async function collectGenie(env, observedAt = Date.now(), fetchImpl = fet
         try {
           const trackUrl = genieSongUrl(trackId);
           const songHtml = await fetchHtml(fetchImpl, trackUrl);
+          if (findGenieArtistId(songHtml, artist.aliases) !== artistId) throw new Error('song artist identity could not be verified');
           const metrics = parseGenieTrackMetrics(songHtml);
           await saveRegionalTrack(env, {
             service: 'genie',
