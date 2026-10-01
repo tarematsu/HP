@@ -16,7 +16,7 @@
     }
   },
   "triggers": {
-    "crons": ["0 15 * * *", "0 21 * * *"]
+    "crons": ["0 15 * * *"]
   },
   "d1_databases": [
     {
@@ -30,5 +30,17 @@
       "binding": "PAGES_RESPONSE_R2",
       "bucket_name": "sh-pages-responses"
     }
-  ]
+  ],
+  "queues": {
+    "consumers": [
+      {
+        "queue": "regional-music-daily",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 2,
+        "dead_letter_queue": "regional-music-daily-dlq",
+        "max_concurrency": 1
+      }
+    ]
+  }
 }
