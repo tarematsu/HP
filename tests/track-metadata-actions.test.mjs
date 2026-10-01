@@ -7,9 +7,9 @@ const workflow = readFileSync(new URL('.github/workflows/run-track-metadata-repa
 const script = readFileSync(new URL('worker/scripts/repair-track-metadata-actions.mjs', root), 'utf8');
 const committed = readFileSync(new URL('worker/src/committed-metadata-enrichment.js', root), 'utf8');
 
-test('track metadata backlog repair follows successful runtime maintenance on a bounded Actions runner', () => {
-  assert.match(workflow, /workflow_run:[\s\S]*workflows: \["Run runtime offline maintenance"\][\s\S]*types: \[completed\]/);
-  assert.doesNotMatch(workflow, /^\s*schedule:/m);
+test('track metadata backlog repair is a bounded daily safety net', () => {
+  assert.doesNotMatch(workflow, /workflow_run:/);
+  assert.match(workflow, /cron: '16 0 \* \* \*'/);
   assert.match(workflow, /concurrency:[\s\S]*group: track-metadata-repair[\s\S]*cancel-in-progress: true/);
   assert.match(workflow, /timeout-minutes: 15/);
   assert.match(workflow, /node scripts\/repair-track-metadata-actions\.mjs/);
