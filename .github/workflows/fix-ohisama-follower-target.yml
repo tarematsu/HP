@@ -1,0 +1,168 @@
+name: Apply Ohisama follower target fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/fix-ohisama-follower-target.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Patch source and tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          source_path = Path('worker/src/ohisama-collector-entry.js')
+          source = source_path.read_text()
+          old = """  const station = channel.current_station || {};
+          const party = station.streaming_party || channel.streaming_party || {};
+          const host = station.host || channel.host || {};
+          const hostAccount = host.account || {};
+          return {
+            channel_id: channelId,
+            station_id: nullableNumber(firstDefined(channel.current_station_id, station.id)),
+            is_broadcasting: nullableBooleanCode(station.is_broadcasting),
+            listener_count: nullableNumber(firstDefined(station.listener_count, channel.listener_count)),
+            online_member_count: nullableNumber(channel.online_member_count),
+            total_member_count: nullableNumber(channel.total_member_count),
+            guest_count: nullableNumber(firstDefined(station.guest_count, channel.guest_count)),
+            reported_total_listens: nullableNumber(station.total_listens),
+            stream_goal: nullableNumber(party.stream_goal),
+            reported_current_stream_count: nullableNumber(party.current_stream_count),
+            host_account_id: nullableNumber(firstDefined(host.account_id, hostAccount.id)),
+            host_handle: normalizedHandle(firstDefined(hostAccount.handle, host.handle, station.host_handle)),
+          };
+          """
+          new = """  const station = channel.current_station || {};
+          const party = station.streaming_party || channel.streaming_party || {};
+          const hostSources = [
+            station.host,
+            channel.host,
+            station.current_host,
+            channel.current_host,
+            station.broadcaster,
+            station.dj,
+            station.account,
+            station.host_account,
+          ].filter((value) => value && typeof value === 'object' && !Array.isArray(value));
+          const hostIdentities = hostSources.flatMap((value) => {
+            const account = value.account;
+            return account && typeof account === 'object' && !Array.isArray(account)
+              ? [account, value]
+              : [value];
+          });
+          const hostAccountId = nullableNumber(firstDefined(
+            ...hostIdentities.flatMap((value) => [value.account_id, value.id]),
+          ));
+          const hostHandle = normalizedHandle(firstDefined(
+            ...hostIdentities.flatMap((value) => [value.handle, value.username]),
+            station.host_handle,
+            station.host_username,
+            channel.host_handle,
+          ));
+          return {
+            channel_id: channelId,
+            station_id: nullableNumber(firstDefined(channel.current_station_id, station.id)),
+            is_broadcasting: nullableBooleanCode(station.is_broadcasting),
+            listener_count: nullableNumber(firstDefined(station.listener_count, channel.listener_count)),
+            online_member_count: nullableNumber(channel.online_member_count),
+            total_member_count: nullableNumber(channel.total_member_count),
+            guest_count: nullableNumber(firstDefined(station.guest_count, channel.guest_count)),
+            reported_total_listens: nullableNumber(station.total_listens),
+            stream_goal: nullableNumber(party.stream_goal),
+            reported_current_stream_count: nullableNumber(party.current_stream_count),
+            host_account_id: hostAccountId,
+            host_handle: hostHandle,
+          };
+          """
+          if old not in source:
+              raise SystemExit('normalization block not found')
+          source = source.replace(old, new, 1)
+          old = """export async function registerOhisamaFollowerTarget(env, snapshot, observedAt) {
+            if (snapshot?.is_broadcasting !== 1 || !snapshot?.host_handle) return false;
+          """
+          new = """export async function registerOhisamaFollowerTarget(env, snapshot, observedAt) {
+            if (!snapshot?.host_handle) return false;
+          """
+          if old not in source:
+              raise SystemExit('registration guard not found')
+          source = source.replace(old, new, 1)
+          source_path.write_text(source)
+
+          test_path = Path('worker/tests/ohisama-collector.test.js')
+          test = test_path.read_text()
+          old = """  assert.equal(await registerOhisamaFollowerTarget(env, {
+            is_broadcasting: 0,
+            host_handle: 'idlehost',
+          }, 123457), false);
+          assert.equal(runs, 1);
+          """
+          new = """  assert.equal(await registerOhisamaFollowerTarget(env, {
+            is_broadcasting: 0,
+            host_handle: 'idlehost',
+          }, 123457), true);
+          assert.deepEqual(bound, ['idlehost', 4, 123457]);
+          assert.equal(runs, 2);
+
+          assert.equal(await registerOhisamaFollowerTarget(env, {
+            is_broadcasting: 1,
+            host_handle: null,
+          }, 123458), false);
+          assert.equal(runs, 2);
+          """
+          if old not in test:
+              raise SystemExit('registration test block not found')
+          test = test.replace(old, new, 1)
+          marker = """test('ohisama active host is permanently added to the follower target registry', async () => {
+          """
+          addition = """test('ohisama normalization accepts alternate broadcaster account shapes', () => {
+            const value = normalizeOhisamaSnapshot({
+              id: 46,
+              alias: 'ohisama',
+              current_station_id: 101,
+              current_station: {
+                id: 101,
+                is_broadcasting: null,
+                broadcaster: { id: 88, handle: 'AlternateHost' },
+              },
+            });
+            assert.equal(value.host_account_id, 88);
+            assert.equal(value.host_handle, 'alternatehost');
+          });
+
+          """
+          if marker not in test:
+              raise SystemExit('test insertion marker not found')
+          test = test.replace(marker, addition + marker, 1)
+          test_path.write_text(test)
+          PY
+      - name: Run Ohisama collector tests
+        run: |
+          npm --prefix worker ci --prefer-offline --no-audit --no-fund
+          cd worker
+          node --test tests/ohisama-collector.test.js tests/ohisama-collector-optimized.test.js tests/stationhead-daily-followers.test.js
+      - name: Commit fix and remove one-off workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/fix-ohisama-follower-target.yml
+          git add worker/src/ohisama-collector-entry.js worker/tests/ohisama-collector.test.js
+          git commit -m "Fix Ohisama follower target registration"
+          git push origin HEAD:main
