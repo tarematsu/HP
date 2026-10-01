@@ -5,6 +5,7 @@ const HOUR_MS = 3_600_000;
 const DEFAULT_LOOKBACK_DAYS = 90;
 const DEFAULT_CANDIDATE_LIMIT = 4;
 const DEFAULT_ENQUEUE_LIMIT = 50;
+const DEFAULT_ACTIVE_REBUILD_CAP = 1;
 const RECONCILE_BUILD_VERSION = 3;
 const HISTORICAL_RECONCILE_UTC_HOUR = 0;
 const PROTECTED_CORRECTION_PRIORITY = 200;
@@ -130,6 +131,13 @@ async function loadMaterializedFacts(minuteDb, period) {
   return new Map((result.results || []).map((row) => [minuteKey(row.channel_id, row.minute_at), row]));
 }
 
+async function loadActiveRebuildCount(minuteDb) {
+  const row = await minuteDb.prepare(`SELECT COUNT(*) AS count
+    FROM sh_minute_fact_jobs INDEXED BY idx_sh_minute_fact_jobs_status_kind_minute
+    WHERE status IN ('pending','processing') AND job_kind='rebuild'`).first();
+  return Math.max(0, integer(row?.count) || 0);
+}
+
 async function loadRelevantJobState(minuteDb, period, expectedKeys) {
   const result = await minuteDb.prepare(`SELECT channel_id,minute_at,status
     FROM sh_minute_fact_jobs
@@ -238,10 +246,16 @@ export async function reconcileMinuteFactsForDay(env, period, now = Date.now()) 
   const materialized = await loadMaterializedFacts(env.MINUTE_DB, period);
   const { missing, stale } = classifyExpected(expected, materialized);
   const rebuild = [...missing, ...stale];
-  const enqueueLimit = positiveInteger(
-    env.MINUTE_FACT_DAY_REBUILD_ENQUEUE_LIMIT,
-    DEFAULT_ENQUEUE_LIMIT,
-    500,
+  const activeRebuilds = await loadActiveRebuildCount(env.MINUTE_DB);
+  const activeRebuildCap = positiveInteger(
+    env.MINUTE_FACT_ACTIVE_REBUILD_CAP,
+    DEFAULT_ACTIVE_REBUILD_CAP,
+    50,
+  );
+  const enqueueCapacity = Math.max(0, activeRebuildCap - activeRebuilds);
+  const enqueueLimit = Math.min(
+    positiveInteger(env.MINUTE_FACT_DAY_REBUILD_ENQUEUE_LIMIT, DEFAULT_ENQUEUE_LIMIT, 500),
+    enqueueCapacity,
   );
   let enqueued = 0;
   for (const row of rebuild.slice(0, enqueueLimit)) {
@@ -268,6 +282,9 @@ export async function reconcileMinuteFactsForDay(env, period, now = Date.now()) 
     missing: missing.length,
     stale: stale.length,
     enqueued,
+    activeRebuilds,
+    activeRebuildCap,
+    enqueueCapacity,
     jobs,
     sourceChanged,
     sourceEmpty,
