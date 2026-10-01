@@ -8,6 +8,7 @@ const sharedRoute = readFileSync(new URL('../public/dashboard-tabs.js', import.m
 const shell = readFileSync(new URL('../public/followers-shell.js', import.meta.url), 'utf8');
 const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/followers.js', import.meta.url), 'utf8');
+const css = readFileSync(new URL('../public/followers.css', import.meta.url), 'utf8');
 const workerConfig = readFileSync(new URL('../../worker/wrangler.sakurazaka46jp.jsonc', import.meta.url), 'utf8');
 
 const FIXED_HANDLES = ['sakuramankai', 'sakuramankai2', 'sakurazaka46jp', 'nogizaka46smej'];
@@ -23,15 +24,21 @@ test('followers is registered in the common lazy router after its shell mounts',
   assert.match(shell, /label: 'フォロワー'/);
 });
 
-test('followers tab keeps the fixed accounts and renders a dynamic multi-series chart', () => {
+test('followers tab keeps the fixed accounts and renders a dynamic multi-series Canvas chart', () => {
   for (const handle of FIXED_HANDLES) assert.match(runtime, new RegExp(`'${handle}'`));
   assert.match(runtime, /payloadHandles\(payload\)/);
   assert.match(runtime, /handles\.forEach/);
-  assert.match(runtime, /seriesIndex % 4/);
-  assert.match(shell, /dashboardChartHost/);
-  assert.match(shell, /id: 'followersChart'/);
-  assert.match(sharedUi, /joinClasses\('shared-svg-chart', className\)/);
-  assert.match(runtime, /followers-line-/);
+  assert.match(runtime, /SERIES_STYLES/);
+  assert.match(runtime, /getContext\('2d'\)/);
+  assert.match(runtime, /devicePixelRatio/);
+  assert.match(runtime, /context\.setTransform/);
+  assert.match(runtime, /context\.setLineDash/);
+  assert.match(shell, /<canvas id="followersChart"/);
+  assert.match(shell, /class="chart-fit"/);
+  assert.match(shell, /id="followersChartDetail" class="chart-detail"/);
+  assert.doesNotMatch(shell, /title: 'フォロワー数推移'/);
+  assert.doesNotMatch(runtime, /svgElement|createSvgNode/);
+  assert.doesNotMatch(css, /followers-grid-line|followers-axis-label|followers-line-|followers-endpoint/);
   assert.match(shell, /dashboardTable/);
   assert.match(shell, /headers: \['アカウント名', 'フォロワー数', '前日比', '1週間前比'\]/);
   assert.match(shell, /bodyId: 'followersTbody'/);
