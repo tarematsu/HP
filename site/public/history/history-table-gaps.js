@@ -18,6 +18,15 @@ export function historyGapLabel(periods) {
   return `欠測 ${range}（${values.length}期間）`;
 }
 
+function ensureStylesheet() {
+  if (document.querySelector('link[data-history-table-gaps]')) return;
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = '/history/history-table-gaps.css?v=20261002.1';
+  link.dataset.historyTableGaps = '1';
+  document.head.append(link);
+}
+
 function rowIsMissing(row) {
   const cells = [...(row?.cells || [])];
   return cells.length > 1 && isMissingHistoryValues(cells.slice(1).map((cell) => cell.textContent));
@@ -78,6 +87,7 @@ function attachHistoryGapObserver() {
 }
 
 function scheduleAttach() {
+  ensureStylesheet();
   if (attachHistoryGapObserver()) return;
   requestAnimationFrame(() => attachHistoryGapObserver());
 }
