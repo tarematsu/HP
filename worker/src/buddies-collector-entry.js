@@ -12,7 +12,7 @@ import {
 } from './stationhead-daily-followers-resilient.js';
 
 const JST_OFFSET_MS = 9 * 60 * 60_000;
-const FOLLOWER_CATCHUP_INTERVAL_MINUTES = 5;
+const FOLLOWER_EARLY_CATCHUP_MINUTES = Object.freeze(new Set([15, 30]));
 
 export {
   BUDDIES_COLLECTOR_CRON,
@@ -25,8 +25,10 @@ export function isFollowerCatchupMinute(timestamp) {
   const value = Number(timestamp);
   if (!Number.isFinite(value)) return false;
   const jst = new Date(value + JST_OFFSET_MS);
+  const hour = jst.getUTCHours();
   const minute = jst.getUTCMinutes();
-  return minute !== 0 && minute % FOLLOWER_CATCHUP_INTERVAL_MINUTES === 0;
+  if (hour === 0) return FOLLOWER_EARLY_CATCHUP_MINUTES.has(minute);
+  return minute === 0;
 }
 
 export function runBuddiesCollectorScheduledWithFollowers(
@@ -39,10 +41,10 @@ export function runBuddiesCollectorScheduledWithFollowers(
   const followerMinute = isJstFollowerCollectionMinute(scheduledAt)
     || isFollowerCatchupMinute(scheduledAt);
 
-  // Collect at 00:00 JST, then allow a lightweight catch-up check every five
-  // minutes. The resilient collector checks today's row before any Stationhead
-  // requests, so a completed daily snapshot turns later catch-up minutes into a
-  // single cheap D1 lookup while a missed snapshot can recover the same day.
+  // Collect at 00:00 JST, retry quickly at 00:05 / 00:10 / 00:15 / 00:30,
+  // then back off to once per hour for the rest of the day. The resilient
+  // collector checks today's row before retry work, so a completed snapshot
+  // turns later catch-up attempts into one cheap D1 lookup with no HTTP calls.
   if (String(controller?.cron || '') === BUDDIES_COLLECTOR_CRON && followerMinute) {
     const collectFollowers = dependencies.collectFollowers || collectStationheadDailyFollowersResilient;
     const followersTask = Promise.resolve()
