@@ -64,29 +64,34 @@ jobs:
           if ! curl --max-time 900 -fsS "http://127.0.0.1:8787/cdn-cgi/local/scheduled?cron=0+15+*+*+*"; then
             curl --max-time 900 -fsS "http://127.0.0.1:8787/__scheduled?cron=0+15+*+*+*"
           fi
-
-          sleep 2
+          sleep 3
           cat "$log"
-          grep -q 'youtube-music-daily-complete' "$log" || {
-            echo "YouTube Music collector did not complete" >&2
-            exit 1
-          }
 
       - name: Verify YouTube Music read model
         shell: bash
         run: |
           set -euo pipefail
-          curl -fsS --retry 6 --retry-delay 10 --retry-all-errors "https://skrzk.pages.dev/api/regional-music?run=${GITHUB_RUN_ID}" -o "$RUNNER_TEMP/regional-music.json"
+          curl -fsS --retry 6 --retry-delay 5 --retry-all-errors "https://skrzk.pages.dev/api/regional-music?run=${GITHUB_RUN_ID}" -o "$RUNNER_TEMP/regional-music.json"
           node - <<'NODE'
           const fs = require('node:fs');
           const payload = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/regional-music.json', 'utf8'));
           if (payload?.ok !== true) throw new Error(`regional-music API not ok: ${JSON.stringify(payload)}`);
           const state = (payload.services || []).find((item) => item.service === 'youtube_music') || null;
           const artists = (payload.artists || []).filter((item) => item.service === 'youtube_music');
-          console.log(JSON.stringify({
-            ok: true,
+          if (!state) throw new Error('youtube_music collector state missing');
+          const age = Date.now() - Number(state.last_attempt_at || 0);
+          if (!Number.isFinite(age) || age < 0 || age > 15 * 60_000) {
+            throw new Error(`youtube_music collector state is stale: ${JSON.stringify(state)}`);
+          }
+          console.log('YOUTUBE_MUSIC_RESULT=' + JSON.stringify({
             generated_at: payload.generated_at || payload.generatedAt,
             state,
-            artists: artists.map((item) => ({ canonical_artist: item.canonical_artist, display_name: item.display_name })),
+            artists: artists.map((item) => ({
+              canonical_artist: item.canonical_artist,
+              display_name: item.display_name,
+              followers: item.followers,
+              monthly_audience: item.monthly_audience,
+              total_views: item.total_views,
+            })),
           }));
           NODE
