@@ -10,7 +10,7 @@ const followersShell = readFileSync(new URL('../public/followers-shell.js', impo
 test('Ohisama and followers chart headers omit update-time pills', () => {
   assert.doesNotMatch(shell, /hinataUpdated|更新時間|JST文字列/);
   assert.doesNotMatch(followersShell, /followersLatestDate/);
-  assert.match(entry, /hinata-shell\.js\?v=20261001\.1/);
+  assert.match(entry, /hinata-shell\.js\?v=20261001\.2/);
   assert.match(entry, /followers-shell\.js\?v=20261001\.1/);
 });
 
