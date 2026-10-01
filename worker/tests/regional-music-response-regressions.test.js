@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { findGenieArtistId, extractGenieTrackIds } from '../src/regional-music-genie.js';
+import { findGenieArtistId, extractGenieTrackIds, parseGenieTrackMetrics } from '../src/regional-music-genie.js';
 import { parseJioSaavnTracks, jioSaavnSongSearchUrl } from '../src/regional-music-jiosaavn.js';
 import { pageRepresentsArtist } from '../src/regional-music-fungjai.js';
 
@@ -18,4 +18,17 @@ test('JioSaavn reads nested primary artist identity without accepting unrelated 
 test('Fungjai does not identify an artist from a challenge script URL', () => {
   assert.equal(pageRepresentsArtist('<title>One moment, please...</title><script>location="/artists/sakurazaka46"</script>', ['Sakurazaka46']), false);
   assert.equal(pageRepresentsArtist('<h1>Sakurazaka46</h1>', ['Sakurazaka46']), true);
+});
+
+import { parseKugouArtistPage, parseKugouSearchTracks } from '../src/regional-music-kugou.js';
+test('Kugou public artist catalog verifies profile and exact collaboration membership', () => {
+  const songs = [{ hash:'abc', songname:'Song', singername:'乃木坂46、櫻坂46、日向坂46' }, { hash:'bad', singername:'Sakurazaka46 Cover' }];
+  const html = `<div class="mbx"><a>歌手</a> &gt; 櫻坂46</div><script>var homeSongs = ${JSON.stringify(songs)};</script>`;
+  assert.equal(parseKugouArtistPage(html, ['櫻坂46','Sakurazaka46']).length, 1);
+  assert.deepEqual(parseKugouArtistPage(html, ['Nogizaka46']), []);
+  assert.deepEqual(parseKugouSearchTracks({ data:{info:[songs[1]]} }, ['Sakurazaka46']), []);
+});
+
+test('Genie reads listener and play labels supplied as image alt text', () => {
+  assert.deepEqual(parseGenieTrackMetrics('<p>35</p><img alt="전체 청취자수"><p>672</p><img alt="전체 재생수"><div>좋아요! 9</div>'), {likes:9,listeners:35,plays:672});
 });

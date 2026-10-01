@@ -29,11 +29,21 @@ for (let start = 0; start < services.length; start += 4) {
 await writeFile(`${directory}/summary.json`,JSON.stringify(summary,null,2));
 console.log(JSON.stringify(summary.map(({service,result,error,requests})=>({service,status:result?.status,error,requests:requests.length}))));
 // Read-only capture of current official catalog pages for endpoint migrations.
+const qqCatalogQuery = encodeURIComponent(JSON.stringify({
+  comm: { ct:24, cv:0 },
+  req_1: { module:'musichall.song_list_server', method:'GetSingerSongList', param:{ singerMid:'000DG1og3lDmbT', order:1, begin:0, num:20 } },
+}));
 const pages = [
+  ['qq-current-catalog', `https://u.y.qq.com/cgi-bin/musicu.fcg?data=${qqCatalogQuery}`],
+  ['jiosaavn-current-catalog', 'https://www.jiosaavn.com/api.php?__call=artist.getArtistPageDetails&_format=json&_marker=0&ctx=web6dot0&api_version=4&artistId=9095179'],
   ['qq-profile', 'https://y.qq.com/n/ryqq/singer/000DG1og3lDmbT'],
   ['kugou-profile', 'https://pcretry.kugou.com/yueku/v8/singer/home/5317322-0-6-r.html'],
   ['langit-search', 'https://play.langitmusik.co.id/cari?search=Sakurazaka46'],
   ['gaana-home', 'https://gaana.com/'],
+  ['jiosaavn-profile', 'https://www.jiosaavn.com/artist/_/9095179'],
+  ['gaana-current-js', 'https://static.gaanacdn.com/main.ba25b939.js'],
+  ['langit-public-api', 'https://play.langitmusik.co.id/services/lmsearch/api/search/song?keyword=Sakurazaka46&limit=10&offset=0'],
+  
 ];
 const pageResults = [];
 await Promise.all(pages.map(async ([name,url]) => {

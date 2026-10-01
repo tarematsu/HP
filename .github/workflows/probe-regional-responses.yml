@@ -1,4 +1,4 @@
-# Recheck provider response repairs against current public pages.
+# Verify the public Kugou artist catalog and current search routes.
 name: Probe regional public responses
 on:
   workflow_dispatch:

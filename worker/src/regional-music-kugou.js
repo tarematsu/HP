@@ -1,3 +1,4 @@
+import { visibleHtmlText } from './regional-music-html.js';
 import { REGIONAL_MUSIC_ARTISTS } from './regional-music-service-registry.js';
 import {
   saveRegionalArtist,
@@ -5,6 +6,11 @@ import {
   saveRegionalTrack,
 } from './regional-music-store.js';
 
+export const KUGOU_ARTIST_PAGES = Object.freeze({
+  sakurazaka46: { id: '5317322', url: 'https://pcretry.kugou.com/yueku/v8/singer/home/5317322-0-6-r.html' },
+  hinatazaka46: { id: '798934', url: 'https://pcretry.kugou.com/yueku/v8/singer/home/798934-0-6-r.html' },
+  nogizaka46: { id: '84243', url: 'https://pcretry.kugou.com/yueku/v8/singer/home/84243-0-6-n.html' },
+});
 const KUGOU_SEARCH_LIMIT = 30;
 
 function normalize(value) {
@@ -67,8 +73,8 @@ export function parseKugouSearchTracks(payload, aliases) {
   const output = [];
   const seen = new Set();
   for (const entry of list) {
-    const artistNames = entryArtists(entry).map(normalize);
-    if (!artistNames.some((name) => wanted.some((alias) => name === alias || name.includes(alias)))) continue;
+    const artistNames = entryArtists(entry).flatMap(name => name.split(/[、,&]/)).map(normalize);
+    if (!artistNames.some((name) => wanted.some((alias) => name === alias))) continue;
     const trackId = entryTrackId(entry);
     if (!trackId || seen.has(trackId)) continue;
     seen.add(trackId);
@@ -103,22 +109,20 @@ export async function collectKugouMusic(env, observedAt = Date.now(), fetchImpl 
 
   for (const [canonicalArtist, artist] of Object.entries(REGIONAL_MUSIC_ARTISTS)) {
     try {
-      let entries = [];
-      for (const alias of artist.aliases) {
-        const payload = await fetchJson(fetchImpl, kugouSearchUrl(alias));
-        entries = parseKugouSearchTracks(payload, artist.aliases);
-        if (entries.length) break;
-      }
-      if (!entries.length) throw new Error('catalog search returned no matching tracks');
-
-      const authorId = entries.find((entry) => entry.author_id)?.author_id || null;
+      const profile = KUGOU_ARTIST_PAGES[canonicalArtist];
+      const response = await fetchImpl(profile.url, { headers: { accept: 'text/html' } });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const entries = parseKugouArtistPage(await response.text(), artist.aliases)
+        .map(entry => ({ ...entry, author_id: profile.id }));
+      if (!entries.length) throw new Error('public artist catalog returned no verified tracks');
+      const authorId = profile.id;
       if (authorId) {
         await saveRegionalArtist(env, {
           service: 'kugou_music',
           canonical_artist: canonicalArtist,
           service_artist_id: authorId,
           display_name: artist.aliases[1],
-          profile_url: kugouSingerUrl(authorId),
+          profile_url: profile.url,
           observed_at: observedAt,
         });
         artists += 1;
@@ -156,4 +160,14 @@ export async function collectKugouMusic(env, observedAt = Date.now(), fetchImpl 
     updated_at: observedAt,
   });
   return { service: 'kugou_music', status, artists, tracks, failures };
+}
+
+export function parseKugouArtistPage(html, aliases) {
+  const breadcrumb = String(html || '').match(/<div\b[^>]*class=["']mbx["'][^>]*>([\s\S]*?)<\/div>/i)?.[1];
+  const name = visibleHtmlText(breadcrumb).split('>').at(-1)?.trim();
+  if (!aliases.some(alias => normalize(alias) === normalize(name))) return [];
+  const data = String(html || '').match(/var\s+homeSongs\s*=\s*(\[[\s\S]*?\]);/);
+  if (!data) return [];
+  try { return parseKugouSearchTracks({ data: { info: JSON.parse(data[1]) } }, aliases); }
+  catch { return []; }
 }
