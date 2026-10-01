@@ -32,12 +32,22 @@ export default {
         url: playlist.url,
       })),
     }));
+    const errorSamples = tracks
+      .filter((track) => track?.status === 'error' && track?.error)
+      .slice(0, 12)
+      .map((track) => ({
+        group_name: track.group_name,
+        title: track.title,
+        amazon_music_id: track.amazon_music_id,
+        error: track.error,
+      }));
 
     return Response.json({
       ...result,
       playlist_tracks: withPlaylists.length,
       playlist_memberships: memberships,
       samples,
+      error_samples: errorSamples,
     }, {
       headers: { 'cache-control': 'no-store' },
     });
