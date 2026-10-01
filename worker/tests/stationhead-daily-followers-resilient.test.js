@@ -204,7 +204,7 @@ test('near-expiry auth is refreshed under the shared auth-control lock', async (
           };
         }
         if (/last_success_at=CASE/.test(sql)) {
-          return { bind() { return { async run() { return { meta: { changes: 1 } }; } }; };
+          return { bind() { return { async run() { return { meta: { changes: 1 } }; } }; } };
         }
         throw new Error(`unexpected SQL: ${sql}`);
       },
