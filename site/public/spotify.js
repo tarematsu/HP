@@ -159,6 +159,167 @@ function legendItem(artistName, latestText, color) {
   return item;
 }
 
+function metricLegend() {
+  const item = document.createElement('span');
+  item.className = 'spotify-trend-metric-key';
+  item.textContent = '実線＝再生数前日比 / 破線＝月間リスナー';
+  return item;
+}
+
+function latestMetric(series, metricKey) {
+  return [...(series?.points || [])].reverse().find((point) => integer(point?.[metricKey]) != null)?.[metricKey];
+}
+
+function drawSinglePoint(context, rows, xFor, yFor, color, { hollow = false } = {}) {
+  const plotted = rows.filter((row) => row.value != null);
+  if (plotted.length !== 1) return;
+  const [row] = plotted;
+  context.save();
+  context.beginPath();
+  context.arc(xFor(row.date), yFor(row.value), 3, 0, Math.PI * 2);
+  if (hollow) {
+    context.strokeStyle = color;
+    context.lineWidth = 2;
+    context.stroke();
+  } else {
+    context.fillStyle = color;
+    context.fill();
+  }
+  context.restore();
+}
+
+function renderOverviewChart(trend = {}, monthlyListenerRows = []) {
+  const container = element('spotifyTrendCharts');
+  if (!container) return;
+  container.replaceChildren();
+
+  const playSeries = graphTrendSeries(normalizeTrendSeries(trend));
+  const listenerSeries = graphTrendSeries(normalizeTrendSeries(monthlyListenerTrend(monthlyListenerRows)));
+  const playByKey = new Map(playSeries.map((series) => [series.artistKey, series]));
+  const listenerByKey = new Map(listenerSeries.map((series) => [series.artistKey, series]));
+  const dates = [...new Set([
+    ...playSeries.flatMap((series) => series.points.map((point) => String(point.snapshot_date))),
+    ...listenerSeries.flatMap((series) => series.points.map((point) => String(point.snapshot_date))),
+  ])].sort();
+  const playValues = playSeries.flatMap((series) =>
+    series.points.map((point) => integer(point?.total_delta))).filter((value) => value != null);
+  const listenerValues = listenerSeries.flatMap((series) =>
+    series.points.map((point) => integer(point?.monthly_listeners))).filter((value) => value != null);
+  if (!dates.length || (!playValues.length && !listenerValues.length)) {
+    appendEmptyState(container, 'Spotify推移データはまだありません。', { className: 'spotify-trend-empty' });
+    return;
+  }
+
+  let playMin = Math.min(0, ...(playValues.length ? playValues : [0]));
+  let playMax = Math.max(0, ...(playValues.length ? playValues : [1]));
+  if (playMin === playMax) playMax = playMin + 1;
+  if (playMin < 0) playMin = Math.floor(playMin * 1.08);
+  if (playMax > 0) playMax = Math.ceil(playMax * 1.08);
+  const playRange = Math.max(1, playMax - playMin);
+  const listenerMin = 0;
+  let listenerMax = Math.max(1, ...(listenerValues.length ? listenerValues : [1]));
+  listenerMax = Math.max(1, Math.ceil(listenerMax * 1.08));
+  const listenerRange = Math.max(1, listenerMax - listenerMin);
+
+  const { legend, canvas } = trendFrame(
+    container,
+    '櫻坂46・乃木坂46・日向坂46の全曲合計再生数前日比とSpotify月間リスナー推移。左軸が再生数前日比、右軸が月間リスナー。',
+  );
+  legend.setAttribute('aria-label', 'アーティスト凡例と最新値。実線は再生数前日比、破線は月間リスナー。');
+  for (const artistKey of GRAPH_ARTIST_KEYS) {
+    const plays = playByKey.get(artistKey);
+    const listeners = listenerByKey.get(artistKey);
+    if (!plays && !listeners) continue;
+    const artistName = plays?.artistName || listeners?.artistName || artistKey;
+    const playLatest = latestMetric(plays, 'total_delta');
+    const listenerLatest = latestMetric(listeners, 'monthly_listeners');
+    legend.append(legendItem(
+      artistName,
+      `再生 ${signedInteger(playLatest)} / 月間 ${formatInteger(listenerLatest)}`,
+      GRAPH_ARTIST_COLORS[artistKey],
+    ));
+  }
+  legend.append(metricLegend());
+
+  const measuredWidth = Math.max(1, Math.round(canvas.parentElement?.getBoundingClientRect?.().width || 960));
+  const targetHeight = measuredWidth < 520 ? 300 : Math.max(300, Math.min(380, Math.round(measuredWidth * .42)));
+  const prepared = prepareDashboardCanvas(canvas, {
+    minimumWidth: 1,
+    minimumHeight: 1,
+    fallbackWidth: measuredWidth,
+    height: targetHeight,
+  });
+  if (!prepared) return;
+  const { context, width, height } = prepared;
+  const margin = { left: 72, right: 72, top: 28, bottom: 40 };
+  const plotWidth = Math.max(1, width - margin.left - margin.right);
+  const plotHeight = Math.max(1, height - margin.top - margin.bottom);
+  const dateIndex = new Map(dates.map((date, index) => [date, index]));
+  const xFor = (date) => margin.left + (dates.length <= 1
+    ? plotWidth / 2
+    : (dateIndex.get(date) || 0) / (dates.length - 1) * plotWidth);
+  const yForPlay = (value) => margin.top + (playMax - value) / playRange * plotHeight;
+  const yForListener = (value) => margin.top + (listenerMax - value) / listenerRange * plotHeight;
+
+  context.font = '500 11px system-ui';
+  context.fillStyle = '#667287';
+  context.textBaseline = 'middle';
+  context.textAlign = 'left';
+  context.fillText('再生数前日比', margin.left, 11);
+  context.textAlign = 'right';
+  context.fillText('月間リスナー', width - margin.right, 11);
+  for (const { ratio, y } of drawDashboardGrid(context, {
+    left: margin.left,
+    right: margin.right,
+    top: margin.top,
+    height: plotHeight,
+    width,
+  })) {
+    context.textAlign = 'right';
+    context.fillText(compactNumberFormat.format(Math.round(playMax - playRange * ratio)), margin.left - 8, y);
+    context.textAlign = 'left';
+    context.fillText(compactNumberFormat.format(Math.round(listenerMax - listenerRange * ratio)), width - margin.right + 8, y);
+  }
+  context.textBaseline = 'alphabetic';
+  for (const index of dashboardTickIndexes(dates.length, 5)) {
+    context.textAlign = index === 0 ? 'left' : index === dates.length - 1 ? 'right' : 'center';
+    context.fillText(formatTrendDate(dates[index]), xFor(dates[index]), height - 10);
+  }
+
+  for (const artistKey of GRAPH_ARTIST_KEYS) {
+    const color = GRAPH_ARTIST_COLORS[artistKey];
+    const plays = playByKey.get(artistKey);
+    if (plays) {
+      const byDate = new Map(plays.points.map((point) => [String(point.snapshot_date), point]));
+      const rows = dates.map((date) => ({ date, value: integer(byDate.get(date)?.total_delta) }));
+      drawDashboardLine(context, rows, {
+        x: (row) => xFor(row.date),
+        y: (value) => yForPlay(value),
+        value: (row) => row.value,
+        valid: (value) => value != null,
+        strokeStyle: color,
+        lineWidth: 2,
+      });
+      drawSinglePoint(context, rows, xFor, yForPlay, color);
+    }
+    const listeners = listenerByKey.get(artistKey);
+    if (listeners) {
+      const byDate = new Map(listeners.points.map((point) => [String(point.snapshot_date), point]));
+      const rows = dates.map((date) => ({ date, value: integer(byDate.get(date)?.monthly_listeners) }));
+      drawDashboardLine(context, rows, {
+        x: (row) => xFor(row.date),
+        y: (value) => yForListener(value),
+        value: (row) => row.value,
+        valid: (value) => value != null,
+        strokeStyle: color,
+        lineWidth: 2,
+        lineDash: [6, 4],
+      });
+      drawSinglePoint(context, rows, xFor, yForListener, color, { hollow: true });
+    }
+  }
+}
+
 function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel, latestFormatter = signedInteger }) {
   const container = element(containerId);
   if (!container) return;
@@ -357,17 +518,7 @@ function renderArtistRankChart(chart = {}, trend = {}) {
 }
 
 function renderCharts(trend, artistChart, monthlyListenerRows) {
-  renderTrendChart(trend, {
-    containerId: 'spotifyTrendCharts',
-    metricKey: 'total_delta',
-    ariaLabel: '櫻坂46・乃木坂46・日向坂46の全曲合計再生数前日比推移',
-  });
-  renderTrendChart(monthlyListenerTrend(monthlyListenerRows), {
-    containerId: 'spotifyMonthlyListenerTrendCharts',
-    metricKey: 'monthly_listeners',
-    ariaLabel: '櫻坂46・乃木坂46・日向坂46のSpotify月間リスナー推移',
-    latestFormatter: formatInteger,
-  });
+  renderOverviewChart(trend, monthlyListenerRows);
   renderTrendChart(trend, {
     containerId: 'spotifyTop10YearTrendCharts',
     metricKey: 'top10_year_delta',
