@@ -130,6 +130,23 @@
     font-size: 11px;
   }
 
+  /* Stationhead has five sources. Keep every source visible without a clipped
+     edge or a hidden horizontal scroll affordance: 3 + 2 in two rows. */
+  .dashboard-source-tabs:not(.is-multiline) {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1px 2px;
+    overflow: visible;
+  }
+
+  .dashboard-source-tabs:not(.is-multiline) > button {
+    width: 100%;
+    min-width: 0;
+    padding-inline: 4px;
+    white-space: normal;
+    text-wrap: balance;
+  }
+
   .dashboard-source-tabs > button,
   .dashboard-source-row > button {
     flex: 0 0 auto;
