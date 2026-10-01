@@ -35,8 +35,8 @@ function capturingFetch(fetchImpl, onChannelPayload) {
 
 export async function runOhisamaPagesScheduled(controller, env, ctx, dependencies = {}) {
   const registerFollowerTarget = activeBroadcastFollowerRegistrar(
-    withOhisamaFollowerMembership(
-      cachedOhisamaFollowerTargetRegistrar(
+    cachedOhisamaFollowerTargetRegistrar(
+      withOhisamaFollowerMembership(
         dependencies.registerFollowerTarget || registerOhisamaFollowerTarget,
       ),
     ),
