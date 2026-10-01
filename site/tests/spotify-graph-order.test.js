@@ -5,8 +5,9 @@ import test from 'node:test';
 const shell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
 
-test('Spotify graphs restrict rendered series to the three Sakamichi groups', () => {
-  assert.match(runtime, /GRAPH_ARTIST_KEYS = Object\.freeze\(\['nogizaka46', 'sakurazaka46', 'hinatazaka46'\]\)/);
+test('Spotify graphs restrict rendered series to the three Sakamichi groups in Sakurazaka-first order', () => {
+  assert.match(runtime, /GRAPH_ARTIST_KEYS = Object\.freeze\(\['sakurazaka46', 'nogizaka46', 'hinatazaka46'\]\)/);
+  assert.match(runtime, /GRAPH_ARTIST_KEYS\.indexOf\(a\.artistKey\) - GRAPH_ARTIST_KEYS\.indexOf\(b\.artistKey\)/);
   assert.match(runtime, /graphTrendSeries\(normalizeTrendSeries\(trend\)\)/);
   assert.match(runtime, /monthlyListenerTrend\(monthlyListenerRows\)/);
   assert.match(runtime, /nogizaka46: '#8264b0'/);
@@ -24,7 +25,7 @@ test('Spotify renderer emits single-point markers directly on the shared canvas'
 });
 
 test('Spotify accessibility labels describe Sakamichi-only graphs directly', () => {
-  assert.match(runtime, /乃木坂46・櫻坂46・日向坂46の全曲合計再生数前日比推移/);
+  assert.match(runtime, /櫻坂46・乃木坂46・日向坂46の全曲合計再生数前日比推移/);
   assert.match(runtime, /Spotify日本 Daily Top Artist の順位データはまだありません。/);
   assert.match(runtime, /Spotify日本 Daily Top Artist の順位推移。1位が上。/);
   assert.match(shell, /Spotify 月間リスナー推移（坂道3グループ）/);
