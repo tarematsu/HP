@@ -101,12 +101,14 @@ test('obsolete unofficial view is not a central dashboard route', () => {
   assert.doesNotMatch(registry, /view: 'unofficial'/);
 });
 
-test('inactive route runtimes are not prefetched from the current tab', () => {
-  assert.doesNotMatch(tabsClient, /modulepreload|preloadModule|scheduleRuntimePrefetch|requestIdleCallback/);
-  assert.doesNotMatch(page, /modulepreload[^>]*(?:history-main|history-likes|spotify|played-tracks|first-week)/);
+test('first-week comparison is loaded with the dashboard instead of behind a route loader', () => {
+  assert.match(dashboardEntry, /import '\.\/first-week-comparison-shell\.js\?v=20261002\.2'/);
+  assert.match(dashboardEntry, /import '\.\/first-week-comparison\.js\?v=20261002\.2'/);
+  assert.doesNotMatch(historyEntry, /first-week-comparison-shell|first-week-comparison\.js/);
+  assert.doesNotMatch(tabsClient, /first-week-comparison-shell|first-week-comparison\.js/);
 });
 
-test('history mode-specific runtimes are lazy-loaded only after history starts', () => {
+test('history mode-specific runtimes remain lazy-loaded after history starts', () => {
   assert.match(historyEntry, /function ensureHistoryModeRuntime/);
   assert.match(historyEntry, /history-period-chart\.js\?v=20261001\.1/);
   assert.match(historyEntry, /history-ranking-chart\.js\?v=20260930\.\d+/);
@@ -114,8 +116,6 @@ test('history mode-specific runtimes are lazy-loaded only after history starts',
   assert.match(historyEntry, /history-ranking-all-host-table\.js\?v=20260930\.1/);
   assert.match(tabsClient, /history-ranking-table-status\.js\?v=20260923\.2/);
   assert.match(tabsClient, /mode === 'ranking'[\s\S]*loadOnce\('ranking-status'/);
-  assert.match(historyEntry, /first-week-comparison-shell\.js\?v=20261002\.1/);
-  assert.match(historyEntry, /first-week-comparison\.js\?v=20261002\.1/);
   assert.match(historyEntry, /history-broadcasts\.js\?v=20261001\.1/);
   assert.doesNotMatch(tabsClient, /history-period-chart|history-ranking-chart|history-broadcasts/);
 });
