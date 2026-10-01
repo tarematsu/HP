@@ -28,7 +28,7 @@ const MODES = [
     path: '/#ranking',
     panel: '#historyView',
     tab: '#modeTabs button[data-mode="ranking"]',
-    requiredText: '週間リーダーボード',
+    requiredText: '総週数',
     notice: '#notice',
   },
   {
@@ -52,7 +52,7 @@ const MODES = [
     path: '/#spotify',
     panel: '#spotifyView',
     tab: '#modeTabs button[data-view="spotify"]',
-    requiredText: '櫻坂46 再生数一覧',
+    requiredText: '櫻坂46の再生数一覧',
     notice: '#spotifyNotice',
   },
   {
@@ -257,6 +257,19 @@ async function auditRoute(browser, target, route, viewport, outDir) {
       const rect = button.getBoundingClientRect();
       return tabsRect && (rect.left < tabsRect.left - 1 || rect.right > tabsRect.right + 1);
     }).length;
+    const tabsStyle = tabs ? getComputedStyle(tabs) : null;
+    const navigationScrollable = Boolean(
+      tabs
+      && tabs.scrollWidth > tabs.clientWidth + 1
+      && ['auto', 'scroll'].includes(tabsStyle?.overflowX),
+    );
+    const currentTab = tabs?.querySelector('[aria-current="page"]');
+    const currentTabRect = currentTab?.getBoundingClientRect();
+    const selectedTabClipped = Boolean(
+      tabsRect
+      && currentTabRect
+      && (currentTabRect.left < tabsRect.left - 1 || currentTabRect.right > tabsRect.right + 1),
+    );
     return {
       viewportWidth: window.innerWidth,
       scrollWidth,
@@ -264,6 +277,8 @@ async function auditRoute(browser, target, route, viewport, outDir) {
       visiblePanels: panels,
       expectedPanelVisible: visible(document.querySelector(expectedPanel)),
       clippedTabs,
+      navigationScrollable,
+      selectedTabClipped,
     };
   }, route.panel).catch(() => ({
     viewportWidth: viewport.width,
@@ -272,6 +287,8 @@ async function auditRoute(browser, target, route, viewport, outDir) {
     visiblePanels: [],
     expectedPanelVisible: false,
     clippedTabs: null,
+    navigationScrollable: false,
+    selectedTabClipped: null,
   }));
   const finalUrl = page.url();
   const screenshotPath = join(
@@ -294,7 +311,10 @@ async function auditRoute(browser, target, route, viewport, outDir) {
   if (Number(layout.horizontalOverflow) > 1) {
     failures.push(`document overflows viewport horizontally by ${layout.horizontalOverflow}px`);
   }
-  if (Number(layout.clippedTabs) > 0) failures.push(`${layout.clippedTabs} navigation tabs are clipped`);
+  if (Number(layout.clippedTabs) > 0 && !layout.navigationScrollable) {
+    failures.push(`${layout.clippedTabs} navigation tabs are clipped without a scrollable tab list`);
+  }
+  if (layout.selectedTabClipped) failures.push('selected navigation tab is clipped');
   if (bodyText.length < 20) failures.push(`page body is unexpectedly short (${bodyText.length} characters)`);
   if (route.requiredText && !bodyText.includes(route.requiredText)) {
     failures.push(`required text was not rendered: ${route.requiredText}`);
