@@ -34,6 +34,9 @@ const pages = [
   ['kugou-profile', 'https://pcretry.kugou.com/yueku/v8/singer/home/5317322-0-6-r.html'],
   ['langit-search', 'https://play.langitmusik.co.id/cari?search=Sakurazaka46'],
   ['gaana-home', 'https://gaana.com/'],
+  ['gaana-current-js', 'https://static.gaanacdn.com/main.ba25b939.js'],
+  ['langit-public-api', 'https://play.langitmusik.co.id/services/lmsearch/api/search/song?keyword=Sakurazaka46&limit=10&offset=0'],
+  
 ];
 const pageResults = [];
 await Promise.all(pages.map(async ([name,url]) => {
