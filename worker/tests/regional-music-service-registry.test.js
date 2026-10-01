@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   REGIONAL_MUSIC_COLLECTOR_CONCURRENCY,
+  REGIONAL_MUSIC_COLLECTOR_TIMEOUT_MS,
   REGIONAL_MUSIC_DAILY_COLLECTORS,
   REGIONAL_MUSIC_SERVICE_COLLECTORS,
   runRegionalMusicCollectors,
@@ -66,6 +67,7 @@ test('regional music runner bounds concurrency and preserves collector order', a
   assert.equal(maximumActive, 3);
   assert.deepEqual(results.map((result) => result.service), collectors.map((_, index) => `service-${index}`));
   assert.equal(REGIONAL_MUSIC_COLLECTOR_CONCURRENCY, 4);
+  assert.equal(REGIONAL_MUSIC_COLLECTOR_TIMEOUT_MS, 90_000);
 });
 
 test('regional music runner isolates a provider failure', async () => {
@@ -81,6 +83,30 @@ test('regional music runner isolates a provider failure', async () => {
     error: 'provider unavailable',
   });
   assert.equal(results[2].status, 'ok');
+});
+
+test('regional music runner times out one stuck provider and continues', async () => {
+  async function stuck() {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    return { service: 'stuck', status: 'ok' };
+  }
+  async function healthy() { return { service: 'healthy', status: 'ok' }; }
+
+  const startedAt = Date.now();
+  const results = await runRegionalMusicCollectors(
+    [stuck, healthy],
+    {},
+    Date.now(),
+    () => {},
+    1,
+    20,
+  );
+
+  assert.equal(results[0].service, 'stuck');
+  assert.equal(results[0].status, 'error');
+  assert.match(results[0].error, /collector timed out after 20ms/);
+  assert.equal(results[1].status, 'ok');
+  assert.ok(Date.now() - startedAt < 100);
 });
 
 test('Sakamichi artist aliases normalize to canonical keys', () => {
