@@ -16,7 +16,7 @@ import {
 
 const summary = dashboardSummary([
   dashboardSummaryItem({ label: '対象グループ', value: '3組' }),
-  dashboardSummaryItem({ label: 'ランキング収集', value: '15万位' }),
+  dashboardSummaryItem({ label: 'ランクイン曲数', valueId: 'amazonTrackCount' }),
   dashboardSummaryItem({ label: '掲載プレイリスト', valueId: 'amazonPlaylistCount' }),
 ], { className: 'music-service-summary amazon-summary-cards', ariaLabel: 'Amazon Music概要' });
 
