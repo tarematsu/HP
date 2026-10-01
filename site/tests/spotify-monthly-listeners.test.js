@@ -4,12 +4,20 @@ import test from 'node:test';
 
 import {
   selectMonthlyListenerSeries,
+  spotifyMonthlyListenersReadModelSql,
   spotifyMonthlyListenersSql,
   spotifyMonthlyListenersSvg,
   spotifyMonthlyListenersTrend,
 } from '../functions/api/spotify-monthly-listeners.js';
 
-test('monthly listener API reads the dedicated daily table', () => {
+test('monthly listener API reads one materialized row in steady state', () => {
+  const sql = spotifyMonthlyListenersReadModelSql();
+  assert.match(sql, /FROM sh_spotify_monthly_listeners_read_model/);
+  assert.match(sql, /model_key='current'/);
+  assert.match(sql, /LIMIT 1/);
+});
+
+test('monthly listener legacy SQL remains only as rolling-migration fallback', () => {
   const sql = spotifyMonthlyListenersSql();
   assert.match(sql, /FROM sh_spotify_artist_monthly_listeners_daily daily/);
   assert.match(sql, /INNER JOIN sh_spotify_artists artist/);
