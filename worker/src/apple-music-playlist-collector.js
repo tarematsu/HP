@@ -2,13 +2,18 @@ import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
 
 export const APPLE_MUSIC_PLAYLIST_PAGES_MODEL_KEY = 'apple-music-playlists';
 
-const TARGET_ARTIST_ID = '1541126420';
-const TARGET_ARTIST_NAME = '櫻坂46';
+export const APPLE_MUSIC_PLAYLIST_ARTISTS = Object.freeze([
+  Object.freeze({ key: 'sakurazaka46', id: '1541126420', name: '櫻坂46', aliases: Object.freeze(['櫻坂46', 'Sakurazaka46']) }),
+  Object.freeze({ key: 'nogizaka46', id: '571990937', name: '乃木坂46', aliases: Object.freeze(['乃木坂46', 'Nogizaka46']) }),
+  Object.freeze({ key: 'hinatazaka46', id: '1456116642', name: '日向坂46', aliases: Object.freeze(['日向坂46', 'Hinatazaka46']) }),
+]);
+
+const PRIMARY_ARTIST = APPLE_MUSIC_PLAYLIST_ARTISTS[0];
 const STATE_KEY = 'apple-music/playlists/state.json';
 const LATEST_KEY = 'apple-music/playlists/latest.json';
 const APPLE_MODEL_KEY = 'apple-music/read-model/latest.json';
 const MAX_PLAYLISTS_PER_RUN = 20;
-const MAX_KNOWN_PLAYLISTS = 600;
+const MAX_KNOWN_PLAYLISTS = 900;
 const MAX_RELATED_LINKS_PER_PAGE = 12;
 const PUBLIC_HEADERS = Object.freeze({
   'content-type': 'application/json; charset=utf-8',
@@ -18,8 +23,12 @@ const PUBLIC_HEADERS = Object.freeze({
 
 export const APPLE_MUSIC_PLAYLIST_SEEDS = Object.freeze([
   'https://music.apple.com/jp/artist/-/1541126420',
-  'https://music.apple.com/jp/room/6503392297',
+  'https://music.apple.com/jp/artist/-/571990937',
+  'https://music.apple.com/jp/artist/-/1456116642',
   'https://music.apple.com/jp/search?term=%E6%AB%BB%E5%9D%8246',
+  'https://music.apple.com/jp/search?term=%E4%B9%83%E6%9C%A8%E5%9D%8246',
+  'https://music.apple.com/jp/search?term=%E6%97%A5%E5%90%91%E5%9D%8246',
+  'https://music.apple.com/jp/room/6503392297',
   'https://music.apple.com/jp/new/top-charts/playlists',
   'https://music.apple.com/jp/genre/j-pop/27',
 ]);
@@ -42,6 +51,24 @@ function decodeHtml(value) {
     .replaceAll('&#39;', "'")
     .replaceAll('&lt;', '<')
     .replaceAll('&gt;', '>');
+}
+
+function normalizeArtistName(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .replace(/[\s\u00a0]+/gu, '')
+    .toLocaleLowerCase('ja-JP');
+}
+
+function artistFromIdentity({ ids = [], names = [], urls = [] } = {}) {
+  const idSet = new Set(ids.map((value) => String(value || '').trim()).filter(Boolean));
+  const normalizedNames = new Set(names.map(normalizeArtistName).filter(Boolean));
+  for (const artist of APPLE_MUSIC_PLAYLIST_ARTISTS) {
+    if (idSet.has(artist.id)) return artist;
+    if (urls.some((url) => String(url || '').includes(`/${artist.id}`))) return artist;
+    if (artist.aliases.some((alias) => normalizedNames.has(normalizeArtistName(alias)))) return artist;
+  }
+  return null;
 }
 
 function playlistIdFromUrl(value) {
@@ -103,24 +130,25 @@ export function extractAppleMusicPlaylistLinks(html) {
 }
 
 function jsonLdDocuments(html) {
-  const source = String(html || '');
   const documents = [];
   const regex = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/giu;
-  for (const match of source.matchAll(regex)) {
-    try {
-      documents.push(JSON.parse(decodeHtml(match[1])));
-    } catch {
-      // Ignore malformed or non-JSON structured-data blocks.
+  for (const match of String(html || '').matchAll(regex)) {
+    for (const candidate of [String(match[1] || ''), decodeHtml(match[1])]) {
+      try {
+        documents.push(JSON.parse(candidate));
+        break;
+      } catch {
+        // Try the decoded variant before ignoring malformed structured data.
+      }
     }
   }
   return documents;
 }
 
 function serializedServerDocuments(html) {
-  const source = String(html || '');
   const documents = [];
   const regex = /<script[^>]+id=["']serialized-server-data["'][^>]*>([\s\S]*?)<\/script>/giu;
-  for (const match of source.matchAll(regex)) {
+  for (const match of String(html || '').matchAll(regex)) {
     const raw = String(match[1] || '').trim();
     if (!raw) continue;
     for (const candidate of [raw, decodeHtml(raw)]) {
@@ -128,7 +156,7 @@ function serializedServerDocuments(html) {
         documents.push(JSON.parse(candidate));
         break;
       } catch {
-        // Try the HTML-decoded variant before giving up.
+        // Try the decoded variant before ignoring malformed data.
       }
     }
   }
@@ -161,12 +189,8 @@ function artistDetails(value) {
 }
 
 function targetArtist(recording) {
-  const artists = artistDetails(recording?.byArtist || recording?.artist || recording?.creator);
-  if (artists.urls.some((url) => String(url).includes(`/${TARGET_ARTIST_ID}`))) return true;
-  return artists.names.some((name) => {
-    const normalized = String(name).normalize('NFKC').replace(/\s+/gu, '').toLocaleLowerCase('ja-JP');
-    return normalized === '櫻坂46' || normalized === 'sakurazaka46';
-  });
+  const details = artistDetails(recording?.byArtist || recording?.artist || recording?.creator);
+  return artistFromIdentity(details);
 }
 
 function normalizedTrackTitle(value) {
@@ -176,10 +200,11 @@ function normalizedTrackTitle(value) {
     : null;
 }
 
-function pushTrackCandidate(tracks, seen, { appleMusicId, title, url, position }) {
+function pushTrackCandidate(tracks, seen, { artist, appleMusicId, title, url, position }) {
+  if (!artist) return;
   const idKey = appleMusicId ? `id:${appleMusicId}` : null;
   const normalizedTitle = normalizedTrackTitle(title);
-  const titleKey = normalizedTitle ? `title:${normalizedTitle}` : null;
+  const titleKey = normalizedTitle ? `title:${artist.key}:${normalizedTitle}` : null;
   if (!idKey && !titleKey) return;
   if ((idKey && seen.has(idKey)) || (titleKey && seen.has(titleKey))) return;
   if (idKey) seen.add(idKey);
@@ -189,13 +214,19 @@ function pushTrackCandidate(tracks, seen, { appleMusicId, title, url, position }
     title: text(title),
     url: text(url),
     position: Number.isInteger(Number(position)) && Number(position) > 0 ? Number(position) : tracks.length + 1,
+    artist_key: artist.key,
+    artist_id: artist.id,
+    artist_name: artist.name,
   });
 }
 
 function recordTrack(tracks, seen, recording, position = null) {
-  if (!isMusicRecording(recording) || !targetArtist(recording)) return;
+  if (!isMusicRecording(recording)) return;
+  const artist = targetArtist(recording);
+  if (!artist) return;
   const url = text(recording.url || recording['@id']);
   pushTrackCandidate(tracks, seen, {
+    artist,
     appleMusicId: songIdFromUrl(url),
     title: text(recording.name),
     url,
@@ -209,13 +240,11 @@ function collectRecordings(node, tracks, seen, inheritedPosition = null) {
     return;
   }
   if (!node || typeof node !== 'object') return;
-
   if (node.item && isMusicRecording(node.item)) {
     recordTrack(tracks, seen, node.item, node.position ?? inheritedPosition);
   } else if (isMusicRecording(node)) {
     recordTrack(tracks, seen, node, node.position ?? inheritedPosition);
   }
-
   for (const [key, value] of Object.entries(node)) {
     if (key === 'item' && isMusicRecording(value)) continue;
     collectRecordings(value, tracks, seen, inheritedPosition);
@@ -230,18 +259,13 @@ function nestedStrings(value, depth = 0) {
   return Object.values(value).flatMap((item) => nestedStrings(item, depth + 1));
 }
 
-function targetArtistName(value) {
-  const normalized = String(value || '').normalize('NFKC').replace(/\s+/gu, '').toLocaleLowerCase('ja-JP');
-  return normalized === '櫻坂46' || normalized === 'sakurazaka46';
-}
-
-function serializedTrackIsTarget(item) {
-  if (!item || typeof item !== 'object') return false;
-  if (String(item.artistId || item.artistID || '') === TARGET_ARTIST_ID) return true;
+function serializedTrackArtist(item) {
+  if (!item || typeof item !== 'object') return null;
+  const ids = [item.artistId, item.artistID].filter(Boolean);
   const artistFields = Object.entries(item)
     .filter(([key]) => /artist/iu.test(key))
     .flatMap(([, value]) => nestedStrings(value));
-  return artistFields.some((value) => targetArtistName(value) || String(value).includes(`/${TARGET_ARTIST_ID}`));
+  return artistFromIdentity({ ids, names: artistFields, urls: artistFields });
 }
 
 function firstSerializedTrackUrl(item) {
@@ -281,9 +305,11 @@ function serializedTrackId(item, url) {
 }
 
 function recordSerializedTrack(tracks, seen, item, position) {
-  if (!serializedTrackIsTarget(item)) return;
+  const artist = serializedTrackArtist(item);
+  if (!artist) return;
   const url = firstSerializedTrackUrl(item);
   pushTrackCandidate(tracks, seen, {
+    artist,
     appleMusicId: serializedTrackId(item, url),
     title: text(item?.title || item?.name),
     url,
@@ -337,8 +363,8 @@ function metaContent(html, property) {
 
 function cleanedPlaylistTitle(value) {
   return text(value)
-    ?.replace(/\s*[-–—]\s*プレイリスト\s*[-–—]\s*Apple\s*Music.*$/iu, '')
-    .replace(/\s*[-–—]\s*Playlist\s*[-–—]\s*Apple\s*Music.*$/iu, '')
+    ?.replace(/\s*[-–—]?\s*プレイリスト\s*[-–—]?\s*Apple\s*Music.*$/iu, '')
+    .replace(/\s*[-–—]?\s*Playlist\s*[-–—]?\s*Apple\s*Music.*$/iu, '')
     .trim() || null;
 }
 
@@ -346,15 +372,11 @@ export function parseAppleMusicPlaylistPage(html, sourceUrl) {
   const url = canonicalPlaylistUrl(sourceUrl);
   const id = playlistIdFromUrl(url);
   if (!url || !id) return null;
-
   const documents = jsonLdDocuments(html);
   const tracks = [];
   const seen = new Set();
   collectRecordings(documents, tracks, seen);
-  for (const document of serializedServerDocuments(html)) {
-    collectSerializedTracks(document, tracks, seen);
-  }
-
+  for (const document of serializedServerDocuments(html)) collectSerializedTracks(document, tracks, seen);
   const name = cleanedPlaylistTitle(
     firstSchemaValue(documents, ['name'])
       || metaContent(html, 'og:title')
@@ -362,7 +384,6 @@ export function parseAppleMusicPlaylistPage(html, sourceUrl) {
   );
   const curator = firstSchemaValue(documents, ['author', 'creator', 'provider']);
   const artwork = metaContent(html, 'og:image') || metaContent(html, 'twitter:image');
-
   return {
     id,
     name: name || id,
@@ -411,17 +432,38 @@ async function fetchHtml(fetchImpl, url) {
   return response.text();
 }
 
+function appleArtistModels(appleModel) {
+  if (Array.isArray(appleModel?.artists) && appleModel.artists.length) return appleModel.artists;
+  return [{
+    key: PRIMARY_ARTIST.key,
+    artist_key: PRIMARY_ARTIST.key,
+    artist_id: appleModel?.artist_id || PRIMARY_ARTIST.id,
+    artist_name: appleModel?.artist_name || PRIMARY_ARTIST.name,
+    regions: Array.isArray(appleModel?.regions) ? appleModel.regions : [],
+  }];
+}
+
 function currentTrackMetadata(appleModel) {
   const byAppleId = new Map();
-  for (const region of Array.isArray(appleModel?.regions) ? appleModel.regions : []) {
-    for (const track of Array.isArray(region?.tracks) ? region.tracks : []) {
-      const appleId = text(track?.apple_music_id);
-      if (!appleId || byAppleId.has(appleId)) continue;
-      const trackId = Number(track?.track_id);
-      byAppleId.set(appleId, {
-        track_id: Number.isSafeInteger(trackId) ? trackId : null,
-        title: text(track?.title),
-      });
+  for (const artistModel of appleArtistModels(appleModel)) {
+    const identity = artistFromIdentity({
+      ids: [artistModel?.artist_id],
+      names: [artistModel?.artist_name],
+    }) || APPLE_MUSIC_PLAYLIST_ARTISTS.find((artist) => artist.key === artistModel?.key || artist.key === artistModel?.artist_key)
+      || PRIMARY_ARTIST;
+    for (const region of Array.isArray(artistModel?.regions) ? artistModel.regions : []) {
+      for (const track of Array.isArray(region?.tracks) ? region.tracks : []) {
+        const appleId = text(track?.apple_music_id);
+        if (!appleId || byAppleId.has(appleId)) continue;
+        const trackId = Number(track?.track_id);
+        byAppleId.set(appleId, {
+          track_id: Number.isSafeInteger(trackId) ? trackId : null,
+          title: text(track?.title),
+          artist_key: identity.key,
+          artist_id: identity.id,
+          artist_name: identity.name,
+        });
+      }
     }
   }
   return byAppleId;
@@ -484,6 +526,14 @@ function scanCandidates(entries) {
     .slice(0, MAX_PLAYLISTS_PER_RUN);
 }
 
+function trackArtist(track, known) {
+  return artistFromIdentity({
+    ids: [track?.artist_id, known?.artist_id],
+    names: [track?.artist_name, known?.artist_name],
+  }) || APPLE_MUSIC_PLAYLIST_ARTISTS.find((artist) => artist.key === track?.artist_key || artist.key === known?.artist_key)
+    || PRIMARY_ARTIST;
+}
+
 function publicModel(entries, appleModel, observedAt, seedResults, scannedCount) {
   const canonical = currentTrackMetadata(appleModel);
   const matchedPlaylists = [...entries.values()]
@@ -497,12 +547,16 @@ function publicModel(entries, appleModel, observedAt, seedResults, scannedCount)
       last_scanned_at: entry.last_scanned_at,
       tracks: entry.tracks.map((track) => {
         const known = canonical.get(text(track.apple_music_id));
+        const artist = trackArtist(track, known);
         return {
           apple_music_id: text(track.apple_music_id),
-          track_id: known?.track_id ?? null,
+          track_id: known?.track_id ?? (Number.isSafeInteger(Number(track?.track_id)) ? Number(track.track_id) : null),
           title: known?.title || text(track.title) || '曲名不明',
           position: Number(track.position) || null,
           url: text(track.url),
+          artist_key: artist.key,
+          artist_id: artist.id,
+          artist_name: artist.name,
         };
       }),
     }))
@@ -515,13 +569,16 @@ function publicModel(entries, appleModel, observedAt, seedResults, scannedCount)
         ? `track:${track.track_id}`
         : track.apple_music_id
           ? `apple:${track.apple_music_id}`
-          : `title:${track.title}`;
+          : `title:${track.artist_key}:${normalizedTrackTitle(track.title)}`;
       if (!grouped.has(key)) {
         grouped.set(key, {
           key,
           track_id: track.track_id,
           apple_music_id: track.apple_music_id,
           title: track.title,
+          artist_key: track.artist_key,
+          artist_id: track.artist_id,
+          artist_name: track.artist_name,
           playlists: [],
         });
       }
@@ -535,11 +592,18 @@ function publicModel(entries, appleModel, observedAt, seedResults, scannedCount)
     }
   }
 
+  const tracks = [...grouped.values()].sort((a, b) => a.title.localeCompare(b.title, 'ja'));
+  const matchedTracksByArtist = Object.fromEntries(APPLE_MUSIC_PLAYLIST_ARTISTS.map((artist) => [
+    artist.key,
+    tracks.filter((track) => track.artist_key === artist.key).length,
+  ]));
+
   return {
-    version: 1,
+    version: 2,
     source: 'music.apple.com-public-pages',
-    artist_id: TARGET_ARTIST_ID,
-    artist_name: TARGET_ARTIST_NAME,
+    artist_id: PRIMARY_ARTIST.id,
+    artist_name: PRIMARY_ARTIST.name,
+    artists: APPLE_MUSIC_PLAYLIST_ARTISTS.map(({ key, id, name }) => ({ key, artist_id: id, artist_name: name })),
     observed_at: observedAt,
     scan_date: jstDate(observedAt),
     coverage: {
@@ -548,10 +612,10 @@ function publicModel(entries, appleModel, observedAt, seedResults, scannedCount)
       known_playlists: entries.size,
       scanned_this_run: scannedCount,
       matched_playlists: matchedPlaylists.length,
+      matched_tracks_by_artist: matchedTracksByArtist,
     },
     playlists: matchedPlaylists,
-    tracks: [...grouped.values()]
-      .sort((a, b) => a.title.localeCompare(b.title, 'ja')),
+    tracks,
   };
 }
 
@@ -566,7 +630,7 @@ async function publishReadModel(r2, model, observedAt) {
     updated_at: observedAt,
     cadence_seconds: 86_400,
     source_revision: `apple-music-playlists:${model.scan_date}:${observedAt}`,
-    renderer_revision: 'apple-music-playlists-v1',
+    renderer_revision: 'apple-music-playlists-v3',
     body,
   };
   await r2.put(objectKey, JSON.stringify(envelope), {
@@ -605,7 +669,12 @@ export async function collectAppleMusicPlaylists(env, now = Date.now(), fetchImp
   seedSettled.forEach((result, seedIndex) => {
     if (result.status === 'fulfilled') {
       const links = extractAppleMusicPlaylistLinks(result.value.html);
-      links.forEach((url, linkIndex) => upsertDiscovery(entries, url, observedAt, seedIndex * 1000 + linkIndex));
+      links.forEach((url, linkIndex) => upsertDiscovery(
+        entries,
+        url,
+        observedAt,
+        linkIndex * APPLE_MUSIC_PLAYLIST_SEEDS.length + seedIndex,
+      ));
       seedResults.push({ url: APPLE_MUSIC_PLAYLIST_SEEDS[seedIndex], ok: true, discovered: links.length });
     } else {
       seedResults.push({
@@ -651,9 +720,10 @@ export async function collectAppleMusicPlaylists(env, now = Date.now(), fetchImp
   });
 
   const state = {
-    version: 1,
+    version: 2,
     source: 'music.apple.com-public-pages',
-    artist_id: TARGET_ARTIST_ID,
+    artist_id: PRIMARY_ARTIST.id,
+    artist_ids: APPLE_MUSIC_PLAYLIST_ARTISTS.map((artist) => artist.id),
     scan_date: date,
     observed_at: observedAt,
     seeds: seedResults,
@@ -676,6 +746,7 @@ export async function collectAppleMusicPlaylists(env, now = Date.now(), fetchImp
     scanned_playlists: candidates.length,
     matched_playlists: model.playlists.length,
     matched_tracks: model.tracks.length,
+    matched_tracks_by_artist: model.coverage.matched_tracks_by_artist,
     bytes_written: bytesWritten,
     pages_object_key: published.objectKey,
   };
