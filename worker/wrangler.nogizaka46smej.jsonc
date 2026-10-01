@@ -31,7 +31,6 @@
     { "binding": "MINUTE_DB", "database_name": "stationhead-minute", "database_id": "43c12c1e-886d-4496-9c37-61bc8a15bbd7" },
     { "binding": "OTHER_DB", "database_name": "stationhead-other", "database_id": "21e70e92-6725-4e62-809e-8aadb088cc11" }
   ],
-  // Required by the producer-owned Pages listening-party read model.
   "r2_buckets": [
     { "binding": "PAGES_RESPONSE_R2", "bucket_name": "stationhead-pages-response" }
   ],
