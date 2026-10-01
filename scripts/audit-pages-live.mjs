@@ -52,7 +52,7 @@ const MODES = [
     path: '/#spotify',
     panel: '#spotifyView',
     tab: '#modeTabs button[data-view="spotify"]',
-    requiredText: '櫻坂46 再生数一覧',
+    requiredText: '櫻坂46の再生数一覧',
     notice: '#spotifyNotice',
   },
   {
@@ -156,6 +156,13 @@ async function waitForMode(page, route) {
       return element && !/^(?:読み込み中|表示するタブを選択)/.test(text);
     }, route.notice, { timeout: 10_000 }).catch(() => {});
   }
+  if (route.requiredText) {
+    await page.waitForFunction(
+      (text) => document.body?.innerText.includes(text),
+      route.requiredText,
+      { timeout: 15_000 },
+    ).catch(() => {});
+  }
   if (route.legendSelector && route.minLegendItems) {
     await page.waitForFunction(({ selector, minimum }) =>
       document.querySelectorAll(selector).length >= minimum,
@@ -252,11 +259,11 @@ async function auditRoute(browser, target, route, viewport, outDir) {
     const body = document.body;
     const scrollWidth = Math.max(root.scrollWidth, body?.scrollWidth || 0);
     const tabs = document.querySelector('#modeTabs');
-    const tabsRect = tabs?.getBoundingClientRect();
-    const clippedTabs = [...(tabs?.querySelectorAll('button') || [])].filter((button) => {
-      const rect = button.getBoundingClientRect();
-      return tabsRect && (rect.left < tabsRect.left - 1 || rect.right > tabsRect.right + 1);
-    }).length;
+    const tabButtons = [...(tabs?.querySelectorAll('button') || [])];
+    const clippedTabs = tabButtons.filter((button) => (
+      button.scrollWidth > button.clientWidth + 1 || button.scrollHeight > button.clientHeight + 1
+    )).length;
+    const tabRows = [...new Set(tabButtons.map((button) => Math.round(button.getBoundingClientRect().top)))];
     return {
       viewportWidth: window.innerWidth,
       scrollWidth,
@@ -264,6 +271,8 @@ async function auditRoute(browser, target, route, viewport, outDir) {
       visiblePanels: panels,
       expectedPanelVisible: visible(document.querySelector(expectedPanel)),
       clippedTabs,
+      tabRowCount: tabRows.length,
+      tabsScrollable: Boolean(tabs && tabs.scrollWidth > tabs.clientWidth + 1),
     };
   }, route.panel).catch(() => ({
     viewportWidth: viewport.width,
@@ -272,6 +281,8 @@ async function auditRoute(browser, target, route, viewport, outDir) {
     visiblePanels: [],
     expectedPanelVisible: false,
     clippedTabs: null,
+    tabRowCount: null,
+    tabsScrollable: null,
   }));
   const finalUrl = page.url();
   const screenshotPath = join(
@@ -294,7 +305,10 @@ async function auditRoute(browser, target, route, viewport, outDir) {
   if (Number(layout.horizontalOverflow) > 1) {
     failures.push(`document overflows viewport horizontally by ${layout.horizontalOverflow}px`);
   }
-  if (Number(layout.clippedTabs) > 0) failures.push(`${layout.clippedTabs} navigation tabs are clipped`);
+  if (Number(layout.clippedTabs) > 0) failures.push(`${layout.clippedTabs} navigation tab labels are clipped`);
+  if (viewport.width <= 760 && Number(layout.tabRowCount) !== 2) {
+    failures.push(`mobile navigation rendered ${layout.tabRowCount} rows; expected 2`);
+  }
   if (bodyText.length < 20) failures.push(`page body is unexpectedly short (${bodyText.length} characters)`);
   if (route.requiredText && !bodyText.includes(route.requiredText)) {
     failures.push(`required text was not rendered: ${route.requiredText}`);
@@ -385,15 +399,15 @@ function markdownSummary(report) {
     `- Generated: ${report.generatedAt}`,
     `- Result: ${report.ok ? 'PASS' : 'FAIL'}`,
     '',
-    '| Target | Viewport | Mode | HTTP | Panel | Overflow | Result |',
-    '| --- | --- | --- | ---: | :---: | ---: | :---: |',
+    '| Target | Viewport | Mode | HTTP | Panel | Overflow | Tab rows | Labels clipped | Result |',
+    '| --- | --- | --- | ---: | :---: | ---: | ---: | ---: | :---: |',
   ];
 
   for (const target of report.targets) {
     for (const route of target.routes) {
-      lines.push(`| ${target.baseUrl} | ${route.viewport} | ${route.mode} | ${route.status ?? '-'} | ${route.panelVisible ? 'yes' : 'no'} | ${route.layout.horizontalOverflow ?? '-'} | ${route.ok ? 'PASS' : 'FAIL'} |`);
+      lines.push(`| ${target.baseUrl} | ${route.viewport} | ${route.mode} | ${route.status ?? '-'} | ${route.panelVisible ? 'yes' : 'no'} | ${route.layout.horizontalOverflow ?? '-'} | ${route.layout.tabRowCount ?? '-'} | ${route.layout.clippedTabs ?? '-'} | ${route.ok ? 'PASS' : 'FAIL'} |`);
     }
-    lines.push(`| ${target.baseUrl} | - | /api/health | ${target.health.status ?? '-'} | - | - | ${target.health.ok ? 'PASS' : 'FAIL'} |`);
+    lines.push(`| ${target.baseUrl} | - | /api/health | ${target.health.status ?? '-'} | - | - | - | - | ${target.health.ok ? 'PASS' : 'FAIL'} |`);
   }
 
   const failures = report.targets.flatMap((target) => target.failures.map((failure) => `- **${target.name}** ${failure}`));
