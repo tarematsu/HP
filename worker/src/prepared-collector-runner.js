@@ -1,3 +1,4 @@
+import { captureBuddiesPlayback } from './buddies-playback-state.js';
 import { asCollectorFailure } from './collector-failure.js';
 import { configFromEnv } from './collector-config.js';
 import { ingest } from './collector-ingest.js';
@@ -196,6 +197,7 @@ export function minuteFactDue(observedAt, previousRunAt = null) {
 function estimateD1RowsWritten({
   snapshotResult,
   queueResult,
+  playbackResult,
   materializationStateWritten,
   minuteFactJob,
   checkpointDue,
@@ -205,6 +207,7 @@ function estimateD1RowsWritten({
     + Number(queueResult?.like_observations_written || 0) * 2
     + Number(queueResult?.reachability_checkpoint_written === true)
     + Number(queueResult?.structure_changed === true || queueResult?.likes_changed === true)
+    + Number(playbackResult?.d1_rows_written || 0)
     + Number(materializationStateWritten === true)
     + Number(minuteFactJob?.outbox_rows_written || 0)
     + Number(minuteFactJob?.outbox_rows_deleted || 0)
@@ -244,6 +247,7 @@ export async function collectPreparedOnce(env, source = 'raw-collection-queue') 
       observedAt,
       metadataRetry,
     );
+    const r2PlaybackMode = enabled(activeEnv?.BUDDIES_R2_PLAYBACK_ENABLED);
 
     let snapshotResult = null;
     if (plan.snapshot) {
@@ -252,23 +256,29 @@ export async function collectPreparedOnce(env, source = 'raw-collection-queue') 
     }
 
     let queueResult = null;
+    let playbackResult = null;
     let metadataPlanned = false;
     let materializationStateWritten = false;
     if (plan.queue) {
-      stage = 'd1_write_queue';
-      queueResult = await ingest(activeEnv, 'queue', queue, observedAt, {
-        metadataRequested: plan.metadataDue,
-      });
-      metadataPlanned = !activeEnv?.PERSIST_QUEUE?.send
-        && (plan.metadataDue || queueResult?.structure_changed === true);
-      if (!activeEnv?.PERSIST_QUEUE?.send && queueResult?.structure_changed === true) {
-        stage = 'd1_write_queue_materialization';
-        materializationStateWritten = await recordQueueMaterialization(
-          activeEnv.DB,
-          queue,
-          null,
-          observedAt,
-        );
+      if (r2PlaybackMode) {
+        stage = 'r2_playback_capture';
+        playbackResult = await captureBuddiesPlayback(activeEnv, queue, observedAt);
+      } else {
+        stage = 'd1_write_queue';
+        queueResult = await ingest(activeEnv, 'queue', queue, observedAt, {
+          metadataRequested: plan.metadataDue,
+        });
+        metadataPlanned = !activeEnv?.PERSIST_QUEUE?.send
+          && (plan.metadataDue || queueResult?.structure_changed === true);
+        if (!activeEnv?.PERSIST_QUEUE?.send && queueResult?.structure_changed === true) {
+          stage = 'd1_write_queue_materialization';
+          materializationStateWritten = await recordQueueMaterialization(
+            activeEnv.DB,
+            queue,
+            null,
+            observedAt,
+          );
+        }
       }
     }
 
@@ -356,6 +366,7 @@ export async function collectPreparedOnce(env, source = 'raw-collection-queue') 
     const d1RowsWrittenEstimate = estimateD1RowsWritten({
       snapshotResult,
       queueResult,
+      playbackResult,
       materializationStateWritten,
       minuteFactJob,
       checkpointDue: !factStage && checkpointDue,
@@ -377,6 +388,10 @@ export async function collectPreparedOnce(env, source = 'raw-collection-queue') 
       queue_likes_changed: Boolean(queueResult?.likes_changed),
       queue_items_written: Number(queueResult?.queue_items_written || 0),
       like_observations_written: Number(queueResult?.like_observations_written || 0),
+      playback_transitions_written: Number(playbackResult?.transitions_written || 0),
+      playback_like_changes_written: Number(playbackResult?.like_changes_written || 0),
+      playback_state_saved: playbackResult?.state_saved === true,
+      playback_capture_skipped: playbackResult?.skipped === true,
       snapshot_inserted: snapshotResult?.inserted === true,
       snapshot_skipped: snapshotResult?.skipped === true,
       materialization_state_written: materializationStateWritten,
@@ -389,7 +404,7 @@ export async function collectPreparedOnce(env, source = 'raw-collection-queue') 
       outbox_backoff_ms: Number(minuteFactJob?.outbox_backoff_ms || 0),
       pending_flushed: Number(minuteFactJob?.pending_flushed || 0),
       metadata_saved: 0,
-      metadata_deferred: Boolean(queue),
+      metadata_deferred: Boolean(queue) && !r2PlaybackMode,
       metadata_delegated: Boolean(metadataPlanned),
       minute_fact_due: factDue,
       minute_fact_observed_at: factDue ? factObservedAt : null,

@@ -3,6 +3,7 @@ import { payloadHash } from '../../site/functions/lib/ingest-claim.js';
 const DEFAULT_INITIAL_TRACKS = 22;
 const DEFAULT_LOW_WATER_TRACKS = 5;
 const DEFAULT_EXPAND_TRACKS = 10;
+const DEFAULT_PLAYBACK_TRACKS = 6;
 const MAX_TRACKS = 200;
 
 function integer(value) {
@@ -13,6 +14,10 @@ function integer(value) {
 function positiveInteger(value, fallback, maximum = MAX_TRACKS) {
   const parsed = integer(value);
   return parsed != null && parsed > 0 ? Math.min(parsed, maximum) : fallback;
+}
+
+function enabled(value) {
+  return value === true || value === 1 || /^(1|true|yes|on)$/i.test(String(value || ''));
 }
 
 function config(env = {}) {
@@ -180,6 +185,57 @@ export function materializeQueueWindow(queue, analysis, requestedCount) {
   return { queue: materialized, analysis: materializedAnalysis };
 }
 
+export function materializeCurrentPlaybackWindow(
+  queue,
+  observedAt = Date.now(),
+  maxTracks = DEFAULT_PLAYBACK_TRACKS,
+) {
+  if (!queue) return queue;
+  const tracks = Array.isArray(queue.tracks) ? queue.tracks : [];
+  if (!tracks.length) return { ...queue, tracks: [] };
+  const sourceStart = integer(queue.start_time);
+  const limit = positiveInteger(maxTracks, DEFAULT_PLAYBACK_TRACKS, 20);
+  let currentIndex = 0;
+  let currentStart = sourceStart;
+  if (sourceStart != null) {
+    const elapsed = Math.max(0, Number(observedAt) - sourceStart);
+    let cursor = 0;
+    for (let index = 0; index < tracks.length; index += 1) {
+      const duration = Math.max(0, integer(tracks[index]?.duration_ms) || 0);
+      if (elapsed < cursor + duration || index === tracks.length - 1) {
+        currentIndex = index;
+        currentStart = sourceStart + cursor;
+        break;
+      }
+      cursor += duration;
+    }
+  } else {
+    currentStart = Number(observedAt);
+  }
+
+  let expectedStart = currentStart;
+  const visible = tracks.slice(currentIndex, currentIndex + limit).map((track, offset) => {
+    const result = {
+      ...track,
+      position: integer(track?.position) ?? currentIndex + offset,
+      expected_start_at: expectedStart,
+    };
+    expectedStart += Math.max(0, integer(track?.duration_ms) || 0);
+    return result;
+  });
+  const remaining = Math.max(0, tracks.length - currentIndex);
+  return {
+    ...queue,
+    source_start_time: sourceStart,
+    source_total_track_count: tracks.length,
+    start_time: currentStart,
+    tracks: visible,
+    total_track_count: remaining,
+    materialized_track_count: visible.length,
+    materialization_complete: visible.length >= remaining,
+  };
+}
+
 async function hashMaterializedAnalysis(result) {
   if (!result?.analysis?.structural) return result;
   const [structuralHash, likesHash] = await Promise.all([
@@ -195,6 +251,16 @@ async function hashMaterializedAnalysis(result) {
 
 export async function prepareMaterializedQueue(db, queue, analysis, env = {}) {
   if (!queue || !analysis?.structural_hash) return { queue, analysis };
+  if (enabled(env?.BUDDIES_R2_PLAYBACK_ENABLED)) {
+    return {
+      queue: materializeCurrentPlaybackWindow(
+        queue,
+        Date.now(),
+        env?.BUDDIES_PLAYBACK_VISIBLE_TRACKS,
+      ),
+      analysis: null,
+    };
+  }
   const identity = queueIdentity(queue);
   const state = await loadState(db, identity.stationId);
   const count = chooseMaterializedTrackCount(queue, analysis, state, env);
