@@ -23,15 +23,22 @@ test('music collector uses one combined cron and gates work internally', () => {
   assert.equal(value.queues, undefined);
 });
 
-test('single Amazon cron preserves the previous minute schedule and adds one daily playlist crawl', () => {
+test('single Amazon cron preserves ranking work and schedules per-track playlists hourly', () => {
   const at = (hour, minute) => Date.UTC(2026, 8, 30, hour, minute, 0);
-  assert.deepEqual(amazonMusicDueTasks(at(3, 2)), { apple: false, playlists: false, top500: false, deep100k: true });
-  assert.deepEqual(amazonMusicDueTasks(at(3, 5)), { apple: false, playlists: false, top500: true, deep100k: false });
-  assert.deepEqual(amazonMusicDueTasks(at(3, 12)), { apple: false, playlists: false, top500: false, deep100k: true });
-  assert.deepEqual(amazonMusicDueTasks(at(3, 15)), { apple: true, playlists: false, top500: false, deep100k: false });
-  assert.deepEqual(amazonMusicDueTasks(at(18, 15)), { apple: true, playlists: true, top500: false, deep100k: false });
-  assert.deepEqual(amazonMusicDueTasks(at(3, 22)), { apple: false, playlists: false, top500: false, deep100k: true });
-  assert.deepEqual(amazonMusicDueTasks(at(3, 6)), { apple: false, playlists: false, top500: false, deep100k: false });
+  const expected = ({ apple = false, playlists = false, amazonTrackPlaylists = false, top500 = false, deep100k = false } = {}) => ({
+    apple,
+    playlists,
+    amazonTrackPlaylists,
+    top500,
+    deep100k,
+  });
+  assert.deepEqual(amazonMusicDueTasks(at(3, 2)), expected({ deep100k: true }));
+  assert.deepEqual(amazonMusicDueTasks(at(3, 5)), expected({ top500: true }));
+  assert.deepEqual(amazonMusicDueTasks(at(3, 12)), expected({ deep100k: true }));
+  assert.deepEqual(amazonMusicDueTasks(at(3, 15)), expected({ apple: true, amazonTrackPlaylists: true }));
+  assert.deepEqual(amazonMusicDueTasks(at(18, 15)), expected({ apple: true, playlists: true, amazonTrackPlaylists: true }));
+  assert.deepEqual(amazonMusicDueTasks(at(3, 22)), expected({ deep100k: true }));
+  assert.deepEqual(amazonMusicDueTasks(at(3, 6)), expected());
 });
 
 test('scheduled entry separates canonical identity from service storage', () => {
@@ -41,6 +48,7 @@ test('scheduled entry separates canonical identity from service storage', () => 
   assert.match(source, /minute === 15/);
   assert.match(source, /getUTCHours\(\) === 18/);
   assert.match(source, /collectAppleMusicPlaylists\(env, scheduledTime\)/);
+  assert.match(source, /collectAmazonMusicTrackPlaylists\(amazonMusicServiceEnv\(env\), scheduledTime\)/);
   assert.match(source, /minute === 5/);
   assert.match(source, /minute % 10 === 2/);
   assert.match(source, /amazonMusicServiceEnv\(env\)/);
