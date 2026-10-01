@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   monthlyListenersFromArtistOverview,
   spotifyArtistOverviewUrl,
+  spotifyMonthlyListenersReadModelSourceSql,
 } from '../src/spotify-monthly-listeners.js';
 
 test('monthly listeners are parsed from queryArtistOverview stats', () => {
@@ -43,13 +44,30 @@ test('monthly listener collection is wired after a confirmed playcount save', ()
   assert.match(router, /snapshotDate: String\(row\.snapshot_date\)/);
 });
 
-test('monthly listener table is part of the required Other DB schema', () => {
-  const migration = readFileSync(
+test('monthly listener collection materializes the display join once', () => {
+  const sql = spotifyMonthlyListenersReadModelSourceSql();
+  assert.match(sql, /FROM sh_spotify_artist_monthly_listeners_daily daily/);
+  assert.match(sql, /INNER JOIN sh_spotify_artists artist/);
+  assert.match(sql, /current_rank\.rank AS current_rank/);
+  const source = readFileSync(new URL('../src/spotify-monthly-listeners.js', import.meta.url), 'utf8');
+  assert.match(source, /INSERT INTO sh_spotify_monthly_listeners_read_model/);
+  assert.match(source, /refreshSpotifyMonthlyListenersReadModel/);
+});
+
+test('monthly listener tables are part of the required Other DB schema', () => {
+  const dailyMigration = readFileSync(
     new URL('../../database/other-migrations/051_spotify_monthly_listeners_daily.sql', import.meta.url),
     'utf8',
   );
+  const readModelMigration = readFileSync(
+    new URL('../../database/other-migrations/062_spotify_monthly_listeners_read_model.sql', import.meta.url),
+    'utf8',
+  );
   const tables = readFileSync(new URL('../scripts/other-db-tables.mjs', import.meta.url), 'utf8');
-  assert.match(migration, /CREATE TABLE IF NOT EXISTS sh_spotify_artist_monthly_listeners_daily/);
-  assert.match(migration, /PRIMARY KEY \(snapshot_date, artist_key\)/);
+  assert.match(dailyMigration, /CREATE TABLE IF NOT EXISTS sh_spotify_artist_monthly_listeners_daily/);
+  assert.match(dailyMigration, /PRIMARY KEY \(snapshot_date, artist_key\)/);
+  assert.match(readModelMigration, /CREATE TABLE IF NOT EXISTS sh_spotify_monthly_listeners_read_model/);
+  assert.match(readModelMigration, /rows_json TEXT NOT NULL/);
   assert.match(tables, /'sh_spotify_artist_monthly_listeners_daily'/);
+  assert.match(tables, /'sh_spotify_monthly_listeners_read_model'/);
 });
