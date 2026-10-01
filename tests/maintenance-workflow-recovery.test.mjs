@@ -160,7 +160,10 @@ test('maintenance workflows expose bounded four-hour repair and daily deep recon
   assert.doesNotMatch(dataRepairWorkflow, /publish-recent-daily-summaries-actions\.mjs/);
 
   assert.match(metadataWorkflow, /cron: '16 0 \* \* \*'/);
-  assert.doesNotMatch(metadataWorkflow, /^\s*push:\s*$/m);
+  assert.match(metadataWorkflow, /^\s*push:\s*$/m);
+  assert.match(metadataWorkflow, /branches: \[main\]/);
+  assert.match(metadataWorkflow, /worker\/scripts\/repair-playback-read-model-actions\.mjs/);
+  assert.doesNotMatch(metadataWorkflow, /workflow_run:/);
   assert.doesNotMatch(pagesWorkflow, /workflow_run:/);
   assert.match(pagesWorkflow, /cron: '26 0 \* \* \*'/);
 });
