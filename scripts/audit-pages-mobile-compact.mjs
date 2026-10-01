@@ -100,17 +100,19 @@ async function auditMode(browser, baseUrl, route, outDir) {
     const body = document.body;
     const scrollWidth = Math.max(root.scrollWidth, body?.scrollWidth || 0);
     const tabs = document.querySelector('#modeTabs');
-    const tabsRect = tabs?.getBoundingClientRect();
-    const clippedTabs = [...(tabs?.querySelectorAll('button') || [])].filter((button) => {
-      const rect = button.getBoundingClientRect();
-      return tabsRect && (rect.left < tabsRect.left - 1 || rect.right > tabsRect.right + 1);
-    }).length;
+    const tabButtons = [...(tabs?.querySelectorAll('button') || [])];
+    const clippedTabs = tabButtons.filter((button) => (
+      button.scrollWidth > button.clientWidth + 1 || button.scrollHeight > button.clientHeight + 1
+    )).length;
+    const tabRows = [...new Set(tabButtons.map((button) => Math.round(button.getBoundingClientRect().top)))];
     const chart = mode === 'played-tracks' ? document.getElementById('playedTracksChart') : null;
     return {
       viewportWidth: window.innerWidth,
       scrollWidth,
       horizontalOverflow: Math.max(0, scrollWidth - window.innerWidth),
       clippedTabs,
+      tabRowCount: tabRows.length,
+      tabsScrollable: Boolean(tabs && tabs.scrollWidth > tabs.clientWidth + 1),
       expectedPanelVisible: visible(document.querySelector(expectedPanel)),
       playedTracksChartHeight: chart?.getBoundingClientRect().height ?? null,
     };
@@ -123,7 +125,8 @@ async function auditMode(browser, baseUrl, route, outDir) {
   if (route.tab && (!selectedTab?.active || selectedTab.current !== 'page')) failures.push(`selected tab state was not applied: ${route.name}`);
   if (route.expectedHash && actualHash !== route.expectedHash) failures.push(`expected hash was not applied: ${route.expectedHash} (actual ${actualHash || '(empty)'})`);
   if (layout.horizontalOverflow > 1) failures.push(`document overflows viewport horizontally by ${layout.horizontalOverflow}px`);
-  if (layout.clippedTabs > 0) failures.push(`${layout.clippedTabs} navigation tabs are clipped`);
+  if (layout.clippedTabs > 0) failures.push(`${layout.clippedTabs} navigation tab labels are clipped`);
+  if (layout.tabRowCount !== 2) failures.push(`mobile navigation rendered ${layout.tabRowCount} rows; expected 2`);
   if (!bodyText.includes(route.requiredText)) failures.push(`required text was not rendered: ${route.requiredText}`);
   if (route.name === 'played-tracks' && Number(layout.playedTracksChartHeight) < 360) {
     failures.push(`played-tracks chart is too short for compact mobile labels: ${layout.playedTracksChartHeight}px`);
@@ -177,9 +180,9 @@ async function main() {
     `- Generated: ${report.generatedAt}`,
     `- Result: ${report.ok ? 'PASS' : 'FAIL'}`,
     '',
-    '| Mode | HTTP | Overflow | Tabs clipped | Result |',
-    '| --- | ---: | ---: | ---: | :---: |',
-    ...results.map((result) => `| ${result.mode} | ${result.status ?? '-'} | ${result.layout.horizontalOverflow ?? '-'} | ${result.layout.clippedTabs ?? '-'} | ${result.ok ? 'PASS' : 'FAIL'} |`),
+    '| Mode | HTTP | Overflow | Tab rows | Labels clipped | Result |',
+    '| --- | ---: | ---: | ---: | ---: | :---: |',
+    ...results.map((result) => `| ${result.mode} | ${result.status ?? '-'} | ${result.layout.horizontalOverflow ?? '-'} | ${result.layout.tabRowCount ?? '-'} | ${result.layout.clippedTabs ?? '-'} | ${result.ok ? 'PASS' : 'FAIL'} |`),
     '',
   ];
   await writeFile(join(options.outDir, 'summary.md'), `${lines.join('\n')}\n`);
