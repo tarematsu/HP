@@ -100,13 +100,13 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ steps.d1-write-budget.outputs.reason }}" == 'telemetry-unavailable' ]]; then
-            echo "Deferring D1-heavy history read-model generation because usage telemetry is unavailable. Existing R2 responses remain active; reuse-only history freshness checks will still run." | tee pages-read-model-actions.log
+            echo "Deferring D1-heavy history read-model generation because usage telemetry is unavailable. Daily history remains publishable; heavier history stays reuse-only." | tee pages-read-model-actions.log
           else
-            echo "Deferring D1-heavy history read-model generation because the D1 read budget is unavailable or exceeded (${{ steps.d1-write-budget.outputs.rows_read }} actual / ${{ steps.d1-write-budget.outputs.projected_rows_read }} projected UTC-day reads, limit ${{ steps.d1-write-budget.outputs.read_limit }}). Existing R2 responses remain active; reuse-only history freshness checks will still run." | tee pages-read-model-actions.log
+            echo "Deferring D1-heavy history read-model generation because the D1 read budget is unavailable or exceeded (${{ steps.d1-write-budget.outputs.rows_read }} actual / ${{ steps.d1-write-budget.outputs.projected_rows_read }} projected UTC-day reads, limit ${{ steps.d1-write-budget.outputs.read_limit }}). Daily history remains publishable; heavier history stays reuse-only." | tee pages-read-model-actions.log
           fi
       - name: Install Worker dependencies
         run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Refresh reusable history models during D1 budget deferral
+      - name: Refresh budget-safe history models during D1 budget deferral
         if: steps.d1-write-budget.outputs.read_allowed != 'true'
         shell: bash
         env:
