@@ -50,6 +50,8 @@ test('Amazon Music canonical metadata is loaded once by sh_tracks.id and ignores
   assert.deepEqual(metadata.get(101), { title: '正規曲A', artist: '櫻坂46' });
   assert.deepEqual(metadata.get(102), { title: '正規曲B', artist: '櫻坂46' });
   assert.equal(db.calls.length, 1);
-  assert.match(db.calls[0].sql, /FROM sh_track_canonical_metadata/);
+  assert.match(db.calls[0].sql, /FROM sh_tracks t/);
+  assert.match(db.calls[0].sql, /LEFT JOIN sh_track_dictionary d/);
+  assert.doesNotMatch(db.calls[0].sql, /sh_track_canonical_metadata/);
   assert.deepEqual(db.calls[0].bindings, [101, 102]);
 });
