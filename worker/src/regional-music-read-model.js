@@ -58,11 +58,15 @@ export async function loadRegionalMusicReadModel(db) {
     all(db, `SELECT
         m.service,m.service_playlist_id,m.service_track_id,m.snapshot_date,m.observed_at,m.position
       FROM regional_music_playlist_memberships AS m
-      WHERE m.snapshot_date=(
+      INNER JOIN regional_music_playlist_snapshots AS s
+        ON s.service=m.service
+       AND s.service_playlist_id=m.service_playlist_id
+       AND s.snapshot_date=m.snapshot_date
+      WHERE s.snapshot_date=(
         SELECT MAX(x.snapshot_date)
-        FROM regional_music_playlist_memberships AS x
-        WHERE x.service=m.service
-          AND x.service_playlist_id=m.service_playlist_id
+        FROM regional_music_playlist_snapshots AS x
+        WHERE x.service=s.service
+          AND x.service_playlist_id=s.service_playlist_id
       )
       ORDER BY m.service,m.service_playlist_id,m.position,m.service_track_id
       LIMIT 10000`),
