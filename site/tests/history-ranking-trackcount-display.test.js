@@ -26,9 +26,9 @@ test('ranking runtime loads only the fixed Sakamichi comparison presentation', (
   assert.match(rankingSimplified, /controls\.hidden = rankingMode/);
   assert.match(rankingSimplified, /moveRankNextToWeek/);
   assert.match(rankingSimplified, /textContent\.trim\(\) === '順位'/);
-  assert.match(historyShell, /id=\\"rankingScope\\" type=\\"hidden\\" value=\\"featured\\"/);
-  assert.match(historyShell, /id=\\"rankingHost\\" type=\\"hidden\\" value=\\"\\"/);
-  assert.doesNotMatch(historyShell, /<option value=\\"all\\">全ホスト<\/option>|placeholder=\\"ホスト名\\"/);
+  assert.match(historyShell, /id="rankingScope" type="hidden" value="featured"/);
+  assert.match(historyShell, /id="rankingHost" type="hidden" value=""/);
+  assert.doesNotMatch(historyShell, /<option value="all">全ホスト<\/option>|placeholder="ホスト名"/);
 });
 
 test('legacy all-host table module still defines metadata columns for backwards-compatible imports', () => {
