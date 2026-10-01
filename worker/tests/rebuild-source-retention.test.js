@@ -27,6 +27,10 @@ const dirtyDaysMigration = readFileSync(
   new URL('../../database/buddies-migrations/015_track_history_dirty_days.sql', import.meta.url),
   'utf8',
 );
+const commentReadCompatibilityMigration = readFileSync(
+  new URL('../../database/buddies-migrations/018_retired_comment_read_compat.sql', import.meta.url),
+  'utf8',
+);
 const manifest = JSON.parse(readFileSync(
   new URL('../../database/buddies-db.json', import.meta.url),
   'utf8',
@@ -46,7 +50,7 @@ test('all durable reconstruction sources share a thirty-day retention floor', ()
 });
 
 test('current buddies schema keeps retention safe and indexes bounded repair paths', () => {
-  assert.equal(manifest.schema, 'database/buddies-migrations/017_retire_redundant_state_indexes.sql');
+  assert.equal(manifest.schema, 'database/buddies-migrations/018_retired_comment_read_compat.sql');
   assert.match(retentionMigration, /DROP TRIGGER IF EXISTS trg_sh_claim_retention/);
   assert.doesNotMatch(retentionMigration, /172800000/);
   assert.doesNotMatch(retentionMigration, /DELETE FROM sh_comment_minute_counts/);
@@ -67,4 +71,7 @@ test('current buddies schema keeps retention safe and indexes bounded repair pat
   assert.doesNotMatch(retentionIndexMigration, /DELETE|UPDATE|ANALYZE|PRAGMA optimize/);
   assert.match(dirtyDaysMigration, /CREATE TABLE IF NOT EXISTS sh_track_history_dirty_days/);
   assert.match(dirtyDaysMigration, /INSERT OR IGNORE INTO sh_track_history_dirty_days/);
+  assert.match(commentReadCompatibilityMigration, /CREATE TABLE IF NOT EXISTS sh_comment_minute_counts/);
+  assert.match(commentReadCompatibilityMigration, /PRIMARY KEY \(station_id, bucket_start\)/);
+  assert.doesNotMatch(commentReadCompatibilityMigration, /CREATE TRIGGER|INSERT INTO|UPDATE sh_comment|DELETE FROM/);
 });
