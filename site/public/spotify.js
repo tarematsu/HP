@@ -200,7 +200,8 @@ function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel, maxSe
     const color = TREND_COLORS[seriesIndex % TREND_COLORS.length];
     const byDate = new Map(points.map((point) => [String(point.snapshot_date), point]));
     const rows = dates.map((date) => ({ date, value: integer(byDate.get(date)?.[metricKey]) }));
-    const pointCount = drawDashboardLine(context, rows, {
+    const plotted = rows.filter((row) => row.value != null);
+    drawDashboardLine(context, rows, {
       x: (row) => xFor(row.date),
       y: (value) => yFor(value),
       value: (row) => row.value,
@@ -208,14 +209,15 @@ function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel, maxSe
       strokeStyle: color,
       lineWidth: 2,
     });
-    if (pointCount !== 1) return;
-    const row = rows.find((item) => item.value != null);
-    context.save();
-    context.fillStyle = color;
-    context.beginPath();
-    context.arc(xFor(row.date), yFor(row.value), 3, 0, Math.PI * 2);
-    context.fill();
-    context.restore();
+    if (plotted.length === 1) {
+      const [row] = plotted;
+      context.save();
+      context.fillStyle = color;
+      context.beginPath();
+      context.arc(xFor(row.date), yFor(row.value), 3, 0, Math.PI * 2);
+      context.fill();
+      context.restore();
+    }
   });
 }
 
@@ -408,7 +410,7 @@ globalThis.document?.querySelectorAll('[data-spotify-artist]').forEach((button) 
   loadSpotifyView();
 }));
 
-window.addEventListener('resize', () => {
+globalThis.window?.addEventListener('resize', () => {
   if (!latestCharts) return;
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => renderCharts(latestCharts.trend, latestCharts.artistChart), 220);
