@@ -7,10 +7,11 @@ import { APPLE_MUSIC_PLAYLIST_PAGES_MODEL_KEY } from './apple-music-playlist-col
 import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
 
 const LATEST_KEY = 'apple-music/playlists/latest.json';
-const PRESENTATION_VERSION = 1;
+const PRESENTATION_VERSION = 2;
 const REFRESH_INTERVAL_MS = 12 * 60 * 60_000;
 const LOOKUP_CHUNK_SIZE = 70;
-const TARGET_ARTIST_NAME = '櫻坂46';
+const PRIMARY_ARTIST_KEY = 'sakurazaka46';
+const PRIMARY_ARTIST_NAME = '櫻坂46';
 const PUBLIC_HEADERS = Object.freeze({
   'content-type': 'application/json; charset=utf-8',
   'x-content-type-options': 'nosniff',
@@ -36,11 +37,19 @@ function normalizedTitle(value) {
     .trim();
 }
 
+function artistKey(track) {
+  return text(track?.artist_key) || PRIMARY_ARTIST_KEY;
+}
+
+function artistName(track) {
+  return text(track?.artist_name) || text(track?.artist) || PRIMARY_ARTIST_NAME;
+}
+
 function sourceKey(track) {
   const appleId = text(track?.apple_music_id);
   if (appleId) return `apple:${appleId}`;
   const title = normalizedTitle(track?.title);
-  return title ? `title:${title}` : null;
+  return title ? `title:${artistKey(track)}:${title}` : null;
 }
 
 function placeholders(count) {
@@ -96,7 +105,10 @@ function uniqueSourceTracks(model) {
         apple_music_id: text(track?.apple_music_id),
         track_id: positiveInteger(track?.track_id),
         title: text(track?.title),
-        artist: TARGET_ARTIST_NAME,
+        artist_key: artistKey(track),
+        artist_id: text(track?.artist_id),
+        artist_name: artistName(track),
+        artist: artistName(track),
       });
     }
   }
@@ -126,13 +138,16 @@ function rebuildReverseIndex(playlists) {
         ? `track:${trackId}`
         : appleId
           ? `apple:${appleId}`
-          : `title:${normalizedTitle(title)}`;
+          : `title:${artistKey(track)}:${normalizedTitle(title)}`;
       if (!grouped.has(key)) {
         grouped.set(key, {
           key,
           track_id: trackId,
           apple_music_id: appleId,
           title,
+          artist_key: artistKey(track),
+          artist_id: text(track?.artist_id),
+          artist_name: artistName(track),
           playlists: [],
         });
       }
@@ -167,7 +182,7 @@ async function publishModel(r2, model, observedAt) {
         updated_at: observedAt,
         cadence_seconds: 43_200,
         source_revision: sourceRevision,
-        renderer_revision: 'apple-music-playlists-v2',
+        renderer_revision: 'apple-music-playlists-v3',
         body,
       }
     : {
@@ -177,7 +192,7 @@ async function publishModel(r2, model, observedAt) {
         updated_at: observedAt,
         cadence_seconds: 43_200,
         source_revision: sourceRevision,
-        renderer_revision: 'apple-music-playlists-v2',
+        renderer_revision: 'apple-music-playlists-v3',
         body,
       };
   await r2.put(key, JSON.stringify(envelope), {
