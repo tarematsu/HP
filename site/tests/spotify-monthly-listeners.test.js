@@ -70,14 +70,17 @@ test('monthly listener endpoint returns JSON even when a legacy format query is 
   assert.equal(payload.trend.sakurazaka46[0].monthly_listeners, 450738);
 });
 
-test('Spotify shell mounts monthly listeners on the shared canvas chart container', () => {
+test('Spotify monthly listeners share one dual-axis canvas with total playcount delta', () => {
   const shell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
-  assert.match(shell, /Spotify 月間リスナー推移（坂道3グループ）/);
-  assert.match(shell, /id="spotifyMonthlyListenerTrendCharts"/);
+  assert.match(shell, /Spotify 全曲合計再生数前日比・月間リスナー推移（坂道3グループ）/);
+  assert.match(shell, /id="spotifyTrendCharts"/);
+  assert.doesNotMatch(shell, /spotifyMonthlyListenerTrendCharts/);
   assert.doesNotMatch(shell, /spotify-monthly-listeners\?format=svg|<img[^>]+Spotify月間リスナー/);
+  assert.match(runtime, /overviewTrend\(trend, monthlyListenerRows\)/);
   assert.match(runtime, /monthlyListenerTrend\(monthlyListenerRows\)/);
-  assert.match(runtime, /metricKey: 'monthly_listeners'/);
-  assert.match(runtime, /latestFormatter: formatInteger/);
+  assert.match(runtime, /secondaryMetricKey: 'monthly_listeners'/);
+  assert.match(runtime, /lineDash: \[6, 4\]/);
+  assert.match(runtime, /左軸が再生数前日比、右軸が月間リスナー/);
   assert.match(runtime, /drawDashboardLine/);
 });

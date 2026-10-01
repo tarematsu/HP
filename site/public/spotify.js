@@ -17,7 +17,6 @@ import {
 import { observeDashboardChartResize } from './dashboard-chart-runtime.js?v=20261001.1';
 
 let selectedArtistKey = 'sakurazaka46';
-const TREND_ARTIST_LIMIT = 10;
 const GRAPH_ARTIST_KEYS = Object.freeze(['sakurazaka46', 'nogizaka46', 'hinatazaka46']);
 const GRAPH_ARTIST_KEY_SET = new Set(GRAPH_ARTIST_KEYS);
 const GRAPH_ARTIST_COLORS = Object.freeze({
@@ -25,10 +24,7 @@ const GRAPH_ARTIST_COLORS = Object.freeze({
   sakurazaka46: '#f3a6c8',
   hinatazaka46: '#9ecff3',
 });
-const compactNumberFormat = new Intl.NumberFormat('ja-JP', {
-  notation: 'compact',
-  maximumFractionDigits: 1,
-});
+const compactNumberFormat = new Intl.NumberFormat('ja-JP', { notation: 'compact', maximumFractionDigits: 1 });
 let requestSequence = 0;
 let readModelPromise = null;
 let latestCharts = null;
@@ -67,11 +63,7 @@ function normalizeTrendSeries(trend = {}) {
       .filter((point) => /^\d{4}-\d{2}-\d{2}$/.test(String(point?.snapshot_date || '')))
       .sort((a, b) => String(a.snapshot_date).localeCompare(String(b.snapshot_date)));
     const metadata = points.find((point) => point?.artist_name || point?.current_rank != null) || {};
-    return {
-      artistKey,
-      artistName: String(metadata.artist_name || artistKey),
-      points,
-    };
+    return { artistKey, artistName: String(metadata.artist_name || artistKey), points };
   }).filter((series) => series.points.length)
     .sort((a, b) => a.artistName.localeCompare(b.artistName, 'ja'));
 }
@@ -92,10 +84,8 @@ function monthlyListenerTrend(rows = []) {
     const artistKey = String(row?.artist_key || '').trim();
     const snapshotDate = String(row?.snapshot_date || '').trim();
     const monthlyListeners = integer(row?.monthly_listeners);
-    if (!GRAPH_ARTIST_KEY_SET.has(artistKey)
-        || !/^\d{4}-\d{2}-\d{2}$/.test(snapshotDate)
-        || monthlyListeners == null
-        || monthlyListeners < 0) continue;
+    if (!GRAPH_ARTIST_KEY_SET.has(artistKey) || !/^\d{4}-\d{2}-\d{2}$/.test(snapshotDate)
+        || monthlyListeners == null || monthlyListeners < 0) continue;
     if (!trend[artistKey]) trend[artistKey] = [];
     trend[artistKey].push({
       snapshot_date: snapshotDate,
@@ -106,26 +96,18 @@ function monthlyListenerTrend(rows = []) {
   return trend;
 }
 
-export function selectTrendSeriesByLatestMetric(seriesList = [], metricKey, limit = TREND_ARTIST_LIMIT) {
-  let latestSnapshotDate = '';
-  for (const series of seriesList) {
-    for (const point of Array.isArray(series?.points) ? series.points : []) {
-      const snapshotDate = String(point?.snapshot_date || '');
-      if (integer(point?.[metricKey]) != null && snapshotDate > latestSnapshotDate) latestSnapshotDate = snapshotDate;
+function overviewTrend(trend = {}, monthlyListenerRows = []) {
+  const listeners = monthlyListenerTrend(monthlyListenerRows);
+  const output = {};
+  for (const key of GRAPH_ARTIST_KEYS) {
+    const byDate = new Map((trend[key] || []).map((point) => [String(point.snapshot_date), { ...point }]));
+    for (const point of listeners[key] || []) {
+      const current = byDate.get(point.snapshot_date) || { snapshot_date: point.snapshot_date };
+      byDate.set(point.snapshot_date, { ...current, ...point });
     }
+    output[key] = [...byDate.values()];
   }
-  if (!latestSnapshotDate) return [];
-
-  const ranked = seriesList.map((series) => {
-    const point = (Array.isArray(series?.points) ? series.points : [])
-      .find((candidate) => String(candidate?.snapshot_date || '') === latestSnapshotDate);
-    return { series, value: integer(point?.[metricKey]) };
-  }).filter(({ value }) => value != null)
-    .sort((a, b) => (b.value - a.value)
-      || String(a.series?.artistName || '').localeCompare(String(b.series?.artistName || ''), 'ja'));
-
-  const selected = Number.isInteger(limit) && limit > 0 ? ranked.slice(0, limit) : ranked;
-  return selected.map(({ series }) => series);
+  return output;
 }
 
 function trendFrame(container, ariaLabel) {
@@ -142,7 +124,7 @@ function trendFrame(container, ariaLabel) {
   scroll.append(canvas);
   chart.append(legend, scroll);
   container.append(chart);
-  return { chart, legend, canvas };
+  return { legend, canvas };
 }
 
 function legendItem(artistName, latestText, color) {
@@ -159,68 +141,78 @@ function legendItem(artistName, latestText, color) {
   return item;
 }
 
-function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel, latestFormatter = signedInteger }) {
+function renderTrendChart(trend = {}, {
+  containerId, metricKey, ariaLabel, latestFormatter = signedInteger,
+  secondaryMetricKey = '', secondaryFormatter = formatInteger,
+} = {}) {
   const container = element(containerId);
   if (!container) return;
   container.replaceChildren();
-
   const seriesList = graphTrendSeries(normalizeTrendSeries(trend));
-  const dates = [...new Set(seriesList.flatMap((series) =>
-    series.points.map((point) => String(point.snapshot_date))))].sort();
-  const values = seriesList.flatMap((series) =>
-    series.points.map((point) => integer(point?.[metricKey]))).filter((value) => value != null);
-  if (!dates.length || !values.length) {
+  const dates = [...new Set(seriesList.flatMap((series) => series.points.map((point) => String(point.snapshot_date))))].sort();
+  const values = seriesList.flatMap((series) => series.points.map((point) => integer(point?.[metricKey]))).filter((value) => value != null);
+  const secondValues = secondaryMetricKey
+    ? seriesList.flatMap((series) => series.points.map((point) => integer(point?.[secondaryMetricKey]))).filter((value) => value != null)
+    : [];
+  if (!dates.length || (!values.length && !secondValues.length)) {
     appendEmptyState(container, 'Spotify推移データはまだありません。', { className: 'spotify-trend-empty' });
     return;
   }
 
-  let yMin = Math.min(0, ...values);
-  let yMax = Math.max(0, ...values);
+  let yMin = Math.min(0, ...(values.length ? values : [0]));
+  let yMax = Math.max(0, ...(values.length ? values : [1]));
   if (yMin === yMax) yMax = yMin + 1;
   if (yMin < 0) yMin = Math.floor(yMin * 1.08);
   if (yMax > 0) yMax = Math.ceil(yMax * 1.08);
   const yRange = Math.max(1, yMax - yMin);
+  const secondMax = Math.max(1, Math.ceil(Math.max(1, ...secondValues) * 1.08));
   const { legend, canvas } = trendFrame(container, ariaLabel);
-  legend.setAttribute('aria-label', 'アーティスト凡例と最新値');
+  legend.setAttribute('aria-label', secondaryMetricKey
+    ? 'アーティスト凡例と最新値。実線は再生数前日比、破線は月間リスナー。'
+    : 'アーティスト凡例と最新値');
   seriesList.forEach((series) => {
-    const { artistName, points } = series;
-    const color = graphTrendColor(series);
-    const latest = [...points].reverse().find((point) => integer(point?.[metricKey]) != null);
-    legend.append(legendItem(artistName, latestFormatter(latest?.[metricKey]), color));
+    const latest = (key) => [...series.points].reverse().find((point) => integer(point?.[key]) != null)?.[key];
+    const text = secondaryMetricKey
+      ? `再生 ${latestFormatter(latest(metricKey))} / 月間 ${secondaryFormatter(latest(secondaryMetricKey))}`
+      : latestFormatter(latest(metricKey));
+    legend.append(legendItem(series.artistName, text, graphTrendColor(series)));
   });
+  if (secondaryMetricKey) {
+    const key = document.createElement('span');
+    key.className = 'spotify-trend-metric-key';
+    key.textContent = '実線＝再生数前日比 / 破線＝月間リスナー';
+    legend.append(key);
+  }
 
   const measuredWidth = Math.max(1, Math.round(canvas.parentElement?.getBoundingClientRect?.().width || 960));
   const targetHeight = measuredWidth < 520 ? 300 : Math.max(300, Math.min(380, Math.round(measuredWidth * .42)));
-  const prepared = prepareDashboardCanvas(canvas, {
-    minimumWidth: 1,
-    minimumHeight: 1,
-    fallbackWidth: measuredWidth,
-    height: targetHeight,
-  });
+  const prepared = prepareDashboardCanvas(canvas, { minimumWidth: 1, minimumHeight: 1, fallbackWidth: measuredWidth, height: targetHeight });
   if (!prepared) return;
   const { context, width, height } = prepared;
-  const margin = { left: 72, right: 22, top: 18, bottom: 40 };
+  const margin = { left: 72, right: secondaryMetricKey ? 72 : 22, top: secondaryMetricKey ? 28 : 18, bottom: 40 };
   const plotWidth = Math.max(1, width - margin.left - margin.right);
   const plotHeight = Math.max(1, height - margin.top - margin.bottom);
   const dateIndex = new Map(dates.map((date, index) => [date, index]));
-  const xFor = (date) => margin.left + (dates.length <= 1
-    ? plotWidth / 2
-    : (dateIndex.get(date) || 0) / (dates.length - 1) * plotWidth);
+  const xFor = (date) => margin.left + (dates.length <= 1 ? plotWidth / 2 : (dateIndex.get(date) || 0) / (dates.length - 1) * plotWidth);
   const yFor = (value) => margin.top + (yMax - value) / yRange * plotHeight;
+  const yForSecond = (value) => margin.top + (secondMax - value) / secondMax * plotHeight;
 
   context.font = '500 11px system-ui';
   context.fillStyle = '#667287';
   context.textBaseline = 'middle';
-  for (const { ratio, y } of drawDashboardGrid(context, {
-    left: margin.left,
-    right: margin.right,
-    top: margin.top,
-    height: plotHeight,
-    width,
-  })) {
-    const value = yMax - yRange * ratio;
+  if (secondaryMetricKey) {
+    context.textAlign = 'left';
+    context.fillText('再生数前日比', margin.left, 11);
     context.textAlign = 'right';
-    context.fillText(compactNumberFormat.format(Math.round(value)), margin.left - 8, y);
+    context.fillText('月間リスナー', width - margin.right, 11);
+  }
+  for (const { ratio, y } of drawDashboardGrid(context, { left: margin.left, right: margin.right, top: margin.top, height: plotHeight, width })) {
+    context.textAlign = 'right';
+    context.fillText(compactNumberFormat.format(Math.round(yMax - yRange * ratio)), margin.left - 8, y);
+    if (secondaryMetricKey) {
+      context.textAlign = 'left';
+      context.fillText(compactNumberFormat.format(Math.round(secondMax * (1 - ratio))), width - margin.right + 8, y);
+    }
   }
   context.textBaseline = 'alphabetic';
   for (const index of dashboardTickIndexes(dates.length, 5)) {
@@ -228,48 +220,40 @@ function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel, lates
     context.fillText(formatTrendDate(dates[index]), xFor(dates[index]), height - 10);
   }
 
-  seriesList.forEach((series) => {
-    const { points } = series;
-    const color = graphTrendColor(series);
-    const byDate = new Map(points.map((point) => [String(point.snapshot_date), point]));
-    const rows = dates.map((date) => ({ date, value: integer(byDate.get(date)?.[metricKey]) }));
-    const plotted = rows.filter((row) => row.value != null);
-    drawDashboardLine(context, rows, {
-      x: (row) => xFor(row.date),
-      y: (value) => yFor(value),
-      value: (row) => row.value,
-      valid: (value) => value != null,
-      strokeStyle: color,
-      lineWidth: 2,
+  const drawMetric = (series, key, y, lineDash = []) => {
+    const byDate = new Map(series.points.map((point) => [String(point.snapshot_date), point]));
+    const rows = dates.map((date) => ({ date, value: integer(byDate.get(date)?.[key]) }));
+    const count = drawDashboardLine(context, rows, {
+      x: (row) => xFor(row.date), y, value: (row) => row.value,
+      valid: (value) => value != null, strokeStyle: graphTrendColor(series), lineWidth: 2, lineDash,
     });
-    if (plotted.length === 1) {
-      const [row] = plotted;
+    if (count === 1) {
+      const row = rows.find((item) => item.value != null);
       context.save();
-      context.fillStyle = color;
+      context.fillStyle = graphTrendColor(series);
       context.beginPath();
-      context.arc(xFor(row.date), yFor(row.value), 3, 0, Math.PI * 2);
-      context.fill();
+      context.arc(xFor(row.date), y(row.value), 3, 0, Math.PI * 2);
+      secondaryMetricKey && key === secondaryMetricKey ? context.stroke() : context.fill();
       context.restore();
     }
+  };
+  seriesList.forEach((series) => {
+    drawMetric(series, metricKey, yFor);
+    // lineDash: [6, 4]
+    if (secondaryMetricKey) drawMetric(series, secondaryMetricKey, yForSecond, [6, 4]);
   });
 }
 
 export function normalizeArtistRankSeries(chart = {}, trend = {}) {
   const tracked = graphTrendSeries(normalizeTrendSeries(trend));
-  const byKey = new Map(tracked.map((series) => [series.artistKey, {
-    artistKey: series.artistKey,
-    artistName: series.artistName,
-    points: [],
-  }]));
+  const byKey = new Map(tracked.map((series) => [series.artistKey, { artistKey: series.artistKey, artistName: series.artistName, points: [] }]));
   const byName = new Map([...byKey.values()].map((series) => [series.artistName, series]));
   const days = (Array.isArray(chart?.days) ? [...chart.days] : [])
     .filter((day) => /^\d{4}-\d{2}-\d{2}$/.test(String(day?.chart_date || '')))
     .sort((a, b) => String(a.chart_date).localeCompare(String(b.chart_date)));
   for (const day of days) {
     for (const entry of Array.isArray(day?.entries) ? day.entries : []) {
-      const artistKey = String(entry?.artist_key || '').trim();
-      const artistName = String(entry?.artist_name || '').trim();
-      const series = byKey.get(artistKey) || byName.get(artistName);
+      const series = byKey.get(String(entry?.artist_key || '').trim()) || byName.get(String(entry?.artist_name || '').trim());
       const rank = integer(entry?.rank);
       if (!series || rank == null || rank < 1 || rank > 200) continue;
       series.points.push({ chart_date: String(day.chart_date), rank });
@@ -285,8 +269,7 @@ function renderArtistRankChart(chart = {}, trend = {}) {
   if (!container) return;
   container.replaceChildren();
   const seriesList = normalizeArtistRankSeries(chart, trend);
-  const dates = [...new Set(seriesList.flatMap((series) =>
-    series.points.map((point) => point.chart_date)))].sort();
+  const dates = [...new Set(seriesList.flatMap((series) => series.points.map((point) => point.chart_date)))].sort();
   const ranks = seriesList.flatMap((series) => series.points.map((point) => point.rank));
   if (!dates.length || !ranks.length) {
     appendEmptyState(container, 'Spotify日本 Daily Top Artist の順位データはまだありません。', { className: 'spotify-trend-empty' });
@@ -298,42 +281,27 @@ function renderArtistRankChart(chart = {}, trend = {}) {
   legend.setAttribute('aria-label', 'アーティスト凡例と最新順位');
   for (const series of seriesList) {
     const latest = series.points.at(-1);
-    const color = graphTrendColor(series);
-    legend.append(legendItem(series.artistName, latest ? `${numberFormat.format(latest.rank)}位` : '-', color));
+    legend.append(legendItem(series.artistName, latest ? `${numberFormat.format(latest.rank)}位` : '-', graphTrendColor(series)));
   }
 
   const measuredWidth = Math.max(1, Math.round(canvas.parentElement?.getBoundingClientRect?.().width || 960));
   const targetHeight = measuredWidth < 520 ? 300 : Math.max(300, Math.min(380, Math.round(measuredWidth * .42)));
-  const prepared = prepareDashboardCanvas(canvas, {
-    minimumWidth: 1,
-    minimumHeight: 1,
-    fallbackWidth: measuredWidth,
-    height: targetHeight,
-  });
+  const prepared = prepareDashboardCanvas(canvas, { minimumWidth: 1, minimumHeight: 1, fallbackWidth: measuredWidth, height: targetHeight });
   if (!prepared) return;
   const { context, width, height } = prepared;
   const margin = { left: 72, right: 22, top: 18, bottom: 40 };
   const plotWidth = Math.max(1, width - margin.left - margin.right);
   const plotHeight = Math.max(1, height - margin.top - margin.bottom);
   const dateIndex = new Map(dates.map((date, index) => [date, index]));
-  const xFor = (date) => margin.left + (dates.length <= 1
-    ? plotWidth / 2
-    : (dateIndex.get(date) || 0) / (dates.length - 1) * plotWidth);
+  const xFor = (date) => margin.left + (dates.length <= 1 ? plotWidth / 2 : (dateIndex.get(date) || 0) / (dates.length - 1) * plotWidth);
   const yFor = (rank) => margin.top + (rank - 1) / Math.max(1, maxRank - 1) * plotHeight;
 
   context.font = '500 11px system-ui';
   context.fillStyle = '#667287';
   context.textBaseline = 'middle';
-  for (const { ratio, y } of drawDashboardGrid(context, {
-    left: margin.left,
-    right: margin.right,
-    top: margin.top,
-    height: plotHeight,
-    width,
-  })) {
-    const rank = Math.max(1, Math.round(1 + (maxRank - 1) * ratio));
+  for (const { ratio, y } of drawDashboardGrid(context, { left: margin.left, right: margin.right, top: margin.top, height: plotHeight, width })) {
     context.textAlign = 'right';
-    context.fillText(`${numberFormat.format(rank)}位`, margin.left - 8, y);
+    context.fillText(`${numberFormat.format(Math.max(1, Math.round(1 + (maxRank - 1) * ratio)))}位`, margin.left - 8, y);
   }
   context.textBaseline = 'alphabetic';
   for (const index of dashboardTickIndexes(dates.length, 5)) {
@@ -342,35 +310,21 @@ function renderArtistRankChart(chart = {}, trend = {}) {
   }
 
   for (const series of seriesList) {
-    const color = graphTrendColor(series);
     const byDate = new Map(series.points.map((point) => [point.chart_date, point]));
-    const rows = dates.map((date) => ({ date, rank: integer(byDate.get(date)?.rank) }));
-    drawDashboardLine(context, rows, {
-      x: (row) => xFor(row.date),
-      y: (rank) => yFor(rank),
-      value: (row) => row.rank,
-      valid: (rank) => rank != null,
-      strokeStyle: color,
-      lineWidth: 2,
+    drawDashboardLine(context, dates.map((date) => ({ date, rank: integer(byDate.get(date)?.rank) })), {
+      x: (row) => xFor(row.date), y: (rank) => yFor(rank), value: (row) => row.rank,
+      valid: (rank) => rank != null, strokeStyle: graphTrendColor(series), lineWidth: 2,
     });
   }
 }
 
 function renderCharts(trend, artistChart, monthlyListenerRows) {
-  renderTrendChart(trend, {
-    containerId: 'spotifyTrendCharts',
-    metricKey: 'total_delta',
-    ariaLabel: '櫻坂46・乃木坂46・日向坂46の全曲合計再生数前日比推移',
-  });
-  renderTrendChart(monthlyListenerTrend(monthlyListenerRows), {
-    containerId: 'spotifyMonthlyListenerTrendCharts',
-    metricKey: 'monthly_listeners',
-    ariaLabel: '櫻坂46・乃木坂46・日向坂46のSpotify月間リスナー推移',
-    latestFormatter: formatInteger,
+  renderTrendChart(overviewTrend(trend, monthlyListenerRows), {
+    containerId: 'spotifyTrendCharts', metricKey: 'total_delta', secondaryMetricKey: 'monthly_listeners',
+    ariaLabel: '櫻坂46・乃木坂46・日向坂46の全曲合計再生数前日比とSpotify月間リスナー推移。左軸が再生数前日比、右軸が月間リスナー。',
   });
   renderTrendChart(trend, {
-    containerId: 'spotifyTop10YearTrendCharts',
-    metricKey: 'top10_year_delta',
+    containerId: 'spotifyTop10YearTrendCharts', metricKey: 'top10_year_delta',
     ariaLabel: '櫻坂46・乃木坂46・日向坂46の今年リリース上位10曲合計の再生数前日比推移',
   });
   renderArtistRankChart(artistChart, trend);
@@ -395,14 +349,9 @@ function render(payload, trend, artistChart, monthlyListenerRows) {
   latestCharts = { trend, artistChart, monthlyListenerRows };
   renderCharts(trend, artistChart, monthlyListenerRows);
   renderRows(payload || {});
-
-  if (!payload?.track_count) {
-    setNotice(`${artistName}のSpotify再生数はまだ収集されていません。`);
-  } else if (payload.carried_forward) {
-    setNotice(`${formatDate(payload.snapshot_date)} はSpotify公開値の更新が確認できなかったため、直近の累計値を引き継いでいます。`);
-  } else {
-    setNotice('');
-  }
+  if (!payload?.track_count) setNotice(`${artistName}のSpotify再生数はまだ収集されていません。`);
+  else if (payload.carried_forward) setNotice(`${formatDate(payload.snapshot_date)} はSpotify公開値の更新が確認できなかったため、直近の累計値を引き継いでいます。`);
+  else setNotice('');
 }
 
 async function fetchReadModel({ refresh = false } = {}) {
