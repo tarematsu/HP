@@ -102,11 +102,13 @@ async function trackIdsBySpotify(db, spotifyIds) {
     WHERE spotify_id IN (${placeholders(spotifyIds.length)})`, spotifyIds);
 }
 
-async function canonicalRowsBySpotify(db, spotifyIds) {
+async function dictionaryRowsBySpotify(db, spotifyIds) {
   if (!spotifyIds.length) return [];
-  return runRows(db, `SELECT track_id,spotify_id,isrc,title,artist,thumbnail_url,fetched_at
-    FROM sh_track_canonical_metadata
-    WHERE spotify_id IN (${placeholders(spotifyIds.length)})`, spotifyIds);
+  return runRows(db, `SELECT NULL AS track_id,spotify_id,isrc,title,artist,thumbnail_url,
+      metadata_fetched_at AS fetched_at
+    FROM sh_track_dictionary
+    WHERE spotify_id IS NOT NULL AND TRIM(spotify_id)<>''
+      AND spotify_id IN (${placeholders(spotifyIds.length)})`, spotifyIds);
 }
 
 async function legacyRowsDuringMigration(db, spotifyIds, isrcs) {
@@ -149,11 +151,11 @@ function coveredKeys(rows) {
 }
 
 /**
- * Read presentation metadata from the single MINUTE_DB canonical view.
+ * Read presentation metadata from the single MINUTE_DB canonical owner.
  *
  * sh_tracks.id is the primary lookup. Provider identities are bounded alias
  * fallbacks for rows that have not yet been assigned a canonical track id.
- * Source caches are consulted only when the canonical view itself is unavailable
+ * Source caches are consulted only when the canonical schema itself is unavailable
  * during a rolling migration.
  */
 export async function loadReadModelTrackMetadata(env, spotifyIds, isrcs, trackIds = []) {
@@ -173,8 +175,8 @@ export async function loadReadModelTrackMetadata(env, spotifyIds, isrcs, trackId
   try {
     // Resolve the strongest identity first, then query only alias keys that are
     // still uncovered. In the common case where callers supply track_id plus
-    // provider aliases for the same rows, this turns three canonical view
-    // queries into one.
+    // provider aliases for the same rows, this turns three canonical lookups
+    // into one.
     const byTrackId = await canonicalRowsByTrackId(db, requestedTrackIds);
     let resolved = uniqueRows(byTrackId);
     let covered = coveredKeys(resolved);
@@ -190,8 +192,7 @@ export async function loadReadModelTrackMetadata(env, spotifyIds, isrcs, trackId
       .filter((spotifyId) => !covered.spotifyIds.has(spotifyId));
 
     // sh_tracks.spotify_id has a dedicated UNIQUE index. Resolve provider-only
-    // rows to the canonical track id there before touching the substantially
-    // more expensive canonical VIEW by Spotify id.
+    // rows to the canonical track id there before reading presentation metadata.
     if (remainingSpotifyIds.length) {
       const spotifyMappings = await trackIdsBySpotify(db, remainingSpotifyIds);
       const mappedTrackIds = [...new Set(spotifyMappings
@@ -209,7 +210,10 @@ export async function loadReadModelTrackMetadata(env, spotifyIds, isrcs, trackId
       }
     }
 
-    const bySpotify = await canonicalRowsBySpotify(db, remainingSpotifyIds);
+    // Remaining Spotify-only identities can only be dictionary-owned. Use the
+    // indexed dictionary directly instead of filtering the UNION canonical view,
+    // which otherwise scans the view's track branch for every fallback lookup.
+    const bySpotify = await dictionaryRowsBySpotify(db, remainingSpotifyIds);
     return uniqueRows([...resolved, ...bySpotify]);
   } catch (error) {
     if (!canonicalUnavailable(error)) throw error;
