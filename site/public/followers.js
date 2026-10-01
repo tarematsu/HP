@@ -34,8 +34,7 @@ const GROUP_COLORS = Object.freeze({
   nogizaka46: '#8264b0',
   hinatazaka46: '#9ecff3',
 });
-const SERIES_DASHES = Object.freeze([
-  Object.freeze([]),
+const FAN_DASHES = Object.freeze([
   Object.freeze([10, 6]),
   Object.freeze([2, 5]),
   Object.freeze([14, 4, 3, 4]),
@@ -103,9 +102,10 @@ function membershipFor(payload, provided, handle) {
 }
 
 function seriesStyle(account, index) {
+  const official = String(account?.affiliation || '').endsWith('公式');
   return {
     color: GROUP_COLORS[account?.group] || '#6f7886',
-    dash: SERIES_DASHES[index % SERIES_DASHES.length],
+    dash: official ? [] : FAN_DASHES[index % FAN_DASHES.length],
   };
 }
 
