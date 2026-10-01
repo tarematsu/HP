@@ -22,7 +22,6 @@ const ALL_VARIANTS = [
   'history:broadcasts',
   'host-history:summary',
   'spotify-playcounts',
-  'regional-music',
 ];
 
 const TWELVE_HOUR_VARIANTS = [
@@ -69,7 +68,7 @@ test('recent status limits incremental refresh to the latest completed day', () 
 test('legacy generated_at is accepted as the previous full refresh', () => {
   const now = Date.UTC(2026, 6, 16, 12, 31);
   const generatedAt = Date.UTC(2026, 6, 10, 10, 31);
-  const ranges = trackHistoryRefreshRanges(now, null, { generated_at: generatedAt });
+  const ranges = trackHistoryRefreshRanges(now, null, { full_reconciled_at: null, generated_at: generatedAt });
   assert.equal(ranges.fullReconcile, false);
   assert.equal(ranges.previousFullAt, generatedAt);
 });
@@ -122,15 +121,16 @@ test('canonical materialized variants exclude playback and monthly history', () 
   assert.deepEqual([...materialized.keys()], ALL_VARIANTS);
   assert.equal(materialized.has('track-history'), false);
   assert.equal(materialized.has('history:monthly'), false);
+  assert.equal(materialized.has('regional-music'), false);
   assert.equal(materializedApiKey('https://pages.test/api/track-history'), null);
   assert.equal(materializedApiKey('https://pages.test/api/history?mode=monthly'), null);
+  assert.equal(materializedApiKey('https://pages.test/api/regional-music'), 'regional-music');
   assert.equal(materialized.get('host-history:summary').cadence_minutes, 1440);
   assert.equal(materialized.get('history:daily').cadence_minutes, 1440);
   assert.equal(materialized.get('history:weekly').cadence_minutes, 1440);
   assert.equal(materialized.get('history:broadcasts').cadence_minutes, 1440);
   assert.equal(materialized.get('spotify-playcounts').cadence_minutes, 720);
   assert.equal(materialized.get('spotify-playcounts').event_driven, true);
-  assert.equal(materialized.get('regional-music').cadence_minutes, 1440);
   assert.equal(materialized.get('dashboard').cadence_minutes, 5);
 });
 
