@@ -56,8 +56,11 @@ function canonicalSeedEnv(calls) {
   };
 }
 
-function canonicalCalls(calls) {
-  return calls.filter(({ sql }) => /FROM sh_track_canonical_metadata/.test(sql));
+function canonicalOwnerCalls(calls) {
+  return calls.filter(({ sql }) => (
+    /FROM sh_track_canonical_metadata/.test(sql)
+    || /FROM sh_track_dictionary/.test(sql)
+  ));
 }
 
 test('metadata hydration scans incomplete tracks once and preserves key order', async () => {
@@ -72,11 +75,12 @@ test('metadata hydration scans incomplete tracks once and preserves key order', 
 
   assert.equal(await hydrateReadModelMetadata(metadataEnv(calls), model), model);
   assert.equal(calls.length, 3);
-  assert.deepEqual(canonicalCalls(calls).map((call) => call.bindings), [
+  assert.deepEqual(canonicalOwnerCalls(calls).map((call) => call.bindings), [
     ['USA', 'GBB'],
     ['spotify-a', 'spotify-b'],
   ]);
   assert.match(calls[1].sql, /FROM sh_tracks/);
+  assert.match(calls[2].sql, /FROM sh_track_dictionary/);
   assert.ok(calls.every(({ sql }) => !/UNION ALL|\sOR\s/.test(sql)));
 });
 
@@ -92,7 +96,7 @@ test('hydrated canonical metadata is reused instead of rereading the same track 
   assert.equal(track.title, 'Canonical Song');
   assert.equal(track.artist, '櫻坂46');
   assert.equal(track.thumbnail_url, 'https://example.test/cover.jpg');
-  const canonical = canonicalCalls(calls);
+  const canonical = canonicalOwnerCalls(calls);
   assert.equal(canonical.length, 1);
   assert.match(canonical[0].sql, /WHERE isrc IN/);
   assert.deepEqual(canonical[0].bindings, ['JP1']);
@@ -109,8 +113,9 @@ test('metadata hydration keeps collecting the second key type after the first re
   const isrcs = Array.from({ length: 80 }, (_, index) => `ISRC${index}`);
   const spotify = Array.from({ length: 80 }, (_, index) => `spotify-${index}`);
   assert.equal(calls.length, 3);
-  assert.deepEqual(canonicalCalls(calls).map((call) => call.bindings), [isrcs, spotify]);
+  assert.deepEqual(canonicalOwnerCalls(calls).map((call) => call.bindings), [isrcs, spotify]);
   assert.match(calls[1].sql, /FROM sh_tracks/);
+  assert.match(calls[2].sql, /FROM sh_track_dictionary/);
 });
 
 test('metadata hydration does not spend key capacity on duplicates', async () => {
@@ -134,6 +139,7 @@ test('metadata hydration does not spend key capacity on duplicates', async () =>
     ...Array.from({ length: 79 }, (_, index) => `spotify-${index}`),
   ];
   assert.equal(calls.length, 3);
-  assert.deepEqual(canonicalCalls(calls).map((call) => call.bindings), [isrcs, spotify]);
+  assert.deepEqual(canonicalOwnerCalls(calls).map((call) => call.bindings), [isrcs, spotify]);
   assert.match(calls[1].sql, /FROM sh_tracks/);
+  assert.match(calls[2].sql, /FROM sh_track_dictionary/);
 });
