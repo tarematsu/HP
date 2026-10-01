@@ -1,6 +1,5 @@
 import {
   dashboardChartCard,
-  dashboardChartHost,
   dashboardDataCard,
   dashboardLegend,
   dashboardNotice,
@@ -31,25 +30,19 @@ mountDashboardShell({
     html: `
       ${dashboardNotice({ id: 'followersNotice' })}
       ${dashboardChartCard({
-        title: 'フォロワー数推移',
-        titleId: 'followersChartTitle',
         kicker: 'STATIONHEAD FOLLOWERS',
-        className: 'followers-chart-panel',
-        legendHtml: dashboardLegend({
+        trailingHtml: dashboardLegend({
           id: 'followersLegend',
-          className: 'followers-legend',
+          className: 'chart-legend followers-legend',
           ariaLabel: 'アカウント別の最新フォロワー数',
         }),
-        chartHtml: dashboardChartHost({
-          id: 'followersChart',
-          className: 'followers-chart',
-          ariaLabel: '追跡アカウントのフォロワー数推移',
-        }),
+        chartHtml: '<div class="chart-fit"><canvas id="followersChart" width="960" height="360" aria-label="追跡アカウントのフォロワー数推移"></canvas><p id="followersChartEmpty" class="shared-empty" hidden>0時の初回収集後にグラフを表示します。</p></div>',
+        detailHtml: '<div id="followersChartDetail" class="chart-detail"></div>',
+        className: 'chart-card',
       })}
       ${dashboardDataCard({
         title: '最新フォロワー比較',
         kicker: 'LATEST',
-        className: 'followers-data-panel',
         bodyHtml: followersTable,
       })}`,
   },
