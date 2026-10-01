@@ -11,8 +11,8 @@ import {
 import { musicServiceMeta, musicServiceSection } from './music-service-shell.js?v=20261001.1';
 
 const summary = dashboardSummary([
-  dashboardSummaryItem({ label: '楽曲数', labelId: 'spotifyTrackCountLabel', valueId: 'spotifyTrackCount' }),
-  dashboardSummaryItem({ label: '再生数前日比合計', labelId: 'spotifyTotalDeltaLabel', valueId: 'spotifyTotalDelta' }),
+  dashboardSummaryItem({ label: '櫻坂46の楽曲数', labelId: 'spotifyTrackCountLabel', valueId: 'spotifyTrackCount' }),
+  dashboardSummaryItem({ label: '櫻坂46の再生数前日比合計', labelId: 'spotifyTotalDeltaLabel', valueId: 'spotifyTotalDelta' }),
   dashboardSummaryItem({ label: 'プレイリスト掲載', valueId: 'spotifyPlaylistCount' }),
 ], { className: 'music-service-summary spotify-summary', ariaLabel: 'Spotify概要' });
 
@@ -32,28 +32,28 @@ const tracksTable = dashboardTable({
 
 const trendPanels = `
   ${dashboardChartCard({
-    title: '全曲合計の再生数前日比推移（上位10組）',
+    title: 'Spotify 全曲合計の再生数前日比推移（上位10組）',
     titleId: 'spotifyTrendTitle',
     kicker: 'FEMALE IDOLS',
     className: 'spotify-trend-panel music-service-panel',
     chartHtml: '<div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="最新日の全曲合計再生数前日比が大きい女性アイドル上位10組の推移"></div>',
   })}
   ${dashboardChartCard({
-    title: '月間リスナー推移（上位10組）',
+    title: 'Spotify 月間リスナー推移（上位10組）',
     titleId: 'spotifyMonthlyListenerTrendTitle',
     kicker: 'MONTHLY LISTENERS',
     className: 'spotify-trend-panel music-service-panel',
     chartHtml: '<img class="chart-fit" src="/api/spotify-monthly-listeners?format=svg" alt="Spotify月間リスナー推移">',
   })}
   ${dashboardChartCard({
-    title: '今年リリース上位10曲合計の再生数前日比推移（上位10組）',
+    title: 'Spotify 今年リリース上位10曲合計の再生数前日比推移（上位10組）',
     titleId: 'spotifyTop10YearTrendTitle',
     kicker: 'FEMALE IDOLS',
     className: 'spotify-trend-panel music-service-panel',
     chartHtml: '<div id="spotifyTop10YearTrendCharts" class="spotify-trend-charts" aria-label="今年リリース曲のうち再生数前日比上位10曲の合計が最新日に大きい女性アイドル上位10組の推移"></div>',
   })}
   ${dashboardChartCard({
-    title: 'Daily Top Artist（日本）の順位推移',
+    title: 'Spotify Daily Top Artist（日本）の順位推移',
     titleId: 'spotifyArtistRankTrendTitle',
     kicker: 'SPOTIFY CHARTS JAPAN',
     className: 'spotify-trend-panel music-service-panel',
