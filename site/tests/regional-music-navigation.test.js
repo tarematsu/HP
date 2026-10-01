@@ -7,6 +7,8 @@ const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url
 const loader = readFileSync(new URL('../public/dashboard-tabs-loader.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/regional-music.js', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../public/regional-music-shell.js', import.meta.url), 'utf8');
+const youtubeRuntime = readFileSync(new URL('../public/youtube-music.js', import.meta.url), 'utf8');
+const youtubeShell = readFileSync(new URL('../public/youtube-music-shell.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/dashboard-navigation.css', import.meta.url), 'utf8');
 const build = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 
@@ -39,6 +41,19 @@ test('regional service views share the materialized read model endpoint', () => 
   assert.match(shell, /regionalMusicTrackBody/);
   assert.match(shell, /regionalMusicPlaylistBody/);
   assert.match(build, /'regional-music\.css'/);
+});
+
+test('YouTube Music uses the shared R2 read model but renders public metrics in its first-row tab', () => {
+  assert.match(tabs, /'youtube-music':[\s\S]*viewId: 'youtubeMusicView'/);
+  assert.match(youtubeRuntime, /fetch\('\/api\/regional-music'/);
+  assert.match(youtubeRuntime, /const SERVICE = 'youtube_music'/);
+  assert.match(youtubeRuntime, /monthly_audience/);
+  assert.match(youtubeRuntime, /total_views/);
+  assert.match(youtubeRuntime, /payload\.releases/);
+  assert.match(youtubeShell, /月間視聴者/);
+  assert.match(youtubeShell, /総視聴回数/);
+  assert.match(youtubeShell, /youtubeMusicReleaseBody/);
+  assert.doesNotMatch(youtubeRuntime, /タブのみ先行追加|専用収集\/read model接続後/);
 });
 
 test('dashboard navigation stays outside the initial bundle and starts after bundled shells mount', () => {

@@ -21,10 +21,10 @@ async function all(db, sql) {
 export async function loadRegionalMusicReadModel(db) {
   if (typeof db?.prepare !== 'function') throw new Error('OTHER_DB binding is unavailable');
 
-  const [artists, tracks, playlists, memberships, services] = await Promise.all([
+  const [artists, tracks, releases, playlists, memberships, services] = await Promise.all([
     all(db, `SELECT
         p.service,p.canonical_artist,p.service_artist_id,p.display_name,p.profile_url,
-        d.snapshot_date,d.observed_at,d.followers,d.likes
+        d.snapshot_date,d.observed_at,d.followers,d.likes,d.monthly_audience,d.total_views
       FROM regional_music_artist_profiles AS p
       LEFT JOIN regional_music_artist_daily AS d
         ON d.service=p.service
@@ -50,6 +50,11 @@ export async function loadRegionalMusicReadModel(db) {
        )
       ORDER BY t.service,t.canonical_artist,t.title,t.service_track_id
       LIMIT 5000`),
+    all(db, `SELECT
+        service,service_release_id,canonical_artist,title,release_type,release_year,release_url,last_seen_at
+      FROM regional_music_releases
+      ORDER BY service,canonical_artist,release_year DESC,title,service_release_id
+      LIMIT 3000`),
     all(db, `SELECT
         service,service_playlist_id,playlist_name,playlist_url,playlist_type,owner_name,last_seen_at
       FROM regional_music_playlists
@@ -77,7 +82,7 @@ export async function loadRegionalMusicReadModel(db) {
       ORDER BY service`),
   ]);
 
-  return { artists, tracks, playlists, memberships, services };
+  return { artists, tracks, releases, playlists, memberships, services };
 }
 
 function normalizedCollectorState(row) {
@@ -111,6 +116,7 @@ export function regionalMusicReadModelPayload(snapshot, updatedAt = Date.now()) 
     updated_at: Number(updatedAt) || Date.now(),
     artists: Array.isArray(snapshot?.artists) ? snapshot.artists : [],
     tracks: Array.isArray(snapshot?.tracks) ? snapshot.tracks : [],
+    releases: Array.isArray(snapshot?.releases) ? snapshot.releases : [],
     playlists: Array.isArray(snapshot?.playlists) ? snapshot.playlists : [],
     playlist_memberships: Array.isArray(snapshot?.memberships) ? snapshot.memberships : [],
     services: (Array.isArray(snapshot?.services) ? snapshot.services : []).map(normalizedCollectorState),
@@ -140,6 +146,7 @@ export async function publishRegionalMusicReadModel(env, updatedAt = Date.now(),
     ...saved,
     artists: payload.artists.length,
     tracks: payload.tracks.length,
+    releases: payload.releases.length,
     playlists: payload.playlists.length,
     playlist_memberships: payload.playlist_memberships.length,
     services: payload.services.length,

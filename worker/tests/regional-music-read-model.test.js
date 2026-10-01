@@ -12,6 +12,7 @@ test('regional music read model normalizes collector health and implemented serv
   const payload = regionalMusicReadModelPayload({
     artists: [{ service: 'joox', canonical_artist: 'sakurazaka46', followers: 478 }],
     tracks: [],
+    releases: [],
     playlists: [],
     memberships: [],
     services: [{
@@ -29,6 +30,7 @@ test('regional music read model normalizes collector health and implemented serv
   assert.equal(payload.ok, true);
   assert.equal(payload.updated_at, 456);
   assert.equal(payload.artists[0].followers, 478);
+  assert.deepEqual(payload.releases, []);
   assert.deepEqual(payload.services[0].entity_counts, { artists: 3 });
   assert.equal(payload.services[0].region, 'HK/TH/SEA');
   assert.equal(payload.services[0].phase, 1);
@@ -37,6 +39,35 @@ test('regional music read model normalizes collector health and implemented serv
   assert.equal(payload.services[1].region, null);
   assert.equal(payload.services[1].phase, null);
   assert.deepEqual(payload.services[1].metrics, []);
+});
+
+test('YouTube Music collector metadata exposes free public metrics without account-only fields', () => {
+  const payload = regionalMusicReadModelPayload({
+    artists: [{
+      service: 'youtube_music',
+      canonical_artist: 'sakurazaka46',
+      followers: 100,
+      monthly_audience: 200,
+      total_views: 300,
+    }],
+    tracks: [],
+    releases: [{ service: 'youtube_music', service_release_id: 'MPRE-test' }],
+    playlists: [],
+    memberships: [],
+    services: [{ service: 'youtube_music', status: 'ok', entity_counts_json: '{}' }],
+  }, 456);
+
+  assert.equal(payload.artists[0].monthly_audience, 200);
+  assert.equal(payload.artists[0].total_views, 300);
+  assert.equal(payload.releases.length, 1);
+  assert.deepEqual(payload.services[0].metrics, [
+    'artist_followers',
+    'monthly_audience',
+    'total_views',
+    'catalog',
+    'releases',
+    'playlists',
+  ]);
 });
 
 test('playlist membership query follows the latest playlist snapshot, including an empty snapshot', async () => {
@@ -50,10 +81,13 @@ test('playlist membership query follows the latest playlist snapshot, including 
 
   const snapshot = await loadRegionalMusicReadModel(db);
   assert.deepEqual(snapshot.memberships, []);
+  assert.deepEqual(snapshot.releases, []);
   const membershipQuery = queries.find((sql) => sql.includes('regional_music_playlist_memberships AS m'));
   assert.ok(membershipQuery);
   assert.match(membershipQuery, /regional_music_playlist_snapshots AS s/);
   assert.match(membershipQuery, /MAX\(x\.snapshot_date\)/);
+  assert.ok(queries.some((sql) => sql.includes('regional_music_releases')));
+  assert.ok(queries.some((sql) => sql.includes('monthly_audience')));
 });
 
 test('regional music publication writes one compact R2 object', async () => {
@@ -65,6 +99,7 @@ test('regional music publication writes one compact R2 object', async () => {
     loadReadModel: async () => ({
       artists: [{ service: 'bugs' }],
       tracks: [{ service: 'genie' }],
+      releases: [{ service: 'youtube_music' }],
       playlists: [{ service: 'melon' }],
       memberships: [{ service: 'melon' }],
       services: [{ service: 'bugs', status: 'ok', entity_counts_json: '{}' }],
@@ -80,6 +115,7 @@ test('regional music publication writes one compact R2 object', async () => {
   assert.equal(writes[0].status, 200);
   assert.equal(writes[0].now, 1000);
   assert.equal(writes[0].cadence, 86400);
+  assert.equal(writes[0].body.releases.length, 1);
   assert.equal(writes[0].body.playlist_memberships.length, 1);
   assert.deepEqual(writes[0].body.services[0].metrics, ['artist_likes']);
   assert.deepEqual(result, {
@@ -87,6 +123,7 @@ test('regional music publication writes one compact R2 object', async () => {
     bytes: writes[0].body ? JSON.stringify(writes[0].body).length : 0,
     artists: 1,
     tracks: 1,
+    releases: 1,
     playlists: 1,
     playlist_memberships: 1,
     services: 1,
