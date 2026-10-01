@@ -14,7 +14,7 @@ const EMPTY_DEPENDENCIES = Object.freeze({});
 const MINUTE_MS = 60_000;
 const LIVE_RECOVERY_POLL_INTERVAL_MS = 5 * MINUTE_MS;
 
-export const BUDDIES_COLLECTOR_CRON = '* * * * *';
+export const BUDDIES_COLLECTOR_CRON = '*/5 * * * *';
 
 function collectorRunId(scheduledAt) {
   const random = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2);

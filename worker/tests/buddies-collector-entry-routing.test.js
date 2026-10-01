@@ -17,7 +17,7 @@ test('production collector Cron keeps Durable Object collection behind the follo
 test('ordinary collector minutes do not add dashboard watchdog work', async () => {
   const waitUntil = [];
   const calls = [];
-  const controller = { cron: '* * * * *', scheduledTime: Date.UTC(2026, 8, 22, 1, 3) };
+  const controller = { cron: '*/5 * * * *', scheduledTime: Date.UTC(2026, 8, 22, 1, 5) };
   const result = await runBuddiesCollectorScheduledWithFollowers(
     controller,
     {},
@@ -41,7 +41,7 @@ test('ordinary collector minutes do not add dashboard watchdog work', async () =
 test('JST midnight adds one follower snapshot as independent waitUntil work', async () => {
   const waitUntil = [];
   const calls = [];
-  const controller = { cron: '* * * * *', scheduledTime: Date.UTC(2026, 8, 30, 15, 0) };
+  const controller = { cron: '*/5 * * * *', scheduledTime: Date.UTC(2026, 8, 30, 15, 0) };
   const result = await runBuddiesCollectorScheduledWithFollowers(
     controller,
     { marker: true },
@@ -81,7 +81,7 @@ test('follower catch-up backs off after the first thirty minutes', () => {
 test('same-day hourly follower catch-up schedules work independently from the minute collector', async () => {
   const waitUntil = [];
   const calls = [];
-  const controller = { cron: '* * * * *', scheduledTime: Date.UTC(2026, 9, 1, 2, 0) };
+  const controller = { cron: '*/5 * * * *', scheduledTime: Date.UTC(2026, 9, 1, 2, 0) };
   const result = await runBuddiesCollectorScheduledWithFollowers(
     controller,
     {},

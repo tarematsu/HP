@@ -11,17 +11,22 @@ test('committed live minute facts immediately publish the current dashboard mode
   assert.match(fastStore, /await timedStage\('upsert_minute_fact'/);
   assert.match(fastStore, /await publishCurrentDashboard\(env, input, fact\)/);
   assert.match(publisher, /pagesActionsR2ResponseKey\('dashboard'\)/);
-  assert.match(publisher, /bucket\.get\(DASHBOARD_KEY\)/);
-  assert.match(publisher, /bucket\.put\(DASHBOARD_KEY/);
+  assert.match(publisher, /BUDDIES_DASHBOARD_HOT_STATE_KEY/);
+  assert.match(publisher, /saveHotState\(bucket, payload, now\)/);
+  assert.match(publisher, /savePublicEnvelope\(bucket, payload, now\)/);
   assert.match(publisher, /directFiveMinuteStreamHistory\(history\)/);
 });
 
-test('steady-state live publication is differential and reserves full D1 rendering for sparse checkpoints', () => {
-  assert.match(publisher, /const FULL_REFRESH_MS = 6 \* 60 \* 60_000/);
-  assert.match(publisher, /needsFullRefresh/);
-  assert.match(publisher, /incrementalPayload\(base, input, fact/);
-  assert.match(publisher, /full_render: full/);
-  assert.doesNotMatch(publisher, /FROM sh_minute_facts|FROM sh_dashboard_history_5m/);
+test('steady-state live publication is differential and reads D1 only for bounded gap recovery', () => {
+  assert.doesNotMatch(publisher, /FULL_REFRESH_MS|6 \* 60 \* 60_000/);
+  assert.match(publisher, /INCREMENTAL_GAP_LIMIT_MS = 11 \* 60_000/);
+  assert.match(publisher, /RECOVERY_GAP_LIMIT_MS = DAY_MS/);
+  assert.match(publisher, /minute_at>\? AND minute_at<\?/);
+  assert.match(publisher, /mode = 'recovery'/);
+  assert.match(publisher, /mode = 'bootstrap'/);
+  assert.match(publisher, /loadExistingState\(bucket\)/);
+  assert.match(publisher, /saveHotState/);
+  assert.doesNotMatch(publisher, /FROM sh_dashboard_history_5m/);
 });
 
 test('current-tab client has no secondary details request when the materialized model embeds details', () => {
