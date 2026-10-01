@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sh-regional-music-initial-dispatch",
+  "main": "src/regional-music-initial-queue-entry.js",
+  "compatibility_date": "2026-06-24",
+  "workers_dev": false,
+  "preview_urls": false,
+  "queues": {
+    "producers": [
+      { "binding": "REGIONAL_MUSIC_QUEUE", "queue": "regional-music-daily" }
+    ]
+  }
+}
