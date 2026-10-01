@@ -8,7 +8,7 @@ import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
 
 const LATEST_KEY = 'apple-music/playlists/latest.json';
 const PRESENTATION_VERSION = 1;
-const REFRESH_INTERVAL_MS = 24 * 60 * 60_000;
+const REFRESH_INTERVAL_MS = 12 * 60 * 60_000;
 const LOOKUP_CHUNK_SIZE = 70;
 const TARGET_ARTIST_NAME = '櫻坂46';
 const PUBLIC_HEADERS = Object.freeze({
@@ -165,6 +165,7 @@ async function publishModel(r2, model, observedAt) {
     ? {
         ...previousEnvelope,
         updated_at: observedAt,
+        cadence_seconds: 43_200,
         source_revision: sourceRevision,
         renderer_revision: 'apple-music-playlists-v2',
         body,
@@ -174,7 +175,7 @@ async function publishModel(r2, model, observedAt) {
         status: 200,
         headers: PUBLIC_HEADERS,
         updated_at: observedAt,
-        cadence_seconds: 86_400,
+        cadence_seconds: 43_200,
         source_revision: sourceRevision,
         renderer_revision: 'apple-music-playlists-v2',
         body,
