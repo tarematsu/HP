@@ -4,7 +4,9 @@ import { readFileSync } from 'node:fs';
 
 test('today official listening party line is emphasized', () => {
   const source = readFileSync(new URL('../site/public/history/history-broadcasts.js', import.meta.url), 'utf8');
-  assert.match(source, /Asia\/Tokyo/);
+  const time = readFileSync(new URL('../site/public/dashboard-time.js', import.meta.url), 'utf8');
+  assert.match(source, /JST_DATE_EN_CA/);
+  assert.match(time, /timeZone: 'Asia\/Tokyo'/);
   assert.match(source, /isTodayEvent/);
   assert.match(source, /today \? 3\.4/);
   assert.match(source, /today \? 1 : \(available\.length > 12 \? 0\.68 : 0\.9\)/);
