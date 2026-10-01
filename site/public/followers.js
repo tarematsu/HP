@@ -1,4 +1,5 @@
 import {
+  appendEmptyState,
   byId,
   cssColor,
   evenlySpacedIndexes,
@@ -148,7 +149,14 @@ function prepareCanvas() {
 
 function setChartEmpty(empty) {
   const canvas = byId('followersChart');
-  const message = byId('followersChartEmpty');
+  let message = byId('followersChartEmpty');
+  if (!message && empty && canvas?.parentElement) {
+    message = appendEmptyState(canvas.parentElement, '0時の初回収集後にグラフを表示します。', {
+      className: 'shared-empty',
+      tagName: 'p',
+    });
+    message.id = 'followersChartEmpty';
+  }
   if (canvas) canvas.hidden = Boolean(empty);
   if (message) message.hidden = !empty;
 }
