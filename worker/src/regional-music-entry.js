@@ -22,6 +22,7 @@ import { publishRegionalMusicReadModel } from './regional-music-read-model.js';
 
 export const REGIONAL_MUSIC_DAILY_CRON = '0 21 * * *';
 export const REGIONAL_MUSIC_COLLECTOR_CONCURRENCY = 4;
+export const REGIONAL_MUSIC_COLLECTOR_TIMEOUT_MS = 90_000;
 
 // The 19 regional/local services added by the regional-music rollout.
 export const REGIONAL_MUSIC_SERVICE_COLLECTORS = Object.freeze([
@@ -52,15 +53,47 @@ export const REGIONAL_MUSIC_DAILY_COLLECTORS = Object.freeze([
   ...REGIONAL_MUSIC_SERVICE_COLLECTORS,
 ]);
 
-async function collectWithIsolation(collect, env, observedAt, fetchImpl) {
+function collectorFetch(fetchImpl, signal) {
+  return (input, init = {}) => {
+    const upstreamSignal = init?.signal;
+    const combinedSignal = upstreamSignal && typeof AbortSignal.any === 'function'
+      ? AbortSignal.any([signal, upstreamSignal])
+      : signal;
+    return fetchImpl(input, { ...init, signal: combinedSignal });
+  };
+}
+
+async function collectWithIsolation(
+  collect,
+  env,
+  observedAt,
+  fetchImpl,
+  timeoutMs = REGIONAL_MUSIC_COLLECTOR_TIMEOUT_MS,
+) {
+  const controller = new AbortController();
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error(`collector timed out after ${timeoutMs}ms`);
+      error.name = 'TimeoutError';
+      controller.abort(error);
+      reject(error);
+    }, timeoutMs);
+  });
+
   try {
-    return await collect(env, observedAt, fetchImpl);
+    return await Promise.race([
+      collect(env, observedAt, collectorFetch(fetchImpl, controller.signal)),
+      timeout,
+    ]);
   } catch (error) {
     return {
       service: collect.name,
       status: 'error',
       error: String(error?.message || error),
     };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -70,6 +103,7 @@ export async function runRegionalMusicCollectors(
   observedAt,
   fetchImpl = fetch,
   concurrency = REGIONAL_MUSIC_COLLECTOR_CONCURRENCY,
+  timeoutMs = REGIONAL_MUSIC_COLLECTOR_TIMEOUT_MS,
 ) {
   const list = Array.from(collectors || []);
   if (list.length === 0) return [];
@@ -78,6 +112,7 @@ export async function runRegionalMusicCollectors(
     list.length,
     Math.max(1, Math.floor(Number(concurrency) || REGIONAL_MUSIC_COLLECTOR_CONCURRENCY)),
   );
+  const collectorTimeoutMs = Math.max(1, Math.floor(Number(timeoutMs) || REGIONAL_MUSIC_COLLECTOR_TIMEOUT_MS));
   const results = new Array(list.length);
   let nextIndex = 0;
 
@@ -85,7 +120,13 @@ export async function runRegionalMusicCollectors(
     while (nextIndex < list.length) {
       const index = nextIndex;
       nextIndex += 1;
-      results[index] = await collectWithIsolation(list[index], env, observedAt, fetchImpl);
+      results[index] = await collectWithIsolation(
+        list[index],
+        env,
+        observedAt,
+        fetchImpl,
+        collectorTimeoutMs,
+      );
     }
   });
 
