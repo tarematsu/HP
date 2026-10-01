@@ -84,9 +84,10 @@ test('dashboard embeds first-week comparison in the listening-party view', () =>
   const css = readFileSync(new URL('../public/first-week-comparison.css', import.meta.url), 'utf8');
   assert.doesNotMatch(registry, /view: 'first-week'|label: '初週比較'/);
   assert.match(registry, /mode: 'broadcasts', label: 'リスパ'/);
+  assert.match(entry, /first-week-comparison-shell\.js\?v=20261002\.2/);
+  assert.match(entry, /first-week-comparison\.js\?v=20261002\.2/);
   assert.match(entry, /dashboard-tabs\.js\?v=20261002\.1/);
-  assert.match(historyEntry, /first-week-comparison-shell\.js\?v=20261002\.1/);
-  assert.match(historyEntry, /first-week-comparison\.js\?v=20261002\.1/);
+  assert.doesNotMatch(historyEntry, /first-week-comparison-shell|first-week-comparison\.js/);
   assert.doesNotMatch(shell, /\.css\?v=|style:\s*\{|mountDashboardShell/);
   assert.match(shell, /dashboard-ui-common\.js\?v=20261001\.1/);
   assert.match(shell, /dashboardChartCard/);
