@@ -144,7 +144,7 @@ test('ohisama auth acquisition is fixed to ILYS while collection remains ohisama
   assert.match(source, /env\.CHANNEL_ALIAS \|\| 'ohisama'/);
 });
 
-test('ohisama Worker config binds its own D1 while scheduling is delegated', () => {
+test('ohisama Worker config binds its own D1 and the canonical track catalog while scheduling is delegated', () => {
   const config = JSON.parse(readFileSync(
     new URL('../wrangler.ohisama-collector.jsonc', import.meta.url),
     'utf8',
@@ -154,6 +154,7 @@ test('ohisama Worker config binds its own D1 while scheduling is delegated', () 
   assert.equal(config.triggers, undefined);
   assert.deepEqual(config.d1_databases.map(({ binding, database_name }) => ({ binding, database_name })), [
     { binding: 'OHISAMA_DB', database_name: 'stationhead-ohisama' },
+    { binding: 'MINUTE_DB', database_name: 'stationhead-minute' },
     { binding: 'OTHER_DB', database_name: 'stationhead-other' },
   ]);
   assert.deepEqual(config.r2_buckets, [
