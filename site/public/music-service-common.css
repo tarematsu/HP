@@ -1,0 +1,145 @@
+/* Shared layout contract for Spotify, Apple Music, and Amazon Music. */
+.music-service-view {
+  --music-service-gap: var(--pages-view-gap, 12px);
+  display: grid;
+  gap: var(--music-service-gap);
+}
+
+.music-service-meta {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  min-height: 20px;
+  margin: 0 2px -2px;
+  color: var(--muted, #667287);
+  font-size: var(--dashboard-copy-size, .72rem);
+  font-variant-numeric: tabular-nums;
+}
+
+.music-service-meta time {
+  color: var(--text, #172033);
+  font-weight: 700;
+}
+
+.music-service-summary.summary-cards {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+}
+
+.music-service-summary.summary-cards > article {
+  min-width: 0;
+}
+
+.music-service-section {
+  display: grid;
+  gap: var(--music-service-gap);
+  min-width: 0;
+}
+
+.music-service-section-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 2px 2px -4px;
+}
+
+.music-service-section-heading .kicker {
+  margin: 0 0 2px;
+}
+
+.music-service-section-heading h2 {
+  margin: 0;
+  font-size: clamp(.92rem, 2.4vw, 1.05rem);
+  line-height: 1.15;
+  letter-spacing: -.015em;
+}
+
+.music-service-panel {
+  min-width: 0;
+}
+
+.music-service-view .chart-panel,
+.music-service-view .data-panel {
+  margin: 0;
+}
+
+.music-service-view .shared-svg-chart {
+  --shared-chart-min-height: 240px;
+}
+
+.music-service-view .section-head {
+  gap: 10px;
+}
+
+.music-service-view .section-head > :first-child {
+  min-width: 0;
+}
+
+.music-service-view .section-head h2 {
+  overflow-wrap: anywhere;
+}
+
+.music-service-playlist-note {
+  margin: 0 0 8px;
+  color: var(--muted, #667287);
+  font-size: var(--dashboard-copy-size, .72rem);
+  line-height: 1.4;
+}
+
+.music-service-playlist-table th:first-child,
+.music-service-playlist-table td:first-child {
+  min-width: 150px;
+  white-space: normal;
+}
+
+.music-service-playlist-table th:nth-child(2),
+.music-service-playlist-table td:nth-child(2) {
+  width: 64px;
+  text-align: right;
+}
+
+.music-service-playlist-links {
+  display: grid;
+  gap: 4px;
+  min-width: 220px;
+  white-space: normal;
+}
+
+.music-service-playlist-links a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.music-service-playlist-empty {
+  color: var(--muted, #667287);
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .music-service-view {
+    --music-service-gap: var(--pages-view-gap-mobile, 8px);
+  }
+
+  .music-service-meta {
+    justify-content: flex-start;
+  }
+
+  .music-service-summary.summary-cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .music-service-summary.summary-cards span {
+    white-space: normal;
+  }
+
+  .music-service-summary.summary-cards strong {
+    font-size: clamp(1.2rem, 6vw, 1.75rem);
+  }
+
+  .music-service-view .shared-svg-chart {
+    --shared-chart-min-height: 220px;
+  }
+}
