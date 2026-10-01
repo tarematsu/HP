@@ -170,6 +170,6 @@ export default {
     const collect = scheduledCollectorForCron(controller?.cron);
     const run = collect(env, scheduledTime);
     if (ctx?.waitUntil) ctx.waitUntil(run);
-    else await run;
+    await run;
   },
 };
