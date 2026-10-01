@@ -34,11 +34,17 @@ jobs:
         working-directory: worker
         run: npm ci --prefer-offline --no-audit --no-fund
 
-      - name: Load follower targets and existing read model
+      - name: Load session, follower targets, and existing read model
         working-directory: worker
         shell: bash
         run: |
           set -euo pipefail
+          npx wrangler d1 execute BUDDIES_DB \
+            --config wrangler.buddies-collector.jsonc \
+            --remote --json \
+            --command "SELECT auth_token,device_uid,token_expires_at FROM sh_worker_collector_state WHERE id='stationhead' LIMIT 1" \
+            > "$RUNNER_TEMP/follower-auth.json"
+
           if ! npx wrangler d1 execute OTHER_DB \
             --config wrangler.buddies-collector.jsonc \
             --remote --json \
@@ -59,13 +65,10 @@ jobs:
           set -euo pipefail
           cat > manual-followers-once.mjs <<'NODE'
           import fs from 'node:fs';
-          import crypto from 'node:crypto';
           import {
             fetchStationheadFollowerProfile,
             STATIONHEAD_DAILY_FOLLOWER_HANDLES,
           } from './src/stationhead-daily-followers.js';
-          import { API_BASE, configFromEnv, shHeaders } from './src/collector-config.js';
-          import { normalizeBearer } from './src/shared.js';
 
           const temp = process.env.RUNNER_TEMP;
           const parseWranglerRows = (path) => {
@@ -78,30 +81,15 @@ jobs:
           const dateKey = (timestamp) => new Date(timestamp + 9 * 3600000).toISOString().slice(0, 10);
           const offsetDate = (date, days) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
 
+          const auth = parseWranglerRows(`${temp}/follower-auth.json`)[0];
+          if (!auth?.auth_token || !auth?.device_uid) throw new Error('Persisted Stationhead session is unavailable');
+          const session = { auth_token: auth.auth_token, device_uid: auth.device_uid };
+
           const discovered = parseWranglerRows(`${temp}/follower-handles.json`)
             .map((row) => normalizeHandle(row?.handle))
             .filter(Boolean);
           const fixed = [...STATIONHEAD_DAILY_FOLLOWER_HANDLES];
           const handles = [...new Set([...fixed, ...discovered])];
-
-          const config = configFromEnv({ SH_APP_VERSION: '1.0.0', REQUEST_TIMEOUT_MS: 8000 });
-          const deviceUid = crypto.randomUUID();
-          const tokenResponse = await fetch(`${API_BASE}/web/token`, {
-            method: 'POST',
-            headers: { ...shHeaders({ authToken: '', deviceUid }, config), authorization: '' },
-            body: '',
-            signal: AbortSignal.timeout(8000),
-          });
-          const authToken = normalizeBearer(tokenResponse.headers.get('authorization'));
-          if (!tokenResponse.ok || !authToken) throw new Error(`Stationhead guest token failed: ${tokenResponse.status}`);
-          const loginResponse = await fetch(`${API_BASE}/web/guest/login`, {
-            method: 'POST',
-            headers: shHeaders({ authToken, deviceUid }, config),
-            body: '',
-            signal: AbortSignal.timeout(8000),
-          });
-          if (!loginResponse.ok) throw new Error(`Stationhead guest login failed: ${loginResponse.status}`);
-          const session = { auth_token: authToken, device_uid: deviceUid };
 
           const settled = await Promise.allSettled(handles.map((handle) =>
             fetchStationheadFollowerProfile(handle, { session, timeoutMs: 8000, appVersion: '1.0.0' })
