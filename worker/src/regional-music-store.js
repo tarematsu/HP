@@ -92,6 +92,17 @@ export async function saveRegionalPlaylist(env, value) {
       observedAt, observedAt).run();
 }
 
+export async function saveRegionalPlaylistSnapshot(env, value) {
+  const observedAt = Number(value.observed_at) || Date.now();
+  const snapshotDate = value.snapshot_date || regionalMusicSnapshotDate(observedAt);
+  return dbOf(env).prepare(`INSERT INTO regional_music_playlist_snapshots(
+    snapshot_date,service,service_playlist_id,observed_at,item_count
+  ) VALUES(?,?,?,?,?) ON CONFLICT(snapshot_date,service,service_playlist_id) DO UPDATE SET
+    observed_at=excluded.observed_at,
+    item_count=excluded.item_count`)
+    .bind(snapshotDate, value.service, value.service_playlist_id, observedAt, count(value.item_count) ?? 0).run();
+}
+
 export async function saveRegionalPlaylistMembership(env, value) {
   const observedAt = Number(value.observed_at) || Date.now();
   const snapshotDate = value.snapshot_date || regionalMusicSnapshotDate(observedAt);
