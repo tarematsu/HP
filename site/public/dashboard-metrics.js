@@ -81,17 +81,42 @@ function showCurrentRuntimeError(error) {
   }
 }
 
-function loadCurrentRuntime() {
-  if (!currentRuntimePromise) {
-    currentRuntimePromise = import('./dashboard-client.js?v=20260930.1').catch((error) => {
-      currentRuntimePromise = null;
-      showCurrentRuntimeError(error);
-      throw error;
-    });
-  }
+function ensureCurrentRuntime() {
+  if (currentRuntimePromise) return currentRuntimePromise;
+  currentRuntimePromise = (async () => {
+    await Promise.all([
+      import('./dashboard-current-layout.js?v=20260924.1'),
+      import('./dashboard-chart-stability.js?v=20260930.2'),
+      import('./dashboard-chart-comparison.js?v=20260930.2'),
+      import('./dashboard-chart-detail.js?v=20260930.2'),
+      import('./dashboard-daily-summaries.js?v=20260930.2'),
+    ]);
+    await import('./dashboard-fetch-cache.js?v=20260930.1');
+    await import('/dashboard-client.js?v=20260930.2');
+  })().catch((error) => {
+    currentRuntimePromise = null;
+    showCurrentRuntimeError(error);
+    throw error;
+  });
   return currentRuntimePromise;
+}
+
+function locationIsCurrent() {
+  const mode = location.hash.slice(1);
+  return !mode || mode === 'current';
+}
+
+function startCurrentRuntimeFromLocation() {
+  if (locationIsCurrent()) void ensureCurrentRuntime();
 }
 
 installImageState('channelImage');
 installImageState('trackImage');
-void loadCurrentRuntime();
+startCurrentRuntimeFromLocation();
+
+document.getElementById('modeTabs')?.addEventListener('click', (event) => {
+  const button = event.target.closest('button');
+  if (button?.dataset.view === 'current') void ensureCurrentRuntime();
+}, { capture: true });
+window.addEventListener('popstate', startCurrentRuntimeFromLocation);
+window.addEventListener('hashchange', startCurrentRuntimeFromLocation);
