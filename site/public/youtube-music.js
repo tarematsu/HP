@@ -11,6 +11,7 @@ const ARTIST_LABELS = Object.freeze({
   sakurazaka46: '櫻坂46',
   nogizaka46: '乃木坂46',
   hinatazaka46: '日向坂46',
+  aobazaka46: '青葉坂46',
 });
 const STATUS_LABELS = Object.freeze({
   ok: '正常',
