@@ -17,6 +17,11 @@ import {
   runNogizakaNewsListStage,
 } from './nogizaka-official-news.js';
 import {
+  NOGIZAKA_LISTENING_PARTY_MODEL_KEY,
+  publishNogizakaListeningPartyReadModel,
+} from './nogizaka-pages-read-model.js';
+import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
+import {
   collectNogizakaStationMain,
   decodeNogizakaStationMain,
   finalizeNogizakaStationProbe,
@@ -46,6 +51,16 @@ function stageBody(stage, scheduledAt, extra = null) {
 async function send(queue, body) {
   if (!queue?.send) throw new Error('HOST_MONITOR_QUEUE binding is missing for Nogizaka');
   await queue.send(body, JSON_QUEUE_SEND_OPTIONS);
+}
+
+async function bootstrapNogizakaPagesReadModel(env, scheduledAt) {
+  const r2 = env?.PAGES_RESPONSE_R2;
+  if (typeof r2?.head !== 'function') return null;
+  const key = pagesActionsR2ResponseKey(NOGIZAKA_LISTENING_PARTY_MODEL_KEY);
+  if (!key) return null;
+  const existing = await r2.head(key);
+  if (existing) return null;
+  return publishNogizakaListeningPartyReadModel(env, scheduledAt);
 }
 
 export async function runNogizakaScheduled(controller, env, dependencies = {}) {
@@ -86,7 +101,14 @@ export async function runNogizakaScheduled(controller, env, dependencies = {}) {
     };
   }
 
-  return { skipped: true, reason: 'no-due-work', scheduled_at: scheduledAt };
+  const bootstrap = dependencies.bootstrapPagesReadModel || bootstrapNogizakaPagesReadModel;
+  const pagesReadModel = await bootstrap(activeEnv, scheduledAt);
+  return {
+    skipped: true,
+    reason: 'no-due-work',
+    scheduled_at: scheduledAt,
+    ...(pagesReadModel ? { pages_read_model: pagesReadModel } : {}),
+  };
 }
 
 function stageDependencies() {
