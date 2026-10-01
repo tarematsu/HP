@@ -17,10 +17,10 @@ test('dashboard exposes Stationhead and music subscription top-level categories'
   assert.match(index, /id="modeTabs"/);
 });
 
-test('Stationhead sources are Buddies, Ohisama, nogizaka46smej, leaderboard and followers', () => {
+test('Stationhead sources are Buddies, Ohisama, Nogizaka, leaderboard and followers', () => {
   const buddies = route.indexOf("id: 'buddies'");
   const hinata = route.indexOf("id: 'hinata', label: 'Ohisama'");
-  const nogizaka = route.indexOf("id: 'nogizaka', label: 'nogizaka46smej'");
+  const nogizaka = route.indexOf("id: 'nogizaka', label: 'Nogizaka'");
   const ranking = route.indexOf("id: 'ranking', label: 'リーダーボード'");
   const followers = route.indexOf("id: 'followers', label: 'フォロワー'");
   const subscriptions = route.indexOf("id: 'subscriptions'");

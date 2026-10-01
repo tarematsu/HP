@@ -91,7 +91,7 @@ const NAVIGATION = Object.freeze([
         modes: Object.freeze(['current', 'daily', 'weekly', 'monthly', 'first-week', 'played-tracks', 'likes', 'broadcasts']),
       }),
       Object.freeze({ id: 'hinata', label: 'Ohisama', defaultMode: 'hinata', modes: Object.freeze(['hinata']) }),
-      Object.freeze({ id: 'nogizaka', label: 'nogizaka46smej', defaultMode: 'nogizaka', modes: Object.freeze(['nogizaka']) }),
+      Object.freeze({ id: 'nogizaka', label: 'Nogizaka', defaultMode: 'nogizaka', modes: Object.freeze(['nogizaka']) }),
       Object.freeze({ id: 'ranking', label: 'リーダーボード', defaultMode: 'ranking', modes: Object.freeze(['ranking']) }),
       Object.freeze({ id: 'followers', label: 'フォロワー', defaultMode: 'followers', modes: Object.freeze(['followers']) }),
     ]),
