@@ -54,8 +54,8 @@ test('full-page screenshots reveal content-visibility sections before capture', 
 test('compact production audit follows the current routes and scrollable navigation', () => {
   assert.doesNotMatch(compactAudit, /name: 'weekly'/);
   assert.doesNotMatch(compactAudit, /name: 'monthly'/);
-  assert.doesNotMatch(compactAudit, /path: '\\/#weekly'/);
-  assert.doesNotMatch(compactAudit, /path: '\\/#monthly'/);
+  assert.doesNotMatch(compactAudit, /path: '\/#weekly'/);
+  assert.doesNotMatch(compactAudit, /path: '\/#monthly'/);
   assert.match(compactAudit, /requiredText: '総週数'/);
   assert.match(compactAudit, /navigationScrollable/);
   assert.match(compactAudit, /selectedTabClipped/);
