@@ -1,0 +1,84 @@
+name: Diagnose Ohisama host payload structure
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/diagnose-ohisama-host.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Inspect Stationhead Ohisama payload
+        working-directory: worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import crypto from 'node:crypto';
+
+          const API_BASE = 'https://production1.stationhead.com';
+          const AUTH_PAGE = 'https://www.stationhead.com/c/ilys';
+          const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
+          const deviceUid = crypto.randomUUID();
+          const normalizeBearer = (value) => String(value || '').replace(/^Bearer\s+/i, '').trim();
+          const headers = (token = '', guest = false) => ({
+            accept: 'application/json, text/plain, */*',
+            'accept-language': 'ja,en-US;q=0.9,en;q=0.8',
+            authorization: token ? `Bearer ${token}` : '',
+            'app-platform': 'web',
+            'app-version': '1.0.0',
+            'content-type': 'application/json',
+            origin: 'https://www.stationhead.com',
+            referer: guest ? AUTH_PAGE : 'https://www.stationhead.com/',
+            'sth-device-uid': deviceUid,
+            'user-agent': UA,
+          });
+
+          const tokenRes = await fetch(`${API_BASE}/web/token`, { method: 'POST', headers: headers('', true), body: '' });
+          const token = normalizeBearer(tokenRes.headers.get('authorization'));
+          if (!tokenRes.ok || !token) throw new Error(`token ${tokenRes.status}`);
+          const loginRes = await fetch(`${API_BASE}/web/guest/login`, { method: 'POST', headers: headers(token, true), body: '' });
+          if (!loginRes.ok) throw new Error(`login ${loginRes.status}`);
+          const verifyRes = await fetch(`${API_BASE}/station/handle/ilys/guest`, { method: 'POST', headers: headers(token, true), body: '' });
+          if (!verifyRes.ok) throw new Error(`verify ${verifyRes.status}`);
+          await verifyRes.arrayBuffer();
+          const channelRes = await fetch(`${API_BASE}/channels/alias/ohisama`, { headers: headers(token, false) });
+          if (!channelRes.ok) throw new Error(`channel ${channelRes.status}`);
+          const payload = await channelRes.json();
+
+          const interestingKey = /host|handle|broad|dj|station|account|owner|user|creator|admin|moderator|member|profile|live/i;
+          const rows = [];
+          function walk(value, path = '$', depth = 0) {
+            if (depth > 8 || value == null) return;
+            if (Array.isArray(value)) {
+              rows.push({ path, type: 'array', length: value.length });
+              for (let i = 0; i < Math.min(value.length, 5); i += 1) walk(value[i], `${path}[${i}]`, depth + 1);
+              return;
+            }
+            if (typeof value !== 'object') return;
+            const keys = Object.keys(value);
+            if (depth <= 3 || interestingKey.test(path) || keys.some((k) => interestingKey.test(k))) rows.push({ path, keys });
+            for (const [key, child] of Object.entries(value)) {
+              const childPath = `${path}.${key}`;
+              if (child == null || ['string','number','boolean'].includes(typeof child)) {
+                if (interestingKey.test(key) || interestingKey.test(path)) rows.push({ path: childPath, value: child });
+              } else {
+                walk(child, childPath, depth + 1);
+              }
+            }
+          }
+          walk(payload);
+          console.log('OHISAMA_PAYLOAD_STRUCTURE_START');
+          for (const row of rows) console.log(JSON.stringify(row));
+          console.log('OHISAMA_PAYLOAD_STRUCTURE_END');
+          NODE
