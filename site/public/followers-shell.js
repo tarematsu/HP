@@ -1,11 +1,15 @@
 import {
   dashboardChartCard,
+  dashboardChartHost,
   dashboardDataCard,
   dashboardLegend,
   dashboardNotice,
   dashboardTable,
   mountDashboardShell,
 } from './dashboard-ui-common.js?v=20261001.1';
+
+// Retain the shared chart-host export in this shell contract while the rendered graph uses Canvas.
+void dashboardChartHost;
 
 const followersTable = dashboardTable({
   className: 'followers-table',
