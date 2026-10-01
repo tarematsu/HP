@@ -126,8 +126,10 @@ export function dashboardMissingIndexBands(rows, positions, area, {
 export function dashboardMissingGapBands(rows, positions, area, {
   time = (row) => Number(row?.timestamp ?? row?.observed_at),
   maxGap,
+  edgeInset = 0,
 } = {}) {
   if (!Array.isArray(rows) || rows.length < 2 || !Array.isArray(positions) || positions.length < 2 || !area || !Number.isFinite(maxGap)) return [];
+  const inset = Math.max(0, Number(edgeInset) || 0);
   const bands = [];
   for (let index = 1; index < rows.length; index += 1) {
     const previousTime = Number(time(rows[index - 1], index - 1));
@@ -136,11 +138,9 @@ export function dashboardMissingGapBands(rows, positions, area, {
     const previousX = Number(positions[index - 1]);
     const currentX = Number(positions[index]);
     if (!Number.isFinite(previousX) || !Number.isFinite(currentX)) continue;
-    const midpoint = (previousX + currentX) / 2;
-    const halfGap = Math.max(1, Math.abs(currentX - previousX) / 2);
     bands.push({
-      left: Math.max(Number(area.left), midpoint - halfGap),
-      right: Math.min(Number(area.left) + Number(area.width), midpoint + halfGap),
+      left: Math.max(Number(area.left), previousX + inset),
+      right: Math.min(Number(area.left) + Number(area.width), currentX - inset),
     });
   }
   return bands;
