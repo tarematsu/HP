@@ -180,11 +180,20 @@ async function trackMappings(db, values, column, chunkSize) {
   return [...direct, ...aliases];
 }
 
+async function hydrateMappedTrackIds(db, canonicalRows, indexes, mappings, chunkSize) {
+  const trackIds = [...new Set((mappings || [])
+    .map((row) => positiveInteger(row?.track_id))
+    .filter((trackId) => trackId != null && !indexes.byTrackId.has(trackId)))];
+  if (!trackIds.length) return indexes;
+  canonicalRows.push(...await queryChunked(db, trackIds, physicalCanonicalTrackSql, chunkSize));
+  return canonicalIndexes(canonicalRows);
+}
+
 /**
- * Resolve Pages/read-model song rows to sh_tracks.id using only bounded indexed
- * physical-table lookups. Provider aliases are first mapped through sh_tracks;
- * presentation fields are then joined from sh_track_dictionary by primary key.
- * The UNION canonical view is intentionally excluded from this runtime hot path.
+ * Resolve Pages/read-model song rows to sh_tracks.id using bounded indexed
+ * physical-table lookups. Each fallback stage hydrates its resolved track ids
+ * immediately, so later ISRC/Spotify aliases are queried only for rows that are
+ * still unresolved. The UNION canonical view is excluded from this hot path.
  */
 export async function canonicalizeTrackRows(
   db,
@@ -197,50 +206,54 @@ export async function canonicalizeTrackRows(
   try {
     const canonicalRows = Array.isArray(seedRows) ? [...seedRows] : [];
     let indexes = canonicalIndexes(canonicalRows);
-    let unresolved = unresolvedRows(rows, indexes);
-    const trackIds = new Set(unresolved
-      .map((row) => positiveInteger(row?.track_id))
-      .filter(Boolean));
 
+    let unresolved = unresolvedRows(rows, indexes);
+    const directTrackIds = [...new Set(unresolved
+      .map((row) => positiveInteger(row?.track_id))
+      .filter(Boolean))];
+    indexes = await hydrateMappedTrackIds(
+      db,
+      canonicalRows,
+      indexes,
+      directTrackIds.map((track_id) => ({ track_id })),
+      boundedChunkSize,
+    );
+
+    unresolved = unresolvedRows(rows, indexes);
     const stationheadIds = [...new Set(unresolved
-      .filter((row) => positiveInteger(row?.track_id) == null)
       .map((row) => positiveInteger(row?.stationhead_track_id))
       .filter(Boolean))];
-    for (const mapping of await trackMappings(db, stationheadIds, 'stationhead_track_id', boundedChunkSize)) {
-      const trackId = positiveInteger(mapping?.track_id);
-      if (trackId != null) trackIds.add(trackId);
-    }
+    indexes = await hydrateMappedTrackIds(
+      db,
+      canonicalRows,
+      indexes,
+      await trackMappings(db, stationheadIds, 'stationhead_track_id', boundedChunkSize),
+      boundedChunkSize,
+    );
 
     unresolved = unresolvedRows(rows, indexes);
     const isrcs = [...new Set(unresolved
-      .filter((row) => positiveInteger(row?.track_id) == null)
       .map((row) => normalizedIsrc(row?.isrc))
       .filter(Boolean))];
-    for (const mapping of await trackMappings(db, isrcs, 'isrc', boundedChunkSize)) {
-      const trackId = positiveInteger(mapping?.track_id);
-      if (trackId != null) trackIds.add(trackId);
-    }
+    indexes = await hydrateMappedTrackIds(
+      db,
+      canonicalRows,
+      indexes,
+      await trackMappings(db, isrcs, 'isrc', boundedChunkSize),
+      boundedChunkSize,
+    );
 
     unresolved = unresolvedRows(rows, indexes);
     const spotifyIds = [...new Set(unresolved
-      .filter((row) => positiveInteger(row?.track_id) == null)
       .map((row) => text(row?.spotify_id))
       .filter(Boolean))];
-    for (const mapping of await trackMappings(db, spotifyIds, 'spotify_id', boundedChunkSize)) {
-      const trackId = positiveInteger(mapping?.track_id);
-      if (trackId != null) trackIds.add(trackId);
-    }
-
-    const neededTrackIds = [...trackIds].filter((trackId) => !indexes.byTrackId.has(trackId));
-    if (neededTrackIds.length) {
-      canonicalRows.push(...await queryChunked(
-        db,
-        neededTrackIds,
-        physicalCanonicalTrackSql,
-        boundedChunkSize,
-      ));
-      indexes = canonicalIndexes(canonicalRows);
-    }
+    indexes = await hydrateMappedTrackIds(
+      db,
+      canonicalRows,
+      indexes,
+      await trackMappings(db, spotifyIds, 'spotify_id', boundedChunkSize),
+      boundedChunkSize,
+    );
 
     return applyCanonicalIndexes(rows, indexes);
   } catch (error) {
