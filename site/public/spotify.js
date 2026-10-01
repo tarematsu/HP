@@ -42,6 +42,10 @@ let latestCharts = null;
 
 const setNotice = (message = '', error = false) => setSharedNotice('spotifyNotice', message, error);
 const formatTrendDate = (value) => shortDate(value, '');
+const formatInteger = (value) => {
+  const parsed = integer(value);
+  return parsed == null ? '-' : numberFormat.format(parsed);
+};
 
 function renderRows(payload = {}) {
   const body = element('spotifyTbody');
@@ -85,6 +89,26 @@ function graphTrendSeries(seriesList = []) {
 
 function graphTrendColor(series, fallbackIndex = 0) {
   return GRAPH_ARTIST_COLORS[series?.artistKey] || TREND_COLORS[fallbackIndex % TREND_COLORS.length];
+}
+
+function monthlyListenerTrend(rows = []) {
+  const trend = {};
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const artistKey = String(row?.artist_key || '').trim();
+    const snapshotDate = String(row?.snapshot_date || '').trim();
+    const monthlyListeners = integer(row?.monthly_listeners);
+    if (!GRAPH_ARTIST_KEY_SET.has(artistKey)
+        || !/^\d{4}-\d{2}-\d{2}$/.test(snapshotDate)
+        || monthlyListeners == null
+        || monthlyListeners < 0) continue;
+    if (!trend[artistKey]) trend[artistKey] = [];
+    trend[artistKey].push({
+      snapshot_date: snapshotDate,
+      artist_name: String(row?.artist_name || '').trim() || artistKey,
+      monthly_listeners: monthlyListeners,
+    });
+  }
+  return trend;
 }
 
 export function selectTrendSeriesByLatestMetric(seriesList = [], metricKey, limit = TREND_ARTIST_LIMIT) {
@@ -140,7 +164,16 @@ function legendItem(artistName, latestText, color) {
   return item;
 }
 
-function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel, maxSeries = null }) {
+function renderTrendChart(trend = {}, {
+  containerId,
+  metricKey,
+  ariaLabel,
+  maxSeries = null,
+  emptyText = 'Spotify再生数の推移データはまだありません。',
+  legendLabel = 'アイドル凡例と最新の再生数前日比',
+  latestFormatter = signedInteger,
+  zeroBaseline = true,
+}) {
   const container = element(containerId);
   if (!container) return;
   container.replaceChildren();
@@ -154,23 +187,33 @@ function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel, maxSe
   const values = seriesList.flatMap((series) =>
     series.points.map((point) => integer(point?.[metricKey]))).filter((value) => value != null);
   if (!dates.length || !values.length) {
-    appendEmptyState(container, 'Spotify再生数の推移データはまだありません。', { className: 'spotify-trend-empty' });
+    appendEmptyState(container, emptyText, { className: 'spotify-trend-empty' });
     return;
   }
 
-  let yMin = Math.min(0, ...values);
-  let yMax = Math.max(0, ...values);
-  if (yMin === yMax) yMax = yMin + 1;
-  if (yMin < 0) yMin = Math.floor(yMin * 1.08);
-  if (yMax > 0) yMax = Math.ceil(yMax * 1.08);
+  let yMin;
+  let yMax;
+  if (zeroBaseline) {
+    yMin = Math.min(0, ...values);
+    yMax = Math.max(0, ...values);
+    if (yMin === yMax) yMax = yMin + 1;
+    if (yMin < 0) yMin = Math.floor(yMin * 1.08);
+    if (yMax > 0) yMax = Math.ceil(yMax * 1.08);
+  } else {
+    const rawMin = Math.min(...values);
+    const rawMax = Math.max(...values);
+    const padding = Math.max(1, Math.ceil(Math.max(rawMax - rawMin, rawMax * .02) * .12));
+    yMin = Math.max(0, rawMin - padding);
+    yMax = Math.max(yMin + 1, rawMax + padding);
+  }
   const yRange = Math.max(1, yMax - yMin);
   const { legend, canvas } = trendFrame(container, ariaLabel);
-  legend.setAttribute('aria-label', 'アイドル凡例と最新の再生数前日比');
+  legend.setAttribute('aria-label', legendLabel);
   seriesList.forEach((series, seriesIndex) => {
     const { artistName, points } = series;
     const color = graphTrendColor(series, seriesIndex);
     const latest = [...points].reverse().find((point) => integer(point?.[metricKey]) != null);
-    legend.append(legendItem(artistName, signedInteger(latest?.[metricKey]), color));
+    legend.append(legendItem(artistName, latestFormatter(latest?.[metricKey]), color));
   });
 
   const measuredWidth = Math.max(1, Math.round(canvas.parentElement?.getBoundingClientRect?.().width || 960));
@@ -345,23 +388,32 @@ function renderArtistRankChart(chart = {}, trend = {}) {
   }
 }
 
-function renderCharts(trend, artistChart) {
+function renderCharts(trend, artistChart, monthlyListenerRows) {
   renderTrendChart(trend, {
     containerId: 'spotifyTrendCharts',
     metricKey: 'total_delta',
-    ariaLabel: '最新日の全曲合計再生数前日比が大きい女性アイドル上位10組の推移',
+    ariaLabel: '乃木坂46・櫻坂46・日向坂46の全曲合計再生数前日比推移',
     maxSeries: TREND_ARTIST_LIMIT,
+  });
+  renderTrendChart(monthlyListenerTrend(monthlyListenerRows), {
+    containerId: 'spotifyMonthlyListenerTrendCharts',
+    metricKey: 'monthly_listeners',
+    ariaLabel: '乃木坂46・櫻坂46・日向坂46のSpotify月間リスナー推移',
+    emptyText: 'Spotify月間リスナーの推移データはまだありません。',
+    legendLabel: '坂道3グループの凡例と最新月間リスナー数',
+    latestFormatter: formatInteger,
+    zeroBaseline: false,
   });
   renderTrendChart(trend, {
     containerId: 'spotifyTop10YearTrendCharts',
     metricKey: 'top10_year_delta',
-    ariaLabel: '今年リリース曲のうち再生数前日比上位10曲の合計が最新日に大きい女性アイドル上位10組の推移',
+    ariaLabel: '乃木坂46・櫻坂46・日向坂46の今年リリース上位10曲合計の再生数前日比推移',
     maxSeries: TREND_ARTIST_LIMIT,
   });
   renderArtistRankChart(artistChart, trend);
 }
 
-function render(payload, trend, artistChart) {
+function render(payload, trend, artistChart, monthlyListenerRows) {
   const artistName = payload?.artist?.name || selectedArtistKey;
   const date = element('spotifySnapshotDate');
   if (date) date.textContent = formatDate(payload?.snapshot_date);
@@ -377,8 +429,8 @@ function render(payload, trend, artistChart) {
   if (deltaLabel) deltaLabel.textContent = `${artistName}の再生数前日比合計`;
   document.querySelectorAll('[data-spotify-artist]').forEach((button) => button.classList.toggle('active', button.dataset.spotifyArtist === selectedArtistKey));
 
-  latestCharts = { trend, artistChart };
-  renderCharts(trend, artistChart);
+  latestCharts = { trend, artistChart, monthlyListenerRows };
+  renderCharts(trend, artistChart, monthlyListenerRows);
   renderRows(payload || {});
 
   if (!payload?.track_count) {
@@ -415,7 +467,7 @@ export async function loadSpotifyView({ refresh = false } = {}) {
     if (sequence !== requestSequence) return;
     const payload = model?.groups?.[selectedArtistKey];
     if (!payload) throw new Error(`${selectedArtistKey}のリードモデルがありません`);
-    render(payload, model?.trend || {}, model?.artist_chart || {});
+    render(payload, model?.trend || {}, model?.artist_chart || {}, model?.monthly_listener_rows || []);
   } catch (error) {
     if (sequence !== requestSequence) return;
     setNotice(`Spotify再生数の取得に失敗しました：${error.message}`, true);
@@ -429,6 +481,6 @@ globalThis.document?.querySelectorAll('[data-spotify-artist]').forEach((button) 
 
 if (typeof document !== 'undefined') {
   observeDashboardChartResize(element('spotifyView'), () => {
-    if (latestCharts) renderCharts(latestCharts.trend, latestCharts.artistChart);
+    if (latestCharts) renderCharts(latestCharts.trend, latestCharts.artistChart, latestCharts.monthlyListenerRows);
   }, { delay: 220, enabled: () => Boolean(latestCharts) });
 }
