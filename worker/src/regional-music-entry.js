@@ -1,11 +1,15 @@
 import { collectAnghami } from './regional-music-anghami.js';
 import { collectBugsArtists } from './regional-music-bugs.js';
+import { collectGenie } from './regional-music-genie.js';
+import { collectJooxArtists } from './regional-music-joox.js';
 import { collectNhacCuaTui } from './regional-music-nhaccuatui.js';
 
 export const REGIONAL_MUSIC_DAILY_CRON = '20 15 * * *';
 
 const DAILY_COLLECTORS = Object.freeze([
+  collectGenie,
   collectBugsArtists,
+  collectJooxArtists,
   collectNhacCuaTui,
   collectAnghami,
 ]);
