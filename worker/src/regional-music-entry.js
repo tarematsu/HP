@@ -4,6 +4,7 @@ import { collectGenie } from './regional-music-genie.js';
 import { collectJooxArtists } from './regional-music-joox.js';
 import { collectMelon } from './regional-music-melon.js';
 import { collectNhacCuaTui } from './regional-music-nhaccuatui.js';
+import { publishRegionalMusicReadModel } from './regional-music-read-model.js';
 
 export const REGIONAL_MUSIC_DAILY_CRON = '20 15 * * *';
 
@@ -30,6 +31,17 @@ export async function collectRegionalMusicDaily(env, scheduledTime, fetchImpl = 
         error: String(error?.message || error),
       });
     }
+  }
+
+  try {
+    const published = await publishRegionalMusicReadModel(env, observedAt);
+    results.push({ service: 'regional-music-read-model', status: 'ok', ...published });
+  } catch (error) {
+    results.push({
+      service: 'regional-music-read-model',
+      status: 'error',
+      error: String(error?.message || error),
+    });
   }
 
   console.log(JSON.stringify({ event: 'regional-music-daily-complete', results }));
