@@ -18,6 +18,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci --prefer-offline --no-audit --no-fund
       - name: Apply fixes
         run: node scripts/tmp-dashboard-runtime-refactor-fix.mjs
       - name: Verify Pages tests
