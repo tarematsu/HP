@@ -152,11 +152,32 @@ function unresolvedRows(rows, indexes) {
   return rows.filter((row) => !preferredCanonical(row, indexes));
 }
 
+function mappingValue(row, column) {
+  if (column === 'isrc') return normalizedIsrc(row?.isrc);
+  if (column === 'spotify_id') return text(row?.spotify_id);
+  return positiveInteger(row?.stationhead_track_id);
+}
+
 async function trackMappings(db, values, column, chunkSize) {
   if (!values.length) return [];
   const safeColumn = column === 'isrc' ? 'isrc' : column === 'spotify_id' ? 'spotify_id' : 'stationhead_track_id';
-  return queryChunked(db, values, (chunk) => `SELECT id AS track_id,${safeColumn}
+  const direct = await queryChunked(db, values, (chunk) => `SELECT id AS track_id,${safeColumn}
     FROM sh_tracks WHERE ${safeColumn} IN (${placeholders(chunk.length)})`, chunkSize);
+  if (safeColumn === 'stationhead_track_id') return direct;
+
+  const found = new Set(direct.map((row) => mappingValue(row, safeColumn)).filter(Boolean));
+  const missing = values.filter((value) => !found.has(
+    safeColumn === 'isrc' ? normalizedIsrc(value) : text(value),
+  ));
+  if (!missing.length) return direct;
+
+  const aliasType = safeColumn === 'isrc' ? 'isrc' : 'spotify_id';
+  const aliases = await queryChunked(db, missing, (chunk) => `SELECT
+      track_id,alias_value AS ${safeColumn}
+    FROM sh_track_aliases
+    WHERE alias_type='${aliasType}'
+      AND alias_value IN (${placeholders(chunk.length)})`, chunkSize);
+  return [...direct, ...aliases];
 }
 
 /**
