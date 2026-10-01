@@ -37,9 +37,7 @@ function detectGaps(history) {
   for (let index = 1; index < buckets.length; index += 1) {
     const previous = buckets[index - 1];
     const current = buckets[index];
-    if (current - previous > FIVE_MINUTES_MS) {
-      gaps.push({ after: previous, before: current });
-    }
+    if (current - previous > FIVE_MINUTES_MS) gaps.push({ after: previous, before: current });
   }
   return gaps;
 }
@@ -50,6 +48,7 @@ function mergeHistory(history, rows) {
     const point = bucketAt(row?.observed_at);
     if (point != null) byBucket.set(point, { ...row, observed_at: point });
   }
+  let inserted = 0;
   for (const row of rows) {
     const point = bucketAt(row?.bucket_at ?? row?.observed_at);
     if (point == null || byBucket.has(point)) continue;
@@ -61,10 +60,14 @@ function mergeHistory(history, rows) {
       total_listens: row?.total_listens ?? null,
       current_stream_count: row?.current_stream_count ?? null,
     });
+    inserted += 1;
   }
-  return [...byBucket.values()]
-    .sort((left, right) => left.observed_at - right.observed_at)
-    .slice(-300);
+  return {
+    history: [...byBucket.values()]
+      .sort((left, right) => left.observed_at - right.observed_at)
+      .slice(-300),
+    inserted,
+  };
 }
 
 function readEnvelope() {
@@ -101,26 +104,28 @@ function uploadJson(key, value) {
   }
 }
 
-const { envelope, payload } = readEnvelope();
-const gapsBefore = detectGaps(payload.history);
+const initial = readEnvelope();
+const gapsBefore = detectGaps(initial.payload.history);
 if (!gapsBefore.length) {
   console.log(JSON.stringify({
     event: 'buddies_dashboard_gap_backfill_skipped',
     reason: 'no-read-model-gaps',
-    history_rows: payload.history.length,
+    history_rows: initial.payload.history.length,
   }));
   process.exit(0);
 }
 
+const channelId = Number(initial.payload?.latest?.channel_id);
+if (!Number.isFinite(channelId)) throw new Error('dashboard channel_id is unavailable');
 const minuteDb = createWranglerRemoteD1({
   database: factsDatabase,
   cwd: workerRoot,
   wranglerScript,
   maxRetries: 2,
 });
-const channelId = Number(payload?.latest?.channel_id);
-if (!Number.isFinite(channelId)) throw new Error('dashboard channel_id is unavailable');
 
+// Read only inside the missing intervals. Existing dashboard buckets and the
+// rest of the 24-hour window are never scanned or regenerated.
 const recovered = [];
 for (const gap of gapsBefore) {
   const result = await minuteDb.prepare(`SELECT
@@ -144,17 +149,32 @@ if (!recovered.length) {
   process.exit(0);
 }
 
-const history = mergeHistory(payload.history, recovered);
-const gapsAfter = detectGaps(history);
+// The collector may have advanced while D1 was queried. Re-read the public
+// envelope and merge only the recovered missing buckets into that newest state,
+// so this repair does not intentionally replace current values with the older
+// snapshot used for gap detection.
+const latest = readEnvelope();
+const merged = mergeHistory(latest.payload.history, recovered);
+if (!merged.inserted) {
+  console.log(JSON.stringify({
+    event: 'buddies_dashboard_gap_backfill_skipped',
+    reason: 'gaps-already-filled',
+    recovered_rows: recovered.length,
+    history_rows: latest.payload.history.length,
+  }));
+  process.exit(0);
+}
+
 const now = Date.now();
+const gapsAfter = detectGaps(merged.history);
 const nextPayload = {
-  ...payload,
-  history,
-  stream_5m_history: directFiveMinuteStreamHistory(history),
+  ...latest.payload,
+  history: merged.history,
+  stream_5m_history: directFiveMinuteStreamHistory(merged.history),
   _targeted_gap_backfill_at: now,
 };
 const nextEnvelope = {
-  ...envelope,
+  ...latest.envelope,
   updated_at: now,
   body: JSON.stringify(nextPayload),
 };
@@ -164,18 +184,23 @@ const nextHotState = {
   payload: nextPayload,
 };
 
-uploadJson(dashboardKey, nextEnvelope);
+// Keep the state used by the next incremental publisher consistent with the
+// public response. The collector normally writes hot state before public R2,
+// so retain that ordering here too.
 uploadJson(hotStateKey, nextHotState);
+uploadJson(dashboardKey, nextEnvelope);
 
 console.log(JSON.stringify({
   event: 'buddies_dashboard_gap_backfill_complete',
   detected_gap_count: gapsBefore.length,
-  recovered_rows: recovered.length,
-  history_rows_before: payload.history.length,
-  history_rows_after: history.length,
+  source_rows_read: recovered.length,
+  inserted_rows: merged.inserted,
+  history_rows_before: latest.payload.history.length,
+  history_rows_after: merged.history.length,
   remaining_gap_count: gapsAfter.length,
   detected_gaps: gapsBefore,
   remaining_gaps: gapsAfter,
+  latest_observed_at: nextPayload.latest_observed_at ?? nextPayload.latest?.observed_at ?? null,
   dashboard_key: dashboardKey,
   hot_state_key: hotStateKey,
 }));
