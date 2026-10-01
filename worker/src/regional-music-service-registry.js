@@ -16,6 +16,7 @@ export const REGIONAL_MUSIC_ARTISTS = Object.freeze({
 // `metrics` describes data the current collector actually persists. The broader
 // discovery/expansion targets remain documented separately in the implementation plan.
 export const REGIONAL_MUSIC_SERVICES = Object.freeze({
+  youtube_music: Object.freeze({ region: 'JP/Global', phase: 1, metrics: ['artist_followers', 'monthly_audience', 'total_views', 'catalog', 'releases', 'playlists'] }),
   genie: Object.freeze({ region: 'KR', phase: 1, metrics: ['artist_likes', 'track_plays', 'track_listeners', 'track_likes', 'catalog'] }),
   bugs: Object.freeze({ region: 'KR', phase: 1, metrics: ['artist_likes'] }),
   joox: Object.freeze({ region: 'HK/TH/SEA', phase: 1, metrics: ['artist_followers'] }),
