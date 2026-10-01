@@ -70,7 +70,8 @@ test('history rebuild is targeted by source revision with one daily recovery swe
   assert.doesNotMatch(workflow, /node scripts\/refresh-pages-realtime-actions\.mjs/);
   assert.match(historyRunner, /variant\.key !== 'dashboard' && variant\.event_driven !== true/);
   assert.match(historyRunner, /PAGES_READ_MODEL_DUE_KEYS/);
-  assert.match(historyRunner, /reuseOnlyKeys: variants\.map/);
+  assert.match(historyRunner, /BUDGET_EXEMPT_HISTORY_KEYS = new Set\(\['history:daily'\]\)/);
+  assert.match(historyRunner, /reuseOnlyKeys:[\s\S]*filter\(\(key\) => !BUDGET_EXEMPT_HISTORY_KEYS\.has\(key\)\)/);
   assert.doesNotMatch(historyRunner, /SPOTIFY_MODEL_KEY/);
   assert.match(workflow, /timeout-minutes: 15/);
   assert.match(workflow, /cancel-in-progress: true/);
