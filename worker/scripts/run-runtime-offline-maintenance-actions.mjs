@@ -41,8 +41,6 @@ function productionEnvironment() {
     SNAPSHOT_RETENTION_ENABLED: true,
     SNAPSHOT_RETENTION_MS: 30 * 24 * 60 * 60_000,
     SNAPSHOT_RETENTION_INTERVAL_MS: 6 * 60 * 60_000,
-    // Keep one retention round within the Actions write guard. Each round can
-    // touch at most eight tables, so 500 rows/table caps deletes at 4,000.
     SNAPSHOT_RETENTION_BATCH_SIZE: 500,
     SNAPSHOT_RETENTION_MAX_BATCHES: 1,
     STREAM_GOAL_PREDICTION_INTERVAL_MS: 30 * 60_000,
@@ -56,45 +54,6 @@ function timestamp(clock, fallback) {
 
 function errorText(error) {
   return String(error?.message || error || 'runtime offline maintenance failed').slice(0, 1000);
-}
-
-function explicitFalse(value) {
-  return value === false
-    || value === 0
-    || /^(0|false|no|off)$/i.test(String(value ?? '').trim());
-}
-
-function optionalMetric(value) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : null;
-}
-
-function d1BudgetSkip(options = {}) {
-  const allowed = options.d1Allowed ?? process.env.RUNTIME_MAINTENANCE_D1_ALLOWED;
-  if (!explicitFalse(allowed)) return null;
-  return {
-    reason: String(
-      options.d1SkipReason
-      ?? process.env.RUNTIME_MAINTENANCE_D1_SKIP_REASON
-      ?? 'budget-exceeded',
-    ).slice(0, 120),
-    rows_read: optionalMetric(
-      options.d1RowsRead ?? process.env.RUNTIME_MAINTENANCE_D1_ROWS_READ,
-    ),
-    projected_rows_read: optionalMetric(
-      options.d1ProjectedRowsRead
-      ?? process.env.RUNTIME_MAINTENANCE_D1_PROJECTED_ROWS_READ,
-    ),
-    read_limit: optionalMetric(
-      options.d1ReadLimit ?? process.env.RUNTIME_MAINTENANCE_D1_READ_LIMIT,
-    ),
-    rows_written: optionalMetric(
-      options.d1RowsWritten ?? process.env.RUNTIME_MAINTENANCE_D1_ROWS_WRITTEN,
-    ),
-    write_limit: optionalMetric(
-      options.d1WriteLimit ?? process.env.RUNTIME_MAINTENANCE_D1_WRITE_LIMIT,
-    ),
-  };
 }
 
 function inboxRecoveryOptions(options, startedAt) {
@@ -229,41 +188,11 @@ export async function runRuntimeOfflineMaintenanceActions(options = {}) {
   });
 
   try {
-    // Inbox reconciliation is deliberately small and must run even when the
-    // account-wide D1 budget guard defers expensive prediction and rollup work.
-    // It finalizes ledger rows whose minute facts already exist, releases expired
-    // leases, and requeues recoverable dead rows so public health reflects reality.
     ensureTime();
     const inboxRecovery = await runInboxRecovery(
       env,
       inboxRecoveryOptions(options, startedAt),
     );
-
-    const budget = d1BudgetSkip(options);
-    if (budget) {
-      const finishedAt = timestamp(clock, startedAt);
-      const summary = `Deferred by D1 Actions guard (${budget.reason})`.slice(0, 1000);
-      await writeMaintenanceStatus(env.OTHER_DB, {
-        status: 'ok',
-        attemptAt: startedAt,
-        failureCode: 'runtime_offline_maintenance_deferred',
-        failureStage: 'd1-budget-guard',
-        failureSummary: summary,
-        failureHint: 'Heavy maintenance will resume automatically when D1 usage returns within budget.',
-        updatedAt: finishedAt,
-      });
-      return {
-        ok: true,
-        skipped: true,
-        event: 'runtime_offline_maintenance_actions_budget_skipped',
-        reason: 'd1-actions-budget',
-        elapsed_ms: Math.max(0, finishedAt - startedAt),
-        last_success_preserved: true,
-        inbox_recovery: inboxRecovery,
-        budget,
-      };
-    }
-
     ensureTime();
     const prediction = await runPrediction(env, startedAt);
     ensureTime();
