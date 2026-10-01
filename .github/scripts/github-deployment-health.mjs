@@ -4,6 +4,7 @@ export const DEPLOYMENT_HEALTH_START = '<!-- github-deployment-health:start -->'
 export const DEPLOYMENT_HEALTH_END = '<!-- github-deployment-health:end -->';
 export const MAX_DEPLOYMENT_HEALTH_SUMMARY_CHARS = 6_000;
 export const DEPLOYMENT_RUN_LOOKBACK = 30;
+export const DEPLOYMENT_HISTORY_MAX_PAGES = 5;
 
 export const STATIONHEAD_WORKERS = Object.freeze([
   Object.freeze({ target: 'sh-sakurazaka46jp', command: 'deploy:sakurazaka46jp' }),
@@ -293,7 +294,7 @@ export function mergeDeploymentHistory(summaries, expectedTargets = STATIONHEAD_
       workflow: 'Deploy production',
       target,
       result: 'unknown',
-      error: `No targeted deployment attempt was found in the last ${DEPLOYMENT_RUN_LOOKBACK} completed runs.`,
+      error: `No targeted deployment attempt was found in the inspected ${ordered.length} completed runs (bounded deployment history).`,
       run: null,
     });
   }
@@ -306,10 +307,15 @@ export function mergeDeploymentHistory(summaries, expectedTargets = STATIONHEAD_
   return { target: DEPLOYMENT_WORKFLOWS[0], run: ordered[0]?.run || null, overall, components };
 }
 
-async function recentCompletedRuns(request, workflow) {
-  const response = await request('GET', `/actions/workflows/${encodeURIComponent(workflow)}/runs?branch=main&per_page=${DEPLOYMENT_RUN_LOOKBACK}`);
-  return (Array.isArray(response?.workflow_runs) ? response.workflow_runs : [])
-    .filter((run) => run?.status === 'completed');
+async function* recentCompletedRuns(request, workflow) {
+  for (let page = 1; page <= DEPLOYMENT_HISTORY_MAX_PAGES; page += 1) {
+    const response = await request('GET', `/actions/workflows/${encodeURIComponent(workflow)}/runs?branch=main&status=completed&per_page=${DEPLOYMENT_RUN_LOOKBACK}&page=${page}`);
+    const runs = Array.isArray(response?.workflow_runs) ? response.workflow_runs : [];
+    for (const run of runs) {
+      if (run?.status === 'completed') yield run;
+    }
+    if (runs.length < DEPLOYMENT_RUN_LOOKBACK) return;
+  }
 }
 
 async function runJobs(request, runId) {
@@ -380,22 +386,18 @@ export async function collectDeploymentHealth(request, {
 } = {}) {
   return Promise.all(targets.map(async (target) => {
     try {
-      const runs = await recentCompletedRuns(request, target.workflow);
-      if (!runs.length) return summarizeDeploymentRun({ target, run: null });
-      if (target.kind === 'homepanel') {
-        return inspectDeploymentRun(request, target, runs[0], { repository, token });
-      }
-
       const summaries = [];
       const found = new Set();
-      for (const run of runs) {
+      for await (const run of recentCompletedRuns(request, target.workflow)) {
         const summary = await inspectDeploymentRun(request, target, run, { repository, token });
+        if (target.kind === 'homepanel') return summary;
         summaries.push(summary);
         for (const component of summary.components || []) {
           if (STATIONHEAD_TARGETS.includes(component.target)) found.add(component.target);
         }
         if (found.size === STATIONHEAD_TARGETS.length) break;
       }
+      if (!summaries.length) return summarizeDeploymentRun({ target, run: null });
       return mergeDeploymentHistory(summaries);
     } catch (error) {
       return {
