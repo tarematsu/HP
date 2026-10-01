@@ -27,10 +27,10 @@ const ALL_VARIANTS = [
   'dashboard',
   'history:daily',
   'history:weekly',
-  'history:monthly',
   'history:broadcasts',
   'host-history:summary',
   'spotify-playcounts',
+  'regional-music',
 ];
 
 const TWELVE_HOUR_VARIANTS = [
