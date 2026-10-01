@@ -80,6 +80,18 @@ CREATE TABLE IF NOT EXISTS regional_music_playlists (
   PRIMARY KEY(service,service_playlist_id)
 );
 
+CREATE TABLE IF NOT EXISTS regional_music_playlist_snapshots (
+  snapshot_date TEXT NOT NULL,
+  service TEXT NOT NULL,
+  service_playlist_id TEXT NOT NULL,
+  observed_at INTEGER NOT NULL,
+  item_count INTEGER NOT NULL CHECK(item_count >= 0),
+  PRIMARY KEY(snapshot_date,service,service_playlist_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_regional_music_playlist_snapshots_latest
+  ON regional_music_playlist_snapshots(service,service_playlist_id,snapshot_date DESC);
+
 CREATE TABLE IF NOT EXISTS regional_music_playlist_memberships (
   snapshot_date TEXT NOT NULL,
   service TEXT NOT NULL,
