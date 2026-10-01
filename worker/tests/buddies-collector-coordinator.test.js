@@ -25,7 +25,7 @@ function storage() {
 test('scheduled collector runs through one Durable Object request', async () => {
   const calls = [];
   const result = await runAlarmCoordinatedBuddiesCollectorScheduled({
-    cron: '* * * * *',
+    cron: '*/5 * * * *',
     scheduledTime: 123,
   }, {}, {}, {
     stub: {
@@ -48,7 +48,7 @@ test('scheduled collector runs through one Durable Object request', async () => 
 test('alarm mode remains an explicit rollback option', async () => {
   const calls = [];
   await runAlarmCoordinatedBuddiesCollectorScheduled({
-    cron: '* * * * *',
+    cron: '*/5 * * * *',
     scheduledTime: 123,
   }, { COLLECTOR_COORDINATOR_USE_ALARM: true }, {}, {
     stub: {
@@ -64,7 +64,7 @@ test('alarm mode remains an explicit rollback option', async () => {
 test('coordinator failures fail closed instead of double collecting', async () => {
   let directCalls = 0;
   await assert.rejects(runAlarmCoordinatedBuddiesCollectorScheduled({
-    cron: '* * * * *',
+    cron: '*/5 * * * *',
     scheduledTime: 123,
   }, { BUDDIES_COLLECTOR_COORDINATOR: {} }, {}, {
     stub: {
@@ -256,6 +256,7 @@ test('production collector enables direct Durable Object hot state', () => {
     config.migrations.find(({ tag }) => tag === 'buddies-collector-coordinator-v1').new_sqlite_classes,
     ['BuddiesCollectorCoordinator'],
   );
+  assert.deepEqual(config.triggers.crons, ['*/5 * * * *']);
   assert.equal(config.vars.COLLECTOR_DO_HOT_STATE_ENABLED, true);
   assert.equal(config.vars.COLLECTOR_COORDINATOR_USE_ALARM, false);
   assert.equal(config.vars.COLLECTOR_D1_AUTH_CACHE_MS, 21_600_000);
