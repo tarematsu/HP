@@ -4,17 +4,11 @@ import { fileURLToPath } from 'node:url';
 import { MATERIALIZED_API_VARIANTS } from '../../site/functions/lib/api-contract.js';
 import { runPagesRevisionReadModelActions } from './run-pages-read-model-revision-actions.mjs';
 
-const BUDGET_EXEMPT_HISTORY_KEYS = new Set(['history:daily']);
-
 export const HISTORY_READ_MODEL_VARIANTS = Object.freeze(
   MATERIALIZED_API_VARIANTS.filter(
     (variant) => variant.key !== 'dashboard' && variant.event_driven !== true,
   ),
 );
-
-function enabled(value) {
-  return /^(?:1|true|yes|on)$/i.test(String(value || '').trim());
-}
 
 function environmentDueKeys(variants) {
   const raw = String(process.env.PAGES_READ_MODEL_DUE_KEYS || '').trim();
@@ -26,20 +20,17 @@ function environmentDueKeys(variants) {
 export async function runPagesHistoryReadModelActions(options = {}) {
   const variants = (options.variants || HISTORY_READ_MODEL_VARIANTS)
     .filter((variant) => variant.key !== 'dashboard' && variant.event_driven !== true);
-  const reuseOnly = options.reuseOnly
-    ?? enabled(process.env.PAGES_READ_MODEL_REUSE_ONLY);
   const requestedDueKeys = options.dueKeys ?? environmentDueKeys(variants);
+  const {
+    reuseOnly: _ignoredReuseOnly,
+    reuseOnlyKeys: _ignoredReuseOnlyKeys,
+    ...unbudgetedOptions
+  } = options;
 
   return runPagesRevisionReadModelActions({
-    ...options,
+    ...unbudgetedOptions,
     variants,
     ...(requestedDueKeys !== null ? { dueKeys: requestedDueKeys } : {}),
-    ...(reuseOnly ? {
-      dueKeys: variants.map((variant) => variant.key),
-      reuseOnlyKeys: variants
-        .map((variant) => variant.key)
-        .filter((key) => !BUDGET_EXEMPT_HISTORY_KEYS.has(key)),
-    } : {}),
   });
 }
 
