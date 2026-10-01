@@ -171,6 +171,7 @@ const expectedMigrations = [
   'database/facts-migrations/068_retire_legacy_d1_materializations.sql',
   'database/facts-migrations/069_title_identity_lookup_indexes.sql',
   'database/facts-migrations/070_refresh_audition_spotify_artist.sql',
+  'database/facts-migrations/071_normalize_audition_artist_names_ja.sql',
 ];
 
 test('MINUTE_DB deployment selects changed migrations through the current schema tip', () => {
