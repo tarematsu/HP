@@ -29,15 +29,26 @@ test('Pages mounts a dedicated Hinata dashboard tab after Amazon Music', () => {
   assert.match(sharedRoute, /function modeFromLocation\(\)/);
 });
 
-test('Hinata tab composes the same metrics, chart, table and data-card components as other tabs', () => {
-  for (const helper of ['dashboardMetric', 'dashboardMetrics', 'dashboardChartCard', 'dashboardChartHost', 'dashboardLegend', 'dashboardTable', 'dashboardDataCard']) {
+test('Ohisama composes the canonical metrics, chart and table cards without feature layout CSS', () => {
+  for (const helper of ['dashboardMetric', 'dashboardMetrics', 'dashboardChartCard', 'dashboardLegend', 'dashboardTable', 'dashboardDataCard']) {
     assert.match(shell, new RegExp(helper));
     assert.match(sharedUi, new RegExp(`export function ${helper}\\(`));
   }
-  assert.match(sharedUi, /joinClasses\('shared-svg-chart', className\)/);
-  assert.doesNotMatch(css, /\.hinata-metric|\.hinata-section-head|\.hinata-chart-detail/);
-  assert.doesNotMatch(css, /font-size:/);
-  assert.doesNotMatch(css, /padding:/);
+  assert.match(shell, /<canvas id="hinataChart" width="960" height="360"/);
+  assert.match(shell, /<canvas id="hinataDailyChart" width="960" height="360"/);
+  assert.match(shell, /class="chart-fit"/);
+  assert.doesNotMatch(shell, /dashboardChartHost|shared-svg-chart|hinata-legend|hinata-chart-panel|hinata-daily-chart-panel/);
+  assert.doesNotMatch(css, /font-size:|padding:|min-height:|\.hinata-chart|\.hinata-legend/);
+});
+
+test('Ohisama charts use the same DPR-aware Canvas rendering pattern as current and history', () => {
+  assert.match(runtime, /getContext\('2d'\)/);
+  assert.match(runtime, /window\.devicePixelRatio/);
+  assert.match(runtime, /context\.setTransform\(ratio, 0, 0, ratio, 0, 0\)/);
+  assert.match(runtime, /canvas\.width = Math\.round\(width \* ratio\)/);
+  assert.match(runtime, /canvas\.height = Math\.round\(height \* ratio\)/);
+  assert.match(runtime, /context\.clearRect\(0, 0, width, height\)/);
+  assert.doesNotMatch(runtime, /svgElement|createElementNS|viewBox/);
 });
 
 test('Hinata tab reads only the materialized model API', () => {
@@ -55,7 +66,7 @@ test('Hinata graph is rendered as five-minute buckets with actual five-minute st
   assert.match(runtime, /point\.bucket - previous\.bucket === FIVE_MINUTES_MS/);
   assert.match(runtime, /point\.stream_count - previous\.stream_count/);
   assert.match(shell, /再生数増加/);
-  assert.doesNotMatch(shell, /5分平均の再生増加/);
+  assert.match(shell, /5分単位/);
 });
 
 test('Hinata daily table matches history start and end cumulative columns', () => {
@@ -64,7 +75,7 @@ test('Hinata daily table matches history start and end cumulative columns', () =
   assert.match(runtime, /numberText\(item\?\.stream_end\)/);
   assert.match(runtime, /numberText\(item\?\.member_start\)/);
   assert.match(runtime, /numberText\(item\?\.member_end\)/);
-  assert.match(runtime, /appendEmptyTableRow\(tbody, '日次データはまだありません。', 10, \{ className: 'hinata-empty' \}\)/);
+  assert.match(runtime, /appendEmptyTableRow\(tbody, '日次データはまだありません。', 10, \{ className: 'shared-empty' \}\)/);
   assert.match(sharedUi, /export function appendEmptyTableRow\(/);
 });
 
@@ -76,23 +87,22 @@ test('Hinata UI includes the 24-hour online and playback graph plus daily metric
   assert.match(runtime, /member_growth/);
 });
 
-test('Hinata adds a daily listener and stream graph below the 24-hour graph', () => {
-  const liveChartIndex = shell.indexOf("id: 'hinataChart'");
-  const dailyChartIndex = shell.indexOf("id: 'hinataDailyChart'");
+test('Hinata daily chart mirrors history axes, line gaps and Canvas legend treatment', () => {
+  const liveChartIndex = shell.indexOf('<canvas id="hinataChart"');
+  const dailyChartIndex = shell.indexOf('<canvas id="hinataDailyChart"');
   const dailyDataIndex = shell.indexOf("title: '日次データ'");
   assert.ok(liveChartIndex >= 0);
   assert.ok(dailyChartIndex > liveChartIndex);
   assert.ok(dailyDataIndex > dailyChartIndex);
   assert.match(shell, /title: '同接・再生数増加の推移'/);
   assert.match(shell, /titleId: 'hinataDailyChartTitle'/);
-  assert.match(shell, /ariaLabel: '日次の平均・最大・最小同接と再生数増加'/);
+  assert.match(shell, /aria-label="日次の平均・最大・最小同接と再生数増加"/);
   assert.match(runtime, /function renderDailyChart\(value\)/);
   assert.match(runtime, /listener_avg/);
   assert.match(runtime, /listener_max/);
   assert.match(runtime, /listener_min/);
   assert.match(runtime, /stream_growth/);
-  assert.match(runtime, /appendEmptyState\(host, '日次グラフデータはまだありません。'/);
-  assert.match(runtime, /appendDailyLegend\('再生数増加', streamColor, true\)/);
-  assert.match(runtime, /row\.timestamp - previousTime <= DAY_MS \* 1\.5/);
+  assert.match(runtime, /maxGap: DAY_MS \* 1\.5/);
+  assert.match(runtime, /appendLegend\('再生数増加', STREAM_BAR_COLOR/);
   assert.match(runtime, /renderDailyChart\(value\)/);
 });
