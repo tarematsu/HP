@@ -12,6 +12,7 @@ const ARTIST_OVERVIEW_HASH = '5b9e64f43843fa3a9b6a98543600299b0a2cbbbccfdcdcef24
 const PUBLIC_PAGE_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/145.0.0.0 Safari/537.36';
 const FETCH_CONCURRENCY = 5;
+const MONTHLY_LISTENER_MODEL_KEY = 'current';
 
 export function monthlyListenersFromArtistOverview(payload) {
   const value = integer(payload?.data?.artistUnion?.stats?.monthlyListeners);
@@ -30,6 +31,47 @@ export function spotifyArtistOverviewUrl(spotifyArtistId, env = {}) {
     persistedQuery: { version: 1, sha256Hash: ARTIST_OVERVIEW_HASH },
   }));
   return url.toString();
+}
+
+export function spotifyMonthlyListenersReadModelSourceSql() {
+  return `WITH latest_ranking_date AS (
+    SELECT MAX(ranking_date) AS ranking_date FROM sh_spotify_top20_history
+  ), current_rank AS (
+    SELECT history.artist_key,history.rank
+    FROM sh_spotify_top20_history history
+    INNER JOIN latest_ranking_date latest ON latest.ranking_date=history.ranking_date
+  )
+  SELECT
+    daily.snapshot_date,
+    daily.artist_key,
+    artist.artist_name,
+    daily.monthly_listeners,
+    daily.collected_at,
+    current_rank.rank AS current_rank
+  FROM sh_spotify_artist_monthly_listeners_daily daily
+  INNER JOIN sh_spotify_artists artist ON artist.artist_key=daily.artist_key
+  LEFT JOIN current_rank ON current_rank.artist_key=daily.artist_key
+  ORDER BY daily.snapshot_date ASC,artist.artist_name COLLATE NOCASE ASC`;
+}
+
+export async function refreshSpotifyMonthlyListenersReadModel(db, updatedAt = Date.now()) {
+  if (!db?.prepare) return 0;
+  const result = await db.prepare(spotifyMonthlyListenersReadModelSourceSql()).all();
+  const rows = resultsOf(result);
+  const sourceSnapshotDate = rows.reduce((latest, row) => {
+    const value = safeText(row?.snapshot_date);
+    return value && (!latest || value > latest) ? value : latest;
+  }, null);
+  await db.prepare(`INSERT INTO sh_spotify_monthly_listeners_read_model(
+      model_key,rows_json,source_snapshot_date,updated_at
+    ) VALUES(?,?,?,?)
+    ON CONFLICT(model_key) DO UPDATE SET
+      rows_json=excluded.rows_json,
+      source_snapshot_date=excluded.source_snapshot_date,
+      updated_at=excluded.updated_at`)
+    .bind(MONTHLY_LISTENER_MODEL_KEY, JSON.stringify(rows), sourceSnapshotDate, updatedAt)
+    .run();
+  return rows.length;
 }
 
 async function fetchArtistMonthlyListeners(artist, env, session, fetchImpl) {
@@ -121,6 +163,13 @@ export async function collectSpotifyMonthlyListeners(env, snapshotDate, dependen
         monthly_listeners=excluded.monthly_listeners,
         collected_at=excluded.collected_at`)
       .bind(snapshotDate, artist.artist_key, monthly_listeners, collectedAt)));
+    const materializedRows = dependencies.refreshReadModel
+      ? await dependencies.refreshReadModel(db, collectedAt)
+      : await refreshSpotifyMonthlyListenersReadModel(db, collectedAt);
+    logEvent('spotify_monthly_listeners_read_model_refreshed', {
+      snapshot_date: snapshotDate,
+      rows: Number(materializedRows || 0),
+    });
   }
 
   logEvent('spotify_monthly_listeners_complete', {
