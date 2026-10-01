@@ -8,11 +8,7 @@ import {
   dashboardTable,
   mountDashboardShell,
 } from './dashboard-ui-common.js?v=20261001.1';
-import {
-  musicServiceMeta,
-  musicServicePlaylistCard,
-  musicServiceSection,
-} from './music-service-shell.js?v=20261001.1';
+import { musicServiceMeta, musicServiceSection } from './music-service-shell.js?v=20261001.1';
 
 const summary = dashboardSummary([
   dashboardSummaryItem({ label: '対象グループ', value: '3組' }),
@@ -77,17 +73,7 @@ mountDashboardShell({
       ${summary}
       ${musicServiceSection({ id: 'amazonTrendSection', kicker: 'TRENDS', title: '推移', bodyHtml: rankPanel })}
       ${musicServiceSection({ id: 'amazonTrackSection', kicker: 'TRACKS', title: '楽曲', bodyHtml: tracksPanel })}
-      ${musicServiceSection({
-        id: 'amazonPlaylistSection',
-        kicker: 'PLAYLISTS',
-        title: 'プレイリスト',
-        bodyHtml: musicServicePlaylistCard({
-          tableId: 'amazonPlaylistTable',
-          titleId: 'amazonPlaylistTitle',
-          note: 'Amazon Musicの曲詳細から検出した関連プレイリストを表示します。',
-          className: 'amazon-data-panel',
-        }),
-      })}`,
+      ${musicServiceSection({ id: 'amazonPlaylistSection', kicker: 'PLAYLISTS', title: 'プレイリスト', bodyHtml: '<div id="amazonPlaylistMount"></div>' })}`,
   },
 });
 
