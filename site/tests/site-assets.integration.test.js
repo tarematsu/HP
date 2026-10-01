@@ -34,7 +34,8 @@ test('dashboard skeleton and shell modules keep accessibility, privacy and all p
   const currentShell = await text('public/current-shell.js');
   const historyShell = await text('public/history-shell.js');
   const likesShell = await text('public/likes-shell.js');
-  const shellSource = [currentShell, historyShell, likesShell].join('\n');
+  const playbackShell = await text('public/stationhead-playback-shell.js');
+  const shellSource = [currentShell, historyShell, likesShell, playbackShell].join('\n');
   assert.match(html, /<html lang="ja"(?:\s[^>]*)?>/);
   assert.match(html, /name="viewport"/);
   assert.match(html, /noindex,nofollow/);
@@ -48,7 +49,7 @@ test('dashboard skeleton and shell modules keep accessibility, privacy and all p
   assert.match(registry, /view: 'current', label: '現在', active: true/);
   assert.match(registry, /view: 'history', mode: 'daily', label: '過去'/);
   assert.match(registry, /view: 'likes', mode: 'likes', label: 'いいね'/);
-  assert.match(currentShell, /rel="noopener noreferrer"/);
+  assert.match(playbackShell, /rel="noopener noreferrer"/);
   assert.doesNotMatch(html, /href="\/history/);
   assert.doesNotMatch(html, /id="currentView"|id="historyView"|id="likesView"/);
 });
