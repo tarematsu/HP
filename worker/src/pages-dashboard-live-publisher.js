@@ -3,6 +3,7 @@ import { directFiveMinuteStreamHistory } from '../../site/functions/lib/dashboar
 import { loadDashboardDailySummaries, utcDayStarts } from '../../site/functions/lib/dashboard-daily-summaries.js';
 import { dashboardGoalPredictions } from '../../site/functions/lib/dashboard-legacy.mjs';
 import { canonicalizeTrackRows } from '../../site/functions/lib/canonical-track-rows.js';
+import { BUDDIES_PLAYBACK_HOT_STATE_KEY } from './buddies-playback-state.js';
 import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
 
 const FIVE_MINUTES_MS = 5 * 60_000;
@@ -28,6 +29,11 @@ function integer(value) {
 function positiveInteger(value) {
   const number = integer(value);
   return number != null && number > 0 ? number : null;
+}
+
+function normalizedText(value) {
+  const result = String(value ?? '').trim();
+  return result || null;
 }
 
 function bucketAt(value) {
@@ -452,12 +458,58 @@ async function savePublicEnvelope(bucket, payload, now) {
   return true;
 }
 
-async function canonicalInput(env, input) {
+function trackAliases(track) {
+  const aliases = [];
+  const isrc = normalizedText(track?.isrc)?.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  const spotifyId = normalizedText(track?.spotify_id);
+  const stationheadId = positiveInteger(track?.stationhead_track_id);
+  if (isrc) aliases.push(`isrc:${isrc}`);
+  if (spotifyId) aliases.push(`spotify:${spotifyId}`);
+  if (stationheadId != null) aliases.push(`stationhead:${stationheadId}`);
+  return aliases;
+}
+
+async function seedCanonicalIdsFromPlaybackState(bucket, input) {
   const tracks = Array.isArray(input?.queue?.tracks) ? input.queue.tracks : [];
   if (!tracks.length || tracks.every((track) => positiveInteger(track?.track_id) != null)) return input;
+  const state = await readJsonObject(bucket, BUDDIES_PLAYBACK_HOT_STATE_KEY);
+  if (![1, 2].includes(Number(state?.version)) || !Array.isArray(state?.queue)) return input;
+  const byAlias = new Map();
+  for (const track of state.queue) {
+    const trackId = positiveInteger(track?.track_id);
+    if (trackId == null) continue;
+    for (const alias of trackAliases(track)) byAlias.set(alias, track);
+  }
+  if (!byAlias.size) return input;
+  const seeded = tracks.map((track) => {
+    if (positiveInteger(track?.track_id) != null) return track;
+    let canonical = null;
+    for (const alias of trackAliases(track)) {
+      canonical = byAlias.get(alias);
+      if (canonical) break;
+    }
+    if (!canonical) return track;
+    return {
+      ...track,
+      track_id: positiveInteger(canonical.track_id),
+      title: track?.title || canonical?.title || null,
+      artist: track?.artist || canonical?.artist || null,
+      thumbnail_url: track?.thumbnail_url || canonical?.thumbnail_url || null,
+    };
+  });
+  return { ...input, queue: { ...input.queue, tracks: seeded } };
+}
+
+async function canonicalInput(env, input, bucket) {
+  let seededInput = await seedCanonicalIdsFromPlaybackState(bucket, input);
+  const tracks = Array.isArray(seededInput?.queue?.tracks) ? seededInput.queue.tracks : [];
+  if (!tracks.length || tracks.every((track) => positiveInteger(track?.track_id) != null)) return seededInput;
   const seedRows = tracks.filter((track) => positiveInteger(track?.track_id) != null);
-  const canonicalTracks = await canonicalizeTrackRows(env?.MINUTE_DB, tracks, { seedRows });
-  return { ...input, queue: { ...input.queue, tracks: canonicalTracks } };
+  const canonicalTracks = seedRows.length
+    ? await canonicalizeTrackRows(env?.MINUTE_DB, tracks, { seedRows })
+    : await canonicalizeTrackRows(env?.MINUTE_DB, tracks);
+  seededInput = { ...seededInput, queue: { ...seededInput.queue, tracks: canonicalTracks } };
+  return seededInput;
 }
 
 export async function publishDashboardFromMinuteFact(env, input, fact, options = {}) {
@@ -510,7 +562,7 @@ export async function publishDashboardFromMinuteFact(env, input, fact, options =
     mode = 'bootstrap';
   }
 
-  const canonical = await canonicalInput(env, input);
+  const canonical = await canonicalInput(env, input, bucket);
   let payload = applyObservation(base, canonical, fact, integer(fact?.observed_at) ?? now, {
     updateQueue: true,
   });
