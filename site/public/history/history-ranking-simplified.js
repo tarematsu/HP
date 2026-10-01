@@ -21,13 +21,11 @@
     if (!head || head.children.length < 2) return;
     const rankIndex = [...head.children].findIndex((cell) => cell.textContent.trim() === '順位');
     if (rankIndex <= 1) return;
-    const rankHead = head.children[rankIndex];
-    head.insertBefore(rankHead, head.children[1]);
+    head.insertBefore(head.children[rankIndex], head.children[1]);
 
     for (const row of byId('tbody')?.querySelectorAll('tr') || []) {
       if (row.children.length <= rankIndex) continue;
-      const rankCell = row.children[rankIndex];
-      row.insertBefore(rankCell, row.children[1]);
+      row.insertBefore(row.children[rankIndex], row.children[1]);
     }
   }
 
@@ -53,6 +51,13 @@
     new MutationObserver(() => {
       if (rankingMode && !controls.hidden) controls.hidden = true;
     }).observe(controls, { attributes: true, attributeFilter: ['hidden'] });
+  }
+
+  const tableBody = byId('tbody');
+  if (tableBody) {
+    new MutationObserver(() => {
+      if (rankingMode) moveRankNextToWeek();
+    }).observe(tableBody, { childList: true });
   }
 
   setRankingMode(rankingMode);
