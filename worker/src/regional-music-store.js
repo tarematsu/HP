@@ -76,6 +76,34 @@ export async function saveRegionalTrack(env, value) {
       positive(value.popularity_rank)).run();
 }
 
+export async function saveRegionalPlaylist(env, value) {
+  const observedAt = Number(value.observed_at) || Date.now();
+  const db = dbOf(env);
+  await db.prepare(`INSERT INTO regional_music_playlists(
+    service,service_playlist_id,playlist_name,playlist_url,playlist_type,owner_name,first_seen_at,last_seen_at
+  ) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(service,service_playlist_id) DO UPDATE SET
+    playlist_name=COALESCE(excluded.playlist_name,playlist_name),
+    playlist_url=COALESCE(excluded.playlist_url,playlist_url),
+    playlist_type=CASE WHEN excluded.playlist_type='unknown' THEN playlist_type ELSE excluded.playlist_type END,
+    owner_name=COALESCE(excluded.owner_name,owner_name),
+    last_seen_at=excluded.last_seen_at`)
+    .bind(value.service, value.service_playlist_id, value.playlist_name ?? null,
+      value.playlist_url ?? null, value.playlist_type || 'unknown', value.owner_name ?? null,
+      observedAt, observedAt).run();
+}
+
+export async function saveRegionalPlaylistMembership(env, value) {
+  const observedAt = Number(value.observed_at) || Date.now();
+  const snapshotDate = value.snapshot_date || regionalMusicSnapshotDate(observedAt);
+  return dbOf(env).prepare(`INSERT INTO regional_music_playlist_memberships(
+    snapshot_date,service,service_playlist_id,service_track_id,observed_at,position
+  ) VALUES(?,?,?,?,?,?) ON CONFLICT(snapshot_date,service,service_playlist_id,service_track_id) DO UPDATE SET
+    observed_at=excluded.observed_at,
+    position=COALESCE(excluded.position,position)`)
+    .bind(snapshotDate, value.service, value.service_playlist_id, value.service_track_id,
+      observedAt, positive(value.position)).run();
+}
+
 export async function saveRegionalCollectorState(env, value) {
   const updatedAt = Number(value.updated_at) || Date.now();
   return dbOf(env).prepare(`INSERT INTO regional_music_collector_state(
