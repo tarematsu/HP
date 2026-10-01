@@ -56,6 +56,14 @@
   white-space: nowrap;
 }
 
+.spotify-trend-metric-key {
+  margin-left: auto;
+  color: var(--pages-muted, #667287);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
 .spotify-trend-scroll,
 .spotify-trend-canvas {
   width: 100%;
@@ -113,5 +121,11 @@
 
   .spotify-trend-legend {
     gap: 4px 9px;
+  }
+
+  .spotify-trend-metric-key {
+    width: 100%;
+    margin-left: 0;
+    white-space: normal;
   }
 }
