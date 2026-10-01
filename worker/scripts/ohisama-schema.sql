@@ -1,5 +1,6 @@
 -- Lightweight Stationhead ohisama collector storage.
 -- Keeps minute facts plus compact playback history and like changes.
+-- Track identity is the canonical stationhead-minute sh_tracks.id; track_key is diagnostic/compatibility metadata only.
 
 CREATE TABLE IF NOT EXISTS sh_worker_collector_state (
   id TEXT PRIMARY KEY,
@@ -66,6 +67,7 @@ CREATE TABLE IF NOT EXISTS sh_track_plays (
   played_at INTEGER NOT NULL,
   period_key TEXT NOT NULL,
   station_id INTEGER,
+  track_id INTEGER NOT NULL,
   track_key TEXT NOT NULL,
   spotify_id TEXT,
   isrc TEXT,
@@ -77,7 +79,9 @@ CREATE TABLE IF NOT EXISTS sh_track_plays (
 
 CREATE INDEX IF NOT EXISTS idx_sh_track_plays_period
   ON sh_track_plays(period_key DESC, played_at DESC);
-CREATE INDEX IF NOT EXISTS idx_sh_track_plays_track
+CREATE INDEX IF NOT EXISTS idx_sh_track_plays_track_id
+  ON sh_track_plays(track_id, played_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sh_track_plays_track_key
   ON sh_track_plays(track_key, played_at DESC);
 
 CREATE TABLE IF NOT EXISTS sh_track_daily_summary (
@@ -93,6 +97,7 @@ CREATE INDEX IF NOT EXISTS idx_sh_track_daily_summary_period
 
 CREATE TABLE IF NOT EXISTS sh_track_like_current (
   station_id INTEGER NOT NULL,
+  track_id INTEGER NOT NULL,
   track_key TEXT NOT NULL,
   spotify_id TEXT,
   isrc TEXT,
@@ -100,14 +105,17 @@ CREATE TABLE IF NOT EXISTS sh_track_like_current (
   artist TEXT,
   like_count INTEGER NOT NULL,
   observed_at INTEGER NOT NULL,
-  PRIMARY KEY(station_id, track_key)
+  PRIMARY KEY(station_id, track_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_sh_track_like_current_count
   ON sh_track_like_current(like_count DESC, observed_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sh_track_like_current_track_id
+  ON sh_track_like_current(station_id, track_id);
 
 CREATE TABLE IF NOT EXISTS sh_track_like_observations (
   station_id INTEGER NOT NULL,
+  track_id INTEGER NOT NULL,
   track_key TEXT NOT NULL,
   spotify_id TEXT,
   isrc TEXT,
@@ -115,8 +123,10 @@ CREATE TABLE IF NOT EXISTS sh_track_like_observations (
   artist TEXT,
   like_count INTEGER NOT NULL,
   observed_at INTEGER NOT NULL,
-  PRIMARY KEY(station_id, track_key, observed_at)
+  PRIMARY KEY(station_id, track_id, observed_at)
 );
 
 CREATE INDEX IF NOT EXISTS idx_sh_track_like_observations_time
   ON sh_track_like_observations(observed_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sh_track_like_observations_track_id
+  ON sh_track_like_observations(station_id, track_id, observed_at);
