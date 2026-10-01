@@ -21,7 +21,7 @@ test('Genie discovers exact artist and track ids', () => {
 });
 
 test('Genie parses likes, cumulative listeners, and cumulative plays', () => {
-  const html = '<main><span>좋아요!283</span><b>7,163</b> 전체 청취자수 <b>180,205</b> 전체 재生수</main>';
+  const html = '<main><span>좋아요!283</span><b>7,163</b> 전체 청취자수 <b>180,205</b> 전체 재생수</main>';
   assert.equal(parseGenieArtistLikes(html), 283);
   assert.deepEqual(parseGenieTrackMetrics(html), { likes: 283, listeners: 7163, plays: 180205 });
 });
