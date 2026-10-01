@@ -1,4 +1,10 @@
 import { cssColor, finiteNumber as finite, integerFormat as number } from './dashboard-ui-common.js?v=20260930.1';
+import {
+  drawDashboardGrid,
+  drawDashboardLine,
+  drawDashboardXAxis,
+  prepareDashboardCanvas,
+} from './dashboard-chart-canvas.js?v=20261001.2';
 
 const view = document.getElementById('firstWeekView');
 const canvas = document.getElementById('firstWeekChart');
@@ -133,17 +139,16 @@ function renderLegend() {
 
 function draw() {
   if (!active() || !canvas) return;
-  const context = canvas.getContext('2d');
-  if (!context) return;
-
-  const ratio = Math.min(window.devicePixelRatio || 1, 1.5);
-  const width = Math.max(300, Math.round(canvas.clientWidth || 960));
-  const height = width < 560 ? 300 : 360;
-  canvas.width = Math.round(width * ratio);
-  canvas.height = Math.round(height * ratio);
-  canvas.style.height = `${height}px`;
-  context.setTransform(ratio, 0, 0, ratio, 0, 0);
-  context.clearRect(0, 0, width, height);
+  const measuredWidth = Math.max(300, Math.round(canvas.getBoundingClientRect().width || canvas.clientWidth || 960));
+  const targetHeight = measuredWidth < 560 ? 300 : 360;
+  const prepared = prepareDashboardCanvas(canvas, {
+    minimumWidth: 300,
+    minimumHeight: 1,
+    fallbackWidth: measuredWidth,
+    height: targetHeight,
+  });
+  if (!prepared) return;
+  const { context, width, height } = prepared;
 
   const available = series.filter((item) => item.points.some((point) => pointValue(point) != null));
   if (!available.length) {
@@ -171,52 +176,47 @@ function draw() {
   const xFor = (minutes) => area.left + area.width * Math.max(0, Math.min(DURATION_MINUTES, Number(minutes) || 0)) / DURATION_MINUTES;
   const yFor = (value) => area.top + area.height - area.height * Math.max(0, Number(value) || 0) / maxValue;
 
-  context.lineWidth = 1;
-  context.strokeStyle = 'rgba(31,45,68,.12)';
   context.fillStyle = cssColor('--muted', '#667287');
   context.font = '11px system-ui';
-  for (let index = 0; index <= 4; index += 1) {
-    const y = area.top + area.height * index / 4;
-    context.beginPath();
-    context.moveTo(area.left, y);
-    context.lineTo(width - area.right, y);
-    context.stroke();
-    const yValue = Math.round(maxValue * (1 - index / 4));
+  context.textBaseline = 'middle';
+  for (const { ratio, y } of drawDashboardGrid(context, {
+    left: area.left,
+    right: area.right,
+    top: area.top,
+    height: area.height,
+    width,
+  })) {
     context.textAlign = 'right';
-    context.fillText(number.format(yValue), area.left - 8, y + 3);
+    context.fillText(number.format(Math.round(maxValue * (1 - ratio))), area.left - 8, y + 3);
   }
 
-  for (let day = 0; day <= 7; day += 1) {
-    const x = xFor(day * 1440);
-    context.textAlign = day === 0 ? 'left' : day === 7 ? 'right' : 'center';
-    context.fillText(day === 0 ? '0時間' : `${day}日`, x, area.top + area.height + 17);
-  }
+  const dayPositions = Array.from({ length: 8 }, (_, day) => xFor(day * 1440));
+  drawDashboardXAxis(context, {
+    left: area.left,
+    right: area.right,
+    top: area.top + area.height,
+    width,
+    positions: dayPositions,
+    indexes: dayPositions.map((_, index) => index),
+    labelFor: (day) => day === 0 ? '0時間' : `${day}日`,
+    fillStyle: cssColor('--muted', '#667287'),
+  });
 
   available.forEach((item) => {
     const index = series.indexOf(item);
-    context.save();
-    context.strokeStyle = colorFor(index);
-    context.lineWidth = 2;
-    context.globalAlpha = 0.9;
-    context.beginPath();
-    let open = false;
-    let previousMinute = null;
-    for (const point of item.points) {
-      const minutes = finite(point?.[0]);
-      const value = pointValue(point);
-      if (minutes == null || value == null) {
-        open = false;
-        previousMinute = null;
-        continue;
-      }
-      const hasGap = previousMinute != null && minutes - previousMinute > 15;
-      if (!open || hasGap) context.moveTo(xFor(minutes), yFor(value));
-      else context.lineTo(xFor(minutes), yFor(value));
-      open = true;
-      previousMinute = minutes;
-    }
-    context.stroke();
-    context.restore();
+    const rows = item.points.map((point) => ({
+      minutes: finite(point?.[0]),
+      value: pointValue(point),
+    }));
+    drawDashboardLine(context, rows, {
+      x: (row) => xFor(row.minutes),
+      y: (value) => yFor(value),
+      value: (row) => row.value,
+      valid: (value) => value != null,
+      gap: (before, after) => after.minutes - before.minutes > 15,
+      strokeStyle: colorFor(index),
+      lineWidth: 2,
+    });
   });
 
   if (selectedMinute != null) {
