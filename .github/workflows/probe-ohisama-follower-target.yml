@@ -1,0 +1,64 @@
+name: Probe Ohisama follower target gap
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/probe-ohisama-follower-target.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npm --prefix worker ci --prefer-offline --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - name: Probe live Ohisama host payload
+        run: |
+          node --input-type=module <<'NODE'
+          import { chromium } from 'playwright';
+          const browser = await chromium.launch({headless:true});
+          try {
+            const context = await browser.newContext({locale:'ja-JP', timezoneId:'Asia/Tokyo'});
+            const page = await context.newPage();
+            await page.goto('https://www.stationhead.com/ohisama', {waitUntil:'domcontentloaded', timeout:45000});
+            await page.waitForTimeout(1500);
+            const response = await context.request.get('https://www.stationhead.com/api/channels/alias/ohisama', {failOnStatusCode:false, timeout:30000});
+            console.log('STATUS', response.status());
+            const text = await response.text();
+            let payload = null;
+            try { payload = JSON.parse(text); } catch {}
+            const station = payload?.current_station || {};
+            const candidates = {
+              alias: payload?.alias ?? payload?.channel_alias ?? null,
+              current_station_id: payload?.current_station_id ?? station?.id ?? null,
+              is_broadcasting: station?.is_broadcasting ?? null,
+              station_keys: Object.keys(station),
+              host: station?.host ?? null,
+              station_host_handle: station?.host_handle ?? null,
+              account: station?.account ?? null,
+              dj: station?.dj ?? null,
+              broadcaster: station?.broadcaster ?? null,
+              owner: station?.owner ?? null,
+            };
+            console.log('OHISAMA_PAYLOAD', JSON.stringify(candidates));
+          } finally { await browser.close(); }
+          NODE
+      - name: Probe follower target registry
+        working-directory: worker
+        run: |
+          npx wrangler d1 execute OTHER_DB --config wrangler.ohisama-collector.jsonc --remote --json \
+            --command "SELECT handle,source_mask,first_seen_at FROM sh_stationhead_follower_targets ORDER BY first_seen_at,handle" \
+            | tee "$RUNNER_TEMP/follower-targets.json"
