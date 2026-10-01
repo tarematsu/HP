@@ -12,7 +12,7 @@ const publisher = readFileSync(new URL('../../worker/src/nogizaka-pages-read-mod
 
 test('Nogizaka tab is mounted immediately before Hinata when available', () => {
   assert.match(shell, /view: 'nogizaka'/);
-  assert.match(shell, /label: 'nogizaka46smej'/);
+  assert.match(shell, /label: 'Nogizaka'/);
   assert.match(shell, /anchorSelectors: \['\[data-view="hinata"\]', '\[data-mode="broadcasts"\]'\]/);
   assert.match(shell, /position: 'beforebegin'/);
   assert.match(tabs, /nogizaka:\s*\{/);
