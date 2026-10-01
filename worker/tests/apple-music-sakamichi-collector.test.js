@@ -15,10 +15,12 @@ test('Apple Music collection targets the three Sakamichi groups in display order
   );
 });
 
-test('Apple Music scheduled worker runs the secondary artist collector after the primary collector', () => {
+test('Apple Music scheduled worker runs the secondary collector and persists secondary-only changes', () => {
   const source = readFileSync(new URL('../src/amazon-music-entry.js', import.meta.url), 'utf8');
   assert.match(source, /collectAdditionalAppleMusicArtists/);
   assert.match(source, /primaryResult: result/);
+  assert.match(source, /sakamichi\?\.changed/);
+  assert.match(source, /persistAppleMusicModelToOther\(env, scheduledTime\)/);
 });
 
 test('Apple Music Pages exposes group switching for all three artists', () => {
