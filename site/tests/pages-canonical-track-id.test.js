@@ -104,7 +104,7 @@ test('Pages song-bearing surfaces keep canonical identity except provider-specif
   assert.match(spotifyApi, /AS spotify_track_id/);
   assert.match(spotifyApi, /track_id: integer\(row\.track_id\)/);
   assert.match(FIRST_WEEK_READ_MODEL_SQL, /release_date_jst,track_id,point_count/);
-  assert.match(dashboardPublisher, /canonicalizeTrackRows\(env\?\.MINUTE_DB, tracks\)/);
+  assert.match(dashboardPublisher, /hydratePlaybackTrackMetadata\(env\?\.MINUTE_DB, tracks\)/);
 });
 
 test('MINUTE compatibility views retain canonical track_id for Pages materialization', () => {

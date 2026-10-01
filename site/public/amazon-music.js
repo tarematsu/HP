@@ -32,7 +32,7 @@ function modeCopy(mode) {
     ariaLabel: '坂道3グループ表題曲のAmazon Music総合順位推移。1位が上。',
   };
   return {
-    chartTitle: 'Amazon Music総合順位推移',
+    chartTitle: 'Amazon Music総合順位推移（各グループ上位5曲）',
     tableTitle: '全楽曲順位',
     ariaLabel: '坂道3グループ全楽曲のAmazon Music総合順位推移。1位が上。',
   };
@@ -69,7 +69,15 @@ function tablePayload(payload, mode) {
 function chartPayload(payload, mode) {
   const group = MODE_GROUPS[mode];
   if (group) return filteredPayload(payload, (track) => track?.group_name === group && isTitleTrack(track));
-  return mode === 'titles' ? filteredPayload(payload, isTitleTrack) : tablePayload(payload, mode);
+  if (mode === 'titles') return filteredPayload(payload, isTitleTrack);
+  const selected = new Set();
+  for (const name of GROUPS) {
+    const ranked = (payload?.tracks || [])
+      .filter((track) => track?.group_name === name && integer(track?.amazon_rank) > 0)
+      .sort((left, right) => Number(left.amazon_rank) - Number(right.amazon_rank));
+    for (const track of ranked.slice(0, 5)) selected.add(trackKey(track));
+  }
+  return filteredPayload(payload, (track) => selected.has(trackKey(track)));
 }
 
 function trackTitleMap(payload) {
@@ -153,6 +161,7 @@ function renderRankChart(payload, { containerId, metricKey, emptyText, ariaLabel
       radius: (item) => item.currentRank != null ? 2.5 : 1.8,
       title: (item, latest) => `${item.title} ${formatFullDate(latest.date)} ${latest.rank}位`,
     },
+    legendContainer: element('amazonRankLegend'),
   });
 }
 

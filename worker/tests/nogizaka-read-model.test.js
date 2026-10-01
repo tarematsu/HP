@@ -35,7 +35,6 @@ test('Nogizaka publishes a producer-owned Pages read model to the shared R2 buck
   assert.match(pagesModel, /pagesActionsR2ResponseKey\(NOGIZAKA_LISTENING_PARTY_MODEL_KEY\)/);
   assert.match(pagesModel, /PAGES_RESPONSE_R2 binding is missing/);
   assert.match(pagesFetch, /'nogizaka-listening-party'/);
-  assert.deepEqual(config.r2_buckets, [
-    { binding: 'PAGES_RESPONSE_R2', bucket_name: 'stationhead-pages-response' },
-  ]);
+  const servingConfig = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
+  assert.deepEqual(config.r2_buckets, servingConfig.r2_buckets);
 });

@@ -59,11 +59,11 @@ import {
   ];
   const RANKING_COLUMNS = [
     ['ranking_date', '週'],
+    ['rank', '順位'],
     ['host_name', 'ホスト'],
     ['stationhead_channel_name', 'チャンネル'],
     ['artist_name', 'アーティスト名'],
     ['relation_label', '種別'],
-    ['rank', '順位'],
   ];
 
   const state = {
@@ -302,6 +302,7 @@ import {
   }
 
   function setSummary(labels, values) {
+    if (!state.data) values = { periods: '—', max: '—', stream: '—', member: '—' };
     setText('periodLabel', labels.period);
     setText('maxLabel', labels.max);
     setText('streamLabel', labels.stream);
@@ -495,6 +496,7 @@ import {
     resetData();
     updateModeUi();
     updateSummary();
+    renderTable(true);
     history.replaceState(null, '', `#${mode}`);
     const runtimeMode = dataMode();
     try {

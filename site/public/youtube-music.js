@@ -205,6 +205,13 @@ function render(payload) {
 
 export async function loadYoutubeMusicView() {
   setNotice('youtubeMusicNotice', 'YouTube Music公開データを読み込んでいます。');
-  const payload = await loadReadModel();
-  render(payload);
+  try {
+    const payload = await loadReadModel();
+    render(payload);
+  } catch {
+    setNotice('youtubeMusicNotice', 'データを取得できませんでした。時間をおいて再度お試しください。', true);
+    for (const [id, columns] of [['youtubeMusicArtistBody', 5], ['youtubeMusicReleaseBody', 4], ['youtubeMusicTrackBody', 4], ['youtubeMusicPlaylistBody', 3]]) {
+      appendEmptyTableRow(byId(id), 'データ未取得', columns, { replace: true });
+    }
+  }
 }

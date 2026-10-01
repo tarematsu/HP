@@ -63,7 +63,7 @@ mountDashboardShell({
         <span class="regional-music-region">JP / Global</span>
       </div>
       ${summary}
-      ${musicServiceSection({ id: 'youtubeMusicHealthSection', kicker: 'STATUS', title: '状態', bodyHtml: healthPanel })}
+      <section id="youtubeMusicHealthSection" class="music-service-section">${healthPanel}</section>
       ${musicServiceSection({ id: 'youtubeMusicArtistSection', kicker: 'ARTISTS', title: 'アーティスト', bodyHtml: artistTable })}
       ${musicServiceSection({ id: 'youtubeMusicReleaseSection', kicker: 'RELEASES', title: 'アルバム・シングル', bodyHtml: releaseTable })}
       ${musicServiceSection({ id: 'youtubeMusicTrackSection', kicker: 'TRACKS', title: '楽曲', bodyHtml: trackTable })}

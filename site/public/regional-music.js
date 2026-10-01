@@ -42,6 +42,7 @@ const STATUS_LABELS = Object.freeze({
 });
 
 let readModelPromise = null;
+let activeRequest = 0;
 
 function valueText(value) {
   if (value === null || value === undefined || value === '') return '-';
@@ -211,10 +212,22 @@ function renderService(payload, service) {
 }
 
 export async function loadRegionalMusicView(service) {
+  const request = ++activeRequest;
   const serviceId = String(service || location.hash.slice(1) || '');
   if (!SERVICE_LABELS[serviceId]) throw new Error(`unknown regional music service: ${serviceId}`);
   setText('regionalMusicTitle', SERVICE_LABELS[serviceId]);
+  for (const id of ['regionalMusicUpdated', 'regionalMusicStatus', 'regionalMusicArtistCount', 'regionalMusicTrackCount', 'regionalMusicPlaylistCount']) setText(id, '-');
+  setText('regionalMusicRegion', '');
+  for (const id of ['regionalMusicHealth', 'regionalMusicArtistBody', 'regionalMusicTrackBody', 'regionalMusicPlaylistBody']) replaceBody(id);
   setNotice('regionalMusicNotice', 'データを読み込んでいます。');
-  const payload = await loadReadModel();
-  renderService(payload, serviceId);
+  try {
+    const payload = await loadReadModel();
+    if (request === activeRequest) renderService(payload, serviceId);
+  } catch (error) {
+    if (request !== activeRequest) return;
+    setNotice('regionalMusicNotice', 'データを取得できませんでした。時間をおいて再度お試しください。', true);
+    appendEmptyTableRow(byId('regionalMusicArtistBody'), 'データ未取得', 4);
+    appendEmptyTableRow(byId('regionalMusicTrackBody'), 'データ未取得', 7);
+    appendEmptyTableRow(byId('regionalMusicPlaylistBody'), 'データ未取得', 4);
+  }
 }

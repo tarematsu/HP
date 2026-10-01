@@ -7,8 +7,8 @@
   --pages-panel-radius-mobile: 0;
   --pages-panel-padding: 14px 16px;
   --pages-panel-padding-mobile: 10px 8px;
-  --pages-control-height: 34px;
-  --pages-control-height-mobile: 32px;
+  --pages-control-height: 40px;
+  --pages-control-height-mobile: 40px;
 }
 
 .shell {
@@ -58,7 +58,7 @@
 }
 
 #updated {
-  font-size: .72rem !important;
+  font-size: .875rem !important;
   line-height: 1.35 !important;
 }
 
@@ -80,7 +80,7 @@
   width: auto;
   min-height: 40px;
   padding: 8px 10px;
-  font-size: .75rem;
+  font-size: .875rem;
   white-space: nowrap;
   overflow-wrap: normal;
 }
@@ -124,7 +124,7 @@
 .summary-cards span,
 .host,
 .pill {
-  font-size: .72rem !important;
+  font-size: .875rem !important;
   line-height: 1.3 !important;
 }
 
@@ -138,7 +138,7 @@
 #metricGoalCompact,
 #metricGoalCompact strong,
 #metricGoalCompact b {
-  font-size: 10px !important;
+  font-size: 12px !important;
   line-height: 1.35 !important;
   letter-spacing: 0 !important;
   font-weight: 650 !important;
@@ -173,7 +173,7 @@
 
 .kicker {
   margin-bottom: 3px !important;
-  font-size: .62rem !important;
+  font-size: .75rem !important;
   line-height: 1.2 !important;
 }
 
@@ -196,7 +196,7 @@
 
 .controls label {
   gap: 3px !important;
-  font-size: .7rem !important;
+  font-size: .875rem !important;
 }
 
 .controls input,
@@ -205,7 +205,7 @@
 .like-actions .button,
 .data-panel .button {
   min-height: var(--pages-control-height) !important;
-  font-size: .72rem !important;
+  font-size: .875rem !important;
 }
 
 .controls input,
@@ -229,20 +229,20 @@
 
 .range-presets button {
   min-height: 32px !important;
-  font-size: .7rem !important;
+  font-size: .875rem !important;
 }
 
 .notice {
   min-height: 0 !important;
   margin: 0 2px !important;
-  font-size: .72rem !important;
+  font-size: .875rem !important;
   line-height: 1.35 !important;
 }
 
 .chart-legend,
 .legend {
   gap: 6px 12px !important;
-  font-size: .7rem !important;
+  font-size: .875rem !important;
   line-height: 1.35 !important;
 }
 
@@ -253,7 +253,7 @@
 
 .chart-axis,
 .chart-foot {
-  font-size: .68rem !important;
+  font-size: .75rem !important;
   line-height: 1.35 !important;
 }
 
@@ -261,8 +261,15 @@
   min-height: 0 !important;
   margin-top: 7px !important;
   padding: 8px 10px !important;
-  font-size: .72rem !important;
+  font-size: .875rem !important;
   line-height: 1.4 !important;
+}
+
+.chart-fit > :is(svg, canvas) {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .chart-fit {
@@ -282,7 +289,7 @@
 }
 
 .table-wrap table {
-  font-size: .72rem !important;
+  font-size: .875rem !important;
   line-height: 1.35 !important;
 }
 
@@ -295,7 +302,7 @@
 
 .table-wrap th {
   height: 32px !important;
-  font-size: .66rem !important;
+  font-size: .75rem !important;
 }
 
 .table-fit-mobile > table {
@@ -335,7 +342,7 @@
 
 .like-rank-content small,
 .like-rank-metrics span {
-  font-size: .66rem !important;
+  font-size: .75rem !important;
 }
 
 @media (min-width: 1001px) {
@@ -407,7 +414,7 @@
   }
 
   #updated {
-    font-size: 9px !important;
+    font-size: 12px !important;
     white-space: nowrap !important;
   }
 
@@ -437,7 +444,7 @@
   .summary-cards span,
   .host,
   .pill {
-    font-size: 9px !important;
+    font-size: 12px !important;
     line-height: 1.25 !important;
   }
 
@@ -447,7 +454,7 @@
   }
 
   .metric small {
-    font-size: 9px !important;
+    font-size: 12px !important;
   }
 
   .metrics .delta,
@@ -455,7 +462,7 @@
   #metricGoalCompact,
   #metricGoalCompact strong,
   #metricGoalCompact b {
-    font-size: 8.5px !important;
+    font-size: 12px !important;
     line-height: 1.3 !important;
   }
 
@@ -481,7 +488,7 @@
   }
 
   .kicker {
-    font-size: 8.5px !important;
+    font-size: 12px !important;
   }
 
   .view-toolbar {
@@ -498,7 +505,7 @@
   .like-actions .button,
   .data-panel .button {
     min-height: var(--pages-control-height) !important;
-    font-size: 10px !important;
+    font-size: 12px !important;
   }
 
   .controls > .button {
@@ -509,7 +516,7 @@
   .range-presets button {
     min-height: 30px !important;
     padding-inline: 4px !important;
-    font-size: 10px !important;
+    font-size: 12px !important;
   }
 
   .summary-cards article {
@@ -518,7 +525,7 @@
   }
 
   .summary-cards span {
-    font-size: 8.5px !important;
+    font-size: 12px !important;
     white-space: normal !important;
   }
 
@@ -535,7 +542,7 @@
   .chart-legend,
   .legend {
     gap: 4px 9px !important;
-    font-size: 9px !important;
+    font-size: 12px !important;
   }
 
   .chart-legend {
@@ -543,7 +550,7 @@
   }
 
   .chart-legend span {
-    font-size: 9px !important;
+    font-size: 12px !important;
     line-height: 1.3 !important;
   }
 
@@ -554,7 +561,7 @@
 
   .chart-detail {
     padding: 6px 8px !important;
-    font-size: 10px !important;
+    font-size: 12px !important;
   }
 
   .chart-fit {
@@ -593,7 +600,7 @@
     width: 100% !important;
     min-width: 0 !important;
     table-layout: fixed !important;
-    font-size: 10.5px !important;
+    font-size: 12px !important;
   }
 
   .table-fit-mobile th,
@@ -610,7 +617,7 @@
 
   .table-wrap th {
     height: 29px !important;
-    font-size: 9.5px !important;
+    font-size: 12px !important;
   }
 
   .like-actions {
@@ -641,7 +648,7 @@
   }
 
   .like-rank-content small {
-    font-size: 9px !important;
+    font-size: 12px !important;
   }
 
   .like-rank-metrics {
@@ -655,12 +662,12 @@
   .like-rank-metrics span {
     min-width: 0 !important;
     padding: 4px 5px !important;
-    font-size: 8.5px !important;
+    font-size: 12px !important;
     text-align: right !important;
   }
 
   .like-rank-metrics b {
-    font-size: 10px !important;
+    font-size: 12px !important;
   }
 }
 

@@ -1,4 +1,4 @@
-import { saveMaterializedR2Response } from './pages-response-r2.js';
+import { saveMaterializedActionsR2Response } from './pages-response-r2.js';
 import { regionalMusicService } from './regional-music-service-registry.js';
 
 export const REGIONAL_MUSIC_READ_MODEL_KEY = 'regional-music';
@@ -128,7 +128,7 @@ export async function publishRegionalMusicReadModel(env, updatedAt = Date.now(),
     throw new Error('PAGES_RESPONSE_R2 binding is unavailable');
   }
   const load = dependencies.loadReadModel || loadRegionalMusicReadModel;
-  const save = dependencies.saveR2Response || saveMaterializedR2Response;
+  const save = dependencies.saveR2Response || saveMaterializedActionsR2Response;
   const snapshot = await load(env?.OTHER_DB);
   const payload = regionalMusicReadModelPayload(snapshot, updatedAt);
   const body = JSON.stringify(payload);
