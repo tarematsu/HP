@@ -1,0 +1,107 @@
+name: Manual follower collection (one-off)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/manual-follower-collection.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - name: Install worker dependencies
+        working-directory: worker
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Collect Stationhead followers now
+        working-directory: worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > src/manual-followers-entry.js <<'EOF'
+          import { collectStationheadDailyFollowers } from './stationhead-daily-followers.js';
+          import { ensureFreshFollowerSession } from './stationhead-daily-followers-resilient.js';
+
+          export default {
+            async fetch(request, env) {
+              const url = new URL(request.url);
+              if (url.pathname !== '/run') return new Response('not found', { status: 404 });
+              try {
+                const session = await ensureFreshFollowerSession(env);
+                const result = await collectStationheadDailyFollowers(env, Date.now(), {
+                  loadSession: async () => ({
+                    auth_token: session.authToken,
+                    device_uid: session.deviceUid,
+                    token_expires_at: session.tokenExpiresAt || null,
+                  }),
+                });
+                return Response.json({ ok: true, ...result });
+              } catch (error) {
+                return Response.json({ ok: false, error: String(error?.stack || error) }, { status: 500 });
+              }
+            },
+          };
+          EOF
+
+          cat > wrangler.manual-followers.jsonc <<'EOF'
+          {
+            "$schema": "node_modules/wrangler/config-schema.json",
+            "name": "sh-manual-followers-local",
+            "main": "src/manual-followers-entry.js",
+            "compatibility_date": "2026-06-24",
+            "vars": {
+              "SH_APP_VERSION": "1.0.0",
+              "REQUEST_TIMEOUT_MS": 8000,
+              "AUTH_REFRESH_BEFORE_MS": 3600000,
+              "AUTH_LOCK_MS": 60000
+            },
+            "r2_buckets": [
+              { "binding": "PAGES_RESPONSE_R2", "bucket_name": "sh-pages-responses", "remote": true }
+            ],
+            "d1_databases": [
+              { "binding": "BUDDIES_DB", "database_name": "stationhead-buddies", "database_id": "f361aae0-05f0-42bc-8784-77100e80133d", "remote": true },
+              { "binding": "OTHER_DB", "database_name": "stationhead-other", "database_id": "21e70e92-6725-4e62-809e-8aadb088cc11", "remote": true }
+            ]
+          }
+          EOF
+
+          npx wrangler dev --config wrangler.manual-followers.jsonc --ip 127.0.0.1 --port 8787 --log-level warn > "$RUNNER_TEMP/manual-followers-wrangler.log" 2>&1 &
+          wrangler_pid=$!
+          trap 'kill "$wrangler_pid" 2>/dev/null || true' EXIT
+
+          ready=0
+          for i in {1..30}; do
+            if curl --silent --fail http://127.0.0.1:8787/run > "$RUNNER_TEMP/manual-followers-result.json"; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/manual-followers-result.json" 2>/dev/null || true
+          if (( ready == 0 )); then
+            echo "::error::Manual follower collection did not complete"
+            cat "$RUNNER_TEMP/manual-followers-wrangler.log" || true
+            exit 1
+          fi
+          node -e 'const fs=require("node:fs");const p=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(p?.ok!==true)throw new Error(p?.error||"follower collection failed");console.log(`Collected ${p.http_successes}/${p.http_requests} follower profiles for ${p.observed_date_jst}; D1 writes=${p.d1_rows_written}, R2 writes=${p.r2_writes}`);' "$RUNNER_TEMP/manual-followers-result.json"
