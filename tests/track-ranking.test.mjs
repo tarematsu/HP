@@ -53,6 +53,14 @@ function rankingDatabase() {
       thumbnail_url TEXT,
       metadata_fetched_at INTEGER
     );
+    CREATE TABLE sh_track_aliases(
+      alias_type TEXT NOT NULL,
+      alias_value TEXT NOT NULL,
+      track_id INTEGER NOT NULL,
+      first_seen_at INTEGER NOT NULL DEFAULT 0,
+      last_seen_at INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY(alias_type,alias_value)
+    );
     CREATE TABLE sh_track_counter_current(
       occurrence_key TEXT PRIMARY KEY,
       track_key TEXT NOT NULL,
@@ -73,32 +81,12 @@ function rankingDatabase() {
       ('occ-4','isrc:USTEST3',3,'USTEST3','sp3',99,2600);
   `);
   db.exec(materializedMigration);
-  db.exec(`
-    CREATE VIEW sh_track_canonical_metadata AS
-    SELECT
-      t.id AS track_id,
-      t.isrc,
-      COALESCE(d.spotify_id,t.spotify_id) AS spotify_id,
-      COALESCE(NULLIF(d.title,''),NULLIF(t.title,'')) AS title,
-      COALESCE(NULLIF(d.artist,''),NULLIF(t.artist,'')) AS artist,
-      d.thumbnail_url,
-      COALESCE(d.metadata_fetched_at,t.updated_at) AS fetched_at
-    FROM sh_tracks AS t
-    LEFT JOIN sh_track_dictionary AS d ON d.isrc=t.isrc
-    UNION ALL
-    SELECT
-      NULL AS track_id,d.isrc,d.spotify_id,d.title,d.artist,d.thumbnail_url,d.metadata_fetched_at
-    FROM sh_track_dictionary AS d
-    WHERE NOT EXISTS (
-      SELECT 1 FROM sh_tracks AS t
-      WHERE t.isrc=d.isrc OR (d.spotify_id IS NOT NULL AND t.spotify_id=d.spotify_id)
-    );
-  `);
   return db;
 }
 
 function d1Adapter(db, calls = null) {
   return {
+    batch() {},
     prepare(sql) {
       if (calls) calls.push(sql);
       const statement = db.prepare(sql);
@@ -116,17 +104,19 @@ function d1Adapter(db, calls = null) {
   };
 }
 
-test('ranking scan avoids three canonical metadata joins and resolves direct track ids once', async () => {
+test('ranking scan avoids canonical view joins and resolves direct track ids once', async () => {
   assert.match(TRACK_RANKING_SQL, /FROM sh_track_ranking_current current/);
   assert.doesNotMatch(TRACK_RANKING_SQL, /JOIN sh_track_canonical_metadata/);
 
   const db = rankingDatabase();
   const calls = [];
   await loadTrackRanking(d1Adapter(db, calls), { limit: 500, persist: false });
-  const canonicalCalls = calls.filter((sql) => sql.includes('FROM sh_track_canonical_metadata'));
-  assert.equal(canonicalCalls.length, 1);
-  assert.match(canonicalCalls[0], /WHERE track_id IN/);
-  assert.doesNotMatch(canonicalCalls[0], /WHERE isrc IN|WHERE spotify_id IN/);
+  const physicalCalls = calls.filter((sql) => /FROM sh_tracks t/.test(sql)
+    && /LEFT JOIN sh_track_dictionary d/.test(sql));
+  assert.equal(physicalCalls.length, 1);
+  assert.match(physicalCalls[0], /WHERE t\.id IN/);
+  assert.equal(calls.some((sql) => /sh_track_canonical_metadata/.test(sql)), false);
+  assert.equal(calls.some((sql) => /FROM sh_track_aliases/.test(sql)), false);
 });
 
 test('track ranking is seeded and maintained at counter update time', async () => {
