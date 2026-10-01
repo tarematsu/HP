@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const currentShell = readFileSync(new URL('../public/current-shell.js', import.meta.url), 'utf8');
+const playbackShell = readFileSync(new URL('../public/stationhead-playback-shell.js', import.meta.url), 'utf8');
 const layout = readFileSync(new URL('../public/dashboard-current-layout.js', import.meta.url), 'utf8');
 const client = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
@@ -52,8 +53,10 @@ test('current view ships its final DOM instead of deleting or moving it at start
   assert.match(currentShell, /id="metricGoalCompact"/);
   assert.match(currentShell, /id="streamGoal"/);
   assert.match(currentShell, /id="goalEta"/);
-  assert.match(currentShell, /href="https:\/\/stationhead\.com\/c\/buddies"/);
-  assert.ok(currentShell.indexOf('class="card chart-card"') < currentShell.indexOf('class="primary-grid"'));
+  assert.match(currentShell, /stationUrl: 'https:\/\/stationhead\.com\/c\/buddies'/);
+  assert.match(currentShell, /stationheadPlaybackCards/);
+  assert.match(playbackShell, /class="primary-grid"/);
+  assert.match(playbackShell, /href="\$\{href\}"/);
   assert.doesNotMatch(currentShell, /goal-card|id="streamCount"|id="goalBar"|id="goalPercent"|id="goalRemaining"|id="goalRate"|id="goalMilestones"/);
   assert.doesNotMatch(currentShell, /id="description"|class="live-line"|class="app-launch"|class="dashboard-actions"|id="likesLoad"/);
   assert.doesNotMatch(layout, /MutationObserver|querySelector\('\.goal-card'\)|ensureMetricLayout|enforceStationheadLink|\.remove\(|\.append\(/);
