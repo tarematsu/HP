@@ -17,7 +17,7 @@ test('followers is registered in the common lazy router after its shell mounts',
   assert.match(entry, /followers-shell\.js/);
   assert.ok(entry.indexOf('followers-shell.js') < entry.indexOf('dashboard-tabs.js'));
   assert.match(route, /followers: \{/);
-  assert.match(route, /followers\.js\?v=20261001\.4/);
+  assert.match(route, /followers\.js\?v=20260930\.3/);
   assert.match(route, /viewId: 'followersView'/);
   assert.match(shell, /mountDashboardShell/);
   assert.match(shell, /view: 'followers'/);
