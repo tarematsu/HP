@@ -29,7 +29,7 @@ export function jioSaavnAutocompleteUrl(query) {
 }
 
 export function jioSaavnSongSearchUrl(query, page = 1) {
-  return apiUrl('search.getResults', { q: query, n: String(JIOSAAVN_TRACK_LIMIT), p: String(page) });
+  return apiUrl('search.getResults', { q: query, query, n: String(JIOSAAVN_TRACK_LIMIT), p: String(page) });
 }
 
 export function jioSaavnArtistUrl(artistId) {
@@ -64,7 +64,7 @@ export function parseJioSaavnArtist(payload, aliases) {
 }
 
 function songCandidates(payload) {
-  for (const candidate of [payload?.results, payload?.songs, payload?.data?.results, payload?.data?.songs, payload?.data]) {
+  for (const candidate of [payload?.results, payload?.songs, payload?.songs?.data, payload?.data?.results, payload?.data?.songs, payload?.data]) {
     if (Array.isArray(candidate)) return candidate;
   }
   return [];
@@ -77,7 +77,7 @@ function splitNames(value) {
 
 function songArtists(song) {
   const names = [];
-  for (const field of [song?.primary_artists, song?.primaryArtists, song?.artists, song?.singers, song?.artist]) {
+  for (const field of [song?.primary_artists, song?.primaryArtists, song?.artists, song?.singers, song?.artist, song?.more_info?.primary_artists, song?.more_info?.artistMap?.primary_artists]) {
     names.push(...splitNames(field));
   }
   return names;
@@ -91,6 +91,7 @@ export function parseJioSaavnTracks(payload, aliases, artistId = null) {
     const names = songArtists(song).map(normalize);
     const ids = String(song?.primary_artists_id || song?.primaryArtistsId || song?.artist_ids || '')
       .split(',').map((id) => id.trim()).filter(Boolean);
+    ids.push(...(song?.more_info?.artistMap?.primary_artists || []).map((artist) => String(artist.id)));
     if (!names.some((name) => wanted.has(name)) && !(artistId && ids.includes(String(artistId)))) continue;
     const id = song?.id ?? song?.songid ?? song?.song_id;
     if (id == null || seen.has(String(id))) continue;
@@ -98,7 +99,7 @@ export function parseJioSaavnTracks(payload, aliases, artistId = null) {
     output.push({
       track_id: String(id),
       title: song?.title || song?.song || song?.name || null,
-      album_name: song?.album?.name || song?.album || song?.album_name || null,
+      album_name: song?.album?.name || song?.album || song?.album_name || song?.more_info?.album || null,
       url: song?.perma_url || song?.permaUrl || song?.url || null,
     });
   }

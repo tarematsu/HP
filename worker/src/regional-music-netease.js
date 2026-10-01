@@ -8,6 +8,7 @@ import {
 const NETEASE_HOT_LIMIT = 20;
 const NETEASE_ALBUM_BATCH = 6;
 const NETEASE_COMMENT_BATCH = 5;
+const VERIFIED_ARTIST_IDS = Object.freeze({ sakurazaka46: '36908026', hinatazaka46: '13163121', nogizaka46: '20846' });
 const DAY_MS = 86_400_000;
 
 function normalize(value) {
@@ -172,8 +173,12 @@ export async function collectNeteaseCloudMusic(env, observedAt = Date.now(), fet
 
   for (const [canonicalArtist, artist] of Object.entries(REGIONAL_MUSIC_ARTISTS)) {
     try {
-      const artistId = await discoverArtist(fetchImpl, artist);
+      const artistId = (await discoverArtist(fetchImpl, artist)) || VERIFIED_ARTIST_IDS[canonicalArtist];
       if (!artistId) throw new Error('artist id not found');
+      const artistPayload = await requestJson(fetchImpl, neteaseArtistApiUrl(artistId));
+      if (!parseNeteaseArtistId({ artists: [artistPayload?.artist] }, artist.aliases)) {
+        throw new Error('artist profile identity could not be verified');
+      }
       await saveRegionalArtist(env, {
         service: 'netease_cloud_music',
         canonical_artist: canonicalArtist,
@@ -184,7 +189,6 @@ export async function collectNeteaseCloudMusic(env, observedAt = Date.now(), fet
       });
       artists += 1;
 
-      const artistPayload = await requestJson(fetchImpl, neteaseArtistApiUrl(artistId));
       const hotTracks = parseNeteaseHotTracks(artistPayload, artistId, artist.aliases);
       for (const [index, entry] of hotTracks.entries()) {
         const commentCount = index < NETEASE_COMMENT_BATCH

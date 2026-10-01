@@ -63,7 +63,9 @@ async function fetchJson(fetchImpl, url) {
     },
   });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return response.json();
+  const body = await response.text();
+  if (/^\s*</.test(body)) throw new Error('search endpoint returned website HTML instead of catalog JSON');
+  return JSON.parse(body);
 }
 
 export async function collectYandexMusic(env, observedAt = Date.now(), fetchImpl = fetch) {

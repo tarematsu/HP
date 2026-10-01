@@ -28,3 +28,29 @@ for (let start = 0; start < services.length; start += 4) {
 }
 await writeFile(`${directory}/summary.json`,JSON.stringify(summary,null,2));
 console.log(JSON.stringify(summary.map(({service,result,error,requests})=>({service,status:result?.status,error,requests:requests.length}))));
+// Read-only capture of current official catalog pages for endpoint migrations.
+const pages = [
+  ['qq-profile', 'https://y.qq.com/n/ryqq/singer/000DG1og3lDmbT'],
+  ['kugou-profile', 'https://pcretry.kugou.com/yueku/v8/singer/home/5317322-0-6-r.html'],
+  ['langit-search', 'https://play.langitmusik.co.id/cari?search=Sakurazaka46'],
+  ['gaana-home', 'https://gaana.com/'],
+];
+const pageResults = [];
+await Promise.all(pages.map(async ([name,url]) => {
+  try {
+    const response = await fetch(url, { signal:AbortSignal.timeout(30_000) });
+    const body = await response.text();
+    await writeFile(`${directory}/${name}.html`,body.slice(0,2_000_000));
+    const scripts = [...body.matchAll(/<script\b[^>]*src=["']([^"']+)["']/gi)].map(m=>new URL(m[1],response.url).href).slice(-6);
+    const scriptResults = [];
+    for (const [index,scriptUrl] of scripts.entries()) {
+      try {
+        const scriptResponse = await fetch(scriptUrl,{signal:AbortSignal.timeout(15_000)});
+        await writeFile(`${directory}/${name}-script-${index}.js`,(await scriptResponse.text()).slice(0,4_000_000));
+        scriptResults.push({url:scriptUrl,status:scriptResponse.status});
+      } catch(error) { scriptResults.push({url:scriptUrl,error:error.message}); }
+    }
+    pageResults.push({name,url,final_url:response.url,status:response.status,scripts:scriptResults});
+  } catch(error) { pageResults.push({name,url,error:error.message}); }
+}));
+await writeFile(`${directory}/current-pages.json`,JSON.stringify(pageResults,null,2));
