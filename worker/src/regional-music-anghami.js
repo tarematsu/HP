@@ -25,6 +25,10 @@ function metric(text, label) {
   return parseCompactCount(match?.[1]);
 }
 
+function normalizeArtistName(value) {
+  return String(value || '').normalize('NFKC').trim().toLocaleLowerCase('en-US').replace(/\s+/g, '');
+}
+
 export function parseAnghamiTrackMetrics(html) {
   const text = visibleHtmlText(html);
   return {
@@ -44,9 +48,9 @@ export function parseAnghamiArtistMetrics(html) {
 export function findAnghamiArtistId(html, artistName) {
   const source = String(html || '');
   const anchors = source.matchAll(/<a\b[^>]*href=["'][^"']*\/artist\/(\d+)[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi);
-  const wanted = String(artistName || '').toLocaleLowerCase('en-US');
+  const wanted = normalizeArtistName(artistName);
   for (const match of anchors) {
-    if (visibleHtmlText(match[2]).toLocaleLowerCase('en-US').includes(wanted)) return match[1];
+    if (normalizeArtistName(visibleHtmlText(match[2])) === wanted) return match[1];
   }
   return null;
 }
