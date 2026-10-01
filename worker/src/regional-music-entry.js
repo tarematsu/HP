@@ -1,12 +1,20 @@
+import { collectAnghami } from './regional-music-anghami.js';
 import { collectBugsArtists } from './regional-music-bugs.js';
+import { collectNhacCuaTui } from './regional-music-nhaccuatui.js';
 
 export const REGIONAL_MUSIC_DAILY_CRON = '20 15 * * *';
+
+const DAILY_COLLECTORS = Object.freeze([
+  collectBugsArtists,
+  collectNhacCuaTui,
+  collectAnghami,
+]);
 
 export async function collectRegionalMusicDaily(env, scheduledTime, fetchImpl = fetch) {
   const observedAt = Number(scheduledTime) || Date.now();
   const results = [];
 
-  for (const collect of [collectBugsArtists]) {
+  for (const collect of DAILY_COLLECTORS) {
     try {
       results.push(await collect(env, observedAt, fetchImpl));
     } catch (error) {
