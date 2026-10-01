@@ -1,0 +1,122 @@
+name: Inspect Amazon Music Top500 history
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/inspect-amazon-music-top500-history.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      R2_BUCKET: sh-pages-responses
+      R2_KEY: amazon-music/rank-monitor/top-500-check-history.json
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci --no-audit --no-fund --ignore-scripts
+
+      - name: Fetch Top500 check history from R2
+        working-directory: worker
+        run: >-
+          npx wrangler r2 object get
+          "$R2_BUCKET/$R2_KEY"
+          --remote
+          --file ../amazon-top500-check-history.json
+
+      - name: Summarize observed update timing
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+
+          const source = JSON.parse(readFileSync('amazon-top500-check-history.json', 'utf8'));
+          const checks = (Array.isArray(source?.checks) ? source.checks : [])
+            .filter((row) => Number.isFinite(Number(row?.observed_at)))
+            .sort((a, b) => Number(a.observed_at) - Number(b.observed_at));
+          const updated = checks.filter((row) => row?.status === 'updated');
+
+          const jst = new Intl.DateTimeFormat('ja-JP', {
+            timeZone: 'Asia/Tokyo',
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit',
+            hourCycle: 'h23',
+          });
+          const fmt = (ms) => jst.format(new Date(Number(ms)));
+
+          const byHour = new Map();
+          for (const row of updated) {
+            const date = new Date(Number(row.observed_at) + 9 * 60 * 60_000);
+            const hour = date.getUTCHours();
+            byHour.set(hour, (byHour.get(hour) || 0) + 1);
+          }
+
+          const intervals = [];
+          for (let i = 1; i < updated.length; i += 1) {
+            intervals.push((Number(updated[i].observed_at) - Number(updated[i - 1].observed_at)) / 3_600_000);
+          }
+
+          const lines = [
+            '# Amazon Music Top500 update timing',
+            '',
+            `- retained checks: ${checks.length}`,
+            `- updated checks: ${updated.length}`,
+            `- unchanged checks: ${checks.filter((row) => row?.status === 'unchanged').length}`,
+            `- error checks: ${checks.filter((row) => row?.status === 'error').length}`,
+            `- first check (JST): ${checks.length ? fmt(checks[0].observed_at) : '-'}`,
+            `- last check (JST): ${checks.length ? fmt(checks.at(-1).observed_at) : '-'}`,
+            '',
+            '## Updated observations (JST)',
+            '',
+            '| observed_at | changed_positions | scanned_tracks | pages_scanned |',
+            '| --- | ---: | ---: | ---: |',
+            ...updated.map((row) => `| ${fmt(row.observed_at)} | ${Number(row.changed_positions) || 0} | ${Number(row.scanned_tracks) || 0} | ${Number(row.pages_scanned) || 0} |`),
+            '',
+            '## Updated observations by JST hour',
+            '',
+            '| hour | count |',
+            '| ---: | ---: |',
+            ...[...byHour.entries()].sort((a, b) => a[0] - b[0]).map(([hour, count]) => `| ${String(hour).padStart(2, '0')}:00 | ${count} |`),
+            '',
+            '## Intervals between updates',
+            '',
+            intervals.length ? intervals.map((hours, index) => `- ${index + 1}: ${hours.toFixed(2)} hours`).join('\n') : '- not enough updated observations yet',
+            '',
+          ];
+
+          writeFileSync('amazon-top500-update-summary.md', `${lines.join('\n')}\n`);
+          console.log(lines.join('\n'));
+          NODE
+
+          cat amazon-top500-update-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload raw history and summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: amazon-top500-update-history-${{ github.run_id }}
+          path: |
+            amazon-top500-check-history.json
+            amazon-top500-update-summary.md
+          if-no-files-found: error
+          retention-days: 7
