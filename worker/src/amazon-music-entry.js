@@ -11,9 +11,7 @@ import {
   persistAppleMusicModelToOther,
 } from './music-service-other-store.js';
 
-export const AMAZON_MUSIC_DAILY_START_CRON = '0 17 * * *';
-export const AMAZON_MUSIC_SCAN_CONTINUE_CRON = '12,22,32,42,52 17-20 * * *';
-export const APPLE_MUSIC_PROBE_CRON = '15 * * * *';
+export const AMAZON_MUSIC_CRON = '0,12,15,22,32,42,52 * * * *';
 
 function loggedRun(label, operation, { fatal = false } = {}) {
   return operation()
@@ -62,50 +60,33 @@ export function amazonMusicDueTasks(scheduledTime) {
   };
 }
 
+function scheduledRuns(env, scheduledTime) {
+  const due = amazonMusicDueTasks(scheduledTime);
+  const runs = [];
+  if (due.daily50kStart) {
+    runs.push(loggedRun(
+      'amazon-music-daily-50k-start',
+      () => runAmazon50k(env, scheduledTime, { start: true }),
+    ));
+  } else if (due.daily50kContinue) {
+    runs.push(loggedRun(
+      'amazon-music-daily-50k-continue',
+      () => runAmazon50k(env, scheduledTime),
+    ));
+  }
+  if (due.apple) {
+    runs.push(loggedRun(
+      'apple-music-collection',
+      () => collectAppleMusic(env, scheduledTime),
+    ));
+  }
+  return runs;
+}
+
 export default {
   async scheduled(controller, env, ctx) {
     const scheduledTime = Number(controller?.scheduledTime) || Date.now();
-    const cron = String(controller?.cron || '');
-
-    let run;
-    if (cron === AMAZON_MUSIC_DAILY_START_CRON) {
-      run = loggedRun(
-        'amazon-music-daily-50k-start',
-        () => runAmazon50k(env, scheduledTime, { start: true }),
-      );
-    } else if (cron === AMAZON_MUSIC_SCAN_CONTINUE_CRON) {
-      run = loggedRun(
-        'amazon-music-daily-50k-continue',
-        () => runAmazon50k(env, scheduledTime),
-      );
-    } else if (cron === APPLE_MUSIC_PROBE_CRON) {
-      run = loggedRun(
-        'apple-music-collection',
-        () => collectAppleMusic(env, scheduledTime),
-      );
-    } else {
-      const due = amazonMusicDueTasks(scheduledTime);
-      const runs = [];
-      if (due.daily50kStart) {
-        runs.push(loggedRun(
-          'amazon-music-daily-50k-start',
-          () => runAmazon50k(env, scheduledTime, { start: true }),
-        ));
-      } else if (due.daily50kContinue) {
-        runs.push(loggedRun(
-          'amazon-music-daily-50k-continue',
-          () => runAmazon50k(env, scheduledTime),
-        ));
-      }
-      if (due.apple) {
-        runs.push(loggedRun(
-          'apple-music-collection',
-          () => collectAppleMusic(env, scheduledTime),
-        ));
-      }
-      run = Promise.all(runs);
-    }
-
+    const run = Promise.all(scheduledRuns(env, scheduledTime));
     if (ctx?.waitUntil) ctx.waitUntil(run);
     else await run;
   },
