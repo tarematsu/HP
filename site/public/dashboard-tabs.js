@@ -115,8 +115,7 @@ for (const section of NAVIGATION) {
     for (const mode of source.modes) MODE_NAVIGATION.set(mode, { section, source });
   }
 }
-const BUDDIES_MODE_ORDER = Object.freeze(['current', 'daily', 'played-tracks', 'likes', 'ranking', 'broadcasts', 'followers']);
-const BUDDIES_VISIBLE_MODES = new Set(BUDDIES_MODE_ORDER);
+const BUDDIES_VISIBLE_MODES = new Set(['current', 'daily', 'played-tracks', 'likes', 'ranking', 'broadcasts', 'followers']);
 
 const currentView = document.getElementById('currentView');
 const historyView = document.getElementById('historyView');
@@ -184,26 +183,11 @@ function syncModeTabs(source) {
 
   const showBuddiesModes = source.id === 'buddies';
   tabs.hidden = !showBuddiesModes;
-  if (!showBuddiesModes) {
-    tabs.querySelectorAll('button').forEach((button) => {
-      button.hidden = true;
-      button.removeAttribute('aria-current');
-    });
-    return;
-  }
-
-  const byMode = new Map();
   tabs.querySelectorAll('button').forEach((button) => {
-    const mode = routeModeForButton(button);
-    const visible = BUDDIES_VISIBLE_MODES.has(mode);
+    const visible = showBuddiesModes && BUDDIES_VISIBLE_MODES.has(routeModeForButton(button));
     button.hidden = !visible;
     if (!visible) button.removeAttribute('aria-current');
-    else byMode.set(mode, button);
   });
-  for (const mode of BUDDIES_MODE_ORDER) {
-    const button = byMode.get(mode);
-    if (button) tabs.append(button);
-  }
 }
 
 function syncNavigation(mode) {
@@ -410,6 +394,13 @@ tabs?.addEventListener('click', (event) => {
     showMode(mode);
   }
 }, { capture: true });
+
+if (tabs && sectionTabs && sourceTabs) {
+  new MutationObserver(() => {
+    const navigation = navigationForMode(activeMode);
+    if (navigation) syncModeTabs(navigation.source);
+  }).observe(tabs, { childList: true });
+}
 
 window.addEventListener('popstate', syncFromLocation);
 window.addEventListener('hashchange', syncFromLocation);
