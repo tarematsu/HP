@@ -21,9 +21,10 @@ import { collectZingMp3 } from './regional-music-zing.js';
 import { publishRegionalMusicReadModel } from './regional-music-read-model.js';
 
 export const REGIONAL_MUSIC_DAILY_CRON = '0 21 * * *';
+export const REGIONAL_MUSIC_COLLECTOR_CONCURRENCY = 4;
 
-export const REGIONAL_MUSIC_DAILY_COLLECTORS = Object.freeze([
-  collectYouTubeMusic,
+// The 19 regional/local services added by the regional-music rollout.
+export const REGIONAL_MUSIC_SERVICE_COLLECTORS = Object.freeze([
   collectGenie,
   collectBugsArtists,
   collectJooxArtists,
@@ -45,21 +46,67 @@ export const REGIONAL_MUSIC_DAILY_COLLECTORS = Object.freeze([
   collectLangitMusik,
 ]);
 
+// YouTube Music has its own daily requirement, but shares the same Worker/read model.
+export const REGIONAL_MUSIC_DAILY_COLLECTORS = Object.freeze([
+  collectYouTubeMusic,
+  ...REGIONAL_MUSIC_SERVICE_COLLECTORS,
+]);
+
+async function collectWithIsolation(collect, env, observedAt, fetchImpl) {
+  try {
+    return await collect(env, observedAt, fetchImpl);
+  } catch (error) {
+    return {
+      service: collect.name,
+      status: 'error',
+      error: String(error?.message || error),
+    };
+  }
+}
+
+export async function runRegionalMusicCollectors(
+  collectors,
+  env,
+  observedAt,
+  fetchImpl = fetch,
+  concurrency = REGIONAL_MUSIC_COLLECTOR_CONCURRENCY,
+) {
+  const list = Array.from(collectors || []);
+  if (list.length === 0) return [];
+
+  const workerCount = Math.min(
+    list.length,
+    Math.max(1, Math.floor(Number(concurrency) || REGIONAL_MUSIC_COLLECTOR_CONCURRENCY)),
+  );
+  const results = new Array(list.length);
+  let nextIndex = 0;
+
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (nextIndex < list.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await collectWithIsolation(list[index], env, observedAt, fetchImpl);
+    }
+  });
+
+  await Promise.all(workers);
+  return results;
+}
+
+function collectorsForEnvironment(env) {
+  return env?.REGIONAL_MUSIC_REGIONAL_ONLY === '1'
+    ? REGIONAL_MUSIC_SERVICE_COLLECTORS
+    : REGIONAL_MUSIC_DAILY_COLLECTORS;
+}
+
 export async function collectRegionalMusicDaily(env, scheduledTime, fetchImpl = fetch) {
   const observedAt = Number(scheduledTime) || Date.now();
-  const results = [];
-
-  for (const collect of REGIONAL_MUSIC_DAILY_COLLECTORS) {
-    try {
-      results.push(await collect(env, observedAt, fetchImpl));
-    } catch (error) {
-      results.push({
-        service: collect.name,
-        status: 'error',
-        error: String(error?.message || error),
-      });
-    }
-  }
+  const results = await runRegionalMusicCollectors(
+    collectorsForEnvironment(env),
+    env,
+    observedAt,
+    fetchImpl,
+  );
 
   try {
     const published = await publishRegionalMusicReadModel(env, observedAt);
