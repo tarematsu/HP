@@ -1,5 +1,5 @@
 import { parseCompactCount } from './regional-music-html.js';
-import { REGIONAL_MUSIC_ARTISTS, normalizeArtistAlias } from './regional-music-service-registry.js';
+import { YOUTUBE_MUSIC_ARTISTS, normalizeArtistAlias } from './regional-music-service-registry.js';
 import {
   saveRegionalArtist,
   saveRegionalCollectorState,
@@ -15,7 +15,14 @@ export const YOUTUBE_MUSIC_ARTIST_FILTER = 'EgWKAQIgAWoMEA4QChADEAQQCRAF';
 
 const YTM_ROOT = 'https://music.youtube.com';
 const YTM_API = `${YTM_ROOT}/youtubei/v1`;
+const YOUTUBE_ROOT = 'https://www.youtube.com';
 const YTM_USER_AGENT = 'Mozilla/5.0 compatible; skrzk-pages-collector/1.0';
+const YOUTUBE_CHANNEL_FALLBACKS = Object.freeze({
+  aobazaka46: Object.freeze({
+    handle: '@aobazaka46SMEJ',
+    url: `${YOUTUBE_ROOT}/@aobazaka46SMEJ`,
+  }),
+});
 
 function walk(value, visitor) {
   if (!value || typeof value !== 'object') return;
@@ -49,6 +56,13 @@ function runsText(value) {
   const runs = value?.runs;
   if (!Array.isArray(runs)) return '';
   return runs.map((run) => String(run?.text || '')).join('').trim();
+}
+
+function textValue(value) {
+  if (typeof value === 'string') return value.trim();
+  if (!value || typeof value !== 'object') return '';
+  if (typeof value.simpleText === 'string') return value.simpleText.trim();
+  return runsText(value);
 }
 
 function firstFlexText(renderer, index = 0) {
@@ -116,6 +130,108 @@ export function parseYouTubeMusicVisitorData(html) {
   return null;
 }
 
+function extractJsonObjectAfterMarker(source, marker) {
+  const markerIndex = source.indexOf(marker);
+  if (markerIndex < 0) return null;
+  const start = source.indexOf('{', markerIndex + marker.length);
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < source.length; index += 1) {
+    const char = source[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === '{') depth += 1;
+    else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        try {
+          return JSON.parse(source.slice(start, index + 1));
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function initialYouTubeData(html) {
+  const source = String(html || '');
+  for (const marker of ['var ytInitialData =', 'window["ytInitialData"] =', 'ytInitialData =']) {
+    const parsed = extractJsonObjectAfterMarker(source, marker);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
+function regexJsonString(source, key) {
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = String(source || '').match(new RegExp(`"${escapedKey}"\\s*:\\s*"([^"\\\\]*(?:\\\\.[^"\\\\]*)*)"`));
+  if (!match) return '';
+  try {
+    return JSON.parse(`"${match[1]}"`);
+  } catch {
+    return match[1];
+  }
+}
+
+function fallbackIdentityMatches(name, canonicalArtist) {
+  const artist = YOUTUBE_MUSIC_ARTISTS[canonicalArtist];
+  if (!artist) return false;
+  const normalized = normalizeArtistAlias(name);
+  if (artist.aliases.some((alias) => normalized === normalizeArtistAlias(alias))) return true;
+  return canonicalArtist === 'aobazaka46'
+    && (normalized.includes('aobazaka46') || normalized.includes(normalizeArtistAlias('青葉坂46')));
+}
+
+export function parsePublicYouTubeChannelPage(html, canonicalArtist) {
+  const source = String(html || '');
+  const data = initialYouTubeData(source);
+  const metadata = data ? firstObjectByKey(data, 'channelMetadataRenderer') : null;
+  const channelId = String(
+    metadata?.externalId
+      || (data ? firstValueByKey(data, 'channelId') : '')
+      || regexJsonString(source, 'externalId')
+      || regexJsonString(source, 'channelId')
+      || '',
+  ).trim();
+  const name = String(
+    metadata?.title
+      || (data ? firstValueByKey(data, 'channelName') : '')
+      || regexJsonString(source, 'channelName')
+      || regexJsonString(source, 'title')
+      || YOUTUBE_MUSIC_ARTISTS[canonicalArtist]?.displayName
+      || '',
+  ).trim();
+  if (!fallbackIdentityMatches(name, canonicalArtist)) {
+    throw new Error(`YouTube channel identity mismatch: ${name || 'unknown'}`);
+  }
+
+  const subscriberValue = data ? firstValueByKey(data, 'subscriberCountText') : null;
+  const viewCountValue = data
+    ? (firstValueByKey(data, 'viewCountText') || firstValueByKey(data, 'viewCount'))
+    : null;
+  const rawSubscriberText = textValue(subscriberValue) || regexJsonString(source, 'subscriberCountText');
+  const rawViewText = textValue(viewCountValue) || regexJsonString(source, 'viewCountText');
+
+  return {
+    name: YOUTUBE_MUSIC_ARTISTS[canonicalArtist]?.displayName || name,
+    channelId: channelId.startsWith('UC') ? channelId : null,
+    subscribers: countFromText(rawSubscriberText),
+    totalViews: countFromText(rawViewText),
+  };
+}
+
 async function fetchVisitorData(fetchImpl) {
   try {
     const response = await fetchImpl(YTM_ROOT, {
@@ -129,6 +245,25 @@ async function fetchVisitorData(fetchImpl) {
   } catch {
     return null;
   }
+}
+
+async function fetchPublicYouTubeFallback(fetchImpl, canonicalArtist) {
+  const fallback = YOUTUBE_CHANNEL_FALLBACKS[canonicalArtist];
+  if (!fallback) return null;
+  const response = await fetchImpl(`${fallback.url}/about?hl=en&gl=JP`, {
+    headers: {
+      accept: 'text/html,application/xhtml+xml',
+      'accept-language': 'en-US,en;q=0.9,ja;q=0.8',
+      'user-agent': YTM_USER_AGENT,
+    },
+  });
+  if (!response.ok) throw new Error(`YouTube channel HTTP ${response.status} for ${fallback.handle}`);
+  const parsed = parsePublicYouTubeChannelPage(await response.text(), canonicalArtist);
+  return {
+    ...parsed,
+    serviceArtistId: parsed.channelId || fallback.handle,
+    profileUrl: fallback.url,
+  };
 }
 
 async function requestYtm(fetchImpl, endpoint, body, observedAt, visitorData = null) {
@@ -156,7 +291,7 @@ function exactArtistName(value, artist) {
 }
 
 export function parseYouTubeMusicArtistSearch(payload, canonicalArtist) {
-  const artist = REGIONAL_MUSIC_ARTISTS[canonicalArtist];
+  const artist = YOUTUBE_MUSIC_ARTISTS[canonicalArtist];
   if (!artist) return null;
   let match = null;
   walk(payload, (node) => {
@@ -211,7 +346,7 @@ function parseTrack(renderer, canonicalArtist) {
   if (!videoId || !title) return null;
   const musicVideoType = firstValueByKey(renderer, 'musicVideoType');
   if (musicVideoType && musicVideoType !== 'MUSIC_VIDEO_TYPE_ATV') return null;
-  const artist = REGIONAL_MUSIC_ARTISTS[canonicalArtist];
+  const artist = YOUTUBE_MUSIC_ARTISTS[canonicalArtist];
   const text = allRendererText(renderer);
   if (artist && !artist.aliases.some((alias) => normalizeArtistAlias(text).includes(normalizeArtistAlias(alias)))) {
     return null;
@@ -239,14 +374,14 @@ function parsePlaylistShelf(renderer) {
     service_playlist_id: servicePlaylistId,
     playlist_name: title || 'Artist songs',
     playlist_url: `${YTM_ROOT}/playlist?list=${encodeURIComponent(servicePlaylistId)}`,
-    playlist_type: 'artist_catalog',
+    playlist_type: 'official',
     owner_name: 'YouTube Music',
     trackIds,
   };
 }
 
 export function parseYouTubeMusicArtistPage(payload, canonicalArtist) {
-  const artist = REGIONAL_MUSIC_ARTISTS[canonicalArtist];
+  const artist = YOUTUBE_MUSIC_ARTISTS[canonicalArtist];
   const header = payload?.header?.musicImmersiveHeaderRenderer || firstObjectByKey(payload, 'musicImmersiveHeaderRenderer');
   if (!header) throw new Error('YouTube Music artist header missing');
   const name = runsText(header.title);
@@ -310,6 +445,23 @@ function profileUrl(browseId) {
     : `${YTM_ROOT}/browse/${encodeURIComponent(browseId)}`;
 }
 
+async function saveFallbackArtist(env, canonicalArtist, observedAt, fetchImpl) {
+  const fallback = await fetchPublicYouTubeFallback(fetchImpl, canonicalArtist);
+  if (!fallback) return false;
+  await saveRegionalArtist(env, {
+    service: YOUTUBE_MUSIC_SERVICE,
+    canonical_artist: canonicalArtist,
+    service_artist_id: fallback.serviceArtistId,
+    display_name: fallback.name,
+    profile_url: fallback.profileUrl,
+    followers: fallback.subscribers,
+    monthly_audience: null,
+    total_views: fallback.totalViews,
+    observed_at: observedAt,
+  });
+  return true;
+}
+
 export async function collectYouTubeMusic(env, observedAt = Date.now(), fetchImpl = fetch) {
   const failures = [];
   let artists = 0;
@@ -319,14 +471,20 @@ export async function collectYouTubeMusic(env, observedAt = Date.now(), fetchImp
   let memberships = 0;
   const visitorData = await fetchVisitorData(fetchImpl);
 
-  for (const [canonicalArtist, artist] of Object.entries(REGIONAL_MUSIC_ARTISTS)) {
+  for (const [canonicalArtist, artist] of Object.entries(YOUTUBE_MUSIC_ARTISTS)) {
     try {
       const search = await requestYtm(fetchImpl, 'search', {
         query: artist.displayName,
         params: YOUTUBE_MUSIC_ARTIST_FILTER,
       }, observedAt, visitorData);
       const identity = parseYouTubeMusicArtistSearch(search, canonicalArtist);
-      if (!identity?.browseId) throw new Error(`exact artist search result missing for ${artist.displayName}`);
+      if (!identity?.browseId) {
+        if (await saveFallbackArtist(env, canonicalArtist, observedAt, fetchImpl)) {
+          artists += 1;
+          continue;
+        }
+        throw new Error(`exact artist search result missing for ${artist.displayName}`);
+      }
 
       const page = await requestYtm(fetchImpl, 'browse', { browseId: identity.browseId }, observedAt, visitorData);
       const parsed = parseYouTubeMusicArtistPage(page, canonicalArtist);

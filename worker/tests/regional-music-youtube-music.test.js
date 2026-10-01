@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   YOUTUBE_MUSIC_ARTIST_FILTER,
   YOUTUBE_MUSIC_SERVICE,
+  parsePublicYouTubeChannelPage,
   parseYouTubeMusicArtistPage,
   parseYouTubeMusicArtistSearch,
   parseYouTubeMusicVisitorData,
@@ -41,6 +42,47 @@ test('artist search requires an exact Sakamichi identity and ignores cover looka
   assert.deepEqual(parseYouTubeMusicArtistSearch(payload, 'sakurazaka46'), {
     browseId: 'UC-sakura',
     name: '櫻坂46',
+  });
+});
+
+test('artist search accepts Aobazaka46 only for its exact YouTube Music identity', () => {
+  const payload = {
+    contents: [
+      artistResult('青葉坂46 Fan Channel', 'UC-aoba-fan'),
+      artistResult('青葉坂46', 'UC-aoba'),
+    ],
+  };
+  assert.deepEqual(parseYouTubeMusicArtistSearch(payload, 'aobazaka46'), {
+    browseId: 'UC-aoba',
+    name: '青葉坂46',
+  });
+});
+
+test('Aobazaka46 falls back to its public official YouTube channel metadata without login', () => {
+  const initialData = {
+    metadata: {
+      channelMetadataRenderer: {
+        title: 'Aobazaka46 Official YouTube Channel',
+        externalId: 'UC-aobazaka-official',
+      },
+    },
+    header: {
+      c4TabbedHeaderRenderer: {
+        subscriberCountText: { simpleText: '34.4K subscribers' },
+      },
+    },
+    contents: [{
+      channelAboutFullMetadataRenderer: {
+        viewCountText: { runs: [{ text: '123,456 views' }] },
+      },
+    }],
+  };
+  const html = `<script>var ytInitialData = ${JSON.stringify(initialData)};</script>`;
+  assert.deepEqual(parsePublicYouTubeChannelPage(html, 'aobazaka46'), {
+    name: '青葉坂46',
+    channelId: 'UC-aobazaka-official',
+    subscribers: 34400,
+    totalViews: 123456,
   });
 });
 
@@ -129,6 +171,7 @@ test('artist page parses public monthly audience, total views, songs, releases a
   assert.equal(parsed.releases[0].release_year, 2026);
   assert.deepEqual(parsed.playlists[0].trackIds, ['video-1']);
   assert.equal(parsed.playlists[0].service_playlist_id, 'PL-sakura-songs');
+  assert.equal(parsed.playlists[0].playlist_type, 'official');
 });
 
 test('artist page rejects a mismatched identity even if the response shape is valid', () => {

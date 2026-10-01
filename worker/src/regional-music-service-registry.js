@@ -13,6 +13,17 @@ export const REGIONAL_MUSIC_ARTISTS = Object.freeze({
   }),
 });
 
+// 青葉坂46 is intentionally YouTube Music-only. Keep the regional/local
+// providers on the original three-group target set so their collection cost
+// and matching semantics do not change.
+export const YOUTUBE_MUSIC_ARTISTS = Object.freeze({
+  ...REGIONAL_MUSIC_ARTISTS,
+  aobazaka46: Object.freeze({
+    displayName: '青葉坂46',
+    aliases: Object.freeze(['青葉坂46', 'Aobazaka46', 'AOBAZAKA46']),
+  }),
+});
+
 // `metrics` describes data the current collector actually persists. The broader
 // discovery/expansion targets remain documented separately in the implementation plan.
 export const REGIONAL_MUSIC_SERVICES = Object.freeze({

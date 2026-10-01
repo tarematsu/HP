@@ -20,6 +20,7 @@ import { collectYouTubeMusic } from './regional-music-youtube-music.js';
 import { collectZingMp3 } from './regional-music-zing.js';
 import { publishRegionalMusicReadModel } from './regional-music-read-model.js';
 
+export const YOUTUBE_MUSIC_DAILY_CRON = '0 15 * * *';
 export const REGIONAL_MUSIC_DAILY_CRON = '0 21 * * *';
 export const REGIONAL_MUSIC_COLLECTOR_CONCURRENCY = 4;
 
@@ -46,9 +47,14 @@ export const REGIONAL_MUSIC_SERVICE_COLLECTORS = Object.freeze([
   collectLangitMusik,
 ]);
 
-// YouTube Music has its own daily requirement, but shares the same Worker/read model.
-export const REGIONAL_MUSIC_DAILY_COLLECTORS = Object.freeze([
+export const YOUTUBE_MUSIC_DAILY_COLLECTORS = Object.freeze([
   collectYouTubeMusic,
+]);
+
+// Keep the all-service set for explicit/manual compatibility. Scheduled runs
+// select one of the two sets below from the cron expression.
+export const REGIONAL_MUSIC_DAILY_COLLECTORS = Object.freeze([
+  ...YOUTUBE_MUSIC_DAILY_COLLECTORS,
   ...REGIONAL_MUSIC_SERVICE_COLLECTORS,
 ]);
 
@@ -93,16 +99,10 @@ export async function runRegionalMusicCollectors(
   return results;
 }
 
-function collectorsForEnvironment(env) {
-  return env?.REGIONAL_MUSIC_REGIONAL_ONLY === '1'
-    ? REGIONAL_MUSIC_SERVICE_COLLECTORS
-    : REGIONAL_MUSIC_DAILY_COLLECTORS;
-}
-
-export async function collectRegionalMusicDaily(env, scheduledTime, fetchImpl = fetch) {
+async function collectAndPublish(collectors, env, scheduledTime, fetchImpl = fetch, event = 'regional-music-daily-complete') {
   const observedAt = Number(scheduledTime) || Date.now();
   const results = await runRegionalMusicCollectors(
-    collectorsForEnvironment(env),
+    collectors,
     env,
     observedAt,
     fetchImpl,
@@ -119,15 +119,57 @@ export async function collectRegionalMusicDaily(env, scheduledTime, fetchImpl = 
     });
   }
 
-  console.log(JSON.stringify({ event: 'regional-music-daily-complete', results }));
+  console.log(JSON.stringify({ event, results }));
   return results;
+}
+
+function collectorsForEnvironment(env) {
+  return env?.REGIONAL_MUSIC_REGIONAL_ONLY === '1'
+    ? REGIONAL_MUSIC_SERVICE_COLLECTORS
+    : REGIONAL_MUSIC_DAILY_COLLECTORS;
+}
+
+export async function collectRegionalMusicDaily(env, scheduledTime, fetchImpl = fetch) {
+  return collectAndPublish(
+    collectorsForEnvironment(env),
+    env,
+    scheduledTime,
+    fetchImpl,
+  );
+}
+
+export async function collectRegionalServicesDaily(env, scheduledTime, fetchImpl = fetch) {
+  return collectAndPublish(
+    REGIONAL_MUSIC_SERVICE_COLLECTORS,
+    env,
+    scheduledTime,
+    fetchImpl,
+    'regional-music-services-daily-complete',
+  );
+}
+
+export async function collectYouTubeMusicDaily(env, scheduledTime, fetchImpl = fetch) {
+  return collectAndPublish(
+    YOUTUBE_MUSIC_DAILY_COLLECTORS,
+    env,
+    scheduledTime,
+    fetchImpl,
+    'youtube-music-daily-complete',
+  );
+}
+
+export function scheduledCollectorForCron(cron) {
+  if (cron === YOUTUBE_MUSIC_DAILY_CRON) return collectYouTubeMusicDaily;
+  if (cron === REGIONAL_MUSIC_DAILY_CRON) return collectRegionalServicesDaily;
+  return collectRegionalMusicDaily;
 }
 
 export default {
   async scheduled(controller, env, ctx) {
     const scheduledTime = Number(controller?.scheduledTime) || Date.now();
-    const run = collectRegionalMusicDaily(env, scheduledTime);
+    const collect = scheduledCollectorForCron(controller?.cron);
+    const run = collect(env, scheduledTime);
     if (ctx?.waitUntil) ctx.waitUntil(run);
-    else await run;
+    await run;
   },
 };
