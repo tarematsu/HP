@@ -29,9 +29,11 @@ test('Stationhead sources are Buddies, Ohisama, Nogizaka, leaderboard and follow
   assert.doesNotMatch(route, /id: 'analysis'/);
 });
 
-test('Buddies owns first-week comparison while global leaderboard and followers stay outside its view tabs', () => {
-  assert.match(route, /id: 'buddies',[\s\S]*modes: Object\.freeze\(\['current', 'daily', 'weekly', 'monthly', 'first-week', 'played-tracks', 'likes', 'broadcasts'\]\)/);
-  assert.match(route, /const BUDDIES_VISIBLE_MODES = new Set\(\['current', 'daily', 'first-week', 'played-tracks', 'likes', 'broadcasts'\]\)/);
+test('Buddies keeps first-week comparison inside listening parties while global leaderboard and followers stay outside its view tabs', () => {
+  assert.match(route, /id: 'buddies',[\s\S]*modes: Object\.freeze\(\['current', 'daily', 'weekly', 'monthly', 'played-tracks', 'likes', 'broadcasts'\]\)/);
+  assert.match(route, /const BUDDIES_VISIBLE_MODES = new Set\(\['current', 'daily', 'played-tracks', 'likes', 'broadcasts'\]\)/);
+  assert.doesNotMatch(route, /'first-week': \{/);
+  assert.match(route, /mode === 'first-week'[\s\S]*#broadcasts/);
   assert.match(route, /const showBuddiesModes = source\.id === 'buddies'/);
   assert.match(route, /tabs\.hidden = !showBuddiesModes/);
   assert.match(route, /new MutationObserver/);
