@@ -61,17 +61,69 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          worker_name="sh-mf-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          run_token="$(openssl rand -hex 24)"
           updated_at="$(node -e 'const fs=require("node:fs");const p=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(String(p.now))' "$RUNNER_TEMP/followers-meta.json")"
-          headers_json='{"content-type":"application/json; charset=utf-8","cache-control":"public, max-age=30, s-maxage=300, stale-while-revalidate=600"}'
-          npx wrangler r2 object put "sh-pages-responses/pages-response/v1/followers.json" \
-            --remote --file "$RUNNER_TEMP/followers-next.json" --force \
-            --content-type "application/json; charset=utf-8" \
-            --cache-control "public, max-age=30, s-maxage=300, stale-while-revalidate=600" \
-            --header "x-amz-meta-version:1" \
-            --header "x-amz-meta-status:200" \
-            --header "x-amz-meta-headers_json:$headers_json" \
-            --header "x-amz-meta-updated_at:$updated_at" \
-            --header "x-amz-meta-cadence_seconds:86400"
+          mkdir -p .manual-r2
+          cat > .manual-r2/index.js <<'JS'
+          export default {
+            async fetch(request, env) {
+              const url = new URL(request.url);
+              if (url.pathname !== '/run' || request.method !== 'POST') return new Response('not found', { status: 404 });
+              if (request.headers.get('authorization') !== `Bearer ${env.RUN_TOKEN}`) return new Response('unauthorized', { status: 401 });
+              const body = await request.text();
+              const updatedAt = Number(request.headers.get('x-updated-at')) || Date.now();
+              JSON.parse(body);
+              await env.PAGES_RESPONSE_R2.put('pages-response/v1/followers.json', body, {
+                httpMetadata: { contentType: 'application/json; charset=utf-8' },
+                customMetadata: {
+                  version: '1',
+                  status: '200',
+                  headers_json: JSON.stringify({
+                    'content-type': 'application/json; charset=utf-8',
+                    'cache-control': 'public, max-age=30, s-maxage=300, stale-while-revalidate=600',
+                  }),
+                  updated_at: String(updatedAt),
+                  cadence_seconds: '86400',
+                },
+              });
+              return Response.json({ ok: true, updated_at: updatedAt });
+            },
+          };
+          JS
+          cat > .manual-r2/wrangler.jsonc <<EOF
+          {
+            "name": "$worker_name",
+            "main": "index.js",
+            "compatibility_date": "2026-06-24",
+            "workers_dev": true,
+            "vars": { "RUN_TOKEN": "$run_token" },
+            "r2_buckets": [
+              { "binding": "PAGES_RESPONSE_R2", "bucket_name": "sh-pages-responses" }
+            ]
+          }
+          EOF
+
+          cleanup() {
+            npx wrangler delete "$worker_name" --force >/dev/null 2>&1 || \
+              curl --silent --show-error --fail -X DELETE \
+                "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$worker_name" \
+                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          npx wrangler deploy --config .manual-r2/wrangler.jsonc
+          subdomain_json="$(curl --silent --show-error --fail \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN")"
+          subdomain="$(printf '%s' "$subdomain_json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);if(!j?.success||!j?.result?.subdomain)process.exit(1);process.stdout.write(j.result.subdomain)})')"
+          curl --silent --show-error --fail --retry 10 --retry-delay 1 --retry-all-errors \
+            -X POST "https://${worker_name}.${subdomain}.workers.dev/run" \
+            -H "Authorization: Bearer $run_token" \
+            -H "Content-Type: application/json" \
+            -H "X-Updated-At: $updated_at" \
+            --data-binary "@$RUNNER_TEMP/followers-next.json"
+          echo
 
       - name: Verify persisted snapshot
         working-directory: worker
