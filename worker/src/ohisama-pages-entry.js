@@ -1,9 +1,10 @@
 import { runOptimizedOhisamaCollectorScheduled } from './ohisama-collector-optimized.js';
 import { registerOhisamaFollowerTarget } from './ohisama-collector-entry.js';
+import { captureOhisamaPlayback } from './ohisama-playback.js';
 import {
-  captureOhisamaPlayback,
-  mergeOhisamaPlaybackReadModel,
-} from './ohisama-playback.js';
+  loadOhisamaPublicationSnapshot,
+  mergeOhisamaPlaybackReadModelWithCadence,
+} from './ohisama-publication-cadence.js';
 import { refreshOptimizedOhisamaReadModel } from './ohisama-read-model-optimized.js';
 
 export function activeBroadcastFollowerRegistrar(registerFollowerTarget) {
@@ -48,6 +49,9 @@ export async function runOhisamaPagesScheduled(controller, env, ctx, dependencie
   );
   if (!result?.collected) return result;
 
+  const previousReadModel = await loadOhisamaPublicationSnapshot(env?.PAGES_RESPONSE_R2)
+    .catch(() => null);
+
   let playback = null;
   if (channelPayload) {
     try {
@@ -69,19 +73,19 @@ export async function runOhisamaPagesScheduled(controller, env, ctx, dependencie
 
   try {
     const readModel = await refreshOptimizedOhisamaReadModel(env, result, result.observed_at);
-    let playbackPublished = false;
-    if (playback) {
-      playbackPublished = await mergeOhisamaPlaybackReadModel(
-        env,
-        playback,
-        result,
-        result.observed_at,
-      );
-    }
+    const publication = await mergeOhisamaPlaybackReadModelWithCadence(
+      env,
+      playback,
+      result,
+      result.observed_at,
+      previousReadModel,
+    );
+    const playbackPublished = Boolean(playback) && publication.published === true;
     console.log(JSON.stringify({
       event: 'ohisama_pages_read_model_published',
       ...readModel,
       playback_published: playbackPublished,
+      section_refreshed: publication.refreshed || {},
     }));
     return {
       ...result,
@@ -91,7 +95,12 @@ export async function runOhisamaPagesScheduled(controller, env, ctx, dependencie
         daily_total_plays: playback.daily?.total_plays || 0,
         daily_unique_tracks: playback.daily?.unique_tracks || 0,
       } : null,
-      read_model: { ...readModel, playback_published: playbackPublished },
+      read_model: {
+        ...readModel,
+        playback_published: playbackPublished,
+        section_refreshed: publication.refreshed || {},
+        section_updated_at: publication.section_updated_at || {},
+      },
     };
   } catch (error) {
     const detail = String(error?.message || error).slice(0, 500);
