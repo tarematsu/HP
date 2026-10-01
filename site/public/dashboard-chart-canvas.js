@@ -1,4 +1,4 @@
-// Shared canvas primitives used by current, history, and music-service charts.
+// Shared canvas primitives used by every dashboard chart.
 export function prepareDashboardCanvas(canvas, {
   minimumWidth = 320,
   minimumHeight = 260,
@@ -56,6 +56,7 @@ export function drawDashboardLine(context, rows, {
   gap = null,
   strokeStyle = '#111',
   lineWidth = 2,
+  lineDash = [],
 } = {}) {
   if (!context || !Array.isArray(rows) || typeof x !== 'function' || typeof y !== 'function' || typeof value !== 'function') return 0;
   context.save();
@@ -63,6 +64,7 @@ export function drawDashboardLine(context, rows, {
   context.lineWidth = lineWidth;
   context.lineJoin = 'round';
   context.lineCap = 'round';
+  context.setLineDash(Array.isArray(lineDash) ? lineDash : []);
   context.beginPath();
   let open = false;
   let previous = null;
@@ -90,6 +92,46 @@ export function drawDashboardLine(context, rows, {
   context.stroke();
   context.restore();
   return points;
+}
+
+export function drawDashboardXAxis(context, {
+  left,
+  right,
+  top,
+  width,
+  positions = [],
+  indexes = [],
+  labels = [],
+  labelFor = null,
+  strokeStyle = 'rgba(31,45,68,.12)',
+  fillStyle = '#667287',
+  font = '11px system-ui',
+  tickSize = 4,
+  labelOffset = 7,
+} = {}) {
+  if (!context || !Number.isFinite(width) || !Number.isFinite(top)) return;
+  context.save();
+  context.strokeStyle = strokeStyle;
+  context.fillStyle = fillStyle;
+  context.lineWidth = 1;
+  context.font = font;
+  context.textAlign = 'center';
+  context.textBaseline = 'top';
+  context.beginPath();
+  context.moveTo(left, top);
+  context.lineTo(width - right, top);
+  context.stroke();
+  for (const index of indexes) {
+    const x = Number(positions[index]);
+    if (!Number.isFinite(x)) continue;
+    context.beginPath();
+    context.moveTo(x, top);
+    context.lineTo(x, top + tickSize);
+    context.stroke();
+    const label = typeof labelFor === 'function' ? labelFor(index) : labels[index];
+    if (label != null && label !== '') context.fillText(String(label), x, top + labelOffset);
+  }
+  context.restore();
 }
 
 export function dashboardTickIndexes(count, target = 5) {
