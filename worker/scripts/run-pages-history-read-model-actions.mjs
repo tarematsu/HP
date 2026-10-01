@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { MATERIALIZED_API_VARIANTS } from '../../site/functions/lib/api-contract.js';
 import { runPagesRevisionReadModelActions } from './run-pages-read-model-revision-actions.mjs';
 
+const BUDGET_EXEMPT_HISTORY_KEYS = new Set(['history:daily']);
+
 export const HISTORY_READ_MODEL_VARIANTS = Object.freeze(
   MATERIALIZED_API_VARIANTS.filter(
     (variant) => variant.key !== 'dashboard' && variant.event_driven !== true,
@@ -34,7 +36,9 @@ export async function runPagesHistoryReadModelActions(options = {}) {
     ...(requestedDueKeys !== null ? { dueKeys: requestedDueKeys } : {}),
     ...(reuseOnly ? {
       dueKeys: variants.map((variant) => variant.key),
-      reuseOnlyKeys: variants.map((variant) => variant.key),
+      reuseOnlyKeys: variants
+        .map((variant) => variant.key)
+        .filter((key) => !BUDGET_EXEMPT_HISTORY_KEYS.has(key)),
     } : {}),
   });
 }
