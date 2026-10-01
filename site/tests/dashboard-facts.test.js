@@ -106,6 +106,22 @@ test('dashboard materializes complete current-tab charts and daily summaries in 
     .route('all', 'WITH latest_station AS', { results: [] });
   const history = [
     {
+      observed_at: now - 902_000,
+      listener_count: 145,
+      online_member_count: 155,
+      total_member_count: 30_599,
+      total_listens: 790_320,
+      current_stream_count: 49_127_225,
+    },
+    {
+      observed_at: now - 602_000,
+      listener_count: 148,
+      online_member_count: 158,
+      total_member_count: 30_599,
+      total_listens: 790_335,
+      current_stream_count: 49_127_238,
+    },
+    {
       observed_at: now - 302_000,
       listener_count: 150,
       online_member_count: 160,
@@ -173,7 +189,7 @@ test('dashboard materializes complete current-tab charts and daily summaries in 
   assert.equal(payload.latest.current_stream_count, 49_127_261);
   assert.equal(payload.latest.stream_goal, 50_000_000);
   assert.equal(payload.history.at(-1).online_member_count, 167);
-  assert.equal(payload.stream_5m_history.at(-1).stream_delta, 11);
+  assert.equal(payload.stream_5m_history.at(-1).stream_delta, 12);
   assert.equal(payload.daily_change.total_member_count, 99);
   assert.equal(payload.daily_change.total_listens, 366);
   assert.equal(payload.daily_summaries.yesterday.member_growth, 11);
@@ -191,7 +207,7 @@ test('dashboard materializes complete current-tab charts and daily summaries in 
   assert.equal(detailsResponse.status, 200);
   assert.equal(details.channel_id, 318);
   assert.equal(details.history.at(-1).online_member_count, 167);
-  assert.equal(details.stream_5m_history.at(-1).stream_delta, 11);
+  assert.equal(details.stream_5m_history.at(-1).stream_delta, 12);
   assert.equal(details.daily_summaries.yesterday.member_growth, 11);
   assert.equal(other.callsMatching(/FROM sh_daily_summary/).length, 1);
   assert.equal(other.callsMatching(/FROM sh_comment_velocity_samples/).length, 0);
