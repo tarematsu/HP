@@ -32,18 +32,11 @@ const tracksTable = dashboardTable({
 
 const trendPanels = `
   ${dashboardChartCard({
-    title: 'Spotify 全曲合計の再生数前日比推移（坂道3グループ）',
+    title: 'Spotify 全曲合計再生数前日比・月間リスナー推移（坂道3グループ）',
     titleId: 'spotifyTrendTitle',
-    kicker: 'SAKAMICHI',
+    kicker: 'PLAYCOUNT · MONTHLY LISTENERS',
     className: 'spotify-trend-panel music-service-panel',
-    chartHtml: '<div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="坂道3グループの全曲再生数前日比推移"></div>',
-  })}
-  ${dashboardChartCard({
-    title: 'Spotify 月間リスナー推移（坂道3グループ）',
-    titleId: 'spotifyMonthlyListenerTrendTitle',
-    kicker: 'MONTHLY LISTENERS',
-    className: 'spotify-trend-panel music-service-panel',
-    chartHtml: '<div id="spotifyMonthlyListenerTrendCharts" class="spotify-trend-charts" aria-label="坂道3グループの月間リスナー推移"></div>',
+    chartHtml: '<div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="坂道3グループの全曲合計再生数前日比と月間リスナー推移"></div>',
   })}
   ${dashboardChartCard({
     title: 'Spotify 今年リリース上位10曲合計の再生数前日比推移（坂道3グループ）',
