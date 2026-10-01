@@ -5,6 +5,8 @@ export const BUDDIES_DATA_TABLES = Object.freeze([
   'sh_queue_items',
   'sh_queue_current',
   'sh_queue_materialization_state',
+  'sh_track_plays',
+  'sh_track_daily_summary',
   'sh_track_like_current',
   'sh_track_like_observations',
   'sh_track_metadata',

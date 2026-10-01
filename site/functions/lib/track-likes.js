@@ -16,11 +16,35 @@ function likeIdentity(row) {
   return canonicalTrackKey(row);
 }
 
+// Keep the legacy query valid for older/minimal schemas that predate raw_json.
 export const TRACK_LIKE_REALTIME_SQL = `WITH prepared AS (
   SELECT
     id,strftime('%Y-%m-%d',observed_at/1000,'unixepoch') AS play_date,
     spotify_id,isrc,stationhead_track_id,queue_track_id,
     track_key,NULL AS title,NULL AS artist,like_count,observed_at,source
+  FROM sh_track_like_observations
+  WHERE observed_at>=? AND observed_at<?
+    AND like_count IS NOT NULL
+    AND track_key<>''
+), ranked AS (
+  SELECT prepared.*,
+    ROW_NUMBER() OVER (
+      PARTITION BY play_date,track_key
+      ORDER BY observed_at DESC,id DESC
+    ) AS row_rank
+  FROM prepared
+)
+SELECT play_date,spotify_id,isrc,stationhead_track_id,queue_track_id,
+  title,artist,like_count,observed_at,source
+FROM ranked WHERE row_rank=1`;
+
+// Buddies R2 playback observations carry display metadata inside raw_json.
+export const TRACK_LIKE_R2_REALTIME_SQL = `WITH prepared AS (
+  SELECT
+    id,strftime('%Y-%m-%d',observed_at/1000,'unixepoch') AS play_date,
+    spotify_id,isrc,stationhead_track_id,queue_track_id,
+    track_key,json_extract(raw_json,'$.title') AS title,
+    json_extract(raw_json,'$.artist') AS artist,like_count,observed_at,source
   FROM sh_track_like_observations
   WHERE observed_at>=? AND observed_at<?
     AND like_count IS NOT NULL
@@ -107,7 +131,7 @@ export function compactTrackLikeRows(rows) {
 }
 
 export function trackLikeStatements(db, fromTs, toTs) {
-  return [db.prepare(TRACK_LIKE_REALTIME_SQL).bind(fromTs, toTs)];
+  return [db.prepare(TRACK_LIKE_R2_REALTIME_SQL).bind(fromTs, toTs)];
 }
 
 export function compactTrackLikeBatchResults(results) {
@@ -115,11 +139,18 @@ export function compactTrackLikeBatchResults(results) {
   return compactTrackLikeSources([realtime?.results || []]);
 }
 
+async function loadLegacyTrackLikeRows(db, fromTs, toTs) {
+  return optionalRows(db.prepare(TRACK_LIKE_REALTIME_SQL).bind(fromTs, toTs));
+}
+
 async function loadTrackLikeRowsFallback(db, fromTs, toTs) {
-  const [realtime] = await Promise.all(
-    trackLikeStatements(db, fromTs, toTs).map(optionalRows),
-  );
-  return [realtime];
+  try {
+    const result = await db.prepare(TRACK_LIKE_R2_REALTIME_SQL).bind(fromTs, toTs).all();
+    return [result.results || []];
+  } catch (error) {
+    if (!/no such table|no such column/i.test(String(error?.message || ''))) throw error;
+    return [await loadLegacyTrackLikeRows(db, fromTs, toTs)];
+  }
 }
 
 export async function loadTrackLikeRows(db, fromTs, toTs) {
@@ -129,7 +160,7 @@ export async function loadTrackLikeRows(db, fromTs, toTs) {
       return compactTrackLikeBatchResults(await db.batch(trackLikeStatements(db, fromTs, toTs)));
     } catch (error) {
       if (!/no such table|no such column/i.test(String(error?.message || ''))) throw error;
-      sources = await loadTrackLikeRowsFallback(db, fromTs, toTs);
+      sources = [await loadLegacyTrackLikeRows(db, fromTs, toTs)];
     }
   } else {
     sources = await loadTrackLikeRowsFallback(db, fromTs, toTs);
