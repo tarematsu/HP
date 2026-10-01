@@ -11,7 +11,6 @@ import {
 } from './dashboard-ui-common.js?v=20261001.1';
 import {
   musicServiceMeta,
-  musicServicePlaylistCard,
   musicServiceSection,
 } from './music-service-shell.js?v=20261001.1';
 
@@ -75,12 +74,7 @@ mountDashboardShell({
         id: 'applePlaylistSection',
         kicker: 'PLAYLISTS',
         title: 'プレイリスト',
-        bodyHtml: musicServicePlaylistCard({
-          tableId: 'applePlaylistTable',
-          titleId: 'applePlaylistTitle',
-          note: 'Apple Music公式サイト上で検出できた、櫻坂46楽曲を含む公開プレイリストを表示します。',
-          className: 'apple-data-panel',
-        }),
+        bodyHtml: '<div id="applePlaylistMount"></div>',
       })}`,
   },
 });
