@@ -17,9 +17,9 @@ test('Spotify graphs restrict rendered series to the three Sakamichi groups in S
 });
 
 test('Spotify renderer emits single-point markers directly on the shared canvas', () => {
-  assert.match(runtime, /plotted\.length === 1/);
-  assert.match(runtime, /drawSinglePoint/);
-  assert.match(runtime, /context\.arc\(xFor\(row\.date\), yFor\(row\.value\), 3/);
+  assert.match(runtime, /count === 1/);
+  assert.match(runtime, /drawDashboardLine/);
+  assert.match(runtime, /context\.arc\(xFor\(row\.date\), y\(row\.value\), 3/);
   assert.doesNotMatch(runtime, /spotify-single-point-line|createElementNS|svgElement/);
   assert.doesNotMatch(shell, /showSinglePointSeries|artistNameFromPoint|MutationObserver/);
 });
