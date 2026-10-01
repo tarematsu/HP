@@ -89,7 +89,7 @@ function sanitizeFollowersPayload(payload) {
     })
     : payload.rows;
   const memberships = objectOrNull(payload.memberships);
-  let sanitizedMemberships = memberships;
+  let sanitizedMemberships = memberships ?? undefined;
   if (memberships) {
     sanitizedMemberships = { ...memberships };
     for (const handle of FOLLOWER_EXCLUDED_HANDLES) delete sanitizedMemberships[handle];
