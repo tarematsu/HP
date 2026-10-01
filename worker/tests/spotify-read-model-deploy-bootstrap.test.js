@@ -33,6 +33,14 @@ function model(snapshotDate = '2026-09-29') {
       latest_observed_at: 1790636400000,
       days: [],
     },
+    monthly_listener_rows: [{
+      snapshot_date: snapshotDate,
+      artist_key: 'sakurazaka46',
+      artist_name: '櫻坂46',
+      monthly_listeners: 345678,
+      collected_at: 1790636500000,
+      current_rank: 1,
+    }],
   };
 }
 
@@ -57,11 +65,15 @@ test('Spotify deploy bootstrap skips R2 writes when D1 and R2 already match', as
   assert.equal(result.changed, false);
   assert.equal(result.snapshot_date, '2026-09-29');
   assert.equal(result.source_revision, existing.source_revision);
+  assert.equal(result.monthly_listener_revision, '2026-09-29:1790636500000:1');
 });
 
-test('Spotify deploy bootstrap republishes the latest D1 model when R2 is stale', async () => {
+test('Spotify deploy bootstrap republishes the latest D1 model when R2 is stale or pre-v3', async () => {
   const current = model('2026-09-29');
-  const stale = spotifyBootstrapEnvelope(model('2026-09-28'), 1000);
+  const stale = {
+    ...spotifyBootstrapEnvelope(model('2026-09-28'), 1000),
+    renderer_revision: 'spotify-event-v2',
+  };
   let uploaded = null;
 
   const result = await bootstrapSpotifyReadModel({
@@ -80,9 +92,14 @@ test('Spotify deploy bootstrap republishes the latest D1 model when R2 is stale'
   assert.equal(result.snapshot_date, '2026-09-29');
   assert.equal(result.object_key, 'pages-response/actions-v2/spotify-playcounts.json');
   assert.equal(uploaded.renderer_revision, SPOTIFY_RENDERER_REVISION);
+  assert.equal(uploaded.renderer_revision, 'spotify-event-v3');
   assert.equal(uploaded.cadence_seconds, 0);
-  assert.equal(JSON.parse(uploaded.body).groups.sakurazaka46.snapshot_date, '2026-09-29');
+  const body = JSON.parse(uploaded.body);
+  assert.equal(body.groups.sakurazaka46.snapshot_date, '2026-09-29');
+  assert.equal(body.monthly_listener_rows.length, 1);
+  assert.equal(body.monthly_listener_rows[0].monthly_listeners, 345678);
   assert.match(uploaded.source_revision, /^spotify-event:2026-09-29:/);
+  assert.match(uploaded.source_revision, /:2026-09-29:1790636500000:1$/);
 });
 
 test('Spotify Worker deployment reconciles the event-driven R2 model after deploy', () => {
