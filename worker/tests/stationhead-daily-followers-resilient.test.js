@@ -52,6 +52,37 @@ test('00:05 retry is skipped when the daily row already exists', async () => {
   assert.equal(result.skip_reason, 'already-collected');
 });
 
+test('01:00 hourly retry is skipped when the daily row already exists', async () => {
+  let collected = 0;
+  const env = {
+    OTHER_DB: {
+      prepare(sql) {
+        assert.match(sql, /FROM sh_stationhead_daily_followers_v2/);
+        return {
+          bind(date) {
+            assert.equal(date, '2026-10-01');
+            return { async first() { return { observed_date_jst: date }; } };
+          },
+        };
+      },
+    },
+  };
+
+  const result = await collectStationheadDailyFollowersResilient(
+    env,
+    MIDNIGHT_JST + 60 * 60_000,
+    {
+      fetchFn: async () => { throw new Error('should not fetch'); },
+      ensureSession: async () => { throw new Error('should not authenticate'); },
+      collectFollowers: async () => { collected += 1; },
+    },
+  );
+
+  assert.equal(collected, 0);
+  assert.equal(result.skipped, true);
+  assert.equal(result.skip_reason, 'already-collected');
+});
+
 test('401/403 profile responses force one shared re-auth and retry with the new session', async () => {
   const authCalls = [];
   const requests = [];
@@ -173,7 +204,7 @@ test('near-expiry auth is refreshed under the shared auth-control lock', async (
           };
         }
         if (/last_success_at=CASE/.test(sql)) {
-          return { bind() { return { async run() { return { meta: { changes: 1 } }; } }; } };
+          return { bind() { return { async run() { return { meta: { changes: 1 } }; } }; };
         }
         throw new Error(`unexpected SQL: ${sql}`);
       },
