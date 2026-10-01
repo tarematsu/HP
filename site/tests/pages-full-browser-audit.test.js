@@ -6,16 +6,23 @@ const audit = readFileSync(new URL('../../scripts/audit-pages-live.mjs', import.
 const compactAudit = readFileSync(new URL('../../scripts/audit-pages-mobile-compact.mjs', import.meta.url), 'utf8');
 
 test('production browser audit covers every current dashboard route', () => {
-  for (const mode of ['current', 'daily', 'ranking', 'played-tracks', 'spotify', 'likes', 'broadcasts']) {
+  for (const mode of [
+    'current', 'daily', 'hinata', 'nogizaka', 'ranking', 'followers',
+    'played-tracks', 'spotify', 'apple-music', 'amazon-music', 'youtube-music',
+    'likes', 'broadcasts',
+  ]) {
     assert.match(audit, new RegExp(`name: '${mode}'`));
   }
-  assert.match(audit, /path: '\/#daily'/);
-  assert.match(audit, /path: '\/#ranking'/);
-  assert.match(audit, /path: '\/#likes'/);
-  assert.match(audit, /path: '\/#broadcasts'/);
-  assert.match(audit, /path: '\/#played-tracks'/);
-  assert.match(audit, /path: '\/#spotify'/);
+  for (const path of [
+    'daily', 'hinata', 'nogizaka', 'ranking', 'followers', 'played-tracks',
+    'spotify', 'apple-music', 'amazon-music', 'youtube-music', 'likes', 'broadcasts',
+  ]) {
+    assert.match(audit, new RegExp(`path: '\\/#${path}'`));
+  }
   assert.match(audit, /panel: '#spotifyView'/);
+  assert.match(audit, /panel: '#appleMusicView'/);
+  assert.match(audit, /panel: '#amazonMusicView'/);
+  assert.match(audit, /panel: '#youtubeMusicView'/);
   assert.doesNotMatch(audit, /name: 'first-week'/);
   assert.doesNotMatch(audit, /path: '\/#first-week'/);
   assert.doesNotMatch(audit, /name: 'weekly'/);
@@ -34,18 +41,24 @@ test('production browser audit captures desktop tablet and mobile layouts', () =
   assert.match(audit, /name: 'mobile-compact', width: 320, height: 720/);
   assert.match(audit, /horizontalOverflow/);
   assert.match(audit, /clippedTabs/);
+  assert.match(audit, /clippedWithoutScroll/);
   assert.match(audit, /navigationScrollable/);
   assert.match(audit, /selectedTabClipped/);
   assert.match(audit, /visiblePanels/);
+  assert.match(audit, /duplicateIds/);
   assert.doesNotMatch(audit, /'#firstWeekView'.*visiblePanels/);
-  assert.match(audit, /clippedTabs\) > 0 && !layout\.navigationScrollable/);
+  assert.match(audit, /clippedWithoutScroll\) > 0/);
 });
 
-test('production browser audit follows current rendered labels', () => {
+test('production browser audit checks rendered data quality without brittle service headings', () => {
   assert.match(audit, /requiredText: '総週数'/);
-  assert.match(audit, /requiredText: '櫻坂46の再生数一覧'/);
+  assert.match(audit, /malformedTokens/);
+  assert.match(audit, /'NaN'/);
+  assert.match(audit, /'undefined'/);
+  assert.match(audit, /'Invalid Date'/);
+  assert.match(audit, /missingCells/);
+  assert.match(audit, /tableCells/);
   assert.doesNotMatch(audit, /requiredText: '週間リーダーボード'/);
-  assert.doesNotMatch(audit, /requiredText: '櫻坂46 再生数一覧'/);
 });
 
 test('full-page screenshots reveal content-visibility sections before capture', () => {
