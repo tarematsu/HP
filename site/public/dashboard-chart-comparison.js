@@ -128,7 +128,7 @@ function drawStreamBars(context, rows, xFor, yFor, baseline, plotWidth) {
   const bucketWidth = plotWidth * FIVE_MINUTE_MS / DAY_MS;
   const barWidth = Math.max(1, Math.min(6, bucketWidth * .82));
   context.fillStyle = STREAM_BAR_COLOR;
-  context.globalAlpha = .82;
+  context.globalAlpha = .34;
   for (const row of rows) {
     const x = xFor(row.observed_at);
     const y = yFor(row.stream_delta);
@@ -159,7 +159,7 @@ function drawComparison(payload) {
   const streamAverages = normalizeStreamAverages(payload?.stream_5m_history, minTime, maxTime);
   ensureLegend(previous.length > 0, streamAverages.length > 0);
 
-  const height = width < 520 ? 360 : Math.max(390, Math.min(470, Math.round(width * .54)));
+  const height = width < 520 ? 330 : Math.max(350, Math.min(430, Math.round(width * .49)));
   const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
   canvas.width = Math.round(width * pixelRatio);
   canvas.height = Math.round(height * pixelRatio);
@@ -169,15 +169,10 @@ function drawComparison(payload) {
   context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
   context.clearRect(0, 0, width, height);
 
-  const padding = { left: 50, right: 24, top: 28, bottom: 42 };
+  const padding = { left: 50, right: 50, top: 28, bottom: 42 };
   const plotWidth = Math.max(1, width - padding.left - padding.right);
-  const availableHeight = Math.max(1, height - padding.top - padding.bottom);
-  const sectionGap = 32;
-  const streamPlotHeight = Math.max(74, Math.round(availableHeight * .24));
-  const onlinePlotHeight = Math.max(120, availableHeight - streamPlotHeight - sectionGap);
-  const onlineBottom = padding.top + onlinePlotHeight;
-  const streamTop = onlineBottom + sectionGap;
-  const streamBottom = streamTop + streamPlotHeight;
+  const plotHeight = Math.max(1, height - padding.top - padding.bottom);
+  const plotBottom = padding.top + plotHeight;
   const timeSpan = Math.max(1, maxTime - minTime);
   const xFor = (time) => padding.left + plotWidth * (time - minTime) / timeSpan;
 
@@ -192,46 +187,37 @@ function drawComparison(payload) {
   const onlineMin = Math.max(0, onlineRawMin - onlinePadding);
   const onlineMax = onlineRawMax + onlinePadding;
   const onlineRange = Math.max(1, onlineMax - onlineMin);
-  const yOnline = (value) => onlineBottom - (Number(value) - onlineMin) * onlinePlotHeight / onlineRange;
-
-  context.font = '11px system-ui';
-  context.lineWidth = 1;
-  for (let index = 0; index <= 4; index += 1) {
-    const ratio = index / 4;
-    const y = padding.top + onlinePlotHeight * ratio;
-    context.strokeStyle = 'rgba(31,45,68,.12)';
-    context.beginPath();
-    context.moveTo(padding.left, y);
-    context.lineTo(width - padding.right, y);
-    context.stroke();
-    context.fillStyle = '#667287';
-    context.textAlign = 'right';
-    context.textBaseline = 'middle';
-    context.fillText(integer.format(Math.round(onlineMax - onlineRange * ratio)), padding.left - 6, y);
-  }
-
-  drawSeries(context, previous, xFor, yOnline, '#969ca6', 2);
-  drawSeries(context, current, xFor, yOnline, '#111', 2);
+  const yOnline = (value) => plotBottom - (Number(value) - onlineMin) * plotHeight / onlineRange;
 
   const streamRawMax = streamAverages.length
     ? Math.max(...streamAverages.map((row) => row.stream_delta))
     : 0;
   const streamMax = roundedStreamMax(streamRawMax);
-  const yStream = (value) => streamBottom - Math.max(0, Number(value)) * streamPlotHeight / streamMax;
-  for (let index = 0; index <= 2; index += 1) {
-    const ratio = index / 2;
-    const y = streamTop + streamPlotHeight * ratio;
+  const yStream = (value) => plotBottom - Math.max(0, Number(value)) * plotHeight / streamMax;
+
+  context.font = '11px system-ui';
+  context.lineWidth = 1;
+  for (let index = 0; index <= 4; index += 1) {
+    const ratio = index / 4;
+    const y = padding.top + plotHeight * ratio;
     context.strokeStyle = 'rgba(31,45,68,.12)';
     context.beginPath();
     context.moveTo(padding.left, y);
     context.lineTo(width - padding.right, y);
     context.stroke();
+
     context.fillStyle = '#667287';
-    context.textAlign = 'right';
     context.textBaseline = 'middle';
-    context.fillText(integer.format(Math.round(streamMax * (1 - ratio))), padding.left - 6, y);
+    context.textAlign = 'right';
+    context.fillText(integer.format(Math.round(onlineMax - onlineRange * ratio)), padding.left - 6, y);
+
+    context.textAlign = 'left';
+    context.fillText(integer.format(Math.round(streamMax * (1 - ratio))), width - padding.right + 6, y);
   }
-  drawStreamBars(context, streamAverages, xFor, yStream, streamBottom, plotWidth);
+
+  drawStreamBars(context, streamAverages, xFor, yStream, plotBottom, plotWidth);
+  drawSeries(context, previous, xFor, yOnline, '#969ca6', 2);
+  drawSeries(context, current, xFor, yOnline, '#111', 2);
 
   context.fillStyle = '#667287';
   context.textAlign = 'center';
@@ -244,7 +230,8 @@ function drawComparison(payload) {
   context.fillStyle = '#667287';
   context.textAlign = 'left';
   context.fillText('オンライン数（人）', 4, 12);
-  context.fillText('再生数増加', 4, streamTop - 8);
+  context.textAlign = 'right';
+  context.fillText('再生数増加', width - 4, 12);
   context.textAlign = 'center';
   context.fillText('時刻（JST）', width / 2, height - 2);
 

@@ -38,12 +38,16 @@ test('shared mobile layout owns tab count and current metric columns', () => {
   assert.doesNotMatch(sharedLayout, /#currentView/);
 });
 
-test('current chart draws online axes, direct five-minute playback bars and JST labels from one renderer', () => {
+test('current chart fully overlays direct five-minute playback bars on the online plot', () => {
   assert.match(chart, /オンライン数（人）/);
   assert.match(chart, /context\.fillText\('再生数増加'/);
   assert.match(chart, /stream\.textContent = '再生数増加'/);
   assert.match(chart, /stream_5m_history/);
   assert.match(chart, /drawStreamBars/);
+  assert.match(chart, /const plotHeight = Math\.max\(1, height - padding\.top - padding\.bottom\)/);
+  assert.match(chart, /const yStream = \(value\) => plotBottom - Math\.max\(0, Number\(value\)\) \* plotHeight \/ streamMax/);
+  assert.match(chart, /drawStreamBars\(context, streamAverages, xFor, yStream, plotBottom, plotWidth\)/);
+  assert.doesNotMatch(chart, /sectionGap|streamTop|streamPlotHeight|onlinePlotHeight/);
   assert.doesNotMatch(chart, /再生数増加\/分（5分平均）|stream_minute_history|コメント\/2分|comment_velocity|commentVelocity|rgba\(22,139,115/);
   assert.match(chart, /時刻（JST）/);
   assert.match(chart, /timeZone: 'Asia\/Tokyo'/);
