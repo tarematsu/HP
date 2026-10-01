@@ -1,0 +1,47 @@
+name: Backfill Buddies dashboard gaps
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/backfill-buddies-dashboard-gaps.yml'
+      - 'worker/scripts/backfill-buddies-dashboard-gaps-actions.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backfill-buddies-dashboard-gaps
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    name: Fill only missing Buddies dashboard buckets
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      FACTS_DATABASE_NAME: stationhead-minute
+      BUDDIES_DATABASE_NAME: stationhead-buddies
+      PAGES_RESPONSE_BUCKET: sh-pages-responses
+    steps:
+      - uses: actions/checkout@v7
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - name: Install Worker dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Check repair script syntax
+        run: node --check scripts/backfill-buddies-dashboard-gaps-actions.mjs
+      - name: Backfill only missing dashboard buckets
+        run: node scripts/backfill-buddies-dashboard-gaps-actions.mjs

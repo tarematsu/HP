@@ -18,7 +18,7 @@
     window.addEventListener('DOMContentLoaded', () => setTimeout(revealDashboard, 1200), { once: true });
   </script>
   <noscript><style>#content { visibility: visible !important; }</style></noscript>
-  <link rel="stylesheet" href="/assets/dashboard.min.css?v=20261001.9">
+  <link rel="stylesheet" href="/assets/dashboard.min.css?v=20261002.1">
 </head>
 <body>
   <a class="skip-link" href="#content">本文へ移動</a>
@@ -45,6 +45,39 @@
       </nav>
     </header>
   </main>
-  <script type="module" src="/assets/dashboard.min.js?v=20261001.9"></script>
+  <template id="subscriptionSourceTabsTemplate">
+    <div class="dashboard-source-row" data-row="1" role="group" aria-label="主要サービス">
+      <button type="button" data-source="spotify">Spotify</button>
+      <button type="button" data-source="apple-music">Apple Music</button>
+      <button type="button" data-source="amazon-music">Amazon Music</button>
+      <button type="button" data-source="youtube-music">YouTube Music</button>
+    </div>
+    <div class="dashboard-source-row" data-row="2" role="group" aria-label="地域サービス 1">
+      <button type="button" data-source="genie">Genie</button>
+      <button type="button" data-source="bugs">Bugs!</button>
+      <button type="button" data-source="joox">JOOX</button>
+      <button type="button" data-source="nhaccuatui">NhacCuaTui</button>
+      <button type="button" data-source="anghami">Anghami</button>
+      <button type="button" data-source="melon">Melon</button>
+      <button type="button" data-source="qq_music">QQ Music</button>
+    </div>
+    <div class="dashboard-source-row" data-row="3" role="group" aria-label="地域サービス 2">
+      <button type="button" data-source="netease_cloud_music">NetEase Cloud Music</button>
+      <button type="button" data-source="kugou_music">Kugou Music</button>
+      <button type="button" data-source="naver_vibe">Naver VIBE</button>
+      <button type="button" data-source="flo">FLO</button>
+      <button type="button" data-source="yandex_music">Yandex Music</button>
+      <button type="button" data-source="boomplay">Boomplay</button>
+    </div>
+    <div class="dashboard-source-row" data-row="4" role="group" aria-label="地域サービス 3">
+      <button type="button" data-source="plern">Plern</button>
+      <button type="button" data-source="fungjai">Fungjai</button>
+      <button type="button" data-source="zing_mp3">Zing MP3</button>
+      <button type="button" data-source="jiosaavn">JioSaavn</button>
+      <button type="button" data-source="gaana">Gaana</button>
+      <button type="button" data-source="langit_musik">Langit Musik</button>
+    </div>
+  </template>
+  <script type="module" src="/assets/dashboard.min.js?v=20261002.1"></script>
 </body>
 </html>

@@ -1,4 +1,5 @@
 import {
+  assertBuddiesCollectorCron,
   BUDDIES_COLLECTOR_CRON,
   runBuddiesCollectorScheduled as runDirectScheduled,
 } from './buddies-collector-core.js';
@@ -88,10 +89,7 @@ export async function runAlarmCoordinatedBuddiesCollectorScheduled(
   ctx,
   dependencies = {},
 ) {
-  const cron = String(controller?.cron || '');
-  if (cron !== BUDDIES_COLLECTOR_CRON) {
-    return { skipped: true, reason: 'unsupported-buddies-collector-cron', cron };
-  }
+  assertBuddiesCollectorCron(controller);
   const scheduledAt = Number(controller?.scheduledTime) || Date.now();
   const namespace = env?.BUDDIES_COLLECTOR_COORDINATOR;
   const stub = dependencies.stub || coordinatorStub(namespace);

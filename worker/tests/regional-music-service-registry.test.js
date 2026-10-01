@@ -1,18 +1,30 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { REGIONAL_MUSIC_DAILY_COLLECTORS } from '../src/regional-music-entry.js';
+import {
+  REGIONAL_MUSIC_COLLECTOR_CONCURRENCY,
+  REGIONAL_MUSIC_DAILY_COLLECTORS,
+  REGIONAL_MUSIC_SERVICE_COLLECTORS,
+  runRegionalMusicCollectors,
+} from '../src/regional-music-entry.js';
 import {
   canonicalRegionalArtist,
   REGIONAL_MUSIC_SERVICES,
   regionalMusicServicesByPhase,
 } from '../src/regional-music-service-registry.js';
 
-test('regional music registry covers all planned services and schedules every collector', () => {
-  assert.equal(Object.keys(REGIONAL_MUSIC_SERVICES).length, 19);
-  assert.equal(REGIONAL_MUSIC_DAILY_COLLECTORS.length, 19);
-  assert.equal(new Set(REGIONAL_MUSIC_DAILY_COLLECTORS).size, 19);
+test('regional music registry covers all planned services and keeps the 19 regional collectors explicit', () => {
+  assert.equal(Object.keys(REGIONAL_MUSIC_SERVICES).length, 20);
+  assert.equal(REGIONAL_MUSIC_SERVICE_COLLECTORS.length, 19);
+  assert.equal(new Set(REGIONAL_MUSIC_SERVICE_COLLECTORS).size, 19);
+  assert.equal(REGIONAL_MUSIC_DAILY_COLLECTORS.length, 20);
+  assert.equal(new Set(REGIONAL_MUSIC_DAILY_COLLECTORS).size, 20);
+  assert.equal(
+    REGIONAL_MUSIC_DAILY_COLLECTORS.filter((collector) => !REGIONAL_MUSIC_SERVICE_COLLECTORS.includes(collector)).length,
+    1,
+  );
   assert.deepEqual(regionalMusicServicesByPhase(1), [
+    'youtube_music',
     'genie',
     'bugs',
     'joox',
@@ -37,6 +49,38 @@ test('regional music registry covers all planned services and schedules every co
     'gaana',
     'langit_musik',
   ]);
+});
+
+test('regional music runner bounds concurrency and preserves collector order', async () => {
+  let active = 0;
+  let maximumActive = 0;
+  const collectors = Array.from({ length: 9 }, (_, index) => async function collector() {
+    active += 1;
+    maximumActive = Math.max(maximumActive, active);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    active -= 1;
+    return { service: `service-${index}`, status: 'ok' };
+  });
+
+  const results = await runRegionalMusicCollectors(collectors, {}, Date.now(), () => {}, 3);
+  assert.equal(maximumActive, 3);
+  assert.deepEqual(results.map((result) => result.service), collectors.map((_, index) => `service-${index}`));
+  assert.equal(REGIONAL_MUSIC_COLLECTOR_CONCURRENCY, 4);
+});
+
+test('regional music runner isolates a provider failure', async () => {
+  async function first() { return { service: 'first', status: 'ok' }; }
+  async function broken() { throw new Error('provider unavailable'); }
+  async function third() { return { service: 'third', status: 'ok' }; }
+
+  const results = await runRegionalMusicCollectors([first, broken, third], {}, Date.now(), () => {}, 2);
+  assert.equal(results[0].status, 'ok');
+  assert.deepEqual(results[1], {
+    service: 'broken',
+    status: 'error',
+    error: 'provider unavailable',
+  });
+  assert.equal(results[2].status, 'ok');
 });
 
 test('Sakamichi artist aliases normalize to canonical keys', () => {

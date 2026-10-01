@@ -25,6 +25,7 @@ const cssFiles = [
   'history/history-past-toggle.css',
   'history/history-range-navigator.css',
   'music-service-common.css',
+  'regional-music.css',
   'dashboard-ui-common.css',
   'mobile-layout-refinements.css',
 ];
@@ -33,6 +34,9 @@ const browserModuleResolver = {
   name: 'browser-module-resolver',
   setup(buildApi) {
     buildApi.onResolve({ filter: /\.m?js(?:[?#].*)?$/ }, (args) => {
+      if (args.path === './dashboard-tabs.js?v=20260930.1') {
+        return { path: '/dashboard-tabs-loader.js?v=20261002.1', external: true };
+      }
       const clean = args.path.replace(/[?#].*$/, '');
       if (args.kind === 'entry-point' || clean.startsWith(publicRoot)) return null;
       if (!clean.startsWith('/') && !clean.startsWith('.')) return null;
