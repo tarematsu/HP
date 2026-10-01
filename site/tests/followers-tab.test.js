@@ -24,15 +24,17 @@ test('followers is registered in the common lazy router after its shell mounts',
   assert.match(shell, /label: 'フォロワー'/);
 });
 
-test('followers tab keeps the fixed accounts and renders a dynamic multi-series Canvas chart', () => {
+test('followers tab keeps the fixed accounts and renders through the shared Canvas foundation', () => {
   for (const handle of FIXED_HANDLES) assert.match(runtime, new RegExp(`'${handle}'`));
   assert.match(runtime, /payloadHandles\(payload\)/);
   assert.match(runtime, /handles\.forEach/);
   assert.match(runtime, /SERIES_STYLES/);
-  assert.match(runtime, /getContext\('2d'\)/);
-  assert.match(runtime, /devicePixelRatio/);
-  assert.match(runtime, /context\.setTransform/);
-  assert.match(runtime, /context\.setLineDash/);
+  assert.match(runtime, /dashboard-chart-canvas\.js\?v=20261001\.2/);
+  for (const helper of ['prepareDashboardCanvas', 'drawDashboardGrid', 'drawDashboardLine', 'drawDashboardXAxis', 'dashboardTickIndexes']) {
+    assert.match(runtime, new RegExp(helper));
+  }
+  assert.match(runtime, /lineDash: style\.dash/);
+  assert.doesNotMatch(runtime, /getContext\('2d'\)|devicePixelRatio|context\.setTransform/);
   assert.match(shell, /<canvas id="followersChart"/);
   assert.match(shell, /class="chart-fit"/);
   assert.match(shell, /id="followersChartDetail" class="chart-detail"/);
