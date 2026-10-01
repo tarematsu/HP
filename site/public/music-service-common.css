@@ -1,0 +1,22 @@
+/* Music-service-only rules; panels, headings and summary grids reuse pages-layout.css. */
+.music-service-meta {
+  margin: 0 2px;
+  color: var(--muted);
+  font-size: .72rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.music-service-meta time { color: var(--text); font-weight: 700; }
+.music-service-section { display: grid; gap: var(--pages-view-gap); min-width: 0; }
+.music-service-section > .section-head { margin-bottom: 0 !important; }
+.music-service-panel { min-width: 0; margin: 0; }
+.music-service-playlist-note { margin: 0 0 8px; color: var(--muted); font-size: .72rem; }
+.music-service-playlist-table :is(th,td):first-child { min-width: 150px; white-space: normal; }
+.music-service-playlist-table :is(th,td):nth-child(2) { width: 64px; text-align: right; }
+.music-service-playlist-links { display: grid; gap: 4px; min-width: 220px; white-space: normal; }
+.music-service-playlist-links a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.music-service-playlist-empty { color: var(--muted); text-align: center; }
+@media (max-width: 760px) {
+  .music-service-meta { text-align: left; }
+  .music-service-section { gap: var(--pages-view-gap-mobile); }
+}

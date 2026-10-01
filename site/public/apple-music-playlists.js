@@ -2,6 +2,7 @@ import {
   byId as element,
   dashboardDataCard,
   dashboardTable,
+  integerFormat,
   safeInteger as integer,
 } from './dashboard-ui-common.js?v=20261001.1';
 
@@ -16,20 +17,20 @@ function ensurePlaylistTable() {
 
   const table = dashboardTable({
     id: 'applePlaylistTable',
-    className: 'apple-table apple-playlist-table',
+    className: 'apple-table apple-playlist-table music-service-playlist-table',
     wrapClassName: 'apple-region-table-wrap',
   });
   const holder = document.createElement('div');
   holder.innerHTML = dashboardDataCard({
     title: '楽曲別プレイリスト掲載一覧',
     titleId: 'applePlaylistTitle',
-    kicker: 'PUBLIC PLAYLISTS',
-    className: 'apple-data-panel',
-    bodyHtml: `<p class="apple-playlist-note">Apple Music公式サイト上で検出できた公開プレイリストを表示します。</p>${table}`,
+    kicker: 'PLAYLISTS',
+    className: 'apple-data-panel music-service-panel',
+    bodyHtml: `<p class="music-service-playlist-note">Apple Music公式サイト上で検出できた公開プレイリストを、櫻坂46楽曲ごとに表示します。</p>${table}`,
   });
   const panel = holder.firstElementChild;
   if (!panel) return null;
-  view.append(panel);
+  (element('applePlaylistMount') || view).append(panel);
   return element('applePlaylistTable');
 }
 
@@ -48,16 +49,32 @@ function renderMessage(table, message) {
   const row = document.createElement('tr');
   const cell = document.createElement('td');
   cell.colSpan = 3;
+  cell.className = 'music-service-playlist-empty';
   cell.textContent = message;
   row.append(cell);
   tbody.append(row);
   table.append(tbody);
 }
 
+function renderSummary(tracks) {
+  const playlistIds = new Set();
+  for (const track of tracks) {
+    for (const membership of Array.isArray(track?.playlists) ? track.playlists : []) {
+      const id = String(membership?.id || membership?.url || membership?.name || '').trim();
+      if (id) playlistIds.add(id);
+    }
+  }
+  const playlistCount = element('applePlaylistCount');
+  const trackCount = element('applePlaylistTrackCount');
+  if (playlistCount) playlistCount.textContent = integerFormat.format(playlistIds.size);
+  if (trackCount) trackCount.textContent = integerFormat.format(tracks.length);
+}
+
 function render(payload) {
   const table = ensurePlaylistTable();
   if (!table) return;
   const tracks = Array.isArray(payload?.tracks) ? payload.tracks : [];
+  renderSummary(tracks);
   if (!tracks.length) {
     renderMessage(table, '対象曲を含む公開プレイリストはまだ検出されていません。');
     return;
@@ -85,7 +102,7 @@ function render(payload) {
     count.className = 'apple-rank-number';
     const playlistCell = document.createElement('td');
     const links = document.createElement('div');
-    links.className = 'apple-playlist-links';
+    links.className = 'music-service-playlist-links';
 
     for (const membership of memberships) {
       const line = document.createElement('div');
@@ -100,8 +117,10 @@ function render(payload) {
       } else {
         line.textContent = membership?.name || membership?.id || 'プレイリスト';
       }
+      const curator = String(membership?.curator || '').trim();
       const position = integer(membership?.position);
-      if (position != null) line.append(document.createTextNode(`（${position}曲目）`));
+      const details = [curator || null, position != null ? `${position}曲目` : null].filter(Boolean);
+      if (details.length) line.append(document.createTextNode(`（${details.join('・')}）`));
       links.append(line);
     }
     playlistCell.append(links);

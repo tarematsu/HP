@@ -8,12 +8,13 @@ import {
   dashboardTable,
   mountDashboardShell,
 } from './dashboard-ui-common.js?v=20261001.1';
+import { musicServiceMeta, musicServiceSection } from './music-service-shell.js?v=20261001.1';
 
 const summary = dashboardSummary([
-  dashboardSummaryItem({ label: '集計日', valueId: 'spotifySnapshotDate', valueClassName: 'summary-date' }),
   dashboardSummaryItem({ label: '櫻坂46の楽曲数', labelId: 'spotifyTrackCountLabel', valueId: 'spotifyTrackCount' }),
   dashboardSummaryItem({ label: '櫻坂46の再生数前日比合計', labelId: 'spotifyTotalDeltaLabel', valueId: 'spotifyTotalDelta' }),
-], { className: 'spotify-summary', ariaLabel: 'Spotify再生数概要' });
+  dashboardSummaryItem({ label: 'プレイリスト掲載', valueId: 'spotifyPlaylistCount' }),
+], { className: 'music-service-summary spotify-summary', ariaLabel: 'Spotify概要' });
 
 const artistTabs = dashboardModeTabs([
   { value: 'sakurazaka46', label: '櫻坂46', active: true },
@@ -22,11 +23,50 @@ const artistTabs = dashboardModeTabs([
 ], { dataAttribute: 'spotify-artist', ariaLabel: 'アーティスト切替' });
 
 const tracksTable = dashboardTable({
-  className: 'spotify-table',
+  className: 'spotify-table music-service-track-table',
   wrapClassName: 'table-fit-mobile',
   colgroupHtml: '<colgroup><col class="col-compact"><col><col class="col-number"><col class="col-delta"></colgroup>',
   headers: ['順位', '曲名', '累計再生数', '前日比'],
   bodyId: 'spotifyTbody',
+});
+
+const trendPanels = `
+  ${dashboardChartCard({
+    title: 'Spotify 全曲合計の再生数前日比推移（上位10組）',
+    titleId: 'spotifyTrendTitle',
+    kicker: 'FEMALE IDOLS',
+    className: 'spotify-trend-panel music-service-panel',
+    chartHtml: '<div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="最新日の全曲合計再生数前日比が大きい女性アイドル上位10組の推移"></div>',
+  })}
+  ${dashboardChartCard({
+    title: 'Spotify 月間リスナー推移（上位10組）',
+    titleId: 'spotifyMonthlyListenerTrendTitle',
+    kicker: 'MONTHLY LISTENERS',
+    className: 'spotify-trend-panel music-service-panel',
+    chartHtml: '<img class="chart-fit" src="/api/spotify-monthly-listeners?format=svg" alt="Spotify月間リスナー推移">',
+  })}
+  ${dashboardChartCard({
+    title: 'Spotify 今年リリース上位10曲合計の再生数前日比推移（上位10組）',
+    titleId: 'spotifyTop10YearTrendTitle',
+    kicker: 'FEMALE IDOLS',
+    className: 'spotify-trend-panel music-service-panel',
+    chartHtml: '<div id="spotifyTop10YearTrendCharts" class="spotify-trend-charts" aria-label="今年リリース曲のうち再生数前日比上位10曲の合計が最新日に大きい女性アイドル上位10組の推移"></div>',
+  })}
+  ${dashboardChartCard({
+    title: 'Spotify Daily Top Artist（日本）の順位推移',
+    titleId: 'spotifyArtistRankTrendTitle',
+    kicker: 'SPOTIFY CHARTS JAPAN',
+    className: 'spotify-trend-panel music-service-panel',
+    chartHtml: '<div id="spotifyArtistRankTrendCharts" class="spotify-trend-charts" aria-label="Spotify日本 Daily Top Artist における収集対象アーティストの順位推移"></div>',
+  })}`;
+
+const tracksPanel = dashboardDataCard({
+  title: '櫻坂46の再生数一覧',
+  titleId: 'spotifyTableTitle',
+  kicker: 'TRACKS',
+  trailingHtml: artistTabs,
+  className: 'spotify-data-panel music-service-panel',
+  bodyHtml: tracksTable,
 });
 
 mountDashboardShell({
@@ -38,47 +78,23 @@ mountDashboardShell({
   },
   view: {
     id: 'spotifyView',
-    className: 'spotify-view',
+    className: 'spotify-view music-service-view',
     anchorId: 'likesView',
     position: 'beforebegin',
     html: `
+      ${musicServiceMeta({ label: '集計日', valueId: 'spotifySnapshotDate' })}
       ${dashboardNotice({ id: 'spotifyNotice' })}
       ${summary}
-      ${dashboardChartCard({
-        title: 'Spotify 全曲合計の再生数前日比推移（上位10組）',
-        titleId: 'spotifyTrendTitle',
-        kicker: 'FEMALE IDOLS',
-        className: 'spotify-trend-panel',
-        chartHtml: '<div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="最新日の全曲合計再生数前日比が大きい女性アイドル上位10組の推移"></div>',
-      })}
-      ${dashboardChartCard({
-        title: 'Spotify 月間リスナー推移（上位10組）',
-        titleId: 'spotifyMonthlyListenerTrendTitle',
-        kicker: 'MONTHLY LISTENERS',
-        className: 'spotify-trend-panel',
-        chartHtml: '<img class="chart-fit" src="/api/spotify-monthly-listeners?format=svg" alt="Spotify月間リスナー推移">',
-      })}
-      ${dashboardChartCard({
-        title: 'Spotify 今年リリース上位10曲合計の再生数前日比推移（上位10組）',
-        titleId: 'spotifyTop10YearTrendTitle',
-        kicker: 'FEMALE IDOLS',
-        className: 'spotify-trend-panel',
-        chartHtml: '<div id="spotifyTop10YearTrendCharts" class="spotify-trend-charts" aria-label="今年リリース曲のうち再生数前日比上位10曲の合計が最新日に大きい女性アイドル上位10組の推移"></div>',
-      })}
-      ${dashboardChartCard({
-        title: 'Spotify Daily Top Artist（日本）の順位推移',
-        titleId: 'spotifyArtistRankTrendTitle',
-        kicker: 'SPOTIFY CHARTS JAPAN',
-        className: 'spotify-trend-panel',
-        chartHtml: '<div id="spotifyArtistRankTrendCharts" class="spotify-trend-charts" aria-label="Spotify日本 Daily Top Artist における収集対象アーティストの順位推移"></div>',
-      })}
-      ${dashboardDataCard({
-        title: '櫻坂46の再生数一覧',
-        titleId: 'spotifyTableTitle',
-        kicker: 'SPOTIFY PLAYCOUNTS',
-        trailingHtml: artistTabs,
-        className: 'spotify-data-panel',
-        bodyHtml: tracksTable,
-      })}`,
+      ${musicServiceSection({ id: 'spotifyTrendSection', kicker: 'TRENDS', title: '推移', bodyHtml: trendPanels })}
+      ${musicServiceSection({ id: 'spotifyTrackSection', kicker: 'TRACKS', title: '楽曲', bodyHtml: tracksPanel })}
+      ${musicServiceSection({ id: 'spotifyPlaylistSection', kicker: 'PLAYLISTS', title: 'プレイリスト', bodyHtml: '<div id="spotifyPlaylistMount"></div>' })}`,
   },
 });
+
+function playlistModuleUrl() {
+  return ['/music-service-playlists.js', 'v=20261001.1'].join('?');
+}
+
+void import(playlistModuleUrl())
+  .then((module) => module.loadMusicServicePlaylists?.('spotify'))
+  .catch((error) => console.warn('Spotify playlist view failed to load', error));
