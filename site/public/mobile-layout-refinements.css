@@ -12,17 +12,16 @@
   }
 
   #modeTabs.mode-tabs.dashboard-tabs {
-    display: grid;
-    grid-template-columns: repeat(7, max-content);
-    grid-template-rows: repeat(2, minmax(44px, auto));
-    grid-auto-flow: row;
+    display: flex;
+    flex-wrap: nowrap;
     align-items: stretch;
     overflow-x: auto;
     overflow-y: hidden;
   }
 
   #modeTabs.mode-tabs.dashboard-tabs > button {
-    width: 100%;
+    flex: 0 0 auto;
+    width: auto;
     min-height: 44px;
     padding: 6px 9px;
     white-space: nowrap;
