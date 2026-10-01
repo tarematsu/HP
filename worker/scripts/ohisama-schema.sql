@@ -1,5 +1,5 @@
 -- Lightweight Stationhead ohisama collector storage.
--- Intentionally excludes chat, queue, track, like, and metadata tables.
+-- Keeps minute facts plus compact playback history and like changes.
 
 CREATE TABLE IF NOT EXISTS sh_worker_collector_state (
   id TEXT PRIMARY KEY,
@@ -60,3 +60,63 @@ CREATE TABLE IF NOT EXISTS sh_daily_summary (
 
 CREATE INDEX IF NOT EXISTS idx_sh_daily_summary_period
   ON sh_daily_summary(period_start DESC);
+
+CREATE TABLE IF NOT EXISTS sh_track_plays (
+  event_key TEXT PRIMARY KEY,
+  played_at INTEGER NOT NULL,
+  period_key TEXT NOT NULL,
+  station_id INTEGER,
+  track_key TEXT NOT NULL,
+  spotify_id TEXT,
+  isrc TEXT,
+  title TEXT,
+  artist TEXT,
+  duration_ms INTEGER,
+  thumbnail_url TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_sh_track_plays_period
+  ON sh_track_plays(period_key DESC, played_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sh_track_plays_track
+  ON sh_track_plays(track_key, played_at DESC);
+
+CREATE TABLE IF NOT EXISTS sh_track_daily_summary (
+  period_key TEXT PRIMARY KEY,
+  total_plays INTEGER NOT NULL,
+  unique_tracks INTEGER NOT NULL,
+  tracks_json TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sh_track_daily_summary_period
+  ON sh_track_daily_summary(period_key DESC);
+
+CREATE TABLE IF NOT EXISTS sh_track_like_current (
+  station_id INTEGER NOT NULL,
+  track_key TEXT NOT NULL,
+  spotify_id TEXT,
+  isrc TEXT,
+  title TEXT,
+  artist TEXT,
+  like_count INTEGER NOT NULL,
+  observed_at INTEGER NOT NULL,
+  PRIMARY KEY(station_id, track_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sh_track_like_current_count
+  ON sh_track_like_current(like_count DESC, observed_at DESC);
+
+CREATE TABLE IF NOT EXISTS sh_track_like_observations (
+  station_id INTEGER NOT NULL,
+  track_key TEXT NOT NULL,
+  spotify_id TEXT,
+  isrc TEXT,
+  title TEXT,
+  artist TEXT,
+  like_count INTEGER NOT NULL,
+  observed_at INTEGER NOT NULL,
+  PRIMARY KEY(station_id, track_key, observed_at)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sh_track_like_observations_time
+  ON sh_track_like_observations(observed_at DESC);
