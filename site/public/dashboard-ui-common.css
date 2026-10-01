@@ -10,6 +10,7 @@
   --dashboard-line-width: 2;
   --dashboard-point-radius: 3px;
   --dashboard-point-stroke-width: 1.25;
+  --dashboard-svg-visual-scale: 1;
 }
 
 .shared-svg-chart {
@@ -84,7 +85,7 @@
   color: var(--dashboard-axis-color) !important;
   opacity: 1 !important;
   font-family: inherit !important;
-  font-size: var(--dashboard-axis-font-size) !important;
+  font-size: calc(var(--dashboard-axis-font-size) * var(--dashboard-svg-visual-scale)) !important;
   font-variant-numeric: tabular-nums;
   font-weight: 500 !important;
 }
@@ -110,7 +111,7 @@
   .spotify-trend-point,
   .hinata-chart circle
 ) {
-  r: var(--dashboard-point-radius) !important;
+  r: calc(var(--dashboard-point-radius) * var(--dashboard-svg-visual-scale)) !important;
   stroke-width: var(--dashboard-point-stroke-width) !important;
   vector-effect: non-scaling-stroke;
 }
@@ -220,12 +221,46 @@
   background: rgba(31, 45, 68, .055);
 }
 
+/*
+ * SVG charts use fixed 960-1000px viewBoxes, while the canonical current/history/
+ * first-week canvas charts draw at CSS-pixel width. Scale SVG labels and points at
+ * narrower viewports so both rendering paths keep roughly the same physical size.
+ */
 @media (max-width: 760px) {
   :root {
     --dashboard-copy-size: 10px;
     --dashboard-small-size: 9px;
-    --dashboard-label-size: 10px;
-    --dashboard-axis-font-size: 10px;
-    --dashboard-point-radius: 2.75px;
+    --dashboard-label-size: 11px;
+    --dashboard-svg-visual-scale: 1.45;
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --dashboard-svg-visual-scale: 1.7;
+  }
+}
+
+@media (max-width: 560px) {
+  :root {
+    --dashboard-svg-visual-scale: 1.95;
+  }
+}
+
+@media (max-width: 480px) {
+  :root {
+    --dashboard-svg-visual-scale: 2.25;
+  }
+}
+
+@media (max-width: 400px) {
+  :root {
+    --dashboard-svg-visual-scale: 2.7;
+  }
+}
+
+@media (max-width: 340px) {
+  :root {
+    --dashboard-svg-visual-scale: 3.15;
   }
 }
