@@ -1,0 +1,22 @@
+-- Refresh only the artist metadata for Spotify track "Audition".
+-- Spotify track: 7I7EkVwXck49MrDL8Aa6fw
+-- Re-fetched from Spotify on 2026-10-01.
+
+UPDATE sh_track_dictionary
+SET artist='坂道選抜, Nogizaka46, 櫻坂46, Hinatazaka46'
+WHERE spotify_id='7I7EkVwXck49MrDL8Aa6fw';
+
+UPDATE sh_track_metadata
+SET artist='坂道選抜, Nogizaka46, 櫻坂46, Hinatazaka46',
+    display_title=CASE
+      WHEN title IS NOT NULL AND TRIM(title)<>''
+        THEN TRIM(title) || ' — 坂道選抜, Nogizaka46, 櫻坂46, Hinatazaka46'
+      ELSE display_title
+    END
+WHERE spotify_id='7I7EkVwXck49MrDL8Aa6fw';
+
+UPDATE sh_tracks
+SET artist='坂道選抜, Nogizaka46, 櫻坂46, Hinatazaka46'
+WHERE spotify_id='7I7EkVwXck49MrDL8Aa6fw';
+
+PRAGMA optimize;
