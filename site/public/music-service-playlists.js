@@ -1,25 +1,39 @@
-import { byId as element, integerFormat } from './dashboard-ui-common.js?v=20261001.1';
+import {
+  byId as element,
+  dashboardDataCard,
+  dashboardTable,
+  integerFormat,
+} from './dashboard-ui-common.js?v=20261001.1';
 
 const CONFIGS = Object.freeze({
   spotify: Object.freeze({
     endpoint: '/api/spotify-playlists',
+    mountId: 'spotifyPlaylistMount',
     tableId: 'spotifyPlaylistTable',
     playlistCountId: 'spotifyPlaylistCount',
     trackCountId: 'spotifyPlaylistTrackCount',
+    className: 'spotify-data-panel',
+    note: 'Spotify公開ページ上で検出できた、櫻坂46楽曲を含むプレイリストを表示します。',
     hosts: new Set(['open.spotify.com']),
   }),
   apple: Object.freeze({
     endpoint: '/api/apple-music-playlists',
+    mountId: 'applePlaylistMount',
     tableId: 'applePlaylistTable',
     playlistCountId: 'applePlaylistCount',
     trackCountId: 'applePlaylistTrackCount',
+    className: 'apple-data-panel',
+    note: 'Apple Music公式サイト上で検出できた公開プレイリストを表示します。',
     hosts: new Set(['music.apple.com']),
   }),
   amazon: Object.freeze({
     endpoint: '/api/amazon-music-playlists',
+    mountId: 'amazonPlaylistMount',
     tableId: 'amazonPlaylistTable',
     playlistCountId: 'amazonPlaylistCount',
     trackCountId: 'amazonPlaylistTrackCount',
+    className: 'amazon-data-panel',
+    note: 'Amazon Musicの曲詳細から検出した関連プレイリストを表示します。',
     hosts: new Set(['music.amazon.co.jp']),
   }),
 });
@@ -30,6 +44,26 @@ const payloads = new Map();
 function text(value) {
   const normalized = String(value ?? '').trim();
   return normalized || null;
+}
+
+function ensureTable(config) {
+  const existing = element(config.tableId);
+  if (existing) return existing;
+  const mount = element(config.mountId);
+  if (!mount) return null;
+  const table = dashboardTable({
+    id: config.tableId,
+    className: 'music-service-playlist-table',
+    wrapClassName: 'table-fit-mobile',
+  });
+  const holder = document.createElement('div');
+  holder.innerHTML = dashboardDataCard({
+    title: '楽曲別プレイリスト掲載一覧',
+    className: `music-service-panel ${config.className}`,
+    bodyHtml: `<p class="music-service-playlist-note">${config.note}</p>${table}`,
+  });
+  if (holder.firstElementChild) mount.append(holder.firstElementChild);
+  return element(config.tableId);
 }
 
 function trackIdentity(track) {
@@ -92,10 +126,9 @@ function safeUrl(value, hosts) {
   }
 }
 
-function setMetric(id, value, suffix = '') {
+function setMetric(id, value) {
   const node = element(id);
-  if (!node) return;
-  node.textContent = `${integerFormat.format(Math.max(0, Number(value) || 0))}${suffix}`;
+  if (node) node.textContent = integerFormat.format(Math.max(0, Number(value) || 0));
 }
 
 function renderMessage(table, message) {
@@ -124,13 +157,12 @@ function playlistSet(tracks) {
 }
 
 function renderTable(config, payload) {
-  const table = element(config.tableId);
+  const table = ensureTable(config);
   if (!table) return;
   const tracks = normalizedTracks(payload)
     .filter((track) => Array.isArray(track.playlists) && track.playlists.length)
     .sort((a, b) => String(a.title).localeCompare(String(b.title), 'ja'));
-  const playlists = playlistSet(tracks);
-  setMetric(config.playlistCountId, playlists.size);
+  setMetric(config.playlistCountId, playlistSet(tracks).size);
   setMetric(config.trackCountId, tracks.length);
 
   if (!tracks.length) {
@@ -176,10 +208,7 @@ function renderTable(config, payload) {
       }
       const curator = text(membership?.curator);
       const position = Number(membership?.position);
-      const details = [
-        curator,
-        Number.isSafeInteger(position) && position > 0 ? `${position}曲目` : null,
-      ].filter(Boolean);
+      const details = [curator, Number.isSafeInteger(position) && position > 0 ? `${position}曲目` : null].filter(Boolean);
       if (details.length) line.append(document.createTextNode(`（${details.join('・')}）`));
       links.append(line);
     }
@@ -198,26 +227,27 @@ async function fetchPayload(config) {
 }
 
 export async function loadMusicServicePlaylists(service, { force = false } = {}) {
-  const config = CONFIGS[String(service || '').toLowerCase()];
+  const key = String(service || '').toLowerCase();
+  const config = CONFIGS[key];
   if (!config) throw new Error(`Unknown music service: ${service}`);
-  if (!force && payloads.has(service)) {
-    const payload = payloads.get(service);
+  if (!force && payloads.has(key)) {
+    const payload = payloads.get(key);
     renderTable(config, payload);
     return payload;
   }
-  if (!requests.has(service) || force) {
+  if (!requests.has(key) || force) {
     const request = fetchPayload(config)
       .then((payload) => {
-        payloads.set(service, payload);
+        payloads.set(key, payload);
         renderTable(config, payload);
         return payload;
       })
       .catch((error) => {
-        renderMessage(element(config.tableId), 'プレイリスト情報の取得に失敗しました。');
+        renderMessage(ensureTable(config), 'プレイリスト情報の取得に失敗しました。');
         throw error;
       })
-      .finally(() => requests.delete(service));
-    requests.set(service, request);
+      .finally(() => requests.delete(key));
+    requests.set(key, request);
   }
-  return requests.get(service);
+  return requests.get(key);
 }
