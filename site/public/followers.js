@@ -16,6 +16,11 @@ import {
   drawDashboardXAxis,
   prepareDashboardCanvas,
 } from './dashboard-chart-canvas.js?v=20261001.2';
+import {
+  dashboardValueBounds,
+  nearestPositionIndex,
+  observeDashboardChartResize,
+} from './dashboard-chart-runtime.js?v=20261001.1';
 import { appendTableRow } from './dashboard-table-dom.js?v=20261001.1';
 
 const DEFAULT_HANDLES = Object.freeze([
@@ -33,8 +38,6 @@ const SERIES_STYLES = Object.freeze([
 
 let currentPayload = null;
 let loadPromise = null;
-let resizeObserver = null;
-let observedCanvasWidth = 0;
 let chartModel = null;
 let selectedIndex = null;
 
@@ -141,14 +144,12 @@ function prepareCanvas() {
   if (!canvas) return null;
   const measuredWidth = Math.max(320, canvasWidth(canvas) || 960);
   const height = measuredWidth < 520 ? 330 : Math.max(350, Math.min(430, Math.round(measuredWidth * .49)));
-  const prepared = prepareDashboardCanvas(canvas, {
+  return prepareDashboardCanvas(canvas, {
     minimumWidth: 320,
     minimumHeight: 1,
     fallbackWidth: measuredWidth,
     height,
   });
-  if (prepared) observedCanvasWidth = prepared.width;
-  return prepared;
 }
 
 function setChartEmpty(empty) {
@@ -163,16 +164,6 @@ function setChartEmpty(empty) {
   }
   if (canvas) canvas.hidden = Boolean(empty);
   if (message) message.hidden = !empty;
-}
-
-function followerBounds(values) {
-  if (!values.length) return { minimum: 0, maximum: 1, range: 1 };
-  const rawMinimum = Math.min(...values);
-  const rawMaximum = Math.max(...values);
-  const padding = Math.max(1, Math.ceil((rawMaximum - rawMinimum || 1) * .08));
-  const minimum = Math.max(0, rawMinimum - padding);
-  const maximum = Math.max(minimum + 1, rawMaximum + padding);
-  return { minimum, maximum, range: maximum - minimum };
 }
 
 function drawGrid(context, { width, area, bounds }) {
@@ -270,7 +261,7 @@ function renderChart(rows, handles) {
   const area = { left: 58, right: 24, top: 28, bottom: 42 };
   area.width = Math.max(1, width - area.left - area.right);
   area.height = Math.max(1, height - area.top - area.bottom);
-  const bounds = followerBounds(values);
+  const bounds = dashboardValueBounds(values, { minimumPadding: 1, paddingRatio: .08 });
   const step = rows.length <= 1 ? 0 : area.width / (rows.length - 1);
   const positions = rows.map((_, index) => rows.length === 1
     ? area.left + area.width / 2
@@ -382,35 +373,17 @@ export async function loadFollowersView() {
   return loadPromise;
 }
 
-byId('followersChart')?.addEventListener('pointerup', (event) => {
+const followersChart = byId('followersChart');
+followersChart?.addEventListener('pointerup', (event) => {
   if (!chartModel?.positions?.length) return;
-  const canvas = byId('followersChart');
-  const bounds = canvas?.getBoundingClientRect();
-  if (!bounds?.width) return;
-  const pointer = event.clientX - bounds.left;
-  let nearest = 0;
-  let distance = Infinity;
-  chartModel.positions.forEach((position, index) => {
-    const next = Math.abs(position - pointer);
-    if (next < distance) {
-      distance = next;
-      nearest = index;
-    }
-  });
-  selectedIndex = nearest;
+  const bounds = followersChart.getBoundingClientRect();
+  if (!bounds.width) return;
+  selectedIndex = nearestPositionIndex(chartModel.positions, event.clientX - bounds.left);
   renderChartDetail();
 });
 
-if (!resizeObserver && typeof ResizeObserver === 'function') {
-  const canvas = byId('followersChart');
-  if (canvas) {
-    resizeObserver = new ResizeObserver((entries) => {
-      const width = Math.round(entries[0]?.contentRect?.width || canvasWidth(canvas));
-      if (!currentPayload || !width || width === observedCanvasWidth) return;
-      observedCanvasWidth = width;
-      const handles = payloadHandles(currentPayload);
-      requestAnimationFrame(() => renderChart(normalizeRows(currentPayload.rows, handles), handles));
-    });
-    resizeObserver.observe(canvas);
-  }
-}
+observeDashboardChartResize(followersChart, () => {
+  if (!currentPayload) return;
+  const handles = payloadHandles(currentPayload);
+  renderChart(normalizeRows(currentPayload.rows, handles), handles);
+}, { delay: 180, enabled: () => Boolean(currentPayload) });
