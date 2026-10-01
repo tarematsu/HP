@@ -45,7 +45,28 @@ test('Ohisama follower target D1 registration runs only once per cached host', a
   assert.equal(r2.puts, 1);
 
   const cached = JSON.parse(r2.values.get(OHISAMA_FOLLOWER_TARGET_CACHE_KEY));
+  assert.equal(cached.version, 2);
   assert.deepEqual(cached.handles, ['host_a']);
+});
+
+test('version 1 cache is invalidated once so existing hosts receive membership metadata', async () => {
+  const r2 = new FakeR2();
+  r2.values.set(OHISAMA_FOLLOWER_TARGET_CACHE_KEY, JSON.stringify({
+    version: 1,
+    updated_at: 500,
+    handles: ['host-a'],
+  }));
+  let registrations = 0;
+  const registrar = cachedOhisamaFollowerTargetRegistrar(async () => {
+    registrations += 1;
+    return false;
+  });
+
+  assert.equal(await registrar({ PAGES_RESPONSE_R2: r2 }, { host_handle: 'host-a' }, 1000), false);
+  assert.equal(registrations, 1);
+  const cached = JSON.parse(r2.values.get(OHISAMA_FOLLOWER_TARGET_CACHE_KEY));
+  assert.equal(cached.version, 2);
+  assert.deepEqual(cached.handles, ['host-a']);
 });
 
 test('Ohisama follower target cache records known existing targets after a successful no-op UPSERT', async () => {

@@ -61,6 +61,12 @@ test('followers affiliations drive the same group colors used by Spotify', () =>
   assert.match(css, /followers-affiliation/);
 });
 
+test('official follower accounts are always solid while fan accounts use dash patterns', () => {
+  assert.match(runtime, /const FAN_DASHES = Object\.freeze/);
+  assert.match(runtime, /endsWith\('公式'\)/);
+  assert.match(runtime, /dash: official \? \[\] : FAN_DASHES\[index % FAN_DASHES\.length\]/);
+});
+
 test('new follower targets keep pre-registration history sparse instead of inventing zeroes', () => {
   assert.match(runtime, /safeInteger as integer/);
   assert.match(runtime, /const value = followerValue\(row\?\.\[handle\]\)/);

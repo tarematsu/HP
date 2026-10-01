@@ -1,6 +1,7 @@
 import { runOptimizedOhisamaCollectorScheduled } from './ohisama-collector-optimized.js';
 import { registerOhisamaFollowerTarget } from './ohisama-collector-entry.js';
 import { cachedOhisamaFollowerTargetRegistrar } from './ohisama-follower-target-cache.js';
+import { withOhisamaFollowerMembership } from './ohisama-follower-membership.js';
 import { captureOhisamaPlayback } from './ohisama-playback.js';
 import {
   loadOhisamaPublicationSnapshot,
@@ -35,7 +36,9 @@ function capturingFetch(fetchImpl, onChannelPayload) {
 export async function runOhisamaPagesScheduled(controller, env, ctx, dependencies = {}) {
   const registerFollowerTarget = activeBroadcastFollowerRegistrar(
     cachedOhisamaFollowerTargetRegistrar(
-      dependencies.registerFollowerTarget || registerOhisamaFollowerTarget,
+      withOhisamaFollowerMembership(
+        dependencies.registerFollowerTarget || registerOhisamaFollowerTarget,
+      ),
     ),
   );
   let channelPayload = null;
