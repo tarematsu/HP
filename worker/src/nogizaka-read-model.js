@@ -2,6 +2,7 @@ import {
   NOGIZAKA_HANDLE,
   reconcileNogizakaOfficialAnnouncements,
 } from './nogizaka-official-news.js';
+import { publishNogizakaListeningPartyReadModel } from './nogizaka-pages-read-model.js';
 
 const ANNOUNCEMENTS = 'sh_nogizaka_official_news_announcements';
 const PROBES = 'sh_nogizaka_official_news_station_probes';
@@ -116,12 +117,14 @@ export async function reconcileNogizakaReadModels(env, runStartedAt, completedAt
   try {
     const liveReadModels = await materializeActiveReadModels(env, completedAt);
     const finalized = await reconcileNogizakaOfficialAnnouncements(env, runStartedAt, completedAt);
+    const pagesReadModel = await publishNogizakaListeningPartyReadModel(env, completedAt);
     return {
       skipped: finalized?.skipped === true && liveReadModels === 0,
       reason: finalized?.reason ?? null,
       read_models: liveReadModels + Number(finalized?.read_models || 0),
       live_read_models: liveReadModels,
       finalized_read_models: Number(finalized?.read_models || 0),
+      pages_read_model: pagesReadModel,
     };
   } catch (error) {
     if (/no such table/i.test(String(error?.message || ''))) {
