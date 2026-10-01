@@ -55,7 +55,8 @@
     ],
     "producers": [
       { "binding": "SAKURAZAKA_QUEUE", "queue": "stationhead-sakurazaka46jp" },
-      { "binding": "HOST_MONITOR_QUEUE", "queue": "stationhead-sakurazaka46jp" }
+      { "binding": "HOST_MONITOR_QUEUE", "queue": "stationhead-sakurazaka46jp" },
+      { "binding": "REGIONAL_MUSIC_QUEUE", "queue": "regional-music-daily" }
     ]
   }
 }

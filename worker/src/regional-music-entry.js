@@ -25,35 +25,39 @@ export const REGIONAL_MUSIC_DAILY_CRON = '0 21 * * *';
 export const REGIONAL_MUSIC_COLLECTOR_CONCURRENCY = 4;
 export const REGIONAL_MUSIC_COLLECTOR_TIMEOUT_MS = 90_000;
 
+export const REGIONAL_MUSIC_SERVICE_COLLECTORS_BY_ID = Object.freeze({
+  genie: collectGenie,
+  bugs: collectBugsArtists,
+  joox: collectJooxArtists,
+  nhaccuatui: collectNhacCuaTui,
+  anghami: collectAnghami,
+  melon: collectMelon,
+  qq_music: collectQqMusic,
+  netease_cloud_music: collectNeteaseCloudMusic,
+  kugou_music: collectKugouMusic,
+  naver_vibe: collectNaverVibe,
+  flo: collectFlo,
+  yandex_music: collectYandexMusic,
+  boomplay: collectBoomplay,
+  plern: collectPlern,
+  fungjai: collectFungjai,
+  zing_mp3: collectZingMp3,
+  jiosaavn: collectJioSaavn,
+  gaana: collectGaana,
+  langit_musik: collectLangitMusik,
+});
+
 // The 19 regional/local services added by the regional-music rollout.
-export const REGIONAL_MUSIC_SERVICE_COLLECTORS = Object.freeze([
-  collectGenie,
-  collectBugsArtists,
-  collectJooxArtists,
-  collectNhacCuaTui,
-  collectAnghami,
-  collectMelon,
-  collectQqMusic,
-  collectNeteaseCloudMusic,
-  collectKugouMusic,
-  collectNaverVibe,
-  collectFlo,
-  collectYandexMusic,
-  collectBoomplay,
-  collectPlern,
-  collectFungjai,
-  collectZingMp3,
-  collectJioSaavn,
-  collectGaana,
-  collectLangitMusik,
-]);
+export const REGIONAL_MUSIC_SERVICE_COLLECTORS = Object.freeze(
+  Object.values(REGIONAL_MUSIC_SERVICE_COLLECTORS_BY_ID),
+);
 
 export const YOUTUBE_MUSIC_DAILY_COLLECTORS = Object.freeze([
   collectYouTubeMusic,
 ]);
 
-// Keep the all-service set for explicit/manual compatibility. Scheduled runs
-// select one of the two sets below from the cron expression.
+// Keep the all-service set for explicit/manual compatibility. Production
+// regional services are dispatched one at a time through regional-music-daily.
 export const REGIONAL_MUSIC_DAILY_COLLECTORS = Object.freeze([
   ...YOUTUBE_MUSIC_DAILY_COLLECTORS,
   ...REGIONAL_MUSIC_SERVICE_COLLECTORS,
@@ -140,6 +144,13 @@ export async function runRegionalMusicCollectors(
   return results;
 }
 
+export async function collectRegionalMusicService(service, env, scheduledTime, fetchImpl = fetch) {
+  const collector = REGIONAL_MUSIC_SERVICE_COLLECTORS_BY_ID[String(service || '')];
+  if (!collector) throw new Error(`unknown regional music service: ${service || '(empty)'}`);
+  const observedAt = Number(scheduledTime) || Date.now();
+  return collectWithIsolation(collector, env, observedAt, fetchImpl);
+}
+
 async function collectAndPublish(collectors, env, scheduledTime, fetchImpl = fetch, event = 'regional-music-daily-complete') {
   const observedAt = Number(scheduledTime) || Date.now();
   const results = await runRegionalMusicCollectors(
@@ -205,6 +216,26 @@ export function scheduledCollectorForCron(cron) {
   return collectRegionalMusicDaily;
 }
 
+export async function runRegionalMusicQueue(batch, env, fetchImpl = fetch) {
+  for (const message of batch?.messages || []) {
+    const body = message?.body || {};
+    if (body.message_type === 'regional-music-collect') {
+      const result = await collectRegionalMusicService(body.service, env, body.scheduled_at, fetchImpl);
+      console.log(JSON.stringify({ event: 'regional-music-service-complete', service: body.service, result }));
+      message.ack?.();
+      continue;
+    }
+    if (body.message_type === 'regional-music-publish') {
+      const observedAt = Number(body.scheduled_at) || Date.now();
+      const result = await publishRegionalMusicReadModel(env, observedAt);
+      console.log(JSON.stringify({ event: 'regional-music-read-model-complete', result }));
+      message.ack?.();
+      continue;
+    }
+    throw new Error(`unknown regional music queue message: ${body.message_type || '(empty)'}`);
+  }
+}
+
 export default {
   async scheduled(controller, env, ctx) {
     const scheduledTime = Number(controller?.scheduledTime) || Date.now();
@@ -213,4 +244,5 @@ export default {
     if (ctx?.waitUntil) ctx.waitUntil(run);
     await run;
   },
+  queue: runRegionalMusicQueue,
 };
