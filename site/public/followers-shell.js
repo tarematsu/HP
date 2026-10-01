@@ -34,7 +34,6 @@ mountDashboardShell({
         title: 'フォロワー数推移',
         titleId: 'followersChartTitle',
         kicker: 'STATIONHEAD FOLLOWERS',
-        trailingHtml: '<span id="followersLatestDate" class="pill">-</span>',
         className: 'followers-chart-panel',
         legendHtml: dashboardLegend({
           id: 'followersLegend',

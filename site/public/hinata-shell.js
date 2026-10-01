@@ -1,3 +1,4 @@
+import './hinata-missing-periods.js?v=20261001.1';
 import {
   dashboardChartCard,
   dashboardChartHost,
@@ -47,7 +48,6 @@ mountDashboardShell({
         title: 'オンライン・再生数増加',
         titleId: 'hinataChartTitle',
         kicker: 'OHISAMA / 24H',
-        trailingHtml: '<span id="hinataUpdated" class="pill">—</span>',
         legendHtml: liveLegend,
         chartHtml: dashboardChartHost({
           id: 'hinataChart',
