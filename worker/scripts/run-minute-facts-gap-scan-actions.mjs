@@ -18,9 +18,28 @@ function remoteDatabase(database, suffix) {
   });
 }
 
+function withoutRetiredCommentCounts(database) {
+  return {
+    ...database,
+    prepare(sql) {
+      if (/\bsh_comment_minute_counts\b/i.test(String(sql || ''))) {
+        const statement = {
+          bind() { return statement; },
+          async all() { return { results: [] }; },
+        };
+        return statement;
+      }
+      return database.prepare(sql);
+    },
+    batch(statements) {
+      return database.batch(statements);
+    },
+  };
+}
+
 export async function runMinuteFactsGapScanActions(options = {}) {
   const env = options.env || {
-    DB: remoteDatabase(buddiesDatabase, 'buddies'),
+    DB: withoutRetiredCommentCounts(remoteDatabase(buddiesDatabase, 'buddies')),
     BUDDIES_DB: remoteDatabase(buddiesDatabase, 'buddies-alias'),
     MINUTE_DB: remoteDatabase(factsDatabase, 'minute'),
     GAP_SCAN_WINDOW_MINUTES: process.env.GAP_SCAN_WINDOW_MINUTES || '360',
