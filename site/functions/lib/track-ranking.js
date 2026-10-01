@@ -20,6 +20,8 @@ export const TRACK_RANKING_SUMMARY_SQL = `SELECT
 FROM sh_track_ranking_current
 WHERE latest_like_count>0`;
 
+const LOOKUP_CHUNK_SIZE = 80;
+
 function text(value) {
   const normalized = String(value ?? '').trim();
   return normalized || null;
@@ -33,6 +35,10 @@ function positiveInteger(value) {
 
 function normalizedIsrc(value) {
   return String(value || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+}
+
+function placeholders(count) {
+  return Array.from({ length: count }, () => '?').join(',');
 }
 
 function placeholder(value, type) {
@@ -75,6 +81,70 @@ async function safeRun(db, sql, bindings) {
     if (/no such table|no such column|no such index/i.test(String(error?.message || error))) return null;
     throw error;
   }
+}
+
+async function safeRows(db, sql, bindings) {
+  try {
+    const result = await db.prepare(sql).bind(...bindings).all();
+    return result?.results || [];
+  } catch (error) {
+    if (/no such table|no such column|no such index/i.test(String(error?.message || error))) return [];
+    throw error;
+  }
+}
+
+function needsDictionaryFallback(row) {
+  return !usable(row?.title, 'title') || !usable(row?.artist, 'artist');
+}
+
+function mergeDictionaryPresentation(row, metadata) {
+  if (!metadata) return row;
+  return {
+    ...row,
+    title: usable(metadata.title, 'title') || row.title,
+    artist: usable(metadata.artist, 'artist') || row.artist,
+    thumbnail_url: text(row.thumbnail_url) || text(metadata.thumbnail_url),
+    spotify_id: rowSpotifyId(row) || text(metadata.spotify_id),
+    isrc: rowIsrc(row) || normalizedIsrc(metadata.isrc) || null,
+  };
+}
+
+async function hydrateDictionaryOnlyRows(db, rows) {
+  const targets = rows.filter(needsDictionaryFallback);
+  if (!targets.length) return rows;
+
+  const byIsrc = new Map();
+  const isrcs = [...new Set(targets.map(rowIsrc).filter(Boolean))];
+  for (let offset = 0; offset < isrcs.length; offset += LOOKUP_CHUNK_SIZE) {
+    const part = isrcs.slice(offset, offset + LOOKUP_CHUNK_SIZE);
+    const found = await safeRows(db, `SELECT isrc,spotify_id,title,artist,thumbnail_url
+      FROM sh_track_dictionary WHERE isrc IN (${placeholders(part.length)})`, part);
+    for (const row of found) {
+      const isrc = normalizedIsrc(row?.isrc);
+      if (isrc) byIsrc.set(isrc, row);
+    }
+  }
+
+  const unresolvedSpotify = [...new Set(targets
+    .filter((row) => !byIsrc.has(rowIsrc(row)))
+    .map(rowSpotifyId)
+    .filter(Boolean))];
+  const bySpotify = new Map();
+  for (let offset = 0; offset < unresolvedSpotify.length; offset += LOOKUP_CHUNK_SIZE) {
+    const part = unresolvedSpotify.slice(offset, offset + LOOKUP_CHUNK_SIZE);
+    const found = await safeRows(db, `SELECT isrc,spotify_id,title,artist,thumbnail_url
+      FROM sh_track_dictionary
+      WHERE spotify_id IN (${placeholders(part.length)})`, part);
+    for (const row of found) {
+      const spotifyId = text(row?.spotify_id);
+      if (spotifyId) bySpotify.set(spotifyId, row);
+    }
+  }
+
+  return rows.map((row) => mergeDictionaryPresentation(
+    row,
+    byIsrc.get(rowIsrc(row)) || bySpotify.get(rowSpotifyId(row)) || null,
+  ));
 }
 
 function enrichRanking(rows) {
@@ -140,9 +210,15 @@ export async function loadTrackRanking(db, { limit = 500, persist = true } = {})
     db.prepare(TRACK_RANKING_SUMMARY_SQL).first(),
   ]);
   const baseRows = result.results || [];
-  // canonicalizeTrackRows resolves aliases through indexed sh_tracks and joins
-  // sh_track_dictionary directly, avoiding the UNION canonical view hot path.
-  const hydratedRows = await canonicalizeTrackRows(db, baseRows);
+  const identityRows = baseRows.map((row) => ({
+    ...row,
+    isrc: rowIsrc(row),
+    spotify_id: rowSpotifyId(row),
+  }));
+  // Resolve normal rows through indexed sh_tracks + dictionary. Legacy provider
+  // identities that have no sh_tracks owner get one bounded dictionary lookup.
+  const canonicalRows = await canonicalizeTrackRows(db, identityRows);
+  const hydratedRows = await hydrateDictionaryOnlyRows(db, canonicalRows);
   const rows = enrichRanking(hydratedRows);
   if (persist) await persistRecoveredIdentity(db, baseRows, rows);
   return {
