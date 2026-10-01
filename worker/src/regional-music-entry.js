@@ -8,6 +8,7 @@ import { collectMelon } from './regional-music-melon.js';
 import { collectNeteaseCloudMusic } from './regional-music-netease.js';
 import { collectNhacCuaTui } from './regional-music-nhaccuatui.js';
 import { collectQqMusic } from './regional-music-qq.js';
+import { collectYandexMusic } from './regional-music-yandex.js';
 import { publishRegionalMusicReadModel } from './regional-music-read-model.js';
 
 export const REGIONAL_MUSIC_DAILY_CRON = '20 15 * * *';
@@ -23,6 +24,7 @@ const DAILY_COLLECTORS = Object.freeze([
   collectNeteaseCloudMusic,
   collectKugouMusic,
   collectFlo,
+  collectYandexMusic,
 ]);
 
 export async function collectRegionalMusicDaily(env, scheduledTime, fetchImpl = fetch) {
