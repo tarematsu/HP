@@ -32,32 +32,32 @@ const tracksTable = dashboardTable({
 
 const trendPanels = `
   ${dashboardChartCard({
-    title: 'Spotify 全曲合計の再生数前日比推移（上位10組）',
+    title: 'Spotify 全曲合計の再生数前日比推移（坂道3グループ）',
     titleId: 'spotifyTrendTitle',
-    kicker: 'FEMALE IDOLS',
+    kicker: 'SAKAMICHI',
     className: 'spotify-trend-panel music-service-panel',
-    chartHtml: '<div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="最新日の全曲合計再生数前日比が大きい女性アイドル上位10組の推移"></div>',
+    chartHtml: '<div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="乃木坂46・櫻坂46・日向坂46の全曲合計再生数前日比推移"></div>',
   })}
   ${dashboardChartCard({
-    title: 'Spotify 月間リスナー推移（上位10組）',
+    title: 'Spotify 月間リスナー推移（坂道3グループ）',
     titleId: 'spotifyMonthlyListenerTrendTitle',
     kicker: 'MONTHLY LISTENERS',
     className: 'spotify-trend-panel music-service-panel',
-    chartHtml: '<img class="chart-fit" src="/api/spotify-monthly-listeners?format=svg" alt="Spotify月間リスナー推移">',
+    chartHtml: '<div id="spotifyMonthlyListenerTrendCharts" class="spotify-trend-charts" aria-label="乃木坂46・櫻坂46・日向坂46のSpotify月間リスナー推移"></div>',
   })}
   ${dashboardChartCard({
-    title: 'Spotify 今年リリース上位10曲合計の再生数前日比推移（上位10組）',
+    title: 'Spotify 今年リリース上位10曲合計の再生数前日比推移（坂道3グループ）',
     titleId: 'spotifyTop10YearTrendTitle',
-    kicker: 'FEMALE IDOLS',
+    kicker: 'SAKAMICHI',
     className: 'spotify-trend-panel music-service-panel',
-    chartHtml: '<div id="spotifyTop10YearTrendCharts" class="spotify-trend-charts" aria-label="今年リリース曲のうち再生数前日比上位10曲の合計が最新日に大きい女性アイドル上位10組の推移"></div>',
+    chartHtml: '<div id="spotifyTop10YearTrendCharts" class="spotify-trend-charts" aria-label="乃木坂46・櫻坂46・日向坂46の今年リリース上位10曲合計の再生数前日比推移"></div>',
   })}
   ${dashboardChartCard({
-    title: 'Spotify Daily Top Artist（日本）の順位推移',
+    title: 'Spotify Daily Top Artist（日本）の順位推移（坂道3グループ）',
     titleId: 'spotifyArtistRankTrendTitle',
     kicker: 'SPOTIFY CHARTS JAPAN',
     className: 'spotify-trend-panel music-service-panel',
-    chartHtml: '<div id="spotifyArtistRankTrendCharts" class="spotify-trend-charts" aria-label="Spotify日本 Daily Top Artist における収集対象アーティストの順位推移"></div>',
+    chartHtml: '<div id="spotifyArtistRankTrendCharts" class="spotify-trend-charts" aria-label="Spotify日本 Daily Top Artist における乃木坂46・櫻坂46・日向坂46の順位推移"></div>',
   })}`;
 
 const tracksPanel = dashboardDataCard({
