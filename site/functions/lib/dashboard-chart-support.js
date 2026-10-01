@@ -43,13 +43,30 @@ export function directFiveMinuteStreamHistory(rows) {
   }
   const points = [...byBucket.values()].sort((left, right) => left.bucket - right.bucket);
   const output = [];
-  for (let index = 1; index < points.length; index += 1) {
-    const previous = points[index - 1];
-    const current = points[index];
-    if (current.bucket - previous.bucket !== FIVE_MINUTE_MS) continue;
-    const delta = current.streamCount - previous.streamCount;
-    if (!Number.isFinite(delta) || delta < 0) continue;
-    output.push({ observed_at: current.bucket, stream_delta: delta, sample_count: 1 });
+  for (let index = 3; index < points.length; index += 1) {
+    const window = points.slice(index - 3, index + 1);
+    let totalDelta = 0;
+    let valid = true;
+    for (let offset = 1; offset < window.length; offset += 1) {
+      const previous = window[offset - 1];
+      const current = window[offset];
+      if (current.bucket - previous.bucket !== FIVE_MINUTE_MS) {
+        valid = false;
+        break;
+      }
+      const delta = current.streamCount - previous.streamCount;
+      if (!Number.isFinite(delta) || delta < 0) {
+        valid = false;
+        break;
+      }
+      totalDelta += delta;
+    }
+    if (!valid) continue;
+    output.push({
+      observed_at: window.at(-1).bucket,
+      stream_delta: totalDelta / 3,
+      sample_count: 3,
+    });
   }
   return output;
 }
