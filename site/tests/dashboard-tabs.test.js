@@ -27,7 +27,8 @@ test('dashboard starts on current and exposes every visible mode through the sha
   assert.match(likesShell, /id: 'likesView'/);
   assert.match(likesShell, /className: 'likes-view'/);
   for (const mode of ['daily', 'ranking', 'likes', 'broadcasts']) assert.match(registry, new RegExp(`mode: '${mode}'`));
-  for (const view of ['first-week', 'played-tracks', 'spotify']) assert.match(registry, new RegExp(`view: '${view}'`));
+  for (const view of ['played-tracks', 'spotify']) assert.match(registry, new RegExp(`view: '${view}'`));
+  assert.doesNotMatch(registry, /view: 'first-week'|label: '初週比較'/);
   assert.doesNotMatch(registry, /mode: 'weekly'|mode: 'monthly'/);
   assert.doesNotMatch([registry, historyShell].join('\n'), /mode: 'tracks'|id="trackControls"/);
   assert.match(page, /<nav class="dashboard-navigation" aria-label="統計メニュー">/);
@@ -35,13 +36,12 @@ test('dashboard starts on current and exposes every visible mode through the sha
   assert.doesNotMatch(page, /id="currentView"|id="historyView"|id="likesView"/);
 });
 
-test('dashboard reorders the right edge to first-week then Spotify before routing starts', () => {
-  assert.match(dashboardEntry, /dashboard-tab-order\.js\?v=20260929\.1/);
-  assert.match(dashboardEntry, /dashboard-tabs\.js\?v=20260930\.1/);
+test('dashboard keeps Spotify at the right edge before routing starts', () => {
+  assert.match(dashboardEntry, /dashboard-tab-order\.js\?v=20261002\.1/);
+  assert.match(dashboardEntry, /dashboard-tabs\.js\?v=20261002\.1/);
   assert.ok(dashboardEntry.indexOf('dashboard-tab-order.js') < dashboardEntry.indexOf('dashboard-tabs.js'));
-  assert.match(tabOrder, /tabs\.append\(firstWeek\)/);
+  assert.doesNotMatch(tabOrder, /firstWeek|first-week/);
   assert.match(tabOrder, /tabs\.append\(spotify\)/);
-  assert.ok(tabOrder.indexOf('append(firstWeek)') < tabOrder.indexOf('append(spotify)'));
 });
 
 test('dashboard hides the static page skeleton until the selected route shell is ready', () => {
@@ -68,7 +68,7 @@ test('archive and likes markup are owned by their shared shell modules', () => {
   assert.match(likesShell, /dashboardNotice/);
   assert.match(likesShell, /dashboardTable/);
   assert.doesNotMatch(likesShell, /id="likesLoad"/);
-  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260930\.1'/);
+  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20261002\.1'/);
   assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20261001\.1'\)/);
   assert.match(tabsClient, /import\('\/history\/history-likes\.js\?v=20260930\.1'\)/);
   assert.match(tabsClient, /setRoute\(mode, runtimeReady \? historyView : null/);
@@ -113,6 +113,8 @@ test('history mode-specific runtimes are lazy-loaded only after history starts',
   assert.match(historyEntry, /history-ranking-all-host-table\.js\?v=20260930\.1/);
   assert.match(tabsClient, /history-ranking-table-status\.js\?v=20260923\.2/);
   assert.match(tabsClient, /mode === 'ranking'[\s\S]*loadOnce\('ranking-status'/);
+  assert.match(historyEntry, /first-week-comparison-shell\.js\?v=20261002\.1/);
+  assert.match(historyEntry, /first-week-comparison\.js\?v=20261002\.1/);
   assert.match(historyEntry, /history-broadcasts\.js\?v=20261001\.1/);
   assert.doesNotMatch(tabsClient, /history-period-chart|history-ranking-chart|history-broadcasts/);
 });
