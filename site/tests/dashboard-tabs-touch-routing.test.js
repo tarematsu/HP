@@ -9,6 +9,7 @@ test('history-backed tabs route by data-mode before their shared history view', 
   for (const mode of ['daily', 'ranking', 'broadcasts']) {
     assert.match(registry, new RegExp(`view: 'history', mode: '${mode}'`));
   }
-  assert.match(tabsClient, /const mode = button\.dataset\.mode \|\| button\.dataset\.view;/);
-  assert.doesNotMatch(tabsClient, /const mode = button\.dataset\.view \|\| button\.dataset\.mode;/);
+  assert.match(tabsClient, /return button\?\.dataset\.mode \|\| button\?\.dataset\.view \|\| '';/);
+  assert.match(tabsClient, /const mode = routeModeForButton\(button\);/);
+  assert.doesNotMatch(tabsClient, /return button\?\.dataset\.view \|\| button\?\.dataset\.mode/);
 });

@@ -80,14 +80,59 @@ const LAZY_VIEWS = Object.freeze({
 const VIEW_MODES = new Set(['current', ...HISTORY_MODES, ...Object.keys(LAZY_VIEWS)]);
 const VIEW_IDS = ['currentView', 'historyView', ...Object.values(LAZY_VIEWS).map(({ viewId }) => viewId)];
 
+const NAVIGATION = Object.freeze([
+  Object.freeze({
+    id: 'stationhead',
+    sources: Object.freeze([
+      Object.freeze({
+        id: 'buddies',
+        label: 'Buddies',
+        defaultMode: 'current',
+        modes: Object.freeze(['current', 'daily', 'weekly', 'monthly', 'played-tracks', 'followers', 'likes', 'ranking', 'broadcasts']),
+      }),
+      Object.freeze({ id: 'nogizaka', label: 'nogizaka46smej', defaultMode: 'nogizaka', modes: Object.freeze(['nogizaka']) }),
+      Object.freeze({ id: 'hinata', label: 'Ohisama', defaultMode: 'hinata', modes: Object.freeze(['hinata']) }),
+    ]),
+  }),
+  Object.freeze({
+    id: 'subscriptions',
+    sources: Object.freeze([
+      Object.freeze({ id: 'spotify', label: 'Spotify', defaultMode: 'spotify', modes: Object.freeze(['spotify']) }),
+      Object.freeze({ id: 'apple-music', label: 'Apple Music', defaultMode: 'apple-music', modes: Object.freeze(['apple-music']) }),
+      Object.freeze({ id: 'amazon-music', label: 'Amazon Music', defaultMode: 'amazon-music', modes: Object.freeze(['amazon-music']) }),
+    ]),
+  }),
+  Object.freeze({
+    id: 'analysis',
+    sources: Object.freeze([
+      Object.freeze({ id: 'first-week', label: '初週比較', defaultMode: 'first-week', modes: Object.freeze(['first-week']) }),
+    ]),
+  }),
+]);
+const MODE_NAVIGATION = new Map();
+for (const section of NAVIGATION) {
+  for (const source of section.sources) {
+    for (const mode of source.modes) MODE_NAVIGATION.set(mode, { section, source });
+  }
+}
+const BUDDIES_VISIBLE_MODES = new Set(['current', 'daily', 'played-tracks', 'likes', 'ranking', 'broadcasts', 'followers']);
+
 const currentView = document.getElementById('currentView');
 const historyView = document.getElementById('historyView');
 const tabs = document.getElementById('modeTabs');
+const sectionTabs = document.getElementById('sectionTabs');
+const sourceTabs = document.getElementById('sourceTabs');
 const skipLink = document.querySelector('.skip-link');
 const modulePromises = new Map();
+const lastSourceBySection = new Map(NAVIGATION.map((section) => [section.id, section.sources[0]?.id || '']));
+const lastModeBySource = new Map();
 let historyRuntimeMode = null;
 let activeMode = 'current';
 let initialRouteReady = false;
+
+for (const section of NAVIGATION) {
+  for (const source of section.sources) lastModeBySource.set(source.id, source.defaultMode);
+}
 
 function releaseUnexpectedSkipLinkFocus() {
   if (document.activeElement === skipLink) skipLink?.blur();
@@ -100,13 +145,77 @@ function markRouteReady() {
   window.dispatchEvent(new Event('dashboard:route-ready'));
 }
 
+function routeModeForButton(button) {
+  return button?.dataset.mode || button?.dataset.view || '';
+}
+
+function visibleTabMode(mode) {
+  return mode === 'weekly' || mode === 'monthly' ? 'daily' : mode;
+}
+
+function navigationForMode(mode) {
+  return MODE_NAVIGATION.get(mode) || MODE_NAVIGATION.get('current');
+}
+
+function renderSourceTabs(section, activeSource) {
+  if (!sourceTabs) return;
+  const fragment = document.createDocumentFragment();
+  for (const source of section.sources) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.source = source.id;
+    button.textContent = source.label;
+    const selected = source.id === activeSource.id;
+    button.classList.toggle('active', selected);
+    button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+    fragment.append(button);
+  }
+  sourceTabs.replaceChildren(fragment);
+  sourceTabs.hidden = section.sources.length === 0;
+}
+
+function syncModeTabs(source) {
+  if (!tabs) return;
+  if (!sectionTabs || !sourceTabs) {
+    tabs.hidden = false;
+    return;
+  }
+
+  const showBuddiesModes = source.id === 'buddies';
+  tabs.hidden = !showBuddiesModes;
+  tabs.querySelectorAll('button').forEach((button) => {
+    const visible = showBuddiesModes && BUDDIES_VISIBLE_MODES.has(routeModeForButton(button));
+    button.hidden = !visible;
+    if (!visible) button.removeAttribute('aria-current');
+  });
+}
+
+function syncNavigation(mode) {
+  if (!sectionTabs || !sourceTabs) return;
+  const navigation = navigationForMode(mode);
+  if (!navigation) return;
+  const { section, source } = navigation;
+  lastSourceBySection.set(section.id, source.id);
+  lastModeBySource.set(source.id, mode);
+
+  sectionTabs.querySelectorAll('button[data-section]').forEach((button) => {
+    const selected = button.dataset.section === section.id;
+    button.classList.toggle('active', selected);
+    button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+  });
+  renderSourceTabs(section, source);
+  syncModeTabs(source);
+}
+
 function updateTabs(mode) {
+  const selectedMode = visibleTabMode(mode);
   tabs?.querySelectorAll('button').forEach((button) => {
-    const selected = button.dataset.view === mode || button.dataset.mode === mode;
+    const selected = routeModeForButton(button) === selectedMode;
     button.classList.toggle('active', selected);
     if (selected) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');
   });
+  syncNavigation(mode);
 }
 
 function updateLocation(mode, { replace = false } = {}) {
@@ -236,15 +345,47 @@ function showMode(mode, options = {}) {
   else void showLazyView(mode, options);
 }
 
+function activateMode(mode) {
+  const targetMode = String(mode || '');
+  if (!VIEW_MODES.has(targetMode)) return;
+  const buttonMode = visibleTabMode(targetMode);
+  const button = [...(tabs?.querySelectorAll('button') || [])].find((candidate) => routeModeForButton(candidate) === buttonMode);
+  if (button && targetMode === buttonMode) button.click();
+  else showMode(targetMode);
+}
+
+function sourceById(section, sourceId) {
+  return section?.sources.find((source) => source.id === sourceId) || section?.sources[0] || null;
+}
+
 function syncFromLocation() {
   const mode = modeFromLocation();
   if (mode !== activeMode) showMode(mode, { updateUrl: false });
 }
 
+sectionTabs?.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-section]');
+  if (!button || !sectionTabs.contains(button)) return;
+  const section = NAVIGATION.find((item) => item.id === button.dataset.section);
+  if (!section) return;
+  const source = sourceById(section, lastSourceBySection.get(section.id));
+  if (!source) return;
+  activateMode(lastModeBySource.get(source.id) || source.defaultMode);
+});
+
+sourceTabs?.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-source]');
+  if (!button || !sourceTabs.contains(button)) return;
+  const currentNavigation = navigationForMode(activeMode);
+  const source = sourceById(currentNavigation?.section, button.dataset.source);
+  if (!source) return;
+  activateMode(lastModeBySource.get(source.id) || source.defaultMode);
+});
+
 tabs?.addEventListener('click', (event) => {
   const button = event.target.closest('button');
   if (!button || !tabs.contains(button)) return;
-  const mode = button.dataset.mode || button.dataset.view;
+  const mode = routeModeForButton(button);
   if (!mode || !VIEW_MODES.has(mode)) return;
   event.preventDefault();
   if (HISTORY_MODES.has(mode)) {
@@ -253,6 +394,13 @@ tabs?.addEventListener('click', (event) => {
     showMode(mode);
   }
 }, { capture: true });
+
+if (tabs && sectionTabs && sourceTabs) {
+  new MutationObserver(() => {
+    const navigation = navigationForMode(activeMode);
+    if (navigation) syncModeTabs(navigation.source);
+  }).observe(tabs, { childList: true });
+}
 
 window.addEventListener('popstate', syncFromLocation);
 window.addEventListener('hashchange', syncFromLocation);

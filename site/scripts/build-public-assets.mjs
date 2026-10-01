@@ -14,6 +14,7 @@ const cssFiles = [
   'dashboard-presentation.css',
   'dashboard-current-enhancements.css',
   'pages-layout.css',
+  'dashboard-navigation.css',
   'spotify.css',
   'first-week-comparison.css',
   'played-tracks.css',
