@@ -18,8 +18,9 @@ function metadataDb(calls) {
         },
         async all() {
           calls.push({ sql, bindings: this.bindings });
-          if (/FROM sh_tracks/.test(sql)) {
+          if (/FROM sh_tracks\s+WHERE stationhead_track_id IN/.test(sql)) {
             return { results: [{
+              track_id: 42,
               stationhead_track_id: 42,
               spotify_id: 'spotify-42',
               isrc: 'JPX42',
@@ -30,9 +31,7 @@ function metadataDb(calls) {
               fetched_at: 10,
             }] };
           }
-          if (/FROM sh_track_canonical_metadata/.test(sql)) {
-            const wanted = new Set(this.bindings);
-            if (!wanted.has('spotify-42') && !wanted.has('JPX42')) return { results: [] };
+          if (/FROM sh_tracks t/.test(sql) && /LEFT JOIN sh_track_dictionary d/.test(sql)) {
             return { results: [{
               track_id: 42,
               spotify_id: 'spotify-42',
@@ -51,7 +50,7 @@ function metadataDb(calls) {
   };
 }
 
-test('Stationhead-only playback tracks use sh_tracks for identity and canonical view for presentation', async () => {
+test('Stationhead-only playback tracks use sh_tracks identity and physical presentation owners', async () => {
   const calls = [];
   const queue = {
     tracks: [{
@@ -71,10 +70,11 @@ test('Stationhead-only playback tracks use sh_tracks for identity and canonical 
   assert.equal(hydrated.tracks[0].thumbnail_url, 'https://img.example/42.jpg');
   assert.equal(hydrated.tracks[0].spotify_id, 'spotify-42');
   assert.equal(hydrated.tracks[0].isrc, 'JPX42');
-  const identityCall = calls.find((call) => /FROM sh_tracks/.test(call.sql));
+  const identityCall = calls.find((call) => /WHERE stationhead_track_id IN/.test(call.sql));
   assert.ok(identityCall);
   assert.match(identityCall.sql, /NULL AS title,NULL AS artist/);
-  assert.ok(calls.some((call) => /FROM sh_track_canonical_metadata/.test(call.sql)));
+  assert.ok(calls.some((call) => /FROM sh_tracks t/.test(call.sql) && /LEFT JOIN sh_track_dictionary d/.test(call.sql)));
+  assert.equal(calls.some((call) => /FROM sh_track_canonical_metadata/.test(call.sql)), false);
   assert.equal(calls.some((call) => /FROM sh_track_metadata/.test(call.sql)), false);
 });
 
