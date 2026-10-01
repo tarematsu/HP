@@ -11,7 +11,6 @@ on:
       - '.github/workflows/run-pages-read-model-rebuild.yml'
       - '.github/actions/cloudflare-context/action.yml'
       - '.github/scripts/resolve-cloudflare-account.mjs'
-      - 'scripts/cloudflare-d1-write-guard.mjs'
       - 'worker/scripts/run-pages-read-model-actions.mjs'
       - 'worker/scripts/run-pages-read-model-revision-actions.mjs'
       - 'worker/scripts/run-pages-history-read-model-actions.mjs'
@@ -27,6 +26,7 @@ on:
       - 'site/functions/api/host-history.js'
       - 'database/other-migrations/053_read_model_revisions.sql'
       - 'database/other-migrations/056_completed_read_model_revisions.sql'
+      - 'database/other-migrations/057_remove_monthly_read_model_revision.sql'
   workflow_dispatch:
     inputs:
       force_all:
@@ -65,9 +65,6 @@ jobs:
       PAGES_READ_MODEL_FORCE_ALL: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.force_all) }}
       PAGES_READ_MODEL_DUE_KEYS: ${{ github.event_name == 'workflow_dispatch' && inputs.due_keys || '' }}
       PAGES_READ_MODEL_RETRY_OVERDUE: 'true'
-      D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT: '4000'
-      D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT: '3500000'
-      D1_ACTIONS_READ_PROJECTION_MINUTES: '60'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -81,51 +78,19 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: worker/package-lock.json
-      - name: Check D1 Actions read and write budgets
-        id: d1-write-budget
-        run: node ../scripts/cloudflare-d1-write-guard.mjs
-      - name: Summarize D1 budget decision
-        if: always()
-        shell: bash
-        run: |
-          {
-            echo "### D1 Actions budget"
-            echo "- Decision: ${{ steps.d1-write-budget.outputs.reason }}"
-            echo "- UTC-day reads: ${{ steps.d1-write-budget.outputs.rows_read }} / ${{ steps.d1-write-budget.outputs.read_limit }}"
-            echo "- Projected UTC-day reads: ${{ steps.d1-write-budget.outputs.projected_rows_read }} / ${{ steps.d1-write-budget.outputs.read_limit }}"
-            echo "- Hourly writes: ${{ steps.d1-write-budget.outputs.rows_written }} / ${{ steps.d1-write-budget.outputs.limit }}"
-          } >> "$GITHUB_STEP_SUMMARY"
-      - name: Record D1 budget deferral
-        if: steps.d1-write-budget.outputs.read_allowed != 'true'
-        shell: bash
-        run: |
-          if [[ "${{ steps.d1-write-budget.outputs.reason }}" == 'telemetry-unavailable' ]]; then
-            echo "Deferring D1-heavy history read-model generation because usage telemetry is unavailable. Existing R2 responses remain active; daily history remains publishable and heavier history stays reuse-only." | tee pages-read-model-actions.log
-          else
-            echo "Deferring D1-heavy history read-model generation because the D1 read budget is unavailable or exceeded (${{ steps.d1-write-budget.outputs.rows_read }} actual / ${{ steps.d1-write-budget.outputs.projected_rows_read }} projected UTC-day reads, limit ${{ steps.d1-write-budget.outputs.read_limit }}). Existing R2 responses remain active; daily history remains publishable and heavier history stays reuse-only." | tee pages-read-model-actions.log
-          fi
       - name: Install Worker dependencies
         run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Refresh reusable history models during D1 budget deferral
-        if: steps.d1-write-budget.outputs.read_allowed != 'true'
+      - name: Remove retired monthly history read model
         shell: bash
-        env:
-          PAGES_READ_MODEL_REUSE_ONLY: 'true'
         run: |
-          set -o pipefail
-          node scripts/run-pages-history-read-model-actions.mjs 2>&1 | tee -a pages-read-model-actions.log
+          npx wrangler r2 object delete "$PAGES_RESPONSE_BUCKET/pages-response/actions-v2/686973746f72793a6d6f6e74686c79.json" --remote || true
+          npx wrangler r2 object delete "$PAGES_RESPONSE_BUCKET/pages-response/v1/history%3Amonthly.json" --remote || true
       - name: Publish due pages read models
-        if: steps.d1-write-budget.outputs.read_allowed == 'true'
         shell: bash
         run: |
           set -o pipefail
           node scripts/run-pages-history-read-model-actions.mjs 2>&1 | tee pages-read-model-actions.log
       - name: Publish compact track ranking to R2
-        if: >-
-          steps.d1-write-budget.outputs.read_allowed == 'true' ||
-          (steps.d1-write-budget.outputs.write_allowed == 'true' &&
-           (steps.d1-write-budget.outputs.reason == 'read-budget-exceeded' ||
-            steps.d1-write-budget.outputs.reason == 'projected-read-budget-exceeded'))
         run: node scripts/publish-track-ranking-status-actions.mjs
       - name: Upload pages read-model log
         if: always()
@@ -136,5 +101,4 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
       - name: Verify serving database
-        if: steps.d1-write-budget.outputs.read_allowed == 'true'
         run: node scripts/verify-facts-live.mjs
