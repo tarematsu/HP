@@ -223,3 +223,18 @@ test('history collection stops at its bound and keeps missing targets unknown', 
   assert.equal(missing.result, 'unknown');
   assert.match(missing.error, /150 completed runs/);
 });
+
+test('MINUTE_DB uses its schema job rather than skipped reusable workflow children', () => {
+  const jobs = [
+    { id: 1, name: 'Apply OTHER_DB migrations before deployment / Apply MINUTE_DB schema', conclusion: 'skipped' },
+    { id: 2, name: 'Apply MINUTE_DB migrations before deployment / Rebuild MINUTE_DB facts from local buddies SQLite', conclusion: 'skipped' },
+    { id: 3, name: 'Apply MINUTE_DB migrations before deployment / Apply MINUTE_DB schema', conclusion: 'success' },
+  ];
+  const summarize = () => summarizeDeploymentRun({ target: productionTarget, run: run(1, 'success'), targets: { minute_db: true }, jobs });
+  assert.equal(summarize().components[0].result, 'success');
+  jobs[1].conclusion = 'failure';
+  assert.equal(summarize().components[0].result, 'failure');
+  jobs[1].conclusion = 'skipped';
+  jobs[2].conclusion = 'skipped';
+  assert.equal(summarize().components[0].result, 'skipped');
+});
