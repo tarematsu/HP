@@ -105,3 +105,21 @@ test('a final read-model write failure leaves the last queue message unacked for
 
   assert.equal(last.acked, false);
 });
+
+
+test('Cloudflare queue context is never forwarded as the collector fetch function', async () => {
+  const item = message({ message_type: 'regional-music-collect', service: 'genie', scheduled_at: 1000 });
+  let actualFetch;
+  await runRegionalMusicQueue({ messages: [item] }, {}, { waitUntil() {} }, {
+    attemptState: async () => null,
+    ensureAttemptRecorded: async () => {},
+    collectService: async (_service, _env, _at, fetchImpl) => {
+      actualFetch = fetchImpl;
+      return { service: 'genie', status: 'ok' };
+    },
+    completionForRun: async () => ({ complete: false }),
+    publishReadModel: async () => ({ ok: true }),
+  });
+  assert.equal(actualFetch, globalThis.fetch);
+  assert.equal(item.acked, true);
+});

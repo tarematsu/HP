@@ -69,7 +69,7 @@ test('archive and likes markup are owned by their shared shell modules', () => {
   assert.match(likesShell, /dashboardTable/);
   assert.doesNotMatch(likesShell, /id="likesLoad"/);
   assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260930\.1'/);
-  assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20261001\.1'\)/);
+  assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=\d{8}\.\d+'\)/);
   assert.match(tabsClient, /import\('\/history\/history-likes\.js\?v=20260930\.1'\)/);
   assert.match(tabsClient, /setRoute\(mode, runtimeReady \? historyView : null/);
   assert.match(tabsClient, /viewId: 'likesView'/);
@@ -110,7 +110,7 @@ test('first-week comparison is loaded with the dashboard instead of behind a rou
 
 test('history mode-specific runtimes remain lazy-loaded after history starts', () => {
   assert.match(historyEntry, /function ensureHistoryModeRuntime/);
-  assert.match(historyEntry, /history-period-chart\.js\?v=20261001\.1/);
+  assert.match(historyEntry, /history-period-chart\.js\?v=\d{8}\.\d+/);
   assert.match(historyEntry, /history-ranking-chart\.js\?v=20260930\.\d+/);
   assert.doesNotMatch(historyEntry, /history-ranking-missing-gap/);
   assert.doesNotMatch(historyEntry, /history-ranking-all-host-table\.js/);

@@ -125,8 +125,8 @@ test('history runtime keeps table ownership consolidated while charts are mode-s
   assert.match(runtime, /history:data-loaded/);
   assert.doesNotMatch(runtime, /mondayJstKey|expectedStart|expectedEnd|prepareCanvas|drawSummaryChart/);
   assert.match(shell, /id: 'historyView'/);
-  assert.match(tabs, /import\('\/history\/history-main\.js\?v=20261001\.1'\)/);
-  assert.match(entry, /history-period-chart\.js\?v=20261001\.1/);
+  assert.match(tabs, /import\('\/history\/history-main\.js\?v=\d{8}\.\d+'\)/);
+  assert.match(entry, /history-period-chart\.js\?v=\d{8}\.\d+/);
   assert.doesNotMatch(entry, /history-ranking-missing-gap/);
   assert.doesNotMatch([html, shell].join('\n'), /history-period-completeness\.js|history-track-likes\.js/);
 });

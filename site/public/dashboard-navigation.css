@@ -166,3 +166,21 @@
     font-size: 12px;
   }
 }
+
+@media (max-width: 760px) {
+  .dashboard-source-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    overflow: visible;
+  }
+  .dashboard-source-row:first-child {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .dashboard-source-row > button {
+    width: 100%;
+    padding-inline: 4px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-wrap: balance;
+  }
+}

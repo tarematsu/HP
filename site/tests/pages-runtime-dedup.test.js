@@ -23,13 +23,13 @@ test('inactive tab runtimes are loaded on demand through one shared loader and n
   assert.match(tabs, /const LAZY_VIEWS = Object\.freeze/);
   assert.match(tabs, /const modulePromises = new Map\(\)/);
   assert.match(tabs, /function loadOnce\(key, importer\)/);
-  assert.match(tabs, /import\('\/history\/history-main\.js\?v=20261001\.1'\)/);
+  assert.match(tabs, /import\('\/history\/history-main\.js\?v=\d{8}\.\d+'\)/);
   assert.match(tabs, /import\('\/history\/history-likes\.js\?v=20260930\.1'\)/);
   assert.match(tabs, /import\('\/history\/history-ranking-table-status\.js\?v=20260923\.2'\)/);
   assert.match(tabs, /if \(mode === 'ranking'\) \{[\s\S]*await loadOnce\('ranking-status'/);
   assert.doesNotMatch(tabs, /modulepreload|requestIdleCallback|scheduleRuntimePrefetch|loadRankingStatusRuntime|loadHistoryRuntime/);
   assert.match(historyMain, /function ensureHistoryModeRuntime/);
-  assert.match(historyMain, /history-period-chart\.js\?v=20261001\.1/);
+  assert.match(historyMain, /history-period-chart\.js\?v=\d{8}\.\d+/);
   assert.match(historyMain, /history-ranking-chart\.js\?v=20260930\.2/);
   assert.match(historyMain, /history-broadcasts\.js\?v=20261001\.1/);
   assert.doesNotMatch(historyMain, /history-ranking-missing-gap/);

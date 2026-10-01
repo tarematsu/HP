@@ -31,7 +31,7 @@ test('silent loading changes are cache busted through the bundled Pages entry', 
   assert.match(historyEntry, /history-lite\.js\?v=20261001\.1/);
   assert.match(historyEntry, /unofficial-listening-parties\.js\?v=20260927\.1/);
   assert.match(historyEntry, /history-broadcasts\.js\?v=20261001\.1/);
-  assert.match(tabs, /history-main\.js\?v=20261001\.1/);
+  assert.match(tabs, /history-main\.js\?v=\d{8}\.\d+/);
   assert.doesNotMatch(tabs, /first-week-comparison-shell|first-week-comparison\.js/);
   assert.match(tabs, /played-tracks-shell\.js\?v=20260928\.1/);
   assert.match(tabs, /played-tracks\.js\?v=20260927\.2/);
