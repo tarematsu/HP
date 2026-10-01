@@ -9,9 +9,7 @@ import {
 import { publishAmazonMusicSakamichiModel } from './amazon-music-sakamichi-publisher.js';
 import { recordAmazonTop500Check } from './amazon-music-top500-history.js';
 import { canonicalizeAppleMusicPresentation } from './apple-music-canonical-presentation.js';
-import { canonicalizeAppleMusicPlaylistPresentation } from './apple-music-playlist-canonical-presentation.js';
 import { collectAppleMusicSnapshot } from './apple-music-collector.js';
-import { collectAppleMusicPlaylists } from './apple-music-playlist-collector.js';
 import { appleMusicFetch } from './apple-music-fetch.js';
 import {
   amazonMusicServiceEnv,
@@ -48,15 +46,6 @@ async function collectAppleMusic(env, scheduledTime) {
   if (result?.changed || result?.migrated_track_ids || presentation?.presentation_changed) {
     result.other_db = await persistAppleMusicModelToOther(env, scheduledTime);
   }
-  return result;
-}
-
-async function collectAppleMusicPlaylistData(env, scheduledTime) {
-  const result = await collectAppleMusicPlaylists(env, scheduledTime);
-  const presentation = await canonicalizeAppleMusicPlaylistPresentation(env, scheduledTime, {
-    force: !result?.skipped,
-  });
-  if (presentation?.updated) result.canonical_presentation = presentation;
   return result;
 }
 
@@ -107,7 +96,6 @@ export function amazonMusicDueTasks(scheduledTime) {
   const minute = date.getUTCMinutes();
   return {
     apple: minute === 15,
-    playlists: minute === 15 && date.getUTCHours() === 18,
     top500: minute === 5,
     deep100k: minute % 10 === 2,
   };
@@ -120,12 +108,6 @@ function unifiedScheduledRuns(env, scheduledTime) {
     runs.push(loggedRun(
       'apple-music-collection',
       () => collectAppleMusic(env, scheduledTime),
-    ));
-  }
-  if (due.playlists) {
-    runs.push(loggedRun(
-      'apple-music-playlist-collection',
-      () => collectAppleMusicPlaylistData(env, scheduledTime),
     ));
   }
   if (due.top500) {
@@ -168,7 +150,7 @@ export default {
       );
     } else {
       // Manual/test scheduled invocations retain the hourly Amazon update check
-      // and Apple Music probe, without reviving the retired daily Amazon collector.
+      // and Apple Music probe. Playlist sweeps are owned by GitHub Actions.
       run = Promise.all([
         loggedRun(
           'amazon-music-top-500-monitor',
