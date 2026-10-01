@@ -22,8 +22,8 @@ function assetVersion(source, asset) {
 test('dashboard ships one CSS and one JavaScript browser asset', () => {
   const styles = [...html.matchAll(/<link\s+rel="stylesheet"\s+href="([^"]+)"/g)].map((match) => match[1]);
   const modules = [...html.matchAll(/<script\s+type="module"\s+src="([^"]+)"/g)].map((match) => match[1]);
-  assert.deepEqual(styles, ['/assets/dashboard.min.css?v=20261001.7']);
-  assert.deepEqual(modules, ['/assets/dashboard.min.js?v=20261001.7']);
+  assert.deepEqual(styles, ['/assets/dashboard.min.css?v=20261001.8']);
+  assert.deepEqual(modules, ['/assets/dashboard.min.js?v=20261001.8']);
   assert.match(html, /data-dashboard-css-bundled="true"/);
   assert.match(assetVersion(html, 'assets/dashboard.min.css'), /^\d{8}\.\d+$/);
   assert.match(assetVersion(html, 'assets/dashboard.min.js'), /^\d{8}\.\d+$/);

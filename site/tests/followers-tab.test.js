@@ -27,8 +27,11 @@ test('followers is registered in the common lazy router after its shell mounts',
 test('followers tab keeps the fixed accounts and renders through the shared Canvas foundation', () => {
   for (const handle of FIXED_HANDLES) assert.match(runtime, new RegExp(`'${handle}'`));
   assert.match(runtime, /payloadHandles\(payload\)/);
-  assert.match(runtime, /handles\.forEach/);
-  assert.match(runtime, /SERIES_STYLES/);
+  assert.match(runtime, /accounts\.forEach/);
+  assert.match(runtime, /GROUP_COLORS/);
+  assert.match(runtime, /sakurazaka46: '#f3a6c8'/);
+  assert.match(runtime, /nogizaka46: '#8264b0'/);
+  assert.match(runtime, /hinatazaka46: '#9ecff3'/);
   assert.match(runtime, /dashboard-chart-canvas\.js\?v=20261001\.2/);
   for (const helper of ['prepareDashboardCanvas', 'drawDashboardGrid', 'drawDashboardLine', 'drawDashboardXAxis', 'dashboardTickIndexes']) {
     assert.match(runtime, new RegExp(helper));
@@ -42,11 +45,20 @@ test('followers tab keeps the fixed accounts and renders through the shared Canv
   assert.doesNotMatch(runtime, /svgElement|createSvgNode/);
   assert.doesNotMatch(css, /followers-grid-line|followers-axis-label|followers-line-|followers-endpoint/);
   assert.match(shell, /dashboardTable/);
-  assert.match(shell, /headers: \['アカウント名', 'フォロワー数', '前日比', '1週間前比'\]/);
+  assert.match(shell, /headers: \['アカウント名', '所属', 'フォロワー数', '前日比', '1週間前比'\]/);
   assert.match(shell, /bodyId: 'followersTbody'/);
   assert.match(sharedUi, /numeric && 'shared-numeric-table'/);
   assert.match(runtime, /previous_day_delta/);
   assert.match(runtime, /previous_week_delta/);
+});
+
+test('followers affiliations drive the same group colors used by Spotify', () => {
+  for (const label of ['櫻坂46公式', '乃木坂46公式', 'Buddies']) assert.match(runtime, new RegExp(label));
+  assert.match(runtime, /payload\?\.memberships\?\.\[handle\]/);
+  assert.match(runtime, /account\.affiliation/);
+  assert.match(runtime, /GROUP_COLORS\[account\?\.group\]/);
+  assert.match(css, /followers-affiliation-col/);
+  assert.match(css, /followers-affiliation/);
 });
 
 test('new follower targets keep pre-registration history sparse instead of inventing zeroes', () => {

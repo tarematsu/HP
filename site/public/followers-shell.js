@@ -14,8 +14,8 @@ void dashboardChartHost;
 const followersTable = dashboardTable({
   className: 'followers-table',
   wrapClassName: 'table-fit-mobile',
-  colgroupHtml: '<colgroup><col class="followers-account-col"><col><col><col></colgroup>',
-  headers: ['アカウント名', 'フォロワー数', '前日比', '1週間前比'],
+  colgroupHtml: '<colgroup><col class="followers-account-col"><col class="followers-affiliation-col"><col><col><col></colgroup>',
+  headers: ['アカウント名', '所属', 'フォロワー数', '前日比', '1週間前比'],
   bodyId: 'followersTbody',
 });
 
