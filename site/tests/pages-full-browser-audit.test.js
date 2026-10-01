@@ -6,23 +6,25 @@ const audit = readFileSync(new URL('../../scripts/audit-pages-live.mjs', import.
 const compactAudit = readFileSync(new URL('../../scripts/audit-pages-mobile-compact.mjs', import.meta.url), 'utf8');
 
 test('production browser audit covers every current dashboard route', () => {
-  for (const mode of ['current', 'daily', 'ranking', 'first-week', 'played-tracks', 'spotify', 'likes', 'broadcasts']) {
+  for (const mode of ['current', 'daily', 'ranking', 'played-tracks', 'spotify', 'likes', 'broadcasts']) {
     assert.match(audit, new RegExp(`name: '${mode}'`));
   }
   assert.match(audit, /path: '\/#daily'/);
   assert.match(audit, /path: '\/#ranking'/);
   assert.match(audit, /path: '\/#likes'/);
   assert.match(audit, /path: '\/#broadcasts'/);
-  assert.match(audit, /path: '\/#first-week'/);
   assert.match(audit, /path: '\/#played-tracks'/);
   assert.match(audit, /path: '\/#spotify'/);
   assert.match(audit, /panel: '#spotifyView'/);
+  assert.doesNotMatch(audit, /name: 'first-week'/);
+  assert.doesNotMatch(audit, /path: '\/#first-week'/);
   assert.doesNotMatch(audit, /name: 'weekly'/);
   assert.doesNotMatch(audit, /name: 'monthly'/);
   assert.doesNotMatch(audit, /path: '\/#weekly'/);
   assert.doesNotMatch(audit, /path: '\/#monthly'/);
   assert.doesNotMatch(audit, /path: '\/#unofficial'/);
   assert.match(audit, /requiredText: '非公式リスパ一覧'/);
+  assert.match(audit, /additionalRequiredText: '比較対象'/);
 });
 
 test('production browser audit captures desktop tablet and mobile layouts', () => {
@@ -35,6 +37,7 @@ test('production browser audit captures desktop tablet and mobile layouts', () =
   assert.match(audit, /navigationScrollable/);
   assert.match(audit, /selectedTabClipped/);
   assert.match(audit, /visiblePanels/);
+  assert.doesNotMatch(audit, /'#firstWeekView'.*visiblePanels/);
   assert.match(audit, /clippedTabs\) > 0 && !layout\.navigationScrollable/);
 });
 
@@ -52,11 +55,14 @@ test('full-page screenshots reveal content-visibility sections before capture', 
 });
 
 test('compact production audit follows the current routes and scrollable navigation', () => {
+  assert.doesNotMatch(compactAudit, /name: 'first-week'/);
+  assert.doesNotMatch(compactAudit, /path: '\/#first-week'/);
   assert.doesNotMatch(compactAudit, /name: 'weekly'/);
   assert.doesNotMatch(compactAudit, /name: 'monthly'/);
   assert.doesNotMatch(compactAudit, /path: '\/#weekly'/);
   assert.doesNotMatch(compactAudit, /path: '\/#monthly'/);
   assert.match(compactAudit, /requiredText: '総週数'/);
+  assert.match(compactAudit, /additionalRequiredText: '比較対象'/);
   assert.match(compactAudit, /navigationScrollable/);
   assert.match(compactAudit, /selectedTabClipped/);
   assert.match(compactAudit, /clippedTabs > 0 && !layout\.navigationScrollable/);
