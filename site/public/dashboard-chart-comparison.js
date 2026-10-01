@@ -18,7 +18,7 @@ let observedCanvasWidth = 0;
 
 function normalizeCurrent(rows) {
   const list = Array.isArray(rows) ? rows : [];
-  const latest = list.reduce((maximum, row) => Math.max(maximum, finite(row?.observed_at) || 0), 0);
+  const latest = list.reduce((maximum, row) => Math.max(maximum, finite(row?.observed_at) || 0), 0;
   if (!latest) return [];
   const cutoff = latest - DAY_MS;
   const byTime = new Map();
@@ -98,6 +98,18 @@ function labelBox(context, text, x, y, align, width, height) {
   context.restore();
 }
 
+function drawSeries(context, rows, xFor, yFor, color, width) {
+  return drawDashboardLine(context, rows, {
+    x: (row) => xFor(finite(row?.observed_at)),
+    y: (value) => yFor(value),
+    value: (row) => finite(row?.online_member_count),
+    valid: (value) => value != null,
+    gap: (before, after) => finite(after?.observed_at) - finite(before?.observed_at) > 20 * 60_000,
+    strokeStyle: color,
+    lineWidth: width,
+  });
+}
+
 function roundedStreamMax(value) {
   if (!Number.isFinite(value) || value <= 0) return 1;
   const step = value <= 20 ? 5 : value <= 100 ? 10 : value <= 500 ? 50 : 100;
@@ -131,8 +143,8 @@ function drawComparison(payload) {
   const current = normalizeCurrent(payload?.history);
   if (!canvas || !current.length) return false;
 
-  const measuredWidth = canvasWidth(canvas);
-  if (!measuredWidth) return false;
+  const width = canvasWidth(canvas);
+  if (!width) return false;
 
   const minTime = current[0].observed_at;
   const maxTime = current.at(-1).observed_at;
@@ -140,18 +152,18 @@ function drawComparison(payload) {
   const streamAverages = normalizeStreamAverages(payload?.stream_5m_history, minTime, maxTime);
   ensureLegend(previous.length > 0, streamAverages.length > 0);
 
-  const targetHeight = measuredWidth < 520 ? 330 : Math.max(350, Math.min(430, Math.round(measuredWidth * .49)));
+  const targetHeight = width < 520 ? 330 : Math.max(350, Math.min(430, Math.round(width * .49)));
   const prepared = prepareDashboardCanvas(canvas, {
     minimumWidth: 1,
     minimumHeight: 1,
-    fallbackWidth: measuredWidth,
+    fallbackWidth: width,
     height: targetHeight,
   });
   if (!prepared) return false;
-  const { context, width, height } = prepared;
+  const { context, width: drawWidth, height } = prepared;
 
   const padding = { left: 50, right: 50, top: 28, bottom: 42 };
-  const plotWidth = Math.max(1, width - padding.left - padding.right);
+  const plotWidth = Math.max(1, drawWidth - padding.left - padding.right);
   const plotHeight = Math.max(1, height - padding.top - padding.bottom);
   const plotBottom = padding.top + plotHeight;
   const timeSpan = Math.max(1, maxTime - minTime);
@@ -184,25 +196,17 @@ function drawComparison(payload) {
     right: padding.right,
     top: padding.top,
     height: plotHeight,
-    width,
+    width: drawWidth,
   })) {
     context.textAlign = 'right';
     context.fillText(integer.format(Math.round(onlineMax - onlineRange * ratio)), padding.left - 6, y);
     context.textAlign = 'left';
-    context.fillText(integer.format(Math.round(streamMax * (1 - ratio))), width - padding.right + 6, y);
+    context.fillText(integer.format(Math.round(streamMax * (1 - ratio))), drawWidth - padding.right + 6, y);
   }
 
   drawStreamBars(context, streamAverages, xFor, yStream, plotBottom, plotWidth);
-  const lineOptions = {
-    x: (row) => xFor(finite(row?.observed_at)),
-    y: (value) => yOnline(value),
-    value: (row) => finite(row?.online_member_count),
-    valid: (value) => value != null,
-    gap: (before, after) => finite(after?.observed_at) - finite(before?.observed_at) > 20 * 60_000,
-    lineWidth: 2,
-  };
-  drawDashboardLine(context, previous, { ...lineOptions, strokeStyle: '#969ca6' });
-  drawDashboardLine(context, current, { ...lineOptions, strokeStyle: '#111' });
+  drawSeries(context, previous, xFor, yOnline, '#969ca6', 2);
+  drawSeries(context, current, xFor, yOnline, '#111', 2);
 
   context.fillStyle = '#667287';
   context.textAlign = 'center';
@@ -216,9 +220,9 @@ function drawComparison(payload) {
   context.textAlign = 'left';
   context.fillText('オンライン数（人）', 4, 12);
   context.textAlign = 'right';
-  context.fillText('再生数増加', width - 4, 12);
+  context.fillText('再生数増加', drawWidth - 4, 12);
   context.textAlign = 'center';
-  context.fillText('時刻（JST）', width / 2, height - 2);
+  context.fillText('時刻（JST）', drawWidth / 2, height - 2);
 
   if (currentOnline.length) {
     const currentMin = Math.min(...currentOnline);
@@ -230,17 +234,17 @@ function drawComparison(payload) {
       context.beginPath();
       context.arc(xFor(minRow.observed_at), yOnline(currentMin), 3, 0, Math.PI * 2);
       context.fill();
-      labelBox(context, `最小 ${integer.format(currentMin)}（${jstTime.format(new Date(minRow.observed_at))}）`, xFor(minRow.observed_at) + 5, yOnline(currentMin) + 14, 'left', width, height);
+      labelBox(context, `最小 ${integer.format(currentMin)}（${jstTime.format(new Date(minRow.observed_at))}）`, xFor(minRow.observed_at) + 5, yOnline(currentMin) + 14, 'left', drawWidth, height);
     }
     if (maxRow) {
       context.fillStyle = EXTREMA_POINT_COLOR;
       context.beginPath();
       context.arc(xFor(maxRow.observed_at), yOnline(currentMax), 3, 0, Math.PI * 2);
       context.fill();
-      labelBox(context, `最大 ${integer.format(currentMax)}（${jstTime.format(new Date(maxRow.observed_at))}）`, xFor(maxRow.observed_at) - 5, yOnline(currentMax) - 14, 'right', width, height);
+      labelBox(context, `最大 ${integer.format(currentMax)}（${jstTime.format(new Date(maxRow.observed_at))}）`, xFor(maxRow.observed_at) - 5, yOnline(currentMax) - 14, 'right', drawWidth, height);
     }
   }
-  observedCanvasWidth = width;
+  observedCanvasWidth = drawWidth;
   return true;
 }
 
