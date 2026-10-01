@@ -3,6 +3,14 @@
 .spotify-table td:nth-child(n + 3) { white-space: nowrap !important; }
 
 @media (max-width: 760px) {
+  .top-card.dashboard-header {
+    padding-top: 0 !important;
+  }
+
+  .top-card.dashboard-header > .channel {
+    display: none !important;
+  }
+
   #modeTabs.mode-tabs.dashboard-tabs {
     display: grid;
     grid-template-columns: repeat(7, max-content);
