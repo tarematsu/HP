@@ -21,7 +21,7 @@ function unique(values, label) {
 test('API contract contains unique canonical paths only', () => {
   const canonical = canonicalApiPaths();
   unique(canonical, 'canonical API paths');
-  assert.equal(canonical.length, 20);
+  assert.equal(canonical.length, 21);
   assert.ok(canonical.includes('/api/dashboard-details'));
   assert.ok(canonical.includes('/api/hinata'));
   assert.ok(canonical.includes('/api/history-current'));
