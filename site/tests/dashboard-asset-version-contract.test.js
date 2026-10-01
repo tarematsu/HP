@@ -65,10 +65,11 @@ test('Canvas chart normalization lives in source modules instead of build transf
   assert.match(currentChart, /context\.font = '11px system-ui'/);
   assert.match(currentChart, /drawSeries\(context, current, xFor, yOnline, '#111', 2\)/);
   assert.match(firstWeekChart, /context\.font = '11px system-ui'/);
-  assert.match(firstWeekChart, /context\.lineWidth = 2/);
+  assert.match(firstWeekChart, /lineWidth: 2/);
+  assert.match(firstWeekChart, /drawDashboardLine/);
   assert.match(periodChart, /context\.font = '11px system-ui'/);
   assert.match(periodChart, /width: 2/);
   assert.match(rankingChart, /context\.font = '11px system-ui'/);
-  assert.match(rankingChart, /context\.lineWidth = 2/);
-  assert.match(rankingChart, /context\.arc\(positions\[index\], yFor\(rank\), 3,/);
+  assert.match(rankingChart, /lineWidth: 2/);
+  assert.match(rankingChart, /context\.arc\(positions\[row\.index\], yFor\(row\.rank\), 3,/);
 });
