@@ -13,7 +13,7 @@ permissions:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     environment: production
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
@@ -61,18 +61,16 @@ jobs:
           done
           if [ "$ready" != 1 ]; then cat "$log"; echo "Wrangler remote dev did not become ready" >&2; exit 1; fi
 
-          if ! curl -fsS "http://127.0.0.1:8787/cdn-cgi/local/scheduled?cron=0+15+*+*+*"; then
-            curl -fsS "http://127.0.0.1:8787/__scheduled?cron=0+15+*+*+*"
+          if ! curl --max-time 900 -fsS "http://127.0.0.1:8787/cdn-cgi/local/scheduled?cron=0+15+*+*+*"; then
+            curl --max-time 900 -fsS "http://127.0.0.1:8787/__scheduled?cron=0+15+*+*+*"
           fi
 
-          complete=0
-          for _ in $(seq 1 750); do
-            if grep -q 'youtube-music-daily-complete' "$log"; then complete=1; break; fi
-            if ! kill -0 "$pid" 2>/dev/null; then cat "$log"; exit 1; fi
-            sleep 2
-          done
+          sleep 2
           cat "$log"
-          if [ "$complete" != 1 ]; then echo "YouTube Music collector did not complete" >&2; exit 1; fi
+          grep -q 'youtube-music-daily-complete' "$log" || {
+            echo "YouTube Music collector did not complete" >&2
+            exit 1
+          }
 
       - name: Verify YouTube Music read model
         shell: bash
