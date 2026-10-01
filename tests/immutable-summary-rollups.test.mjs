@@ -13,6 +13,16 @@ test('daily reconciliation detects missing and stale channel-minute facts', () =
   assert.match(reconcile, /expectedSourceRecordId\(row\)/);
 });
 
+test('reconciliation bounds the active rebuild backlog before enqueueing stale history', () => {
+  assert.match(reconcile, /DEFAULT_ACTIVE_REBUILD_CAP = 1/);
+  assert.match(reconcile, /idx_sh_minute_fact_jobs_status_kind_minute/);
+  assert.match(reconcile, /status IN \('pending','processing'\) AND job_kind='rebuild'/);
+  assert.match(reconcile, /const enqueueCapacity = Math\.max\(0, activeRebuildCap - activeRebuilds\)/);
+  assert.match(reconcile, /Math\.min\([\s\S]*enqueueCapacity/);
+  assert.match(reconcile, /activeRebuilds,/);
+  assert.match(reconcile, /activeRebuildCap,/);
+});
+
 test('missing done and dead jobs are forcefully requeued from source snapshots', () => {
   assert.match(reconcile, /requeueCompleted: true/);
   assert.match(reconcile, /forceRepair: true/);
