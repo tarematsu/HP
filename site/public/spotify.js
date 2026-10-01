@@ -18,6 +18,13 @@ import { observeDashboardChartResize } from './dashboard-chart-runtime.js?v=2026
 
 let selectedArtistKey = 'sakurazaka46';
 const TREND_ARTIST_LIMIT = 10;
+const GRAPH_ARTIST_KEYS = Object.freeze(['nogizaka46', 'sakurazaka46', 'hinatazaka46']);
+const GRAPH_ARTIST_KEY_SET = new Set(GRAPH_ARTIST_KEYS);
+const GRAPH_ARTIST_COLORS = Object.freeze({
+  nogizaka46: '#8264b0',
+  sakurazaka46: '#f3a6c8',
+  hinatazaka46: '#9ecff3',
+});
 const TREND_COLORS = Object.freeze([
   '#f3a6c8', '#8264b0', '#9ecff3', '#ef8a62', '#67a9cf',
   '#a6d854', '#ffd92f', '#e78ac3', '#8da0cb', '#fc8d62',
@@ -70,6 +77,14 @@ function normalizeTrendSeries(trend = {}) {
     };
   }).filter((series) => series.points.length)
     .sort((a, b) => a.artistName.localeCompare(b.artistName, 'ja'));
+}
+
+function graphTrendSeries(seriesList = []) {
+  return seriesList.filter((series) => GRAPH_ARTIST_KEY_SET.has(String(series?.artistKey || '')));
+}
+
+function graphTrendColor(series, fallbackIndex = 0) {
+  return GRAPH_ARTIST_COLORS[series?.artistKey] || TREND_COLORS[fallbackIndex % TREND_COLORS.length];
 }
 
 export function selectTrendSeriesByLatestMetric(seriesList = [], metricKey, limit = TREND_ARTIST_LIMIT) {
@@ -130,7 +145,7 @@ function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel, maxSe
   if (!container) return;
   container.replaceChildren();
 
-  const normalizedSeries = normalizeTrendSeries(trend);
+  const normalizedSeries = graphTrendSeries(normalizeTrendSeries(trend));
   const seriesList = Number.isInteger(maxSeries) && maxSeries > 0
     ? selectTrendSeriesByLatestMetric(normalizedSeries, metricKey, maxSeries)
     : normalizedSeries;
@@ -151,8 +166,9 @@ function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel, maxSe
   const yRange = Math.max(1, yMax - yMin);
   const { legend, canvas } = trendFrame(container, ariaLabel);
   legend.setAttribute('aria-label', 'アイドル凡例と最新の再生数前日比');
-  seriesList.forEach(({ artistName, points }, seriesIndex) => {
-    const color = TREND_COLORS[seriesIndex % TREND_COLORS.length];
+  seriesList.forEach((series, seriesIndex) => {
+    const { artistName, points } = series;
+    const color = graphTrendColor(series, seriesIndex);
     const latest = [...points].reverse().find((point) => integer(point?.[metricKey]) != null);
     legend.append(legendItem(artistName, signedInteger(latest?.[metricKey]), color));
   });
@@ -196,8 +212,9 @@ function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel, maxSe
     context.fillText(formatTrendDate(dates[index]), xFor(dates[index]), height - 10);
   }
 
-  seriesList.forEach(({ points }, seriesIndex) => {
-    const color = TREND_COLORS[seriesIndex % TREND_COLORS.length];
+  seriesList.forEach((series, seriesIndex) => {
+    const { points } = series;
+    const color = graphTrendColor(series, seriesIndex);
     const byDate = new Map(points.map((point) => [String(point.snapshot_date), point]));
     const rows = dates.map((date) => ({ date, value: integer(byDate.get(date)?.[metricKey]) }));
     const plotted = rows.filter((row) => row.value != null);
@@ -222,7 +239,7 @@ function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel, maxSe
 }
 
 export function normalizeArtistRankSeries(chart = {}, trend = {}) {
-  const tracked = normalizeTrendSeries(trend);
+  const tracked = graphTrendSeries(normalizeTrendSeries(trend));
   const byKey = new Map(tracked.map((series) => [series.artistKey, {
     artistKey: series.artistKey,
     artistName: series.artistName,
@@ -270,7 +287,7 @@ function renderArtistRankChart(chart = {}, trend = {}) {
   legend.setAttribute('aria-label', 'アーティスト凡例と最新順位');
   for (const series of seriesList) {
     const latest = series.points.at(-1);
-    const color = TREND_COLORS[series.colorIndex % TREND_COLORS.length];
+    const color = graphTrendColor(series, series.colorIndex);
     legend.append(legendItem(series.artistName, latest ? `${numberFormat.format(latest.rank)}位` : '-', color));
   }
 
@@ -314,7 +331,7 @@ function renderArtistRankChart(chart = {}, trend = {}) {
   }
 
   for (const series of seriesList) {
-    const color = TREND_COLORS[series.colorIndex % TREND_COLORS.length];
+    const color = graphTrendColor(series, series.colorIndex);
     const byDate = new Map(series.points.map((point) => [point.chart_date, point]));
     const rows = dates.map((date) => ({ date, rank: integer(byDate.get(date)?.rank) }));
     drawDashboardLine(context, rows, {
