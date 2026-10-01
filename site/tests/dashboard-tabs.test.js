@@ -38,7 +38,7 @@ test('dashboard starts on current and exposes every visible mode through the sha
 
 test('dashboard keeps Spotify at the right edge before routing starts', () => {
   assert.match(dashboardEntry, /dashboard-tab-order\.js\?v=20261002\.1/);
-  assert.match(dashboardEntry, /dashboard-tabs\.js\?v=20261002\.1/);
+  assert.match(dashboardEntry, /dashboard-tabs\.js\?v=20260930\.1/);
   assert.ok(dashboardEntry.indexOf('dashboard-tab-order.js') < dashboardEntry.indexOf('dashboard-tabs.js'));
   assert.doesNotMatch(tabOrder, /firstWeek|first-week/);
   assert.match(tabOrder, /tabs\.append\(spotify\)/);
@@ -68,7 +68,7 @@ test('archive and likes markup are owned by their shared shell modules', () => {
   assert.match(likesShell, /dashboardNotice/);
   assert.match(likesShell, /dashboardTable/);
   assert.doesNotMatch(likesShell, /id="likesLoad"/);
-  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20261002\.1'/);
+  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260930\.1'/);
   assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20261001\.1'\)/);
   assert.match(tabsClient, /import\('\/history\/history-likes\.js\?v=20260930\.1'\)/);
   assert.match(tabsClient, /setRoute\(mode, runtimeReady \? historyView : null/);
