@@ -43,24 +43,24 @@ test('single Amazon cron preserves ranking work and schedules per-track playlist
 
 test('scheduled entry separates canonical identity from service storage', () => {
   const source = readFileSync(new URL('../src/amazon-music-entry.js', import.meta.url), 'utf8');
-  assert.match(source, /AMAZON_MUSIC_CRON = '2,5,12,15,22,32,42,52 \\* \\* \\* \\*'/);
+  assert.match(source, /AMAZON_MUSIC_CRON = '2,5,12,15,22,32,42,52 \* \* \* \*'/);
   assert.match(source, /amazonMusicDueTasks/);
   assert.match(source, /minute === 15/);
-  assert.match(source, /getUTCHours\\(\\) === 18/);
-  assert.match(source, /collectAppleMusicPlaylistData\\(env, scheduledTime\\)/);
+  assert.match(source, /getUTCHours\(\) === 18/);
+  assert.match(source, /collectAppleMusicPlaylists\(env, scheduledTime\)/);
   assert.match(source, /from '\.\/amazon-music-track-playlist-fetch\.js'/);
-  assert.match(source, /collectAmazonMusicTrackPlaylists\\(\s*amazonMusicServiceEnv\\(env\\),\s*scheduledTime,\s*amazonMusicTrackPlaylistFetch,\s*\\)/);
+  assert.match(source, /collectAmazonMusicTrackPlaylists\(\s*amazonMusicServiceEnv\(env\),\s*scheduledTime,\s*amazonMusicTrackPlaylistFetch,\s*\)/);
   assert.match(source, /minute === 5/);
   assert.match(source, /minute % 10 === 2/);
-  assert.match(source, /amazonMusicServiceEnv\\(env\\)/);
-  assert.match(source, /persistAppleMusicModelToOther\\(env, scheduledTime\\)/);
-  assert.match(source, /persistAmazonMusicModelToOther\\(env, scheduledTime\\)/);
+  assert.match(source, /amazonMusicServiceEnv\(env\)/);
+  assert.match(source, /persistAppleMusicModelToOther\(env, scheduledTime\)/);
+  assert.match(source, /persistAmazonMusicModelToOther\(env, scheduledTime\)/);
   assert.doesNotMatch(source, /AMAZON_MUSIC_DAILY_CRON|collectAmazonMusicSnapshot/);
 });
 
 test('Amazon Music bundle participates in Worker checks and deployment', () => {
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   assert.match(pkg.scripts['check:bundle'], /check:amazon-music-bundle/);
-  assert.match(pkg.scripts['check:amazon-music-bundle'], /wrangler\\.amazon-music\\.jsonc/);
+  assert.match(pkg.scripts['check:amazon-music-bundle'], /wrangler\.amazon-music\.jsonc/);
   assert.equal(pkg.scripts['deploy:amazon-music'], 'node scripts/deploy-amazon-music.mjs');
 });
