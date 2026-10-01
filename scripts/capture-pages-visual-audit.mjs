@@ -63,12 +63,24 @@ async function revealPage(page) {
 }
 
 async function getTabSnapshot(page) {
-  return page.locator('#modeTabs button').evaluateAll((buttons) => buttons.map((button, index) => ({
-    index,
-    text: (button.textContent || '').trim(),
-    view: button.dataset.view || '',
-    mode: button.dataset.mode || '',
-  })));
+  return page.locator('#modeTabs button').evaluateAll((buttons) => buttons
+    .map((button, index) => {
+      const style = getComputedStyle(button);
+      const rect = button.getBoundingClientRect();
+      return {
+        index,
+        text: (button.textContent || '').trim(),
+        view: button.dataset.view || '',
+        mode: button.dataset.mode || '',
+        visible: !button.hidden
+          && style.display !== 'none'
+          && style.visibility !== 'hidden'
+          && rect.width > 0
+          && rect.height > 0,
+      };
+    })
+    .filter(({ visible }) => visible)
+    .map(({ visible: _visible, ...tab }) => tab));
 }
 
 async function inspectView(page, tab, viewport, outDir) {
@@ -174,7 +186,7 @@ async function auditViewport(browser, baseUrl, viewport, outDir) {
   await settle(page);
 
   const tabs = await getTabSnapshot(page);
-  if (!tabs.length) throw new Error('No navigation tabs were found');
+  if (!tabs.length) throw new Error('No visible navigation tabs were found');
 
   const views = [];
   for (const tab of tabs) {
