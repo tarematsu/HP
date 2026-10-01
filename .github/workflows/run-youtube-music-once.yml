@@ -1,0 +1,94 @@
+name: Run YouTube Music collector once
+
+on:
+  push:
+    branches:
+      - feature/youtube-music-midnight-aobazaka-20261002
+    paths:
+      - ".github/workflows/run-youtube-music-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - name: Install worker dependencies
+        working-directory: worker
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Run focused tests
+        working-directory: worker
+        run: node --test tests/regional-music-service-registry.test.js tests/regional-music-youtube-music.test.js
+
+      - name: Run YouTube Music collector once against production bindings
+        working-directory: worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/youtube-music-once.log"
+          npm exec -- wrangler dev --remote --test-scheduled --config wrangler.regional-music.jsonc --port 8787 --log-level info >"$log" 2>&1 &
+          pid=$!
+          cleanup() { kill "$pid" 2>/dev/null || true; }
+          trap cleanup EXIT
+
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl -sS -o /dev/null http://127.0.0.1:8787/; then ready=1; break; fi
+            if ! kill -0 "$pid" 2>/dev/null; then cat "$log"; exit 1; fi
+            sleep 2
+          done
+          if [ "$ready" != 1 ]; then cat "$log"; echo "Wrangler remote dev did not become ready" >&2; exit 1; fi
+
+          if ! curl -fsS "http://127.0.0.1:8787/cdn-cgi/local/scheduled?cron=0+15+*+*+*"; then
+            curl -fsS "http://127.0.0.1:8787/__scheduled?cron=0+15+*+*+*"
+          fi
+
+          complete=0
+          for _ in $(seq 1 750); do
+            if grep -q 'youtube-music-daily-complete' "$log"; then complete=1; break; fi
+            if ! kill -0 "$pid" 2>/dev/null; then cat "$log"; exit 1; fi
+            sleep 2
+          done
+          cat "$log"
+          if [ "$complete" != 1 ]; then echo "YouTube Music collector did not complete" >&2; exit 1; fi
+
+      - name: Verify YouTube Music read model
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 6 --retry-delay 10 --retry-all-errors "https://skrzk.pages.dev/api/regional-music?run=${GITHUB_RUN_ID}" -o "$RUNNER_TEMP/regional-music.json"
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const payload = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/regional-music.json', 'utf8'));
+          if (payload?.ok !== true) throw new Error(`regional-music API not ok: ${JSON.stringify(payload)}`);
+          const state = (payload.services || []).find((item) => item.service === 'youtube_music') || null;
+          const artists = (payload.artists || []).filter((item) => item.service === 'youtube_music');
+          console.log(JSON.stringify({
+            ok: true,
+            generated_at: payload.generated_at || payload.generatedAt,
+            state,
+            artists: artists.map((item) => ({ canonical_artist: item.canonical_artist, display_name: item.display_name })),
+          }));
+          NODE
