@@ -78,6 +78,6 @@ test('Spotify shell mounts monthly listeners on the shared canvas chart containe
   assert.doesNotMatch(shell, /spotify-monthly-listeners\?format=svg|<img[^>]+Spotify月間リスナー/);
   assert.match(runtime, /monthlyListenerTrend\(monthlyListenerRows\)/);
   assert.match(runtime, /metricKey: 'monthly_listeners'/);
-  assert.match(runtime, /zeroBaseline: false/);
+  assert.match(runtime, /latestFormatter: formatInteger/);
   assert.match(runtime, /drawDashboardLine/);
 });
