@@ -1,4 +1,5 @@
 export const OHISAMA_FOLLOWER_TARGET_CACHE_KEY = 'stationhead/ohisama/follower-targets.json';
+const CACHE_VERSION = 2;
 const MAX_CACHED_HANDLES = 256;
 
 function normalizedHandle(value) {
@@ -14,7 +15,7 @@ async function loadHandles(bucket) {
     const value = typeof object.json === 'function'
       ? await object.json()
       : JSON.parse(await object.text());
-    if (Number(value?.version) !== 1 || !Array.isArray(value?.handles)) return new Set();
+    if (Number(value?.version) !== CACHE_VERSION || !Array.isArray(value?.handles)) return new Set();
     return new Set(value.handles.map(normalizedHandle).filter(Boolean));
   } catch {
     return new Set();
@@ -25,12 +26,12 @@ async function saveHandles(bucket, handles, observedAt) {
   if (typeof bucket?.put !== 'function') return false;
   const values = [...handles].slice(-MAX_CACHED_HANDLES);
   await bucket.put(OHISAMA_FOLLOWER_TARGET_CACHE_KEY, JSON.stringify({
-    version: 1,
+    version: CACHE_VERSION,
     updated_at: observedAt,
     handles: values,
   }), {
     httpMetadata: { contentType: 'application/json; charset=utf-8' },
-    customMetadata: { version: '1', updated_at: String(observedAt) },
+    customMetadata: { version: String(CACHE_VERSION), updated_at: String(observedAt) },
   });
   return true;
 }
