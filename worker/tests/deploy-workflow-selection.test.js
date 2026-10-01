@@ -30,7 +30,7 @@ test('deployment workflow changes redeploy all active Workers in dependency orde
     'deploy:ohisama-collector',
     'deploy:spotify-playcount',
     'deploy:amazon-music',
-    'deploy:regional-music',
+    'regional-music:deploy',
     'deploy:runtime',
   ]);
 });
