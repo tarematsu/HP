@@ -9,22 +9,7 @@
   width: 22px;
   height: 0;
   flex: 0 0 auto;
-  border-top: 2px solid #111;
-}
-
-.followers-series-1 .followers-legend-swatch {
-  border-top-color: #555;
-  border-top-style: dashed;
-}
-
-.followers-series-2 .followers-legend-swatch {
-  border-top-color: #777;
-  border-top-style: dotted;
-}
-
-.followers-series-3 .followers-legend-swatch {
-  border-top-color: #999;
-  border-top-style: dashed;
+  border-top: 2px solid #6f7886;
 }
 
 .followers-legend-copy {
@@ -52,12 +37,26 @@
 }
 
 .followers-account-col {
-  width: 38%;
+  width: 30%;
 }
 
-.followers-table th:not(:first-child),
-.followers-table td:not(:first-child) {
+.followers-affiliation-col {
+  width: 19%;
+}
+
+.followers-table th:nth-child(n + 3),
+.followers-table td:nth-child(n + 3) {
   text-align: right;
+}
+
+.followers-table th:nth-child(2),
+.followers-table td:nth-child(2) {
+  text-align: left;
+}
+
+.followers-affiliation {
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .followers-delta-positive {
