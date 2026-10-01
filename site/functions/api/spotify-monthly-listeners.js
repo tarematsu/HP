@@ -9,6 +9,13 @@ const SVG_HEADERS = Object.freeze({
   'cache-control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600',
   'x-content-type-options': 'nosniff',
 });
+const GRAPH_ARTIST_KEYS = Object.freeze(['nogizaka46', 'sakurazaka46', 'hinatazaka46']);
+const GRAPH_ARTIST_KEY_SET = new Set(GRAPH_ARTIST_KEYS);
+const GRAPH_ARTIST_COLORS = Object.freeze({
+  nogizaka46: '#8264b0',
+  sakurazaka46: '#f3a6c8',
+  hinatazaka46: '#9ecff3',
+});
 const COLORS = Object.freeze([
   '#f3a6c8', '#8264b0', '#9ecff3', '#ef8a62', '#67a9cf',
   '#a6d854', '#ffd92f', '#e78ac3', '#8da0cb', '#66c2a5',
@@ -110,8 +117,9 @@ export function selectMonthlyListenerSeries(trend = {}, limit = 10) {
 }
 
 export function spotifyMonthlyListenersSvg(rows = []) {
-  const { trend } = spotifyMonthlyListenersTrend(rows);
-  const series = selectMonthlyListenerSeries(trend);
+  const graphRows = rows.filter((row) => GRAPH_ARTIST_KEY_SET.has(String(row?.artist_key || '').trim()));
+  const { trend } = spotifyMonthlyListenersTrend(graphRows);
+  const series = selectMonthlyListenerSeries(trend, GRAPH_ARTIST_KEYS.length);
   const dates = [...new Set(series.flatMap((item) => item.points.map((point) => point.snapshot_date)))].sort();
   const values = series.flatMap((item) => item.points.map((point) => integer(point.monthly_listeners)))
     .filter((value) => value != null);
@@ -142,7 +150,7 @@ export function spotifyMonthlyListenersSvg(rows = []) {
     const latest = [...item.points].reverse().find((point) => integer(point.monthly_listeners) != null);
     const lx = 12 + (index % 5) * 190;
     const ly = 20 + Math.floor(index / 5) * 25;
-    const color = COLORS[index % COLORS.length];
+    const color = GRAPH_ARTIST_COLORS[item.artistKey] || COLORS[index % COLORS.length];
     parts.push(`<circle cx="${lx}" cy="${ly - 4}" r="4" fill="${color}"/><text class="n" x="${lx + 9}" y="${ly}">${escapeXml(item.artistName)} ${latest ? Number(latest.monthly_listeners).toLocaleString('ja-JP') : '-'}</text>`);
   });
 
@@ -159,7 +167,7 @@ export function spotifyMonthlyListenersSvg(rows = []) {
   });
 
   series.forEach((item, index) => {
-    const color = COLORS[index % COLORS.length];
+    const color = GRAPH_ARTIST_COLORS[item.artistKey] || COLORS[index % COLORS.length];
     const points = item.points.filter((point) => integer(point.monthly_listeners) != null)
       .map((point) => ({ date: point.snapshot_date, value: integer(point.monthly_listeners) }));
     if (points.length > 1) {
