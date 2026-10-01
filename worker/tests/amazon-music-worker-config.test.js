@@ -2,6 +2,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import {
+  AMAZON_MUSIC_DAILY_SCAN_PAGES_PER_RUN,
+  AMAZON_MUSIC_DAILY_SCAN_TARGET_RANK,
+  shouldRestartAmazonDaily50k,
+} from '../src/amazon-music-daily-50k.js';
 import { amazonMusicDueTasks } from '../src/amazon-music-entry.js';
 
 function config() {
@@ -16,11 +21,11 @@ function musicServicePlaylistWorkflow() {
   return readFileSync(new URL('../../.github/workflows/refresh-music-service-playlists.yml', import.meta.url), 'utf8');
 }
 
-test('music collector keeps one combined Worker cron', () => {
+test('music collector keeps one cron while routing daily 50k and Apple work internally', () => {
   const value = config();
   assert.equal(value.name, 'sh-amazon-music-collector');
   assert.equal(value.main, 'src/amazon-music-entry.js');
-  assert.deepEqual(value.triggers.crons, ['2,5,12,15,22,32,42,52 * * * *']);
+  assert.deepEqual(value.triggers.crons, ['0,12,15,22,32,42,52 * * * *']);
   assert.deepEqual(value.d1_databases.map(({ binding }) => binding), ['MINUTE_DB', 'OTHER_DB']);
   assert.equal(value.d1_databases.find(({ binding }) => binding === 'MINUTE_DB')?.database_name, 'stationhead-minute');
   assert.equal(value.d1_databases.find(({ binding }) => binding === 'OTHER_DB')?.database_name, 'stationhead-other');
@@ -31,38 +36,51 @@ test('music collector keeps one combined Worker cron', () => {
   assert.equal(value.queues, undefined);
 });
 
-test('combined Amazon cron preserves ranking and Apple Music ranking work only', () => {
+test('Amazon ranking scan is limited to 50k with 600 pages per run', () => {
+  assert.equal(AMAZON_MUSIC_DAILY_SCAN_TARGET_RANK, 50_000);
+  assert.equal(AMAZON_MUSIC_DAILY_SCAN_PAGES_PER_RUN, 600);
+});
+
+test('Amazon schedule has no independent hourly Top500 monitor', () => {
   const at = (hour, minute) => Date.UTC(2026, 8, 30, hour, minute, 0);
-  const expected = ({ apple = false, top500 = false, deep100k = false } = {}) => ({
+  const expected = ({ apple = false, daily50kStart = false, daily50kContinue = false } = {}) => ({
     apple,
-    top500,
-    deep100k,
+    daily50kStart,
+    daily50kContinue,
   });
-  assert.deepEqual(amazonMusicDueTasks(at(3, 2)), expected({ deep100k: true }));
-  assert.deepEqual(amazonMusicDueTasks(at(3, 5)), expected({ top500: true }));
-  assert.deepEqual(amazonMusicDueTasks(at(3, 12)), expected({ deep100k: true }));
+
+  assert.deepEqual(amazonMusicDueTasks(at(17, 0)), expected({ daily50kStart: true }));
+  assert.deepEqual(amazonMusicDueTasks(at(17, 12)), expected({ daily50kContinue: true }));
+  assert.deepEqual(amazonMusicDueTasks(at(20, 52)), expected({ daily50kContinue: true }));
+  assert.deepEqual(amazonMusicDueTasks(at(17, 5)), expected());
+  assert.deepEqual(amazonMusicDueTasks(at(3, 5)), expected());
   assert.deepEqual(amazonMusicDueTasks(at(3, 15)), expected({ apple: true }));
-  assert.deepEqual(amazonMusicDueTasks(at(18, 15)), expected({ apple: true }));
-  assert.deepEqual(amazonMusicDueTasks(at(3, 22)), expected({ deep100k: true }));
-  assert.deepEqual(amazonMusicDueTasks(at(3, 6)), expected());
+  assert.deepEqual(amazonMusicDueTasks(at(21, 12)), expected());
+});
+
+test('active 50k scan restarts only when its Top500 baseline changes', () => {
+  const active = { status: 'active', baseline_top500_hash: 'old' };
+  assert.equal(shouldRestartAmazonDaily50k(active, 'old'), false);
+  assert.equal(shouldRestartAmazonDaily50k(active, 'new'), true);
+  assert.equal(shouldRestartAmazonDaily50k({ ...active, status: 'complete' }, 'new'), false);
+  assert.equal(shouldRestartAmazonDaily50k({ status: 'active' }, 'new'), false);
 });
 
 test('scheduled entry leaves every playlist sweep to Actions', () => {
   const source = readFileSync(new URL('../src/amazon-music-entry.js', import.meta.url), 'utf8');
-  assert.match(source, /AMAZON_MUSIC_CRON = '2,5,12,15,22,32,42,52 \* \* \* \*'/);
+  assert.match(source, /AMAZON_MUSIC_CRON = '0,12,15,22,32,42,52 \* \* \* \*'/);
+  assert.doesNotMatch(source, /AMAZON_MUSIC_TOP_SCAN_CRON/);
+  assert.doesNotMatch(source, /amazon-music-top-500-monitor/);
+  assert.doesNotMatch(source, /checkAmazonUpdateAndQueue100k/);
+  assert.doesNotMatch(source, /continueAmazon150kExtension/);
   assert.doesNotMatch(source, /AMAZON_MUSIC_TRACK_PLAYLIST_CRON/);
   assert.doesNotMatch(source, /amazon-music-track-playlist-fetch/);
   assert.doesNotMatch(source, /collectAmazonMusicTrackPlaylists/);
   assert.doesNotMatch(source, /collectAppleMusicPlaylists/);
-  assert.doesNotMatch(source, /getUTCHours\(\) === 18/);
-  assert.match(source, /amazonMusicDueTasks/);
-  assert.match(source, /minute === 15/);
-  assert.match(source, /minute === 5/);
-  assert.match(source, /minute % 10 === 2/);
   assert.match(source, /amazonMusicServiceEnv\(env\)/);
   assert.match(source, /persistAppleMusicModelToOther\(env, scheduledTime\)/);
   assert.match(source, /persistAmazonMusicModelToOther\(env, scheduledTime\)/);
-  assert.doesNotMatch(source, /AMAZON_MUSIC_DAILY_CRON|collectAmazonMusicSnapshot/);
+  assert.doesNotMatch(source, /collectAmazonMusicSnapshot/);
 });
 
 test('Amazon track-playlist Action runs full sweeps at 02:00 and 14:00 JST only', () => {
