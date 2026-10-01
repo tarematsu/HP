@@ -11,8 +11,9 @@ const COLLECTOR = 'sh-buddies-collector';
 const OHISAMA = 'sh-ohisama-collector';
 const SPOTIFY = 'sh-spotify-playcount-collector';
 const AMAZON = 'sh-amazon-music-collector';
+const REGIONAL = 'sh-regional-music-collector';
 const RUNTIME = 'sh-runtime-orchestrator';
-const ALL_WORKERS = [SAKURAZAKA, NOGIZAKA, RECOVERY, COLLECTOR, OHISAMA, SPOTIFY, AMAZON, RUNTIME];
+const ALL_WORKERS = [SAKURAZAKA, NOGIZAKA, RECOVERY, COLLECTOR, OHISAMA, SPOTIFY, AMAZON, REGIONAL, RUNTIME];
 const BUDDIES_RUNTIME_WORKERS = [RECOVERY, COLLECTOR, RUNTIME];
 
 function select(paths = [], args = []) {
@@ -49,6 +50,8 @@ test('domain modules select every Worker whose bundle imports them', () => {
   assert.deepEqual(select(['worker/src/spotify-playcount-entry.js']).workers, [SPOTIFY]);
   assert.deepEqual(select(['worker/src/amazon-music-pipeline.js']).workers, [AMAZON]);
   assert.deepEqual(select(['worker/src/amazon-music-entry.js']).workers, [AMAZON]);
+  assert.deepEqual(select(['worker/src/regional-music-entry.js']).workers, [REGIONAL]);
+  assert.deepEqual(select(['worker/src/regional-music-store.js']).workers, [REGIONAL]);
 });
 
 test('Actions-only offline modules do not redeploy Workers', () => {
@@ -102,6 +105,13 @@ test('deployment support changes select the owning Worker', () => {
     commands: ['deploy:amazon-music'],
     diagnostics: [],
   });
+  assert.deepEqual(select(['worker/scripts/deploy-regional-music.mjs']), {
+    changed_paths: ['worker/scripts/deploy-regional-music.mjs'],
+    workers: [REGIONAL],
+    commands: ['regional-music:deploy'],
+    diagnostics: [],
+  });
+  assert.deepEqual(select(['database/other-migrations/062_regional_music_platforms.sql']).workers, [REGIONAL]);
   assert.deepEqual(select(['worker/scripts/deploy-runtime.mjs']), {
     changed_paths: ['worker/scripts/deploy-runtime.mjs'],
     workers: [RUNTIME],
@@ -138,7 +148,7 @@ test('shared deployment infrastructure selects all active Workers', () => {
     'worker/scripts/select-worker-deploys.mjs',
     'worker/scripts/wrangler-command.mjs',
   ]) {
-    assert.equal(select([path]).workers.length, 8, path);
+    assert.equal(select([path]).workers.length, 9, path);
   }
 });
 
@@ -150,6 +160,7 @@ test('Wrangler config changes map directly to their Worker', () => {
   assert.deepEqual(select(['worker/wrangler.ohisama-collector.jsonc']).workers, [OHISAMA]);
   assert.deepEqual(select(['worker/wrangler.spotify-playcount.jsonc']).workers, [SPOTIFY]);
   assert.deepEqual(select(['worker/wrangler.amazon-music.jsonc']).workers, [AMAZON]);
+  assert.deepEqual(select(['worker/wrangler.regional-music.jsonc']).workers, [REGIONAL]);
   assert.deepEqual(select(['worker/wrangler.runtime.jsonc']).workers, [RUNTIME]);
 });
 
@@ -164,7 +175,7 @@ test('tests and unrelated verification scripts do not deploy Workers', () => {
 
 test('shared package only redeploys importers while unresolved Worker source remains fail-safe', () => {
   assert.equal(select(['packages/sh-shared/index.mjs']).workers.length, 6);
-  assert.equal(select(['worker/src/deleted-runtime-module.js']).workers.length, 8);
+  assert.equal(select(['worker/src/deleted-runtime-module.js']).workers.length, 9);
 });
 
 test('manual selection preserves dependency order', () => {
@@ -178,6 +189,7 @@ test('manual selection preserves dependency order', () => {
     'deploy:ohisama-collector',
     'deploy:spotify-playcount',
     'deploy:amazon-music',
+    'regional-music:deploy',
     'deploy:runtime',
   ]);
 });
