@@ -12,7 +12,7 @@ import {
 } from './stationhead-daily-followers-resilient.js';
 
 const JST_OFFSET_MS = 9 * 60 * 60_000;
-const ONE_TIME_FOLLOWER_BACKFILL_DATE = '2026-10-01';
+const FOLLOWER_CATCHUP_INTERVAL_MINUTES = 5;
 
 export {
   BUDDIES_COLLECTOR_CRON,
@@ -21,16 +21,12 @@ export {
   runBuddiesCollectorScheduled,
 };
 
-export function isOneTimeFollowerBackfillMinute(timestamp) {
+export function isFollowerCatchupMinute(timestamp) {
   const value = Number(timestamp);
   if (!Number.isFinite(value)) return false;
   const jst = new Date(value + JST_OFFSET_MS);
-  const date = `${jst.getUTCFullYear()}-${String(jst.getUTCMonth() + 1).padStart(2, '0')}-${String(jst.getUTCDate()).padStart(2, '0')}`;
-  const hour = jst.getUTCHours();
-  return date === ONE_TIME_FOLLOWER_BACKFILL_DATE
-    && hour >= 2
-    && hour < 5
-    && jst.getUTCMinutes() !== 0;
+  const minute = jst.getUTCMinutes();
+  return minute !== 0 && minute % FOLLOWER_CATCHUP_INTERVAL_MINUTES === 0;
 }
 
 export function runBuddiesCollectorScheduledWithFollowers(
@@ -41,11 +37,12 @@ export function runBuddiesCollectorScheduledWithFollowers(
 ) {
   const scheduledAt = Number(controller?.scheduledTime) || Date.now();
   const followerMinute = isJstFollowerCollectionMinute(scheduledAt)
-    || isOneTimeFollowerBackfillMinute(scheduledAt);
+    || isFollowerCatchupMinute(scheduledAt);
 
-  // Collect at 00:00 JST and automatically repair a missing daily snapshot at
-  // 00:05 / 00:10. On 2026-10-01 only, also allow the next non-hour minute from
-  // 02:00-04:59 JST so today's missed snapshot can be backfilled immediately.
+  // Collect at 00:00 JST, then allow a lightweight catch-up check every five
+  // minutes. The resilient collector checks today's row before any Stationhead
+  // requests, so a completed daily snapshot turns later catch-up minutes into a
+  // single cheap D1 lookup while a missed snapshot can recover the same day.
   if (String(controller?.cron || '') === BUDDIES_COLLECTOR_CRON && followerMinute) {
     const collectFollowers = dependencies.collectFollowers || collectStationheadDailyFollowersResilient;
     const followersTask = Promise.resolve()
