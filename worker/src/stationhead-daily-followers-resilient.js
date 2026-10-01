@@ -181,9 +181,9 @@ export function isJstFollowerCollectionMinute(timestamp) {
   return jst.getUTCHours() === 0 && RETRY_MINUTES.has(jst.getUTCMinutes());
 }
 
-function isRetryMinute(timestamp) {
+function isRetryAttempt(timestamp) {
   const jst = new Date(Number(timestamp) + JST_OFFSET_MS);
-  return jst.getUTCMinutes() !== 0;
+  return jst.getUTCHours() !== 0 || jst.getUTCMinutes() !== 0;
 }
 
 async function hasDailyFollowerRow(env, date) {
@@ -229,7 +229,7 @@ export async function collectStationheadDailyFollowersResilient(
   const date = jstDateKey(observedAt);
   const nowFn = dependencies.now || Date.now;
 
-  if (isRetryMinute(observedAt) && await hasDailyFollowerRow(env, date)) {
+  if (isRetryAttempt(observedAt) && await hasDailyFollowerRow(env, date)) {
     return {
       observed_date_jst: date,
       scheduled_at: observedAt,

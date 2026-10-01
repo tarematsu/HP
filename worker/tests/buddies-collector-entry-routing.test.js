@@ -17,7 +17,7 @@ test('production collector Cron keeps Durable Object collection behind the follo
 test('ordinary collector minutes do not add dashboard watchdog work', async () => {
   const waitUntil = [];
   const calls = [];
-  const controller = { cron: '* * * * *', scheduledTime: Date.UTC(2026, 8, 22, 1, 0) };
+  const controller = { cron: '* * * * *', scheduledTime: Date.UTC(2026, 8, 22, 1, 3) };
   const result = await runBuddiesCollectorScheduledWithFollowers(
     controller,
     {},
@@ -66,18 +66,22 @@ test('JST midnight adds one follower snapshot as independent waitUntil work', as
   assert.deepEqual(calls, ['collector', 'followers']);
 });
 
-test('follower catch-up checks run every five minutes except on the hour', () => {
-  assert.equal(isFollowerCatchupMinute(Date.UTC(2026, 9, 1, 1, 5)), true);
-  assert.equal(isFollowerCatchupMinute(Date.UTC(2026, 9, 1, 14, 55)), true);
-  assert.equal(isFollowerCatchupMinute(Date.UTC(2026, 9, 1, 1, 0)), false);
-  assert.equal(isFollowerCatchupMinute(Date.UTC(2026, 9, 1, 1, 3)), false);
+test('follower catch-up backs off after the first thirty minutes', () => {
+  const midnightJst = Date.UTC(2026, 8, 30, 15, 0);
+  assert.equal(isFollowerCatchupMinute(midnightJst + 5 * 60_000), false);
+  assert.equal(isFollowerCatchupMinute(midnightJst + 15 * 60_000), true);
+  assert.equal(isFollowerCatchupMinute(midnightJst + 30 * 60_000), true);
+  assert.equal(isFollowerCatchupMinute(midnightJst + 60 * 60_000), true);
+  assert.equal(isFollowerCatchupMinute(midnightJst + 23 * 60 * 60_000), true);
+  assert.equal(isFollowerCatchupMinute(midnightJst + 20 * 60_000), false);
+  assert.equal(isFollowerCatchupMinute(midnightJst + 65 * 60_000), false);
   assert.equal(isFollowerCatchupMinute(Number.NaN), false);
 });
 
-test('same-day follower catch-up schedules follower work independently from the minute collector', async () => {
+test('same-day hourly follower catch-up schedules work independently from the minute collector', async () => {
   const waitUntil = [];
   const calls = [];
-  const controller = { cron: '* * * * *', scheduledTime: Date.UTC(2026, 9, 1, 2, 25) };
+  const controller = { cron: '* * * * *', scheduledTime: Date.UTC(2026, 9, 1, 2, 0) };
   const result = await runBuddiesCollectorScheduledWithFollowers(
     controller,
     {},
