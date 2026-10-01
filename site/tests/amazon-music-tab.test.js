@@ -83,7 +83,7 @@ test('Amazon Music view keeps metadata first and exposes Sakamichi switches', ()
   assert.match(shell, /櫻坂46/);
   assert.match(shell, /日向坂46/);
   assert.match(shell, /headers: \['Amazon Music総合順位', '前日比', 'アーティスト', '曲名'\]/);
-  assert.match(musicCss, /\.music-service-summary\.summary-cards/);
+  assert.match(musicCss, /\.music-service-section/);
 });
 
 test('Amazon Music title comparison and artist modes use Worker title-track flags', () => {
