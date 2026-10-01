@@ -34,6 +34,7 @@ const qqCatalogQuery = encodeURIComponent(JSON.stringify({
   req_1: { module:'musichall.song_list_server', method:'GetSingerSongList', param:{ singerMid:'000DG1og3lDmbT', order:1, begin:0, num:20 } },
 }));
 const pages = [
+  ['gaana-current-search', 'https://gsearch.gaana.com/vichitih/go/v2/?geoLocation=IN&query=Sakurazaka46&content_filter=2&include=artist&isRegSrch=0&webVersion=mix&rType=web&autocomplete=0&startIndex=0'],
   ['qq-current-catalog', `https://u.y.qq.com/cgi-bin/musicu.fcg?data=${qqCatalogQuery}`],
   ['jiosaavn-current-catalog', 'https://www.jiosaavn.com/api.php?__call=artist.getArtistPageDetails&_format=json&_marker=0&ctx=web6dot0&api_version=4&artistId=9095179'],
   ['qq-profile', 'https://y.qq.com/n/ryqq/singer/000DG1og3lDmbT'],
