@@ -43,7 +43,7 @@ export async function runMinuteFactsGapScanActions(options = {}) {
     BUDDIES_DB: remoteDatabase(buddiesDatabase, 'buddies-alias'),
     MINUTE_DB: remoteDatabase(factsDatabase, 'minute'),
     GAP_SCAN_WINDOW_MINUTES: process.env.GAP_SCAN_WINDOW_MINUTES || '360',
-    GAP_SCAN_MAX_JOBS: process.env.GAP_SCAN_MAX_JOBS || '20',
+    GAP_SCAN_MAX_JOBS: process.env.GAP_SCAN_MAX_JOBS || '1',
     GAP_SCAN_RECENT_GUARD_MS: process.env.GAP_SCAN_RECENT_GUARD_MS || String(5 * 60_000),
   };
   return runMinuteFactsGapScan(env, options.dependencies || {});

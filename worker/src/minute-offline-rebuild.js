@@ -1,10 +1,10 @@
 import { runMinuteFactDeriveCron } from './minute-facts-derive.js';
 
-const DEFAULT_MAX_JOBS = 50;
+const DEFAULT_MAX_JOBS = 1;
 const DEFAULT_LEASE_MS = 5 * 60_000;
 const DEFAULT_RUN_BUDGET_MS = 55_000;
-const DEFAULT_MAX_PASSES = 6;
-const DEFAULT_TOTAL_BUDGET_MS = 6 * 60_000;
+const DEFAULT_MAX_PASSES = 1;
+const DEFAULT_TOTAL_BUDGET_MS = 60_000;
 const DEADLINE_GUARD_MS = 1_000;
 
 function integer(value) {

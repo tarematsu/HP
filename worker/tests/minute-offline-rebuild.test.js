@@ -122,10 +122,10 @@ test('offline rebuild runner drains multiple passes and stops when no work remai
   assert.equal(result.budget_exhausted, false);
 });
 
-test('offline rebuild policy is bounded and rebuild-only', () => {
+test('offline rebuild policy is one expensive repair per cycle', () => {
   assert.equal(OFFLINE_MINUTE_REBUILD_POLICY.job_kind, 'rebuild');
-  assert.equal(OFFLINE_MINUTE_REBUILD_POLICY.max_jobs, 50);
+  assert.equal(OFFLINE_MINUTE_REBUILD_POLICY.max_jobs, 1);
   assert.equal(OFFLINE_MINUTE_REBUILD_POLICY.run_budget_ms, 55_000);
-  assert.equal(OFFLINE_MINUTE_REBUILD_POLICY.max_passes, 6);
-  assert.equal(OFFLINE_MINUTE_REBUILD_POLICY.total_budget_ms, 6 * 60_000);
+  assert.equal(OFFLINE_MINUTE_REBUILD_POLICY.max_passes, 1);
+  assert.equal(OFFLINE_MINUTE_REBUILD_POLICY.total_budget_ms, 60_000);
 });
