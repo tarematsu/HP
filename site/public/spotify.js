@@ -18,7 +18,7 @@ import { observeDashboardChartResize } from './dashboard-chart-runtime.js?v=2026
 
 let selectedArtistKey = 'sakurazaka46';
 const TREND_ARTIST_LIMIT = 10;
-const GRAPH_ARTIST_KEYS = Object.freeze(['nogizaka46', 'sakurazaka46', 'hinatazaka46']);
+const GRAPH_ARTIST_KEYS = Object.freeze(['sakurazaka46', 'nogizaka46', 'hinatazaka46']);
 const GRAPH_ARTIST_KEY_SET = new Set(GRAPH_ARTIST_KEYS);
 const GRAPH_ARTIST_COLORS = Object.freeze({
   nogizaka46: '#8264b0',
@@ -77,7 +77,9 @@ function normalizeTrendSeries(trend = {}) {
 }
 
 function graphTrendSeries(seriesList = []) {
-  return seriesList.filter((series) => GRAPH_ARTIST_KEY_SET.has(String(series?.artistKey || '')));
+  return seriesList
+    .filter((series) => GRAPH_ARTIST_KEY_SET.has(String(series?.artistKey || '')))
+    .sort((a, b) => GRAPH_ARTIST_KEYS.indexOf(a.artistKey) - GRAPH_ARTIST_KEYS.indexOf(b.artistKey));
 }
 
 function graphTrendColor(series) {
@@ -274,12 +276,7 @@ export function normalizeArtistRankSeries(chart = {}, trend = {}) {
     }
   }
   return [...byKey.values()].filter((series) => series.points.length)
-    .sort((a, b) => {
-      const aRank = a.points.at(-1)?.rank ?? Number.MAX_SAFE_INTEGER;
-      const bRank = b.points.at(-1)?.rank ?? Number.MAX_SAFE_INTEGER;
-      if (aRank !== bRank) return aRank - bRank;
-      return a.artistName.localeCompare(b.artistName, 'ja');
-    })
+    .sort((a, b) => GRAPH_ARTIST_KEYS.indexOf(a.artistKey) - GRAPH_ARTIST_KEYS.indexOf(b.artistKey))
     .map((series, colorIndex) => ({ ...series, colorIndex }));
 }
 
@@ -363,18 +360,18 @@ function renderCharts(trend, artistChart, monthlyListenerRows) {
   renderTrendChart(trend, {
     containerId: 'spotifyTrendCharts',
     metricKey: 'total_delta',
-    ariaLabel: '乃木坂46・櫻坂46・日向坂46の全曲合計再生数前日比推移',
+    ariaLabel: '櫻坂46・乃木坂46・日向坂46の全曲合計再生数前日比推移',
   });
   renderTrendChart(monthlyListenerTrend(monthlyListenerRows), {
     containerId: 'spotifyMonthlyListenerTrendCharts',
     metricKey: 'monthly_listeners',
-    ariaLabel: '乃木坂46・櫻坂46・日向坂46のSpotify月間リスナー推移',
+    ariaLabel: '櫻坂46・乃木坂46・日向坂46のSpotify月間リスナー推移',
     latestFormatter: formatInteger,
   });
   renderTrendChart(trend, {
     containerId: 'spotifyTop10YearTrendCharts',
     metricKey: 'top10_year_delta',
-    ariaLabel: '乃木坂46・櫻坂46・日向坂46の今年リリース上位10曲合計の再生数前日比推移',
+    ariaLabel: '櫻坂46・乃木坂46・日向坂46の今年リリース上位10曲合計の再生数前日比推移',
   });
   renderArtistRankChart(artistChart, trend);
 }

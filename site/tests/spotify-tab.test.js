@@ -232,7 +232,7 @@ test('Spotify tab uses one materialized read model and one shared Canvas rendere
   assert.match(shell, /id="spotifyArtistRankTrendCharts"/);
   assert.doesNotMatch(shell, /spotify-monthly-listeners\?format=svg/);
 
-  assert.match(runtime, /GRAPH_ARTIST_KEYS = Object\.freeze\(\['nogizaka46', 'sakurazaka46', 'hinatazaka46'\]\)/);
+  assert.match(runtime, /GRAPH_ARTIST_KEYS = Object\.freeze\(\['sakurazaka46', 'nogizaka46', 'hinatazaka46'\]\)/);
   assert.match(runtime, /nogizaka46: '#8264b0'/);
   assert.match(runtime, /sakurazaka46: '#f3a6c8'/);
   assert.match(runtime, /hinatazaka46: '#9ecff3'/);

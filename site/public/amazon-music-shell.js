@@ -28,8 +28,8 @@ const modeButtons = `
   <div class="mode-tabs amazon-mode-switch" role="group" aria-label="Amazon Music表示切替">
     <button type="button" class="is-active" data-amazon-mode="all" aria-pressed="true">全楽曲順位</button>
     <button type="button" data-amazon-mode="titles" aria-pressed="false">表題曲比較</button>
-    <button type="button" data-amazon-mode="nogizaka" aria-pressed="false">乃木坂46</button>
     <button type="button" data-amazon-mode="sakurazaka" aria-pressed="false">櫻坂46</button>
+    <button type="button" data-amazon-mode="nogizaka" aria-pressed="false">乃木坂46</button>
     <button type="button" data-amazon-mode="hinatazaka" aria-pressed="false">日向坂46</button>
   </div>`;
 
