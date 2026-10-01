@@ -6,8 +6,19 @@ import {
   safeInteger as integer,
 } from './dashboard-ui-common.js?v=20261001.1';
 
+const ARTISTS = Object.freeze({
+  sakurazaka46: Object.freeze({ key: 'sakurazaka46', name: '櫻坂46' }),
+  nogizaka46: Object.freeze({ key: 'nogizaka46', name: '乃木坂46' }),
+  hinatazaka46: Object.freeze({ key: 'hinatazaka46', name: '日向坂46' }),
+});
+const DEFAULT_ARTIST_KEY = 'sakurazaka46';
+let selectedArtistKey = DEFAULT_ARTIST_KEY;
 let loadPromise = null;
 let lastPayload = null;
+
+function selectedArtist() {
+  return ARTISTS[selectedArtistKey] || ARTISTS[DEFAULT_ARTIST_KEY];
+}
 
 function ensurePlaylistTable() {
   const existing = element('applePlaylistTable');
@@ -22,11 +33,11 @@ function ensurePlaylistTable() {
   });
   const holder = document.createElement('div');
   holder.innerHTML = dashboardDataCard({
-    title: '楽曲別プレイリスト掲載一覧',
+    title: '櫻坂46 楽曲別プレイリスト掲載一覧',
     titleId: 'applePlaylistTitle',
     kicker: 'PLAYLISTS',
     className: 'apple-data-panel music-service-panel',
-    bodyHtml: `<p class="music-service-playlist-note">Apple Music公式サイト上で検出できた公開プレイリストを、櫻坂46楽曲ごとに表示します。</p>${table}`,
+    bodyHtml: `<p id="applePlaylistNote" class="music-service-playlist-note">Apple Music公式サイト上で検出できた公開プレイリストを、櫻坂46楽曲ごとに表示します。</p>${table}`,
   });
   const panel = holder.firstElementChild;
   if (!panel) return null;
@@ -56,6 +67,15 @@ function renderMessage(table, message) {
   table.append(tbody);
 }
 
+function trackArtistKey(track) {
+  return String(track?.artist_key || DEFAULT_ARTIST_KEY);
+}
+
+function tracksForSelectedArtist(payload) {
+  return (Array.isArray(payload?.tracks) ? payload.tracks : [])
+    .filter((track) => trackArtistKey(track) === selectedArtist().key);
+}
+
 function renderSummary(tracks) {
   const playlistIds = new Set();
   for (const track of tracks) {
@@ -70,13 +90,22 @@ function renderSummary(tracks) {
   if (trackCount) trackCount.textContent = integerFormat.format(tracks.length);
 }
 
+function renderArtistLabels() {
+  const artist = selectedArtist();
+  const title = element('applePlaylistTitle');
+  const note = element('applePlaylistNote');
+  if (title) title.textContent = `${artist.name} 楽曲別プレイリスト掲載一覧`;
+  if (note) note.textContent = `Apple Music公式サイト上で検出できた公開プレイリストを、${artist.name}楽曲ごとに表示します。`;
+}
+
 function render(payload) {
   const table = ensurePlaylistTable();
   if (!table) return;
-  const tracks = Array.isArray(payload?.tracks) ? payload.tracks : [];
+  renderArtistLabels();
+  const tracks = tracksForSelectedArtist(payload);
   renderSummary(tracks);
   if (!tracks.length) {
-    renderMessage(table, '対象曲を含む公開プレイリストはまだ検出されていません。');
+    renderMessage(table, `${selectedArtist().name}の対象曲を含む公開プレイリストはまだ検出されていません。`);
     return;
   }
 
@@ -159,3 +188,8 @@ export async function loadAppleMusicPlaylistMemberships({ force = false } = {}) 
   }
   return loadPromise;
 }
+
+globalThis.document?.querySelectorAll('[data-apple-artist]').forEach((button) => button.addEventListener('click', () => {
+  selectedArtistKey = button.dataset.appleArtist || DEFAULT_ARTIST_KEY;
+  if (lastPayload) render(lastPayload);
+}));
