@@ -11,24 +11,35 @@ function cron(workflow) {
   return workflow.match(/cron:\s*['"]([^'"]+)['"]/)?.[1] || '';
 }
 
-test('runtime rollups stay on cadence and trigger revision-driven Pages publication with one daily recovery sweep', () => {
+test('repair layers use lightweight, four-hour, and daily cadences', () => {
   const runtime = read('.github/workflows/run-runtime-offline-maintenance.yml');
+  const dataRepair = read('.github/workflows/run-data-integrity-repair.yml');
+  const metadata = read('.github/workflows/run-track-metadata-repair.yml');
   const pages = read('.github/workflows/run-pages-read-model-rebuild.yml');
   const repair = read('.github/workflows/repair-pages-summaries.yml');
 
   assert.equal(cron(runtime), '11,41 * * * *');
+  assert.equal(cron(dataRepair), '31 */4 * * *');
+  assert.equal(cron(metadata), '16 0 * * *');
   assert.equal(cron(pages), '26 0 * * *');
   assert.equal(cron(repair), '23 4 * * *');
-  assert.doesNotMatch(runtime, /workflow_run:/);
-  assert.doesNotMatch(runtime, /^\s*workflows: \[[^\]]*Deploy production/m);
-  assert.doesNotMatch(runtime, /^\s*workflows: \[[^\]]*Rebuild pages read models/m);
-  assert.match(runtime, /detect-pages-read-model-revision-drift-actions\.mjs/);
-  assert.match(runtime, /steps\.pages-revision-drift\.outputs\.due_keys != ''/);
-  assert.match(runtime, /PAGES_RESPONSE_BUCKET: sh-pages-responses/);
-  assert.doesNotMatch(runtime, /pages-revisions-before\.json|pages-revisions-after\.json/);
-  assert.match(runtime, /due_keys/);
+
+  assert.match(runtime, /RUNTIME_MAINTENANCE_LIGHT_ONLY: 'true'/);
+  assert.doesNotMatch(runtime, /run-minute-facts-gap-scan-actions\.mjs/);
+  assert.doesNotMatch(runtime, /detect-pages-read-model-revision-drift-actions\.mjs/);
+
+  assert.match(dataRepair, /run-minute-facts-gap-scan-actions\.mjs/);
+  assert.match(dataRepair, /publish-recent-daily-summaries-actions\.mjs/);
+  assert.match(dataRepair, /run-runtime-offline-maintenance-actions\.mjs/);
+  assert.match(dataRepair, /detect-pages-read-model-revision-drift-actions\.mjs/);
+  assert.match(dataRepair, /steps\.pages-revision-drift\.outputs\.due_keys != ''/);
+  assert.match(dataRepair, /PAGES_RESPONSE_BUCKET: sh-pages-responses/);
+  assert.match(dataRepair, /RUNTIME_MAINTENANCE_FORCE: 'true'/);
+
+  assert.doesNotMatch(metadata, /workflow_run:/);
   assert.doesNotMatch(pages, /workflow_run:/);
   assert.match(runtime, /cancel-in-progress: false/);
+  assert.match(dataRepair, /cancel-in-progress: false/);
   assert.match(pages, /group: pages-read-model-rebuild/);
   assert.doesNotMatch(pages, /github\.event_name == 'schedule'\s*\|\|/);
   assert.doesNotMatch(pages, /repair-pages-summary-gaps\.mjs|repair-single-sample-stream-summaries\.mjs/);
@@ -53,12 +64,20 @@ test('runtime maintenance freshness is diagnostic after the runner warning', () 
   assert.match(healthSource, /75 \* 60_000/);
   assert.match(healthSource, /ok: Boolean\(row\) && !failed/);
   assert.equal(runtimePolicy.name, 'Runtime offline maintenance');
+  assert.equal(runtimePolicy.cadenceMinutes, 30);
   assert.equal(runtimePolicy.staleAfterMinutes, 75);
 });
 
-test('Pages recovery health follows the daily fallback rather than the old six-hour cadence', () => {
-  const pagesPolicy = WORKFLOW_HEALTH_BY_KEY.pages;
-  assert.equal(pagesPolicy.cadenceMinutes, 1440);
-  assert.equal(pagesPolicy.staleAfterMinutes, 1500);
+test('heavy repair and deep repair health match their lower frequencies', () => {
+  const dataRepair = WORKFLOW_HEALTH_BY_KEY.dataRepair;
+  const metadata = WORKFLOW_HEALTH_BY_KEY.metadata;
+  const pages = WORKFLOW_HEALTH_BY_KEY.pages;
+
+  assert.equal(dataRepair.cadenceMinutes, 240);
+  assert.equal(dataRepair.staleAfterMinutes, 330);
+  assert.equal(metadata.cadenceMinutes, 1440);
+  assert.equal(metadata.staleAfterMinutes, 1500);
+  assert.equal(pages.cadenceMinutes, 1440);
+  assert.equal(pages.staleAfterMinutes, 1500);
   assert.equal(WORKFLOW_HEALTH_BY_KEY.localMinute, undefined);
 });
