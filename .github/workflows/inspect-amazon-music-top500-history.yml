@@ -77,6 +77,13 @@ jobs:
             intervals.push((Number(updated[i].observed_at) - Number(updated[i - 1].observed_at)) / 3_600_000);
           }
 
+          const pageRatios = checks
+            .filter((row) => Number(row.scanned_tracks) > 0 && Number(row.pages_scanned) > 0)
+            .map((row) => Number(row.scanned_tracks) / Number(row.pages_scanned));
+          const tracksPerPage = pageRatios.length
+            ? pageRatios.reduce((sum, value) => sum + value, 0) / pageRatios.length
+            : null;
+
           const lines = [
             '# Amazon Music Top500 update timing',
             '',
@@ -86,6 +93,7 @@ jobs:
             `- error checks: ${checks.filter((row) => row?.status === 'error').length}`,
             `- first check (JST): ${checks.length ? fmt(checks[0].observed_at) : '-'}`,
             `- last check (JST): ${checks.length ? fmt(checks.at(-1).observed_at) : '-'}`,
+            `- observed tracks/page: ${tracksPerPage == null ? '-' : tracksPerPage.toFixed(2)}`,
             '',
             '## Updated observations (JST)',
             '',
