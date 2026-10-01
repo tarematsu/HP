@@ -1,6 +1,8 @@
 import './dashboard-tab-registry.js?v=20261002.1';
 import './current-shell.js?v=20261001.2';
 import './history-shell.js?v=20260930.1';
+import './first-week-comparison-shell.js?v=20261002.2';
+import './first-week-comparison.js?v=20261002.2';
 import './likes-shell.js?v=20260930.1';
 import './legacy-listening-party-route.js?v=20260926.1';
 import './dashboard-header.js?v=20260928.1';
