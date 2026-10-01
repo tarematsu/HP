@@ -1,0 +1,84 @@
+name: Refresh Amazon Music track playlists
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/refresh-amazon-music-track-playlists.yml'
+      - 'worker/scripts/amazon-music-track-playlist-refresh-entry.js'
+      - 'worker/src/amazon-music-track-playlist-collector.js'
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    name: Collect Amazon Music playlists for next track batch
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets['CLOUDFLARE_API_TOKEN'] || secrets['CF_API_TOKEN'] || secrets['CLOUDFLARE_BUILDS_API_TOKEN'] }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - name: Install Worker dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+        working-directory: worker
+      - name: Build remote-binding refresh config
+        working-directory: worker
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const source = JSON.parse(readFileSync('wrangler.amazon-music.jsonc', 'utf8'));
+          source.name = 'sh-amazon-music-track-playlist-refresh';
+          source.main = 'scripts/amazon-music-track-playlist-refresh-entry.js';
+          source.workers_dev = false;
+          source.preview_urls = false;
+          delete source.triggers;
+          delete source.observability;
+          source.d1_databases = (source.d1_databases || []).map((binding) => ({ ...binding, remote: true }));
+          source.r2_buckets = (source.r2_buckets || []).map((binding) => ({ ...binding, remote: true }));
+          writeFileSync('.amazon-track-playlist-refresh.wrangler.jsonc', JSON.stringify(source, null, 2));
+          NODE
+      - name: Collect first track batch now
+        working-directory: worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > amazon-track-playlist-refresh.log
+          npx wrangler dev --config .amazon-track-playlist-refresh.wrangler.jsonc --port 8792 --log-level error > amazon-track-playlist-refresh.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" >/dev/null 2>&1 || true' EXIT
+          ok=false
+          for _ in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:8792/refresh -o amazon-track-playlist-refresh-result.json; then
+              ok=true
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$ok" != true ]]; then
+            cat amazon-track-playlist-refresh.log
+            exit 1
+          fi
+          cat amazon-track-playlist-refresh-result.json
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const result = JSON.parse(readFileSync('amazon-track-playlist-refresh-result.json', 'utf8'));
+          if (result?.handled !== true || !(result?.batch_tracks > 0)) {
+            throw new Error(`Amazon Music track playlist refresh did not process a batch: ${JSON.stringify(result)}`);
+          }
+          if (!(result?.succeeded > 0)) {
+            throw new Error(`All Amazon Music track playlist lookups failed: ${JSON.stringify(result)}`);
+          }
+          console.log(JSON.stringify({ event: 'amazon_music_track_playlists_refreshed', ...result }));
+          NODE
