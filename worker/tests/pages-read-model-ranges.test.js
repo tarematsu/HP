@@ -23,6 +23,7 @@ const ALL_VARIANTS = [
   'history:broadcasts',
   'host-history:summary',
   'spotify-playcounts',
+  'regional-music',
 ];
 
 const TWELVE_HOUR_VARIANTS = [
@@ -129,6 +130,7 @@ test('canonical materialized variants exclude playback history', () => {
   assert.equal(materialized.get('history:broadcasts').cadence_minutes, 1440);
   assert.equal(materialized.get('spotify-playcounts').cadence_minutes, 720);
   assert.equal(materialized.get('spotify-playcounts').event_driven, true);
+  assert.equal(materialized.get('regional-music').cadence_minutes, 1440);
   assert.equal(materialized.get('dashboard').cadence_minutes, 5);
 });
 
