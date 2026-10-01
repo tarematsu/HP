@@ -7,7 +7,7 @@ function source(path) {
 }
 
 const descriptor = JSON.parse(source('database/facts-db.json'));
-const cacheMigration = source('database/facts-migrations/070_track_identity_cache.sql');
+const cacheMigration = source('database/facts-migrations/072_track_identity_cache.sql');
 const identity = source('worker/src/track-title-artist-identity.js');
 const metadata = source('worker/src/read-model-metadata-indexed.js');
 const canonicalizer = source('site/functions/lib/canonical-track-rows.js');
@@ -17,7 +17,7 @@ const monthlyApi = source('site/functions/api/spotify-monthly-listeners.js');
 const monthlyCollector = source('worker/src/spotify-monthly-listeners.js');
 
 test('identity cache is the MINUTE_DB schema tip and includes negative-cache expiry', () => {
-  const path = 'database/facts-migrations/070_track_identity_cache.sql';
+  const path = 'database/facts-migrations/072_track_identity_cache.sql';
   assert.equal(descriptor.schema, path);
   assert.equal(descriptor.migrations.at(-1), path);
   assert.match(cacheMigration, /identity_key TEXT PRIMARY KEY/);
