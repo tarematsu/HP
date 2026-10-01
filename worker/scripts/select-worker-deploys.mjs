@@ -28,6 +28,7 @@ const deployScriptWorkers = new Map([
   ['worker/scripts/deploy-buddies-collector.mjs', collectorWorker],
   ['worker/scripts/deploy-ohisama-collector.mjs', ohisamaCollectorWorker],
   ['worker/scripts/deploy-spotify-playcount.mjs', spotifyPlaycountWorker],
+  ['worker/scripts/bootstrap-spotify-read-model.mjs', spotifyPlaycountWorker],
   ['worker/scripts/deploy-amazon-music.mjs', amazonMusicWorker],
   ['worker/scripts/deploy-runtime.mjs', runtimeWorker],
   ['worker/scripts/pages-response-kv-namespace.mjs', runtimeWorker],
