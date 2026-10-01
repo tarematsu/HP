@@ -6,66 +6,89 @@ const page = await browser.newPage({
   userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
 });
 
+const TARGET_TRACK_ID = 'B0DJLRN1LF';
+const USER_HASH = JSON.stringify({ level: 'LIBRARY_MEMBER' });
+let capturedHeaders = null;
 const events = [];
 const push = (value) => events.push(value);
 
-function interesting(value) {
-  const text = typeof value === 'string' ? value : JSON.stringify(value);
-  return /playlist|プレイリスト|showSearch|filter|entityType|mediaType/i.test(text || '');
-}
-
-function scan(value, path = '$', out = [], depth = 0) {
-  if (depth > 15 || value == null || out.length >= 400) return out;
-  if (typeof value === 'string') {
-    if (interesting(value)) out.push({ path, value: value.slice(0, 4000) });
-    return out;
-  }
-  if (Array.isArray(value)) {
-    value.forEach((item, index) => scan(item, `${path}[${index}]`, out, depth + 1));
-    return out;
-  }
-  if (typeof value === 'object') {
-    for (const [key, item] of Object.entries(value)) {
-      if (interesting(key)) out.push({ path: `${path}.${key}`, value: typeof item === 'string' ? item.slice(0, 4000) : item });
-      scan(item, `${path}.${key}`, out, depth + 1);
-    }
-  }
+function deepStrings(value, out = [], depth = 0) {
+  if (depth > 16 || value == null || out.length > 3000) return out;
+  if (typeof value === 'string') { out.push(value); return out; }
+  if (Array.isArray(value)) { value.forEach((v) => deepStrings(v, out, depth + 1)); return out; }
+  if (typeof value === 'object') Object.values(value).forEach((v) => deepStrings(v, out, depth + 1));
   return out;
 }
 
-page.on('request', (request) => {
-  const url = request.url();
-  if (!/music\.a2z\.com\/api/i.test(url)) return;
-  const postData = request.postData();
-  if (/showSearch|playlist/i.test(url) || interesting(postData)) {
-    push({ type: 'request', method: request.method(), url, postData });
-  }
-});
+function summarize(payload) {
+  const strings = deepStrings(payload);
+  const playlists = [...new Set(strings.flatMap((value) => {
+    const matches = [...String(value).matchAll(/\/(?:user-)?playlists\/([A-Za-z0-9_-]+)/giu)];
+    return matches.map((m) => m[1]);
+  }))].slice(0, 50);
+  const targetMentions = strings.filter((value) => String(value).includes(TARGET_TRACK_ID)).length;
+  const urls = [...new Set(strings.filter((value) => /searchCatalogPlaylists|showCatalogPlaylist|\/playlists\//iu.test(String(value))))].slice(0, 30);
+  return { playlists, target_mentions: targetMentions, urls };
+}
 
-page.on('response', async (response) => {
-  const url = response.url();
-  if (!/music\.a2z\.com\/api/i.test(url) || !/showSearch|playlist/i.test(url)) return;
+page.on('request', (request) => {
+  if (!request.url().endsWith('/api/showSearch')) return;
   try {
-    const json = await response.json();
-    push({ type: 'response', status: response.status(), url, interesting: scan(json) });
+    const body = JSON.parse(request.postData() || '{}');
+    if (body.headers) capturedHeaders = body.headers;
   } catch {}
 });
 
-for (const query of ['承認欲求 櫻坂46', 'TOKYO SNOW 櫻坂46']) {
-  const url = `https://music.amazon.co.jp/search/${encodeURIComponent(query)}`;
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-  await page.waitForTimeout(5000);
-  const controls = await page.locator('button, a, [role="button"], [role="tab"]').allTextContents();
-  push({ type: 'controls', query, controls: controls.map((item) => item.trim()).filter(Boolean).filter((item) => /プレイリスト|playlist/i.test(item)) });
-  const playlist = page.getByText(/^(プレイリスト|Playlists?)$/i).first();
-  if (await playlist.count()) {
+await page.goto('https://music.amazon.co.jp/search/TOKYO%20SNOW%20%E6%AB%BB%E5%9D%8246', {
+  waitUntil: 'domcontentloaded', timeout: 60000,
+});
+await page.waitForTimeout(5000);
+
+if (!capturedHeaders) throw new Error('showSearch headers were not captured');
+
+const candidates = [
+  { name: 'catalog-trackId', base: 'https://fe.mesk.skill.music.a2z.com/api', path: '/searchCatalogPlaylists', request: { trackId: TARGET_TRACK_ID, userHash: USER_HASH } },
+  { name: 'catalog-id', base: 'https://fe.mesk.skill.music.a2z.com/api', path: '/searchCatalogPlaylists', request: { id: TARGET_TRACK_ID, userHash: USER_HASH } },
+  { name: 'catalog-empty-keyword-trackId', base: 'https://fe.mesk.skill.music.a2z.com/api', path: '/searchCatalogPlaylists', request: { keyword: '', trackId: TARGET_TRACK_ID, userHash: USER_HASH } },
+  { name: 'catalog-trackid-keyword', base: 'https://fe.mesk.skill.music.a2z.com/api', path: '/searchCatalogPlaylists', request: { keyword: TARGET_TRACK_ID, userHash: USER_HASH } },
+  { name: 'web-filter-TrackId', base: 'https://fe.web.skill.music.a2z.com/api', path: '/showSearch', request: { filter: JSON.stringify({ IsLibrary: ['false'], TrackId: [TARGET_TRACK_ID] }), keyword: JSON.stringify({ interface: 'Web.TemplatesInterface.v1_0.Touch.SearchTemplateInterface.SearchKeywordClientInformation', keyword: '' }), suggestedKeyword: '', userHash: USER_HASH } },
+  { name: 'web-filter-trackId', base: 'https://fe.web.skill.music.a2z.com/api', path: '/showSearch', request: { filter: JSON.stringify({ IsLibrary: ['false'], trackId: [TARGET_TRACK_ID] }), keyword: JSON.stringify({ interface: 'Web.TemplatesInterface.v1_0.Touch.SearchTemplateInterface.SearchKeywordClientInformation', keyword: '' }), suggestedKeyword: '', userHash: USER_HASH } },
+];
+
+for (const candidate of candidates) {
+  const result = await page.evaluate(async ({ candidate, capturedHeaders }) => {
     try {
-      await playlist.click({ timeout: 5000 });
-      await page.waitForTimeout(5000);
-      push({ type: 'clicked-playlist-filter', query, url: page.url() });
+      const response = await fetch(candidate.base + candidate.path, {
+        method: 'POST',
+        headers: { accept: '*/*', 'content-type': 'text/plain;charset=UTF-8' },
+        body: JSON.stringify({ ...candidate.request, headers: capturedHeaders }),
+      });
+      const text = await response.text();
+      let json = null;
+      try { json = JSON.parse(text); } catch {}
+      return { status: response.status, ok: response.ok, text: json ? null : text.slice(0, 2000), json };
     } catch (error) {
-      push({ type: 'playlist-click-error', query, error: String(error?.message || error) });
+      return { status: 0, ok: false, text: String(error?.message || error), json: null };
     }
+  }, { candidate, capturedHeaders });
+  push({ type: 'candidate', name: candidate.name, request: candidate.request, status: result.status, ok: result.ok, error: result.text, summary: result.json ? summarize(result.json) : null });
+
+  const playlistIds = result.json ? summarize(result.json).playlists.slice(0, 5) : [];
+  for (const playlistId of playlistIds) {
+    const detail = await page.evaluate(async ({ playlistId, capturedHeaders, userHash }) => {
+      try {
+        const response = await fetch('https://fe.mesk.skill.music.a2z.com/api/showCatalogPlaylist', {
+          method: 'POST',
+          headers: { accept: '*/*', 'content-type': 'text/plain;charset=UTF-8' },
+          body: JSON.stringify({ id: playlistId, userHash, headers: capturedHeaders }),
+        });
+        const text = await response.text();
+        let json = null;
+        try { json = JSON.parse(text); } catch {}
+        return { status: response.status, json, text: json ? null : text.slice(0, 1000) };
+      } catch (error) { return { status: 0, json: null, text: String(error?.message || error) }; }
+    }, { playlistId, capturedHeaders, userHash: USER_HASH });
+    push({ type: 'playlist-verify', candidate: candidate.name, playlist_id: playlistId, status: detail.status, contains_target: detail.json ? deepStrings(detail.json).some((v) => String(v).includes(TARGET_TRACK_ID)) : false, summary: detail.json ? summarize(detail.json) : null, error: detail.text });
   }
 }
 
