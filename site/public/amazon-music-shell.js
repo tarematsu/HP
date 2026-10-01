@@ -8,7 +8,6 @@ import {
   dashboardTable,
   mountDashboardShell,
 } from './dashboard-ui-common.js?v=20261001.1';
-import { loadMusicServicePlaylists } from './music-service-playlists.js?v=20261001.1';
 import {
   musicServiceMeta,
   musicServicePlaylistCard,
@@ -92,6 +91,10 @@ mountDashboardShell({
   },
 });
 
-void loadMusicServicePlaylists('amazon').catch((error) => {
-  console.warn('Amazon Music playlist view failed to load', error);
-});
+function playlistModuleUrl() {
+  return ['/music-service-playlists.js', 'v=20261001.1'].join('?');
+}
+
+void import(playlistModuleUrl())
+  .then((module) => module.loadMusicServicePlaylists?.('amazon'))
+  .catch((error) => console.warn('Amazon Music playlist view failed to load', error));
