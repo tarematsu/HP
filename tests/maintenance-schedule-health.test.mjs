@@ -19,23 +19,32 @@ test('repair layers use lightweight, four-hour, and daily cadences', () => {
   const repair = read('.github/workflows/repair-pages-summaries.yml');
 
   assert.equal(cron(runtime), '11,41 * * * *');
+  assert.match(runtime, /cron: '6 0 \* \* \*'/);
   assert.equal(cron(dataRepair), '31 */4 * * *');
   assert.equal(cron(metadata), '16 0 * * *');
   assert.equal(cron(pages), '26 0 * * *');
   assert.equal(cron(repair), '23 4 * * *');
 
-  assert.match(runtime, /RUNTIME_MAINTENANCE_LIGHT_ONLY: 'true'/);
+  assert.match(runtime, /RUNTIME_MAINTENANCE_LIGHT_ONLY:/);
+  assert.match(runtime, /RUNTIME_MAINTENANCE_SKIP_REBUILD:/);
+  assert.match(runtime, /publish-recent-daily-summaries-actions\.mjs/);
+  assert.match(runtime, /detect-pages-read-model-revision-drift-actions\.mjs/);
+  assert.match(runtime, /steps\.pages-revision-drift\.outputs\.due_keys != ''/);
   assert.doesNotMatch(runtime, /run-minute-facts-gap-scan-actions\.mjs/);
-  assert.doesNotMatch(runtime, /detect-pages-read-model-revision-drift-actions\.mjs/);
 
   assert.match(dataRepair, /run-minute-facts-gap-scan-actions\.mjs/);
-  assert.match(dataRepair, /publish-recent-daily-summaries-actions\.mjs/);
   assert.match(dataRepair, /run-runtime-offline-maintenance-actions\.mjs/);
-  assert.match(dataRepair, /detect-pages-read-model-revision-drift-actions\.mjs/);
-  assert.match(dataRepair, /steps\.pages-revision-drift\.outputs\.due_keys != ''/);
-  assert.match(dataRepair, /PAGES_RESPONSE_BUCKET: sh-pages-responses/);
+  assert.match(dataRepair, /RUNTIME_MAINTENANCE_REBUILD_ONLY: 'true'/);
   assert.match(dataRepair, /RUNTIME_MAINTENANCE_FORCE: 'true'/);
+  assert.doesNotMatch(dataRepair, /publish-recent-daily-summaries-actions\.mjs/);
+  assert.doesNotMatch(dataRepair, /detect-pages-read-model-revision-drift-actions\.mjs/);
+  assert.doesNotMatch(dataRepair, /PAGES_RESPONSE_BUCKET/);
 
+  assert.doesNotMatch(runtime, /^\s*push:\s*$/m);
+  assert.doesNotMatch(dataRepair, /^\s*push:\s*$/m);
+  assert.match(metadata, /^\s*push:\s*$/m);
+  assert.match(metadata, /branches: \[main\]/);
+  assert.match(metadata, /worker\/scripts\/repair-playback-read-model-actions\.mjs/);
   assert.doesNotMatch(metadata, /workflow_run:/);
   assert.doesNotMatch(pages, /workflow_run:/);
   assert.match(runtime, /cancel-in-progress: false/);

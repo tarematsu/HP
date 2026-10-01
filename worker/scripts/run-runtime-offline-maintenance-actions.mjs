@@ -146,11 +146,11 @@ async function writeMaintenanceStatus(db, {
   ).run();
 }
 
-function skippedOfflineRebuildSummary() {
+function skippedOfflineRebuildSummary(reason = 'rebuild-cadence') {
   return {
     event: 'offline_minute_rebuild_summary',
     skipped: true,
-    reason: 'rebuild-cadence',
+    reason,
     passes: 0,
     processed: 0,
     processed_rebuild: 0,
@@ -180,6 +180,8 @@ export async function runRuntimeOfflineMaintenanceActions(options = {}) {
   const runRebuilds = options.runRebuilds || runOfflineMinuteRebuilds;
   const runRetention = options.runRetention || pruneOldSnapshots;
   const lightOnly = options.lightOnly === true || enabled(process.env.RUNTIME_MAINTENANCE_LIGHT_ONLY);
+  const rebuildOnly = options.rebuildOnly === true || enabled(process.env.RUNTIME_MAINTENANCE_REBUILD_ONLY);
+  const skipRebuild = options.skipRebuild === true || enabled(process.env.RUNTIME_MAINTENANCE_SKIP_REBUILD);
   const force = options.force === true || enabled(process.env.RUNTIME_MAINTENANCE_FORCE);
   const minimumIntervalMs = positiveInteger(
     options.minimumIntervalMs ?? process.env.RUNTIME_MAINTENANCE_MIN_INTERVAL_MS,
@@ -220,6 +222,32 @@ export async function runRuntimeOfflineMaintenanceActions(options = {}) {
     }
   };
 
+  const runRebuildPhase = async () => {
+    if (skipRebuild) return skippedOfflineRebuildSummary('separate-integrity-repair');
+    const previousRebuild = rebuildMinimumIntervalMs > 0 && options.forceRebuild !== true
+      ? await readRebuildStatus(env.OTHER_DB)
+      : null;
+    if (rebuildMinimumIntervalMs > 0
+        && options.forceRebuild !== true
+        && recentSuccessfulMaintenance(previousRebuild, startedAt, rebuildMinimumIntervalMs)) {
+      return skippedOfflineRebuildSummary();
+    }
+    const rebuilds = await runRebuilds(env, {
+      now: clock,
+      maxJobs: 1,
+      maxPasses: 1,
+      totalBudgetMs: 60_000,
+    });
+    const rebuildFinishedAt = timestamp(clock, startedAt);
+    await writeRebuildStatus(env.OTHER_DB, {
+      status: 'ok',
+      attemptAt: startedAt,
+      successAt: rebuildFinishedAt,
+      updatedAt: rebuildFinishedAt,
+    });
+    return rebuilds;
+  };
+
   await writeMaintenanceStatus(env.OTHER_DB, {
     status: 'running',
     attemptAt: startedAt,
@@ -233,6 +261,25 @@ export async function runRuntimeOfflineMaintenanceActions(options = {}) {
       inboxRecoveryOptions(options, startedAt),
     );
     ensureTime();
+
+    if (rebuildOnly) {
+      const rebuilds = await runRebuildPhase();
+      const finishedAt = timestamp(clock, startedAt);
+      await writeMaintenanceStatus(env.OTHER_DB, {
+        status: 'ok',
+        attemptAt: startedAt,
+        successAt: finishedAt,
+        updatedAt: finishedAt,
+      });
+      return {
+        ok: true,
+        event: 'runtime_rebuild_maintenance_actions_complete',
+        elapsed_ms: Math.max(0, finishedAt - startedAt),
+        inbox_recovery: inboxRecovery,
+        rebuilds,
+      };
+    }
+
     const prediction = await runPrediction(env, startedAt);
     ensureTime();
 
@@ -255,31 +302,7 @@ export async function runRuntimeOfflineMaintenanceActions(options = {}) {
 
     const rollup = await runRollup(env.BUDDIES_DB, env.OTHER_DB, env.MINUTE_DB, startedAt);
     ensureTime();
-
-    let rebuilds;
-    const previousRebuild = rebuildMinimumIntervalMs > 0 && options.forceRebuild !== true
-      ? await readRebuildStatus(env.OTHER_DB)
-      : null;
-    if (rebuildMinimumIntervalMs > 0
-        && options.forceRebuild !== true
-        && recentSuccessfulMaintenance(previousRebuild, startedAt, rebuildMinimumIntervalMs)) {
-      rebuilds = skippedOfflineRebuildSummary();
-    } else {
-      rebuilds = await runRebuilds(env, {
-        now: clock,
-        maxJobs: 1,
-        maxPasses: 1,
-        totalBudgetMs: 60_000,
-      });
-      const rebuildFinishedAt = timestamp(clock, startedAt);
-      await writeRebuildStatus(env.OTHER_DB, {
-        status: 'ok',
-        attemptAt: startedAt,
-        successAt: rebuildFinishedAt,
-        updatedAt: rebuildFinishedAt,
-      });
-    }
-
+    const rebuilds = await runRebuildPhase();
     ensureTime();
     const retention = await runRetention(env, startedAt);
     const finishedAt = timestamp(clock, startedAt);

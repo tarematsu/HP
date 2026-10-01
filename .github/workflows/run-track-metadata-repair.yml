@@ -1,8 +1,9 @@
 name: Repair track metadata
 
 on:
-  # Unknown tracks are enriched on the live committed-metadata path. This job is
-  # only the bounded backlog/legacy safety net, so once per day is sufficient.
+  # Unknown tracks are enriched on the live committed-metadata path. The normal
+  # backlog/legacy safety net is daily; code changes still run immediately so a
+  # repaired identity path is validated and deployed without waiting a day.
   schedule:
     - cron: '16 0 * * *'
   push:
