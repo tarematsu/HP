@@ -39,7 +39,7 @@ let controller = null;
 let resizeTimer = 0;
 
 const byId = (id) => document.getElementById(id);
-const active = () => document.querySelector('#modeTabs button.active[data-view="nogizaka"]') != null;
+const active = () => byId('nogizakaListeningPartyView')?.hidden === false;
 
 function epoch(value) {
   const parsed = finite(value);
