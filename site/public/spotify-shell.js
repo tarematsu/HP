@@ -36,28 +36,28 @@ const trendPanels = `
     titleId: 'spotifyTrendTitle',
     kicker: 'SAKAMICHI',
     className: 'spotify-trend-panel music-service-panel',
-    chartHtml: '<div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="乃木坂46・櫻坂46・日向坂46の全曲合計再生数前日比推移"></div>',
+    chartHtml: '<div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="坂道3グループの全曲再生数前日比推移"></div>',
   })}
   ${dashboardChartCard({
     title: 'Spotify 月間リスナー推移（坂道3グループ）',
     titleId: 'spotifyMonthlyListenerTrendTitle',
     kicker: 'MONTHLY LISTENERS',
     className: 'spotify-trend-panel music-service-panel',
-    chartHtml: '<div id="spotifyMonthlyListenerTrendCharts" class="spotify-trend-charts" aria-label="乃木坂46・櫻坂46・日向坂46のSpotify月間リスナー推移"></div>',
+    chartHtml: '<div id="spotifyMonthlyListenerTrendCharts" class="spotify-trend-charts" aria-label="坂道3グループの月間リスナー推移"></div>',
   })}
   ${dashboardChartCard({
     title: 'Spotify 今年リリース上位10曲合計の再生数前日比推移（坂道3グループ）',
     titleId: 'spotifyTop10YearTrendTitle',
     kicker: 'SAKAMICHI',
     className: 'spotify-trend-panel music-service-panel',
-    chartHtml: '<div id="spotifyTop10YearTrendCharts" class="spotify-trend-charts" aria-label="乃木坂46・櫻坂46・日向坂46の今年リリース上位10曲合計の再生数前日比推移"></div>',
+    chartHtml: '<div id="spotifyTop10YearTrendCharts" class="spotify-trend-charts" aria-label="坂道3グループの今年リリース曲前日比推移"></div>',
   })}
   ${dashboardChartCard({
     title: 'Spotify Daily Top Artist（日本）の順位推移（坂道3グループ）',
     titleId: 'spotifyArtistRankTrendTitle',
     kicker: 'SPOTIFY CHARTS JAPAN',
     className: 'spotify-trend-panel music-service-panel',
-    chartHtml: '<div id="spotifyArtistRankTrendCharts" class="spotify-trend-charts" aria-label="Spotify日本 Daily Top Artist における乃木坂46・櫻坂46・日向坂46の順位推移"></div>',
+    chartHtml: '<div id="spotifyArtistRankTrendCharts" class="spotify-trend-charts" aria-label="坂道3グループのSpotify日本アーティスト順位推移"></div>',
   })}`;
 
 const tracksPanel = dashboardDataCard({
