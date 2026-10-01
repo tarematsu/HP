@@ -62,7 +62,7 @@ test('Buddies R2 mode bypasses D1 queue materialization reads', async () => {
   assert.equal(result.analysis, null);
 });
 
-test('Buddies playback transition can recover songs passed between one-minute polls', () => {
+test('Buddies playback transition can recover songs passed between five-minute polls', () => {
   const previous = [0, 1, 2, 3, 4, 5].map((index) => ({
     event_key: `event-${index}`,
     title: `Track ${index}`,
@@ -102,5 +102,5 @@ test('Buddies and Ohisama playback share canonical stationhead-minute track ids'
   assert.match(source, /track_id: trackId/);
   assert.match(migration, /track_id INTEGER NOT NULL/);
   assert.match(migration, /idx_sh_track_plays_track_id/);
-  assert.match(wrangler, /"crons": \["\* \* \* \* \*"\]/);
+  assert.match(wrangler, /"crons": \["\*\/5 \* \* \* \*"\]/);
 });
