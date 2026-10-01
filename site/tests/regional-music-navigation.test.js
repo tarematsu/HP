@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+const loader = readFileSync(new URL('../public/dashboard-tabs-loader.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/regional-music.js', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../public/regional-music-shell.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/dashboard-navigation.css', import.meta.url), 'utf8');
@@ -40,7 +41,9 @@ test('regional service views share the materialized read model endpoint', () => 
   assert.match(build, /'regional-music\.css'/);
 });
 
-test('dashboard navigation stays outside the initial bundle and uses the current deployment version', () => {
+test('dashboard navigation stays outside the initial bundle and starts after bundled shells mount', () => {
   assert.match(build, /args\.path === '\.\/dashboard-tabs\.js\?v=20260930\.1'/);
-  assert.match(build, /path: '\/dashboard-tabs\.js\?v=20261002\.1', external: true/);
+  assert.match(build, /path: '\/dashboard-tabs-loader\.js\?v=20261002\.1', external: true/);
+  assert.match(loader, /queueMicrotask/);
+  assert.match(loader, /import\('\/dashboard-tabs\.js\?v=20261002\.1'\)/);
 });
