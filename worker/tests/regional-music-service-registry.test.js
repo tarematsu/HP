@@ -9,10 +9,11 @@ import {
 } from '../src/regional-music-service-registry.js';
 
 test('regional music registry covers all planned services and schedules every collector', () => {
-  assert.equal(Object.keys(REGIONAL_MUSIC_SERVICES).length, 19);
-  assert.equal(REGIONAL_MUSIC_DAILY_COLLECTORS.length, 19);
-  assert.equal(new Set(REGIONAL_MUSIC_DAILY_COLLECTORS).size, 19);
+  assert.equal(Object.keys(REGIONAL_MUSIC_SERVICES).length, 20);
+  assert.equal(REGIONAL_MUSIC_DAILY_COLLECTORS.length, 20);
+  assert.equal(new Set(REGIONAL_MUSIC_DAILY_COLLECTORS).size, 20);
   assert.deepEqual(regionalMusicServicesByPhase(1), [
+    'youtube_music',
     'genie',
     'bugs',
     'joox',
