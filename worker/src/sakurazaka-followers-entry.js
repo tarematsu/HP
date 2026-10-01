@@ -1,5 +1,6 @@
 import app from './sakurazaka-entry.js';
 import { dispatchScheduledService } from './internal-scheduled-dispatch.js';
+import { enqueueRegionalMusicDispatch } from './regional-music-dispatch-plan.js';
 
 export const STATIONHEAD_DAILY_FOLLOWERS_MESSAGE = 'stationhead-daily-followers';
 export const SHARED_STATIONHEAD_CRON = '* * * * *';
@@ -30,6 +31,9 @@ async function runSharedTargets(env, scheduledAt) {
     tasks.push(['spotify-playcount', dispatchScheduledService(env?.SPOTIFY_PLAYCOUNT_SCHEDULED, SPOTIFY_PLAYCOUNT_CRON, scheduledAt)]);
   }
 
+  const regionalMusic = enqueueRegionalMusicDispatch(env, scheduledAt);
+  tasks.push(['regional-music', regionalMusic]);
+
   const settled = await Promise.allSettled(tasks.map(([, promise]) => promise));
   const failures = [];
   const results = {};
@@ -58,9 +62,8 @@ async function runSharedTargets(env, scheduledAt) {
 
 export async function runSakurazakaFollowersScheduled(controller, env) {
   // Daily follower collection now runs in GitHub Actions at 00:00 JST.
-  // This minute cron is also the shared scheduler for the lightweight
-  // Nogizaka, Ohisama, and Spotify collectors so they do not consume
-  // separate account-wide Cron Trigger slots.
+  // This minute cron is also the shared scheduler for lightweight collectors
+  // and for the one-per-minute regional-music queue dispatch.
   const scheduledAt = scheduledTimestamp(controller);
   const ownController = {
     ...controller,
