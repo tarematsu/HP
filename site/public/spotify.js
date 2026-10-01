@@ -239,6 +239,7 @@ function renderTrendChart(trend = {}, {
   };
   seriesList.forEach((series) => {
     drawMetric(series, metricKey, yFor);
+    // lineDash: [6, 4]
     if (secondaryMetricKey) drawMetric(series, secondaryMetricKey, yForSecond, [6, 4]);
   });
 }
