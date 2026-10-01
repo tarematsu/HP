@@ -18,11 +18,12 @@ const youtubePolicy = readFileSync(
 const xRuntime = readFileSync(
   new URL('../../native/src/renderer_panels/media_x_following_like.inc', import.meta.url), 'utf8');
 
-test('media cycle randomly selects zero, one or two X slots once per X-YouTube-X-TVer cycle', () => {
+test('media cycle randomly selects one or two X slots once per X-YouTube-X-TVer cycle', () => {
   assert.match(mediaBase, /struct NativeMediaXCyclePlan/);
-  assert.match(mediaBase, /const UINT count = NativeMediaXRandomBelow\(3\)/);
+  assert.match(mediaBase, /const UINT count = 1U \+ NativeMediaXRandomBelow\(2\)/);
+  assert.doesNotMatch(mediaBase, /NativeMediaXRandomBelow\(3\)/);
   assert.match(mediaBase, /if \(count == 2\)[\s\S]*firstSlot = true[\s\S]*secondSlot = true/);
-  assert.match(mediaBase, /else if \(count == 1\)[\s\S]*NativeMediaXRandomBelow\(2\)/);
+  assert.match(mediaBase, /else \{[\s\S]*NativeMediaXRandomBelow\(2\)/);
   assert.match(mediaBase, /if \(tver\) NativeMediaCurrentXCyclePlan\(\) = NativeMediaDrawXCyclePlan\(\)/);
   assert.match(mediaBase, /NativeMediaXSlotEnabled\(true\)/);
   assert.match(mediaBase, /NativeMediaXSlotEnabled\(false\)/);

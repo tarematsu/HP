@@ -90,11 +90,11 @@ UINT NativeMediaXRandomBelow(UINT exclusiveUpperBound) noexcept {
 
 NativeMediaXCyclePlan NativeMediaDrawXCyclePlan() noexcept {
   NativeMediaXCyclePlan plan{};
-  const UINT count = NativeMediaXRandomBelow(3);  // 0, 1, 2 are equally likely.
+  const UINT count = 1U + NativeMediaXRandomBelow(2);  // 1 or 2, equally likely.
   if (count == 2) {
     plan.firstSlot = true;
     plan.secondSlot = true;
-  } else if (count == 1) {
+  } else {
     if (NativeMediaXRandomBelow(2) == 0) {
       plan.firstSlot = true;
     } else {
