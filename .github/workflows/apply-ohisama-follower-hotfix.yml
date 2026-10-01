@@ -18,6 +18,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci --prefer-offline --no-audit --no-fund
       - name: Inspect public channel payload structure
         working-directory: worker
         run: |
@@ -53,25 +56,21 @@ jobs:
 
           const structural = [];
           const hints = [];
-          const interesting = /host|handle|broad|dj|station|account|owner|user|syndicat|creator|source/i;
+          const interesting = /host|handle|broad|dj|station|account|owner|user|syndicat|creator|source|member/i;
           function walk(value, path = '$', depth = 0) {
-            if (!value || typeof value !== 'object' || depth > 6) return;
+            if (!value || typeof value !== 'object' || depth > 7) return;
             if (Array.isArray(value)) {
               structural.push({ path, type: 'array', length: value.length });
-              for (let i = 0; i < Math.min(value.length, 3); i += 1) walk(value[i], `${path}[${i}]`, depth + 1);
+              for (let i = 0; i < Math.min(value.length, 5); i += 1) walk(value[i], `${path}[${i}]`, depth + 1);
               return;
             }
             const keys = Object.keys(value);
-            if (depth <= 4 || interesting.test(path) || keys.some((key) => interesting.test(key))) {
-              structural.push({ path, keys });
-            }
+            if (depth <= 4 || interesting.test(path) || keys.some((key) => interesting.test(key))) structural.push({ path, keys });
             for (const [key, child] of Object.entries(value)) {
               const childPath = `${path}.${key}`;
               if (child == null || ['string', 'number', 'boolean'].includes(typeof child)) {
                 if (interesting.test(key) || interesting.test(path)) hints.push({ path: childPath, value: child });
-              } else {
-                walk(child, childPath, depth + 1);
-              }
+              } else walk(child, childPath, depth + 1);
             }
           }
           walk(payload);
