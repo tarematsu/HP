@@ -1,5 +1,6 @@
 import { runOptimizedOhisamaCollectorScheduled } from './ohisama-collector-optimized.js';
 import { registerOhisamaFollowerTarget } from './ohisama-collector-entry.js';
+import { collectInitialStationheadFollowers } from './stationhead-initial-followers.js';
 import { cachedOhisamaFollowerTargetRegistrar } from './ohisama-follower-target-cache.js';
 import { withOhisamaFollowerMembership } from './ohisama-follower-membership.js';
 import { captureOhisamaPlayback } from './ohisama-playback.js';
@@ -47,7 +48,11 @@ export async function runOhisamaPagesScheduled(controller, env, ctx, dependencie
   const registerFollowerTarget = activeBroadcastFollowerRegistrar(
     cachedOhisamaFollowerTargetRegistrar(
       withOhisamaFollowerMembership(
-        dependencies.registerFollowerTarget || registerOhisamaFollowerTarget,
+        async (targetEnv, snapshot, observedAt) => {
+          const added = await (dependencies.registerFollowerTarget || registerOhisamaFollowerTarget)(targetEnv, snapshot, observedAt);
+          await (dependencies.collectInitialFollowers || collectInitialStationheadFollowers)(targetEnv, snapshot.host_handle, observedAt);
+          return added;
+        },
       ),
     ),
   );

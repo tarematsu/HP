@@ -1,5 +1,5 @@
 export const OHISAMA_FOLLOWER_TARGET_CACHE_KEY = 'stationhead/ohisama/follower-targets.json';
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3;
 const MAX_CACHED_HANDLES = 256;
 
 function normalizedHandle(value) {

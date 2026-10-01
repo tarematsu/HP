@@ -172,7 +172,7 @@ async function loadFollowerModel(r2) {
       ...STATIONHEAD_DAILY_FOLLOWER_HANDLES,
       ...(Array.isArray(payload?.handles) ? payload.handles : []),
     ]);
-    return { handles, rows: normalizeFollowerRows(payload?.rows, handles) };
+    return { handles, rows: normalizeFollowerRows(payload?.rows, handles), memberships: payload?.memberships || {} };
   } catch (error) {
     console.warn(JSON.stringify({
       event: 'stationhead_followers_r2_history_invalid',
@@ -182,7 +182,7 @@ async function loadFollowerModel(r2) {
   }
 }
 
-async function publishFollowerReadModel(
+export async function publishFollowerReadModel(
   r2,
   date,
   handles,
@@ -206,7 +206,7 @@ async function publishFollowerReadModel(
     handles: allHandles,
     rows: next,
     accounts: followerSummary(next, allHandles, date),
-    memberships: followerMemberships(allHandles, sourceMasks),
+    memberships: { ...existing.memberships, ...followerMemberships(allHandles, sourceMasks) },
     failures,
   });
   const saved = await saveMaterializedR2Response(
