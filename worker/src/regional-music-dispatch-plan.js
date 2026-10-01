@@ -21,27 +21,18 @@ export const REGIONAL_MUSIC_DAILY_SERVICES = Object.freeze([
 ]);
 
 export const REGIONAL_MUSIC_DISPATCH_UTC_HOUR = 21; // 06:00 JST
-export const REGIONAL_MUSIC_READ_MODEL_UTC_MINUTE = 30; // 06:30 JST
 
 export function regionalMusicDispatchForTimestamp(timestamp) {
   const date = new Date(Number(timestamp));
   if (!Number.isFinite(date.getTime()) || date.getUTCHours() !== REGIONAL_MUSIC_DISPATCH_UTC_HOUR) return null;
 
   const minute = date.getUTCMinutes();
-  if (minute < REGIONAL_MUSIC_DAILY_SERVICES.length) {
-    return {
-      message_type: 'regional-music-collect',
-      service: REGIONAL_MUSIC_DAILY_SERVICES[minute],
-      scheduled_at: date.getTime(),
-    };
-  }
-  if (minute === REGIONAL_MUSIC_READ_MODEL_UTC_MINUTE) {
-    return {
-      message_type: 'regional-music-publish',
-      scheduled_at: date.getTime(),
-    };
-  }
-  return null;
+  if (minute >= REGIONAL_MUSIC_DAILY_SERVICES.length) return null;
+  return {
+    message_type: 'regional-music-collect',
+    service: REGIONAL_MUSIC_DAILY_SERVICES[minute],
+    scheduled_at: date.getTime(),
+  };
 }
 
 export async function enqueueRegionalMusicDispatch(env, timestamp) {
