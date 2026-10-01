@@ -1,8 +1,27 @@
 import { runOptimizedOhisamaCollectorScheduled } from './ohisama-collector-optimized.js';
+import { registerOhisamaFollowerTarget } from './ohisama-collector-entry.js';
 import { refreshOptimizedOhisamaReadModel } from './ohisama-read-model-optimized.js';
 
+export function activeBroadcastFollowerRegistrar(registerFollowerTarget) {
+  if (typeof registerFollowerTarget !== 'function') {
+    throw new TypeError('registerFollowerTarget must be a function');
+  }
+  return async (env, snapshot, observedAt) => {
+    if (snapshot?.is_broadcasting !== 1) return false;
+    return registerFollowerTarget(env, snapshot, observedAt);
+  };
+}
+
 export async function runOhisamaPagesScheduled(controller, env, ctx, dependencies = {}) {
-  const result = await runOptimizedOhisamaCollectorScheduled(controller, env, ctx, dependencies);
+  const registerFollowerTarget = activeBroadcastFollowerRegistrar(
+    dependencies.registerFollowerTarget || registerOhisamaFollowerTarget,
+  );
+  const result = await runOptimizedOhisamaCollectorScheduled(
+    controller,
+    env,
+    ctx,
+    { ...dependencies, registerFollowerTarget },
+  );
   if (!result?.collected) return result;
 
   try {
