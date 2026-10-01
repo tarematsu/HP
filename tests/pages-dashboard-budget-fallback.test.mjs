@@ -24,8 +24,9 @@ const HISTORY_KEYS = [
   'history:broadcasts',
   'host-history:summary',
 ];
+const BUDGET_GUARDED_HISTORY_KEYS = HISTORY_KEYS.filter((key) => key !== 'history:daily');
 
-test('D1 budget deferral reuses scheduled history without touching event-driven Spotify', () => {
+test('D1 budget deferral keeps daily history publishable while reusing heavier history', () => {
   assert.match(workflow, /name: Record D1 budget deferral/);
   assert.match(workflow, /name: Install Worker dependencies\n        run: npm ci/);
   assert.match(workflow, /name: Refresh reusable history models during D1 budget deferral/);
@@ -43,12 +44,11 @@ test('D1 budget deferral reuses scheduled history without touching event-driven 
   assert.match(repairWorkflow, /cron: '23 4 \* \* \*'/);
   assert.match(repairWorkflow, /node scripts\/repair-pages-summary-gaps\.mjs/);
   assert.match(repairWorkflow, /PAGES_STREAM_ZERO_REPAIR_ENABLED: 'true'/);
-  assert.match(workflow, /reuse-only history freshness checks will still run\./);
   assert.match(workflow, /site\/functions\/lib\/materialized-history\.js/);
   assert.doesNotMatch(workflow, /Rebuild track history|track-history generation/);
 });
 
-test('budget fallback keeps every scheduled history variant reuse-only and excludes Spotify/dashboard', async () => {
+test('budget fallback exempts daily and keeps other scheduled history reuse-only', async () => {
   assert.deepEqual(HISTORY_READ_MODEL_VARIANTS.map(({ key }) => key), HISTORY_KEYS);
   const published = [];
   const reuseOnly = [];
@@ -67,7 +67,8 @@ test('budget fallback keeps every scheduled history variant reuse-only and exclu
 
   assert.equal(result.ok, true);
   assert.deepEqual(published, HISTORY_KEYS);
-  assert.deepEqual(reuseOnly, HISTORY_KEYS);
+  assert.deepEqual(reuseOnly, BUDGET_GUARDED_HISTORY_KEYS);
+  assert.equal(reuseOnly.includes('history:daily'), false);
   assert.equal(published.includes('spotify-playcounts'), false);
   assert.equal(published.includes('dashboard'), false);
   assert.equal(result.track_history_steps, 0);
