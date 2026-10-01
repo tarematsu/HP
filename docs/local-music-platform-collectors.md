@@ -4,7 +4,7 @@
 
 Collect public Sakurazaka46, Hinatazaka46, and Nogizaka46 activity from regional/local music streaming services and expose it through the existing Pages/Worker read-model pipeline.
 
-Target artist aliases must be normalized before storage/display:
+Target artist aliases are normalized before storage/display:
 
 - 櫻坂46 / Sakurazaka46 / SAKURAZAKA46
 - 日向坂46 / Hinatazaka46 / HINATAZAKA46
@@ -14,31 +14,31 @@ Do not merge unrelated artists solely because a localized service returns a simi
 
 ## Target services
 
-| Region | Service | Initial public signals to collect | Initial status |
+| Region | Service | Public signals | Status |
 | --- | --- | --- | --- |
-| South Korea | Genie | artist/track presence, track cumulative plays, cumulative listeners, likes, albums | collector implemented; production verification pending |
-| South Korea | Bugs! | artist likes, tracks/albums, popularity ordering, MusicPD playlist inclusion | artist metric collector implemented; playlist expansion pending |
-| South Korea | Melon | artist fans, track likes, DJ playlists, chart/playlist inclusion where public | artist discovery + DJ playlist collector implemented; production verification pending |
-| South Korea | Naver VIBE | artist/track presence, public playlist/chart inclusion and public engagement values | discovery continues; album-track API verified, reliable artist search API still pending |
-| Greater China / SEA | JOOX | artist followers, tracks/albums, popularity/ranking, comments/playlist inclusion where public | follower collector implemented; track/playlist expansion pending |
-| Mainland China | QQ Music | artist followers/fans where public, tracks, charts, playlists, comments/engagement where public | artist discovery + listen-ordered track collector implemented; production verification pending |
-| Mainland China | NetEase Cloud Music | artist followers, track popularity/comments, playlists, charts where public | exact artist discovery + hot tracks + rotating album catalog + comment counts implemented |
-| Mainland China | Kugou Music | artist/track presence, public popularity/chart/playlist signals | alias-verified catalog search collector implemented; production verification pending |
-| Vietnam | NhacCuaTui | artist followers, tracks/albums, popular tracks, user playlist inclusion | follower + seed-track play collector implemented; catalog expansion pending |
-| Middle East / MENA | Anghami | artist/track presence, track plays, likes, playlists where public | seed-track metrics + artist discovery collector implemented; catalog expansion pending |
-| Russia/CIS | Yandex Music | artist/track presence, charts/playlists and public engagement values where exposed | public JSON search collector implemented; production verification pending |
-| Africa / international emerging markets | Boomplay | artist/track presence, plays/favorites/comments/playlists where public | Nogizaka46 catalog presence verified; collector pending |
-| Thailand | Plern | artist/track presence and any public plays/followers/charts/playlists | discovery |
-| Thailand | Fungjai | artist/track presence and public discovery/playlist signals if relevant catalog exists | discovery |
-| Vietnam | Zing MP3 | artist/track presence, charts, playlists and public engagement values | discovery |
-| India | JioSaavn | artist/track presence, playlists/charts and public engagement values | discovery |
-| India | Gaana | artist/track presence, playlists/charts and public engagement values | discovery |
-| Indonesia | Langit Musik | artist/track presence, charts/playlists and public engagement values | discovery |
-| South Korea | FLO | artist/track presence, public charts/playlists/engagement values | exact artist discovery + rotating album catalog collector implemented |
+| South Korea | Genie | track cumulative plays/listeners/likes, catalog | collector implemented; production verification pending |
+| South Korea | Bugs! | artist likes, catalog, MusicPD playlists | artist metric collector implemented; playlist expansion pending |
+| South Korea | Melon | artist fans, track likes, DJ playlists | artist discovery + DJ playlist collector implemented |
+| South Korea | Naver VIBE | catalog, playlist/chart inclusion | album-track API verified; reliable artist discovery still pending |
+| Greater China / SEA | JOOX | artist followers, catalog, rankings/comments/playlists | follower collector implemented; expansion pending |
+| Mainland China | QQ Music | catalog, listen-order ranking, public engagement where exposed | exact artist discovery + listen-ordered track collector implemented |
+| Mainland China | NetEase Cloud Music | hot-track rank, comments, catalog | exact artist discovery + hot tracks + rotating album expansion + comments implemented |
+| Mainland China | Kugou Music | catalog, public popularity/chart signals | exact-alias catalog collector implemented |
+| Vietnam | NhacCuaTui | followers, plays, catalog/playlists | follower + seed-track play collector implemented; expansion pending |
+| MENA | Anghami | track plays/likes, artist followers, catalog/playlists | seed-track metrics + artist discovery/followers implemented; expansion pending |
+| Russia/CIS | Yandex Music | catalog, charts/playlists | no-key JSON search collector implemented |
+| Africa / emerging markets | Boomplay | plays/favorites/comments/catalog/playlists | catalog presence verified; first-party collection surface still pending |
+| Thailand | Plern | catalog and any public metrics/charts/playlists | discovery pending |
+| Thailand | Fungjai | historical local streaming/catalog discovery | no current streaming-catalog collector: service has evolved into a Music Integrator/community platform |
+| Vietnam | Zing MP3 | catalog, charts/playlists/engagement | signed/cookie-dependent web API; stable public collection path pending |
+| India | JioSaavn | artist/catalog/search metadata | exact artist + song catalog collector implemented |
+| India | Gaana | artist/catalog/popularity ordering | current v2 artist search + popularity-sorted top-track collector implemented |
+| Indonesia | Langit Musik | catalog/charts/playlists | automated collector intentionally blocked: published terms prohibit crawling/scraping/automated collection |
+| South Korea | FLO | artist/catalog | exact artist discovery + rotating album catalog collector implemented |
 
 ## Canonical collection fields
 
-Collectors should map service-specific data onto shared fields where available. Missing or non-public values remain null; never synthesize counts from ranking positions.
+Collectors map service-specific data onto shared fields where available. Missing or non-public values remain null; never synthesize counts from ranking positions.
 
 ### Artist
 
@@ -61,7 +61,7 @@ Collectors should map service-specific data onto shared fields where available. 
 - `listeners`
 - `likes`
 - `comments`
-- `popularity_rank` or service-native rank when explicitly published
+- `popularity_rank` only when the service explicitly publishes an ordering
 - `collected_at`
 
 ### Playlist/chart inclusion
@@ -86,22 +86,23 @@ Logical keys:
 - playlist membership snapshots: `(service, service_playlist_id, service_track_id, snapshot_date)`
 - service identity aliases: `(service, entity_type, service_id) -> canonical id`
 
-The public Pages API receives a pre-materialized R2 read model. Avoid dashboard-time D1 joins/scans. The collector performs identity resolution before publishing the read model, following the existing Spotify/Amazon/Apple direction.
+The public Pages API receives a pre-materialized R2 read model. Pages never live-scrapes providers. `regional-music` is producer-owned by the dedicated collector and is intentionally excluded from the generic GitHub Actions materialization cadence.
 
 ## Collector behavior
 
-1. Discover service-native artist IDs for all three groups using all listed name variants.
-2. Persist stable IDs so normal scheduled runs do not repeatedly search by free text when a stable identity is available.
-3. Fetch artist metrics, catalog tracks, track metrics, and playlist/chart membership independently so one unavailable surface does not discard the rest.
-4. Record `null` for values not exposed by the service. Do not convert missing values to zero.
-5. Keep raw service IDs and URLs for diagnosis and future canonicalization.
-6. Rate-limit per service and use small rotating batches for track/playlist/album expansion.
-7. Treat upstream 4xx/5xx/layout changes as service-specific degraded states rather than corrupting prior good snapshots.
-8. Publish a health summary containing last success, last attempted collection, entity counts, and latest error class per service.
+1. Discover service-native artist IDs for all three groups using listed Japanese and romanized aliases.
+2. Persist stable IDs so normal scheduled runs avoid repeated free-text discovery where possible.
+3. Fetch artist metrics, catalog tracks, track metrics, and playlist/chart membership independently.
+4. Record `null` for values not exposed by the service; do not convert missing values to zero.
+5. Keep service IDs and public URLs for diagnosis and future canonicalization.
+6. Use bounded/rotating batches for large catalog and playlist expansion.
+7. Treat upstream HTTP/layout/API changes as service-specific degraded states without deleting prior good snapshots.
+8. Publish collector health with last attempt/success, entity counts, and latest error class.
+9. Do not implement an automated collector when the provider's published terms explicitly prohibit automated collection.
 
 ## Rollout order
 
-### Phase 1 — collectors with clearly public numeric metrics
+### Phase 1 — public numeric metrics
 
 - Genie
 - Bugs!
@@ -109,7 +110,7 @@ The public Pages API receives a pre-materialized R2 read model. Avoid dashboard-
 - NhacCuaTui
 - Anghami
 
-### Phase 2 — China/Korea platform expansion
+### Phase 2 — China/Korea expansion
 
 - QQ Music
 - NetEase Cloud Music
@@ -131,56 +132,74 @@ The public Pages API receives a pre-materialized R2 read model. Avoid dashboard-
 
 ## Known service identities / seeds
 
-These are diagnostic seeds, not canonical identity replacements. Discovery must still verify artist ownership before expansion.
+These are diagnostic seeds, not canonical identity replacements. Discovery still verifies artist ownership before expansion.
 
 - Bugs! artist IDs: Sakurazaka46 `80348696`, Hinatazaka46 `80329579`, Nogizaka46 `80192968`.
 - JOOX HK artist IDs: Sakurazaka46 `l3RBNJqESiqw84k4wFKQig==`, Hinatazaka46 `bBDS6Lsx44ux11K9H6vrKQ==`, Nogizaka46 `rsJfY_jmYjJ3Jrn7pdgwhA==`.
-- Melon validated DJ playlist: `430097431` (`역대 오리콘 차트 명곡`); Nogizaka46 entries are currently observable there.
+- Melon validated DJ playlist: `430097431` (`역대 오리콘 차트 명곡`); Nogizaka46 entries are observable there.
 - QQ Music Nogizaka46 release seed: album ID `000HNVfX1PSixv`.
 - NetEase Cloud Music Nogizaka46 release seed: album ID `278234837`.
 - Kugou Music Nogizaka46 release seed: `cv1uyy99`.
-- Naver VIBE Hinatazaka46 artist ID: `2834287`; VIBE album tracks are exposed under `/vibeWeb/musicapiweb/album/{albumId}/tracks`.
-- Yandex Music Hinatazaka46 artist ID: `7101843`; normal collection still uses exact-name search rather than trusting this seed alone.
+- Naver VIBE Hinatazaka46 artist ID: `2834287`; album tracks are exposed under `/vibeWeb/musicapiweb/album/{albumId}/tracks`.
+- Yandex Music Hinatazaka46 artist ID: `7101843`; collection still uses exact-name discovery rather than trusting the seed alone.
+
+## Provider constraints
+
+- **Langit Musik:** published terms prohibit crawling and other automated methods including bots, scrapers, and spiders for viewing/accessing/collecting service information. Do not deploy an automated collector without an authorized API or explicit permission.
+- **Fungjai:** the current service describes itself as having started as a local streaming service in 2014 and now being a Music Integrator/community platform. A current general music-catalog surface has not been established.
+- **Zing MP3:** current web API access depends on request signatures/API-key/cookie state. Do not hard-code leaked/stale keys or signatures.
+- **Boomplay:** public catalog presence exists, but collection should use a first-party public surface rather than silently depending on a third-party metadata proxy.
+- **Naver VIBE:** known album endpoints are not enough; artist identity discovery must be reliable before scheduled collection is enabled.
 
 ## Completion criteria per service
 
 A service is not considered complete merely because an artist page was found. Mark it complete only after:
 
 - all three groups were searched under Japanese and romanized names;
-- stable service IDs are stored for every found artist/track/playlist;
-- every publicly exposed metric has a parser and regression fixture/test;
-- collection cadence and rate limiting are configured;
+- stable service IDs are stored for found artists/tracks/playlists;
+- every safely/publicly exposed metric used by the collector has a parser and regression fixture/test;
+- collection cadence and request bounds are configured;
 - failure/degraded-state behavior is tested;
 - snapshot persistence and R2 read-model publication are implemented;
-- Pages can display service health and collected values without live scraping;
+- Pages can display service health and values without live scraping;
 - duplicate aliases/localized titles are normalized without collapsing distinct service-native tracks.
+
+A service may instead be marked `blocked` when its published terms disallow automated collection or when the only known method requires unstable/non-public authentication material.
 
 ## Implementation status
 
-Current PR implementation:
+Currently connected to the scheduled Worker: **13 services**.
+
+- Genie: dynamic artist search, artist likes, top-track IDs, cumulative listeners/plays/likes.
+- Bugs!: stable artist IDs and daily artist likes.
+- JOOX: stable artist IDs and daily followers.
+- NhacCuaTui: daily followers plus seed-track plays.
+- Anghami: seed-track plays/likes, artist-ID discovery and artist followers.
+- Melon: artist search/fan metrics plus validated DJ playlist membership snapshots.
+- QQ Music: smartbox exact-artist discovery plus listen-ordered top tracks.
+- NetEase Cloud Music: exact artist discovery, hot-track rank, comments and rotating album catalog expansion.
+- Kugou Music: exact-alias filtered song search with service-native track/artist identities.
+- FLO: exact artist discovery, album discovery and rotating album track expansion.
+- Yandex Music: API-key-free JSON search with exact artist filtering and provider artist/album/track IDs.
+- JioSaavn: autocomplete exact-artist discovery plus song-search catalog snapshots.
+- Gaana: current v2 exact-artist search plus popularity-sorted artist top-track snapshots.
+
+Shared implementation:
 
 - generic D1 schemas for artist, track, playlist-membership and collector-health snapshots;
-- a 19-service registry and three-group alias normalizer;
-- dedicated `sh-regional-music-collector` scheduled Worker, isolated from Spotify/Amazon collection;
-- daily collection at 00:20 JST;
-- compact `regional-music` R2 read model and Pages API route; Pages never scrapes providers live;
-- Genie: dynamic artist search, artist likes, rotating top-track IDs, cumulative listeners/plays/likes;
-- Bugs!: stable artist IDs and daily artist likes;
-- JOOX: stable artist IDs and daily followers;
-- NhacCuaTui: daily followers plus seed-track plays;
-- Anghami: seed-track plays/likes, artist-ID discovery and artist followers;
-- Melon: artist search/fan metrics plus target-track membership snapshots from validated DJ playlists;
-- QQ Music: smartbox exact-artist discovery plus listen-ordered top-track snapshots;
-- NetEase Cloud Music: exact artist discovery, hot-track rank, comment totals and rotating six-album/day catalog expansion;
-- Kugou Music: exact-alias filtered song search with provider-native track/artist identities;
-- FLO: exact artist discovery, album discovery and rotating six-album/day track expansion;
-- Yandex Music: API-key-free JSON search, exact artist filtering and provider artist/album/track IDs;
-- regression tests for alias normalization, service registry, parsers, read model and Worker deployment selection.
+- 19-service registry and three-group alias normalizer;
+- dedicated `sh-regional-music-collector` Worker, isolated from Spotify/Amazon collection;
+- daily run at 00:20 JST;
+- compact `regional-music` R2 read model and Pages API route;
+- direct R2 reads for the producer-owned regional model;
+- regression tests for identity normalization, provider parsers, read model, API contract and Worker deployment selection.
 
-Still required before this PR is production-complete:
+Remaining work:
 
-1. expand Phase 1 collectors from seed/top-track coverage to full catalog and discoverable playlists;
-2. finish Naver VIBE once a reliable artist-discovery surface is validated, without guessing IDs;
-3. implement the remaining Phase 3 services: Boomplay, Plern, Fungjai, Zing MP3, JioSaavn, Gaana and Langit Musik where public surfaces can be collected reliably;
-4. run production verification after D1 migration/Worker deployment and verify each provider response independently;
-5. keep the PR draft until the real scheduled collector has produced a healthy `regional-music` read model.
+1. expand Phase 1 seed/top-track collectors toward full catalog and playlist coverage where public and permitted;
+2. finish Naver VIBE artist discovery;
+3. find first-party stable collection surfaces for Boomplay and Plern;
+4. determine whether Zing MP3 can be collected without unstable/private auth material;
+5. treat Fungjai as discovery-only unless a current streaming catalog returns;
+6. do not automate Langit Musik without permission/authorized API;
+7. deploy migration/Worker only after the draft PR is ready, then verify real provider responses and the first healthy `regional-music` production read model.
