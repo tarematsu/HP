@@ -8,8 +8,6 @@ import {
 } from './amazon-music-150k-extension.js';
 import { publishAmazonMusicSakamichiModel } from './amazon-music-sakamichi-publisher.js';
 import { recordAmazonTop500Check } from './amazon-music-top500-history.js';
-import { collectAmazonMusicTrackPlaylists } from './amazon-music-track-playlist-collector.js';
-import { amazonMusicTrackPlaylistFetch } from './amazon-music-track-playlist-fetch.js';
 import { canonicalizeAppleMusicPresentation } from './apple-music-canonical-presentation.js';
 import { canonicalizeAppleMusicPlaylistPresentation } from './apple-music-playlist-canonical-presentation.js';
 import { collectAppleMusicSnapshot } from './apple-music-collector.js';
@@ -22,7 +20,6 @@ import {
 } from './music-service-other-store.js';
 
 export const AMAZON_MUSIC_CRON = '2,5,12,15,22,32,42,52 * * * *';
-export const AMAZON_MUSIC_TRACK_PLAYLIST_CRON = '*/6 * * * *';
 export const AMAZON_MUSIC_TOP_SCAN_CRON = '5 * * * *';
 export const AMAZON_MUSIC_DEEP_SCAN_CRON = '2,12,22,32,42,52 * * * *';
 export const APPLE_MUSIC_PROBE_CRON = '15 * * * *';
@@ -61,14 +58,6 @@ async function collectAppleMusicPlaylistData(env, scheduledTime) {
   });
   if (presentation?.updated) result.canonical_presentation = presentation;
   return result;
-}
-
-async function collectAmazonMusicTrackPlaylistData(env, scheduledTime) {
-  return collectAmazonMusicTrackPlaylists(
-    amazonMusicServiceEnv(env),
-    scheduledTime,
-    amazonMusicTrackPlaylistFetch,
-  );
 }
 
 async function checkAmazonMusic(env, scheduledTime) {
@@ -162,11 +151,6 @@ export default {
     let run;
     if (cron === AMAZON_MUSIC_CRON) {
       run = Promise.all(unifiedScheduledRuns(env, scheduledTime));
-    } else if (cron === AMAZON_MUSIC_TRACK_PLAYLIST_CRON) {
-      run = loggedRun(
-        'amazon-music-track-playlist-collection',
-        () => collectAmazonMusicTrackPlaylistData(env, scheduledTime),
-      );
     } else if (cron === APPLE_MUSIC_PROBE_CRON) {
       run = loggedRun(
         'apple-music-collection',
