@@ -144,14 +144,20 @@ function qqSeries(history, periods) {
 }
 
 function setVisible(visible) {
-  for (const id of ['qqJapanChartSection', 'qqJapanHistorySection', 'qqArtistPopularitySection']) {
+  for (const id of [
+    'qqJapanChartSection',
+    'qqJapanHistorySection',
+    'qqAnimeChartSection',
+    'qqAnimeHistorySection',
+    'qqArtistPopularitySection',
+  ]) {
     const section = byId(id);
     if (section) section.hidden = !visible;
   }
 }
 
-function renderHistory(history) {
-  const body = replaceBody('qqJapanHistoryBody');
+function renderHistory(history, bodyId, emptyText) {
+  const body = replaceBody(bodyId);
   if (!body) return;
   const ordered = history
     .filter((item) => artistVisible(item?.canonical_artist))
@@ -159,7 +165,7 @@ function renderHistory(history) {
       || Number(a.rank) - Number(b.rank)
       || String(a.title || '').localeCompare(String(b.title || '')));
   if (!ordered.length) {
-    appendEmptyTableRow(body, 'QQ Music 日本榜のランクイン履歴はありません。', 4);
+    appendEmptyTableRow(body, emptyText, 4);
     return;
   }
   for (const item of ordered) {
@@ -170,6 +176,36 @@ function renderHistory(history) {
       item.title || '-',
     ]));
   }
+}
+
+function renderRankChart(chart, {
+  chartId,
+  legendId,
+  label,
+}) {
+  const history = Array.isArray(chart?.history) ? chart.history : [];
+  const periods = qqStoredPeriods(chart, history);
+  const series = qqSeries(history, periods);
+  const dates = periods.map((item) => item.date);
+  renderRankHistoryChart({
+    container:byId(chartId),
+    series,
+    dates,
+    height:320,
+    margin:{ left:58, right:18, top:12, bottom:34 },
+    yMax:OUT_OF_CHART_RANK,
+    rankTicks:[1, 25, 50, 75, 100, OUT_OF_CHART_RANK],
+    dateTickCount:5,
+    ariaLabel:`QQ Music ${label}における選択グループの更新日別最高順位推移。保存済み更新日の圏外も含み、1位が上。`,
+    lineClass:'kugou-rank-line',
+    emptyClass:'regional-music-rank-empty',
+    emptyText:`QQ Music ${label}の順位履歴はまだありません。`,
+    rankLabel:(rank) => rank === OUT_OF_CHART_RANK ? '圏外' : `${rank}位`,
+    dateLabel:providerDateText,
+    latestPoint:{ radius:() => 2.5 },
+    legendContainer:byId(legendId),
+  });
+  return history;
 }
 
 function renderPopularity(payload) {
@@ -204,32 +240,21 @@ function render(payload) {
   lastPayload = payload;
   syncFilterButtons();
   syncCadenceLabel();
-  const chart = payload?.qq_japan_chart || {};
-  const history = Array.isArray(chart.history) ? chart.history : [];
-  const periods = qqStoredPeriods(chart, history);
-  const series = qqSeries(history, periods);
-  const dates = periods.map((item) => item.date);
 
-  renderRankHistoryChart({
-    container:byId('qqJapanRankChart'),
-    series,
-    dates,
-    height:320,
-    margin:{ left:58, right:18, top:12, bottom:34 },
-    yMax:OUT_OF_CHART_RANK,
-    rankTicks:[1, 25, 50, 75, 100, OUT_OF_CHART_RANK],
-    dateTickCount:5,
-    ariaLabel:'QQ Music 日本榜における選択グループの更新日別最高順位推移。保存済み更新日の圏外も含み、1位が上。',
-    lineClass:'kugou-rank-line',
-    emptyClass:'regional-music-rank-empty',
-    emptyText:'QQ Music 日本榜の順位履歴はまだありません。',
-    rankLabel:(rank) => rank === OUT_OF_CHART_RANK ? '圏外' : `${rank}位`,
-    dateLabel:providerDateText,
-    latestPoint:{ radius:() => 2.5 },
-    legendContainer:byId('qqJapanRankLegend'),
+  const japanHistory = renderRankChart(payload?.qq_japan_chart || {}, {
+    chartId:'qqJapanRankChart',
+    legendId:'qqJapanRankLegend',
+    label:'日本榜',
   });
+  renderHistory(japanHistory, 'qqJapanHistoryBody', 'QQ Music 日本榜のランクイン履歴はありません。');
 
-  renderHistory(history);
+  const animeHistory = renderRankChart(payload?.qq_anime_chart || {}, {
+    chartId:'qqAnimeRankChart',
+    legendId:'qqAnimeRankLegend',
+    label:'动漫音乐榜',
+  });
+  renderHistory(animeHistory, 'qqAnimeHistoryBody', 'QQ Music 动漫音乐榜のランクイン履歴はありません。');
+
   renderPopularity(payload);
 }
 
@@ -254,18 +279,21 @@ async function renderForRoute() {
   if (!visible) return;
   syncCadenceLabel();
   bindFilters();
-  replaceBody('qqJapanRankLegend');
-  replaceBody('qqJapanRankChart');
-  replaceBody('qqJapanHistoryBody');
-  replaceBody('qqArtistPopularityBody');
+  for (const target of [
+    'qqJapanRankLegend', 'qqJapanRankChart', 'qqJapanHistoryBody',
+    'qqAnimeRankLegend', 'qqAnimeRankChart', 'qqAnimeHistoryBody',
+    'qqArtistPopularityBody',
+  ]) replaceBody(target);
   try {
     const payload = await loadReadModel();
     if (id !== requestId || location.hash.slice(1) !== 'qq_music') return;
     render(payload);
   } catch {
     if (id !== requestId || location.hash.slice(1) !== 'qq_music') return;
-    const historyBody = replaceBody('qqJapanHistoryBody');
-    if (historyBody) appendEmptyTableRow(historyBody, 'QQ Music 日本榜の履歴を取得できませんでした。', 4);
+    const japanBody = replaceBody('qqJapanHistoryBody');
+    if (japanBody) appendEmptyTableRow(japanBody, 'QQ Music 日本榜の履歴を取得できませんでした。', 4);
+    const animeBody = replaceBody('qqAnimeHistoryBody');
+    if (animeBody) appendEmptyTableRow(animeBody, 'QQ Music 动漫音乐榜の履歴を取得できませんでした。', 4);
     const popularityBody = replaceBody('qqArtistPopularityBody');
     if (popularityBody) appendEmptyTableRow(popularityBody, 'QQ Music の人気曲順位を取得できませんでした。', 3);
   }
