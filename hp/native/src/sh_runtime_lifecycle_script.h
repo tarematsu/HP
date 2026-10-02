@@ -7,7 +7,8 @@ namespace hp {
 // blank_recovery_script. This fragment schedules those owners plus a bounded
 // media-progress probe, and tears their timers down with the document lifecycle.
 inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
-  static constexpr std::wstring_view kFragment = LR"JS(
+  static constexpr std::wstring_view kFragment =
+LR"JS(
   const zoomOut = () => document.documentElement?.style.setProperty('zoom', '0.5');
   const run = () => {
     if (!pageActive) return;
@@ -78,7 +79,8 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
     progressSyntheticKeyWait = false;
     postText('drm-ready');
   };
-
+)JS"
+LR"JS(
   // waitingforkey and Chromium media errors are not guaranteed for every CDM
   // failure. Independently verify that a media element claiming to play keeps
   // advancing. First re-kick the element; if a second full stall window passes,
@@ -189,7 +191,8 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
       probeMediaProgress,
       healthyProgress ? progressHealthyProbeMs : progressProbeMs);
   };
-
+)JS"
+LR"JS(
   const onMediaStateEvent = event => {
     rememberProgressMedia(event);
     schedule(0);
