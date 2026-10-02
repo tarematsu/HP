@@ -60,16 +60,19 @@ async function fetchArtistMonthlyListeners(artist, env, session, fetchImpl) {
   return monthlyListeners;
 }
 
-async function artistsForSnapshot(db, snapshotDate) {
+async function artistsForSnapshot(db, snapshotDate, missingOnly = false) {
   const result = await db.prepare(`SELECT DISTINCT
       daily.artist_key,
       artist.artist_name,
       artist.spotify_artist_id
     FROM sh_spotify_artist_daily daily
     INNER JOIN sh_spotify_artists artist ON artist.artist_key=daily.artist_key
+    LEFT JOIN sh_spotify_artist_monthly_listeners_daily monthly
+      ON monthly.snapshot_date=daily.snapshot_date AND monthly.artist_key=daily.artist_key
     WHERE daily.snapshot_date=?
       AND trim(artist.spotify_artist_id)<>''
-    ORDER BY daily.artist_key`).bind(snapshotDate).all();
+      AND (?=0 OR monthly.artist_key IS NULL)
+    ORDER BY daily.artist_key`).bind(snapshotDate, missingOnly ? 1 : 0).all();
   return resultsOf(result).map((row) => ({
     artist_key: safeText(row?.artist_key),
     artist_name: safeText(row?.artist_name),
@@ -80,9 +83,12 @@ async function artistsForSnapshot(db, snapshotDate) {
 export async function collectSpotifyMonthlyListeners(env, snapshotDate, dependencies = {}) {
   const db = env?.OTHER_DB;
   if (!db?.prepare) return { snapshot_date: snapshotDate, attempted: 0, saved: 0, failed: 0 };
-  const artists = await artistsForSnapshot(db, snapshotDate);
+  const artists = await artistsForSnapshot(db, snapshotDate, Boolean(dependencies.missingOnly));
   if (!artists.length) {
-    logEvent('spotify_monthly_listeners_skipped', { snapshot_date: snapshotDate, reason: 'no-artists' });
+    logEvent('spotify_monthly_listeners_skipped', {
+      snapshot_date: snapshotDate,
+      reason: dependencies.missingOnly ? 'no-missing-artists' : 'no-artists',
+    });
     return { snapshot_date: snapshotDate, attempted: 0, saved: 0, failed: 0 };
   }
 
@@ -128,6 +134,7 @@ export async function collectSpotifyMonthlyListeners(env, snapshotDate, dependen
     attempted: artists.length,
     saved: rows.length,
     failed,
+    missing_only: Boolean(dependencies.missingOnly),
   });
   return { snapshot_date: snapshotDate, attempted: artists.length, saved: rows.length, failed };
 }
