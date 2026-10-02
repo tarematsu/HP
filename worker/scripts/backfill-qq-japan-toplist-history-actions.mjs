@@ -2,51 +2,44 @@ import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createWranglerRemoteR2 } from './remote-r2-json-adapter.mjs';
+import { enqueueGeniePublication } from './collect-genie-r2-actions.mjs';
 import { parseQqJapanToplist, QQ_JAPAN_TOPLIST_ID, QQ_JAPAN_TOPLIST_LIMIT } from '../src/regional-music-qq.js';
+import {
+  compareQqJapanHistoryPeriods,
+  filterQqJapanSakamichiEntries,
+  normalizeQqJapanHistoryPeriod,
+  QQ_JAPAN_HISTORY_INDEX_KEY,
+  QQ_JAPAN_HISTORY_PREFIX,
+  QQ_JAPAN_HISTORY_TARGETS,
+  QQ_JAPAN_HISTORY_VIEW_KEY,
+  qqIsoWeekPeriod,
+  qqJapanHistoryIndex,
+  qqJapanHistoryR2Key,
+  qqJapanHistoryRecord,
+  qqJapanHistoryRows,
+  qqJapanHistorySummary,
+  qqJapanHistoryViewFromRows,
+} from '../src/qq-japan-chart-history-view.js';
 
-export const QQ_JAPAN_HISTORY_PREFIX = 'regional-music/qq_music/japan-toplist-history';
-export const QQ_JAPAN_HISTORY_INDEX_KEY = `${QQ_JAPAN_HISTORY_PREFIX}/index.json`;
+export {
+  compareQqJapanHistoryPeriods,
+  filterQqJapanSakamichiEntries,
+  QQ_JAPAN_HISTORY_INDEX_KEY,
+  QQ_JAPAN_HISTORY_PREFIX,
+  QQ_JAPAN_HISTORY_TARGETS,
+  QQ_JAPAN_HISTORY_VIEW_KEY,
+  qqIsoWeekPeriod,
+  qqJapanHistoryR2Key,
+  qqJapanHistoryRecord,
+};
+
 export const QQ_JAPAN_HISTORY_PROGRESS_KEY = `${QQ_JAPAN_HISTORY_PREFIX}/progress.json`;
 export const QQ_JAPAN_HISTORY_DEFAULT_START = '2018-01-01';
-export const QQ_JAPAN_HISTORY_TARGETS = Object.freeze([
-  'sakurazaka46',
-  'nogizaka46',
-  'hinatazaka46',
-]);
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const REQUEST_DELAY_MS = 300;
 const MAX_CONSECUTIVE_FAILURES = 5;
 const MAX_SUSPICIOUS_DUPLICATES = 4;
-
-function normalizePeriod(value) {
-  const match = String(value || '').match(/(\d{4})\D+(\d{1,2})/);
-  if (!match) return null;
-  return `${match[1]}_${Number(match[2])}`;
-}
-
-export function compareQqJapanHistoryPeriods(left, right) {
-  const a = normalizePeriod(left);
-  const b = normalizePeriod(right);
-  if (!a || !b) return String(left).localeCompare(String(right));
-  const [aYear, aWeek] = a.split('_').map(Number);
-  const [bYear, bWeek] = b.split('_').map(Number);
-  return (aYear - bYear) || (aWeek - bWeek);
-}
-
-export function qqIsoWeekPeriod(dateLike) {
-  const input = dateLike instanceof Date ? dateLike : new Date(dateLike);
-  if (!Number.isFinite(input.getTime())) throw new Error('invalid QQ history date');
-  const date = new Date(Date.UTC(input.getUTCFullYear(), input.getUTCMonth(), input.getUTCDate()));
-  const weekday = (date.getUTCDay() + 6) % 7;
-  date.setUTCDate(date.getUTCDate() - weekday + 3);
-  const isoYear = date.getUTCFullYear();
-  const jan4 = new Date(Date.UTC(isoYear, 0, 4));
-  const jan4Weekday = (jan4.getUTCDay() + 6) % 7;
-  jan4.setUTCDate(jan4.getUTCDate() - jan4Weekday + 3);
-  const week = 1 + Math.round((date.getTime() - jan4.getTime()) / WEEK_MS);
-  return `${isoYear}_${week}`;
-}
 
 function latestThursdayJst(now = Date.now()) {
   const jst = new Date(Number(now) + 9 * 60 * 60 * 1000);
@@ -71,14 +64,8 @@ export function qqJapanHistoryPeriods(now = Date.now(), startDate = QQ_JAPAN_HIS
   return periods;
 }
 
-export function qqJapanHistoryR2Key(period) {
-  const normalized = normalizePeriod(period);
-  if (!normalized) throw new Error('invalid QQ history period');
-  return `${QQ_JAPAN_HISTORY_PREFIX}/weeks/${normalized}.json`;
-}
-
 export function qqJapanHistoryToplistUrl(period) {
-  const normalized = normalizePeriod(period);
+  const normalized = normalizeQqJapanHistoryPeriod(period);
   if (!normalized) throw new Error('invalid QQ history period');
   const data = { comm: { ct:24, cv:0 }, req_1: {
     module:'musicToplist.ToplistInfoServer',
@@ -121,62 +108,16 @@ export async function fetchQqJapanHistoryPeriod(period, fetchImpl = fetch) {
   const chart = parseQqJapanToplist(payload);
   return {
     ...chart,
-    requested_period:normalizePeriod(period),
+    requested_period:normalizeQqJapanHistoryPeriod(period),
     provider_period:providerPeriod(payload),
     fingerprint:chartFingerprint(chart.entries),
   };
 }
 
-export function filterQqJapanSakamichiEntries(entries = []) {
-  return entries
-    .filter((row) => QQ_JAPAN_HISTORY_TARGETS.includes(row.canonical_artist))
-    .map((row) => ({
-      position:row.position,
-      track_id:row.track_id,
-      title:row.title ?? null,
-      album_name:row.album_name ?? null,
-      canonical_artist:row.canonical_artist,
-      artists:(row.artists || []).map((artist) => ({ mid:artist.mid ?? null, name:artist.name ?? '' })),
-    }));
-}
-
-function countTargets(entries) {
-  return Object.fromEntries(QQ_JAPAN_HISTORY_TARGETS.map((artist) => [artist,
-    entries.filter((row) => row.canonical_artist === artist).length]));
-}
-
-export function qqJapanHistoryRecord(period, chart, collectedAt = Date.now()) {
-  const entries = filterQqJapanSakamichiEntries(chart?.entries || []);
-  return {
-    version:1,
-    service:'qq_music',
-    chart:'japan_toplist',
-    top_id:QQ_JAPAN_TOPLIST_ID,
-    period:normalizePeriod(period),
-    provider_period:chart?.provider_period ?? null,
-    update_time:chart?.update_time ?? null,
-    collected_at:Number(collectedAt),
-    source_url:`https://y.qq.com/n/ryqq/toplist/${QQ_JAPAN_TOPLIST_ID}`,
-    counts:countTargets(entries),
-    entries,
-  };
-}
-
-function summaryFromRecord(record) {
-  return {
-    period:record.period,
-    provider_period:record.provider_period ?? null,
-    update_time:record.update_time ?? null,
-    collected_at:record.collected_at,
-    counts:record.counts,
-    entries:record.entries.length,
-  };
-}
-
 function periodMatchesProvider(period, provider) {
   if (!provider) return null;
-  const normalized = normalizePeriod(provider);
-  return normalized ? normalized === normalizePeriod(period) : null;
+  const normalized = normalizeQqJapanHistoryPeriod(provider);
+  return normalized ? normalized === normalizeQqJapanHistoryPeriod(period) : null;
 }
 
 async function withRetries(task, retries = 3) {
@@ -202,6 +143,7 @@ export async function backfillQqJapanHistory({
   const requestedPeriods = Array.from(periods || []);
   const existingIndex = await load(QQ_JAPAN_HISTORY_INDEX_KEY);
   const weeks = { ...(existingIndex?.weeks || {}) };
+  const records = new Map();
   let fetched = 0;
   let skipped = 0;
   let failures = 0;
@@ -212,8 +154,9 @@ export async function backfillQqJapanHistory({
   for (const period of requestedPeriods) {
     const key = qqJapanHistoryR2Key(period);
     const existing = await load(key);
-    if (existing?.version === 1 && existing?.period === normalizePeriod(period)) {
-      weeks[existing.period] = summaryFromRecord(existing);
+    if (existing?.version === 1 && existing?.period === normalizeQqJapanHistoryPeriod(period)) {
+      weeks[existing.period] = qqJapanHistorySummary(existing);
+      records.set(existing.period, existing);
       skipped += 1;
       continue;
     }
@@ -254,17 +197,12 @@ export async function backfillQqJapanHistory({
 
     const record = qqJapanHistoryRecord(period, chart, now);
     await save(key, record);
-    weeks[record.period] = summaryFromRecord(record);
+    weeks[record.period] = qqJapanHistorySummary(record);
+    records.set(record.period, record);
     fetched += 1;
 
     if (fetched % 20 === 0) {
-      await save(QQ_JAPAN_HISTORY_INDEX_KEY, {
-        version:1,
-        service:'qq_music',
-        chart:'japan_toplist',
-        updated_at:now,
-        weeks,
-      });
+      await save(QQ_JAPAN_HISTORY_INDEX_KEY, qqJapanHistoryIndex(weeks, now, existingIndex || {}));
       await save(QQ_JAPAN_HISTORY_PROGRESS_KEY, {
         version:1,
         status:'running',
@@ -278,23 +216,19 @@ export async function backfillQqJapanHistory({
     await sleep(REQUEST_DELAY_MS);
   }
 
-  const sortedPeriods = Object.keys(weeks).sort(compareQqJapanHistoryPeriods);
-  const index = {
-    version:1,
-    service:'qq_music',
-    chart:'japan_toplist',
-    updated_at:Date.now(),
-    earliest_period:sortedPeriods[0] || null,
-    latest_period:sortedPeriods.at(-1) || null,
-    weeks,
-  };
+  const completedAt = Date.now();
+  const index = qqJapanHistoryIndex(weeks, completedAt, existingIndex || {});
+  const historyRows = [...records.values()].flatMap((record) => qqJapanHistoryRows(record));
+  const view = qqJapanHistoryViewFromRows(index, historyRows, completedAt);
   await save(QQ_JAPAN_HISTORY_INDEX_KEY, index);
+  await save(QQ_JAPAN_HISTORY_VIEW_KEY, view);
   const result = {
     version:1,
     status:'complete',
-    updated_at:Date.now(),
+    updated_at:completedAt,
     requested_periods:requestedPeriods.length,
     stored_periods:Object.keys(weeks).length,
+    history_entries:view.history.length,
     fetched,
     skipped,
     failures,
@@ -310,9 +244,9 @@ async function main() {
   const config = JSON.parse(readFileSync(join(root, 'wrangler.regional-music.jsonc'), 'utf8'));
   const bucket = config.r2_buckets.find((row) => row.binding === 'PAGES_RESPONSE_R2')?.bucket_name;
   if (!bucket) throw new Error('PAGES_RESPONSE_R2 bucket missing');
-  if (!process.env.CLOUDFLARE_ACCOUNT_ID || !process.env.CLOUDFLARE_API_TOKEN) {
-    throw new Error('Cloudflare account context missing');
-  }
+  const account = process.env.CLOUDFLARE_ACCOUNT_ID;
+  const token = process.env.CLOUDFLARE_API_TOKEN;
+  if (!account || !token) throw new Error('Cloudflare account context missing');
   const r2 = createWranglerRemoteR2({
     bucket,
     cwd:root,
@@ -324,12 +258,25 @@ async function main() {
   };
   const save = async (key, value) => {
     await r2.put(key, JSON.stringify(value));
-    console.log(JSON.stringify({ event:'qq_japan_history_saved', key, entries:value.entries?.length ?? null }));
+    console.log(JSON.stringify({ event:'qq_japan_history_saved', key, entries:value.entries?.length ?? value.history?.length ?? null }));
   };
   const startDate = process.env.QQ_JAPAN_HISTORY_START || QQ_JAPAN_HISTORY_DEFAULT_START;
   const periods = qqJapanHistoryPeriods(Date.now(), startDate);
   const result = await backfillQqJapanHistory({ load, save, periods });
-  console.log(JSON.stringify({ event:'qq_japan_history_complete', ...result }));
+
+  const api = async (path, body) => {
+    const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}${path}`, {
+      method:body ? 'POST' : 'GET',
+      headers:{ authorization:`Bearer ${token}`, 'content-type':'application/json' },
+      ...(body ? { body:JSON.stringify(body) } : {}),
+      signal:AbortSignal.timeout(30_000),
+    });
+    const payload = await response.json();
+    if (!response.ok || payload.success !== true) throw new Error(`Publication queue API failed: HTTP ${response.status}`);
+    return payload.result;
+  };
+  await enqueueGeniePublication(config, api, result.updated_at);
+  console.log(JSON.stringify({ event:'qq_japan_history_complete', publication_messages:1, ...result }));
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
