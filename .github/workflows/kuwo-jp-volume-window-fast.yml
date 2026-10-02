@@ -1,0 +1,31 @@
+name: Fast test Kuwo volume window pagination
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-volume-window-fast.yml]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Inspect volume windows
+        run: |
+          python3 <<'PY'
+          import json,urllib.parse,urllib.request
+          base='https://kbangserver.kuwo.cn/ksong.s'
+          common={'from':'pc','fmt':'json','pn':'0','rn':'1','type':'bang','data':'content','id':'183','show_copyright_off':'0','pcmp4':'1','isbang':'1','userid':'0'}
+          for label,bid in [('current',None),('vol216','268368'),('vol250','270896'),('vol274','272685')]:
+            q=dict(common)
+            if bid:q['bangid']=bid
+            u=base+'?'+urllib.parse.urlencode(q)
+            try:
+              req=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'})
+              with urllib.request.urlopen(req,timeout=6) as r:j=json.loads(r.read().decode('utf-8','replace'))
+              v=j.get('volume') or {}; arr=[]
+              for year,xs in v.items():
+                for x in xs or []: arr.append((year,x.get('name'),x.get('third_id')))
+              print(label,'CV',j.get('currentVolume'),'PUB',j.get('pub'),'VOL_COUNT',len(arr),'FIRST',arr[:3],'LAST',arr[-5:])
+            except Exception as e:print(label,'ERR',repr(e))
+          PY
