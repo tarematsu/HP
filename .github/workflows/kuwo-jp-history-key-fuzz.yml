@@ -1,0 +1,45 @@
+name: Fuzz Kuwo historical edition selector keys
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-history-key-fuzz.yml]
+permissions:
+  contents: read
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Find parameter that selects previous edition
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import concurrent.futures,hashlib,json,urllib.parse,urllib.request
+          base='https://kbangserver.kuwo.cn/ksong.s'
+          common={'from':'pc','fmt':'json','pn':'0','rn':'5','type':'bang','data':'content','id':'183','show_copyright_off':'0','pcmp4':'1','isbang':'1','userid':'0'}
+          keys='id2 id3 second second_id secondId secondid third third_id thirdId thirdid parent parent_id parentId child child_id childId pid fid cid vid tid sid subid sub_id subId sourceid source_id sourceId bangid bangId bang_id bangid2 bangId2 bang_id2 bangid3 bangId3 bang_id3 rankid rankId rank_id history historyid historyId history_id period periodid periodId period_id issue issueid issueId issue_id volume volumeid volumeId volume_id vol volid volId edition editionid editionId edition_id version versionid versionId version_id term termid termId term_id phase phaseid phaseId phase_id seq sequence no number num index itemid itemId item_id listid listId list_id contentid contentId content_id digest token'.split()
+          values=['272685','274','2026|274','2']
+          def fetch(extra):
+            u=base+'?'+urllib.parse.urlencode({**common,**extra})
+            try:
+              q=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'})
+              with urllib.request.urlopen(q,timeout=6) as r:j=json.loads(r.read().decode('utf-8','replace'))
+              rows=j.get('musiclist') or j.get('musicList') or []
+              sig=[(x.get('id') or x.get('rid'),x.get('name'),x.get('artist')) for x in rows]
+              return {'pub':j.get('pub'),'cv':j.get('currentVolume'),'name':j.get('name'),'num':j.get('num'),'hash':hashlib.sha1(json.dumps(sig,ensure_ascii=False).encode()).hexdigest()[:12] if sig else None,'top':sig[:5],'keys':list(j.keys())}
+            except Exception as e:return {'error':repr(e)}
+          control=fetch({})
+          print('CONTROL',json.dumps(control,ensure_ascii=False))
+          tasks=[(k,v) for k in keys for v in values]
+          def one(kv):
+            k,v=kv;return k,v,fetch({k:v})
+          diffs=[]; errors=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex:
+            for k,v,x in ex.map(one,tasks):
+              if x.get('error'):errors.append((k,v,x['error']));continue
+              if any(x.get(z)!=control.get(z) for z in ('pub','cv','name','num','hash')):
+                diffs.append((k,v,x))
+          print('TASKS',len(tasks),'DIFFS',len(diffs),'ERRORS',len(errors))
+          for k,v,x in diffs:print('DIFF',k,v,json.dumps(x,ensure_ascii=False))
+          for x in errors[:20]:print('ERR',x)
+          PY
