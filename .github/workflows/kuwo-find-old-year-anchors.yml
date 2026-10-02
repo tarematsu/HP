@@ -12,17 +12,17 @@ jobs:
       matrix:
         include:
           - target: '2024|228'
-            lo: 213500
-            hi: 216300
+            lo: 216000
+            hi: 220500
             label: '2024-08-15'
           - target: '2025|23'
-            lo: 225000
-            hi: 228500
+            lo: 228000
+            hi: 232000
             label: '2025-01-23'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Scan estimated bangid band
+      - name: Scan corrected global-id band
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
@@ -43,7 +43,7 @@ jobs:
               return bid,j.get('currentVolume')
             except:return bid,None
           found=[]
-          with concurrent.futures.ThreadPoolExecutor(max_workers=28) as ex:
+          with concurrent.futures.ThreadPoolExecutor(max_workers=30) as ex:
             for bid,cv in ex.map(probe,range(lo,hi),chunksize=1):
               if cv==target:
                 found.append(bid);print('FOUND',label,target,bid);break
