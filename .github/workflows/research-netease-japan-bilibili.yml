@@ -37,26 +37,31 @@ jobs:
           p=pathlib.Path('research-bilibili/search.json')
           if not p.exists() or not p.stat().st_size:
               print('No search JSON returned')
+              pathlib.Path('research-bilibili/matches.json').write_text('[]')
               raise SystemExit(0)
           try:
               data=json.loads(p.read_text())
           except Exception as e:
               print('Invalid search JSON:', e)
               print(p.read_text(errors='replace')[:4000])
+              pathlib.Path('research-bilibili/matches.json').write_text('[]')
               raise SystemExit(0)
-          entries=data.get('entries') or []
-          out=[]
-          for e in entries:
-              title=(e.get('title') or '')
-              if '日语榜' in title or '日語榜' in title or '网易云' in title or '網易雲' in title:
-                  row={k:e.get(k) for k in ['id','title','url','webpage_url','uploader','uploader_id','timestamp','upload_date','duration']}
-                  out.append(row)
-                  print(json.dumps(row, ensure_ascii=False))
-          pathlib.Path('research-bilibili/matches.json').write_text(json.dumps(out,ensure_ascii=False,indent=2))
-          print('matched', len(out), 'of', len(entries))
+          entries=[]
+          for e in data.get('entries') or []:
+              if not isinstance(e, dict):
+                  continue
+              vid=e.get('id')
+              if not vid:
+                  continue
+              row={k:e.get(k) for k in ['id','title','url','webpage_url','uploader','uploader_id','timestamp','upload_date','duration']}
+              entries.append(row)
+              print(json.dumps(row, ensure_ascii=False))
+          pathlib.Path('research-bilibili/matches.json').write_text(json.dumps(entries,ensure_ascii=False,indent=2))
+          print('video ids recovered', len(entries))
           PY
 
       - name: Fetch metadata and subtitle manifests for matches
+        if: always()
         shell: bash
         run: |
           set +e
@@ -65,22 +70,46 @@ jobs:
           p=pathlib.Path('research-bilibili/matches.json')
           if not p.exists(): raise SystemExit(0)
           rows=json.loads(p.read_text())
-          for i,e in enumerate(rows[:15]):
+          summaries=[]
+          for i,e in enumerate(rows[:30]):
               vid=e.get('id')
               if not vid: continue
-              url=f'https://www.bilibili.com/video/{vid}'
-              print('\n===', i, vid, e.get('title'), '===')
-              cp=subprocess.run(['yt-dlp','--skip-download','--dump-single-json',url],capture_output=True,text=True,timeout=90)
+              raw=e.get('url') or ''
+              if raw.startswith('http'):
+                  url=raw
+              elif str(vid).isdigit():
+                  url=f'https://www.bilibili.com/video/av{vid}'
+              else:
+                  url=f'https://www.bilibili.com/video/{vid}'
+              print('\n===', i, vid, url, '===')
+              try:
+                  cp=subprocess.run(['yt-dlp','--skip-download','--dump-single-json',url],capture_output=True,text=True,timeout=90)
+              except subprocess.TimeoutExpired as ex:
+                  print('timeout', vid)
+                  continue
               pathlib.Path(f'research-bilibili/{i:02d}-{vid}.json').write_text(cp.stdout or '{}')
               pathlib.Path(f'research-bilibili/{i:02d}-{vid}.err').write_text(cp.stderr or '')
               print('exit',cp.returncode)
-              if cp.stderr: print(cp.stderr[-1200:])
+              if cp.stderr: print(cp.stderr[-1600:])
               try:
                   d=json.loads(cp.stdout)
-                  summary={k:d.get(k) for k in ['id','title','description','uploader','uploader_id','timestamp','upload_date','duration','webpage_url','chapters','subtitles','automatic_captions']}
-                  print(json.dumps(summary,ensure_ascii=False)[:12000])
               except Exception:
-                  pass
+                  continue
+              summary={k:d.get(k) for k in ['id','title','description','uploader','uploader_id','timestamp','upload_date','duration','webpage_url','chapters','subtitles','automatic_captions']}
+              summaries.append(summary)
+              print(json.dumps(summary,ensure_ascii=False)[:16000])
+          pathlib.Path('research-bilibili/summaries.json').write_text(json.dumps(summaries, ensure_ascii=False, indent=2))
+          needles=['乃木坂46','櫻坂46','樱坂46','日向坂46','Nogizaka46','Sakurazaka46','Hinatazaka46']
+          hits=[]
+          for s in summaries:
+              hay=json.dumps(s,ensure_ascii=False)
+              found=[n for n in needles if n.lower() in hay.lower()]
+              if found:
+                  hits.append({'matched':found,**s})
+          pathlib.Path('research-bilibili/sakamichi-hits.json').write_text(json.dumps(hits, ensure_ascii=False, indent=2))
+          print('\nSAKAMICHI METADATA HITS:', len(hits))
+          for h in hits:
+              print(json.dumps(h,ensure_ascii=False)[:16000])
           PY
 
       - name: Upload Bilibili research
