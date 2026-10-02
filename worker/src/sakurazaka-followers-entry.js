@@ -1,13 +1,17 @@
 import app from './sakurazaka-entry.js';
 import { dispatchScheduledService } from './internal-scheduled-dispatch.js';
 import { enqueueRegionalMusicDispatch } from './regional-music-dispatch-plan.js';
-import { shouldDispatchSpotifyPlaycount } from './spotify-playcount-timing.js';
+import {
+  shouldDispatchSpotifyArtistChart,
+  shouldDispatchSpotifyPlaycount,
+} from './spotify-playcount-timing.js';
 
 export const STATIONHEAD_DAILY_FOLLOWERS_MESSAGE = 'stationhead-daily-followers';
 export const SHARED_STATIONHEAD_CRON = '* * * * *';
 const NOGIZAKA_CRON = '* * * * *';
 const OHISAMA_CRON = '*/5 * * * *';
 const SPOTIFY_PLAYCOUNT_CRON = '0 * * * *';
+const SPOTIFY_ARTIST_CHART_CRON = '20 22 * * *';
 
 function scheduledTimestamp(controller) {
   const value = Number(controller?.scheduledTime);
@@ -33,6 +37,16 @@ async function runSharedTargets(env, scheduledAt) {
   // starts the full collection after that probe observes a source change.
   if (shouldDispatchSpotifyPlaycount(scheduledAt)) {
     tasks.push(['spotify-playcount', dispatchScheduledService(env?.SPOTIFY_PLAYCOUNT_SCHEDULED, SPOTIFY_PLAYCOUNT_CRON, scheduledAt)]);
+  }
+  // Spotify publishes the daily chart around 07:00 JST. Retry at :20 from
+  // 07:20 through 11:20; after the first successful date is stored the Worker
+  // exits after one cheap D1 state lookup.
+  if (shouldDispatchSpotifyArtistChart(scheduledAt)) {
+    tasks.push(['spotify-artist-chart', dispatchScheduledService(
+      env?.SPOTIFY_PLAYCOUNT_SCHEDULED,
+      SPOTIFY_ARTIST_CHART_CRON,
+      scheduledAt,
+    )]);
   }
 
   const regionalMusic = enqueueRegionalMusicDispatch(env, scheduledAt);
