@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {collectRegionalR2Snapshot,mergeRegionalR2Snapshot,regionalSnapshotFromPayload} from '../src/regional-music-r2-snapshot.js';
 import {saveRegionalArtist,saveRegionalTrack,saveRegionalRelease,saveRegionalPlaylist,saveRegionalPlaylistSnapshot,saveRegionalPlaylistMembership,saveRegionalCollectorState} from '../src/regional-music-store.js';
-import {collectRegionalR2Run} from '../scripts/collect-regional-r2-actions.mjs';
+import {collectRegionalR2Run,parseRegionalServiceSelection} from '../scripts/collect-regional-r2-actions.mjs';
 const now=Date.parse('2026-10-05T15:00:00Z');
 
 function minuteDbWithTracks(tracks) {
@@ -96,6 +96,25 @@ test('Thursday 18:00 runner invokes only QQ Music and forwards canonical binding
   const result=await collectRegionalR2Run({now:qqNow,collectors,load:async()=>null,save:async(key)=>writes.push(key),bindings:{MINUTE_DB:minuteDb}});
   assert.deepEqual(called,['qq_music']);
   assert.equal(result.length,1);assert.equal(writes.length,2);
+});
+test('explicit service selection forces only requested services even when same-day snapshots exist',async()=>{
+  const writes=[];const called=[];
+  const makeCollector=service=>async env=>{called.push(service);await saveRegionalCollectorState(env,{service,status:'ok',last_success_at:now});};
+  const collectors={qq_music:makeCollector('qq_music'),kugou_music:makeCollector('kugou_music')};
+  const result=await collectRegionalR2Run({
+    now,
+    services:['qq_music','kugou_music'],
+    collectors,
+    load:async()=>({day:'2026-10-06',state:{status:'ok'}}),
+    save:async key=>writes.push(key),
+  });
+  assert.deepEqual(called,['qq_music','kugou_music']);
+  assert.deepEqual(result.map(row=>row.service),['qq_music','kugou_music']);
+  assert.equal(writes.length,4);
+});
+test('service selection parser deduplicates and rejects unknown services',()=>{
+  assert.deepEqual(parseRegionalServiceSelection(['--services=qq_music,kugou_music,qq_music']),['qq_music','kugou_music']);
+  assert.throws(()=>parseRegionalServiceSelection(['--services=qq_music,missing']),/Unknown regional services: missing/);
 });
 test('scheduled retry reuses complete same-day services without provider requests or writes',async()=>{
   const result=await collectRegionalR2Run({now,collectors:{},load:async()=>({day:'2026-10-06',state:{status:'ok'}}),save:async()=>{throw new Error('must not write');}});
