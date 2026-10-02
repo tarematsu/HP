@@ -20,6 +20,23 @@ test('Nogizaka tab is mounted immediately before Hinata when available', () => {
   assert.match(tabs, /loadNogizakaListeningPartyView/);
 });
 
+test('Nogizaka exposes the shared five Stationhead subtabs with only listening party enabled', () => {
+  for (const pair of [
+    ["value: 'current', label: '現在'", '現在'],
+    ["value: 'history', label: '過去'", '過去'],
+    ["value: 'played-tracks', label: '再生履歴'", '再生履歴'],
+    ["value: 'likes', label: 'いいね'", 'いいね'],
+    ["value: 'broadcasts', label: 'リスパ', active: true", 'リスパ'],
+  ]) {
+    assert.match(shell, new RegExp(pair[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), pair[1]);
+  }
+  assert.match(shell, /dashboardModeTabs/);
+  assert.match(shell, /data-nogizaka-panel="broadcasts"/);
+  assert.match(shell, /const available = button\.dataset\.nogizakaSection === 'broadcasts'/);
+  assert.match(shell, /button\.disabled = !available/);
+  assert.match(shell, /Nogizakaでは未提供/);
+});
+
 test('Nogizaka tab keeps the shared official listening-party presentation', () => {
   for (const text of ['期間数', '平均同接', '最大同接', '所要時間', '公式リスパ一覧']) {
     assert.match(shell, new RegExp(text));
