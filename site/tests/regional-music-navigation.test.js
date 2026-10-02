@@ -27,8 +27,8 @@ test('music subscriptions are grouped into global and local source rows', () => 
   assert.match(html, /href="#genie" data-subscription-group="local">ローカル<\/a>/);
   assert.match(html, /data-subscription-group-content="global"/);
   assert.match(html, /data-subscription-group-content="local"/);
-  assert.match(html, /data-source="qq_music">🇨🇳QQ<\/button>/);
-  assert.match(html, /data-source="kugou_music">🇨🇳Kugou<\/button>/);
+  assert.match(html, /data-source="qq_music">🇨🇳QQ音乐<\/button>/);
+  assert.match(html, /data-source="kugou_music">🇨🇳酷狗音乐<\/button>/);
   for (const [row, services] of rows) {
     const match = html.match(new RegExp(`<div class="dashboard-source-row" data-row="${row}"[\\s\\S]*?<\\/div>`));
     assert.ok(match, `subscription row ${row} must exist`);
@@ -61,9 +61,9 @@ test('Kugou uses a compact Japan chart view with one shared artist filter for gr
   assert.match(runtime, /kugouArtistFilter/);
   assert.match(runtime, /kugouArtistVisible/);
   assert.match(runtime, /毎週月曜 00:00 JST/);
-  assert.match(shell, /Kugou Music 日本榜 グループ別最高順位推移/);
-  assert.match(shell, /Kugou Music 日本榜 ランクイン履歴/);
-  assert.match(shell, /artistFilterButtons\('kugou', 'Kugou Music 日本榜 表示グループ'\)/);
+  assert.match(shell, /酷狗音乐 日本榜 グループ別最高順位推移/);
+  assert.match(shell, /酷狗音乐 日本榜 ランクイン履歴/);
+  assert.match(shell, /artistFilterButtons\('kugou', '酷狗音乐 日本榜 表示グループ'\)/);
   assert.match(shell, /data-\$\{prefix\}-artist-filter="all"[^>]*>すべて<\/button>/);
   assert.match(shell, /data-\$\{prefix\}-artist-filter="sakurazaka46"[^>]*>櫻坂<\/button>/);
   assert.match(shell, /data-\$\{prefix\}-artist-filter="nogizaka46"[^>]*>乃木坂<\/button>/);
@@ -79,11 +79,11 @@ test('Kugou uses a compact Japan chart view with one shared artist filter for gr
 });
 
 test('QQ uses the same compact artist filter and includes artist popularity ranking', () => {
-  assert.match(shell, /QQ Music 日本榜 グループ別最高順位推移/);
-  assert.match(shell, /QQ Music 日本榜 ランクイン履歴/);
-  assert.match(shell, /QQ Music アーティスト別人気曲順位/);
+  assert.match(shell, /QQ音乐 日本榜 グループ別最高順位推移/);
+  assert.match(shell, /QQ音乐 日本榜 ランクイン履歴/);
+  assert.match(shell, /QQ音乐 アーティスト別人気曲順位/);
   assert.match(shell, /qqArtistPopularityBody/);
-  assert.match(shell, /artistFilterButtons\('qq', 'QQ Music 日本榜 表示グループ'\)/);
+  assert.match(shell, /artistFilterButtons\('qq', 'QQ音乐 日本榜 表示グループ'\)/);
   assert.match(runtime, /qq_music: '毎日 00:00 JST'/);
   assert.match(qqRuntime, /activeArtistFilter/);
   assert.match(qqRuntime, /artistVisible/);
