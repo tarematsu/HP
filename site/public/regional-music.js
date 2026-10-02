@@ -51,7 +51,7 @@ const STATUS_LABELS = Object.freeze({
 const COMPACT_CHART_CADENCE = Object.freeze({
   melon: '毎週月曜日 00:00',
   qq_music: '毎日 00:00 JST',
-  kugou_music: '平日11:30',
+  kugou_music: '平日11:30 / ACG新歌榜: 木曜11:40',
 });
 
 const OUT_OF_CHART_RANK = 101;
@@ -389,35 +389,13 @@ function kugouSeries(history, coveredDates = []) {
   }).filter((series) => series.points.length);
 }
 
-function renderKugouHistory(payload, service) {
-  const chartSection = byId('kugouJapanChartSection');
-  const historySection = byId('kugouJapanHistorySection');
-  const visible = service === 'kugou_music';
-  if (chartSection) chartSection.hidden = !visible;
-  if (historySection) historySection.hidden = !visible;
-  if (!visible) return;
-
-  lastKugouPayload = payload;
-  bindKugouFilters();
-  syncKugouFilterButtons();
-  const chart = payload?.kugou_japan_chart || {};
-  const history = Array.isArray(chart.history) ? chart.history : [];
-  const coverage = chart.coverage || {};
-  const legacyCoveredDates = Array.isArray(coverage.legacy_covered_dates)
-    ? coverage.legacy_covered_dates.map(providerDate).filter(Boolean)
-    : [];
-  const currentCoveredDates = providerWeekdays(
-    coverage.current_api_oldest_available || coverage.oldest_available,
-    coverage.latest_checked || coverage.latest_available,
-  );
-  const coveredDates = [...new Set([...legacyCoveredDates, ...currentCoveredDates])].sort();
+function renderKugouRankChart({ containerId, legendId, history, coveredDates, ariaLabel, emptyText }) {
   const series = kugouSeries(history, coveredDates);
   const dates = coveredDates.length
     ? coveredDates
     : [...new Set(series.flatMap((item) => item.points.map((point) => point.date)))].sort();
-
   renderRankHistoryChart({
-    container:byId('kugouJapanRankChart'),
+    container:byId(containerId),
     series,
     dates,
     height:320,
@@ -425,23 +403,25 @@ function renderKugouHistory(payload, service) {
     yMax:OUT_OF_CHART_RANK,
     rankTicks:[1, 25, 50, 75, 100, OUT_OF_CHART_RANK],
     dateTickCount:5,
-    ariaLabel:'Kugou Music 日本榜における選択グループの各日最高順位推移。取得済み平日の圏外も含み、1位が上。',
+    ariaLabel,
     lineClass:'kugou-rank-line',
     emptyClass:'regional-music-rank-empty',
-    emptyText:'Kugou Music 日本榜の順位履歴はまだありません。',
+    emptyText,
     rankLabel:(rank) => rank === OUT_OF_CHART_RANK ? '圏外' : `${rank}位`,
     dateLabel:providerDateText,
     latestPoint:{ radius:() => 2.5 },
-    legendContainer:byId('kugouJapanRankLegend'),
+    legendContainer:byId(legendId),
   });
+}
 
-  const body = replaceBody('kugouJapanHistoryBody');
+function renderKugouHistoryTable({ bodyId, history, emptyText }) {
+  const body = replaceBody(bodyId);
   if (!body) return;
   const ordered = history
     .filter((item) => kugouArtistVisible(item?.canonical_artist))
     .sort((a, b) => String(b.published_at || '').localeCompare(String(a.published_at || '')) || Number(a.rank) - Number(b.rank));
   if (!ordered.length) {
-    appendEmptyTableRow(body, 'Kugou Music 日本榜のランクイン履歴はありません。', 4);
+    appendEmptyTableRow(body, emptyText, 4);
     return;
   }
   for (const item of ordered) {
@@ -453,6 +433,63 @@ function renderKugouHistory(payload, service) {
       item.title || '-',
     ]));
   }
+}
+
+function renderKugouHistory(payload, service) {
+  const visible = service === 'kugou_music';
+  for (const id of ['kugouJapanChartSection','kugouJapanHistorySection','kugouAcgChartSection','kugouAcgHistorySection']) {
+    const section = byId(id);
+    if (section) section.hidden = !visible;
+  }
+  if (!visible) return;
+
+  lastKugouPayload = payload;
+  bindKugouFilters();
+  syncKugouFilterButtons();
+
+  const japanChart = payload?.kugou_japan_chart || {};
+  const japanHistory = Array.isArray(japanChart.history) ? japanChart.history : [];
+  const japanCoverage = japanChart.coverage || {};
+  const legacyCoveredDates = Array.isArray(japanCoverage.legacy_covered_dates)
+    ? japanCoverage.legacy_covered_dates.map(providerDate).filter(Boolean)
+    : [];
+  const currentCoveredDates = providerWeekdays(
+    japanCoverage.current_api_oldest_available || japanCoverage.oldest_available,
+    japanCoverage.latest_checked || japanCoverage.latest_available,
+  );
+  const japanCoveredDates = [...new Set([...legacyCoveredDates, ...currentCoveredDates])].sort();
+  renderKugouRankChart({
+    containerId:'kugouJapanRankChart',
+    legendId:'kugouJapanRankLegend',
+    history:japanHistory,
+    coveredDates:japanCoveredDates,
+    ariaLabel:'Kugou Music 日本榜における選択グループの各日最高順位推移。取得済み平日の圏外も含み、1位が上。',
+    emptyText:'Kugou Music 日本榜の順位履歴はまだありません。',
+  });
+  renderKugouHistoryTable({
+    bodyId:'kugouJapanHistoryBody',
+    history:japanHistory,
+    emptyText:'Kugou Music 日本榜のランクイン履歴はありません。',
+  });
+
+  const acgChart = payload?.kugou_acg_chart || {};
+  const acgHistory = Array.isArray(acgChart.history) ? acgChart.history : [];
+  const acgCoveredDates = (Array.isArray(acgChart.periods) ? acgChart.periods : [])
+    .map((item) => providerDate(item?.published_at))
+    .filter(Boolean);
+  renderKugouRankChart({
+    containerId:'kugouAcgRankChart',
+    legendId:'kugouAcgRankLegend',
+    history:acgHistory,
+    coveredDates:[...new Set(acgCoveredDates)].sort(),
+    ariaLabel:'Kugou Music ACG新歌榜における選択グループの週次最高順位推移。取得済み週の圏外も含み、1位が上。',
+    emptyText:'Kugou Music ACG新歌榜の順位履歴はまだありません。',
+  });
+  renderKugouHistoryTable({
+    bodyId:'kugouAcgHistoryBody',
+    history:acgHistory,
+    emptyText:'Kugou Music ACG新歌榜のランクイン履歴はありません。',
+  });
 }
 
 function renderService(payload, service) {
@@ -509,11 +546,14 @@ function resetMelonSection() {
 }
 
 function resetKugouSections() {
-  const chartSection = byId('kugouJapanChartSection');
-  const historySection = byId('kugouJapanHistorySection');
-  if (chartSection) chartSection.hidden = true;
-  if (historySection) historySection.hidden = true;
-  for (const id of ['kugouJapanRankLegend', 'kugouJapanRankChart', 'kugouJapanHistoryBody']) replaceBody(id);
+  for (const id of ['kugouJapanChartSection','kugouJapanHistorySection','kugouAcgChartSection','kugouAcgHistorySection']) {
+    const section = byId(id);
+    if (section) section.hidden = true;
+  }
+  for (const id of [
+    'kugouJapanRankLegend','kugouJapanRankChart','kugouJapanHistoryBody',
+    'kugouAcgRankLegend','kugouAcgRankChart','kugouAcgHistoryBody',
+  ]) replaceBody(id);
 }
 
 export async function loadRegionalMusicView(service) {
