@@ -1,0 +1,8 @@
+name: Kuwo backfill metadata note
+on:
+  workflow_dispatch:
+jobs:
+  note:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo metadata
