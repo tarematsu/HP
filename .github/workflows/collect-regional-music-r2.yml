@@ -1,7 +1,8 @@
 name: Collect regional music to R2
 on:
   schedule:
-    - cron: '0 15 * * *' # 00:00 JST; QQ/NetEase daily, others Mondays
+    - cron: '0 15 * * *' # 00:00 JST; NetEase daily, non-QQ regional services Mondays
+    - cron: '0 9 * * 4' # Thursday 18:00 JST; QQ Music weekly collection
   workflow_dispatch:
 permissions:
   contents: read
