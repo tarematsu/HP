@@ -19,6 +19,12 @@ const followersTable = dashboardTable({
   bodyId: 'followersTbody',
 });
 
+const followersMeta = `
+  <div id="followersCompactMeta" class="regional-chart-meta">
+    <span>更新日時 <strong id="followersUpdatedAt">-</strong></span>
+    <span>更新周期 <strong>毎日00:00</strong></span>
+  </div>`;
+
 mountDashboardShell({
   tab: {
     view: 'followers',
@@ -32,6 +38,7 @@ mountDashboardShell({
     anchorId: 'historyView',
     position: 'afterend',
     html: `
+      ${followersMeta}
       ${dashboardNotice({ id: 'followersNotice' })}
       ${dashboardChartCard({
         kicker: 'STATIONHEAD FOLLOWERS',
