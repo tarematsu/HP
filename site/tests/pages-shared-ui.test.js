@@ -162,9 +162,11 @@ test('dashboard shells share reusable UI components without runtime stylesheet l
     assert.match(shells[name], /dashboardMetric/);
     assert.match(shells[name], /dashboardMetrics/);
   }
-  for (const name of ['history-shell.js', 'likes-shell.js', 'spotify-shell.js', 'apple-music-shell.js', 'played-tracks-shell.js', 'nogizaka-listening-party-shell.js']) {
+  for (const name of ['history-shell.js', 'likes-shell.js', 'apple-music-shell.js', 'played-tracks-shell.js', 'nogizaka-listening-party-shell.js']) {
     assert.match(shells[name], /dashboard(?:Summary|DataCard|ChartCard)/, `${name} must compose shared cards`);
   }
+  assert.match(shells['spotify-shell.js'], /regional-chart-section/);
+  assert.match(shells['spotify-shell.js'], /regional-chart-meta/);
   for (const name of ['followers-shell.js', 'apple-music-shell.js', 'amazon-music-shell.js']) {
     assert.match(shells[name], /dashboardChartHost/, `${name} must use the shared chart host`);
   }
