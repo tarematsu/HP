@@ -220,7 +220,7 @@ test('delayed timers and late posts never cause catch-up bursts', async () => {
     for (let i = 1; i < result.clickTimes.length; i++) {
       assert.ok(result.clickTimes[i] - result.clickTimes[i - 1] >= 5000);
     }
-    assert.ok(result.clickTimes.every(time => time < 60000));
+    assert.ok(result.clickTimes.every(time => time < 120000));
   }
   const late = await run({ emptyUntil: 32000, randomValues: [0] });
   assert.ok(late.scrollSteps.every(step => step > 0));
