@@ -6,7 +6,8 @@ namespace {
 // pause/stall after confirmed playback is promoted to the existing native
 // interruption/recovery path instead of leaving the slot Healthy until its
 // completion deadline.
-constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
+constexpr wchar_t kSpotifyMediaObserverEventsScript[] =
+LR"JS(
 (() => {
   const runtime = window.__homePanelSpotifyMediaObserverRuntime;
   if (!runtime) return false;
@@ -79,7 +80,8 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
       clearRecoveryProbe();
     }, recoveryGraceMs);
   };
-
+)JS"
+LR"JS(
   // Some Widevine/CDM failures never emit waiting/stalled/error or a structured
   // Chromium media error. Probe the owned media timeline independently of those
   // events so a page that still claims to be playing cannot remain Healthy with
@@ -135,7 +137,8 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     progressTimer = nativeSetTimeout(
       probeProgress, healthyProgress ? progressHealthyProbeMs : progressProbeMs);
   };
-
+)JS"
+LR"JS(
   const observe = event => {
     if (!isMedia(event.target) || event.target.ended) return;
     if (event.type === 'playing' || event.type === 'timeupdate') {
