@@ -1,0 +1,65 @@
+name: Temporary follower auth probe
+
+on:
+  push:
+    branches:
+      - diag/follower-prod-20261003-2
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          show-progress: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Probe Stationhead auth and follower endpoint
+        shell: bash
+        run: |
+          node <<'NODE'
+          const API = 'https://production1.stationhead.com';
+          const WEB = 'https://www.stationhead.com';
+          const deviceUid = crypto.randomUUID();
+          const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
+          const headers = (token = '', referer = `${WEB}/c/ilys`) => ({
+            accept: 'application/json, text/plain, */*',
+            'accept-language': 'ja,en-US;q=0.9,en;q=0.8',
+            'app-platform': 'web',
+            'app-version': '1.0.0',
+            'content-type': 'application/json',
+            origin: WEB,
+            referer,
+            'sth-device-uid': deviceUid,
+            'user-agent': ua,
+            ...(token ? { authorization: `Bearer ${token}` } : {}),
+          });
+          const tokenRes = await fetch(`${API}/web/token`, { method: 'POST', headers: headers(), body: '' });
+          const token = String(tokenRes.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
+          console.log('token', tokenRes.status, Boolean(token));
+          const loginRes = await fetch(`${API}/web/guest/login`, { method: 'POST', headers: headers(token), body: '' });
+          console.log('login', loginRes.status);
+          const urls = [
+            `${WEB}/api/account/handle/sakuramankai`,
+            `${API}/account/handle/sakuramankai`,
+            `${API}/api/account/handle/sakuramankai`,
+          ];
+          for (const url of urls) {
+            const res = await fetch(url, { headers: headers(token, `${WEB}/`) });
+            const body = await res.text();
+            console.log('before', url, res.status, body.slice(0, 180).replace(/\s+/g, ' '));
+          }
+          const verifyRes = await fetch(`${API}/station/handle/ilys/guest`, { method: 'POST', headers: headers(token), body: '' });
+          const verifyBody = await verifyRes.text();
+          console.log('verify', verifyRes.status, verifyBody.slice(0, 180).replace(/\s+/g, ' '));
+          for (const url of urls) {
+            const res = await fetch(url, { headers: headers(token, `${WEB}/`) });
+            const body = await res.text();
+            console.log('after', url, res.status, body.slice(0, 280).replace(/\s+/g, ' '));
+          }
+          NODE
