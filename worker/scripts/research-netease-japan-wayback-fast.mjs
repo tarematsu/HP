@@ -40,7 +40,9 @@ const captureLists=await Promise.all(SOURCES.map(async source=>{
     return {source,captures:rows.map(row=>Object.fromEntries(head.map((k,i)=>[k,row[i]]))),error:null};
   }catch(e){return {source,captures:[],error:String(e?.message||e)}}
 }));
-const caps=[...new Map(captureLists.flatMap(x=>x.captures.map(c=>[`${c.timestamp}|${c.original}|${c.digest}`,c])).values()];
+const caps=[...new Map(
+  captureLists.flatMap(x=>x.captures.map(c=>[`${c.timestamp}|${c.original}|${c.digest}`,c]))
+).values()];
 let cursor=0;const results=[];
 async function worker(){while(cursor<caps.length){const c=caps[cursor++];const url=`https://web.archive.org/web/${c.timestamp}id_/${c.original}`;try{const ts=tracks(await get(url,20000));const hits=[];ts.forEach((s,i)=>{const ns=names(s);const ca=canonical(ns);if(ca)hits.push({capture_date:`${c.timestamp.slice(0,4)}-${c.timestamp.slice(4,6)}-${c.timestamp.slice(6,8)}`,timestamp:c.timestamp,canonical_artist:ca,rank:i+1,track_id:String(s?.id??''),title:s?.name??s?.title??null,artists:ns,original:c.original});});results.push({timestamp:c.timestamp,original:c.original,track_count:ts.length,hits});}catch(e){results.push({timestamp:c.timestamp,original:c.original,track_count:0,error:String(e?.message||e),hits:[]});}}}
 await Promise.all(Array.from({length:Math.min(8,Math.max(1,caps.length))},()=>worker()));
