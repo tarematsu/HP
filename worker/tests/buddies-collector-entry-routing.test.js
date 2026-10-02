@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import collector, {
   isFollowerCatchupMinute,
+  isOneTimeFollowerBackfillMinute,
   runAlarmCoordinatedBuddiesCollectorScheduled,
   runBuddiesCollectorScheduled,
   runBuddiesCollectorScheduledWithFollowers,
@@ -102,4 +103,50 @@ test('same-day hourly follower catch-up schedules work independently from the mi
   assert.equal(waitUntil.length, 1);
   await Promise.all(waitUntil);
   assert.deepEqual(calls, ['collector', 'followers']);
+});
+
+test('October 3 one-time backfill retries on non-hour ticks from 03:00 through 05:59 JST', () => {
+  assert.equal(isOneTimeFollowerBackfillMinute(Date.UTC(2026, 9, 2, 18, 5)), true);
+  assert.equal(isOneTimeFollowerBackfillMinute(Date.UTC(2026, 9, 2, 18, 0)), false);
+  assert.equal(isOneTimeFollowerBackfillMinute(Date.UTC(2026, 9, 2, 20, 55)), true);
+  assert.equal(isOneTimeFollowerBackfillMinute(Date.UTC(2026, 9, 2, 21, 5)), false);
+  assert.equal(isOneTimeFollowerBackfillMinute(Date.UTC(2026, 9, 3, 18, 5)), false);
+  assert.equal(isOneTimeFollowerBackfillMinute(Number.NaN), false);
+});
+
+test('failed daily follower collection publishes a partial recovery without completing the day', async () => {
+  const waitUntil = [];
+  const calls = [];
+  const controller = { cron: '*/5 * * * *', scheduledTime: Date.UTC(2026, 9, 2, 18, 5) };
+  const result = await runBuddiesCollectorScheduledWithFollowers(
+    controller,
+    {},
+    { waitUntil: (promise) => waitUntil.push(promise) },
+    {
+      collectFollowers: async () => {
+        calls.push('followers');
+        throw new Error('fixed target failed');
+      },
+      collectPartialFollowers: async (_env, scheduledAt) => {
+        assert.equal(scheduledAt, controller.scheduledTime);
+        calls.push('partial');
+        return {
+          observed_date_jst: '2026-10-03',
+          partial: true,
+          d1_completion_rows_written: 0,
+          http_successes: 3,
+          http_failures: 1,
+        };
+      },
+      coordinatedScheduled: async () => {
+        calls.push('collector');
+        return { ok: true };
+      },
+    },
+  );
+
+  assert.deepEqual(result, { ok: true });
+  assert.equal(waitUntil.length, 1);
+  await Promise.all(waitUntil);
+  assert.deepEqual(calls, ['collector', 'followers', 'partial']);
 });
