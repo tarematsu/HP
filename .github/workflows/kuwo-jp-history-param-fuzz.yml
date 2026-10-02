@@ -1,0 +1,65 @@
+name: Test Kuwo chart hidden history parameters
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-history-param-fuzz.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Compare date parameter variants
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import datetime,hashlib,json,time,urllib.parse,urllib.request
+          BASE='https://kbangserver.kuwo.cn/ksong.s'
+          baseq={'from':'pc','fmt':'json','pn':'0','rn':'5','type':'bang','data':'content','id':'183','show_copyright_off':'0','pcmp4':'1','isbang':'1','userid':'0'}
+          targets=['2022-09-04','2022-09-30','2025-01-23','2026-09-01']
+          def epoch(d):
+            # test UTC and China-midnight-ish epochs; server should reveal if any are meaningful
+            dt=datetime.datetime.strptime(d,'%Y-%m-%d').replace(tzinfo=datetime.timezone.utc)
+            return int(dt.timestamp())
+          cases=[('control',{})]
+          for d in targets:
+            compact=d.replace('-','')
+            ts=epoch(d)
+            for k,v in [
+              ('date',d),('date',compact),('pub',d),('pub',compact),('day',d),('dt',d),
+              ('rankDate',d),('rankdate',d),('bangDate',d),('bangdate',d),('period',d),
+              ('timestamp',str(ts)),('time',str(ts)),('ts',str(ts)),
+              ('timestamp',str(ts*1000)),('time',str(ts*1000)),
+            ]:
+              cases.append((f'{k}={v}',{k:v}))
+          # Some servers use unix update token alone or date under data-specific names.
+          for d in targets:
+            cases += [
+              (f'updateDate={d}',{'updateDate':d}),
+              (f'chartDate={d}',{'chartDate':d}),
+              (f'bang_date={d}',{'bang_date':d}),
+            ]
+          def get(extra):
+            q={**baseq,**extra};u=BASE+'?'+urllib.parse.urlencode(q)
+            try:
+              req=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'})
+              with urllib.request.urlopen(req,timeout=6) as r:b=r.read()
+              j=json.loads(b.decode('utf-8','replace'))
+              rows=j.get('musiclist') or j.get('musicList') or (j.get('data') or {}).get('musicList') or []
+              sig=[(x.get('id') or x.get('rid'),x.get('name'),x.get('artist')) for x in rows]
+              return {'http':200,'pub':j.get('pub') or ((j.get('data') or {}).get('pub') if isinstance(j.get('data'),dict) else None),'timestamp':j.get('timestamp') or ((j.get('data') or {}).get('timestamp') if isinstance(j.get('data'),dict) else None),'name':j.get('name'),'num':j.get('num'),'sig':sig,'hash':hashlib.sha1(json.dumps(sig,ensure_ascii=False).encode()).hexdigest()[:12]}
+            except Exception as e:return {'http':0,'error':repr(e)}
+          results=[]
+          # Run sequentially to avoid anti-bot/rate-limit false differences.
+          for label,extra in cases:
+            x=get(extra);results.append((label,x));print(label,json.dumps(x,ensure_ascii=False));time.sleep(.08)
+          good=[(l,x) for l,x in results if x.get('sig')]
+          hashes={x['hash'] for l,x in good}; pubs={str(x.get('pub')) for l,x in good}; timestamps={str(x.get('timestamp')) for l,x in good}
+          print('SUMMARY good',len(good),'distinct_hashes',len(hashes),sorted(hashes),'pubs',sorted(pubs),'timestamps',sorted(timestamps))
+          if good:
+            control=good[0][1]['hash']
+            diff=[(l,x) for l,x in good if x['hash']!=control or x.get('pub')!=good[0][1].get('pub') or x.get('timestamp')!=good[0][1].get('timestamp')]
+            print('DIFFERENT_CASES',json.dumps(diff,ensure_ascii=False))
+          PY
