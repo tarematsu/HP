@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '0 15 * * *'
   workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Optional reason for the manual follower refresh'
+        required: false
+        type: string
   push:
     branches:
       - main
