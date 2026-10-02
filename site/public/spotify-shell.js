@@ -27,8 +27,12 @@ const tracksTable = dashboardTable({
 
 const trendPanels = `
   <section id="spotifyOverviewTrendSection" class="music-service-section regional-chart-section spotify-trend-panel">
-    <div class="regional-chart-section-head"><h2 id="spotifyTrendTitle">Spotify 全曲合計再生数前日比・月間リスナー推移（坂道3グループ）</h2></div>
-    <div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="再生数前日比と月間リスナー"></div>
+    <div class="regional-chart-section-head"><h2 id="spotifyTrendTitle">Spotify 全曲合計再生数前日比推移（坂道3グループ）</h2></div>
+    <div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="全曲合計再生数前日比"></div>
+  </section>
+  <section id="spotifyMonthlyListenerTrendSection" class="music-service-section regional-chart-section spotify-trend-panel">
+    <div class="regional-chart-section-head"><h2 id="spotifyMonthlyListenerTrendTitle">Spotify 月間リスナー推移（坂道3グループ）</h2></div>
+    <div id="spotifyMonthlyListenerTrendCharts" class="spotify-trend-charts" aria-label="月間リスナー"></div>
   </section>
   <section id="spotifyTop10YearTrendSection" class="music-service-section regional-chart-section spotify-trend-panel">
     <div class="regional-chart-section-head"><h2 id="spotifyTop10YearTrendTitle">Spotify 今年リリース上位10曲合計の再生数前日比推移（坂道3グループ）</h2></div>
