@@ -58,6 +58,49 @@
   overflow: visible;
 }
 
+.dashboard-subscription-groups {
+  display: flex;
+  gap: 2px;
+  min-width: 0;
+  padding: 3px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+}
+
+.dashboard-subscription-groups > a {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 34px;
+  padding: 6px 10px;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  font-size: .875rem;
+  font-weight: 750;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.dashboard-source-tabs:has([data-subscription-group-content="global"] .active) [data-subscription-group="global"],
+.dashboard-source-tabs:has([data-subscription-group-content="local"] .active) [data-subscription-group="local"] {
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 1px 4px rgba(31, 45, 68, .08);
+}
+
+.dashboard-source-group {
+  display: none;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dashboard-source-tabs:has([data-subscription-group-content="global"] .active) [data-subscription-group-content="global"],
+.dashboard-source-tabs:has([data-subscription-group-content="local"] .active) [data-subscription-group-content="local"] {
+  display: grid;
+}
+
 .dashboard-source-row {
   display: flex;
   gap: 2px;
@@ -88,6 +131,8 @@
 .dashboard-section-tabs > button:focus-visible,
 .dashboard-source-tabs > button:hover,
 .dashboard-source-tabs > button:focus-visible,
+.dashboard-subscription-groups > a:hover,
+.dashboard-subscription-groups > a:focus-visible,
 .dashboard-source-row > button:hover,
 .dashboard-source-row > button:focus-visible {
   color: var(--text);
@@ -96,6 +141,7 @@
 
 .dashboard-section-tabs > button:focus-visible,
 .dashboard-source-tabs > button:focus-visible,
+.dashboard-subscription-groups > a:focus-visible,
 .dashboard-source-row > button:focus-visible {
   box-shadow: inset 0 0 0 2px var(--accent);
 }
@@ -126,6 +172,12 @@
 
   .dashboard-section-tabs > button {
     min-height: 38px;
+    padding-inline: 6px;
+    font-size: 12px;
+  }
+
+  .dashboard-subscription-groups > a {
+    min-height: 36px;
     padding-inline: 6px;
     font-size: 12px;
   }
@@ -173,7 +225,7 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
     overflow: visible;
   }
-  .dashboard-source-row:first-child {
+  .dashboard-source-row[data-row="1"] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .dashboard-source-row > button {
