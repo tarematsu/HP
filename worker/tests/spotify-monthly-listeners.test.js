@@ -4,6 +4,7 @@ import test from 'node:test';
 
 import {
   monthlyListenersFromArtistOverview,
+  SPOTIFY_MONTHLY_LISTENER_ARTISTS,
   spotifyArtistOverviewUrl,
 } from '../src/spotify-monthly-listeners.js';
 import {
@@ -38,6 +39,18 @@ test('artist overview request uses the verified anonymous Pathfinder operation',
   );
 });
 
+test('monthly listener roster is limited to the Sakamichi groups plus Sakamichi Selection', () => {
+  assert.deepEqual(SPOTIFY_MONTHLY_LISTENER_ARTISTS.map(({ artist_key }) => artist_key), [
+    'nogizaka46',
+    'sakurazaka46',
+    'hinatazaka46',
+    'sakamichi-selection',
+  ]);
+  const selection = SPOTIFY_MONTHLY_LISTENER_ARTISTS.at(-1);
+  assert.equal(selection.artist_name, '坂道選抜');
+  assert.equal(selection.spotify_artist_id, '44VXOtivzQwdqj1Xs80SaX');
+});
+
 test('monthly listener retry uses bounded exponential queue delay', () => {
   assert.equal(SPOTIFY_MONTHLY_LISTENERS_TYPE, 'spotify-monthly-listeners');
   assert.equal(spotifyMonthlyListenerRetryDelaySeconds(1), 60);
@@ -63,7 +76,24 @@ test('failed monthly listeners are retried through the Spotify queue until compl
   assert.match(router, /delaySeconds: spotifyMonthlyListenerRetryDelaySeconds\(nextAttempt\)/);
   assert.match(router, /missingOnly: true/);
   assert.match(router, /requestSpotifyReadModelRefresh\(env, 'monthly-listeners-complete'/);
-  assert.match(collector, /monthly\.artist_key IS NULL/);
+  assert.match(collector, /SPOTIFY_MONTHLY_LISTENER_ARTISTS\.filter/);
+});
+
+test('manual monthly listener workflow supports a dated snapshot and read-model refresh', () => {
+  const workflow = readFileSync(
+    new URL('../../.github/workflows/collect-spotify-monthly-listeners-manual.yml', import.meta.url),
+    'utf8',
+  );
+  const script = readFileSync(
+    new URL('../scripts/collect-spotify-monthly-listeners-actions.mjs', import.meta.url),
+    'utf8',
+  );
+  assert.match(workflow, /snapshot_date:/);
+  assert.match(workflow, /default: '2026-10-02'/);
+  assert.match(workflow, /collect-spotify-monthly-listeners-actions\.mjs/);
+  assert.match(workflow, /bootstrap-spotify-read-model\.mjs/);
+  assert.match(script, /SPOTIFY_MONTHLY_SNAPSHOT_DATE/);
+  assert.match(script, /SPOTIFY_MONTHLY_LISTENER_ARTISTS/);
 });
 
 test('monthly listener table is part of the required Other DB schema', () => {
