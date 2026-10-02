@@ -206,11 +206,14 @@ async function collectJapanToplist(env, observedAt, fetchImpl) {
     const canonicalSinger = entry.canonical_artist
       ? entry.artists.find((artist) => REGIONAL_MUSIC_ARTISTS[entry.canonical_artist].aliases.some((alias) => normalize(alias) === normalize(artist.name)))
       : null;
+    const identity = entry.canonical_artist ? {
+      canonical_artist:entry.canonical_artist,
+      ...(canonicalSinger?.mid ? {service_artist_id:canonicalSinger.mid} : {}),
+    } : {};
     await saveRegionalTrack(env, {
       service:'qq_music',
       service_track_id:entry.track_id,
-      service_artist_id:canonicalSinger?.mid || null,
-      canonical_artist:entry.canonical_artist,
+      ...identity,
       title:entry.title,
       album_name:entry.album_name,
       track_url:qqSongUrl(entry.track_id),
