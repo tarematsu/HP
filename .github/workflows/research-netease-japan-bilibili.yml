@@ -1,0 +1,92 @@
+name: Research NetEase Japanese chart Bilibili snapshots
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/research-netease-japan-bilibili.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install yt-dlp
+        run: python -m pip install --disable-pip-version-check -U yt-dlp
+
+      - name: Search Bilibili for historical Japanese-chart videos
+        shell: bash
+        run: |
+          set +e
+          mkdir -p research-bilibili
+          yt-dlp --flat-playlist --dump-single-json 'bilisearch50:网易云日语榜' > research-bilibili/search.json 2> research-bilibili/search.err
+          code=$?
+          echo "yt-dlp search exit=$code"
+          cat research-bilibili/search.err || true
+          python - <<'PY'
+          import json, pathlib
+          p=pathlib.Path('research-bilibili/search.json')
+          if not p.exists() or not p.stat().st_size:
+              print('No search JSON returned')
+              raise SystemExit(0)
+          try:
+              data=json.loads(p.read_text())
+          except Exception as e:
+              print('Invalid search JSON:', e)
+              print(p.read_text(errors='replace')[:4000])
+              raise SystemExit(0)
+          entries=data.get('entries') or []
+          out=[]
+          for e in entries:
+              title=(e.get('title') or '')
+              if '日语榜' in title or '日語榜' in title or '网易云' in title or '網易雲' in title:
+                  row={k:e.get(k) for k in ['id','title','url','webpage_url','uploader','uploader_id','timestamp','upload_date','duration']}
+                  out.append(row)
+                  print(json.dumps(row, ensure_ascii=False))
+          pathlib.Path('research-bilibili/matches.json').write_text(json.dumps(out,ensure_ascii=False,indent=2))
+          print('matched', len(out), 'of', len(entries))
+          PY
+
+      - name: Fetch metadata and subtitle manifests for matches
+        shell: bash
+        run: |
+          set +e
+          python - <<'PY'
+          import json, pathlib, subprocess
+          p=pathlib.Path('research-bilibili/matches.json')
+          if not p.exists(): raise SystemExit(0)
+          rows=json.loads(p.read_text())
+          for i,e in enumerate(rows[:15]):
+              vid=e.get('id')
+              if not vid: continue
+              url=f'https://www.bilibili.com/video/{vid}'
+              print('\n===', i, vid, e.get('title'), '===')
+              cp=subprocess.run(['yt-dlp','--skip-download','--dump-single-json',url],capture_output=True,text=True,timeout=90)
+              pathlib.Path(f'research-bilibili/{i:02d}-{vid}.json').write_text(cp.stdout or '{}')
+              pathlib.Path(f'research-bilibili/{i:02d}-{vid}.err').write_text(cp.stderr or '')
+              print('exit',cp.returncode)
+              if cp.stderr: print(cp.stderr[-1200:])
+              try:
+                  d=json.loads(cp.stdout)
+                  summary={k:d.get(k) for k in ['id','title','description','uploader','uploader_id','timestamp','upload_date','duration','webpage_url','chapters','subtitles','automatic_captions']}
+                  print(json.dumps(summary,ensure_ascii=False)[:12000])
+              except Exception:
+                  pass
+          PY
+
+      - name: Upload Bilibili research
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: netease-japan-bilibili-research
+          path: research-bilibili
+          if-no-files-found: warn
