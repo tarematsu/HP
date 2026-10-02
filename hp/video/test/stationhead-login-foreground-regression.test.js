@@ -37,7 +37,9 @@ test('interaction publishes auth edges while lifecycle owns event scheduling', (
   assert.match(interaction, /authReadyTimer = nativeTimeout/);
   assert.match(interaction, /3000/);
   assert.match(lifecycle, /'play', 'playing', 'canplay', 'pause', 'ended', 'stalled', 'waiting', 'error'/);
-  assert.match(lifecycle, /document\.addEventListener\(eventName, onStateEvent, true\)/);
+  assert.match(lifecycle, /const onMediaStateEvent = event =>/);
+  assert.match(lifecycle, /rememberProgressMedia\(event\)/);
+  assert.match(lifecycle, /document\.addEventListener\(eventName, onMediaStateEvent, true\)/);
   assert.doesNotMatch(interaction + lifecycle, /setInterval\s*\(|new\s+MutationObserver/);
 });
 

@@ -7,7 +7,8 @@ namespace hp {
 // blank_recovery_script. This fragment schedules those owners plus a bounded
 // media-progress probe, and tears their timers down with the document lifecycle.
 inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
-  static constexpr std::wstring_view kFragment = LR"JS(
+  static constexpr std::wstring_view kFragment =
+LR"JS(
   const zoomOut = () => document.documentElement?.style.setProperty('zoom', '0.5');
   const run = () => {
     if (!pageActive) return;
@@ -26,22 +27,49 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
   let keyWaitingMedia = null;
   let progressTimer = 0;
   let progressMedia = null;
+  let progressCandidateMedia = null;
   let progressTime = 0;
   let progressStalledAt = 0;
   let progressRepairTried = false;
   let progressSyntheticKeyWait = false;
   let progressConfirmed = false;
+  let lastRecoverableProbeAt = 0;
   const progressProbeMs = 4000;
   const progressHealthyProbeMs = 8000;
+  const recoverableHealthyProbeMs = 16000;
   const progressStallMs = 12000;
+
+  const activeProgressMedia = media =>
+    media instanceof HTMLMediaElement && media.isConnected && !media.paused &&
+    !media.ended && media.readyState >= 2;
+  const rememberProgressMedia = event => {
+    const media = event?.target;
+    if (!(media instanceof HTMLMediaElement)) return;
+    if (event.type === 'ended' || event.type === 'emptied' || event.type === 'abort') {
+      if (progressCandidateMedia === media) progressCandidateMedia = null;
+      return;
+    }
+    if (event.type === 'play' || event.type === 'playing' || event.type === 'canplay') {
+      progressCandidateMedia = media;
+    }
+  };
+  const currentProgressMedia = () => {
+    if (activeProgressMedia(progressCandidateMedia)) return progressCandidateMedia;
+    const media = Array.from(document.querySelectorAll('audio,video')).find(
+      activeProgressMedia) || null;
+    progressCandidateMedia = media;
+    return media;
+  };
 
   const beginKeyWait = event => {
     const media = event.target;
     if (!(media instanceof HTMLMediaElement) || keyWaitingMedia === media) return;
+    progressCandidateMedia = media;
     keyWaitingMedia = media;
     postText('drm-waiting');
   };
   const finishKeyWait = event => {
+    rememberProgressMedia(event);
     if (!keyWaitingMedia || (event?.target && event.target !== keyWaitingMedia)) return;
     keyWaitingMedia = null;
     postText('drm-ready');
@@ -51,7 +79,8 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
     progressSyntheticKeyWait = false;
     postText('drm-ready');
   };
-
+)JS"
+LR"JS(
   // waitingforkey and Chromium media errors are not guaranteed for every CDM
   // failure. Independently verify that a media element claiming to play keeps
   // advancing. First re-kick the element; if a second full stall window passes,
@@ -63,16 +92,29 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
   const probeMediaProgress = () => {
     progressTimer = 0;
     if (!pageActive) return;
-    // Reuse the same four-second probe to retry recoverable Connect/Reconnect
-    // discovery after playback has been established and then lost. The
-    // onboarding owner enforces that state gate, so this adds no recovery
-    // clicks during unhealthy playback. Once the same media clock is confirmed
-    // advancing and native audio agrees, healthy playback backs off to eight
-    // seconds and immediately returns to four seconds on any anomaly.
-    publishRecoverableOnboarding();
-    const media = Array.from(document.querySelectorAll('audio,video')).find(
-      element => element instanceof HTMLMediaElement && !element.paused &&
-        !element.ended && element.readyState >= 2);
+
+    // Recoverable onboarding discovery is the most expensive part of this
+    // watchdog because it intentionally inspects broad Stationhead DOM shapes.
+    // Keep the previous four-second retry while playback is uncertain, but once
+    // the same media clock is confirmed healthy only run that DOM scan every
+    // sixteen seconds. Media progress itself is still checked every eight
+    // seconds, and any stall/recovery evidence immediately restores the fast
+    // onboarding cadence.
+    const probeStartedAt = Date.now();
+    const fastRecoverableProbe =
+      !progressConfirmed || progressStalledAt !== 0 || progressRepairTried ||
+      progressSyntheticKeyWait || keyWaitingMedia !== null;
+    if (fastRecoverableProbe || lastRecoverableProbeAt === 0 ||
+        probeStartedAt - lastRecoverableProbeAt >= recoverableHealthyProbeMs) {
+      lastRecoverableProbeAt = probeStartedAt;
+      publishRecoverableOnboarding();
+    }
+
+    // Cache the active media element from normal media events. Healthy playback
+    // no longer walks the full document for audio/video every eight seconds; a
+    // DOM lookup is only needed at startup or after the cached element stops,
+    // ends, or is replaced without a matching event.
+    const media = currentProgressMedia();
     if (!media) {
       progressMedia = null;
       progressTime = 0;
@@ -92,6 +134,7 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
       const now = Date.now();
       if (!Number.isFinite(current) || current < 0) {
         progressMedia = null;
+        progressCandidateMedia = null;
         progressTime = 0;
         progressStalledAt = 0;
         progressRepairTried = false;
@@ -148,10 +191,15 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
       probeMediaProgress,
       healthyProgress ? progressHealthyProbeMs : progressProbeMs);
   };
-
+)JS"
+LR"JS(
+  const onMediaStateEvent = event => {
+    rememberProgressMedia(event);
+    schedule(0);
+  };
   for (const eventName of [
       'play', 'playing', 'canplay', 'pause', 'ended', 'stalled', 'waiting', 'error']) {
-    document.addEventListener(eventName, onStateEvent, true);
+    document.addEventListener(eventName, onMediaStateEvent, true);
   }
   document.addEventListener('click', onInteractiveEvent, true);
   document.addEventListener('waitingforkey', beginKeyWait, true);
@@ -178,6 +226,7 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
   });
   window.addEventListener('pagehide', () => {
     pageActive = false;
+    progressCandidateMedia = null;
     for (const timer of [eventTimer, authReadyTimer, blankTimer, blankConfirmTimer,
                          progressTimer]) {
       if (timer) nativeClearTimeout(timer);

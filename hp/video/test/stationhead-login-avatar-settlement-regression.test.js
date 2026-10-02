@@ -22,9 +22,10 @@ function section(text, start, end) {
 }
 
 function rawScript(text) {
-  const raw = text.match(/LR"JS\(([\s\S]*?)\)JS"/);
-  assert.ok(raw, 'missing Stationhead raw JavaScript fragment');
-  return raw[1];
+  const chunks = [...text.matchAll(/LR"JS\(([\s\S]*?)\)JS"/g)]
+    .map(match => match[1]);
+  assert.ok(chunks.length > 0, 'missing Stationhead raw JavaScript fragment');
+  return chunks.join('\n');
 }
 
 test('legacy login-settlement registration is inert', () => {
