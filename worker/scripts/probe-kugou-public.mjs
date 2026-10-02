@@ -76,6 +76,36 @@ function compactHttp(result) {
   };
 }
 
+function compactMvResponse(title, mvHash, result) {
+  const base = {
+    title,
+    mv_hash: mvHash,
+    transport_ok: result.ok,
+    http_status: result.status,
+    transport_error: result.error || null,
+  };
+  if (!result.text) return base;
+  try {
+    const body = JSON.parse(result.text);
+    return {
+      ...base,
+      api_status: body?.status ?? null,
+      errcode: body?.errcode ?? null,
+      error: body?.error ?? null,
+      id: body?.id ?? null,
+      songname: body?.songname ?? null,
+      singer: body?.singer ?? null,
+      timelength: body?.timelength ?? null,
+      play_count: body?.play_count ?? null,
+      returned_hash: body?.hash ?? null,
+      type: body?.type ?? null,
+      is_publish: body?.is_publish ?? null,
+    };
+  } catch {
+    return { ...base, body_sample: result.text.slice(0, 1000) };
+  }
+}
+
 const output = {
   observed_at: new Date().toISOString(),
   note: 'Read-only diagnostic. No D1/R2 writes. Signed/client-only requests are not generated.',
@@ -84,6 +114,7 @@ const output = {
 };
 
 let sakuraProbeSong = null;
+let sakuraMvSongs = [];
 for (const [canonicalArtist, artist] of Object.entries(REGIONAL_MUSIC_ARTISTS)) {
   const profile = KUGOU_ARTIST_PAGES[canonicalArtist];
   const item = { author_id: profile.id, profile_url: profile.url };
@@ -101,6 +132,10 @@ for (const [canonicalArtist, artist] of Object.entries(REGIONAL_MUSIC_ARTISTS)) 
     };
     if (canonicalArtist === 'sakurazaka46') {
       sakuraProbeSong = rawSongs.find((song) => song?.songname === '愛MUST BE') || rawSongs[0] || null;
+      sakuraMvSongs = rawSongs
+        .filter((song) => String(song?.mv_hash || '').trim())
+        .slice(0, 5)
+        .map((song) => ({ title: song.songname, mv_hash: String(song.mv_hash).trim() }));
     }
   } catch (error) {
     item.artist_page = { ok: false, error: String(error?.message || error) };
@@ -133,6 +168,13 @@ if (sakuraProbeSong?.hash) {
 if (sakuraProbeSong?.id != null) {
   const collectUrl = `https://gateway.kugou.com/count/v1/audio/mget_collect?mixsongids=${encodeURIComponent(String(sakuraProbeSong.id))}`;
   output.unsigned_metric_probes.favorite_count_using_home_song_id = compactHttp(await fetchResult(collectUrl));
+}
+
+output.unsigned_metric_probes.mv_play_counts = [];
+for (const song of sakuraMvSongs) {
+  const mvUrl = `https://m.kugou.com/app/i/mv.php?cmd=100&hash=${encodeURIComponent(song.mv_hash)}&ismp3=1&ext=mp4`;
+  const result = await fetchResult(mvUrl, { referer: 'https://m.kugou.com/' });
+  output.unsigned_metric_probes.mv_play_counts.push(compactMvResponse(song.title, song.mv_hash, result));
 }
 
 console.log(JSON.stringify(output, null, 2));
