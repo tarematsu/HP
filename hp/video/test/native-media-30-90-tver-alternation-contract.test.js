@@ -20,9 +20,9 @@ const tverQueue = readFileSync(
 const youtubeRuntime = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url);
 
-test('media cadence keeps one or two one-minute X slots with variable YouTube and TVer durations', () => {
-  assert.match(mediaBase, /kNativeMediaXPhaseMs = 1U \* 60U \* 1000U/);
-  assert.match(mediaBase, /kNativeMediaStartupXPhaseMs = 1U \* 60U \* 1000U/);
+test('media cadence keeps one or two two-minute X slots with variable YouTube and TVer durations', () => {
+  assert.match(mediaBase, /kNativeMediaXPhaseMs = 2U \* 60U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaStartupXPhaseMs = 2U \* 60U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaYoutubeMinContentDurationMinutes = 45U/);
   assert.match(mediaBase, /kNativeMediaYoutubeMaxContentDurationMinutes = 75U/);
   assert.match(mediaBase, /kNativeMediaTverMinContentDurationMinutes = 45U/);
