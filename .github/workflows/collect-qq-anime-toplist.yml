@@ -1,0 +1,71 @@
+name: Collect QQ Music anime chart
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qq-music-anime-toplist
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve Thursday 18:00 JST cycle
+        id: cycle
+        run: echo "key=$(node worker/scripts/collect-qq-anime-toplist-actions.mjs --cycle-only)" >> "$GITHUB_OUTPUT"
+
+      - name: Check completed weekly cycle
+        id: cycle-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .qq-anime-toplist-updated
+          key: qq-anime-toplist-${{ steps.cycle.outputs.key }}
+          lookup-only: true
+
+      - uses: ./.github/actions/cloudflare-context
+        if: steps.cycle-cache.outputs.cache-hit != 'true'
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        if: steps.cycle-cache.outputs.cache-hit != 'true'
+        with:
+          node-version: '22'
+
+      - name: Install Worker dependencies
+        if: steps.cycle-cache.outputs.cache-hit != 'true'
+        working-directory: worker
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Check QQ Music anime chart update
+        if: steps.cycle-cache.outputs.cache-hit != 'true'
+        id: collect
+        working-directory: worker
+        env:
+          QQ_ANIME_TOPLIST_STATUS_FILE: ../.qq-anime-toplist-updated
+        run: |
+          node scripts/collect-qq-anime-toplist-actions.mjs
+          if [ -f ../.qq-anime-toplist-updated ]; then
+            echo "updated=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "updated=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Remember completed weekly cycle
+        if: steps.collect.outputs.updated == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .qq-anime-toplist-updated
+          key: qq-anime-toplist-${{ steps.cycle.outputs.key }}
