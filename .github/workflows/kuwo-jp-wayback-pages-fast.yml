@@ -1,0 +1,57 @@
+name: Fast recover Kuwo Japanese chart Wayback pages
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-wayback-pages-fast.yml]
+permissions:
+  contents: read
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Fetch known page snapshots
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import urllib.request,re,html,concurrent.futures,json
+          snaps=[
+            ('2017-12-22','20171222050128','http://m.kuwo.cn:80/newh5/bang/index'),
+            ('2020-06-12','20200612130922','http://m.kuwo.cn/newh5/bang/index'),
+            ('2022-05-08','20220508100423','http://m.kuwo.cn/newh5/bang/index'),
+            ('2022-09-04','20220904135022','http://kuwo.cn/newh5/bang/index'),
+            ('2024-01-05','20240105224544','http://kuwo.cn/newh5/bang/index'),
+            ('2025-01-23a','20250123175218','http://kuwo.cn/newh5/bang/index'),
+            ('2025-01-23b','20250123182654','https://kuwo.cn/newh5/bang/index'),
+          ]
+          def fetch(s):
+            label,ts,orig=s
+            attempts=[f'https://web.archive.org/web/{ts}id_/{orig}',f'http://web.archive.org/web/{ts}id_/{orig}',f'https://web.archive.org/web/{ts}/{orig}']
+            for u in attempts:
+              try:
+                q=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0'})
+                with urllib.request.urlopen(q,timeout=12) as r:b=r.read().decode('utf-8','replace')
+                if b:return label,ts,r.status,r.geturl(),b
+              except Exception as e: last=repr(e)
+            return label,ts,0,last,''
+          with concurrent.futures.ThreadPoolExecutor(max_workers=7) as ex:
+            rows=list(ex.map(fetch,snaps))
+          for label,ts,st,url,b in rows:
+            u=html.unescape(b)
+            p=u.find('酷我日语榜')
+            # also decode \u escapes if needed
+            if p<0:
+              try:
+                d=b.encode().decode('unicode_escape'); p=d.find('酷我日语榜'); u=d if p>=0 else u
+              except:pass
+            print('\n===',label,ts,'status',st,'bytes',len(b),'url',url,'JP',p>=0)
+            if p>=0:
+              s=u[max(0,p-2000):p+10000]
+              s=re.sub(r'<script\b[^>]*>.*?</script>',' ',s,flags=re.I|re.S)
+              s=re.sub(r'<style\b[^>]*>.*?</style>',' ',s,flags=re.I|re.S)
+              s=re.sub(r'<[^>]+>',' ',s); s=re.sub(r'\s+',' ',s)
+              print('TEXT',s[:5000])
+            # print script srcs so archived frontend can be inspected
+            srcs=re.findall(r'<script[^>]+src=["\']([^"\']+)',b,re.I)
+            for x in srcs[:30]:print('SCRIPT',x)
+          PY
