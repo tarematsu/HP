@@ -1,0 +1,52 @@
+name: Apply KKBOX implementation
+
+on:
+  push:
+    branches:
+      - feature/kkbox-regional-collection
+    paths:
+      - 'worker/scripts/apply-kkbox-implementation.mjs'
+      - '.github/workflows/apply-kkbox-implementation.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/kkbox-regional-collection
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply guarded KKBOX implementation
+        run: node worker/scripts/apply-kkbox-implementation.mjs
+      - name: Syntax check KKBOX modules
+        run: |
+          node --check worker/src/regional-music-kkbox.js
+          node --check worker/src/kkbox-japanese-chart-history.js
+          node --check worker/scripts/backfill-kkbox-japanese-history-actions.mjs
+      - name: Run focused tests
+        run: >-
+          node --test
+          worker/tests/regional-music-kkbox.test.js
+          worker/tests/kkbox-japanese-chart-history.test.js
+          worker/tests/regional-music-service-registry.test.js
+          worker/tests/regional-music-dispatch-plan.test.js
+          worker/tests/regional-music-read-model.test.js
+          site/tests/regional-music-navigation.test.js
+          site/tests/api-contract.test.js
+      - name: Remove one-shot generator
+        run: rm worker/scripts/apply-kkbox-implementation.mjs .github/workflows/apply-kkbox-implementation.yml
+      - name: Commit implementation
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Add KKBOX regional chart collection"
+          git push origin HEAD:feature/kkbox-regional-collection
