@@ -48,10 +48,17 @@ const STATUS_LABELS = Object.freeze({
   error: 'エラー',
 });
 
+const COMPACT_CHART_CADENCE = Object.freeze({
+  qq_music: '毎日 00:00 JST',
+  kugou_music: '毎週月曜 00:00 JST',
+});
+
 const OUT_OF_CHART_RANK = 101;
 
 let readModelPromise = null;
 let activeRequest = 0;
+let kugouArtistFilter = 'all';
+let lastKugouPayload = null;
 
 function valueText(value) {
   if (value === null || value === undefined || value === '') return '-';
@@ -244,8 +251,61 @@ function renderHealth(state) {
   }
 }
 
+function compactChartMode(service) {
+  return service === 'qq_music' || service === 'kugou_music';
+}
+
+function setCompactChartMode(service) {
+  const compact = compactChartMode(service);
+  const view = byId('regionalMusicView');
+  view?.classList.toggle('is-chart-compact', compact);
+  const genericHeader = byId('regionalMusicGenericHeader');
+  const genericTables = byId('regionalMusicGenericTables');
+  const compactMeta = byId('regionalMusicCompactMeta');
+  if (genericHeader) genericHeader.hidden = compact;
+  if (genericTables) genericTables.hidden = compact;
+  if (compactMeta) compactMeta.hidden = !compact;
+  if (!compact) {
+    const compactNotice = byId('regionalMusicCompactNotice');
+    if (compactNotice) compactNotice.hidden = true;
+  }
+}
+
+function setCompactNotice(message = '', error = false) {
+  const wrapper = byId('regionalMusicCompactNotice');
+  if (!wrapper) return;
+  wrapper.hidden = !message;
+  setNotice('regionalMusicCompactNoticeText', message || undefined, error);
+}
+
+function kugouArtistVisible(canonicalArtist) {
+  return kugouArtistFilter === 'all' || canonicalArtist === kugouArtistFilter;
+}
+
+function syncKugouFilterButtons() {
+  for (const button of document.querySelectorAll('[data-kugou-artist-filter]')) {
+    const active = button.dataset.kugouArtistFilter === kugouArtistFilter;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
+}
+
+function bindKugouFilters() {
+  for (const button of document.querySelectorAll('[data-kugou-artist-filter]')) {
+    if (button.dataset.kugouFilterBound === '1') continue;
+    button.dataset.kugouFilterBound = '1';
+    button.addEventListener('click', () => {
+      const next = button.dataset.kugouArtistFilter || 'all';
+      if (next === kugouArtistFilter) return;
+      kugouArtistFilter = next;
+      if (lastKugouPayload && location.hash.slice(1) === 'kugou_music') renderKugouHistory(lastKugouPayload, 'kugou_music');
+      else syncKugouFilterButtons();
+    });
+  }
+}
+
 function kugouSeries(history, coveredDates = []) {
-  return ARTIST_DISPLAY_ORDER.slice(0, 3).map((canonicalArtist) => {
+  return ARTIST_DISPLAY_ORDER.slice(0, 3).filter(kugouArtistVisible).map((canonicalArtist) => {
     const byDate = new Map();
     for (const item of history) {
       if (item?.canonical_artist !== canonicalArtist) continue;
@@ -274,6 +334,9 @@ function renderKugouHistory(payload, service) {
   if (historySection) historySection.hidden = !visible;
   if (!visible) return;
 
+  lastKugouPayload = payload;
+  bindKugouFilters();
+  syncKugouFilterButtons();
   const chart = payload?.kugou_japan_chart || {};
   const history = Array.isArray(chart.history) ? chart.history : [];
   const coverage = chart.coverage || {};
@@ -282,39 +345,33 @@ function renderKugouHistory(payload, service) {
   const dates = coveredDates.length
     ? coveredDates
     : [...new Set(series.flatMap((item) => item.points.map((point) => point.date)))].sort();
-  const yMax = OUT_OF_CHART_RANK;
-  const rankTicks = [1, 25, 50, 75, 100, OUT_OF_CHART_RANK];
 
   renderRankHistoryChart({
     container: byId('kugouJapanRankChart'),
     series,
     dates,
-    height: 420,
-    margin: { left: 58, right: 18, top: 18, bottom: 38 },
-    yMax,
-    rankTicks,
+    height: 320,
+    margin: { left: 58, right: 18, top: 12, bottom: 34 },
+    yMax: OUT_OF_CHART_RANK,
+    rankTicks: [1, 25, 50, 75, 100, OUT_OF_CHART_RANK],
     dateTickCount: 5,
-    ariaLabel: 'Kugou日本榜における櫻坂46、乃木坂46、日向坂46の各日最高順位推移。取得済み平日の圏外も含み、1位が上。',
+    ariaLabel: 'Kugou Music 日本榜における選択グループの各日最高順位推移。取得済み平日の圏外も含み、1位が上。',
     lineClass: 'kugou-rank-line',
     emptyClass: 'regional-music-rank-empty',
-    emptyText: 'Kugou日本榜の順位履歴はまだありません。',
+    emptyText: 'Kugou Music 日本榜の順位履歴はまだありません。',
     rankLabel: (rank) => rank === OUT_OF_CHART_RANK ? '圏外' : `${rank}位`,
     dateLabel: providerShortDate,
     latestPoint: { radius: () => 2.5 },
     legendContainer: byId('kugouJapanRankLegend'),
   });
 
-  const oldest = providerDateTimeText(coverage.oldest_available);
-  const latestChecked = providerDateTimeText(coverage.latest_checked || coverage.latest_available);
-  const latestRankIn = providerDateTimeText(coverage.latest_rank_in || coverage.latest_available);
-  const count = Number.isFinite(Number(coverage.entries)) ? integerFormat.format(Number(coverage.entries)) : integerFormat.format(history.length);
-  setText('kugouJapanCoverage', `最古取得可能: ${oldest} / 最終確認号: ${latestChecked} / 最終ランクイン: ${latestRankIn}（${count}件）。2024/10/31より前は現行APIでは正しい過去Top 100を復元できないため未収録。`);
-
   const body = replaceBody('kugouJapanHistoryBody');
   if (!body) return;
-  const ordered = [...history].sort((a, b) => String(b.published_at || '').localeCompare(String(a.published_at || '')) || Number(a.rank) - Number(b.rank));
+  const ordered = history
+    .filter((item) => kugouArtistVisible(item?.canonical_artist))
+    .sort((a, b) => String(b.published_at || '').localeCompare(String(a.published_at || '')) || Number(a.rank) - Number(b.rank));
   if (!ordered.length) {
-    appendEmptyTableRow(body, 'Kugou日本榜のランクイン履歴はまだありません。', 5);
+    appendEmptyTableRow(body, 'Kugou Music 日本榜のランクイン履歴はありません。', 5);
     return;
   }
   for (const item of ordered) {
@@ -322,7 +379,7 @@ function renderKugouHistory(payload, service) {
     body.append(row([
       providerDateTimeText(item.published_at),
       ARTIST_LABELS[item.canonical_artist] || item.canonical_artist || '-',
-      Number.isFinite(rank) ? (rank === OUT_OF_CHART_RANK ? '圏外' : `${integerFormat.format(rank)}位`) : '-',
+      Number.isFinite(rank) ? (rank >= OUT_OF_CHART_RANK ? '圏外' : `${integerFormat.format(rank)}位`) : '-',
       item.title || '-',
       Number.isFinite(Number(item.issue)) ? `第${integerFormat.format(Number(item.issue))}期` : '-',
     ]));
@@ -335,14 +392,26 @@ function renderService(payload, service) {
   const tracks = (payload.tracks || []).filter((item) => item.service === service);
   const playlists = (payload.playlists || []).filter((item) => item.service === service);
   const memberships = (payload.playlist_memberships || []).filter((item) => item.service === service);
+  const compact = compactChartMode(service);
 
+  setCompactChartMode(service);
   setText('regionalMusicTitle', SERVICE_LABELS[service] || service);
   setText('regionalMusicRegion', state?.region || '');
   setText('regionalMusicUpdated', dateTimeText(payload.updated_at));
+  setText('regionalMusicChartUpdated', dateTimeText(payload.updated_at));
+  setText('regionalMusicChartCadence', COMPACT_CHART_CADENCE[service] || '-');
   setText('regionalMusicStatus', STATUS_LABELS[state?.status] || state?.status || '未取得');
   setText('regionalMusicArtistCount', integerFormat.format(artists.length));
   setText('regionalMusicTrackCount', integerFormat.format(tracks.length));
   setText('regionalMusicPlaylistCount', integerFormat.format(playlists.length));
+
+  if (compact) {
+    if (state?.status === 'error') setCompactNotice('収集エラーが発生しています。直前までの正常データを表示しています。', true);
+    else if (state?.status === 'degraded') setCompactNotice('一部項目の取得に失敗しています。取得できたデータのみ表示しています。');
+    else setCompactNotice();
+    renderKugouHistory(payload, service);
+    return;
+  }
 
   if (state?.status === 'error') {
     setNotice('regionalMusicNotice', '収集エラーが発生しています。直前までの正常データは保持されています。', true);
@@ -367,24 +436,30 @@ function resetKugouSections() {
   if (chartSection) chartSection.hidden = true;
   if (historySection) historySection.hidden = true;
   for (const id of ['kugouJapanRankLegend', 'kugouJapanRankChart', 'kugouJapanHistoryBody']) replaceBody(id);
-  setText('kugouJapanCoverage', '');
 }
 
 export async function loadRegionalMusicView(service) {
   const request = ++activeRequest;
   const serviceId = String(service || location.hash.slice(1) || '');
   if (!SERVICE_LABELS[serviceId]) throw new Error(`unknown regional music service: ${serviceId}`);
+  setCompactChartMode(serviceId);
   setText('regionalMusicTitle', SERVICE_LABELS[serviceId]);
-  for (const id of ['regionalMusicUpdated', 'regionalMusicStatus', 'regionalMusicArtistCount', 'regionalMusicTrackCount', 'regionalMusicPlaylistCount']) setText(id, '-');
+  for (const id of ['regionalMusicUpdated', 'regionalMusicChartUpdated', 'regionalMusicStatus', 'regionalMusicArtistCount', 'regionalMusicTrackCount', 'regionalMusicPlaylistCount']) setText(id, '-');
+  setText('regionalMusicChartCadence', COMPACT_CHART_CADENCE[serviceId] || '-');
   setText('regionalMusicRegion', '');
   for (const id of ['regionalMusicHealth', 'regionalMusicArtistBody', 'regionalMusicTrackBody', 'regionalMusicPlaylistBody']) replaceBody(id);
   resetKugouSections();
-  setNotice('regionalMusicNotice', 'データを読み込んでいます。');
+  setCompactNotice();
+  if (!compactChartMode(serviceId)) setNotice('regionalMusicNotice', 'データを読み込んでいます。');
   try {
     const payload = await loadReadModel();
     if (request === activeRequest) renderService(payload, serviceId);
   } catch (error) {
     if (request !== activeRequest) return;
+    if (compactChartMode(serviceId)) {
+      setCompactNotice('データを取得できませんでした。時間をおいて再度お試しください。', true);
+      return;
+    }
     setNotice('regionalMusicNotice', 'データを取得できませんでした。時間をおいて再度お試しください。', true);
     appendEmptyTableRow(byId('regionalMusicArtistBody'), 'データ未取得', 4);
     appendEmptyTableRow(byId('regionalMusicTrackBody'), 'データ未取得', 7);
