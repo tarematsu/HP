@@ -10,6 +10,10 @@ function dataAttributeName(value) {
   return String(value || 'stationhead-section').replace(/[^a-z0-9-]/gi, '');
 }
 
+function datasetKey(attribute) {
+  return attribute.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+}
+
 export function stationheadChannelTabs({
   dataAttribute = 'stationhead-section',
   ariaLabel = 'Stationhead表示切替',
@@ -34,12 +38,16 @@ export function bindStationheadChannelTabs(root, {
   onSelect = null,
 } = {}) {
   if (!root) return () => {};
-  const sectionKey = dataAttributeName(dataAttribute).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
-  const panelKey = dataAttributeName(panelAttribute).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
-  const selector = `[data-${dataAttributeName(dataAttribute)}]`;
-  const panelSelector = `[data-${dataAttributeName(panelAttribute)}]`;
+  const sectionAttribute = dataAttributeName(dataAttribute);
+  const panelDataAttribute = dataAttributeName(panelAttribute);
+  const sectionKey = datasetKey(sectionAttribute);
+  const panelKey = datasetKey(panelDataAttribute);
+  const selector = `[data-${sectionAttribute}]`;
+  const panelSelector = `[data-${panelDataAttribute}]`;
 
   function select(section) {
+    const requested = root.querySelector(`${selector}[data-${sectionAttribute}="${CSS.escape(section)}"]`);
+    if (!requested || requested.disabled) return;
     root.querySelectorAll(selector).forEach((button) => {
       const active = button.dataset[sectionKey] === section;
       button.classList.toggle('active', active);
