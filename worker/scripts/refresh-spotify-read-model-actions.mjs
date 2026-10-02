@@ -1,16 +1,43 @@
-import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
-import { runPagesReadModelActions } from './run-pages-read-model-actions.mjs';
+import { materializeVariant } from './run-pages-read-model-actions.mjs';
+import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 
-export async function refreshSpotifyReadModel() {
-  const result = await runPagesReadModelActions({
-    dueKeys: ['spotify-playcounts'],
-    retryOverdue: false,
+const workerRoot = resolve(import.meta.dirname, '..');
+const wranglerScript = resolve(workerRoot, 'node_modules/wrangler/bin/wrangler.js');
+const minuteDatabase = process.env.FACTS_DATABASE_NAME || 'stationhead-minute';
+const otherDatabase = process.env.OTHER_DATABASE_NAME || 'stationhead-other';
+const variant = Object.freeze({
+  key: 'spotify-playcounts',
+  url: '/api/spotify-playcounts?artists=sakamichi',
+  cadence_minutes: 720,
+});
+
+export async function refreshSpotifyReadModel(options = {}) {
+  const otherDb = options.otherDb || createWranglerRemoteD1({
+    database: otherDatabase,
+    cwd: workerRoot,
+    wranglerScript,
   });
-  const published = result.published.find((item) => item.key === 'spotify-playcounts');
-  if (!published) throw new Error('Spotify read model was not published');
-  return published;
+  const minuteDb = options.minuteDb || createWranglerRemoteD1({
+    database: minuteDatabase,
+    cwd: workerRoot,
+    wranglerScript,
+  });
+  const revision = async () => {
+    const row = await otherDb.prepare(`SELECT
+        COALESCE(MAX(chart_date),'') AS chart_date,
+        COALESCE(MAX(updated_at),0) AS chart_updated_at
+      FROM sh_spotify_artist_chart_daily`).first();
+    return `spotify-artist-chart-actions:chart_date=${String(row?.chart_date || '')}:chart_updated_at=${String(row?.chart_updated_at || 0)}`;
+  };
+  return materializeVariant(
+    variant,
+    { OTHER_DB: otherDb, MINUTE_DB: minuteDb },
+    Number(options.now ?? Date.now()),
+    { loadSourceRevision: revision },
+  );
 }
 
 async function main() {
