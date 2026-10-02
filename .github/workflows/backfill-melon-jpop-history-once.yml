@@ -36,6 +36,9 @@ jobs:
       - name: Backfill Melon J-pop weekly and monthly history
         working-directory: worker
         run: node scripts/backfill-melon-jpop-history-actions.mjs --start=2012-01-01 --types=week,month --concurrency=4 --persist
+      - name: Refresh Melon snapshot and publish regional read model
+        working-directory: worker
+        run: node scripts/collect-regional-r2-actions.mjs --services=melon
       - name: Upload audit artifact
         if: always()
         uses: actions/upload-artifact@v4
