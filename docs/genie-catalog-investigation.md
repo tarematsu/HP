@@ -41,3 +41,19 @@ Run `node worker/scripts/probe-genie-catalog.mjs /tmp/genie-catalog-evidence` wi
 - Catalog tail sample 91621795, Saisyu no Chikatetsu ni Notte: plays 1906, listeners 117.
 - Both detail pages verified the same artist ID. Public metrics are cumulative.
 - This confirms full song-ID discovery and off-profile metrics, not successful metric collection for every song.
+
+## Final verification — 2026-10-02 JST
+
+| Artist | Advertised songs | Unique IDs fetched | Pages | Off-profile metric samples |
+| --- | ---: | ---: | ---: | ---: |
+| Sakurazaka46 | 264 | 264 | 9 | 2/2 |
+| Nogizaka46 | 998 | 998 | 34 | 2/2 |
+| Hinatazaka46 | 348 | 348 | 12 | 2/2 |
+
+- All 1,610 catalog song IDs were discovered with no empty or repeated pages; each artist matched its advertised total.
+- All six off-profile song-detail samples verified artist identity and exposed cumulative plays and listeners.
+- Nogizaka46 tail sample 82608923, Sekaide Ichiban Kodokuna Lover: 11,004 plays, 983 listeners.
+- Evidence: `docs/evidence/genie-full-catalog.json`. Probe exited successfully. Script syntax and seven focused Genie/order tests passed.
+- Estimated daily full-detail work at current counts: 55 catalog pages plus 1,610 song detail requests, with profile/search overhead; about 4,830 song-storage SQL statements using the current three-write ranked-song path. These are estimates, not measured D1 usage.
+- Conclusion: full public catalog discovery works, and broader cumulative metric collection has a verified route. Full 1,610-song metric coverage was not attempted in this investigation. Implement resumable batches and partial-failure accounting before production expansion.
+- Production collector remains at five songs per artist; this PR is research/evidence, not a deployed expansion.
