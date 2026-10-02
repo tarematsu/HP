@@ -1,0 +1,34 @@
+name: Fetch Kuwo Japanese chart volumes 206 to 209
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-fetch-206-209.yml]
+permissions:
+  contents: read
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch known historical Top100 editions
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import json,re,urllib.parse,urllib.request
+          base='https://kbangserver.kuwo.cn/ksong.s'
+          headers={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'}
+          ids={206:267650,207:267651,208:267891,209:267921}
+          aliases=['櫻坂46','樱坂46','Sakurazaka46','乃木坂46','Nogizaka46','日向坂46','Hinatazaka46','欅坂46','Keyakizaka46']
+          for vol,bid in ids.items():
+            q={'from':'pc','fmt':'json','pn':'0','rn':'100','type':'bang','data':'content','id':'183','show_copyright_off':'0','pcmp4':'1','isbang':'1','userid':'0','bangid':str(bid)}
+            req=urllib.request.Request(base+'?'+urllib.parse.urlencode(q),headers=headers)
+            with urllib.request.urlopen(req,timeout=15) as r:
+              data=json.loads(r.read().decode('utf-8','replace'))
+            rows=data.get('musiclist') or []
+            hits=[]
+            for rank,row in enumerate(rows,1):
+              text=((row.get('artist') or '')+' '+(row.get('name') or '')).casefold().replace(' ','')
+              if any(a.casefold().replace(' ','') in text for a in aliases):
+                hits.append({'rank':rank,'name':row.get('name'),'artist':row.get('artist')})
+            print(json.dumps({'volume':vol,'bangid':bid,'currentVolume':data.get('currentVolume'),'pub':data.get('pub'),'rows':len(rows),'top10':[{'rank':i+1,'name':x.get('name'),'artist':x.get('artist')} for i,x in enumerate(rows[:10])],'sakamichi':hits},ensure_ascii=False))
+          PY
