@@ -246,7 +246,12 @@ function updateLocation(mode, { replace = false } = {}) {
   const target = mode === 'current' ? '/' : `/#${mode}`;
   const current = `${location.pathname}${location.search}${location.hash}`;
   if (current === target) return;
+  const oldURL = location.href;
   history[replace ? 'replaceState' : 'pushState'](null, '', target);
+  const newURL = location.href;
+  if (oldURL !== newURL) {
+    window.dispatchEvent(new HashChangeEvent('hashchange', { oldURL, newURL }));
+  }
 }
 
 function showOnly(view) {
