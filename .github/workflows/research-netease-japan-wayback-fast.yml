@@ -1,19 +1,20 @@
-name: Fast NetEase Japanese chart Wayback research
+name: Fast NetEase Japanese chart archive research
 
 on:
   pull_request:
     paths:
       - '.github/workflows/research-netease-japan-wayback-fast.yml'
       - 'worker/scripts/research-netease-japan-wayback-fast.mjs'
+      - 'worker/scripts/research-netease-japan-arquivo.mjs'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  wayback:
+  archive-recovery:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -21,11 +22,20 @@ jobs:
           node-version: '22'
       - name: Probe Wayback snapshots
         working-directory: worker
+        timeout-minutes: 5
+        continue-on-error: true
         run: node scripts/research-netease-japan-wayback-fast.mjs
-      - name: Upload fast report
+      - name: Probe Arquivo.pt snapshots and text index
+        working-directory: worker
+        timeout-minutes: 20
+        run: node scripts/research-netease-japan-arquivo.mjs
+      - name: Upload archive reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: netease-japan-wayback-fast
-          path: worker/netease-japan-wayback-fast.json
+          name: netease-japan-archive-recovery
+          path: |
+            worker/netease-japan-wayback-fast.json
+            worker/netease-japan-arquivo.json
           if-no-files-found: warn
+          retention-days: 7
