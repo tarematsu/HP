@@ -1,0 +1,34 @@
+name: Probe Kuwo weekly chart global id anchors
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-weekly-anchor-probe.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect volume windows for weekly charts
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import json,urllib.parse,urllib.request
+          B='https://kbangserver.kuwo.cn/ksong.s';H={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'}
+          # mixture of external/genre charts; weekly charts should expose ~60 weeks in volume history
+          ids=[12,16,17,22,26,64,93,104,145,151,153,158,180,182,183,184,185,187,204,242,264,278,284,340,344]
+          for cid in ids:
+            p={'from':'pc','fmt':'json','pn':'0','rn':'1','type':'bang','data':'content','id':str(cid),'show_copyright_off':'0','pcmp4':'1','isbang':'1','userid':'0'}
+            u=B+'?'+urllib.parse.urlencode(p)
+            try:
+              q=urllib.request.Request(u,headers=H)
+              with urllib.request.urlopen(q,timeout=12) as r:j=json.loads(r.read().decode('utf-8','replace'))
+            except Exception as e:print('ERR',cid,repr(e));continue
+            arr=[]
+            for year,xs in (j.get('volume') or {}).items():
+              if isinstance(xs,list):
+                for x in xs:
+                  if isinstance(x,dict):arr.append({'year':year,'name':x.get('name'),'third_id':x.get('third_id'),'second_id':x.get('second_id')})
+            print('CHART',cid,'NAME',j.get('name') or j.get('bangname') or j.get('title'),'CV',j.get('currentVolume'),'PUB',j.get('pub'),'VOLS',len(arr),'FIRST',json.dumps(arr[:3],ensure_ascii=False),'LAST',json.dumps(arr[-5:],ensure_ascii=False))
+          PY
