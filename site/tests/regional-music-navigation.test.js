@@ -74,7 +74,7 @@ test('Kugou exposes Japan and ACG chart history with shared filters', () => {
   assert.match(runtime, /service === 'kugou_music'/);
   assert.match(runtime, /kugouArtistFilter/);
   assert.match(runtime, /kugouArtistVisible/);
-  assert.match(runtime, /kugou_music: '平日11:30 \/ ACG新歌榜: 木曜11:40'/);
+  assert.match(runtime, /kugou_music: '平日11:30 \/ ACG新歌榜: 水曜11:40'/);
   assert.match(runtime, /dateLabel:\s*providerDateText/);
   assert.match(runtime, /providerDateText\(item\.published_at\)/);
   assert.doesNotMatch(runtime, /providerDateTimeText/);
