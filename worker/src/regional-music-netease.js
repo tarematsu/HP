@@ -17,6 +17,7 @@ const NETEASE_ALBUM_BATCH = 6;
 const NETEASE_COMMENT_BATCH = 5;
 const VERIFIED_ARTIST_IDS = Object.freeze({ sakurazaka46: '36908026', hinatazaka46: '13163121', nogizaka46: '20846' });
 const DAY_MS = 86_400_000;
+const CHINA_OFFSET_MS = 8 * 60 * 60 * 1000;
 
 function normalize(value) {
   return String(value || '').normalize('NFKC').toLocaleLowerCase('en-US').replace(/\s+/g, '');
@@ -213,7 +214,7 @@ async function optionalCommentCount(fetchImpl, trackId) {
 async function collectJapaneseChart(env, observedAt, fetchImpl) {
   const payload = await requestJson(fetchImpl, neteaseJapanChartUrl());
   const chart = parseNeteaseJapanChart(payload);
-  const updateDate = chart.update_time ? new Date(chart.update_time).toISOString().slice(0, 10) : null;
+  const updateDate = chart.update_time ? new Date(chart.update_time + CHINA_OFFSET_MS).toISOString().slice(0, 10) : null;
   await saveRegionalPlaylist(env, {
     service:'netease_cloud_music',
     service_playlist_id:NETEASE_JAPAN_CHART_ID,
