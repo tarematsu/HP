@@ -23,10 +23,13 @@ test('dynamic follower targets require a live broadcast confirmation', () => {
 
   db.exec(migration);
 
-  assert.deepEqual(
-    db.prepare('SELECT handle,source_mask,live_confirmed_at FROM sh_stationhead_follower_targets ORDER BY handle').all(),
-    [{ handle: 'fixed', source_mask: 1, live_confirmed_at: null }],
-  );
+  const remaining = db.prepare(
+    'SELECT handle,source_mask,live_confirmed_at FROM sh_stationhead_follower_targets ORDER BY handle',
+  ).all();
+  assert.equal(remaining.length, 1);
+  assert.equal(remaining[0].handle, 'fixed');
+  assert.equal(remaining[0].source_mask, 1);
+  assert.equal(remaining[0].live_confirmed_at, null);
 
   db.prepare(`INSERT INTO sh_stationhead_follower_targets(handle,source_mask,first_seen_at)
     VALUES(?,?,?)`).run('history-only', 2, 3);
@@ -37,8 +40,9 @@ test('dynamic follower targets require a live broadcast confirmation', () => {
 
   db.prepare(`INSERT INTO sh_stationhead_follower_targets(handle,source_mask,first_seen_at,live_confirmed_at)
     VALUES(?,?,?,?)`).run('livehost', 2, 4, 4);
-  assert.deepEqual(
-    db.prepare('SELECT source_mask,live_confirmed_at FROM sh_stationhead_follower_targets WHERE handle=?').get('livehost'),
-    { source_mask: 2, live_confirmed_at: 4 },
-  );
+  const live = db.prepare(
+    'SELECT source_mask,live_confirmed_at FROM sh_stationhead_follower_targets WHERE handle=?',
+  ).get('livehost');
+  assert.equal(live.source_mask, 2);
+  assert.equal(live.live_confirmed_at, 4);
 });
