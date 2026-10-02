@@ -1,6 +1,7 @@
 import {
   fullDate as formatDate,
   integerFormat as numberFormat,
+  safeInteger as integer,
   setNotice as setSharedNotice,
   signedInteger,
 } from './dashboard-ui-common.js?v=20260930.1';
@@ -12,11 +13,6 @@ const ARTIST_NAMES = Object.freeze({
   hinatazaka46: '日向坂46',
 });
 let readModelPromise = null;
-
-function integer(value) {
-  const parsed = Number(value);
-  return Number.isSafeInteger(parsed) ? parsed : null;
-}
 
 function compareTracks(left, right) {
   const leftDelta = integer(left?.delta);
@@ -149,7 +145,6 @@ async function fetchReadModel() {
 }
 
 async function selectAll() {
-  syncButtons('all');
   try {
     renderAll(await fetchReadModel());
   } catch (error) {
