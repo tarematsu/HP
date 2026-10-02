@@ -1,0 +1,44 @@
+name: Probe Kuwo Japanese chart historical date parameters
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-date-param-probe.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Compare possible date parameters
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import urllib.request,urllib.parse,json,hashlib,itertools
+          base='https://kbangserver.kuwo.cn/ksong.s'
+          common={'from':'pc','fmt':'json','pn':'0','rn':'100','type':'bang','data':'content','id':'183','show_copyright_off':'0','pcmp4':'1','isbang':'1','userid':'0'}
+          def fetch(extra=None):
+            q=common.copy(); q.update(extra or {})
+            u=base+'?'+urllib.parse.urlencode(q)
+            try:
+              req=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'})
+              with urllib.request.urlopen(req,timeout=7) as r:b=r.read()
+              p=json.loads(b.decode('utf-8','replace'))
+              rows=p.get('musiclist') or p.get('musicList') or (p.get('data') or {}).get('musicList') or []
+              slim=[(x.get('id'),x.get('name'),x.get('artist'),x.get('rank_change'),x.get('trend')) for x in rows]
+              h=hashlib.sha256(json.dumps(slim,ensure_ascii=False).encode()).hexdigest()[:16]
+              return {'ok':True,'hash':h,'pub':p.get('pub') or (p.get('data') or {}).get('pub'),'name':p.get('name'),'top3':[(x.get('name'),x.get('artist')) for x in rows[:3]],'n':len(rows)}
+            except Exception as e:return {'ok':False,'err':repr(e)}
+          baseline=fetch(); print('BASE',json.dumps(baseline,ensure_ascii=False))
+          names=['date','dt','day','pub','pubTime','time','rankDate','rankdate','bangDate','bangdate','period','issue','version','timestamp','updateTime','startTime']
+          values=['2026-09-01','20260901','2025-01-01','20250101','1725148800','1756684800']
+          changed=[]
+          for name,val in itertools.product(names,values):
+            r=fetch({name:val})
+            same=r.get('hash')==baseline.get('hash') and r.get('pub')==baseline.get('pub')
+            if not same:
+              changed.append((name,val,r))
+              print('DIFF',name,val,json.dumps(r,ensure_ascii=False))
+          print('CHANGED_COUNT',len(changed))
+          PY
