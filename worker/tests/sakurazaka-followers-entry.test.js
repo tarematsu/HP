@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { shouldDispatchSpotifyPlaycount } from '../src/spotify-playcount-timing.js';
 
 const sakurazakaConfig = JSON.parse(readFileSync(new URL('../wrangler.sakurazaka46jp.jsonc', import.meta.url), 'utf8'));
 const sakurazakaEntry = readFileSync(new URL('../src/sakurazaka-followers-entry.js', import.meta.url), 'utf8');
@@ -26,7 +27,7 @@ test('Sakurazaka minute cron is the shared scheduler while Buddies stays indepen
   assert.match(sakurazakaEntry, /enqueueRegionalMusicDispatch/);
   assert.match(sakurazakaEntry, /minute % 5 === 1/);
   assert.match(sakurazakaEntry, /Buddies owns the 00\/05\/10/);
-  assert.match(sakurazakaEntry, /minute === 0/);
+  assert.match(sakurazakaEntry, /shouldDispatchSpotifyPlaycount/);
   assert.doesNotMatch(sakurazakaEntry, /SAKURAZAKA_QUEUE\.send/);
   assert.match(sakurazakaEntry, /stationhead_daily_followers_legacy_queue_drained/);
 
@@ -36,6 +37,16 @@ test('Sakurazaka minute cron is the shared scheduler while Buddies stays indepen
   assert.ok(buddiesConfig.d1_databases.some((item) => item.binding === 'OTHER_DB'));
   assert.match(buddiesEntry, /isJstFollowerCollectionMinute\(scheduledAt\)/);
   assert.match(buddiesEntry, /collectStationheadDailyFollowersResilient/);
+});
+
+test('Spotify checks every ten minutes from 00:00 through 04:50 JST and hourly otherwise', () => {
+  assert.equal(shouldDispatchSpotifyPlaycount(Date.parse('2026-10-02T14:50:00Z')), false); // 23:50 JST
+  assert.equal(shouldDispatchSpotifyPlaycount(Date.parse('2026-10-02T15:00:00Z')), true);  // 00:00 JST
+  assert.equal(shouldDispatchSpotifyPlaycount(Date.parse('2026-10-02T15:10:00Z')), true);  // 00:10 JST
+  assert.equal(shouldDispatchSpotifyPlaycount(Date.parse('2026-10-02T19:50:00Z')), true);  // 04:50 JST
+  assert.equal(shouldDispatchSpotifyPlaycount(Date.parse('2026-10-02T20:00:00Z')), true);  // 05:00 JST
+  assert.equal(shouldDispatchSpotifyPlaycount(Date.parse('2026-10-02T20:10:00Z')), false); // 05:10 JST
+  assert.equal(shouldDispatchSpotifyPlaycount(Date.parse('2026-10-03T03:00:00Z')), true);  // 12:00 JST
 });
 
 test('daily follower history uses one compact row per JST date', () => {
