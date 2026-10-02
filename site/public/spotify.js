@@ -19,10 +19,13 @@ import { observeDashboardChartResize } from './dashboard-chart-runtime.js?v=2026
 let selectedArtistKey = 'sakurazaka46';
 const GRAPH_ARTIST_KEYS = Object.freeze(['sakurazaka46', 'nogizaka46', 'hinatazaka46']);
 const GRAPH_ARTIST_KEY_SET = new Set(GRAPH_ARTIST_KEYS);
+const MONTHLY_LISTENER_ARTIST_KEYS = Object.freeze([...GRAPH_ARTIST_KEYS, 'sakamichi-selection']);
+const MONTHLY_LISTENER_ARTIST_KEY_SET = new Set(MONTHLY_LISTENER_ARTIST_KEYS);
 const GRAPH_ARTIST_COLORS = Object.freeze({
   nogizaka46: '#8264b0',
   sakurazaka46: '#f3a6c8',
   hinatazaka46: '#9ecff3',
+  'sakamichi-selection': '#667287',
 });
 const compactNumberFormat = new Intl.NumberFormat('ja-JP', { notation: 'compact', maximumFractionDigits: 1 });
 let requestSequence = 0;
@@ -69,6 +72,13 @@ function normalizeTrendSeries(trend = {}) {
 }
 
 function graphTrendSeries(seriesList = []) {
+  const includesMonthlyListeners = seriesList.some((series) =>
+    series.points.some((point) => integer(point?.monthly_listeners) != null));
+  if (includesMonthlyListeners) {
+    return seriesList
+      .filter((series) => MONTHLY_LISTENER_ARTIST_KEY_SET.has(String(series?.artistKey || '')))
+      .sort((a, b) => MONTHLY_LISTENER_ARTIST_KEYS.indexOf(a.artistKey) - MONTHLY_LISTENER_ARTIST_KEYS.indexOf(b.artistKey));
+  }
   return seriesList
     .filter((series) => GRAPH_ARTIST_KEY_SET.has(String(series?.artistKey || '')))
     .sort((a, b) => GRAPH_ARTIST_KEYS.indexOf(a.artistKey) - GRAPH_ARTIST_KEYS.indexOf(b.artistKey));
@@ -84,7 +94,7 @@ function monthlyListenerTrend(rows = []) {
     const artistKey = String(row?.artist_key || '').trim();
     const snapshotDate = String(row?.snapshot_date || '').trim();
     const monthlyListeners = integer(row?.monthly_listeners);
-    if (!GRAPH_ARTIST_KEY_SET.has(artistKey) || !/^\d{4}-\d{2}-\d{2}$/.test(snapshotDate)
+    if (!MONTHLY_LISTENER_ARTIST_KEY_SET.has(artistKey) || !/^\d{4}-\d{2}-\d{2}$/.test(snapshotDate)
         || monthlyListeners == null || monthlyListeners < 0) continue;
     if (!trend[artistKey]) trend[artistKey] = [];
     trend[artistKey].push({
@@ -318,7 +328,21 @@ function renderArtistRankChart(chart = {}, trend = {}) {
   }
 }
 
+function syncTrendTitles() {
+  const titles = {
+    spotifyTrendTitle: 'Spotify 全曲合計再生数前日比推移',
+    spotifyMonthlyListenerTrendTitle: 'Spotify 月間リスナー推移',
+    spotifyTop10YearTrendTitle: 'Spotify 今年リリース上位10曲合計の再生数前日比推移',
+    spotifyArtistRankTrendTitle: 'Spotify Daily Top Artist（日本）の順位推移',
+  };
+  for (const [id, label] of Object.entries(titles)) {
+    const title = element(id);
+    if (title) title.textContent = label;
+  }
+}
+
 function renderCharts(trend, artistChart, monthlyListenerRows) {
+  syncTrendTitles();
   renderTrendChart(trend, {
     containerId: 'spotifyTrendCharts', metricKey: 'total_delta',
     ariaLabel: '櫻坂46・乃木坂46・日向坂46の全曲合計再生数前日比推移',
@@ -326,7 +350,7 @@ function renderCharts(trend, artistChart, monthlyListenerRows) {
   renderTrendChart(monthlyListenerTrend(monthlyListenerRows), {
     containerId: 'spotifyMonthlyListenerTrendCharts', metricKey: 'monthly_listeners',
     latestFormatter: formatInteger,
-    ariaLabel: '櫻坂46・乃木坂46・日向坂46のSpotify月間リスナー推移',
+    ariaLabel: '櫻坂46・乃木坂46・日向坂46のSpotify月間リスナー推移（坂道選抜を含む）',
   });
   renderTrendChart(trend, {
     containerId: 'spotifyTop10YearTrendCharts', metricKey: 'top10_year_delta',
@@ -397,6 +421,7 @@ globalThis.document?.querySelectorAll('[data-spotify-artist]').forEach((button) 
 }));
 
 if (typeof document !== 'undefined') {
+  syncTrendTitles();
   observeDashboardChartResize(element('spotifyView'), () => {
     if (latestCharts) renderCharts(latestCharts.trend, latestCharts.artistChart, latestCharts.monthlyListenerRows);
   }, { delay: 220, enabled: () => Boolean(latestCharts) });
