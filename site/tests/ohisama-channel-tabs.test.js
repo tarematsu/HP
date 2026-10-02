@@ -7,19 +7,21 @@ const currentShell = readFileSync(new URL('../public/current-shell.js', import.m
 const playbackShell = readFileSync(new URL('../public/stationhead-playback-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/hinata-channel-tabs.js', import.meta.url), 'utf8');
 
-test('Ohisama exposes Buddies-style current, history, played tracks and likes subtabs', () => {
+test('Ohisama exposes the shared five Stationhead subtabs', () => {
   assert.match(shell, /\/hinata-channel-tabs\.js\?v=/);
   for (const pair of [
     ["value: 'current', label: '現在'", '現在'],
     ["value: 'history', label: '過去'", '過去'],
     ["value: 'played-tracks', label: '再生履歴'", '再生履歴'],
     ["value: 'likes', label: 'いいね'", 'いいね'],
+    ["value: 'broadcasts', label: 'リスパ'", 'リスパ'],
   ]) {
     assert.match(runtime, new RegExp(pair[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), pair[1]);
   }
   assert.match(runtime, /dashboardModeTabs/);
   assert.match(runtime, /dashboardSummary/);
   assert.match(runtime, /dashboardDataCard/);
+  assert.match(runtime, /broadcastsPanel\.dataset\.hinataPanel = 'broadcasts'/);
 });
 
 test('Buddies and Ohisama reuse the same Stationhead playback shell component', () => {
