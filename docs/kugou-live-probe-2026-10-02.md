@@ -1,6 +1,6 @@
 # Kugou live probe — 2026-10-02
 
-Observed at approximately 2026-10-02 09:59 JST from GitHub Actions. Read-only probe; no D1/R2 writes.
+Observed at approximately 2026-10-02 09:59–10:06 JST from GitHub Actions. Read-only probe; no D1/R2 writes.
 
 ## Sakurazaka46 artist page
 
@@ -81,6 +81,23 @@ Response:
 
 So at probe time Kugou reported **5 comments** for `愛MUST BE`. This can map directly to the existing `regional_music_track_daily.comments` field without a schema migration.
 
+## MV play count: confirmed collectable
+
+The legacy public MV detail endpoint is still live and returns an unsigned `play_count` for current Sakurazaka46 MV hashes:
+
+`GET https://m.kugou.com/app/i/mv.php?cmd=100&hash=<MV_HASH>&ismp3=1&ext=mp4`
+
+Live results at approximately 2026-10-02 10:06 JST:
+
+| title | MV hash | MV id | `play_count` | API status |
+| --- | --- | ---: | ---: | ---: |
+| `コインランドリー` | `11C23909E100265B8CBCD8DE416B07D9` | `15689380` | **26** | `1` |
+| `光源` | `7E71C8129A4E30576755F4A9B86CF879` | `14569867` | **61** | `1` |
+
+Both calls returned HTTP 200, `errcode: 0`, `is_publish: 1`, the expected song title and singer `櫻坂46`.
+
+This metric is specifically **Kugou MV play count**, not the audio-track streaming count. It should therefore be stored separately from any future song/audio `plays` metric.
+
 ## Favourite / collection count: not available unsigned
 
 An unsigned request to `/count/v1/audio/mget_collect` returned transport HTTP 200 but API failure:
@@ -109,12 +126,13 @@ Can collect immediately with high confidence:
 - MV presence and MV hash where present
 - privilege / VIP / quality flags
 - per-track comment count using the public hash-based route
+- per-MV `play_count` using the public MV-detail route
 
 Not yet safe to treat as canonical metrics:
 
 - `ownercount` as favourite count
-- cumulative play count
+- cumulative audio-track play count
 - signed favourite-count API
 - signed full-catalog / ranking APIs
 
-The next production-worthy extension is comment-count collection. To keep requests bounded, collect comments for the 10 artist-page tracks only, or rotate older catalog tracks separately after full-catalog access is validated.
+The next production-worthy extension is comment-count collection plus MV play-count collection for tracks that expose an MV hash. Keep MV plays in a distinct metric because they are video views, not audio streams.
