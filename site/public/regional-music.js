@@ -51,7 +51,7 @@ const STATUS_LABELS = Object.freeze({
 const COMPACT_CHART_CADENCE = Object.freeze({
   melon: '毎週月曜日 00:00',
   qq_music: '毎日 00:00 JST',
-  kugou_music: '平日11:30 / ACG新歌榜: 木曜11:40',
+  kugou_music: '平日11:30 / ACG新歌榜: 水曜11:40',
 });
 
 const OUT_OF_CHART_RANK = 101;
