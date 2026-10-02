@@ -15,8 +15,8 @@ constexpr UINT_PTR kNativeMediaNavigationRetryTimer = 0x4D560005;
 constexpr UINT_PTR kNativeMediaYoutubeWatchdogTimer = 0x4D560006;
 constexpr UINT_PTR kNativeMediaTverWatchdogTimer = 0x4D560007;
 constexpr UINT kNativeMediaRecreateMessage = WM_USER + 0x4D;
-constexpr UINT kNativeMediaXPhaseMs = 1U * 60U * 1000U;
-constexpr UINT kNativeMediaStartupXPhaseMs = 1U * 60U * 1000U;
+constexpr UINT kNativeMediaXPhaseMs = 2U * 60U * 1000U;
+constexpr UINT kNativeMediaStartupXPhaseMs = 2U * 60U * 1000U;
 constexpr int kNativeMediaXQuietStartSecond = 1 * 60 * 60;
 constexpr int kNativeMediaXQuietEndSecond = 6 * 60 * 60;
 // Retained as the neutral/default duration for power saving and legacy contracts.
@@ -51,8 +51,8 @@ constexpr bool NativeMediaXCanStartAtSecondOfDay(int secondOfDay) noexcept {
   return true;
 }
 
-static_assert(NativeMediaXCanStartAtSecondOfDay(0 * 60 * 60 + 59 * 60));
-static_assert(!NativeMediaXCanStartAtSecondOfDay(0 * 60 * 60 + 59 * 60 + 1));
+static_assert(NativeMediaXCanStartAtSecondOfDay(0 * 60 * 60 + 58 * 60));
+static_assert(!NativeMediaXCanStartAtSecondOfDay(0 * 60 * 60 + 58 * 60 + 1));
 static_assert(!NativeMediaXCanStartAtSecondOfDay(1 * 60 * 60));
 static_assert(!NativeMediaXCanStartAtSecondOfDay(5 * 60 * 60 + 59 * 60 + 59));
 static_assert(NativeMediaXCanStartAtSecondOfDay(6 * 60 * 60));
