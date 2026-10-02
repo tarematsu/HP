@@ -2,6 +2,7 @@ import { saveMaterializedActionsR2Response } from './pages-response-r2.js';
 import { regionalMusicService } from './regional-music-service-registry.js';
 import { REGIONAL_MUSIC_DAILY_SERVICES } from './regional-music-dispatch-plan.js';
 import { regionalSnapshotKey, mergeRegionalR2Snapshot } from './regional-music-r2-snapshot.js';
+import { QQ_JAPAN_HISTORY_VIEW_KEY } from './qq-japan-chart-history-view.js';
 import {
   KUGOU_JAPAN_CHART_COVERAGE,
   KUGOU_JAPAN_CHART_HISTORY,
@@ -122,6 +123,13 @@ function normalizedCollectorState(row) {
   };
 }
 
+export function qqJapanChartReadModel(view) {
+  return {
+    coverage:view?.coverage && typeof view.coverage === 'object' ? view.coverage : {},
+    history:Array.isArray(view?.history) ? view.history : [],
+  };
+}
+
 export function regionalMusicReadModelPayload(snapshot, updatedAt = Date.now()) {
   return {
     ok: true,
@@ -132,6 +140,7 @@ export function regionalMusicReadModelPayload(snapshot, updatedAt = Date.now()) 
     playlists: Array.isArray(snapshot?.playlists) ? snapshot.playlists : [],
     playlist_memberships: Array.isArray(snapshot?.memberships) ? snapshot.memberships : [],
     artist_track_orders: Array.isArray(snapshot?.artistTrackOrders) ? snapshot.artistTrackOrders : [],
+    qq_japan_chart: qqJapanChartReadModel(snapshot?.qqJapanChart),
     kugou_japan_chart: {
       coverage: KUGOU_JAPAN_CHART_COVERAGE,
       history: KUGOU_JAPAN_CHART_HISTORY,
@@ -149,11 +158,18 @@ export async function publishRegionalMusicReadModel(env, updatedAt = Date.now(),
   const snapshot = await load(env?.OTHER_DB);
   let payload = regionalMusicReadModelPayload(snapshot, updatedAt);
   if (typeof env.PAGES_RESPONSE_R2.get === 'function') {
-    const snapshots = await Promise.all(REGIONAL_MUSIC_DAILY_SERVICES.map(async service => {
-      const object = await env.PAGES_RESPONSE_R2.get(regionalSnapshotKey(service));
-      return object ? object.json() : null;
-    }));
-    for (const snapshot of snapshots) payload = mergeRegionalR2Snapshot(payload,snapshot);
+    const [snapshots, qqHistoryView] = await Promise.all([
+      Promise.all(REGIONAL_MUSIC_DAILY_SERVICES.map(async service => {
+        const object = await env.PAGES_RESPONSE_R2.get(regionalSnapshotKey(service));
+        return object ? object.json() : null;
+      })),
+      (async () => {
+        const object = await env.PAGES_RESPONSE_R2.get(QQ_JAPAN_HISTORY_VIEW_KEY);
+        return object ? object.json() : null;
+      })(),
+    ]);
+    for (const regionalSnapshot of snapshots) payload = mergeRegionalR2Snapshot(payload,regionalSnapshot);
+    payload.qq_japan_chart = qqJapanChartReadModel(qqHistoryView);
   }
   const body = JSON.stringify(payload);
   const saved = await save(
@@ -174,6 +190,7 @@ export async function publishRegionalMusicReadModel(env, updatedAt = Date.now(),
     playlists: payload.playlists.length,
     playlist_memberships: payload.playlist_memberships.length,
     services: payload.services.length,
+    qq_japan_chart_entries: payload.qq_japan_chart.history.length,
     kugou_japan_chart_entries: payload.kugou_japan_chart.history.length,
   };
 }

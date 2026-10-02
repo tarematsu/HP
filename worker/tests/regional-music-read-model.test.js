@@ -5,8 +5,10 @@ import {
   loadRegionalMusicReadModel,
   REGIONAL_MUSIC_READ_MODEL_KEY,
   publishRegionalMusicReadModel,
+  qqJapanChartReadModel,
   regionalMusicReadModelPayload,
 } from '../src/regional-music-read-model.js';
+import { QQ_JAPAN_HISTORY_VIEW_KEY } from '../src/qq-japan-chart-history-view.js';
 
 test('regional music read model normalizes collector health and implemented service metadata', () => {
   const payload = regionalMusicReadModelPayload({
@@ -31,6 +33,7 @@ test('regional music read model normalizes collector health and implemented serv
   assert.equal(payload.updated_at, 456);
   assert.equal(payload.artists[0].followers, 478);
   assert.deepEqual(payload.releases, []);
+  assert.deepEqual(payload.qq_japan_chart, { coverage:{}, history:[] });
   assert.deepEqual(payload.services[0].entity_counts, { artists: 3 });
   assert.equal(payload.services[0].region, 'HK/TH/SEA');
   assert.equal(payload.services[0].phase, 1);
@@ -39,6 +42,18 @@ test('regional music read model normalizes collector health and implemented serv
   assert.equal(payload.services[1].region, null);
   assert.equal(payload.services[1].phase, null);
   assert.deepEqual(payload.services[1].metrics, []);
+});
+
+test('regional read model normalizes compact QQ Japan chart view', () => {
+  const normalized = qqJapanChartReadModel({
+    coverage:{ earliest_period:'2018_1', latest_period:'2026_40', entries:2 },
+    history:[
+      { period:'2026_40', canonical_artist:'sakurazaka46', rank:9, title:'S' },
+      { period:'2026_39', canonical_artist:'nogizaka46', rank:44, title:'N' },
+    ],
+  });
+  assert.equal(normalized.coverage.latest_period, '2026_40');
+  assert.equal(normalized.history.length, 2);
 });
 
 test('regional read model includes complete Kugou Japan chart seed and coverage boundary', () => {
@@ -134,6 +149,7 @@ test('regional music publication writes one compact R2 object', async () => {
   assert.equal(writes[0].cadence, 86400);
   assert.equal(writes[0].body.releases.length, 1);
   assert.equal(writes[0].body.playlist_memberships.length, 1);
+  assert.equal(writes[0].body.qq_japan_chart.history.length, 0);
   assert.equal(writes[0].body.kugou_japan_chart.history.length, 115);
   assert.deepEqual(writes[0].body.services[0].metrics, ['artist_likes']);
   assert.deepEqual(result, {
@@ -145,6 +161,34 @@ test('regional music publication writes one compact R2 object', async () => {
     playlists: 1,
     playlist_memberships: 1,
     services: 1,
+    qq_japan_chart_entries: 0,
     kugou_japan_chart_entries: 115,
   });
+});
+
+test('regional music publication injects QQ Japan history view from R2', async () => {
+  const writes = [];
+  const qqView = {
+    coverage:{ earliest_period:'2018_1', latest_period:'2026_40', latest_rank_in_period:'2026_40', stored_periods:455, entries:1 },
+    history:[{ period:'2026_40', published_at:'2026-10-01', canonical_artist:'sakurazaka46', rank:9, title:'Sakura' }],
+  };
+  const result = await publishRegionalMusicReadModel({
+    OTHER_DB:{},
+    PAGES_RESPONSE_R2:{
+      put() {},
+      async get(key) {
+        if (key === QQ_JAPAN_HISTORY_VIEW_KEY) return { async json() { return structuredClone(qqView); } };
+        return null;
+      },
+    },
+  }, 1000, {
+    loadReadModel:async () => ({ artists:[], tracks:[], releases:[], playlists:[], memberships:[], services:[] }),
+    saveR2Response:async (_r2, _key, body) => {
+      writes.push(JSON.parse(body));
+      return { storage:'r2', bytes:body.length };
+    },
+  });
+  assert.equal(writes[0].qq_japan_chart.coverage.latest_period, '2026_40');
+  assert.equal(writes[0].qq_japan_chart.history[0].rank, 9);
+  assert.equal(result.qq_japan_chart_entries, 1);
 });

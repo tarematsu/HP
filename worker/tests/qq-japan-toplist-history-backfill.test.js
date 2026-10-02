@@ -6,6 +6,7 @@ import {
   filterQqJapanSakamichiEntries,
   QQ_JAPAN_HISTORY_INDEX_KEY,
   QQ_JAPAN_HISTORY_PROGRESS_KEY,
+  QQ_JAPAN_HISTORY_VIEW_KEY,
   qqIsoWeekPeriod,
   qqJapanHistoryPeriods,
   qqJapanHistoryR2Key,
@@ -44,7 +45,7 @@ test('QQ Japan history keeps only Nogizaka, Sakurazaka and Hinatazaka rows', () 
   assert.deepEqual(entries.map((row) => row.canonical_artist), ['sakurazaka46','nogizaka46','hinatazaka46']);
 });
 
-test('QQ Japan backfill writes resumable per-week R2 records and an index', async () => {
+test('QQ Japan backfill writes resumable per-week R2 records, index and compact view', async () => {
   const objects = new Map();
   const saved = [];
   const charts = new Map([
@@ -79,6 +80,7 @@ test('QQ Japan backfill writes resumable per-week R2 records and an index', asyn
   assert.equal(result.status, 'complete');
   assert.equal(result.fetched, 2);
   assert.equal(result.failures, 0);
+  assert.equal(result.history_entries, 3);
   assert.equal(objects.get(qqJapanHistoryR2Key('2026_40')).entries.length, 1);
   assert.deepEqual(
     objects.get(qqJapanHistoryR2Key('2026_39')).entries.map((row) => row.canonical_artist),
@@ -87,7 +89,18 @@ test('QQ Japan backfill writes resumable per-week R2 records and an index', asyn
   assert.equal(objects.get(QQ_JAPAN_HISTORY_INDEX_KEY).weeks['2026_40'].counts.sakurazaka46, 1);
   assert.equal(objects.get(QQ_JAPAN_HISTORY_PROGRESS_KEY).stored_periods, 2);
   assert.equal(objects.get(QQ_JAPAN_HISTORY_INDEX_KEY).latest_period, '2026_40');
+  assert.equal(objects.get(QQ_JAPAN_HISTORY_VIEW_KEY).coverage.latest_period, '2026_40');
+  assert.equal(objects.get(QQ_JAPAN_HISTORY_VIEW_KEY).coverage.entries, 3);
+  assert.deepEqual(
+    objects.get(QQ_JAPAN_HISTORY_VIEW_KEY).history.map((row) => [row.period,row.canonical_artist,row.rank]),
+    [
+      ['2026_40','sakurazaka46',9],
+      ['2026_39','nogizaka46',44],
+      ['2026_39','hinatazaka46',81],
+    ],
+  );
   assert.ok(saved.includes(QQ_JAPAN_HISTORY_INDEX_KEY));
+  assert.ok(saved.includes(QQ_JAPAN_HISTORY_VIEW_KEY));
 });
 
 test('QQ Japan backfill skips already stored weeks without refetching', async () => {
@@ -108,4 +121,5 @@ test('QQ Japan backfill skips already stored weeks without refetching', async ()
   assert.equal(fetched, 0);
   assert.equal(result.skipped, 1);
   assert.equal(result.stored_periods, 1);
+  assert.equal(objects.get(QQ_JAPAN_HISTORY_VIEW_KEY).coverage.stored_periods, 1);
 });

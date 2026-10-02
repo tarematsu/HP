@@ -16,6 +16,11 @@ import {
 } from '../src/regional-music-r2-snapshot.js';
 import { saveRegionalCollectorState } from '../src/regional-music-store.js';
 import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+import {
+  qqIsoWeekPeriod,
+  qqJapanHistoryRecord,
+  upsertQqJapanHistoryArtifacts,
+} from '../src/qq-japan-chart-history-view.js';
 
 export const QQ_JAPAN_TOPLIST_MARKER_KEY = 'regional-music/qq_music/japan-toplist-update.json';
 
@@ -131,6 +136,13 @@ export async function collectQqJapanToplistAttempt({
 
   await save(regionalDayKey('qq_music', snapshot.day), snapshot);
   await save(regionalSnapshotKey('qq_music'), snapshot);
+  const historyPeriod = qqIsoWeekPeriod(new Date(`${cycle}T00:00:00Z`));
+  const historyRecord = qqJapanHistoryRecord(historyPeriod, {
+    ...chart,
+    provider_period:historyPeriod,
+  }, now);
+  await upsertQqJapanHistoryArtifacts({ load, save, record:historyRecord, updatedAt:now });
+
   const collectedMarker = {
     version:1,
     cycle,

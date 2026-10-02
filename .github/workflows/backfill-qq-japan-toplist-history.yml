@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/backfill-qq-japan-toplist-history.yml'
       - 'worker/scripts/backfill-qq-japan-toplist-history-actions.mjs'
+      - 'worker/src/qq-japan-chart-history-view.js'
       - 'worker/tests/qq-japan-toplist-history-backfill.test.js'
   workflow_dispatch:
     inputs:
