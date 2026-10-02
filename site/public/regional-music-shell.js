@@ -48,7 +48,7 @@ const kugouHistoryTable = dashboardTable({
 
 const qqHistoryTable = dashboardTable({
   className: 'regional-music-table regional-music-kugou-history-table regional-music-qq-history-table music-service-track-table',
-  headers: ['週', 'グループ', '順位', '曲名', '更新日'],
+  headers: ['更新日', 'グループ', '順位', '曲名'],
   bodyId: 'qqJapanHistoryBody',
   wrapClassName: 'regional-music-table-wrap',
 });
