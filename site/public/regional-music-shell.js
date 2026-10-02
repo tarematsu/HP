@@ -46,12 +46,33 @@ const kugouHistoryTable = dashboardTable({
   wrapClassName: 'regional-music-table-wrap',
 });
 
+const qqHistoryTable = dashboardTable({
+  className: 'regional-music-table regional-music-kugou-history-table regional-music-qq-history-table music-service-track-table',
+  headers: ['週', 'グループ', '順位', '曲名', '更新日'],
+  bodyId: 'qqJapanHistoryBody',
+  wrapClassName: 'regional-music-table-wrap',
+});
+
 const healthPanel = dashboardDataCard({
   title: '収集状態',
   kicker: 'COLLECTOR',
   className: 'regional-music-health music-service-panel',
   bodyHtml: '<dl id="regionalMusicHealth" class="regional-music-health-list"></dl>',
 });
+
+const qqChartSection = `
+  <section id="qqJapanChartSection" class="music-service-section" hidden>
+    <div class="section-head music-service-section-heading"><div><p class="kicker">JAPAN CHART</p><h2>日本榜 グループ別最高順位推移</h2></div></div>
+    <div id="qqJapanRankLegend" class="regional-music-rank-legend" aria-label="グループ凡例"></div>
+    <div id="qqJapanRankChart" class="regional-music-rank-chart"></div>
+    <p id="qqJapanCoverage" class="regional-music-rank-coverage subtle"></p>
+  </section>`;
+
+const qqHistorySection = `
+  <section id="qqJapanHistorySection" class="music-service-section" hidden>
+    <div class="section-head music-service-section-heading"><div><p class="kicker">RANK HISTORY</p><h2>日本榜 ランクイン履歴</h2></div></div>
+    ${qqHistoryTable}
+  </section>`;
 
 const kugouChartSection = `
   <section id="kugouJapanChartSection" class="music-service-section" hidden>
@@ -82,6 +103,8 @@ mountDashboardShell({
       </div>
       ${summary}
       <section id="regionalMusicHealthSection" class="music-service-section">${healthPanel}</section>
+      ${qqChartSection}
+      ${qqHistorySection}
       ${kugouChartSection}
       ${kugouHistorySection}
       ${musicServiceSection({ id: 'regionalMusicArtistSection', kicker: 'ARTISTS', title: 'アーティスト', bodyHtml: artistTable })}
@@ -89,3 +112,5 @@ mountDashboardShell({
       ${musicServiceSection({ id: 'regionalMusicPlaylistSection', kicker: 'PLAYLISTS', title: 'プレイリスト', bodyHtml: playlistTable })}`,
   },
 });
+
+void import('./qq-japan-chart-ui.js?v=20261002.1').then(({ initQqJapanHistoryUi }) => initQqJapanHistoryUi());
