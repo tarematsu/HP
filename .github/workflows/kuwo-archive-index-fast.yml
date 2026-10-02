@@ -1,0 +1,46 @@
+name: Probe Kuwo archive indexes fast
+on:
+  push:
+    paths: ['.github/workflows/kuwo-archive-index-fast.yml']
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe recent Common Crawl indexes
+        shell: python
+        run: |
+          import json, urllib.request, urllib.parse
+          def get(u,t=8):
+            try:
+              q=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0'})
+              with urllib.request.urlopen(q,timeout=t) as r:return r.status,r.read().decode('utf-8','replace')
+            except Exception as e:return 0,repr(e)
+          st,s=get('https://index.commoncrawl.org/collinfo.json')
+          print('COLLINFO',st)
+          cols=json.loads(s) if st==200 else []
+          targets=[
+            'm.kuwo.cn/newh5app/ranklist_detail/183*',
+            'www.kuwo.cn/newh5/bang/index*',
+            'kuwo.cn/newh5/bang/index*',
+            'kbangserver.kuwo.cn/ksong.s*'
+          ]
+          for c in cols[:12]:
+            idx=c['id']
+            print('INDEX',idx)
+            for target in targets:
+              p={'url':target,'output':'json','filter':'status:200','limit':'200','matchType':'prefix' if target.endswith('*') else 'exact'}
+              st,body=get('https://index.commoncrawl.org/'+idx+'-index?'+urllib.parse.urlencode(p),8)
+              rows=[]
+              if st==200:
+                for ln in body.splitlines():
+                  try:
+                    x=json.loads(ln)
+                    u=x.get('url','')
+                    if ('ksong.s' not in target and ('183' in u or 'bang/index' in u)) or ('ksong.s' in target and ('id=183' in u or 'id%3D183' in u)):
+                      rows.append(x)
+                  except: pass
+              if rows:
+                print('HIT',target,len(rows))
+                for x in rows[:20]: print(x.get('timestamp'),x.get('url'),x.get('filename'),x.get('offset'),x.get('length'))
