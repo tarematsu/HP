@@ -1,0 +1,48 @@
+name: Fetch historical Kuwo Japanese chart via bangid
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-bangid-history.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Test bangid historical editions without current id
+        run: |
+          python3 <<'PY'
+          import json,re,urllib.parse,urllib.request
+          BASE='https://kbangserver.kuwo.cn/ksong.s'
+          common={'from':'pc','fmt':'json','pn':'0','rn':'100','type':'bang','data':'content','show_copyright_off':'0','pcmp4':'1','isbang':'1','userid':'0'}
+          editions=[('275','272758'),('274','272685'),('273','272610'),('250','270896'),('216','268368')]
+          aliases={'櫻坂46':['櫻坂46','樱坂46','Sakurazaka46'],'乃木坂46':['乃木坂46','Nogizaka46'],'日向坂46':['日向坂46','Hinatazaka46'],'欅坂46':['欅坂46','Keyakizaka46']}
+          def fetch(params):
+            u=BASE+'?'+urllib.parse.urlencode({**common,**params})
+            try:
+              q=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'})
+              with urllib.request.urlopen(q,timeout=10) as r:j=json.loads(r.read().decode('utf-8','replace'))
+              rows=j.get('musiclist') or j.get('musicList') or []
+              return j,rows
+            except Exception as e:return {'error':repr(e)},[]
+          cases=[]
+          for vol,tid in editions:
+            cases += [
+              (f'bangid={tid}',vol,tid,{'bangid':tid}),
+              (f'bangId={tid}',vol,tid,{'bangId':tid}),
+              (f'id={tid}&bangid={tid}',vol,tid,{'id':tid,'bangid':tid}),
+              (f'id=183&bangid={tid}',vol,tid,{'id':'183','bangid':tid}),
+            ]
+          for label,vol,tid,p in cases:
+            j,rows=fetch(p)
+            print('\nCASE',label,'TARGET_VOL',vol,'HTTP_ROWS',len(rows),'NAME',j.get('name'),'PUB',j.get('pub'),'CV',j.get('currentVolume'),'NUM',j.get('num'),'ERR',j.get('error'))
+            print('TOP5',json.dumps([(x.get('name'),x.get('artist'),x.get('rid') or x.get('id')) for x in rows[:5]],ensure_ascii=False))
+            hits=[]
+            for i,x in enumerate(rows,1):
+              hay=' '.join(str(x.get(k,'')) for k in ('artist','artistName','singer','name','title')).lower()
+              for g,aa in aliases.items():
+                if any(a.lower() in hay for a in aa):hits.append({'rank':i,'group':g,'name':x.get('name'),'artist':x.get('artist'),'rid':x.get('rid') or x.get('id')})
+            if hits:print('SAKAMICHI',json.dumps(hits,ensure_ascii=False))
+          PY
