@@ -1,3 +1,5 @@
+import { resolveRegionalMusicCanonicalTrack } from './regional-music-track-canonical.js';
+
 export function regionalMusicSnapshotDate(observedAt) {
   const timestamp = Number(observedAt) || Date.now();
   return new Date(timestamp + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -47,6 +49,7 @@ export async function saveRegionalArtist(env, value) {
 }
 
 export async function saveRegionalTrack(env, value) {
+  value = await resolveRegionalMusicCanonicalTrack(env, value);
   if (env.REGIONAL_MUSIC_SNAPSHOT_STORE) return env.REGIONAL_MUSIC_SNAPSHOT_STORE('tracks',value);
   const observedAt = Number(value.observed_at) || Date.now();
   const db = dbOf(env);
