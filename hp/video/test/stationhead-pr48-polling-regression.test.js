@@ -10,6 +10,10 @@ const finalInteractionPolicy = readFileSync(
   new URL('../../native/src/sh_track_boundary_message_policy.h', import.meta.url),
   'utf8',
 );
+const compactRuntime = readFileSync(
+  new URL('../../native/src/sh_compact_runtime_script.h', import.meta.url),
+  'utf8',
+);
 
 test('authenticated stats polling retains its bounded retry behavior', () => {
   assert.match(activePolicy, /const headers = window\.__homepanelStationheadAuthHeaders/);
@@ -19,7 +23,7 @@ test('authenticated stats polling retains its bounded retry behavior', () => {
   assert.doesNotMatch(activePolicy, /const requestHeaders = \{ accept: 'application\/json' \}/);
 });
 
-test('interaction bridge remains local and network-free', () => {
+test('legacy interaction wrapper is bypassed by an event-driven compatibility bridge', () => {
   const bridgeAt = finalInteractionPolicy.indexOf(
     'inline std::wstring StationheadAutoplayScriptCurrentInteraction',
   );
@@ -29,7 +33,23 @@ test('interaction bridge remains local and network-free', () => {
     bridgeAt,
   );
   assert.ok(bridgeEnd > bridgeAt);
-  const bridge = finalInteractionPolicy.slice(bridgeAt, bridgeEnd);
-  assert.match(bridge, /__homepanelStationheadBlockingLoginVisible/);
-  assert.doesNotMatch(bridge, /streakStats|fetch\s*\(/);
+  const legacyBridge = finalInteractionPolicy.slice(bridgeAt, bridgeEnd);
+
+  const compatAt = compactRuntime.indexOf(
+    'inline std::wstring StationheadAutoplayScriptRuntimeFixed',
+  );
+  assert.ok(compatAt >= 0);
+  const compatBridge = compactRuntime.slice(compatAt);
+
+  assert.match(legacyBridge, /window\.__homepanelStationheadInteractionBridge/);
+  assert.match(legacyBridge, /nativeSetInterval\(publish, 1000\)/);
+  assert.match(compatBridge, /window\.__homepanelStationheadInteractionBridge = true/);
+  assert.match(
+    compatBridge,
+    /addEventListener\('homepanel-stationhead-auth-ready',[\s\S]*publish\(\)/,
+  );
+  assert.match(compatBridge, /type: 'stationhead-auth-ready'/);
+  assert.match(compatBridge, /source: 'current-interaction-state'/);
+  assert.doesNotMatch(compatBridge, /setInterval\s*\(/);
+  assert.doesNotMatch(compatBridge, /streakStats|fetch\s*\(/);
 });
