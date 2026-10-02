@@ -1,0 +1,58 @@
+name: Probe Kuwo history parameters
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-history-param-fuzz.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe historical parameter variants
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import json,urllib.parse,urllib.request,itertools
+          B='https://kbangserver.kuwo.cn/ksong.s'
+          H={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'}
+          base={'from':'pc','fmt':'json','type':'bang','id':'183','show_copyright_off':'0','pcmp4':'1','isbang':'1','userid':'0'}
+          tests=[]
+          for data in ['content','volume','list','info','all']:
+            for pn in ['0','1','2','3']:
+              tests.append({**base,'data':data,'pn':pn,'rn':'100'})
+          extras=[
+            {'data':'content','pn':'0','rn':'100','year':'2026'},
+            {'data':'content','pn':'0','rn':'100','volume':'209'},
+            {'data':'content','pn':'0','rn':'100','vol':'209'},
+            {'data':'content','pn':'0','rn':'100','term':'2026|209'},
+            {'data':'content','pn':'0','rn':'100','currentVolume':'2026|209'},
+            {'data':'content','pn':'0','rn':'100','date':'2026-07-28'},
+            {'data':'content','pn':'0','rn':'100','pub':'2026-07-28'},
+            {'data':'content','pn':'0','rn':'100','bangId':'267861'},
+            {'data':'content','pn':'0','rn':'100','bangid':'267861','volume':'209'},
+          ]
+          tests += [{**base,**x} for x in extras]
+          seen=set()
+          for q in tests:
+            key=tuple(sorted(q.items()))
+            if key in seen:continue
+            seen.add(key)
+            u=B+'?'+urllib.parse.urlencode(q)
+            try:
+              req=urllib.request.Request(u,headers=H)
+              with urllib.request.urlopen(req,timeout=10) as r: raw=r.read().decode('utf-8','replace')
+              try:j=json.loads(raw)
+              except:
+                print('NONJSON',q,'LEN',len(raw),raw[:150]);continue
+              vol=j.get('volume'); vdesc=None
+              if isinstance(vol,dict):
+                vals=[]
+                for y,a in vol.items():
+                  if isinstance(a,list): vals += [(y,x.get('name'),x.get('third_id')) for x in a if isinstance(x,dict)]
+                vdesc=(len(vals),vals[:2],vals[-2:])
+              rows=j.get('musiclist') or j.get('musicList') or []
+              print('TEST',json.dumps({k:q[k] for k in q if k not in ['from','fmt','type','id','show_copyright_off','pcmp4','isbang','userid']},ensure_ascii=False),'KEYS',list(j.keys()),'CV',j.get('currentVolume'),'ROWS',len(rows),'VOL',vdesc,'TOP',[(x.get('name'),x.get('artist')) for x in rows[:1]])
+            except Exception as e: print('ERR',q,repr(e))
+          PY
