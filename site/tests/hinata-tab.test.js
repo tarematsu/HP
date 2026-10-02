@@ -6,6 +6,7 @@ const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.me
 const route = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../public/hinata-shell.js', import.meta.url), 'utf8');
 const channelTabs = readFileSync(new URL('../public/hinata-channel-tabs.js', import.meta.url), 'utf8');
+const stationheadTabs = readFileSync(new URL('../public/stationhead-channel-tabs.js', import.meta.url), 'utf8');
 const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
 const sharedRoute = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/hinata.js', import.meta.url), 'utf8');
@@ -61,9 +62,11 @@ test('Hinata tab reads only the materialized model API', () => {
 });
 
 test('all Ohisama subtabs are read-model-only like the Buddies views', () => {
-  for (const section of ['current', 'history', 'played-tracks', 'likes']) {
-    assert.match(channelTabs, new RegExp(`value: '${section}'`));
+  for (const section of ['current', 'history', 'played-tracks', 'likes', 'broadcasts']) {
+    assert.match(stationheadTabs, new RegExp(`value: '${section}'`));
   }
+  assert.match(channelTabs, /stationheadChannelTabs/);
+  assert.match(channelTabs, /bindStationheadChannelTabs/);
   assert.match(channelTabs, /const HINATA_URL = '\/api\/hinata'/);
   assert.match(channelTabs, /fetch\(HINATA_URL/);
   assert.match(channelTabs, /payload\?\.queue/);
