@@ -8,6 +8,7 @@ import {
 } from '../src/spotify-playcount-source.js';
 import { SPOTIFY_TARGET_ARTISTS } from '../src/spotify-playcount-common.js';
 
+const ALBUM_TRACKS_HASH = '3ea563e1d68f486d8df30f69de9dcedae74c77e684b889ba7408c589d30f7f2e';
 const root = resolve(import.meta.dirname, '..');
 const config = JSON.parse(readFileSync(join(root, 'wrangler.spotify-playcount.jsonc'), 'utf8'));
 const database = config.d1_databases.find((row) => row.binding === 'OTHER_DB')?.database_name;
@@ -56,6 +57,40 @@ const normal = normalizeAlbumTracks(normalPayload, SPOTIFY_TARGET_ARTISTS)
 const noCache = normalizeAlbumTracks(noCachePayload, SPOTIFY_TARGET_ARTISTS)
   .find((row) => row.track_id === sample.track_id);
 
+let v2Status = null;
+let v2Error = null;
+let v2Playcount = null;
+try {
+  const response = await fetch('https://api-partner.spotify.com/pathfinder/v2/query', {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      authorization: `Bearer ${session.accessToken}`,
+      'content-type': 'application/json',
+      'app-platform': 'WebPlayer',
+      origin: 'https://open.spotify.com',
+      referer: 'https://open.spotify.com/',
+      'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/145.0.0.0 Safari/537.36',
+    },
+    body: JSON.stringify({
+      operationName: 'queryAlbumTracks',
+      variables: { uri: `spotify:album:${sample.album_id}`, offset: 0, limit: 300 },
+      extensions: { persistedQuery: { version: 1, sha256Hash: ALBUM_TRACKS_HASH } },
+    }),
+  });
+  v2Status = response.status;
+  const text = await response.text();
+  const payload = JSON.parse(text);
+  if (!response.ok || payload?.errors?.length) {
+    v2Error = payload?.errors?.map((entry) => entry?.message).filter(Boolean).join('; ') || text.slice(0, 500);
+  } else {
+    v2Playcount = normalizeAlbumTracks(payload, SPOTIFY_TARGET_ARTISTS)
+      .find((row) => row.track_id === sample.track_id)?.playcount ?? null;
+  }
+} catch (error) {
+  v2Error = error instanceof Error ? error.message : String(error);
+}
+
 console.log(JSON.stringify({
   event: 'spotify_stale_diagnostic',
   runs: runs.results || [],
@@ -63,6 +98,10 @@ console.log(JSON.stringify({
   candidate,
   normal_playcount: normal?.playcount ?? null,
   no_cache_playcount: noCache?.playcount ?? null,
+  v2_status: v2Status,
+  v2_error: v2Error,
+  v2_playcount: v2Playcount,
   normal_delta_from_2026_10_01: normal?.playcount == null ? null : normal.playcount - Number(sample.playcount),
   no_cache_delta_from_2026_10_01: noCache?.playcount == null ? null : noCache.playcount - Number(sample.playcount),
+  v2_delta_from_2026_10_01: v2Playcount == null ? null : v2Playcount - Number(sample.playcount),
 }, null, 2));
