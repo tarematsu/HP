@@ -1,0 +1,89 @@
+name: Fast NetEase Japanese chart Bilibili API research
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/research-netease-japan-bilibili-api.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Query Bilibili public view API
+        shell: bash
+        run: |
+          mkdir -p research-bilibili-api
+          python - <<'PY'
+          import concurrent.futures, json, pathlib, time, urllib.parse, urllib.request
+          aids = [
+            '117369359829633','117371524093376','117330889739757','116014163497529',
+            '117363487871024','117354511993139','117269250251689','117311444943324',
+            '117339966149092','117372044182531','115683098626622','117347935324584',
+            '117371591333078','254120575','117370920108833','117041147218209',
+            '117361642308028','117365685684594','117246215128850','117369158501135'
+          ]
+          headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130 Safari/537.36',
+            'Referer': 'https://www.bilibili.com/'
+          }
+          def get_json(url):
+            req=urllib.request.Request(url,headers=headers)
+            with urllib.request.urlopen(req,timeout=12) as r:
+              return r.status, json.loads(r.read().decode('utf-8','replace'))
+          def fetch(aid):
+            out={'aid':aid}
+            try:
+              st,j=get_json('https://api.bilibili.com/x/web-interface/view?aid='+urllib.parse.quote(aid))
+              out['view_status']=st; out['view']=j
+              d=j.get('data') or {}
+              cid=None
+              pages=d.get('pages') or []
+              if pages and isinstance(pages[0],dict): cid=pages[0].get('cid')
+              out['cid']=cid
+              if cid:
+                try:
+                  st2,j2=get_json(f'https://api.bilibili.com/x/player/v2?aid={aid}&cid={cid}')
+                  out['player_status']=st2; out['player']=j2
+                except Exception as e:
+                  out['player_error']=repr(e)
+            except Exception as e:
+              out['view_error']=repr(e)
+            return out
+          with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+            rows=list(ex.map(fetch,aids))
+          pathlib.Path('research-bilibili-api/raw.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2))
+          summaries=[]
+          for r in rows:
+            d=((r.get('view') or {}).get('data') or {})
+            p=((r.get('player') or {}).get('data') or {})
+            s={
+              'aid':r['aid'],'code':(r.get('view') or {}).get('code'),'message':(r.get('view') or {}).get('message'),
+              'bvid':d.get('bvid'),'title':d.get('title'),'desc':d.get('desc'),'pubdate':d.get('pubdate'),
+              'ctime':d.get('ctime'),'owner':(d.get('owner') or {}).get('name'),'mid':(d.get('owner') or {}).get('mid'),
+              'duration':d.get('duration'),'pic':d.get('pic'),'cid':r.get('cid'),
+              'subtitle':p.get('subtitle'),'view_error':r.get('view_error'),'player_error':r.get('player_error')
+            }
+            summaries.append(s)
+            print(json.dumps(s,ensure_ascii=False))
+          pathlib.Path('research-bilibili-api/summaries.json').write_text(json.dumps(summaries,ensure_ascii=False,indent=2))
+          targets=[s for s in summaries if s.get('title') and ('日语榜' in s['title'] or '日語榜' in s['title'] or '网易云' in s['title'])]
+          pathlib.Path('research-bilibili-api/chart-videos.json').write_text(json.dumps(targets,ensure_ascii=False,indent=2))
+          print('\nCHART VIDEOS',len(targets))
+          for s in targets: print(json.dumps(s,ensure_ascii=False))
+          PY
+      - name: Upload API research
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: netease-japan-bilibili-api-research
+          path: research-bilibili-api
+          if-no-files-found: warn
