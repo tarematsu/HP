@@ -6,6 +6,7 @@ const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/regional-music.js', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../public/regional-music-shell.js', import.meta.url), 'utf8');
+const qqRuntime = readFileSync(new URL('../public/qq-japan-chart-ui.js', import.meta.url), 'utf8');
 const youtubeRuntime = readFileSync(new URL('../public/youtube-music.js', import.meta.url), 'utf8');
 const youtubeShell = readFileSync(new URL('../public/youtube-music-shell.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/dashboard-navigation.css', import.meta.url), 'utf8');
@@ -52,25 +53,45 @@ test('regional service views share the materialized read model endpoint', () => 
   assert.match(build, /'regional-music\.css'/);
 });
 
-test('Kugou renders Japan chart history from the local subscription group read model', () => {
+test('Kugou uses a compact Japan chart view with one shared artist filter for graph and history', () => {
   assert.match(html, /data-subscription-group-content="local"[\s\S]*data-source="kugou_music"/);
   assert.match(runtime, /payload\?\.kugou_japan_chart/);
   assert.match(runtime, /renderRankHistoryChart/);
   assert.match(runtime, /service === 'kugou_music'/);
-  assert.match(runtime, /sakurazaka46: '#f3a6c8'/);
-  assert.match(runtime, /nogizaka46: '#8264b0'/);
-  assert.match(runtime, /hinatazaka46: '#9ecff3'/);
-  assert.match(runtime, /最古取得可能/);
-  assert.match(runtime, /最終確認号/);
-  assert.match(runtime, /最終ランクイン/);
+  assert.match(runtime, /kugouArtistFilter/);
+  assert.match(runtime, /kugouArtistVisible/);
+  assert.match(runtime, /毎週月曜 00:00 JST/);
+  assert.match(shell, /Kugou Music 日本榜 グループ別最高順位推移/);
+  assert.match(shell, /Kugou Music 日本榜 ランクイン履歴/);
+  assert.match(shell, /artistFilterButtons\('kugou', 'Kugou Music 日本榜 表示グループ'\)/);
+  assert.match(shell, /data-\$\{prefix\}-artist-filter="all"[^>]*>すべて<\/button>/);
+  assert.match(shell, /data-\$\{prefix\}-artist-filter="sakurazaka46"[^>]*>櫻坂<\/button>/);
+  assert.match(shell, /data-\$\{prefix\}-artist-filter="nogizaka46"[^>]*>乃木坂<\/button>/);
+  assert.match(shell, /data-\$\{prefix\}-artist-filter="hinatazaka46"[^>]*>日向坂<\/button>/);
   assert.match(shell, /kugouJapanRankChart/);
   assert.match(shell, /kugouJapanRankLegend/);
-  assert.match(shell, /kugouJapanCoverage/);
   assert.match(shell, /kugouJapanHistoryBody/);
-  assert.match(shell, /日本榜 グループ別最高順位推移/);
-  assert.match(shell, /日本榜 ランクイン履歴/);
-  assert.match(regionalCss, /\.regional-music-rank-chart/);
-  assert.match(regionalCss, /\.regional-music-kugou-history-table/);
+  assert.doesNotMatch(shell, /kugouJapanCoverage/);
+  assert.match(runtime, /setCompactChartMode/);
+  assert.match(runtime, /regionalMusicGenericTables/);
+  assert.match(regionalCss, /\.regional-music-view\.is-chart-compact/);
+  assert.match(regionalCss, /\.regional-chart-filter\.mode-tabs/);
+});
+
+test('QQ uses the same compact artist filter and includes artist popularity ranking', () => {
+  assert.match(shell, /QQ Music 日本榜 グループ別最高順位推移/);
+  assert.match(shell, /QQ Music 日本榜 ランクイン履歴/);
+  assert.match(shell, /QQ Music アーティスト別人気曲順位/);
+  assert.match(shell, /qqArtistPopularityBody/);
+  assert.match(shell, /artistFilterButtons\('qq', 'QQ Music 日本榜 表示グループ'\)/);
+  assert.match(runtime, /qq_music: '毎日 00:00 JST'/);
+  assert.match(qqRuntime, /activeArtistFilter/);
+  assert.match(qqRuntime, /artistVisible/);
+  assert.match(qqRuntime, /payload\?\.artist_track_orders/);
+  assert.match(qqRuntime, /item\?\.service === 'qq_music'/);
+  assert.match(qqRuntime, /item\?\.position/);
+  assert.match(qqRuntime, /renderPopularity\(payload\)/);
+  assert.doesNotMatch(shell, /qqJapanCoverage/);
 });
 
 test('YouTube Music uses the shared R2 read model but renders public metrics in its first-row tab', () => {
