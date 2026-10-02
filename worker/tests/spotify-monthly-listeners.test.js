@@ -6,6 +6,10 @@ import {
   monthlyListenersFromArtistOverview,
   spotifyArtistOverviewUrl,
 } from '../src/spotify-monthly-listeners.js';
+import {
+  SPOTIFY_MONTHLY_LISTENERS_TYPE,
+  spotifyMonthlyListenerRetryDelaySeconds,
+} from '../src/spotify-playcount-queue-router.js';
 
 test('monthly listeners are parsed from queryArtistOverview stats', () => {
   assert.equal(monthlyListenersFromArtistOverview({
@@ -34,13 +38,32 @@ test('artist overview request uses the verified anonymous Pathfinder operation',
   );
 });
 
+test('monthly listener retry uses bounded exponential queue delay', () => {
+  assert.equal(SPOTIFY_MONTHLY_LISTENERS_TYPE, 'spotify-monthly-listeners');
+  assert.equal(spotifyMonthlyListenerRetryDelaySeconds(1), 60);
+  assert.equal(spotifyMonthlyListenerRetryDelaySeconds(2), 120);
+  assert.equal(spotifyMonthlyListenerRetryDelaySeconds(6), 1920);
+  assert.equal(spotifyMonthlyListenerRetryDelaySeconds(7), 3600);
+  assert.equal(spotifyMonthlyListenerRetryDelaySeconds(99), 3600);
+});
+
 test('monthly listener collection is wired after a confirmed playcount save', () => {
   const router = readFileSync(new URL('../src/spotify-playcount-queue-router.js', import.meta.url), 'utf8');
-  const collectIndex = router.indexOf('collectSpotifyMonthlyListeners');
+  const collectIndex = router.indexOf('collectMonthlyListenersAfterPlaycount');
   const refreshIndex = router.indexOf("requestSpotifyReadModelRefresh(env, 'playcount-complete'");
   assert.ok(collectIndex >= 0);
   assert.ok(refreshIndex > collectIndex);
   assert.match(router, /snapshotDate: String\(row\.snapshot_date\)/);
+});
+
+test('failed monthly listeners are retried through the Spotify queue until complete', () => {
+  const router = readFileSync(new URL('../src/spotify-playcount-queue-router.js', import.meta.url), 'utf8');
+  const collector = readFileSync(new URL('../src/spotify-monthly-listeners.js', import.meta.url), 'utf8');
+  assert.match(router, /message_type: SPOTIFY_MONTHLY_LISTENERS_TYPE/);
+  assert.match(router, /delaySeconds: spotifyMonthlyListenerRetryDelaySeconds\(nextAttempt\)/);
+  assert.match(router, /missingOnly: true/);
+  assert.match(router, /requestSpotifyReadModelRefresh\(env, 'monthly-listeners-complete'/);
+  assert.match(collector, /monthly\.artist_key IS NULL/);
 });
 
 test('monthly listener table is part of the required Other DB schema', () => {
