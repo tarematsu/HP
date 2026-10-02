@@ -3,7 +3,7 @@ import {
   saveMaterializedR2Response,
 } from './pages-response-r2.js';
 
-const PROFILE_BASE = 'https://www.stationhead.com/api/account/handle/';
+const PROFILE_BASE = 'https://production1.stationhead.com/account/handle/';
 const AUTH_STATE_ID = 'stationhead';
 const JST_OFFSET_MS = 9 * 60 * 60_000;
 const DEFAULT_TIMEOUT_MS = 8_000;
