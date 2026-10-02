@@ -2,7 +2,6 @@ import {
   appendEmptyTableRow,
   byId,
   integerFormat,
-  setText,
 } from './dashboard-ui-common.js?v=20261001.1';
 import { renderRankHistoryChart } from './dashboard-rank-chart.js?v=20261002.1';
 
@@ -22,6 +21,8 @@ const OUT_OF_CHART_RANK = 101;
 let readModelPromise = null;
 let requestId = 0;
 let initialized = false;
+let activeArtistFilter = 'all';
+let lastPayload = null;
 
 function periodParts(value) {
   const match = String(value || '').match(/^(\d{4})_(\d{1,2})$/);
@@ -73,6 +74,18 @@ function row(values) {
   return tr;
 }
 
+function artistVisible(canonicalArtist) {
+  return activeArtistFilter === 'all' || canonicalArtist === activeArtistFilter;
+}
+
+function syncFilterButtons() {
+  for (const button of document.querySelectorAll('[data-qq-artist-filter]')) {
+    const active = button.dataset.qqArtistFilter === activeArtistFilter;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
+}
+
 async function loadReadModel() {
   if (!readModelPromise) {
     readModelPromise = fetch('/api/regional-music', {
@@ -111,7 +124,7 @@ function qqStoredPeriods(chart, history) {
 }
 
 function qqSeries(history, periods) {
-  return ARTIST_ORDER.map((canonicalArtist) => {
+  return ARTIST_ORDER.filter(artistVisible).map((canonicalArtist) => {
     const byPeriod = new Map();
     for (const item of history) {
       if (item?.canonical_artist !== canonicalArtist) continue;
@@ -134,52 +147,22 @@ function qqSeries(history, periods) {
 }
 
 function setVisible(visible) {
-  const chart = byId('qqJapanChartSection');
-  const history = byId('qqJapanHistorySection');
-  if (chart) chart.hidden = !visible;
-  if (history) history.hidden = !visible;
+  for (const id of ['qqJapanChartSection', 'qqJapanHistorySection', 'qqArtistPopularitySection']) {
+    const section = byId(id);
+    if (section) section.hidden = !visible;
+  }
 }
 
-function render(payload) {
-  const chart = payload?.qq_japan_chart || {};
-  const history = Array.isArray(chart.history) ? chart.history : [];
-  const coverage = chart.coverage || {};
-  const periods = qqStoredPeriods(chart, history);
-  const series = qqSeries(history, periods);
-  const dates = periods.map((item) => item.date);
-  const yMax = OUT_OF_CHART_RANK;
-  const rankTicks = [1, 25, 50, 75, 100, OUT_OF_CHART_RANK];
-
-  renderRankHistoryChart({
-    container:byId('qqJapanRankChart'),
-    series,
-    dates,
-    height:420,
-    margin:{ left:58, right:18, top:18, bottom:38 },
-    yMax,
-    rankTicks,
-    dateTickCount:5,
-    ariaLabel:'QQ Music日本榜における櫻坂46、乃木坂46、日向坂46の各週最高順位推移。保存済み週の圏外も含み、1位が上。',
-    lineClass:'kugou-rank-line',
-    emptyClass:'regional-music-rank-empty',
-    emptyText:'QQ Music日本榜の順位履歴はまだありません。',
-    rankLabel:(rank) => rank === OUT_OF_CHART_RANK ? '圏外' : `${rank}位`,
-    dateLabel:providerShortDate,
-    latestPoint:{ radius:() => 2.5 },
-    legendContainer:byId('qqJapanRankLegend'),
-  });
-
-  const entries = Number.isFinite(Number(coverage.entries)) ? Number(coverage.entries) : history.length;
-  const storedPeriods = Number.isFinite(Number(coverage.stored_periods)) ? Number(coverage.stored_periods) : 0;
-  setText('qqJapanCoverage', `保存期間: ${periodText(coverage.earliest_period)}〜${periodText(coverage.latest_period)} / 最終ランクイン: ${periodText(coverage.latest_rank_in_period)}（${integerFormat.format(storedPeriods)}週・${integerFormat.format(entries)}件）`);
-
+function renderHistory(history) {
   const body = replaceBody('qqJapanHistoryBody');
   if (!body) return;
-  const ordered = [...history].sort((a, b) => comparePeriods(b.period, a.period)
-    || Number(a.rank) - Number(b.rank)
-    || String(a.title || '').localeCompare(String(b.title || '')));
+  const ordered = history
+    .filter((item) => artistVisible(item?.canonical_artist))
+    .sort((a, b) => comparePeriods(b.period, a.period)
+      || Number(a.rank) - Number(b.rank)
+      || String(a.title || '').localeCompare(String(b.title || '')));
   if (!ordered.length) {
-    appendEmptyTableRow(body, 'QQ Music日本榜のランクイン履歴はまだありません。', 5);
+    appendEmptyTableRow(body, 'QQ Music 日本榜のランクイン履歴はありません。', 5);
     return;
   }
   for (const item of ordered) {
@@ -193,29 +176,103 @@ function render(payload) {
   }
 }
 
+function renderPopularity(payload) {
+  const body = replaceBody('qqArtistPopularityBody');
+  if (!body) return;
+  const rows = (Array.isArray(payload?.tracks) ? payload.tracks : [])
+    .filter((item) => item?.service === 'qq_music')
+    .filter((item) => ARTIST_ORDER.includes(item?.canonical_artist))
+    .filter((item) => artistVisible(item?.canonical_artist))
+    .filter((item) => Number.isFinite(Number(item?.popularity_rank)) && Number(item.popularity_rank) > 0)
+    .sort((a, b) => ARTIST_ORDER.indexOf(a.canonical_artist) - ARTIST_ORDER.indexOf(b.canonical_artist)
+      || Number(a.popularity_rank) - Number(b.popularity_rank)
+      || String(a.title || '').localeCompare(String(b.title || '')));
+  if (!rows.length) {
+    appendEmptyTableRow(body, 'QQ Music のアーティスト別人気曲順位はありません。', 3);
+    return;
+  }
+  for (const item of rows) {
+    body.append(row([
+      ARTIST_LABELS[item.canonical_artist] || item.canonical_artist || '-',
+      `${integerFormat.format(Number(item.popularity_rank))}位`,
+      item.title || item.service_track_id || '-',
+    ]));
+  }
+}
+
+function render(payload) {
+  lastPayload = payload;
+  syncFilterButtons();
+  const chart = payload?.qq_japan_chart || {};
+  const history = Array.isArray(chart.history) ? chart.history : [];
+  const periods = qqStoredPeriods(chart, history);
+  const series = qqSeries(history, periods);
+  const dates = periods.map((item) => item.date);
+
+  renderRankHistoryChart({
+    container:byId('qqJapanRankChart'),
+    series,
+    dates,
+    height:320,
+    margin:{ left:58, right:18, top:12, bottom:34 },
+    yMax:OUT_OF_CHART_RANK,
+    rankTicks:[1, 25, 50, 75, 100, OUT_OF_CHART_RANK],
+    dateTickCount:5,
+    ariaLabel:'QQ Music 日本榜における選択グループの各週最高順位推移。保存済み週の圏外も含み、1位が上。',
+    lineClass:'kugou-rank-line',
+    emptyClass:'regional-music-rank-empty',
+    emptyText:'QQ Music 日本榜の順位履歴はまだありません。',
+    rankLabel:(rank) => rank === OUT_OF_CHART_RANK ? '圏外' : `${rank}位`,
+    dateLabel:providerShortDate,
+    latestPoint:{ radius:() => 2.5 },
+    legendContainer:byId('qqJapanRankLegend'),
+  });
+
+  renderHistory(history);
+  renderPopularity(payload);
+}
+
+function bindFilters() {
+  for (const button of document.querySelectorAll('[data-qq-artist-filter]')) {
+    if (button.dataset.qqFilterBound === '1') continue;
+    button.dataset.qqFilterBound = '1';
+    button.addEventListener('click', () => {
+      const next = button.dataset.qqArtistFilter || 'all';
+      if (next === activeArtistFilter) return;
+      activeArtistFilter = next;
+      if (lastPayload && location.hash.slice(1) === 'qq_music') render(lastPayload);
+      else syncFilterButtons();
+    });
+  }
+}
+
 async function renderForRoute() {
   const id = ++requestId;
   const visible = location.hash.slice(1) === 'qq_music';
   setVisible(visible);
   if (!visible) return;
+  bindFilters();
   replaceBody('qqJapanRankLegend');
   replaceBody('qqJapanRankChart');
   replaceBody('qqJapanHistoryBody');
-  setText('qqJapanCoverage', '');
+  replaceBody('qqArtistPopularityBody');
   try {
     const payload = await loadReadModel();
     if (id !== requestId || location.hash.slice(1) !== 'qq_music') return;
     render(payload);
   } catch {
     if (id !== requestId || location.hash.slice(1) !== 'qq_music') return;
-    const body = replaceBody('qqJapanHistoryBody');
-    if (body) appendEmptyTableRow(body, 'QQ Music日本榜の履歴を取得できませんでした。', 5);
+    const historyBody = replaceBody('qqJapanHistoryBody');
+    if (historyBody) appendEmptyTableRow(historyBody, 'QQ Music 日本榜の履歴を取得できませんでした。', 5);
+    const popularityBody = replaceBody('qqArtistPopularityBody');
+    if (popularityBody) appendEmptyTableRow(popularityBody, 'QQ Music の人気曲順位を取得できませんでした。', 3);
   }
 }
 
 export function initQqJapanHistoryUi() {
   if (initialized) return;
   initialized = true;
+  bindFilters();
   window.addEventListener('hashchange', renderForRoute);
   window.addEventListener('popstate', renderForRoute);
   void renderForRoute();
