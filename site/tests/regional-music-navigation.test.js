@@ -66,23 +66,28 @@ test('regional service views load one materialized read model per service', () =
   assert.match(build, /'regional-music\.css'/);
 });
 
-test('Kugou uses weekday 11:30 cadence and date-only chart/history labels', () => {
+test('Kugou exposes Japan and ACG chart history with shared filters', () => {
   assert.match(html, /data-subscription-group-content="china"[\s\S]*data-source="kugou_music"/);
   assert.match(runtime, /payload\?\.kugou_japan_chart/);
+  assert.match(runtime, /payload\?\.kugou_acg_chart/);
   assert.match(runtime, /renderRankHistoryChart/);
   assert.match(runtime, /service === 'kugou_music'/);
   assert.match(runtime, /kugouArtistFilter/);
   assert.match(runtime, /kugouArtistVisible/);
-  assert.match(runtime, /kugou_music: '平日11:30'/);
+  assert.match(runtime, /kugou_music: '平日11:30 \/ ACG新歌榜: 木曜11:40'/);
   assert.match(runtime, /dateLabel:\s*providerDateText/);
   assert.match(runtime, /providerDateText\(item\.published_at\)/);
   assert.doesNotMatch(runtime, /providerDateTimeText/);
   assert.doesNotMatch(runtime, /Number\(item\.issue\)/);
   assert.match(shell, /酷狗音乐 日本榜 グループ別最高順位推移/);
   assert.match(shell, /酷狗音乐 日本榜 ランクイン履歴/);
+  assert.match(shell, /酷狗音乐 ACG新歌榜 グループ別最高順位推移/);
+  assert.match(shell, /酷狗音乐 ACG新歌榜 ランクイン履歴/);
   assert.match(shell, /headers: \['年月日', 'グループ', '順位', '曲名'\]/);
+  assert.match(shell, /headers: \['更新日', 'グループ', '順位', '曲名'\]/);
   assert.doesNotMatch(shell, /headers: \['日時', 'グループ', '順位', '曲名', '号'\]/);
   assert.match(shell, /artistFilterButtons\('kugou', '酷狗音乐 日本榜 表示グループ'\)/);
+  assert.match(shell, /artistFilterButtons\('kugou', '酷狗音乐 ACG新歌榜 表示グループ'\)/);
   assert.match(shell, /data-\$\{prefix\}-artist-filter="all"[^>]*>すべて<\/button>/);
   assert.match(shell, /data-\$\{prefix\}-artist-filter="sakurazaka46"[^>]*>櫻坂<\/button>/);
   assert.match(shell, /data-\$\{prefix\}-artist-filter="nogizaka46"[^>]*>乃木坂<\/button>/);
@@ -90,6 +95,9 @@ test('Kugou uses weekday 11:30 cadence and date-only chart/history labels', () =
   assert.match(shell, /kugouJapanRankChart/);
   assert.match(shell, /kugouJapanRankLegend/);
   assert.match(shell, /kugouJapanHistoryBody/);
+  assert.match(shell, /kugouAcgRankChart/);
+  assert.match(shell, /kugouAcgRankLegend/);
+  assert.match(shell, /kugouAcgHistoryBody/);
   assert.doesNotMatch(shell, /kugouJapanCoverage/);
   assert.match(runtime, /setCompactChartMode/);
   assert.match(runtime, /regionalMusicGenericTables/);
