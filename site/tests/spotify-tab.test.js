@@ -226,7 +226,7 @@ test('Spotify tab uses the compact chart-and-list layout with the shared Canvas 
   assert.match(shell, /regional-chart-meta spotify-chart-meta/);
   assert.match(shell, /更新日/);
   assert.match(shell, /更新周期/);
-  assert.match(shell, /<strong>毎日<\/strong>/);
+  assert.match(shell, /<strong>毎日5:00<\/strong>/);
   assert.match(shell, /regional-chart-section-head/);
   assert.match(shell, /className: 'regional-chart-filter'/);
   assert.match(shell, /label: '櫻坂46'/);
