@@ -5,7 +5,9 @@ on:
     paths:
       - '.github/workflows/investigate-netease-japan-chart-history.yml'
       - 'worker/scripts/investigate-netease-japan-chart-history.mjs'
+      - 'worker/scripts/enrich-netease-japan-history-report.mjs'
       - 'worker/tests/netease-japan-chart-history-investigation.test.js'
+      - 'worker/tests/netease-japan-chart-history-enrich.test.js'
   workflow_dispatch:
 
 permissions:
@@ -28,7 +30,7 @@ jobs:
 
       - name: Test NetEase history parser
         working-directory: worker
-        run: node --test tests/netease-japan-chart-history-investigation.test.js
+        run: node --test tests/netease-japan-chart-history-investigation.test.js tests/netease-japan-chart-history-enrich.test.js
 
       - name: Probe current and archived NetEase 日本Oricon榜
         working-directory: worker
@@ -38,6 +40,9 @@ jobs:
             --from 2015-01-01 \
             --output-json ../netease-japan-history/result.json \
             --output-markdown ../netease-japan-history/result.md
+          node scripts/enrich-netease-japan-history-report.mjs \
+            ../netease-japan-history/result.json \
+            ../netease-japan-history/result.md
 
       - name: Publish investigation summary
         if: always()
