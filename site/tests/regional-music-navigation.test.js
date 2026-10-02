@@ -14,10 +14,16 @@ const regionalCss = readFileSync(new URL('../public/regional-music.css', import.
 const build = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 
-const rows = [
-  ['1', ['spotify', 'apple-music', 'amazon-music', 'youtube-music']],
-  ['2', ['genie', 'kkbox']],
-  ['5', ['qq_music', 'netease_cloud_music', 'kugou_music']],
+const visibleSubscriptionServices = [
+  'spotify',
+  'apple-music',
+  'amazon-music',
+  'youtube-music',
+  'genie',
+  'kkbox',
+  'qq_music',
+  'kugou_music',
+  'netease_cloud_music',
 ];
 
 const removedLocalServices = [
@@ -38,43 +44,28 @@ const removedLocalServices = [
   'langit_musik',
 ];
 
-test('music subscriptions are grouped into major, local and China source rows', () => {
+test('music subscriptions render all visible services directly without category tabs', () => {
   assert.match(html, /id="subscriptionSourceTabsTemplate"/);
-  assert.match(html, /href="#spotify" data-subscription-group="major">主要<\/a>/);
-  assert.match(html, /href="#genie" data-subscription-group="local">ローカル<\/a>/);
-  assert.match(html, /href="#qq_music" data-subscription-group="china">中国<\/a>/);
-  assert.match(html, /data-subscription-group-content="major"/);
-  assert.match(html, /data-subscription-group-content="local"/);
-  assert.match(html, /data-subscription-group-content="china"/);
-  assert.match(html, /data-source="qq_music">🇨🇳QQ音乐<\/button>/);
-  assert.match(html, /data-source="kugou_music">🇨🇳酷狗音乐<\/button>/);
-  const localGroup = html.match(/data-subscription-group-content="local"[\s\S]*?<\/div>\s*<div class="dashboard-source-group" data-subscription-group-content="china">/);
-  assert.ok(localGroup, 'local subscription group must exist before China group');
-  assert.match(localGroup[0], /data-source="genie"/);
-  assert.match(localGroup[0], /data-source="kkbox"/);
-  assert.doesNotMatch(localGroup[0], /data-source="(?:qq_music|netease_cloud_music|kugou_music)"/);
+  const template = html.match(/<template id="subscriptionSourceTabsTemplate">([\s\S]*?)<\/template>/);
+  assert.ok(template, 'subscription source template must exist');
+  assert.doesNotMatch(template[1], /data-subscription-group(?:-content)?=/);
+  assert.doesNotMatch(template[1], /dashboard-subscription-groups|dashboard-source-group/);
+  assert.match(template[1], /class="dashboard-source-row"/);
+  for (const service of visibleSubscriptionServices) {
+    assert.match(template[1], new RegExp(`data-source="${service}"`));
+  }
   for (const service of removedLocalServices) {
-    assert.doesNotMatch(localGroup[0], new RegExp(`data-source="${service}"`));
+    assert.doesNotMatch(template[1], new RegExp(`data-source="${service}"`));
   }
-  const chinaGroup = html.match(/data-subscription-group-content="china"[\s\S]*?<\/div>\s*<\/template>/);
-  assert.ok(chinaGroup, 'China subscription group must exist');
-  for (const service of ['qq_music', 'netease_cloud_music', 'kugou_music']) {
-    assert.match(chinaGroup[0], new RegExp(`data-source="${service}"`));
-  }
-  for (const [row, services] of rows) {
-    const match = html.match(new RegExp(`<div class="dashboard-source-row" data-row="${row}"[\\s\\S]*?<\\/div>`));
-    assert.ok(match, `subscription row ${row} must exist`);
-    for (const service of services) assert.match(match[0], new RegExp(`data-source="${service}"`));
-  }
+  assert.match(template[1], /data-source="qq_music">🇨🇳QQ音乐<\/button>/);
+  assert.match(template[1], /data-source="kugou_music">🇨🇳酷狗音乐<\/button>/);
   assert.match(tabs, /REGIONAL_MUSIC_MODES/);
   assert.match(tabs, /\bkkbox\b/);
   assert.match(runtime, /kkbox: 'KKBOX'/);
   assert.match(tabs, /subscriptionSourceTabsTemplate/);
   assert.match(css, /\.dashboard-source-tabs\.is-multiline/);
-  assert.match(css, /\.dashboard-subscription-groups/);
-  assert.match(css, /:has\(\[data-subscription-group-content="major"\] \.active\)/);
-  assert.match(css, /:has\(\[data-subscription-group-content="china"\] \.active\)/);
-  assert.match(css, /\.dashboard-source-row\[data-row="1"\]/);
+  assert.match(css, /\.dashboard-source-row/);
+  assert.doesNotMatch(css, /dashboard-subscription-groups|data-subscription-group-content|dashboard-source-group/);
 });
 
 test('regional service views load one materialized read model per service', () => {
@@ -90,7 +81,7 @@ test('regional service views load one materialized read model per service', () =
 });
 
 test('Kugou exposes Japan and ACG chart history with shared filters', () => {
-  assert.match(html, /data-subscription-group-content="china"[\s\S]*data-source="kugou_music"/);
+  assert.match(html, /data-source="kugou_music"/);
   assert.match(runtime, /payload\?\.kugou_japan_chart/);
   assert.match(runtime, /payload\?\.kugou_acg_chart/);
   assert.match(runtime, /renderRankHistoryChart/);
