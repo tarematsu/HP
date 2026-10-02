@@ -43,6 +43,15 @@ function normalize(value) {
     .replace(/[\s·・･._-]+/g, '');
 }
 
+const MELON_JPOP_HISTORY_ALIAS_MATCHERS = Object.freeze(
+  Object.entries(MELON_JPOP_HISTORY_ARTISTS)
+    .flatMap(([canonicalArtist, definition]) => definition.aliases.map((alias) => ({
+      canonical_artist: canonicalArtist,
+      alias: normalize(alias),
+    })))
+    .sort((a, b) => b.alias.length - a.alias.length || a.canonical_artist.localeCompare(b.canonical_artist)),
+);
+
 function compactDate(value) {
   return String(value || '').replaceAll('-', '');
 }
@@ -99,10 +108,7 @@ function rowArtistText(row) {
 export function canonicalMelonJpopHistoryArtist(value) {
   const text = normalize(value);
   if (!text) return null;
-  for (const [canonicalArtist, definition] of Object.entries(MELON_JPOP_HISTORY_ARTISTS)) {
-    if (definition.aliases.some((alias) => text.includes(normalize(alias)))) return canonicalArtist;
-  }
-  return null;
+  return MELON_JPOP_HISTORY_ALIAS_MATCHERS.find((item) => text.includes(item.alias))?.canonical_artist || null;
 }
 
 export function parseMelonJpopHistoryEntries(html) {
@@ -165,7 +171,7 @@ export function melonJpopLegacyMonthlyUrl(period, classCd = MELON_JPOP_CLASS_CD)
 
 export function melonWeeklyUrlCandidates(start, end) {
   const year = Number(String(start).slice(0, 4));
-  const codes = year < 2017 ? ['DP1900', MELON_JPOP_CLASS_CD] : [MELON_JPOP_CLASS_CD];
+  const codes = year < 2017 ? [MELON_JPOP_CLASS_CD, 'DP1900'] : [MELON_JPOP_CLASS_CD];
   const urls = [];
   for (const code of codes) {
     urls.push(melonJpopWeeklyUrl(start, end, code));
@@ -176,7 +182,7 @@ export function melonWeeklyUrlCandidates(start, end) {
 
 export function melonMonthlyUrlCandidates(period) {
   const year = Number(String(period).slice(0, 4));
-  const codes = year < 2017 ? ['DP1900', MELON_JPOP_CLASS_CD] : [MELON_JPOP_CLASS_CD];
+  const codes = year < 2017 ? [MELON_JPOP_CLASS_CD, 'DP1900'] : [MELON_JPOP_CLASS_CD];
   const urls = [];
   for (const code of codes) {
     urls.push(melonJpopMonthlyUrl(period, code));
