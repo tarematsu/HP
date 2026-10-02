@@ -1,0 +1,27 @@
+name: Probe KKBOX charts
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/probe-kkbox.yml'
+      - 'worker/scripts/probe-kkbox.mjs'
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Probe KKBOX Taiwan and Hong Kong Japanese charts
+        working-directory: worker
+        run: node scripts/probe-kkbox.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kkbox-probe-evidence
+          path: kkbox-probe-evidence
+          retention-days: 3
