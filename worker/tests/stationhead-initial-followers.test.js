@@ -9,8 +9,28 @@ import { withOhisamaFollowerMembership } from '../src/ohisama-follower-membershi
 function fixture() {
   const values = new Map();
   const writes = [];
+  const registeredTargets = new Set();
   const env = {
-    OTHER_DB: { prepare(sql) { return { bind(...args) { return { async run() { writes.push({ sql, args }); return { meta: { changes: 1 } }; } }; } }; } },
+    OTHER_DB: {
+      prepare(sql) {
+        return {
+          bind(...args) {
+            return {
+              async run() {
+                writes.push({ sql, args });
+                if (/sh_stationhead_follower_targets/.test(sql)) {
+                  const handle = String(args[0] || '');
+                  const changes = registeredTargets.has(handle) ? 0 : 1;
+                  registeredTargets.add(handle);
+                  return { meta: { changes } };
+                }
+                return { meta: { changes: 1 } };
+              },
+            };
+          },
+        };
+      },
+    },
     PAGES_RESPONSE_R2: {
       async get(key) { return values.has(key) ? { async json() { return JSON.parse(values.get(key)); } } : null; },
       async put(key, value) { values.set(key, value); },
@@ -20,7 +40,7 @@ function fixture() {
     handles: ['existing'], rows: [{ date: '2026-10-01', existing: 100 }],
     memberships: { existing: { affiliation: 'Buddies', group: 'sakurazaka46' } },
   }));
-  return { env, values, writes };
+  return { env, values, writes, registeredTargets };
 }
 
 test('initial sample publishes only the new host and leaves daily completion untouched', async () => {
@@ -79,15 +99,22 @@ test('Ohisama registrar forwards live credentials through every wrapper without 
   assert.equal(await registrar(env, { host_handle: 'newhost', is_broadcasting: 1 }, Date.now(), session), true);
 });
 
-test('Buddies registers a live host once and skips inactive broadcasts', async () => {
+test('Buddies registers only a live-observed host and retries registry confirmation even with an R2 marker', async () => {
   const { env, values, writes } = fixture();
   const model = JSON.parse(values.get(pagesR2ResponseKey('followers')));
   model.rows[0].newhost = 12;
   values.set(pagesR2ResponseKey('followers'), JSON.stringify(model));
   const snapshot = { host_handle: 'newhost', is_broadcasting: 1 };
-  assert.equal(await registerBuddiesInitialFollowerTarget(env, { ...snapshot, is_broadcasting: 0 }, Date.now()), false);
-  assert.equal(await registerBuddiesInitialFollowerTarget(env, snapshot, Date.now()), true);
-  assert.equal(await registerBuddiesInitialFollowerTarget(env, snapshot, Date.now()), false);
-  assert.equal(writes.length, 1);
+  const firstAt = 123456;
+  const secondAt = 123457;
+
+  assert.equal(await registerBuddiesInitialFollowerTarget(env, { ...snapshot, is_broadcasting: 0 }, firstAt), false);
+  assert.equal(writes.length, 0);
+
+  assert.equal(await registerBuddiesInitialFollowerTarget(env, snapshot, firstAt), true);
+  assert.equal(await registerBuddiesInitialFollowerTarget(env, snapshot, secondAt), false);
+  assert.equal(writes.length, 2);
   assert.match(writes[0].sql, /sh_stationhead_follower_targets/);
+  assert.match(writes[0].sql, /live_confirmed_at/);
+  assert.deepEqual(writes[0].args, ['newhost', firstAt, firstAt]);
 });
