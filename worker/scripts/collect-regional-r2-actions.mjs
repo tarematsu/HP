@@ -32,8 +32,6 @@ export async function collectRegionalR2Run({load,save,now=Date.now(),all=false,s
   // Small services finish before the large Genie catalog. An interrupted Genie
   // run does not discard the already persisted snapshots of other providers.
   for(const service of services.filter(value=>value!=='genie')) {
-    const collect=collectors[service];
-    if(typeof collect!=='function') throw new Error(`Regional collector missing: ${service}`);
     const controller=new AbortController();
     const timer=setTimeout(()=>controller.abort(),90_000);
     const fetchService=(url,options={})=>fetchImpl(url,{...options,signal:options.signal ? AbortSignal.any([options.signal,controller.signal]) : controller.signal});
@@ -43,6 +41,8 @@ export async function collectRegionalR2Run({load,save,now=Date.now(),all=false,s
         results.push({service,status:'ok',reused:true});
         continue;
       }
+      const collect=collectors[service];
+      if(typeof collect!=='function') throw new Error(`Regional collector missing: ${service}`);
       const snapshot=await collectRegionalR2Snapshot({service,collect,previous,now,fetchImpl:fetchService,bindings});
       await save(regionalDayKey(service,snapshot.day),snapshot);
       await save(regionalSnapshotKey(service),snapshot);
