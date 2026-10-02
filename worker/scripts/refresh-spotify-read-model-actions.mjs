@@ -1,18 +1,33 @@
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { materializeVariant } from './run-pages-read-model-actions.mjs';
+import { publishSpotifyPagesReadModel } from '../src/spotify-pages-read-model.js';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
+import { createWranglerRemoteR2 } from './remote-r2-json-adapter.mjs';
 
 const workerRoot = resolve(import.meta.dirname, '..');
 const wranglerScript = resolve(workerRoot, 'node_modules/wrangler/bin/wrangler.js');
-const minuteDatabase = process.env.FACTS_DATABASE_NAME || 'stationhead-minute';
 const otherDatabase = process.env.OTHER_DATABASE_NAME || 'stationhead-other';
-const variant = Object.freeze({
-  key: 'spotify-playcounts',
-  url: '/api/spotify-playcounts?artists=sakamichi',
-  cadence_minutes: 720,
-});
+const responseBucket = process.env.PAGES_RESPONSE_BUCKET || 'sh-pages-responses';
+
+function actionsR2() {
+  const remote = createWranglerRemoteR2({
+    bucket: responseBucket,
+    cwd: workerRoot,
+    wranglerScript,
+  });
+  return {
+    async get(key) {
+      const object = await remote.get(key);
+      if (!object) return null;
+      const value = await object.json();
+      return { text: async () => JSON.stringify(value) };
+    },
+    async put(key, body) {
+      await remote.put(key, body);
+    },
+  };
+}
 
 export async function refreshSpotifyReadModel(options = {}) {
   const otherDb = options.otherDb || createWranglerRemoteD1({
@@ -20,23 +35,10 @@ export async function refreshSpotifyReadModel(options = {}) {
     cwd: workerRoot,
     wranglerScript,
   });
-  const minuteDb = options.minuteDb || createWranglerRemoteD1({
-    database: minuteDatabase,
-    cwd: workerRoot,
-    wranglerScript,
-  });
-  const revision = async () => {
-    const row = await otherDb.prepare(`SELECT
-        COALESCE(MAX(chart_date),'') AS chart_date,
-        COALESCE(MAX(updated_at),0) AS chart_updated_at
-      FROM sh_spotify_artist_chart_daily`).first();
-    return `spotify-artist-chart-actions:chart_date=${String(row?.chart_date || '')}:chart_updated_at=${String(row?.chart_updated_at || 0)}`;
-  };
-  return materializeVariant(
-    variant,
-    { OTHER_DB: otherDb, MINUTE_DB: minuteDb },
-    Number(options.now ?? Date.now()),
-    { loadSourceRevision: revision },
+  const r2 = options.r2 || actionsR2();
+  return publishSpotifyPagesReadModel(
+    { OTHER_DB: otherDb, PAGES_RESPONSE_R2: r2 },
+    { now: Number(options.now ?? Date.now()) },
   );
 }
 
@@ -45,10 +47,7 @@ async function main() {
   console.log(JSON.stringify({
     ok: true,
     event: 'spotify_read_model_refreshed',
-    object_key: published.object_key,
-    changed: published.changed,
-    rendered: published.rendered,
-    source_revision: published.source_revision,
+    ...published,
   }));
 }
 
