@@ -340,7 +340,14 @@ function renderKugouHistory(payload, service) {
   const chart = payload?.kugou_japan_chart || {};
   const history = Array.isArray(chart.history) ? chart.history : [];
   const coverage = chart.coverage || {};
-  const coveredDates = providerWeekdays(coverage.oldest_available, coverage.latest_checked || coverage.latest_available);
+  const legacyCoveredDates = Array.isArray(coverage.legacy_covered_dates)
+    ? coverage.legacy_covered_dates.map(providerDate).filter(Boolean)
+    : [];
+  const currentCoveredDates = providerWeekdays(
+    coverage.current_api_oldest_available || coverage.oldest_available,
+    coverage.latest_checked || coverage.latest_available,
+  );
+  const coveredDates = [...new Set([...legacyCoveredDates, ...currentCoveredDates])].sort();
   const series = kugouSeries(history, coveredDates);
   const dates = coveredDates.length
     ? coveredDates
