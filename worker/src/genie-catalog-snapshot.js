@@ -15,19 +15,23 @@ export function parseGenieCatalogPage(html) {
   return { total, ids };
 }
 
-export async function discoverGenieCatalog(fetchHtml, observedAt) {
+export async function discoverGenieCatalog(fetchHtml, observedAt, deadline = Infinity) {
+  const request = async (...args) => {
+    if (Date.now() >= deadline) throw new Error('Genie catalog time budget exhausted');
+    return fetchHtml(...args);
+  };
   const artists = [];
   const catalog = [];
   for (const [canonical, id] of Object.entries(GENIE_ARTIST_IDS)) {
     const definition = REGIONAL_MUSIC_ARTISTS[canonical];
-    const profile = await fetchHtml(genieArtistUrl(id));
+    const profile = await request(genieArtistUrl(id));
     if (findGenieArtistId(profile, definition.aliases) !== id) throw new Error(`Genie artist identity mismatch: ${canonical}`);
     artists.push({ service:'genie', canonical_artist:canonical, service_artist_id:id, display_name:definition.aliases[1], profile_url:genieArtistUrl(id), likes:parseGenieArtistLikes(profile), observed_at:observedAt, snapshot_date:regionalMusicSnapshotDate(observedAt) });
-    const first = parseGenieCatalogPage(await fetchHtml(`https://www.genie.co.kr/detail/artistSong?xxnm=${id}`));
+    const first = parseGenieCatalogPage(await request(`https://www.genie.co.kr/detail/artistSong?xxnm=${id}`));
     const ids = [];
     const seen = new Set();
     for (let page = 1; page <= Math.ceil(first.total / 30); page++) {
-      const parsed = page === 1 ? first : parseGenieCatalogPage(await fetchHtml('https://www.genie.co.kr/detail/bArtistSongList', `xxnm=${id}&pg=${page}&pgsize=30&otype=pop7&stype=`));
+      const parsed = page === 1 ? first : parseGenieCatalogPage(await request('https://www.genie.co.kr/detail/bArtistSongList', `xxnm=${id}&pg=${page}&pgsize=30&otype=pop7&stype=`));
       if (parsed.total !== first.total || parsed.ids.some(track => seen.has(track))) throw new Error(`Genie catalog changed during pagination: ${canonical}`);
       parsed.ids.forEach(track => { seen.add(track); ids.push(track); });
     }
@@ -59,7 +63,7 @@ export async function collectGenieSnapshot({ fetchHtml, load, save, now = Date.n
   let progress = await load(progressKey);
   if (progress?.version !== 1 || progress.day !== day || !Array.isArray(progress.catalog) || !Array.isArray(progress.artists) || !Array.isArray(progress.tracks)) {
     try {
-      progress = { version:1, day, observed_at:now, ...await discoverGenieCatalog(fetchHtml, now), tracks:[] };
+      progress = { version:1, day, observed_at:now, ...await discoverGenieCatalog(fetchHtml, now, deadline), tracks:[] };
     } catch (error) {
       const snapshot = { ...(snapshotValid(previous) ? previous : {version:1,service:'genie',artists:[],tracks:[],artist_track_orders:[]}), day, updated_at:Date.now(), state:{ ...previous?.state, service:'genie', status:'error', last_attempt_at:now, updated_at:Date.now(), last_error_class:'catalog_discovery_error', last_error_message:String(error.message).slice(0,250), entity_counts:{tracks:previous?.tracks?.length || 0, current_day_metrics:0} } };
       await save(genieDayKey(day),snapshot);

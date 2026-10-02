@@ -85,6 +85,7 @@ test('time budget publishes degraded coverage without losing resumable progress'
   assert.equal(result.state.status,'degraded');
   assert.equal(result.state.entity_counts.failures,3);
   assert.equal(mem.objects.get(genieCheckpointKey(day)).catalog.length,3);
+  await assert.rejects(discoverGenieCatalog(async()=>{throw new Error('must not fetch');},now,0),/time budget exhausted/);
 });
 test('catalog outage publishes error health while preserving known data',async()=>{
   const mem=memory(null);
