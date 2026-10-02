@@ -60,6 +60,13 @@ const qqPopularityTable = dashboardTable({
   wrapClassName: 'regional-music-table-wrap',
 });
 
+const neteaseHistoryTable = dashboardTable({
+  className: 'regional-music-table regional-music-kugou-history-table regional-music-netease-history-table music-service-track-table',
+  headers: ['更新日', 'グループ', '順位', '曲名'],
+  bodyId: 'neteaseJapanHistoryBody',
+  wrapClassName: 'regional-music-table-wrap',
+});
+
 const healthPanel = dashboardDataCard({
   title: '収集状態',
   kicker: 'COLLECTOR',
@@ -97,6 +104,22 @@ const qqPopularitySection = `
   <section id="qqArtistPopularitySection" class="music-service-section regional-chart-section" hidden>
     <div class="regional-chart-section-head"><h2>QQ音乐 アーティスト別人気曲順位</h2></div>
     ${qqPopularityTable}
+  </section>`;
+
+const neteaseChartSection = `
+  <section id="neteaseJapanChartSection" class="music-service-section regional-chart-section" hidden>
+    <div class="regional-chart-section-head"><h2>NetEase Cloud Music 日語榜 グループ別最高順位推移</h2></div>
+    <div id="neteaseJapanRankLegend" class="regional-music-rank-legend" aria-label="グループ凡例"></div>
+    <div id="neteaseJapanRankChart" class="regional-music-rank-chart"></div>
+  </section>`;
+
+const neteaseHistorySection = `
+  <section id="neteaseJapanHistorySection" class="music-service-section regional-chart-section" hidden>
+    <div class="regional-chart-section-head">
+      <h2>NetEase Cloud Music 日語榜 ランクイン履歴</h2>
+      ${artistFilterButtons('netease', 'NetEase Cloud Music 日語榜 表示グループ')}
+    </div>
+    ${neteaseHistoryTable}
   </section>`;
 
 const kugouChartSection = `
@@ -140,6 +163,8 @@ mountDashboardShell({
       ${qqChartSection}
       ${qqHistorySection}
       ${qqPopularitySection}
+      ${neteaseChartSection}
+      ${neteaseHistorySection}
       ${kugouChartSection}
       ${kugouHistorySection}
       <div id="regionalMusicGenericTables">
@@ -151,3 +176,4 @@ mountDashboardShell({
 });
 
 void import('./qq-japan-chart-ui.js?v=20261002.2').then(({ initQqJapanHistoryUi }) => initQqJapanHistoryUi());
+void import('./netease-japan-chart-ui.js?v=20261002.1').then(({ initNeteaseJapanHistoryUi }) => initNeteaseJapanHistoryUi());
