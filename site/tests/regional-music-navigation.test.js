@@ -89,8 +89,9 @@ test('QQ uses the same compact artist filter and includes artist popularity rank
   assert.match(runtime, /qq_music: '毎日 00:00 JST'/);
   assert.match(qqRuntime, /activeArtistFilter/);
   assert.match(qqRuntime, /artistVisible/);
+  assert.match(qqRuntime, /payload\?\.artist_track_orders/);
   assert.match(qqRuntime, /item\?\.service === 'qq_music'/);
-  assert.match(qqRuntime, /popularity_rank/);
+  assert.match(qqRuntime, /item\?\.position/);
   assert.match(qqRuntime, /renderPopularity\(payload\)/);
   assert.doesNotMatch(shell, /qqJapanCoverage/);
 });
