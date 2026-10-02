@@ -1,0 +1,57 @@
+name: Cross-chart probe old Kuwo Japanese editions
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-old-anchor-crosschart-probe.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: control-2026-09-30
+            lo: 272450
+            hi: 272800
+          - label: billboard-2025-week30
+            lo: 242650
+            hi: 243150
+          - label: billboard-2025-week31
+            lo: 243150
+            hi: 243650
+          - label: billboard-2025-week32
+            lo: 243600
+            hi: 244050
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Enumerate Japanese chart responses near cross-chart global IDs
+        shell: bash
+        env:
+          LABEL: ${{ matrix.label }}
+          LO: ${{ matrix.lo }}
+          HI: ${{ matrix.hi }}
+        run: |
+          python3 <<'PY'
+          import concurrent.futures,json,os,urllib.parse,urllib.request,collections
+          B='https://kbangserver.kuwo.cn/ksong.s';H={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'}
+          base={'from':'pc','fmt':'json','pn':'0','rn':'1','type':'bang','data':'content','id':'183','show_copyright_off':'0','pcmp4':'1','isbang':'1','userid':'0'}
+          lo=int(os.environ['LO']);hi=int(os.environ['HI']);label=os.environ['LABEL']
+          def p(bid):
+            u=B+'?'+urllib.parse.urlencode({**base,'bangid':str(bid)})
+            try:
+              q=urllib.request.Request(u,headers=H)
+              with urllib.request.urlopen(q,timeout=4) as r:j=json.loads(r.read().decode('utf-8','replace'))
+              return bid,j.get('currentVolume'),j.get('pub'),(j.get('musiclist') or j.get('musicList') or [{}])[0].get('name')
+            except:return bid,None,None,None
+          vals=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=24) as ex:
+            for bid,cv,pub,top in ex.map(p,range(lo,hi),chunksize=1):
+              if cv: vals.append((bid,cv,pub,top))
+          print('LABEL',label,'RANGE',lo,hi,'RESPONSES',len(vals))
+          grouped=collections.defaultdict(list)
+          for bid,cv,pub,top in vals:grouped[cv].append(bid)
+          print('VOLUMES',json.dumps({k:v for k,v in sorted(grouped.items())},ensure_ascii=False))
+          for x in vals[:100]:print('HIT',json.dumps(x,ensure_ascii=False))
+          PY
