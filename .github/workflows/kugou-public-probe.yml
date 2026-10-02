@@ -8,6 +8,7 @@ on:
       - 'worker/scripts/probe-kugou-current-rank.mjs'
       - 'worker/scripts/probe-kugou-japan-history.mjs'
       - 'worker/scripts/probe-kugou-legacy-rank.mjs'
+      - 'worker/scripts/probe-kugou-web-history.mjs'
       - '.github/workflows/kugou-public-probe.yml'
   workflow_dispatch:
 
@@ -35,6 +36,9 @@ jobs:
       - name: Probe Kugou legacy historical rank API
         working-directory: worker
         run: node scripts/probe-kugou-legacy-rank.mjs | tee kugou-legacy-rank-probe.json
+      - name: Probe Kugou archived Japan ranking web pages
+        working-directory: worker
+        run: node scripts/probe-kugou-web-history.mjs | tee kugou-web-history-probe.json
       - uses: actions/upload-artifact@v4
         with:
           name: kugou-public-probe
@@ -43,4 +47,5 @@ jobs:
             worker/kugou-japan-rank-probe.json
             worker/kugou-current-rank-probe.json
             worker/kugou-legacy-rank-probe.json
+            worker/kugou-web-history-probe.json
           retention-days: 7
