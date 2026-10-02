@@ -3,12 +3,14 @@ import test from 'node:test';
 
 import {
   loadRegionalMusicReadModel,
+  neteaseJapanChartReadModel,
   REGIONAL_MUSIC_READ_MODEL_KEY,
   publishRegionalMusicReadModel,
   qqJapanChartReadModel,
   regionalMusicReadModelPayload,
 } from '../src/regional-music-read-model.js';
 import { QQ_JAPAN_HISTORY_VIEW_KEY } from '../src/qq-japan-chart-history-view.js';
+import { NETEASE_JAPAN_HISTORY_VIEW_KEY } from '../src/netease-japan-chart-history.js';
 
 test('regional music read model normalizes collector health and implemented service metadata', () => {
   const payload = regionalMusicReadModelPayload({
@@ -34,6 +36,7 @@ test('regional music read model normalizes collector health and implemented serv
   assert.equal(payload.artists[0].followers, 478);
   assert.deepEqual(payload.releases, []);
   assert.deepEqual(payload.qq_japan_chart, { coverage:{}, history:[] });
+  assert.deepEqual(payload.netease_japan_chart, { coverage:{}, periods:[], history:[] });
   assert.deepEqual(payload.services[0].entity_counts, { artists: 3 });
   assert.equal(payload.services[0].region, 'HK/TH/SEA');
   assert.equal(payload.services[0].phase, 1);
@@ -54,6 +57,17 @@ test('regional read model normalizes compact QQ Japan chart view', () => {
   });
   assert.equal(normalized.coverage.latest_period, '2026_40');
   assert.equal(normalized.history.length, 2);
+});
+
+test('regional read model normalizes NetEase internal Japanese chart view', () => {
+  const normalized = neteaseJapanChartReadModel({
+    coverage:{ earliest_period:'2026-09-22', latest_period:'2026-09-29', stored_periods:2, entries:1 },
+    periods:[{ period:'2026-09-22', published_at:'2026-09-22' }, { period:'2026-09-29', published_at:'2026-09-29' }],
+    history:[{ period:'2026-09-29', published_at:'2026-09-29', canonical_artist:'hinatazaka46', rank:7, title:'H' }],
+  });
+  assert.equal(normalized.coverage.latest_period, '2026-09-29');
+  assert.equal(normalized.periods.length, 2);
+  assert.equal(normalized.history[0].rank, 7);
 });
 
 test('regional read model includes complete Kugou Japan chart seed and coverage boundary', () => {
@@ -150,6 +164,7 @@ test('regional music publication writes one compact R2 object', async () => {
   assert.equal(writes[0].body.releases.length, 1);
   assert.equal(writes[0].body.playlist_memberships.length, 1);
   assert.equal(writes[0].body.qq_japan_chart.history.length, 0);
+  assert.equal(writes[0].body.netease_japan_chart.history.length, 0);
   assert.equal(writes[0].body.kugou_japan_chart.history.length, 115);
   assert.deepEqual(writes[0].body.services[0].metrics, ['artist_likes']);
   assert.deepEqual(result, {
@@ -162,15 +177,21 @@ test('regional music publication writes one compact R2 object', async () => {
     playlist_memberships: 1,
     services: 1,
     qq_japan_chart_entries: 0,
+    netease_japan_chart_entries: 0,
     kugou_japan_chart_entries: 115,
   });
 });
 
-test('regional music publication injects QQ Japan history view from R2', async () => {
+test('regional music publication injects QQ and NetEase Japan history views from R2', async () => {
   const writes = [];
   const qqView = {
     coverage:{ earliest_period:'2018_1', latest_period:'2026_40', latest_rank_in_period:'2026_40', stored_periods:455, entries:1 },
     history:[{ period:'2026_40', published_at:'2026-10-01', canonical_artist:'sakurazaka46', rank:9, title:'Sakura' }],
+  };
+  const neteaseView = {
+    coverage:{ earliest_period:'2026-09-22', latest_period:'2026-09-29', stored_periods:2, entries:1 },
+    periods:[{ period:'2026-09-22', published_at:'2026-09-22' }, { period:'2026-09-29', published_at:'2026-09-29' }],
+    history:[{ period:'2026-09-29', published_at:'2026-09-29', canonical_artist:'nogizaka46', rank:13, title:'Nogi' }],
   };
   const result = await publishRegionalMusicReadModel({
     OTHER_DB:{},
@@ -178,6 +199,7 @@ test('regional music publication injects QQ Japan history view from R2', async (
       put() {},
       async get(key) {
         if (key === QQ_JAPAN_HISTORY_VIEW_KEY) return { async json() { return structuredClone(qqView); } };
+        if (key === NETEASE_JAPAN_HISTORY_VIEW_KEY) return { async json() { return structuredClone(neteaseView); } };
         return null;
       },
     },
@@ -190,5 +212,8 @@ test('regional music publication injects QQ Japan history view from R2', async (
   });
   assert.equal(writes[0].qq_japan_chart.coverage.latest_period, '2026_40');
   assert.equal(writes[0].qq_japan_chart.history[0].rank, 9);
+  assert.equal(writes[0].netease_japan_chart.coverage.latest_period, '2026-09-29');
+  assert.equal(writes[0].netease_japan_chart.history[0].rank, 13);
   assert.equal(result.qq_japan_chart_entries, 1);
+  assert.equal(result.netease_japan_chart_entries, 1);
 });
