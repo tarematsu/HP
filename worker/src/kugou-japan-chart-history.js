@@ -11,6 +11,7 @@ export const KUGOU_JAPAN_CHART_HISTORY = Object.freeze([
 export const KUGOU_JAPAN_CHART_COVERAGE = Object.freeze({
   chart_id: 'japan_31312',
   oldest_available: '2024-10-31 10:10:01',
+  latest_available: '2026-09-30 10:10:01',
   latest_checked: '2026-10-01 10:10:00',
   latest_rank_in: '2026-09-30 10:10:01',
   entries: KUGOU_JAPAN_CHART_HISTORY.length,
