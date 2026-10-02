@@ -1,0 +1,94 @@
+name: Probe exact Kuwo 183 Common Crawl URLs
+on:
+  push:
+    paths: ['.github/workflows/kuwo-cc-exact-matrix.yml']
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        index:
+          - CC-MAIN-2024-42
+          - CC-MAIN-2024-46
+          - CC-MAIN-2024-51
+          - CC-MAIN-2025-05
+          - CC-MAIN-2025-08
+          - CC-MAIN-2025-13
+          - CC-MAIN-2025-18
+          - CC-MAIN-2025-21
+          - CC-MAIN-2025-26
+          - CC-MAIN-2025-30
+          - CC-MAIN-2025-33
+          - CC-MAIN-2025-38
+          - CC-MAIN-2025-43
+          - CC-MAIN-2025-47
+          - CC-MAIN-2025-51
+          - CC-MAIN-2026-04
+          - CC-MAIN-2026-08
+          - CC-MAIN-2026-12
+          - CC-MAIN-2026-17
+          - CC-MAIN-2026-21
+          - CC-MAIN-2026-25
+          - CC-MAIN-2026-30
+    steps:
+      - name: Query exact archived URLs
+        shell: python
+        env:
+          CC_INDEX: ${{ matrix.index }}
+        run: |
+          import gzip, io, json, os, re, urllib.parse, urllib.request
+          idx=os.environ['CC_INDEX']
+          urls=[]
+          for scheme in ('http','https'):
+            for rn in (5,20,30,100):
+              urls.append(f'{scheme}://kbangserver.kuwo.cn/ksong.s?from=pc&fmt=json&pn=0&rn={rn}&type=bang&data=content&id=183&show_copyright_off=0&pcmp4=1&isbang=1&userid=0')
+              urls.append(f'{scheme}://kbangserver.kuwo.cn/ksong.s?from=pc&fmt=json&pn=0&rn={rn}&type=bang&data=content&id=183')
+          urls += [
+            'https://m.kuwo.cn/newh5app/ranklist_detail/183',
+            'http://m.kuwo.cn/newh5app/ranklist_detail/183',
+            'https://www.kuwo.cn/rankList/183',
+            'http://www.kuwo.cn/billboard_酷我日语榜.htm',
+            'https://www.kuwo.cn/billboard_酷我日语榜.htm',
+          ]
+          def get(u,timeout=5,headers=None):
+            try:
+              q=urllib.request.Request(u,headers=headers or {'User-Agent':'Mozilla/5.0'})
+              with urllib.request.urlopen(q,timeout=timeout) as r:return r.status,dict(r.headers),r.read()
+            except Exception as e:return 0,{},repr(e).encode()
+          hits=[]
+          for target in urls:
+            q=urllib.parse.urlencode({'url':target,'output':'json','filter':'status:200','limit':'20'})
+            st,_,raw=get(f'https://index.commoncrawl.org/{idx}-index?{q}',5)
+            if st!=200: continue
+            for line in raw.decode('utf-8','replace').splitlines():
+              try:r=json.loads(line)
+              except:continue
+              hits.append(r)
+          # unique captures
+          uniq={}
+          for r in hits: uniq[(r.get('timestamp'),r.get('digest'))]=r
+          hits=sorted(uniq.values(),key=lambda x:x.get('timestamp',''))
+          print('INDEX',idx,'HITS',len(hits))
+          for r in hits:
+            print('HIT',r.get('timestamp'),r.get('url'),r.get('filename'),r.get('offset'),r.get('length'))
+            try:
+              off=int(r['offset']); ln=int(r['length'])
+              st,_,raw=get('https://data.commoncrawl.org/'+r['filename'],8,{'Range':f'bytes={off}-{off+ln-1}','User-Agent':'Mozilla/5.0'})
+              if st not in (200,206): continue
+              try:data=gzip.GzipFile(fileobj=io.BytesIO(raw)).read()
+              except:data=raw
+              # strip WARC and embedded HTTP headers
+              p=data.find(b'\r\n\r\n'); payload=data[p+4:] if p>=0 else data
+              p=payload.find(b'\r\n\r\n')
+              if payload.startswith(b'HTTP/') and p>=0: payload=payload[p+4:]
+              text=payload.decode('utf-8','replace')
+              print('PAYLOAD',len(text),text[:5000].replace('\n',' '))
+              if 'musiclist' in text.lower() or '酷我日语榜' in text:
+                print('LIKELY_RANKING_PAYLOAD')
+            except Exception as e:
+              print('RECOVER_ERR',repr(e))
