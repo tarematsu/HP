@@ -1,0 +1,62 @@
+name: Collect Spotify Japan Daily Top Artist
+
+on:
+  schedule:
+    # Spotify says daily charts are normally published by 22:00 UTC.
+    # Collect at 07:20 JST, matching the former native collector timing.
+    - cron: '20 22 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spotify-japan-daily-top-artist
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SPOTIFY_CHARTS_SP_DC: ${{ secrets.SPOTIFY_CHARTS_SP_DC || secrets.SPOTIFY_SP_DC }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Verify Spotify Charts session
+        shell: bash
+        run: |
+          if [ -z "$SPOTIFY_CHARTS_SP_DC" ]; then
+            echo "::error title=Spotify Charts session missing::Configure SPOTIFY_CHARTS_SP_DC as a repository Actions secret."
+            exit 1
+          fi
+
+      - name: Install browserless Spotify Charts client
+        run: python -m pip install --disable-pip-version-check --no-cache-dir 'curl-cffi==0.16.3'
+
+      - name: Fetch Japan Daily Top Artist
+        run: python worker/scripts/collect-spotify-artist-chart-actions.py --output .spotify-artist-chart.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Persist normalized artist ranks
+        run: node worker/scripts/persist-spotify-artist-chart-actions.mjs .spotify-artist-chart.json
+
+      - name: Refresh Spotify Pages read model
+        run: node worker/scripts/refresh-spotify-read-model-actions.mjs
