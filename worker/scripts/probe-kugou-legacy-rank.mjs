@@ -26,15 +26,18 @@ for (const host of hosts) {
 }
 
 for (const host of hosts) {
-  const url = `${host}/api/v3/rank/vol?rankid=${RANK_ID}&plat=0&version=9108&ranktype=1`;
-  try {
-    const response = await fetch(url, {redirect:'follow',headers:{'user-agent':'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Mobile Safari/537.36','accept':'application/json,*/*'},signal:AbortSignal.timeout(8000)});
-    const text = await response.text();
-    let json = null; try { json = JSON.parse(text); } catch {}
-    const years = Array.isArray(json?.data?.info) ? json.data.info : [];
-    out.requests.push({host,final_url:response.url,kind:'vol',http_status:response.status,ok:response.ok,api_status:json?.status ?? null,errcode:json?.errcode ?? null,error:json?.error ?? null,years:years.map(y=>({year:y.year,count:Array.isArray(y.vols)?y.vols.length:0,min_volid:Array.isArray(y.vols)&&y.vols.length?Math.min(...y.vols.map(v=>Number(v.volid))):null,max_volid:Array.isArray(y.vols)&&y.vols.length?Math.max(...y.vols.map(v=>Number(v.volid))):null,first:y.vols?.[0],last:y.vols?.at?.(-1)})),body_sample:text.slice(0,500)});
-  } catch (error) {
-    out.requests.push({host,kind:'vol',ok:false,transport_error:String(error?.stack || error)});
+  for (const rankCid of [null, 48141, 48078, 47523, 40000]) {
+    const cid = rankCid == null ? '' : `&rank_cid=${rankCid}`;
+    const url = `${host}/api/v3/rank/vol?rankid=${RANK_ID}&plat=0&version=9108&ranktype=1${cid}`;
+    try {
+      const response = await fetch(url, {redirect:'follow',headers:{'user-agent':'Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 Mobile Safari/537.36','accept':'application/json,*/*'},signal:AbortSignal.timeout(8000)});
+      const text = await response.text();
+      let json = null; try { json = JSON.parse(text); } catch {}
+      const years = Array.isArray(json?.data?.info) ? json.data.info : [];
+      out.requests.push({host,final_url:response.url,kind:'vol',rank_cid:rankCid,http_status:response.status,ok:response.ok,api_status:json?.status ?? null,errcode:json?.errcode ?? null,error:json?.error ?? null,years:years.map(y=>({year:y.year,count:Array.isArray(y.vols)?y.vols.length:0,min_volid:Array.isArray(y.vols)&&y.vols.length?Math.min(...y.vols.map(v=>Number(v.volid))):null,max_volid:Array.isArray(y.vols)&&y.vols.length?Math.max(...y.vols.map(v=>Number(v.volid))):null,first:y.vols?.[0],last:y.vols?.at?.(-1)})),body_sample:text.slice(0,500)});
+    } catch (error) {
+      out.requests.push({host,kind:'vol',rank_cid:rankCid,ok:false,transport_error:String(error?.stack || error)});
+    }
   }
 }
 console.log(JSON.stringify(out,null,2));
