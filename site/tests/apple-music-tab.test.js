@@ -164,7 +164,8 @@ test('Apple Music regional list is Japan-first and keeps other-region-only songs
 
 test('Apple Music Japan rank chart keeps first place at the top and exposes a current-rank legend', () => {
   assert.match(runtime, /renderRankHistoryChart\(/);
-  assert.match(rankChart, /const yFor = \(rank\) => margin\.top \+ \(rank - 1\)/);
+  assert.match(rankChart, /const boundedRank = Math\.min\(ceiling, Math\.max\(1, Number\(rank\)\)\)/);
+  assert.match(rankChart, /return margin\.top \+ \(boundedRank - 1\)/);
   assert.match(runtime, /人気曲順位。1位が上、圏外が下。/);
   assert.match(runtime, /renderJapanLegend/);
   assert.match(shell, /className: 'apple-rank-chart chart-fit'/);
