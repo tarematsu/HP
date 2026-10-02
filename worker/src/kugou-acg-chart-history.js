@@ -37,6 +37,20 @@ export function kugouAcgPeriodDate(period) {
   return new Date(monday.getTime() + 3 * DAY_MS).toISOString().slice(0, 10);
 }
 
+function isoWeekPeriodFromDate(dateText) {
+  const date = new Date(`${dateText}T00:00:00Z`);
+  if (!Number.isFinite(date.getTime())) return null;
+  const thursday = new Date(date.getTime());
+  const weekday = (thursday.getUTCDay() + 6) % 7;
+  thursday.setUTCDate(thursday.getUTCDate() - weekday + 3);
+  const year = thursday.getUTCFullYear();
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const jan4Weekday = (jan4.getUTCDay() + 6) % 7;
+  jan4.setUTCDate(jan4.getUTCDate() - jan4Weekday + 3);
+  const week = 1 + Math.round((thursday.getTime() - jan4.getTime()) / (7 * DAY_MS));
+  return `${year}_${week}`;
+}
+
 function dateFromVolume(value) {
   const text = String(value || '');
   const compact = text.match(/(?:^|\D)(20\d{2})(\d{2})(\d{2})(?:\D|$)/);
@@ -48,7 +62,9 @@ function dateFromVolume(value) {
 
 function issueNumber(volume) {
   for (const value of [volume?.volname, volume?.voltitle, volume?.issue]) {
-    const match = String(value || '').match(/(\d{1,2})(?:期)?$/);
+    const text = String(value || '').trim();
+    if (/^20\d{6}$/.test(text)) continue;
+    const match = text.match(/(\d{1,2})(?:期)?$/);
     const number = Number(match?.[1]);
     if (Number.isInteger(number) && number >= 1 && number <= 53) return number;
   }
@@ -64,18 +80,19 @@ export function kugouAcgVolumeList(payload) {
     for (const volume of Array.isArray(group?.vols) ? group.vols : []) {
       const volid = String(volume?.volid ?? '').trim();
       if (!volid || seen.has(volid)) continue;
+      const publishedAt = dateFromVolume(volume?.volname) || dateFromVolume(volume?.voltitle);
       const issue = issueNumber(volume);
-      const period = Number.isInteger(year) && issue ? `${year}_${issue}` : null;
-      const publishedAt = dateFromVolume(volume?.volname)
-        || dateFromVolume(volume?.voltitle)
-        || (period ? kugouAcgPeriodDate(period) : '');
-      if (!period || !publishedAt) continue;
+      const period = publishedAt
+        ? isoWeekPeriodFromDate(publishedAt)
+        : Number.isInteger(year) && issue ? `${year}_${issue}` : null;
+      const resolvedDate = publishedAt || (period ? kugouAcgPeriodDate(period) : '');
+      if (!period || !resolvedDate) continue;
       seen.add(volid);
       volumes.push({
         period,
-        published_at:publishedAt,
-        year,
-        issue,
+        published_at:resolvedDate,
+        year:Number.isInteger(year) ? year : Number(period.split('_')[0]),
+        issue:issue || Number(period.split('_')[1]),
         volid,
         volname:volume?.volname ?? null,
         voltitle:volume?.voltitle ?? null,
