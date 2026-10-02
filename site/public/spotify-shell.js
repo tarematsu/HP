@@ -5,6 +5,7 @@ import {
   mountDashboardShell,
 } from './dashboard-ui-common.js?v=20261001.1';
 import { installSpotifyAllTracksFilter } from './spotify-all-tracks.js?v=20261002.1';
+import { installSpotifyUpdatedAt } from './spotify-updated-at.js?v=20261003.1';
 
 const artistTabs = dashboardModeTabs([
   { value: 'all', label: 'すべて' },
@@ -66,7 +67,7 @@ mountDashboardShell({
     position: 'beforebegin',
     html: `
       <div class="regional-chart-meta spotify-chart-meta">
-        <span>更新日 <strong id="spotifySnapshotDate">-</strong></span>
+        <span>更新日時 <strong id="spotifyUpdatedAt">-</strong></span>
         <span>更新周期 <strong>毎日5:00</strong></span>
       </div>
       ${dashboardNotice({ id: 'spotifyNotice' })}
@@ -75,4 +76,5 @@ mountDashboardShell({
   },
 });
 
+installSpotifyUpdatedAt();
 installSpotifyAllTracksFilter();
