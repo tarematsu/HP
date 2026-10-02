@@ -62,15 +62,19 @@ test('regional read model includes complete Kugou Japan chart seed and coverage 
   const counts = history.reduce((map, item) => map.set(item.canonical_artist, (map.get(item.canonical_artist) || 0) + 1), new Map());
   const best = (artist) => Math.min(...history.filter((item) => item.canonical_artist === artist).map((item) => item.rank));
 
-  assert.equal(history.length, 115);
-  assert.equal(payload.kugou_japan_chart.coverage.oldest_available, '2024-10-31 10:10:01');
+  assert.equal(history.length, 1496);
+  assert.equal(payload.kugou_japan_chart.coverage.oldest_available, '2017-11-22');
+  assert.equal(payload.kugou_japan_chart.coverage.legacy_covered_dates.length, 1809);
+  assert.equal(payload.kugou_japan_chart.coverage.current_api_oldest_available, '2024-10-31 10:10:01');
   assert.equal(payload.kugou_japan_chart.coverage.latest_available, '2026-09-30 10:10:01');
-  assert.equal(counts.get('sakurazaka46'), 53);
-  assert.equal(counts.get('nogizaka46'), 56);
-  assert.equal(counts.get('hinatazaka46'), 6);
-  assert.equal(best('sakurazaka46'), 19);
-  assert.equal(best('nogizaka46'), 2);
-  assert.equal(best('hinatazaka46'), 8);
+  assert.equal(counts.get('sakurazaka46'), 113);
+  assert.equal(counts.get('nogizaka46'), 1127);
+  assert.equal(counts.get('hinatazaka46'), 256);
+  assert.equal(best('sakurazaka46'), 15);
+  assert.equal(best('nogizaka46'), 1);
+  assert.equal(best('hinatazaka46'), 4);
+  assert.ok(history.some((item) => item.published_at === '2019-04-22' && item.canonical_artist === 'hinatazaka46' && item.rank === 50));
+  assert.ok(history.some((item) => item.published_at === '2019-05-30' && item.canonical_artist === 'nogizaka46' && item.rank === 45));
 });
 
 test('YouTube Music collector metadata exposes free public metrics without account-only fields', () => {
@@ -150,7 +154,7 @@ test('regional music publication writes one compact R2 object', async () => {
   assert.equal(writes[0].body.releases.length, 1);
   assert.equal(writes[0].body.playlist_memberships.length, 1);
   assert.equal(writes[0].body.qq_japan_chart.history.length, 0);
-  assert.equal(writes[0].body.kugou_japan_chart.history.length, 115);
+  assert.equal(writes[0].body.kugou_japan_chart.history.length, 1496);
   assert.deepEqual(writes[0].body.services[0].metrics, ['artist_likes']);
   assert.deepEqual(result, {
     storage: 'r2',
@@ -162,7 +166,7 @@ test('regional music publication writes one compact R2 object', async () => {
     playlist_memberships: 1,
     services: 1,
     qq_japan_chart_entries: 0,
-    kugou_japan_chart_entries: 115,
+    kugou_japan_chart_entries: 1496,
   });
 });
 

@@ -3,7 +3,7 @@ const REGIONAL_MUSIC_MODES = new Set('genie bugs joox nhaccuatui anghami melon q
 const REGIONAL_MUSIC_VIEW = Object.freeze({
   viewId: 'regionalMusicView',
   shell: () => import(location.origin + '/regional-music-shell.js?v=20261002.3'),
-  runtime: () => import(location.origin + '/regional-music.js?v=20261002.5'),
+  runtime: () => import(location.origin + '/regional-music.js?v=20261002.6'),
   noticeId: 'regionalMusicNotice',
 });
 
