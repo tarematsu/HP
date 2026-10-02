@@ -5,6 +5,7 @@ on:
     paths:
       - 'worker/scripts/probe-kugou-public.mjs'
       - 'worker/scripts/probe-kugou-japan-rank.mjs'
+      - 'worker/scripts/probe-kugou-current-rank.mjs'
       - '.github/workflows/kugou-public-probe.yml'
   workflow_dispatch:
 
@@ -23,13 +24,17 @@ jobs:
       - name: Probe Kugou public artist/search surfaces
         working-directory: worker
         run: node scripts/probe-kugou-public.mjs | tee kugou-public-probe.json
-      - name: Probe Kugou Japan ranking
+      - name: Probe Kugou legacy Japan ranking
         working-directory: worker
         run: node scripts/probe-kugou-japan-rank.mjs | tee kugou-japan-rank-probe.json
+      - name: Probe Kugou current signed Japan ranking API
+        working-directory: worker
+        run: node scripts/probe-kugou-current-rank.mjs | tee kugou-current-rank-probe.json
       - uses: actions/upload-artifact@v4
         with:
           name: kugou-public-probe
           path: |
             worker/kugou-public-probe.json
             worker/kugou-japan-rank-probe.json
+            worker/kugou-current-rank-probe.json
           retention-days: 7
