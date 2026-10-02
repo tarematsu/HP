@@ -53,6 +53,13 @@ const qqHistoryTable = dashboardTable({
   wrapClassName: 'regional-music-table-wrap',
 });
 
+const qqPopularityTable = dashboardTable({
+  className: 'regional-music-table regional-music-qq-popularity-table music-service-track-table',
+  headers: ['グループ', '順位', '曲名'],
+  bodyId: 'qqArtistPopularityBody',
+  wrapClassName: 'regional-music-table-wrap',
+});
+
 const healthPanel = dashboardDataCard({
   title: '収集状態',
   kicker: 'COLLECTOR',
@@ -60,31 +67,51 @@ const healthPanel = dashboardDataCard({
   bodyHtml: '<dl id="regionalMusicHealth" class="regional-music-health-list"></dl>',
 });
 
+function artistFilterButtons(prefix, label) {
+  return `
+    <div class="mode-tabs regional-chart-filter" role="group" aria-label="${label}">
+      <button type="button" class="active" data-${prefix}-artist-filter="all" aria-pressed="true">すべて</button>
+      <button type="button" data-${prefix}-artist-filter="sakurazaka46" aria-pressed="false">櫻坂</button>
+      <button type="button" data-${prefix}-artist-filter="nogizaka46" aria-pressed="false">乃木坂</button>
+      <button type="button" data-${prefix}-artist-filter="hinatazaka46" aria-pressed="false">日向坂</button>
+    </div>`;
+}
+
 const qqChartSection = `
-  <section id="qqJapanChartSection" class="music-service-section" hidden>
-    <div class="section-head music-service-section-heading"><div><p class="kicker">JAPAN CHART</p><h2>日本榜 グループ別最高順位推移</h2></div></div>
+  <section id="qqJapanChartSection" class="music-service-section regional-chart-section" hidden>
+    <div class="regional-chart-section-head"><h2>QQ Music 日本榜 グループ別最高順位推移</h2></div>
     <div id="qqJapanRankLegend" class="regional-music-rank-legend" aria-label="グループ凡例"></div>
     <div id="qqJapanRankChart" class="regional-music-rank-chart"></div>
-    <p id="qqJapanCoverage" class="regional-music-rank-coverage subtle"></p>
   </section>`;
 
 const qqHistorySection = `
-  <section id="qqJapanHistorySection" class="music-service-section" hidden>
-    <div class="section-head music-service-section-heading"><div><p class="kicker">RANK HISTORY</p><h2>日本榜 ランクイン履歴</h2></div></div>
+  <section id="qqJapanHistorySection" class="music-service-section regional-chart-section" hidden>
+    <div class="regional-chart-section-head">
+      <h2>QQ Music 日本榜 ランクイン履歴</h2>
+      ${artistFilterButtons('qq', 'QQ Music 日本榜 表示グループ')}
+    </div>
     ${qqHistoryTable}
   </section>`;
 
+const qqPopularitySection = `
+  <section id="qqArtistPopularitySection" class="music-service-section regional-chart-section" hidden>
+    <div class="regional-chart-section-head"><h2>QQ Music アーティスト別人気曲順位</h2></div>
+    ${qqPopularityTable}
+  </section>`;
+
 const kugouChartSection = `
-  <section id="kugouJapanChartSection" class="music-service-section" hidden>
-    <div class="section-head music-service-section-heading"><div><p class="kicker">JAPAN CHART</p><h2>日本榜 グループ別最高順位推移</h2></div></div>
+  <section id="kugouJapanChartSection" class="music-service-section regional-chart-section" hidden>
+    <div class="regional-chart-section-head"><h2>Kugou Music 日本榜 グループ別最高順位推移</h2></div>
     <div id="kugouJapanRankLegend" class="regional-music-rank-legend" aria-label="グループ凡例"></div>
     <div id="kugouJapanRankChart" class="regional-music-rank-chart"></div>
-    <p id="kugouJapanCoverage" class="regional-music-rank-coverage subtle"></p>
   </section>`;
 
 const kugouHistorySection = `
-  <section id="kugouJapanHistorySection" class="music-service-section" hidden>
-    <div class="section-head music-service-section-heading"><div><p class="kicker">RANK HISTORY</p><h2>日本榜 ランクイン履歴</h2></div></div>
+  <section id="kugouJapanHistorySection" class="music-service-section regional-chart-section" hidden>
+    <div class="regional-chart-section-head">
+      <h2>Kugou Music 日本榜 ランクイン履歴</h2>
+      ${artistFilterButtons('kugou', 'Kugou Music 日本榜 表示グループ')}
+    </div>
     ${kugouHistoryTable}
   </section>`;
 
@@ -95,22 +122,32 @@ mountDashboardShell({
     anchorId: 'likesView',
     position: 'beforebegin',
     html: `
-      ${musicServiceMeta({ label: '更新', valueId: 'regionalMusicUpdated' })}
-      ${dashboardNotice({ id: 'regionalMusicNotice' })}
-      <div class="regional-music-title-row">
-        <div><p class="kicker">REGIONAL MUSIC</p><h2 id="regionalMusicTitle">-</h2></div>
-        <span id="regionalMusicRegion" class="regional-music-region"></span>
+      <div id="regionalMusicGenericHeader">
+        ${musicServiceMeta({ label: '更新', valueId: 'regionalMusicUpdated' })}
+        ${dashboardNotice({ id: 'regionalMusicNotice' })}
+        <div class="regional-music-title-row">
+          <div><p class="kicker">REGIONAL MUSIC</p><h2 id="regionalMusicTitle">-</h2></div>
+          <span id="regionalMusicRegion" class="regional-music-region"></span>
+        </div>
+        ${summary}
+        <section id="regionalMusicHealthSection" class="music-service-section">${healthPanel}</section>
       </div>
-      ${summary}
-      <section id="regionalMusicHealthSection" class="music-service-section">${healthPanel}</section>
+      <div id="regionalMusicCompactMeta" class="regional-chart-meta" hidden>
+        <span>更新日時 <strong id="regionalMusicChartUpdated">-</strong></span>
+        <span>更新周期 <strong id="regionalMusicChartCadence">-</strong></span>
+      </div>
+      <div id="regionalMusicCompactNotice" hidden>${dashboardNotice({ id: 'regionalMusicCompactNoticeText' })}</div>
       ${qqChartSection}
       ${qqHistorySection}
+      ${qqPopularitySection}
       ${kugouChartSection}
       ${kugouHistorySection}
-      ${musicServiceSection({ id: 'regionalMusicArtistSection', kicker: 'ARTISTS', title: 'アーティスト', bodyHtml: artistTable })}
-      ${musicServiceSection({ id: 'regionalMusicTrackSection', kicker: 'TRACKS', title: '楽曲', bodyHtml: trackTable })}
-      ${musicServiceSection({ id: 'regionalMusicPlaylistSection', kicker: 'PLAYLISTS', title: 'プレイリスト', bodyHtml: playlistTable })}`,
+      <div id="regionalMusicGenericTables">
+        ${musicServiceSection({ id: 'regionalMusicArtistSection', kicker: 'ARTISTS', title: 'アーティスト', bodyHtml: artistTable })}
+        ${musicServiceSection({ id: 'regionalMusicTrackSection', kicker: 'TRACKS', title: '楽曲', bodyHtml: trackTable })}
+        ${musicServiceSection({ id: 'regionalMusicPlaylistSection', kicker: 'PLAYLISTS', title: 'プレイリスト', bodyHtml: playlistTable })}
+      </div>`,
   },
 });
 
-void import('./qq-japan-chart-ui.js?v=20261002.1').then(({ initQqJapanHistoryUi }) => initQqJapanHistoryUi());
+void import('./qq-japan-chart-ui.js?v=20261002.2').then(({ initQqJapanHistoryUi }) => initQqJapanHistoryUi());
