@@ -1,0 +1,29 @@
+name: Kugou public probe
+
+on:
+  pull_request:
+    paths:
+      - 'worker/scripts/probe-kugou-public.mjs'
+      - '.github/workflows/kugou-public-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Probe Kugou public artist/search surfaces
+        working-directory: worker
+        run: node scripts/probe-kugou-public.mjs | tee kugou-public-probe.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kugou-public-probe
+          path: worker/kugou-public-probe.json
+          retention-days: 7
