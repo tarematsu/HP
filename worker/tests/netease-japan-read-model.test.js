@@ -40,5 +40,6 @@ test('regional music publication injects 网易云日语榜 history from R2', as
     saveR2Response:async(_r2,_key,body)=>{published.push(JSON.parse(body));return {storage:'r2',bytes:body.length};},
   });
   assert.equal(published[0].netease_japan_chart.history[0].rank,8);
-  assert.equal(result.netease_japan_chart_entries,1);
+  assert.equal(result.storage,'r2');
+  assert.equal('netease_japan_chart_entries' in result,false);
 });
