@@ -48,16 +48,24 @@ export function mergeGenieSnapshot(payload, snapshot) {
   // The snapshot's own timestamps preserve freshness and degraded state.
   if (existing?.storage === 'r2' && existing.updated_at > snapshot.updated_at) return payload;
   const replace = (rows, replacement) => [...(rows || []).filter(row => row.service !== 'genie'), ...replacement];
-  return { ...payload, updated_at:Math.max(payload.updated_at || 0, snapshot.updated_at), artists:replace(payload.artists, snapshot.artists), tracks:replace(payload.tracks, snapshot.tracks), artist_track_orders:replace(payload.artist_track_orders, snapshot.artist_track_orders), services:replace(payload.services, [{ ...snapshot.state, storage:'r2', metrics:['artist_likes','track_plays','track_listeners','track_likes','catalog'], region:'KR' }]) };
+  const keepOnDiscoveryFailure = snapshot.state.status === 'error' && !snapshot.tracks.length;
+  return { ...payload, updated_at:Math.max(payload.updated_at || 0, snapshot.updated_at), artists:keepOnDiscoveryFailure ? payload.artists : replace(payload.artists, snapshot.artists), tracks:keepOnDiscoveryFailure ? payload.tracks : replace(payload.tracks, snapshot.tracks), artist_track_orders:keepOnDiscoveryFailure ? payload.artist_track_orders : replace(payload.artist_track_orders, snapshot.artist_track_orders), services:replace(payload.services, [{ ...snapshot.state, storage:'r2', metrics:['artist_likes','track_plays','track_listeners','track_likes','catalog'], region:'KR', phase:1 }]) };
 }
 
-export async function collectGenieSnapshot({ fetchHtml, load, save, now = Date.now(), concurrency = 4, checkpointSize = 100 }) {
+export async function collectGenieSnapshot({ fetchHtml, load, save, now = Date.now(), concurrency = 4, checkpointSize = 100, deadline = Date.now() + 38 * 60_000 }) {
   const day = regionalMusicSnapshotDate(now);
   const progressKey = genieCheckpointKey(day);
   const previous = await load(GENIE_SNAPSHOT_KEY);
   let progress = await load(progressKey);
   if (progress?.version !== 1 || progress.day !== day || !Array.isArray(progress.catalog) || !Array.isArray(progress.artists) || !Array.isArray(progress.tracks)) {
-    progress = { version:1, day, observed_at:now, ...await discoverGenieCatalog(fetchHtml, now), tracks:[] };
+    try {
+      progress = { version:1, day, observed_at:now, ...await discoverGenieCatalog(fetchHtml, now), tracks:[] };
+    } catch (error) {
+      const snapshot = { ...(snapshotValid(previous) ? previous : {version:1,service:'genie',artists:[],tracks:[],artist_track_orders:[]}), day, updated_at:Date.now(), state:{ ...previous?.state, service:'genie', status:'error', last_attempt_at:now, updated_at:Date.now(), last_error_class:'catalog_discovery_error', last_error_message:String(error.message).slice(0,250), entity_counts:{tracks:previous?.tracks?.length || 0, current_day_metrics:0} } };
+      await save(genieDayKey(day),snapshot);
+      await save(GENIE_SNAPSHOT_KEY,snapshot);
+      return snapshot;
+    }
     await save(progressKey, progress);
   }
   const completed = new Map(progress.tracks.map(row => [row.service_track_id, row]));
@@ -66,10 +74,12 @@ export async function collectGenieSnapshot({ fetchHtml, load, save, now = Date.n
   const width = Math.min(4, Math.max(1, Math.floor(concurrency)));
   const chunkSize = Math.min(100, Math.max(1, Math.floor(checkpointSize)));
   for (let start = 0; start < pending.length; start += chunkSize) {
+    if (Date.now() >= deadline) break;
     const chunk = pending.slice(start,start + chunkSize);
     let index = 0;
     await Promise.all(Array.from({ length:width }, async () => {
       while (index < chunk.length) {
+        if (Date.now() >= deadline) break;
         const row = chunk[index++];
         try {
           const html = await fetchHtml(row.track_url);

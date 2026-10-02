@@ -57,3 +57,15 @@ Run `node worker/scripts/probe-genie-catalog.mjs /tmp/genie-catalog-evidence` wi
 - Estimated daily full-detail work at current counts: 55 catalog pages plus 1,610 song detail requests, with profile/search overhead; about 4,830 song-storage SQL statements using the current three-write ranked-song path. These are estimates, not measured D1 usage.
 - Conclusion: full public catalog discovery works, and broader cumulative metric collection has a verified route. Full 1,610-song metric coverage was not attempted in this investigation. Implement resumable batches and partial-failure accounting before production expansion.
 - Production collector remains at five songs per artist; this PR is research/evidence, not a deployed expansion.
+
+## Low Cloudflare usage implementation
+
+- `collect-genie-r2.yml` runs daily at 07:00 JST on main only, or manually. Public HTML fetching runs in GitHub Actions with at most four requests concurrently and a 38-minute soft budget.
+- Per-day progress saves every 100 pending songs. Same-day restarts reuse successful metrics, only retry missing IDs, and preserve the verified catalog/popularity order.
+- Daily full snapshots and the latest snapshot live in the configured existing PAGES_RESPONSE_R2 bucket. Full-catalog metric collection makes no D1 calls and sends no per-song Queue messages.
+- One final regional-music-publish message regenerates the existing shared regional read model. This publication retains its existing D1 reads for the other services; it is not a zero-D1 entire pipeline.
+- Both Worker publication and deployment/manual bootstrap merge the Genie R2 snapshot. Legacy five-song D1 collection remains as a small compatibility fallback and cannot replace the full R2 catalog.
+- Catalog outages preserve prior data with error health. Missing detail metrics retain prior-day values and their original timestamps, with degraded status and current-day coverage. On budget exhaustion partial results publish and same-day reruns resume.
+- At 1,610 distinct IDs, estimated R2 collection writes are 20 per successful day (one initial checkpoint, 17 batch checkpoints, day and latest), plus the shared read-model object. Instead of about 4,830 per-song SQL statements and potentially thousands of messages, the new collector uses zero song SQL statements and one publication message. Counts are design estimates, not measured billing.
+- Tradeoff: public detail requests are still required for each song, and run on Actions minutes. Daily lists are intentionally refreshed to find new songs and maintain current recent-week popularity order. No claim of free total execution is made.
+- No production deployment has occurred in this PR yet.

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { collectGenieSnapshot, GENIE_SNAPSHOT_KEY, GENIE_ARTIST_IDS, genieCheckpointKey, parseGenieCatalogPage, mergeGenieSnapshot, discoverGenieCatalog } from '../src/genie-catalog-snapshot.js';
 import { enqueueGeniePublication } from '../scripts/collect-genie-r2-actions.mjs';
+import { bootstrapProducerReadModel } from '../scripts/bootstrap-producer-read-model.mjs';
 const now = Date.parse('2026-10-01T23:00:00Z');
 const day = '2026-10-02';
 const catalog = [1,2,3].map(id=>({service:'genie',canonical_artist:'sakurazaka46',service_artist_id:'80988607',service_track_id:String(id),track_url:`https://www.genie.co.kr/detail/songInfo?xgnm=${id}`,popularity_rank:id}));
@@ -77,4 +78,32 @@ test('publication sends one shared read-model message, never one per song',async
   await enqueueGeniePublication({queues:{consumers:[{queue:'test-queue'}]}},async(path,body)=>{calls.push({path,body});return [{queue_name:'test-queue',queue_id:'test-id'}];},now);
   assert.equal(calls.length,2);
   assert.equal(calls[1].body.body.message_type,'regional-music-publish');
+});
+test('time budget publishes degraded coverage without losing resumable progress',async()=>{
+  const mem=memory({version:1,day,observed_at:now,artists:[],catalog,tracks:[]});
+  const result=await collectGenieSnapshot({...mem,now,deadline:0,fetchHtml:async()=>{throw new Error('must not fetch');}});
+  assert.equal(result.state.status,'degraded');
+  assert.equal(result.state.entity_counts.failures,3);
+  assert.equal(mem.objects.get(genieCheckpointKey(day)).catalog.length,3);
+});
+test('catalog outage publishes error health while preserving known data',async()=>{
+  const mem=memory(null);
+  const result=await collectGenieSnapshot({...mem,now,fetchHtml:async()=>{throw new Error('HTTP 503');}});
+  assert.equal(result.state.status,'error');
+  assert.equal(result.state.last_error_class,'catalog_discovery_error');
+  const merged=mergeGenieSnapshot({tracks:catalog,artists:[],artist_track_orders:[],services:[]},result);
+  assert.equal(merged.tracks.length,3);
+  assert.equal(merged.services[0].status,'error');
+});
+test('deployment bootstrap merges full R2 catalog instead of republishing legacy rows',async()=>{
+  let published;
+  const snapshot={version:1,service:'genie',updated_at:now,tracks:catalog,artists:[],artist_track_orders:[],state:{service:'genie',status:'ok',updated_at:now}};
+  await bootstrapProducerReadModel('wrangler.regional-music.jsonc',{
+    now,
+    config:{d1_databases:[{binding:'OTHER_DB',database_name:'test'}],r2_buckets:[{binding:'PAGES_RESPONSE_R2',bucket_name:'test'}]},
+    db:{prepare:()=>({all:async()=>({results:[]})})},
+    r2:{get:async key=>{assert.equal(key,GENIE_SNAPSHOT_KEY);return {json:async()=>snapshot};},put:async(_key,body)=>{published=JSON.parse(JSON.parse(body).body);}},
+  });
+  assert.equal(published.tracks.length,3);
+  assert.equal(published.services[0].storage,'r2');
 });
