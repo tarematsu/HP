@@ -1,9 +1,13 @@
 name: Apply regional read-model split onto latest main
+
 on:
   push:
-    branches: [refactor/regional-read-models-by-service-v2]
+    branches:
+      - refactor/regional-read-models-by-service-v2
+
 permissions:
   contents: write
+
 jobs:
   apply:
     if: github.actor != 'github-actions[bot]'
@@ -13,13 +17,56 @@ jobs:
         with:
           fetch-depth: 0
           ref: refactor/regional-read-models-by-service-v2
-      - name: Apply and resolve
+
+      - name: Apply original split and resolve newer chart features
         shell: bash
         run: |
           set -euo pipefail
           git fetch origin refactor/regional-read-models-by-service
-          files=(site/functions/api/regional-music.js site/functions/lib/api-contract.js site/public/netease-japan-chart-ui.js site/public/qq-japan-chart-ui.js site/public/regional-music.js site/public/youtube-music.js site/tests/api-catalog-files.test.js site/tests/api-contract.test.js site/tests/pages-api-gateway.test.js site/tests/regional-music-navigation.test.js worker/src/regional-music-read-model.js worker/tests/genie-catalog-snapshot.test.js worker/tests/netease-japan-read-model.test.js worker/tests/producer-read-model-bootstrap.test.js worker/tests/regional-music-read-model.test.js)
+          files=(
+            site/functions/api/regional-music.js
+            site/functions/lib/api-contract.js
+            site/public/netease-japan-chart-ui.js
+            site/public/qq-japan-chart-ui.js
+            site/public/regional-music.js
+            site/public/youtube-music.js
+            site/tests/api-catalog-files.test.js
+            site/tests/api-contract.test.js
+            site/tests/pages-api-gateway.test.js
+            site/tests/regional-music-navigation.test.js
+            worker/src/regional-music-read-model.js
+            worker/tests/genie-catalog-snapshot.test.js
+            worker/tests/netease-japan-read-model.test.js
+            worker/tests/producer-read-model-bootstrap.test.js
+            worker/tests/regional-music-read-model.test.js
+          )
           git diff 11311c5fda9ec8a8feb3934d489d71f751e10b14..origin/refactor/regional-read-models-by-service -- "${files[@]}" > /tmp/change.patch
           git apply --3way --index /tmp/change.patch || true
           git checkout --theirs -- worker/src/regional-music-read-model.js worker/tests/regional-music-read-model.test.js
-          echo 'CmZyb20gcGF0aGxpYiBpbXBvcnQgUGF0aAoKc3JjID0gUGF0aCgid29ya2VyL3NyYy9yZWdpb25hbC1tdXNpYy1yZWFkLW1vZGVsLmpzIikKcyA9IHNyYy5yZWFkX3RleHQoKQoKcyA9IHMucmVwbGFjZSgKICAgICJpbXBvcnQgeyBORVRFQVNFX0pBUEFOX0hJU1RPUllfVklFV19LRVkgfSBmcm9tICcuL25ldGVhc2UtamFwYW4tY2hhcnQtaGlzdG9yeS5qcyc7XG4iLAogICAgImltcG9ydCB7XG4iCiAgICAiICBRUV9BTklNRV9ISVNUT1JZX0lOREVYX0tFWSxcbiIKICAgICIgIFFRX0FOSU1FX0hJU1RPUllfVklFV19LRVksXG4iCiAgICAifSBmcm9tICcuL3FxLWFuaW1lLWNoYXJ0LWhpc3Rvcnktdmlldy5qcyc7XG4iCiAgICAiaW1wb3J0IHsgTkVURUFTRV9KQVBBTl9ISVNUT1JZX1ZJRVdfS0VZIH0gZnJvbSAnLi9uZXRlYXNlLWphcGFuLWNoYXJ0LWhpc3RvcnkuanMnO1xuIgogICAgImltcG9ydCB7IE1FTE9OX0pQT1BfSElTVE9SWV9WSUVXX0tFWSB9IGZyb20gJy4vbWVsb24tanBvcC1oaXN0b3J5LmpzJztcbiIKKQoKbmVlZGxlID0gImV4cG9ydCBmdW5jdGlvbiBuZXRlYXNlSmFwYW5DaGFydFJlYWRNb2RlbCh2aWV3KSB7IgppZiAiZXhwb3J0IGZ1bmN0aW9uIHFxQW5pbWVDaGFydFJlYWRNb2RlbCIgbm90IGluIHM6CiAgICBzID0gcy5yZXBsYWNlKAogICAgICAgIG5lZWRsZSwKICAgICAgICAiZXhwb3J0IGZ1bmN0aW9uIHFxQW5pbWVDaGFydFJlYWRNb2RlbCh2aWV3LCBpbmRleCA9IG51bGwpIHtcbiIKICAgICAgICAiICByZXR1cm4gcXFKYXBhbkNoYXJ0UmVhZE1vZGVsKHZpZXcsIGluZGV4KTtcbiIKICAgICAgICAifVxuXG4iICsgbmVlZGxlCiAgICApCgpuZWVkbGUgPSAiZnVuY3Rpb24gc2VydmljZVJvd3ModmFsdWUsIHNlcnZpY2UpIHsiCmlmICJleHBvcnQgZnVuY3Rpb24gbWVsb25KcG9wQ2hhcnRSZWFkTW9kZWwiIG5vdCBpbiBzOgogICAgcyA9IHMucmVwbGFjZSgKICAgICAgICBuZWVkbGUsCiAgICAgICAgImV4cG9ydCBmdW5jdGlvbiBtZWxvbkpwb3BDaGFydFJlYWRNb2RlbCh2aWV3KSB7XG4iCiAgICAgICAgIiAgcmV0dXJuIHtcbiIKICAgICAgICAiICAgIGNvdmVyYWdlOnZpZXc/LmNvdmVyYWdlICYmIHR5cGVvZiB2aWV3LmNvdmVyYWdlID09PSAnb2JqZWN0JyA/IHZpZXcuY292ZXJhZ2UgOiB7fSxcbiIKICAgICAgICAiICAgIHBlcmlvZHM6QXJyYXkuaXNBcnJheSh2aWV3Py5wZXJpb2RzKSA/IHZpZXcucGVyaW9kcyA6IFtdLFxuIgogICAgICAgICIgICAgaGlzdG9yeTpBcnJheS5pc0FycmF5KHZpZXc/Lmhpc3RvcnkpID8gdmlldy5oaXN0b3J5IDogW10sXG4iCiAgICAgICAgIiAgfTtcbiIKICAgICAgICAifVxuXG4iICsgbmVlZGxlCiAgICApCgpzID0gcy5yZXBsYWNlKAogICAgIiAgaWYgKHNlcnZpY2VJZCA9PT0gJ3FxX211c2ljJykgcGF5bG9hZC5xcV9qYXBhbl9jaGFydCA9IHFxSmFwYW5DaGFydFJlYWRNb2RlbChzbmFwc2hvdD8ucXFKYXBhbkNoYXJ0LCBzbmFwc2hvdD8ucXFKYXBhbkNoYXJ0SW5kZXgpOyIsCiAgICAiICBpZiAoc2VydmljZUlkID09PSAncXFfbXVzaWMnKSB7XG4iCiAgICAiICAgIHBheWxvYWQucXFfamFwYW5fY2hhcnQgPSBxcUphcGFuQ2hhcnRSZWFkTW9kZWwoc25hcHNob3Q/LnFxSmFwYW5DaGFydCwgc25hcHNob3Q/LnFxSmFwYW5DaGFydEluZGV4KTtcbiIKICAgICIgICAgcGF5bG9hZC5xcV9hbmltZV9jaGFydCA9IHFxQW5pbWVDaGFydFJlYWRNb2RlbChzbmFwc2hvdD8ucXFBbmltZUNoYXJ0LCBzbmFwc2hvdD8ucXFBbmltZUNoYXJ0SW5kZXgpO1xuIgogICAgIiAgfSIKKQpzID0gcy5yZXBsYWNlKAogICAgIiAgaWYgKHNlcnZpY2VJZCA9PT0gJ25ldGVhc2VfY2xvdWRfbXVzaWMnKSBwYXlsb2FkLm5ldGVhc2VfamFwYW5fY2hhcnQgPSBuZXRlYXNlSmFwYW5DaGFydFJlYWRNb2RlbChzbmFwc2hvdD8ubmV0ZWFzZUphcGFuQ2hhcnQpOyIsCiAgICAiICBpZiAoc2VydmljZUlkID09PSAnbmV0ZWFzZV9jbG91ZF9tdXNpYycpIHBheWxvYWQubmV0ZWFzZV9qYXBhbl9jaGFydCA9IG5ldGVhc2VKYXBhbkNoYXJ0UmVhZE1vZGVsKHNuYXBzaG90Py5uZXRlYXNlSmFwYW5DaGFydCk7XG4iCiAgICAiICBpZiAoc2VydmljZUlkID09PSAnbWVsb24nKSBwYXlsb2FkLm1lbG9uX2pwb3BfY2hhcnQgPSBtZWxvbkpwb3BDaGFydFJlYWRNb2RlbChzbmFwc2hvdD8ubWVsb25KcG9wQ2hhcnQpOyIKKQoKcyA9IHMucmVwbGFjZSgKICAgICIgICAgcXFfamFwYW5fY2hhcnQ6IHFxSmFwYW5DaGFydFJlYWRNb2RlbChzbmFwc2hvdD8ucXFKYXBhbkNoYXJ0LCBzbmFwc2hvdD8ucXFKYXBhbkNoYXJ0SW5kZXgpLFxuIgogICAgIiAgICBuZXRlYXNlX2phcGFuX2NoYXJ0OiIsCiAgICAiICAgIHFxX2phcGFuX2NoYXJ0OiBxcUphcGFuQ2hhcnRSZWFkTW9kZWwoc25hcHNob3Q/LnFxSmFwYW5DaGFydCwgc25hcHNob3Q/LnFxSmFwYW5DaGFydEluZGV4KSxcbiIKICAgICIgICAgcXFfYW5pbWVfY2hhcnQ6IHFxQW5pbWVDaGFydFJlYWRNb2RlbChzbmFwc2hvdD8ucXFBbmltZUNoYXJ0LCBzbmFwc2hvdD8ucXFBbmltZUNoYXJ0SW5kZXgpLFxuIgogICAgIiAgICBuZXRlYXNlX2phcGFuX2NoYXJ0OiIKKQpzID0gcy5yZXBsYWNlKAogICAgIiAgICBuZXRlYXNlX2phcGFuX2NoYXJ0OiBuZXRlYXNlSmFwYW5DaGFydFJlYWRNb2RlbChzbmFwc2hvdD8ubmV0ZWFzZUphcGFuQ2hhcnQpLFxuIgogICAgIiAgICBrdWdvdV9qYXBhbl9jaGFydDoiLAogICAgIiAgICBuZXRlYXNlX2phcGFuX2NoYXJ0OiBuZXRlYXNlSmFwYW5DaGFydFJlYWRNb2RlbChzbmFwc2hvdD8ubmV0ZWFzZUphcGFuQ2hhcnQpLFxuIgogICAgIiAgICBtZWxvbl9qcG9wX2NoYXJ0OiBtZWxvbkpwb3BDaGFydFJlYWRNb2RlbChzbmFwc2hvdD8ubWVsb25KcG9wQ2hhcnQpLFxuIgogICAgIiAgICBrdWdvdV9qYXBhbl9jaGFydDoiCikKCnN0YXJ0ID0gcy5pbmRleCgiYXN5bmMgZnVuY3Rpb24gaHlkcmF0ZVNlcnZpY2VQYXlsb2FkKCIpCmVuZCA9IHMuaW5kZXgoIlxuZnVuY3Rpb24gdW5jaGFuZ2VkUmVhZE1vZGVsIiwgc3RhcnQpCm1lcmdlZCA9ICcnJ2FzeW5jIGZ1bmN0aW9uIGh5ZHJhdGVTZXJ2aWNlUGF5bG9hZChlbnYsIGJhc2VTbmFwc2hvdCwgc2VydmljZSwgZ2VuZXJhdGVkQXQpIHsKICBjb25zdCBzZXJ2aWNlSWQgPSBTdHJpbmcoc2VydmljZSB8fCAnJykudHJpbSgpOwogIGxldCBwYXlsb2FkID0gcmVnaW9uYWxNdXNpY1NlcnZpY2VSZWFkTW9kZWxQYXlsb2FkKGJhc2VTbmFwc2hvdCwgc2VydmljZUlkLCBnZW5lcmF0ZWRBdCk7CiAgY29uc3QgcjIgPSBlbnY/LlBBR0VTX1JFU1BPTlNFX1IyOwogIGlmICh0eXBlb2YgcjI/LmdldCAhPT0gJ2Z1bmN0aW9uJykgcmV0dXJuIHBheWxvYWQ7CgogIGNvbnN0IHJlZ2lvbmFsU25hcHNob3QgPSBhd2FpdCByMkpzb24ocjIsIHJlZ2lvbmFsU25hcHNob3RLZXkoc2VydmljZUlkKSk7CiAgcGF5bG9hZCA9IG1lcmdlUmVnaW9uYWxSMlNuYXBzaG90KHBheWxvYWQsIHJlZ2lvbmFsU25hcHNob3QpOwogIHBheWxvYWQucmVhZF9tb2RlbF92ZXJzaW9uID0gUkVHSU9OQUxfTVVTSUNfUkVBRF9NT0RFTF9WRVJTSU9OOwogIHBheWxvYWQuc2VydmljZSA9IHNlcnZpY2VJZDsKICBjb25zdCBleHRyYVRpbWVzID0gW3JlZ2lvbmFsU25hcHNob3Q/LnVwZGF0ZWRfYXRdOwoKICBpZiAoc2VydmljZUlkID09PSAncXFfbXVzaWMnKSB7CiAgICBjb25zdCBbamFwYW5WaWV3LCBqYXBhbkluZGV4LCBhbmltZVZpZXcsIGFuaW1lSW5kZXhdID0gYXdhaXQgUHJvbWlzZS5hbGwoWwogICAgICByMkpzb24ocjIsIFFRX0pBUEFOX0hJU1RPUllfVklFV19LRVkpLAogICAgICByMkpzb24ocjIsIFFRX0pBUEFOX0hJU1RPUllfSU5ERVhfS0VZKSwKICAgICAgcjJKc29uKHIyLCBRUV9BTklNRV9ISVNUT1JZX1ZJRVdfS0VZKSwKICAgICAgcjJKc29uKHIyLCBRUV9BTklNRV9ISVNUT1JZX0lOREVYX0tFWSksCiAgICBdKTsKICAgIHBheWxvYWQucXFfamFwYW5fY2hhcnQgPSBxcUphcGFuQ2hhcnRSZWFkTW9kZWwoamFwYW5WaWV3LCBqYXBhbkluZGV4KTsKICAgIHBheWxvYWQucXFfYW5pbWVfY2hhcnQgPSBxcUFuaW1lQ2hhcnRSZWFkTW9kZWwoYW5pbWVWaWV3LCBhbmltZUluZGV4KTsKICAgIGV4dHJhVGltZXMucHVzaChqYXBhblZpZXc/LnVwZGF0ZWRfYXQsIGphcGFuSW5kZXg/LnVwZGF0ZWRfYXQsIGFuaW1lVmlldz8udXBkYXRlZF9hdCwgYW5pbWVJbmRleD8udXBkYXRlZF9hdCk7CiAgfSBlbHNlIGlmIChzZXJ2aWNlSWQgPT09ICduZXRlYXNlX2Nsb3VkX211c2ljJykgewogICAgY29uc3QgdmlldyA9IGF3YWl0IHIySnNvbihyMiwgTkVURUFTRV9KQVBBTl9ISVNUT1JZX1ZJRVdfS0VZKTsKICAgIHBheWxvYWQubmV0ZWFzZV9qYXBhbl9jaGFydCA9IG5ldGVhc2VKYXBhbkNoYXJ0UmVhZE1vZGVsKHZpZXcpOwogICAgZXh0cmFUaW1lcy5wdXNoKHZpZXc/LnVwZGF0ZWRfYXQpOwogIH0gZWxzZSBpZiAoc2VydmljZUlkID09PSAnbWVsb24nKSB7CiAgICBjb25zdCB2aWV3ID0gYXdhaXQgcjJKc29uKHIyLCBNRUxPTl9KUE9QX0hJU1RPUllfVklFV19LRVkpOwogICAgcGF5bG9hZC5tZWxvbl9qcG9wX2NoYXJ0ID0gbWVsb25KcG9wQ2hhcnRSZWFkTW9kZWwodmlldy k7CiAgICBleHRyYVRpbWVzLnB1c2godmlldy8udXBkYXRlZF9hdCk7CiAgfQoKICBwYXlsb2FkLnNvdXJjZV91cGRhdGVkX2F0ID0gbWF4aW11bVRpbWUoW3BheWxvYWQuc291cmNlX3VwZGF0ZWRfYXQsIC4uLmV4dHJhVGltZXNdKTsKICBwYXlsb2FkLnVwZGF0ZWRfYXQgPSBOdW1iZXIoZ2VuZXJhdGVkQXQpIHx8IERhdGUubm93KCk7CiAgcmV0dXJuIHBheWxvYWQ7Cn0KJycnCnMgPSBzWzpzdGFydF0gKyBtZXJnZWQgKyBzW2VuZDpdCnNyYy53cml0ZV90ZXh0KHMpCg==" 1>/dev/null
+          python .github/scripts/resolve-regional-read-model-v2.py
+          git add -A
+          if git ls-files -u | grep -q .; then
+            git ls-files -u
+            exit 1
+          fi
+
+      - name: Run focused tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix worker ci --prefer-offline --no-audit --no-fund
+          npm --prefix site ci --prefer-offline --no-audit --no-fund
+          node --test worker/tests/regional-music-read-model.test.js worker/tests/netease-japan-read-model.test.js worker/tests/genie-catalog-snapshot.test.js worker/tests/producer-read-model-bootstrap.test.js
+          node --test site/tests/api-contract.test.js site/tests/api-catalog-files.test.js site/tests/pages-api-gateway.test.js site/tests/regional-music-navigation.test.js
+
+      - name: Commit resolved implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git rm .github/workflows/apply-regional-read-model-v2.yml .github/scripts/resolve-regional-read-model-v2.py
+          rm -f .regional-read-model-v2-trigger
+          git add -A
+          git commit -m 'Split regional read models by service on latest main'
+          git push origin HEAD:refactor/regional-read-models-by-service-v2
