@@ -9,13 +9,13 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 2
     steps:
-      - name: Compare possible date parameters
+      - name: Compare possible date parameters in parallel
         shell: bash
         run: |
           python3 <<'PY'
-          import urllib.request,urllib.parse,json,hashlib,itertools
+          import urllib.request,urllib.parse,json,hashlib,itertools,concurrent.futures
           base='https://kbangserver.kuwo.cn/ksong.s'
           common={'from':'pc','fmt':'json','pn':'0','rn':'100','type':'bang','data':'content','id':'183','show_copyright_off':'0','pcmp4':'1','isbang':'1','userid':'0'}
           def fetch(extra=None):
@@ -23,7 +23,7 @@ jobs:
             u=base+'?'+urllib.parse.urlencode(q)
             try:
               req=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'})
-              with urllib.request.urlopen(req,timeout=7) as r:b=r.read()
+              with urllib.request.urlopen(req,timeout=5) as r:b=r.read()
               p=json.loads(b.decode('utf-8','replace'))
               rows=p.get('musiclist') or p.get('musicList') or (p.get('data') or {}).get('musicList') or []
               slim=[(x.get('id'),x.get('name'),x.get('artist'),x.get('rank_change'),x.get('trend')) for x in rows]
@@ -33,12 +33,14 @@ jobs:
           baseline=fetch(); print('BASE',json.dumps(baseline,ensure_ascii=False))
           names=['date','dt','day','pub','pubTime','time','rankDate','rankdate','bangDate','bangdate','period','issue','version','timestamp','updateTime','startTime']
           values=['2026-09-01','20260901','2025-01-01','20250101','1725148800','1756684800']
+          tests=list(itertools.product(names,values))
+          def one(t):
+            n,v=t; return n,v,fetch({n:v})
           changed=[]
-          for name,val in itertools.product(names,values):
-            r=fetch({name:val})
-            same=r.get('hash')==baseline.get('hash') and r.get('pub')==baseline.get('pub')
-            if not same:
-              changed.append((name,val,r))
-              print('DIFF',name,val,json.dumps(r,ensure_ascii=False))
-          print('CHANGED_COUNT',len(changed))
+          with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex:
+            for name,val,r in ex.map(one,tests):
+              same=r.get('hash')==baseline.get('hash') and r.get('pub')==baseline.get('pub')
+              if not same:
+                changed.append((name,val,r)); print('DIFF',name,val,json.dumps(r,ensure_ascii=False))
+          print('CHANGED_COUNT',len(changed),'TOTAL',len(tests))
           PY
