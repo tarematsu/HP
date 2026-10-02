@@ -25,6 +25,15 @@ function normalizePeriod(value) {
   return `${match[1]}_${Number(match[2])}`;
 }
 
+export function compareQqJapanHistoryPeriods(left, right) {
+  const a = normalizePeriod(left);
+  const b = normalizePeriod(right);
+  if (!a || !b) return String(left).localeCompare(String(right));
+  const [aYear, aWeek] = a.split('_').map(Number);
+  const [bYear, bWeek] = b.split('_').map(Number);
+  return (aYear - bYear) || (aWeek - bWeek);
+}
+
 export function qqIsoWeekPeriod(dateLike) {
   const input = dateLike instanceof Date ? dateLike : new Date(dateLike);
   if (!Number.isFinite(input.getTime())) throw new Error('invalid QQ history date');
@@ -269,13 +278,14 @@ export async function backfillQqJapanHistory({
     await sleep(REQUEST_DELAY_MS);
   }
 
+  const sortedPeriods = Object.keys(weeks).sort(compareQqJapanHistoryPeriods);
   const index = {
     version:1,
     service:'qq_music',
     chart:'japan_toplist',
     updated_at:Date.now(),
-    earliest_period:Object.keys(weeks).sort()[0] || null,
-    latest_period:Object.keys(weeks).sort().at(-1) || null,
+    earliest_period:sortedPeriods[0] || null,
+    latest_period:sortedPeriods.at(-1) || null,
     weeks,
   };
   await save(QQ_JAPAN_HISTORY_INDEX_KEY, index);

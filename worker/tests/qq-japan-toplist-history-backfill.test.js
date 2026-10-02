@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   backfillQqJapanHistory,
+  compareQqJapanHistoryPeriods,
   filterQqJapanSakamichiEntries,
   QQ_JAPAN_HISTORY_INDEX_KEY,
   QQ_JAPAN_HISTORY_PROGRESS_KEY,
@@ -16,6 +17,11 @@ test('QQ Japan history builds ISO weekly periods back to the requested start dat
   assert.equal(qqIsoWeekPeriod(new Date('2024-12-30T00:00:00Z')), '2025_1');
   const periods = qqJapanHistoryPeriods(Date.parse('2026-10-02T00:00:00Z'), '2026-09-20');
   assert.deepEqual(periods.slice(0, 2), ['2026_40', '2026_39']);
+});
+
+test('QQ Japan history period ordering compares year and week numerically', () => {
+  const periods = ['2026_9', '2026_40', '2025_52', '2018_1'];
+  assert.deepEqual(periods.sort(compareQqJapanHistoryPeriods), ['2018_1', '2025_52', '2026_9', '2026_40']);
 });
 
 test('QQ Japan historical request sends topId 17, period and Top 100 size', () => {
@@ -80,6 +86,7 @@ test('QQ Japan backfill writes resumable per-week R2 records and an index', asyn
   );
   assert.equal(objects.get(QQ_JAPAN_HISTORY_INDEX_KEY).weeks['2026_40'].counts.sakurazaka46, 1);
   assert.equal(objects.get(QQ_JAPAN_HISTORY_PROGRESS_KEY).stored_periods, 2);
+  assert.equal(objects.get(QQ_JAPAN_HISTORY_INDEX_KEY).latest_period, '2026_40');
   assert.ok(saved.includes(QQ_JAPAN_HISTORY_INDEX_KEY));
 });
 
