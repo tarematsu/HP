@@ -1,0 +1,41 @@
+name: Backfill QQ and Kugou canonical track ids
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/backfill-qq-kugou-canonical-once.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: regional-music-r2-collection
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Recollect QQ and Kugou with sh_tracks.id resolution
+        working-directory: worker
+        run: node scripts/collect-regional-r2-actions.mjs --services=qq_music,kugou_music
+      - name: Audit canonical track id coverage
+        working-directory: worker
+        run: node scripts/audit-regional-canonical-r2.mjs
