@@ -34,6 +34,7 @@ test('regional music read model normalizes collector health and implemented serv
   assert.equal(payload.artists[0].followers, 478);
   assert.deepEqual(payload.releases, []);
   assert.deepEqual(payload.qq_japan_chart, { coverage:{}, history:[] });
+  assert.deepEqual(payload.melon_jpop_chart, { coverage:{}, periods:[], history:[] });
   assert.deepEqual(payload.services[0].entity_counts, { artists: 3 });
   assert.equal(payload.services[0].region, 'HK/TH/SEA');
   assert.equal(payload.services[0].phase, 1);
@@ -154,6 +155,7 @@ test('regional music publication writes one compact R2 object', async () => {
   assert.equal(writes[0].body.releases.length, 1);
   assert.equal(writes[0].body.playlist_memberships.length, 1);
   assert.equal(writes[0].body.qq_japan_chart.history.length, 0);
+  assert.equal(writes[0].body.melon_jpop_chart.history.length, 0);
   assert.equal(writes[0].body.kugou_japan_chart.history.length, 1496);
   assert.deepEqual(writes[0].body.services[0].metrics, ['artist_likes']);
   assert.deepEqual(result, {
@@ -167,6 +169,7 @@ test('regional music publication writes one compact R2 object', async () => {
     services: 1,
     qq_japan_chart_entries: 0,
     kugou_japan_chart_entries: 1496,
+    melon_jpop_chart_entries: 0,
   });
 });
 
