@@ -1,0 +1,47 @@
+name: Reconstruct previous Kuwo Japanese chart
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-prevday-reconstruct.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Reconstruct previous positions
+        run: |
+          python3 <<'PY'
+          import json,urllib.request
+          allr=[]
+          for pn in range(4):
+            u=f'https://kbangserver.kuwo.cn/ksong.s?from=pc&fmt=json&pn={pn}&rn=30&type=bang&data=content&id=183&show_copyright_off=0&pcmp4=1&isbang=1&userid=0'
+            try:
+              q=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'})
+              with urllib.request.urlopen(q,timeout=8) as r:p=json.loads(r.read().decode('utf-8','replace'))
+            except Exception as e:
+              print('ERR',pn,repr(e));continue
+            rs=p.get('musiclist') or p.get('musicList') or (p.get('data') or {}).get('musicList') or []
+            allr.extend(rs)
+            if len(rs)<30: break
+          allr=allr[:100]
+          prev={}; new=[]; bad=[]
+          for cur,x in enumerate(allr,1):
+            isnew=str(x.get('isnew','0'))=='1'
+            ch=int(x.get('rank_change') or 0)
+            tr=str(x.get('trend') or '')[:1]
+            if isnew:
+              new.append((cur,x.get('name'),x.get('artist')));continue
+            pr=cur+ch if tr=='u' else cur-ch if tr=='d' else cur
+            if not 1<=pr<=100 or pr in prev: bad.append((cur,pr,x.get('name'),tr,ch,prev.get(pr)))
+            else:prev[pr]=(x.get('name'),x.get('artist'),cur,tr,ch)
+          missing=[i for i in range(1,101) if i not in prev]
+          print('CURRENT_COUNT',len(allr))
+          print('RECONSTRUCTED_PREVIOUS',len(prev))
+          print('NEW_CURRENT',len(new),json.dumps(new,ensure_ascii=False))
+          print('MISSING_PREVIOUS_RANKS',missing)
+          print('COLLISIONS_OR_BAD',json.dumps(bad,ensure_ascii=False))
+          print('PREVIOUS_TOP20')
+          for i in range(1,21):print(i,prev.get(i,'<dropped unknown>'))
+          PY
