@@ -1,0 +1,118 @@
+name: Recover archived Kuwo chart content 183
+
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-wayback-content-183.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Search and replay content bid 183
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import concurrent.futures, html, json, pathlib, re, urllib.parse, urllib.request
+
+          UA='kuwo-content-183-backfill/1.0'
+          BASES=[
+            'https://www.kuwo.cn/newh5/bang/content?bid=183',
+            'http://www.kuwo.cn/newh5/bang/content?bid=183',
+            'https://kuwo.cn/newh5/bang/content?bid=183',
+            'http://kuwo.cn/newh5/bang/content?bid=183',
+            'https://m.kuwo.cn/newh5/bang/content?bid=183',
+            'http://m.kuwo.cn/newh5/bang/content?bid=183',
+          ]
+          aliases=['櫻坂46','樱坂46','Sakurazaka46','乃木坂46','Nogizaka46','日向坂46','Hinatazaka46','欅坂46','Keyakizaka46']
+
+          def get(url,t=20):
+            try:
+              q=urllib.request.Request(url,headers={'User-Agent':UA})
+              with urllib.request.urlopen(q,timeout=t) as r:return r.status,r.geturl(),r.read().decode('utf-8','replace')
+            except Exception as e:return 0,url,repr(e)
+
+          def cdx(base):
+            # Prefix search deliberately includes historical pic= parameters.
+            q={'url':base,'matchType':'prefix','output':'json','fl':'timestamp,original,statuscode,digest,mimetype','filter':'statuscode:200','collapse':'digest','limit':'1000'}
+            st,_,txt=get('https://web.archive.org/cdx/search/cdx?'+urllib.parse.urlencode(q),20)
+            rows=[]
+            try:
+              arr=json.loads(txt)
+              if isinstance(arr,list) and len(arr)>1:
+                rows=[{'timestamp':z[0],'original':z[1],'status':z[2],'digest':z[3],'mime':z[4]} for z in arr[1:]]
+            except:pass
+            return {'base':base,'status':st,'rows':rows,'head':txt[:300] if not rows else ''}
+
+          with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+            blocks=list(ex.map(cdx,BASES))
+          caps=[];seen=set()
+          for b in blocks:
+            for r in b['rows']:
+              # Require bid=183 after URL decoding.
+              u=urllib.parse.unquote(r['original'])
+              if not re.search(r'(?:[?&])bid=183(?:&|$)',u,re.I):continue
+              k=(r['timestamp'],r['digest'],r['original'])
+              if k in seen:continue
+              seen.add(k);caps.append(r)
+          caps.sort(key=lambda x:x['timestamp'])
+
+          def replay(c):
+            su=f"https://web.archive.org/web/{c['timestamp']}id_/{c['original']}"
+            st,final,s=get(su,20)
+            item={**c,'replay_status':st,'final':final,'bytes':len(s)}
+            if st!=200:return item
+            clean=html.unescape(s)
+            item['aliases']=[a for a in aliases if a.lower() in clean.lower()]
+            # Parse old rendered chart rows: chart_num / chart_songname / chart_artname.
+            pat=re.compile(r'<span[^>]*class=["\']chart_num["\'][^>]*>\s*(\d+)\s*</span>\s*<span[^>]*class=["\']chart_songname["\'][^>]*>(.*?)</span>\s*<span[^>]*class=["\']chart_artname["\'][^>]*>\s*-?\s*(.*?)</span>',re.I|re.S)
+            rows=[]
+            for m in pat.finditer(clean):
+              strip=lambda x: re.sub(r'<[^>]+>','',x).strip()
+              rows.append({'rank':int(m.group(1)),'name':strip(m.group(2)),'artist':strip(m.group(3))})
+            # Fallback: more generic rank/song rows from old content page.
+            if not rows:
+              for m in re.finditer(r'(?:rank|num)[^>]*>\s*(\d{1,3})\s*<[^>]+>\s*([^<]{1,200})',clean,re.I):
+                rows.append({'rank':int(m.group(1)),'text':m.group(2).strip()})
+            item['rows']=rows[:300]
+            item['row_count']=len(rows)
+            hits=[]
+            for r in rows:
+              hay=(r.get('name','')+' '+r.get('artist','')+' '+r.get('text','')).lower()
+              for a in aliases:
+                if a.lower() in hay:hits.append({'alias':a,**r})
+            item['sakamichi']=hits
+            # Also report useful structural evidence.
+            item['counts']={k:len(re.findall(k,clean,re.I)) for k in ['chart_songname','musiclist','rank_change','trend','rid','bid=183']}
+            # Save limited plaintext around first chart item for parser tuning.
+            p=clean.lower().find('chart_songname')
+            if p>=0:item['sample']=clean[max(0,p-1000):p+5000]
+            return item
+
+          # At most 100 unique captures.
+          with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+            recovered=list(ex.map(replay,caps[:100])) if caps else []
+
+          report={'blocks':[{'base':b['base'],'status':b['status'],'count':len(b['rows']),'head':b['head']} for b in blocks],'capture_count':len(caps),'captures':caps,'recovered':recovered}
+          pathlib.Path('kuwo-content-183-wayback.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          print('CAPTURES',len(caps))
+          for b in report['blocks']:print('BLOCK',b['status'],b['count'],b['base'],b['head'][:120])
+          for x in recovered:
+            print('REC',x['timestamp'],'HTTP',x['replay_status'],'ROWS',x.get('row_count'),'ALIASES',x.get('aliases'),x['original'])
+            if x.get('rows'):print('TOP10',json.dumps(x['rows'][:10],ensure_ascii=False))
+            if x.get('sakamichi'):print('SAKAMICHI',json.dumps(x['sakamichi'],ensure_ascii=False))
+            if x.get('counts'):print('COUNTS',x['counts'])
+          PY
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kuwo-content-183-wayback
+          path: kuwo-content-183-wayback.json
+          if-no-files-found: ignore
+          retention-days: 7
