@@ -7,6 +7,7 @@ import {
   QQ_JAPAN_HISTORY_VIEW_KEY,
 } from './qq-japan-chart-history-view.js';
 import { NETEASE_JAPAN_HISTORY_VIEW_KEY } from './netease-japan-chart-history.js';
+import { MELON_JPOP_HISTORY_VIEW_KEY } from './melon-jpop-history.js';
 import {
   KUGOU_JAPAN_CHART_COVERAGE,
   KUGOU_JAPAN_CHART_HISTORY,
@@ -177,6 +178,14 @@ export function neteaseJapanChartReadModel(view) {
   };
 }
 
+export function melonJpopChartReadModel(view) {
+  return {
+    coverage:view?.coverage && typeof view.coverage === 'object' ? view.coverage : {},
+    periods:Array.isArray(view?.periods) ? view.periods : [],
+    history:Array.isArray(view?.history) ? view.history : [],
+  };
+}
+
 export function regionalMusicReadModelPayload(snapshot, updatedAt = Date.now()) {
   return {
     ok: true,
@@ -189,6 +198,7 @@ export function regionalMusicReadModelPayload(snapshot, updatedAt = Date.now()) 
     artist_track_orders: Array.isArray(snapshot?.artistTrackOrders) ? snapshot.artistTrackOrders : [],
     qq_japan_chart: qqJapanChartReadModel(snapshot?.qqJapanChart, snapshot?.qqJapanChartIndex),
     netease_japan_chart: neteaseJapanChartReadModel(snapshot?.neteaseJapanChart),
+    melon_jpop_chart: melonJpopChartReadModel(snapshot?.melonJpopChart),
     kugou_japan_chart: {
       coverage: KUGOU_JAPAN_CHART_COVERAGE,
       history: KUGOU_JAPAN_CHART_HISTORY,
@@ -206,7 +216,7 @@ export async function publishRegionalMusicReadModel(env, updatedAt = Date.now(),
   const snapshot = await load(env?.OTHER_DB);
   let payload = regionalMusicReadModelPayload(snapshot, updatedAt);
   if (typeof env.PAGES_RESPONSE_R2.get === 'function') {
-    const [snapshots, qqHistoryView, qqHistoryIndex, neteaseHistoryView] = await Promise.all([
+    const [snapshots, qqHistoryView, qqHistoryIndex, neteaseHistoryView, melonHistoryView] = await Promise.all([
       Promise.all(REGIONAL_MUSIC_DAILY_SERVICES.map(async service => {
         const object = await env.PAGES_RESPONSE_R2.get(regionalSnapshotKey(service));
         return object ? object.json() : null;
@@ -223,10 +233,15 @@ export async function publishRegionalMusicReadModel(env, updatedAt = Date.now(),
         const object = await env.PAGES_RESPONSE_R2.get(NETEASE_JAPAN_HISTORY_VIEW_KEY);
         return object ? object.json() : null;
       })(),
+      (async () => {
+        const object = await env.PAGES_RESPONSE_R2.get(MELON_JPOP_HISTORY_VIEW_KEY);
+        return object ? object.json() : null;
+      })(),
     ]);
     for (const regionalSnapshot of snapshots) payload = mergeRegionalR2Snapshot(payload,regionalSnapshot);
     payload.qq_japan_chart = qqJapanChartReadModel(qqHistoryView, qqHistoryIndex);
     payload.netease_japan_chart = neteaseJapanChartReadModel(neteaseHistoryView);
+    payload.melon_jpop_chart = melonJpopChartReadModel(melonHistoryView);
   }
   const body = JSON.stringify(payload);
   const saved = await save(
@@ -249,5 +264,6 @@ export async function publishRegionalMusicReadModel(env, updatedAt = Date.now(),
     services: payload.services.length,
     qq_japan_chart_entries: payload.qq_japan_chart.history.length,
     kugou_japan_chart_entries: payload.kugou_japan_chart.history.length,
+    melon_jpop_chart_entries: payload.melon_jpop_chart.history.length,
   };
 }
