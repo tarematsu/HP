@@ -108,7 +108,7 @@ const qqPopularitySection = `
 
 const neteaseChartSection = `
   <section id="neteaseJapanChartSection" class="music-service-section regional-chart-section" hidden>
-    <div class="regional-chart-section-head"><h2>NetEase Cloud Music 日語榜 グループ別最高順位推移</h2></div>
+    <div class="regional-chart-section-head"><h2>网易云日语榜 グループ別最高順位推移</h2></div>
     <div id="neteaseJapanRankLegend" class="regional-music-rank-legend" aria-label="グループ凡例"></div>
     <div id="neteaseJapanRankChart" class="regional-music-rank-chart"></div>
   </section>`;
@@ -116,8 +116,8 @@ const neteaseChartSection = `
 const neteaseHistorySection = `
   <section id="neteaseJapanHistorySection" class="music-service-section regional-chart-section" hidden>
     <div class="regional-chart-section-head">
-      <h2>NetEase Cloud Music 日語榜 ランクイン履歴</h2>
-      ${artistFilterButtons('netease', 'NetEase Cloud Music 日語榜 表示グループ')}
+      <h2>网易云日语榜 ランクイン履歴</h2>
+      ${artistFilterButtons('netease', '网易云日语榜 表示グループ')}
     </div>
     ${neteaseHistoryTable}
   </section>`;
@@ -176,4 +176,4 @@ mountDashboardShell({
 });
 
 void import('./qq-japan-chart-ui.js?v=20261002.2').then(({ initQqJapanHistoryUi }) => initQqJapanHistoryUi());
-void import('./netease-japan-chart-ui.js?v=20261002.2').then(({ initNeteaseJapanHistoryUi }) => initNeteaseJapanHistoryUi());
+void import('./netease-japan-chart-ui.js?v=20261002.3').then(({ initNeteaseJapanHistoryUi }) => initNeteaseJapanHistoryUi());
