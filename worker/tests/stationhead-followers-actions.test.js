@@ -30,11 +30,17 @@ test('Actions follower targets always include fixed handles and merge valid sour
   assert.equal(result.ignored, 2);
 });
 
-test('Actions follower read model calculates deltas and affiliations from daily D1 rows', () => {
+test('Actions follower read model calculates deltas and prunes accounts no longer registered', () => {
   const model = buildFollowerReadModel({
     historyRows: [
-      { observed_date_jst: '2026-10-02', followers_json: JSON.stringify({ sakuramankai: 4282, hinatapr0211: 100 }) },
-      { observed_date_jst: '2026-10-03', followers_json: JSON.stringify({ sakuramankai: 4283, hinatapr0211: 103 }) },
+      {
+        observed_date_jst: '2026-10-02',
+        followers_json: JSON.stringify({ sakuramankai: 4282, hinatapr0211: 100, stalehost: 55 }),
+      },
+      {
+        observed_date_jst: '2026-10-03',
+        followers_json: JSON.stringify({ sakuramankai: 4283, hinatapr0211: 103, stalehost: 56 }),
+      },
     ],
     targets: [
       { handle: 'sakuramankai', source_mask: 1 },
@@ -47,6 +53,9 @@ test('Actions follower read model calculates deltas and affiliations from daily 
   assert.equal(model.accounts.find((row) => row.handle === 'sakuramankai').previous_day_delta, 1);
   assert.equal(model.accounts.find((row) => row.handle === 'hinatapr0211').previous_day_delta, 3);
   assert.deepEqual(model.memberships.hinatapr0211, { affiliation: 'Ohisama', group: 'hinatazaka46' });
+  assert.equal(model.handles.includes('stalehost'), false);
+  assert.equal(model.accounts.some((row) => row.handle === 'stalehost'), false);
+  assert.equal(model.rows.some((row) => Object.hasOwn(row, 'stalehost')), false);
 });
 
 test('Actions follower auth uses production Stationhead guest endpoints', async () => {
