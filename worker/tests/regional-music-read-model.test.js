@@ -5,10 +5,12 @@ import {
   loadRegionalMusicReadModel,
   REGIONAL_MUSIC_READ_MODEL_KEY,
   publishRegionalMusicReadModel,
+  qqAnimeChartReadModel,
   qqJapanChartReadModel,
   regionalMusicReadModelPayload,
 } from '../src/regional-music-read-model.js';
 import { QQ_JAPAN_HISTORY_VIEW_KEY } from '../src/qq-japan-chart-history-view.js';
+import { QQ_ANIME_HISTORY_VIEW_KEY } from '../src/qq-anime-chart-history-view.js';
 
 test('regional music read model normalizes collector health and implemented service metadata', () => {
   const payload = regionalMusicReadModelPayload({
@@ -34,7 +36,7 @@ test('regional music read model normalizes collector health and implemented serv
   assert.equal(payload.artists[0].followers, 478);
   assert.deepEqual(payload.releases, []);
   assert.deepEqual(payload.qq_japan_chart, { coverage:{}, history:[] });
-  assert.deepEqual(payload.melon_jpop_chart, { coverage:{}, periods:[], history:[] });
+  assert.deepEqual(payload.qq_anime_chart, { coverage:{}, history:[] });
   assert.deepEqual(payload.services[0].entity_counts, { artists: 3 });
   assert.equal(payload.services[0].region, 'HK/TH/SEA');
   assert.equal(payload.services[0].phase, 1);
@@ -45,16 +47,19 @@ test('regional music read model normalizes collector health and implemented serv
   assert.deepEqual(payload.services[1].metrics, []);
 });
 
-test('regional read model normalizes compact QQ Japan chart view', () => {
-  const normalized = qqJapanChartReadModel({
-    coverage:{ earliest_period:'2018_1', latest_period:'2026_40', entries:2 },
+test('regional read model normalizes compact QQ Japan and anime chart views', () => {
+  const view = {
+    coverage:{ earliest_period:'2020_23', latest_period:'2026_40', entries:2 },
     history:[
       { period:'2026_40', canonical_artist:'sakurazaka46', rank:9, title:'S' },
       { period:'2026_39', canonical_artist:'nogizaka46', rank:44, title:'N' },
     ],
-  });
-  assert.equal(normalized.coverage.latest_period, '2026_40');
-  assert.equal(normalized.history.length, 2);
+  };
+  const japan = qqJapanChartReadModel(view);
+  const anime = qqAnimeChartReadModel(view);
+  assert.equal(japan.coverage.latest_period, '2026_40');
+  assert.equal(japan.history.length, 2);
+  assert.deepEqual(anime, japan);
 });
 
 test('regional read model includes complete Kugou Japan chart seed and coverage boundary', () => {
@@ -155,7 +160,7 @@ test('regional music publication writes one compact R2 object', async () => {
   assert.equal(writes[0].body.releases.length, 1);
   assert.equal(writes[0].body.playlist_memberships.length, 1);
   assert.equal(writes[0].body.qq_japan_chart.history.length, 0);
-  assert.equal(writes[0].body.melon_jpop_chart.history.length, 0);
+  assert.equal(writes[0].body.qq_anime_chart.history.length, 0);
   assert.equal(writes[0].body.kugou_japan_chart.history.length, 1496);
   assert.deepEqual(writes[0].body.services[0].metrics, ['artist_likes']);
   assert.deepEqual(result, {
@@ -168,16 +173,23 @@ test('regional music publication writes one compact R2 object', async () => {
     playlist_memberships: 1,
     services: 1,
     qq_japan_chart_entries: 0,
+    qq_anime_chart_entries: 0,
     kugou_japan_chart_entries: 1496,
-    melon_jpop_chart_entries: 0,
   });
 });
 
-test('regional music publication injects QQ Japan history view from R2', async () => {
+test('regional music publication injects QQ Japan and anime history views from R2', async () => {
   const writes = [];
   const qqView = {
     coverage:{ earliest_period:'2018_1', latest_period:'2026_40', latest_rank_in_period:'2026_40', stored_periods:455, entries:1 },
     history:[{ period:'2026_40', published_at:'2026-10-01', canonical_artist:'sakurazaka46', rank:9, title:'Sakura' }],
+  };
+  const animeView = {
+    coverage:{ earliest_period:'2020_23', latest_period:'2026_40', latest_rank_in_period:'2025_15', stored_periods:328, entries:2 },
+    history:[
+      { period:'2025_15', published_at:'2025-04-10', canonical_artist:'sakurazaka46', rank:42, title:'ピッカーン！ (皮卡！)' },
+      { period:'2024_32', published_at:'2024-08-08', canonical_artist:'nogizaka46', rank:7, title:'あの光 (那光芒)' },
+    ],
   };
   const result = await publishRegionalMusicReadModel({
     OTHER_DB:{},
@@ -185,6 +197,7 @@ test('regional music publication injects QQ Japan history view from R2', async (
       put() {},
       async get(key) {
         if (key === QQ_JAPAN_HISTORY_VIEW_KEY) return { async json() { return structuredClone(qqView); } };
+        if (key === QQ_ANIME_HISTORY_VIEW_KEY) return { async json() { return structuredClone(animeView); } };
         return null;
       },
     },
@@ -197,5 +210,8 @@ test('regional music publication injects QQ Japan history view from R2', async (
   });
   assert.equal(writes[0].qq_japan_chart.coverage.latest_period, '2026_40');
   assert.equal(writes[0].qq_japan_chart.history[0].rank, 9);
+  assert.equal(writes[0].qq_anime_chart.coverage.earliest_period, '2020_23');
+  assert.equal(writes[0].qq_anime_chart.history[1].rank, 7);
   assert.equal(result.qq_japan_chart_entries, 1);
+  assert.equal(result.qq_anime_chart_entries, 2);
 });
