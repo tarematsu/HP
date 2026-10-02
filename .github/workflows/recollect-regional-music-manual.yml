@@ -1,24 +1,22 @@
-# Refresh artist page order and official Genie song titles.
+# Manual collection shares the R2 path and lock with scheduled collection.
 name: Recollect regional music manually
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/recollect-regional-music-manual.yml']
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: regional-music-manual-recollection
+  group: regional-music-r2-collection
   cancel-in-progress: false
 
 jobs:
   recollect:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
     steps:
@@ -37,6 +35,6 @@ jobs:
       - name: Install Worker dependencies
         working-directory: worker
         run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Recollect 19 regional services and publish their results
+      - name: Recollect all 19 services to R2 and publish their results
         working-directory: worker
-        run: node scripts/recollect-regional-music-actions.mjs
+        run: node scripts/collect-regional-r2-actions.mjs --all

@@ -103,7 +103,7 @@ test('deployment bootstrap merges full R2 catalog instead of republishing legacy
     now,
     config:{d1_databases:[{binding:'OTHER_DB',database_name:'test'}],r2_buckets:[{binding:'PAGES_RESPONSE_R2',bucket_name:'test'}]},
     db:{prepare:()=>({all:async()=>({results:[]})})},
-    r2:{get:async key=>{assert.equal(key,GENIE_SNAPSHOT_KEY);return {json:async()=>snapshot};},put:async(_key,body)=>{published=JSON.parse(JSON.parse(body).body);}},
+    r2:{get:async key=>key===GENIE_SNAPSHOT_KEY ? {json:async()=>snapshot} : null,put:async(_key,body)=>{published=JSON.parse(JSON.parse(body).body);}},
   });
   assert.equal(published.tracks.length,3);
   assert.equal(published.services[0].storage,'r2');
