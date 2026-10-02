@@ -9,6 +9,10 @@ import { collectRegionalR2Snapshot,regionalSnapshotKey,regionalDayKey,regionalSn
 import { collectGenieSnapshot } from '../src/genie-catalog-snapshot.js';
 import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
 import { regionalMusicSnapshotDate } from '../src/regional-music-store.js';
+import {
+  neteaseJapanHistoryRecordFromSnapshot,
+  upsertNeteaseJapanHistoryArtifacts,
+} from '../src/netease-japan-chart-history.js';
 
 export async function collectRegionalR2Run({load,save,now=Date.now(),all=false,fetchImpl=fetch,collectors=REGIONAL_MUSIC_SERVICE_COLLECTORS_BY_ID}) {
   const services=all ? [...REGIONAL_MUSIC_DAILY_SERVICES] : regionalMusicR2DueServices(now);
@@ -28,7 +32,15 @@ export async function collectRegionalR2Run({load,save,now=Date.now(),all=false,f
       const snapshot=await collectRegionalR2Snapshot({service,collect:collectors[service],previous,now,fetchImpl:fetchService});
       await save(regionalDayKey(service,snapshot.day),snapshot);
       await save(regionalSnapshotKey(service),snapshot);
-      results.push({service,status:snapshot.state.status});
+      let neteaseHistoryChanged=false;
+      if(service==='netease_cloud_music' && snapshot.state?.status!=='error') {
+        const record=neteaseJapanHistoryRecordFromSnapshot(snapshot,now);
+        if(record) {
+          const historyResult=await upsertNeteaseJapanHistoryArtifacts({load,save,record,updatedAt:now});
+          neteaseHistoryChanged=historyResult.changed;
+        }
+      }
+      results.push({service,status:snapshot.state.status,...(service==='netease_cloud_music' ? {japan_chart_history_changed:neteaseHistoryChanged} : {})});
     } finally {clearTimeout(timer);}
   }
   if(services.includes('genie')) {
