@@ -1,0 +1,58 @@
+name: Recover historical Kuwo chart.js
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-wayback-chartjs.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Fetch archived chart.js around known snapshots
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import urllib.request,urllib.parse,json,re,concurrent.futures
+          targets=[
+            'http://m.kuwo.cn/static/h5/js/bang/chart.js',
+            'http://kuwo.cn/static/h5/js/bang/chart.js',
+            'https://m.kuwo.cn/static/h5/js/bang/chart.js',
+            'https://kuwo.cn/static/h5/js/bang/chart.js',
+          ]
+          dates=['20200612','20220904','20250123']
+          def get(u,t=8):
+            try:
+              q=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0'})
+              with urllib.request.urlopen(q,timeout=t) as r:return r.status,r.geturl(),r.read().decode('utf-8','replace')
+            except Exception:return 0,u,''
+          def one(x):
+            target,date=x
+            u='https://archive.org/wayback/available?'+urllib.parse.urlencode({'url':target,'timestamp':date})
+            st,_,txt=get(u,7)
+            if st!=200:return None
+            try:c=(json.loads(txt).get('archived_snapshots') or {}).get('closest') or {}
+            except:return None
+            if not c.get('available'):return None
+            snap=c['url'].replace('http://web.archive.org','https://web.archive.org')
+            # raw replay
+            m=re.search(r'/web/(\d+)/(.+)$',snap)
+            if m:snap=f'https://web.archive.org/web/{m.group(1)}id_/{m.group(2)}'
+            st,u,b=get(snap,12)
+            return target,date,c,st,u,b
+          seen=set()
+          with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+            for z in ex.map(one,[(t,d) for t in targets for d in dates]):
+              if not z:continue
+              target,date,c,st,u,b=z
+              k=(c.get('timestamp'),c.get('url'))
+              if k in seen:continue
+              seen.add(k)
+              print('\nFOUND',date,target,'=>',json.dumps(c,ensure_ascii=False),'FETCH',st,'bytes',len(b))
+              # print lines containing ranking APIs / content detail logic
+              for line in re.split(r'[;\n]',b):
+                if re.search(r'(bang|rank|ksong|musicList|bid|sourceid|content)',line,re.I):
+                  print('JS',line[:2500])
+          print('UNIQUE',len(seen))
+          PY
