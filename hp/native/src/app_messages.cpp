@@ -1,81 +1,11 @@
 #include "app.h"
 #include "app_startup_tick_fallback.h"
-#include "hourly_collection_schedule.h"
-#include "power_saving_controller.h"
-#include "spotify_artist_chart_collector.h"
 #include "stationhead_leaderboard_capture_spool.h"
 #include "web_renderer.h"
 
 namespace hp {
 namespace {
 constexpr UINT kStationheadHealthUpdatedMessage = WM_APP + 10;
-constexpr UINT_PTR kSpotifyArtistChartTimer = 41;
-constexpr UINT_PTR kSpotifyArtistChartWatchTimer = 42;
-constexpr int kSpotifyArtistChartPhaseMinute = 30;
-constexpr UINT kSpotifyArtistChartWatchMs = 250;
-constexpr int64_t kSpotifyArtistChartIdleThresholdMs = 5 * 60'000LL;
-
-SpotifyArtistChartCollector& SpotifyArtistChartCollectorInstance() {
-  static SpotifyArtistChartCollector collector;
-  return collector;
-}
-
-void ArmSpotifyArtistChartTimer(HWND window, int64_t nowMs) {
-  if (!window) return;
-  KillTimer(window, kSpotifyArtistChartTimer);
-  const int64_t next =
-      NextHourlyCollectionSlot(nowMs, kSpotifyArtistChartPhaseMinute);
-  const UINT delay = static_cast<UINT>(std::clamp<int64_t>(
-      next - nowMs, 1, std::numeric_limits<UINT>::max()));
-  SetTimer(window, kSpotifyArtistChartTimer, delay, nullptr);
-}
-
-void PauseSpotifyArtistChartCapture(HWND window) {
-  if (window) KillTimer(window, kSpotifyArtistChartWatchTimer);
-  auto& collector = SpotifyArtistChartCollectorInstance();
-  if (collector.Started()) collector.Stop();
-}
-
-void CaptureSpotifyArtistChartHourly(HWND window) {
-  if (!window) return;
-  const int64_t now = UnixMillis();
-  ArmSpotifyArtistChartTimer(window, now);
-  if (PowerSavingController::IsPowerSavingActive()) {
-    PauseSpotifyArtistChartCapture(window);
-    return;
-  }
-
-  auto& collector = SpotifyArtistChartCollectorInstance();
-  collector.EnsureStarted(now);
-  collector.RequestCaptureNow(now);
-  collector.Tick(now);
-  collector.ShowForDebug();
-  SetTimer(window, kSpotifyArtistChartWatchTimer, kSpotifyArtistChartWatchMs, nullptr);
-}
-
-void TickSpotifyArtistChartCapture(HWND window) {
-  if (PowerSavingController::IsPowerSavingActive()) {
-    PauseSpotifyArtistChartCapture(window);
-    return;
-  }
-  const int64_t now = UnixMillis();
-  auto& collector = SpotifyArtistChartCollectorInstance();
-  collector.Tick(now);
-  collector.ShowForDebug();
-  const int64_t nextWake = collector.NextWakeAt();
-  if (nextWake <= 0 || nextWake - now > kSpotifyArtistChartIdleThresholdMs) {
-    KillTimer(window, kSpotifyArtistChartWatchTimer);
-  }
-}
-
-void StopSpotifyArtistChartCapture(HWND window) {
-  if (window) {
-    KillTimer(window, kSpotifyArtistChartTimer);
-    KillTimer(window, kSpotifyArtistChartWatchTimer);
-  }
-  auto& collector = SpotifyArtistChartCollectorInstance();
-  if (collector.Started()) collector.Stop();
-}
 }
 
 LRESULT CALLBACK App::WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -84,16 +14,12 @@ LRESULT CALLBACK App::WindowProc(HWND window, UINT message, WPARAM wParam, LPARA
     app = static_cast<App*>(reinterpret_cast<CREATESTRUCTW*>(lParam)->lpCreateParams);
     if (app) app->window_ = window;
     SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(app));
-    if (app) {
-      StartStartupUpdateFallback(window, app);
-      ArmSpotifyArtistChartTimer(window, UnixMillis());
-    }
+    if (app) StartStartupUpdateFallback(window, app);
   }
 
   const LRESULT result = app ? app->HandleMessage(message, wParam, lParam)
                              : DefWindowProcW(window, message, wParam, lParam);
   if (message == WM_NCDESTROY) {
-    StopSpotifyArtistChartCapture(window);
     StopStartupUpdateFallback();
     SetWindowLongPtrW(window, GWLP_USERDATA, 0);
     if (app) app->window_ = nullptr;
@@ -104,17 +30,6 @@ LRESULT CALLBACK App::WindowProc(HWND window, UINT message, WPARAM wParam, LPARA
 LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
   switch (message) {
     case WM_TIMER:
-      if (wParam == kSpotifyArtistChartTimer) {
-        CaptureSpotifyArtistChartHourly(window_);
-        return 0;
-      }
-      if (wParam == kSpotifyArtistChartWatchTimer) {
-        TickSpotifyArtistChartCapture(window_);
-        return 0;
-      }
-      if (PowerSavingController::IsPowerSavingActive()) {
-        PauseSpotifyArtistChartCapture(window_);
-      }
       if (wParam == 0) MarkStationheadPlacementDirty();
       Tick();
       return 0;
