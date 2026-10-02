@@ -9,7 +9,7 @@ permissions:
   actions: read
 concurrency:
   group: spotify-manual-collection
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   recollect:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[run-spotify-today]'))
