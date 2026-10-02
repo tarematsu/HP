@@ -218,6 +218,6 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add worker/src/pages-response-r2.js worker/src/buddies-collector-entry.js worker/tests/pages-response-actions-r2-keys.test.js worker/tests/buddies-collector-entry-routing.test.js worker/tests/stationhead-followers-actions.test.js .github/workflows/stationhead-daily-followers.yml .github/workflows/apply-follower-actions-fix.yml
+          git add -A
           git commit -m 'Move Stationhead follower collection to Actions'
           git push origin HEAD:fix/follower-actions-collector
