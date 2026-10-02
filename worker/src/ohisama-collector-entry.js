@@ -305,7 +305,7 @@ async function persistSnapshot(env, snapshot, state, observedAt) {
 }
 
 export async function registerOhisamaFollowerTarget(env, snapshot, observedAt) {
-  if (!snapshot?.host_handle) return false;
+  if (snapshot?.is_broadcasting !== 1 || !snapshot?.host_handle) return false;
   if (typeof env?.OTHER_DB?.prepare !== 'function') return false;
   const result = await env.OTHER_DB.prepare(`INSERT INTO sh_stationhead_follower_targets(
       handle,source_mask,first_seen_at
