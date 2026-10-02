@@ -6,10 +6,11 @@ test('regional cadence keeps NetEase daily, Monday standard services, QQ Thursda
   assert.equal(REGIONAL_MUSIC_DISPATCH_UTC_HOUR,15);
   assert.deepEqual(regionalMusicR2DueServices(Date.parse('2026-10-03T15:00:00Z')),['netease_cloud_music']);
   assert.deepEqual(regionalMusicR2DueServices(Date.parse('2026-10-04T15:00:00Z')),REGIONAL_MUSIC_WEEKLY_SERVICES);
-  assert.equal(new Set(regionalMusicR2DueServices(Date.parse('2026-10-04T15:00:00Z'))).size,17);
+  assert.equal(new Set(regionalMusicR2DueServices(Date.parse('2026-10-04T15:00:00Z'))).size,18);
+  assert.equal(REGIONAL_MUSIC_WEEKLY_SERVICES.includes('kkbox'),true);
   assert.equal(REGIONAL_MUSIC_WEEKLY_SERVICES.includes('qq_music'),false);
   assert.equal(REGIONAL_MUSIC_WEEKLY_SERVICES.includes('kugou_music'),false);
-  assert.equal(REGIONAL_MUSIC_DAILY_SERVICES.length,19);
+  assert.equal(REGIONAL_MUSIC_DAILY_SERVICES.length,20);
   assert.deepEqual(regionalMusicR2DueServices(Date.parse('2026-10-05T15:00:00Z')),['netease_cloud_music']);
   assert.deepEqual(regionalMusicR2DueServices(Date.parse('2026-10-08T09:00:00Z')),['qq_music']);
   assert.deepEqual(regionalMusicR2DueServices(Date.parse('2026-10-08T02:30:00Z')),['kugou_music']);

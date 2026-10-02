@@ -44,7 +44,7 @@ test('API contract contains unique canonical paths only', () => {
 test('GET /api catalog is generated from the canonical contract only', () => {
   const catalog = apiCatalog(0);
   assert.equal(catalog.contract_version, API_CONTRACT_VERSION);
-  assert.equal(catalog.contract_version, 19);
+  assert.equal(catalog.contract_version, 20);
   assert.deepEqual(catalog.groups, API_GROUPS);
   assert.equal('compatibility' in catalog, false);
   assert.equal('retired' in catalog, false);
@@ -73,6 +73,7 @@ test('materialized response freshness follows event and revision policies', () =
   assert.equal(materializedApiKey('https://skrzk.test/api/followers'), 'followers');
   assert.equal(materializedApiKey('https://skrzk.test/api/regional-music'), null);
   assert.equal(materializedApiKey('https://skrzk.test/api/regional-music?service=genie'), 'regional-music:genie');
+  assert.equal(materializedApiKey('https://skrzk.test/api/regional-music?service=kkbox'), 'regional-music:kkbox');
   assert.equal(materializedApiKey('https://skrzk.test/api/regional-music?service=netease_cloud_music'), 'regional-music:netease_cloud_music');
   assert.equal(materializedApiKey('https://skrzk.test/api/regional-music?service=missing'), null);
   assert.equal(materializedApiKey('https://skrzk.test/api/amazon-music'), null);

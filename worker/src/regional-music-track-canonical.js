@@ -1,6 +1,6 @@
 import { REGIONAL_MUSIC_ARTISTS } from './regional-music-service-registry.js';
 
-const TARGET_SERVICES = new Set(['qq_music', 'kugou_music']);
+const TARGET_SERVICES = new Set(['qq_music', 'kugou_music', 'kkbox']);
 const BACKFILL_LIMIT = 500;
 const UPDATE_BATCH_SIZE = 20;
 const EXTRA_ARTIST_ALIASES = Object.freeze({

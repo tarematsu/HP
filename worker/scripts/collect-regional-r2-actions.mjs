@@ -14,6 +14,10 @@ import {
   neteaseJapanHistoryRecordFromSnapshot,
   upsertNeteaseJapanHistoryArtifacts,
 } from '../src/netease-japan-chart-history.js';
+import {
+  kkboxHistoryRecordsFromSnapshot,
+  upsertKkboxJapaneseHistoryArtifacts,
+} from '../src/kkbox-japanese-chart-history.js';
 
 const REGIONAL_SERVICE_SET=new Set(REGIONAL_MUSIC_DAILY_SERVICES);
 
@@ -58,7 +62,20 @@ export async function collectRegionalR2Run({load,save,now=Date.now(),all=false,s
           neteaseHistoryChanged=historyResult.changed;
         }
       }
-      results.push({service,status:snapshot.state.status,...(service==='netease_cloud_music' ? {japan_chart_history_changed:neteaseHistoryChanged} : {})});
+      let kkboxHistoryChanged=false;
+      if(service==='kkbox' && snapshot.state?.status!=='error') {
+        const records=kkboxHistoryRecordsFromSnapshot(snapshot);
+        if(records.length) {
+          const historyResult=await upsertKkboxJapaneseHistoryArtifacts({load,save,records,updatedAt:now});
+          kkboxHistoryChanged=historyResult.changed;
+        }
+      }
+      results.push({
+        service,
+        status:snapshot.state.status,
+        ...(service==='netease_cloud_music' ? {japan_chart_history_changed:neteaseHistoryChanged} : {}),
+        ...(service==='kkbox' ? {japanese_chart_history_changed:kkboxHistoryChanged} : {}),
+      });
     } finally {clearTimeout(timer);}
   }
   if(services.includes('genie')) {

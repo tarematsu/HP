@@ -1,9 +1,9 @@
 const HISTORY_MODES = new Set(['daily', 'weekly', 'monthly', 'ranking', 'broadcasts']);
-const REGIONAL_MUSIC_MODES = new Set('genie bugs joox nhaccuatui anghami melon qq_music netease_cloud_music kugou_music naver_vibe flo yandex_music boomplay plern fungjai zing_mp3 jiosaavn gaana langit_musik'.split(' '));
+const REGIONAL_MUSIC_MODES = new Set('genie bugs joox nhaccuatui anghami melon kkbox qq_music netease_cloud_music kugou_music naver_vibe flo yandex_music boomplay plern fungjai zing_mp3 jiosaavn gaana langit_musik'.split(' '));
 const REGIONAL_MUSIC_VIEW = Object.freeze({
   viewId: 'regionalMusicView',
   shell: () => import(location.origin + '/regional-music-shell.js?v=20261003.2'),
-  runtime: () => import(location.origin + '/regional-music.js?v=20261003.2'),
+  runtime: () => import(location.origin + '/regional-music.js?v=20261003.3'),
   noticeId: 'regionalMusicNotice',
 });
 

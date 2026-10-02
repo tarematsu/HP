@@ -14,6 +14,7 @@ const SERVICE_LABELS = Object.freeze({
   nhaccuatui: 'NhacCuaTui',
   anghami: 'Anghami',
   melon: 'Melon',
+  kkbox: 'KKBOX',
   qq_music: 'QQ Music',
   netease_cloud_music: 'NetEase Cloud Music',
   kugou_music: 'Kugou Music',

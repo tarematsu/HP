@@ -8,6 +8,7 @@ import { collectGaana } from './regional-music-gaana.js';
 import { collectGenie } from './regional-music-genie.js';
 import { collectJioSaavn } from './regional-music-jiosaavn.js';
 import { collectJooxArtists } from './regional-music-joox.js';
+import { collectKkbox } from './regional-music-kkbox.js';
 import { collectKugouMusic } from './regional-music-kugou.js';
 import { collectLangitMusik } from './regional-music-langit.js';
 import { collectMelon } from './regional-music-melon.js';
@@ -34,6 +35,7 @@ export const REGIONAL_MUSIC_SERVICE_COLLECTORS_BY_ID = Object.freeze({
   nhaccuatui: collectNhacCuaTui,
   anghami: collectAnghami,
   melon: collectMelon,
+  kkbox: collectKkbox,
   qq_music: collectQqMusic,
   netease_cloud_music: collectNeteaseCloudMusic,
   kugou_music: collectKugouMusic,

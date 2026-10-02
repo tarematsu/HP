@@ -1,4 +1,4 @@
-export const API_CONTRACT_VERSION = 19;
+export const API_CONTRACT_VERSION = 20;
 
 export const REGIONAL_MUSIC_API_SERVICES = Object.freeze([
   'youtube_music',
@@ -8,6 +8,7 @@ export const REGIONAL_MUSIC_API_SERVICES = Object.freeze([
   'nhaccuatui',
   'anghami',
   'melon',
+  'kkbox',
   'qq_music',
   'netease_cloud_music',
   'kugou_music',

@@ -17,6 +17,7 @@ import {
 } from './qq-anime-chart-history-view.js';
 import { NETEASE_JAPAN_HISTORY_VIEW_KEY } from './netease-japan-chart-history.js';
 import { MELON_JPOP_HISTORY_VIEW_KEY } from './melon-jpop-history.js';
+import { KKBOX_JAPANESE_HISTORY_VIEW_KEY } from './kkbox-japanese-chart-history.js';
 import {
   KUGOU_JAPAN_CHART_COVERAGE,
   KUGOU_JAPAN_CHART_HISTORY,
@@ -287,6 +288,7 @@ export function regionalMusicServiceReadModelPayload(snapshot, service, updatedA
   }
   if (serviceId === 'netease_cloud_music') payload.netease_japan_chart = neteaseJapanChartReadModel(snapshot?.neteaseJapanChart);
   if (serviceId === 'melon') payload.melon_jpop_chart = melonJpopChartReadModel(snapshot?.melonJpopChart);
+  if (serviceId === 'kkbox') payload.kkbox_japanese_chart = neteaseJapanChartReadModel(snapshot?.kkboxJapaneseChart);
   if (serviceId === 'kugou_music') {
     payload.kugou_japan_chart = {
       coverage:KUGOU_JAPAN_CHART_COVERAGE,
@@ -313,6 +315,7 @@ export function regionalMusicReadModelPayload(snapshot, updatedAt = Date.now()) 
     qq_anime_chart: qqAnimeChartReadModel(snapshot?.qqAnimeChart, snapshot?.qqAnimeChartIndex),
     netease_japan_chart: neteaseJapanChartReadModel(snapshot?.neteaseJapanChart),
     melon_jpop_chart: melonJpopChartReadModel(snapshot?.melonJpopChart),
+    kkbox_japanese_chart: neteaseJapanChartReadModel(snapshot?.kkboxJapaneseChart),
     kugou_japan_chart: {
       coverage: KUGOU_JAPAN_CHART_COVERAGE,
       history: KUGOU_JAPAN_CHART_HISTORY,
@@ -369,6 +372,10 @@ async function hydrateServicePayload(env, baseSnapshot, service, generatedAt) {
   } else if (serviceId === 'melon') {
     const view = await r2Json(r2, MELON_JPOP_HISTORY_VIEW_KEY);
     payload.melon_jpop_chart = melonJpopChartReadModel(view);
+    extraTimes.push(view?.updated_at);
+  } else if (serviceId === 'kkbox') {
+    const view = await r2Json(r2, KKBOX_JAPANESE_HISTORY_VIEW_KEY);
+    payload.kkbox_japanese_chart = neteaseJapanChartReadModel(view);
     extraTimes.push(view?.updated_at);
   } else if (serviceId === 'kugou_music') {
     const [acgView, acgIndex] = await Promise.all([

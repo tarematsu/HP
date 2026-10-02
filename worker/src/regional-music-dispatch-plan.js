@@ -5,6 +5,7 @@ export const REGIONAL_MUSIC_DAILY_SERVICES = Object.freeze([
   'nhaccuatui',
   'anghami',
   'melon',
+  'kkbox',
   'qq_music',
   'netease_cloud_music',
   'kugou_music',

@@ -78,6 +78,7 @@ test('service read model contains only the selected service and owns its update 
   assert.equal('qq_japan_chart' in payload,false);
   assert.equal('qq_anime_chart' in payload,false);
   assert.equal('melon_jpop_chart' in payload,false);
+  assert.equal('kkbox_japanese_chart' in payload,false);
   assert.equal('netease_japan_chart' in payload,false);
   assert.equal('kugou_japan_chart' in payload,false);
   assert.equal(regionalMusicReadModelKey('bugs'),'regional-music:bugs');

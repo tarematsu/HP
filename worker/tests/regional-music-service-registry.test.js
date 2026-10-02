@@ -27,14 +27,14 @@ import {
 
 const regionalConfig = JSON.parse(readFileSync(new URL('../wrangler.regional-music.jsonc', import.meta.url), 'utf8'));
 
-test('regional music registry covers all planned services and keeps the 19 regional collectors explicit', () => {
-  assert.equal(Object.keys(REGIONAL_MUSIC_SERVICES).length, 20);
-  assert.equal(REGIONAL_MUSIC_SERVICE_COLLECTORS.length, 19);
-  assert.equal(new Set(REGIONAL_MUSIC_SERVICE_COLLECTORS).size, 19);
+test('regional music registry covers all planned services and keeps the 20 regional collectors explicit', () => {
+  assert.equal(Object.keys(REGIONAL_MUSIC_SERVICES).length, 21);
+  assert.equal(REGIONAL_MUSIC_SERVICE_COLLECTORS.length, 20);
+  assert.equal(new Set(REGIONAL_MUSIC_SERVICE_COLLECTORS).size, 20);
   assert.deepEqual(Object.keys(REGIONAL_MUSIC_SERVICE_COLLECTORS_BY_ID), REGIONAL_MUSIC_DAILY_SERVICES);
   assert.equal(YOUTUBE_MUSIC_DAILY_COLLECTORS.length, 1);
-  assert.equal(REGIONAL_MUSIC_DAILY_COLLECTORS.length, 20);
-  assert.equal(new Set(REGIONAL_MUSIC_DAILY_COLLECTORS).size, 20);
+  assert.equal(REGIONAL_MUSIC_DAILY_COLLECTORS.length, 21);
+  assert.equal(new Set(REGIONAL_MUSIC_DAILY_COLLECTORS).size, 21);
   assert.equal(
     REGIONAL_MUSIC_DAILY_COLLECTORS.filter((collector) => !REGIONAL_MUSIC_SERVICE_COLLECTORS.includes(collector)).length,
     1,
@@ -52,6 +52,7 @@ test('regional music registry covers all planned services and keeps the 19 regio
     'netease_cloud_music',
     'kugou_music',
     'melon',
+    'kkbox',
     'naver_vibe',
     'flo',
   ]);

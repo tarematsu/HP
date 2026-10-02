@@ -6,6 +6,7 @@ const REGIONAL_MUSIC_SERVICES = new Set([
   'nhaccuatui',
   'anghami',
   'melon',
+  'kkbox',
   'qq_music',
   'netease_cloud_music',
   'kugou_music',
