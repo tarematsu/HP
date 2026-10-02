@@ -12,6 +12,7 @@ const aliases = {
   hinatazaka46: ['日向坂46','Hinatazaka46'],
   nogizaka46: ['乃木坂46','Nogizaka46'],
 };
+const requestHeaders = { 'user-agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36', accept:'text/html,application/xhtml+xml' };
 
 function normalize(value) {
   return String(value || '').normalize('NFKC').toLocaleLowerCase('en-US').replace(/\s+/g, '');
@@ -71,13 +72,21 @@ function pageData(text, page) {
   });
   return { date, feature_count: parsed.entries.length, parse_error: parsed.error, matches };
 }
+function rankLinks(text) {
+  const links = [];
+  const re = /<a\b[^>]*href=["']([^"']*\/rank\/home\/\d+-31312-(\d+)\.html[^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  for (const match of text.matchAll(re)) {
+    links.push({ href:match[1], volid:Number(match[2]), label:match[3].replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim() });
+  }
+  return [...new Map(links.map(x => [`${x.volid}|${x.href}`,x])).values()].sort((a,b)=>b.volid-a.volid);
+}
 
-const out = { observed_at: new Date().toISOString(), rank_id: RANK_ID, pages: [] };
+const out = { observed_at: new Date().toISOString(), rank_id: RANK_ID, pages: [], pre2021_navigation:null };
 for (const item of cases) {
   for (let page = 1; page <= 4; page += 1) {
     const url = `https://pc.service.kugou.com/yueku/v8/rank/home/${page}-${RANK_ID}-${item.volid}.html`;
     try {
-      const response = await fetch(url, { redirect:'follow', headers:{ 'user-agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36', accept:'text/html,application/xhtml+xml' }});
+      const response = await fetch(url, { redirect:'follow', headers:requestHeaders });
       const text = await response.text();
       out.pages.push({ expected_date:item.expected_date, volid:item.volid, page, url, final_url:response.url, status:response.status, ok:response.ok, length:text.length, ...pageData(text, page) });
     } catch (error) {
@@ -85,4 +94,28 @@ for (const item of cases) {
     }
   }
 }
+
+const startVolid = 48141;
+const startUrl = `https://pc.service.kugou.com/yueku/v8/rank/home/1-${RANK_ID}-${startVolid}.html`;
+try {
+  const response = await fetch(startUrl, { redirect:'follow', headers:requestHeaders });
+  const text = await response.text();
+  const links = rankLinks(text);
+  const lower = links.filter(x => x.volid < startVolid);
+  const probes = [];
+  for (const candidate of lower.slice(0, 20)) {
+    const url = new URL(candidate.href, startUrl).href;
+    try {
+      const r = await fetch(url, { redirect:'follow', headers:requestHeaders });
+      const body = await r.text();
+      probes.push({ ...candidate, url, status:r.status, length:body.length, ...pageData(body,1) });
+    } catch (error) {
+      probes.push({ ...candidate, url, error:String(error?.stack || error) });
+    }
+  }
+  out.pre2021_navigation = { start_volid:startVolid, start_status:response.status, start_date:pageData(text,1).date, link_count:links.length, lower_link_count:lower.length, lower_links:lower.slice(0,100), probes };
+} catch (error) {
+  out.pre2021_navigation = { start_volid:startVolid, error:String(error?.stack || error) };
+}
+
 console.log(JSON.stringify(out,null,2));
