@@ -80,7 +80,7 @@ test('YouTube Music uses the shared R2 read model but renders public metrics in 
   assert.match(youtubeRuntime, /payload\.releases/);
   assert.match(youtubeShell, /月間視聴者/);
   assert.match(youtubeShell, /総視聴回数/);
-  assert.match(youtubeMusicReleaseBody/);
+  assert.match(youtubeShell, /youtubeMusicReleaseBody/);
   assert.doesNotMatch(youtubeRuntime, /タブのみ先行追加|専用収集\/read model接続後/);
 });
 
