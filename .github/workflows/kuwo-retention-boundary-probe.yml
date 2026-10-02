@@ -1,0 +1,37 @@
+name: Probe Kuwo Japanese chart retention boundary
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-retention-boundary-probe.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Scan remaining recent global ids for editions older than vol206
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import concurrent.futures,json,urllib.parse,urllib.request
+          B='https://kbangserver.kuwo.cn/ksong.s'; H={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'}
+          base={'from':'pc','fmt':'json','pn':'0','rn':'1','type':'bang','data':'content','id':'183','show_copyright_off':'0','pcmp4':'1','isbang':'1','userid':'0'}
+          def p(bid):
+            u=B+'?'+urllib.parse.urlencode({**base,'bangid':str(bid)})
+            try:
+              q=urllib.request.Request(u,headers=H)
+              with urllib.request.urlopen(q,timeout=4) as r:j=json.loads(r.read().decode('utf-8','replace'))
+              return bid,j.get('currentVolume')
+            except:return bid,None
+          old={}
+          # Previous probes covered 265000..270500 (except known 206-209 band). Cover the rest up to current id.
+          with concurrent.futures.ThreadPoolExecutor(max_workers=28) as ex:
+            for bid,cv in ex.map(p,range(270501,272759),chunksize=1):
+              if cv and cv.startswith('2026|'):
+                try:v=int(cv.split('|')[1])
+                except:continue
+                if v<=205: old.setdefault(v,[]).append(bid)
+          print('OLDER_THAN_206',json.dumps(old,sort_keys=True))
+          print('COUNT',sum(len(v) for v in old.values()))
+          PY
