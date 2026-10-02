@@ -66,6 +66,17 @@ function markWorkflowCycle(status) {
   writeFileSync(file, `${status}\n`, 'utf8');
 }
 
+function markerResult(status, marker) {
+  return {
+    status,
+    cycle:marker.cycle,
+    provider_update_time:marker.provider_update_time ?? null,
+    fingerprint:marker.fingerprint ?? '',
+    entries:marker.entries ?? null,
+    collected_at:marker.collected_at ?? null,
+  };
+}
+
 export async function collectQqJapanToplistAttempt({
   load,
   save,
@@ -75,13 +86,9 @@ export async function collectQqJapanToplistAttempt({
 }) {
   const cycle = qqJapanToplistCycleKey(now);
   const marker = await load(QQ_JAPAN_TOPLIST_MARKER_KEY);
-  if (marker?.version === 1 && marker.cycle === cycle && marker.status === 'updated') {
-    return {
-      status:'already_updated',
-      cycle,
-      provider_update_time:marker.provider_update_time ?? null,
-      entries:marker.entries ?? null,
-    };
+  if (marker?.version === 1 && marker.cycle === cycle) {
+    if (marker.status === 'updated') return markerResult('already_updated', marker);
+    if (marker.status === 'collected') return markerResult('needs_publication', marker);
   }
 
   const previous = await load(regionalSnapshotKey('qq_music'));
@@ -124,22 +131,34 @@ export async function collectQqJapanToplistAttempt({
 
   await save(regionalDayKey('qq_music', snapshot.day), snapshot);
   await save(regionalSnapshotKey('qq_music'), snapshot);
-  await save(QQ_JAPAN_TOPLIST_MARKER_KEY, {
+  const collectedMarker = {
     version:1,
     cycle,
-    status:'updated',
+    status:'collected',
     provider_update_time:chart.update_time ?? null,
     fingerprint,
     entries:chart.entries.length,
     collected_at:now,
-  });
-
-  return {
-    status:'updated',
-    cycle,
-    provider_update_time:chart.update_time ?? null,
-    entries:chart.entries.length,
   };
+  await save(QQ_JAPAN_TOPLIST_MARKER_KEY, collectedMarker);
+
+  return markerResult('collected', collectedMarker);
+}
+
+export async function finalizeQqJapanToplistCycle({ save, result, publishedAt = Date.now() }) {
+  if (!['collected','needs_publication'].includes(result?.status)) return result;
+  const marker = {
+    version:1,
+    cycle:result.cycle,
+    status:'updated',
+    provider_update_time:result.provider_update_time ?? null,
+    fingerprint:result.fingerprint ?? '',
+    entries:result.entries ?? null,
+    collected_at:result.collected_at ?? null,
+    published_at:publishedAt,
+  };
+  await save(QQ_JAPAN_TOPLIST_MARKER_KEY, marker);
+  return markerResult('updated', marker);
 }
 
 async function main() {
@@ -179,10 +198,9 @@ async function main() {
     }));
   };
 
-  const result = await collectQqJapanToplistAttempt({ load, save });
-  markWorkflowCycle(result.status);
+  let result = await collectQqJapanToplistAttempt({ load, save });
 
-  if (result.status === 'updated') {
+  if (['collected','needs_publication'].includes(result.status)) {
     const api = async (path, body) => {
       const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}${path}`, {
         method:body ? 'POST' : 'GET',
@@ -195,8 +213,10 @@ async function main() {
       return payload.result;
     };
     await enqueueGeniePublication(config, api, Date.now());
+    result = await finalizeQqJapanToplistCycle({ save, result });
   }
 
+  markWorkflowCycle(result.status);
   console.log(JSON.stringify({ event:'qq_japan_toplist_attempt', ...result }));
 }
 
