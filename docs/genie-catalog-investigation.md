@@ -33,3 +33,11 @@
 ## Reproducible verification
 
 Run `node worker/scripts/probe-genie-catalog.mjs /tmp/genie-catalog-evidence` with Node and curl. The read-only probe enumerates pop7 pages for all three verified artist IDs, rejects duplicate/empty pages and validates two off-profile song details per artist. Evidence is JSON; no production database writes occur.
+
+## Completed Sakurazaka46 verification
+
+- 9 pages, 264 unique song IDs, equal to the advertised total; no repeated pages.
+- Off-profile sample 115271728, Lonesome rabbit: plays 27, listeners 7.
+- Catalog tail sample 91621795, Saisyu no Chikatetsu ni Notte: plays 1906, listeners 117.
+- Both detail pages verified the same artist ID. Public metrics are cumulative.
+- This confirms full song-ID discovery and off-profile metrics, not successful metric collection for every song.
