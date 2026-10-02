@@ -27,40 +27,59 @@ test('Japanese and simplified Chinese character variants fold to the same identi
   assert.equal(matchRegionalMusicCanonicalTrack('承认欲求', candidates)?.id, 13);
 });
 
-test('ambiguous titles and translation-only titles are never guessed', () => {
+test('ambiguous titles stay unresolved unless one duplicate has a uniquely stronger identity', () => {
   assert.equal(matchRegionalMusicCanonicalTrack('同じ曲', [
     { id: 1, title: '同じ曲' },
     { id: 2, title: '同じ曲' },
   ]), null);
+  assert.equal(matchRegionalMusicCanonicalTrack('同じ曲', [
+    { id: 1, title: '同じ曲' },
+    { id: 2, title: '同じ曲', isrc: 'JPTEST000001', spotify_id: 'spotify-2' },
+    { id: 3, title: '同じ曲' },
+  ])?.id, 2);
+  assert.equal(matchRegionalMusicCanonicalTrack('同じ曲', [
+    { id: 1, title: '同じ曲', isrc: 'JPTEST000001' },
+    { id: 2, title: '同じ曲', isrc: 'JPTEST000002' },
+  ]), null);
   assert.equal(matchRegionalMusicCanonicalTrack('翅膀的记忆', candidates), null);
 });
 
-test('QQ and Kugou resolver returns sh_tracks.id without allocating a parallel identity', async () => {
+test('QQ and Kugou resolver uses contained and Korean artist aliases without allocating a parallel identity', async () => {
+  const rows = [
+    { id: 13, title: '承認欲求', artist: '櫻坂46', isrc: 'JPU900000013' },
+    { id: 1070, title: 'Audition', artist: '坂道選抜, 乃木坂46, 櫻坂46, 日向坂46', isrc: 'JPU902603797' },
+    { id: 1218, title: '制服のマネキン', artist: '노기자카46', isrc: 'JPSR01204101' },
+  ];
   const minuteDb = {
     prepare(sql) {
       assert.match(sql, /FROM sh_tracks/);
+      assert.match(sql, /LIKE/);
       return {
         bind(...bindings) {
-          assert.ok(bindings.includes('櫻坂46'));
-          return { all: async () => ({ results: candidates.filter((row) => row.artist === '櫻坂46') }) };
+          const selected = rows.filter(row => bindings.some(value => row.artist.includes(String(value).replaceAll('%',''))));
+          return { all: async () => ({ results: selected }) };
         },
       };
     },
   };
   const env = { MINUTE_DB: minuteDb };
   const resolved = await resolveRegionalMusicCanonicalTrack(env, {
-    service: 'qq_music',
-    service_track_id: 'qq-mid-1',
-    canonical_artist: 'sakurazaka46',
-    title: '承认欲求',
+    service: 'qq_music', service_track_id: 'qq-mid-1', canonical_artist: 'sakurazaka46', title: '承认欲求',
   });
   assert.equal(resolved.canonical_track_id, 13);
 
+  const audition = await resolveRegionalMusicCanonicalTrack(env, {
+    service: 'kugou_music', service_track_id: 'kg-audition', canonical_artist: 'nogizaka46', title: 'Audition',
+  });
+  assert.equal(audition.canonical_track_id, 1070);
+
+  const mannequin = await resolveRegionalMusicCanonicalTrack(env, {
+    service: 'qq_music', service_track_id: 'qq-mannequin', canonical_artist: 'nogizaka46', title: '制服のマネキン',
+  });
+  assert.equal(mannequin.canonical_track_id, 1218);
+
   const untouched = await resolveRegionalMusicCanonicalTrack(env, {
-    service: 'netease_cloud_music',
-    service_track_id: 'netease-1',
-    canonical_artist: 'sakurazaka46',
-    title: '承認欲求',
+    service: 'netease_cloud_music', service_track_id: 'netease-1', canonical_artist: 'sakurazaka46', title: '承認欲求',
   });
   assert.equal(untouched.canonical_track_id, undefined);
 });
