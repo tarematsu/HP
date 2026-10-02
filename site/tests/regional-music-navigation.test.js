@@ -26,6 +26,8 @@ test('music subscriptions are grouped into global and local source rows', () => 
   assert.match(html, /href="#genie" data-subscription-group="local">ローカル<\/a>/);
   assert.match(html, /data-subscription-group-content="global"/);
   assert.match(html, /data-subscription-group-content="local"/);
+  assert.match(html, /data-source="qq_music">🇨🇳QQ<\/button>/);
+  assert.match(html, /data-source="kugou_music">🇨🇳Kugou<\/button>/);
   for (const [row, services] of rows) {
     const match = html.match(new RegExp(`<div class="dashboard-source-row" data-row="${row}"[\\s\\S]*?<\\/div>`));
     assert.ok(match, `subscription row ${row} must exist`);
