@@ -97,6 +97,14 @@ test('Thursday 18:00 runner invokes only QQ Music and forwards canonical binding
   assert.deepEqual(called,['qq_music']);
   assert.equal(result.length,1);assert.equal(writes.length,2);
 });
+test('dedicated Kugou runner invokes only Kugou regardless of scheduler delay',async()=>{
+  const delayedNow=Date.parse('2026-10-08T03:05:00Z');
+  const writes=[];const called=[];
+  const collectors={kugou_music:async env=>{called.push('kugou_music');await saveRegionalCollectorState(env,{service:'kugou_music',status:'ok',last_success_at:delayedNow});}};
+  const result=await collectRegionalR2Run({now:delayedNow,onlyServices:['kugou_music'],collectors,load:async()=>null,save:async(key)=>writes.push(key)});
+  assert.deepEqual(called,['kugou_music']);
+  assert.equal(result.length,1);assert.equal(writes.length,2);
+});
 test('scheduled retry reuses complete same-day services without provider requests or writes',async()=>{
   const result=await collectRegionalR2Run({now,collectors:{},load:async()=>({day:'2026-10-06',state:{status:'ok'}}),save:async()=>{throw new Error('must not write');}});
   assert.equal(result.length,1);
