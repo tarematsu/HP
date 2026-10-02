@@ -11,22 +11,39 @@ import { collectGenieSnapshot } from '../src/genie-catalog-snapshot.js';
 import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
 import { regionalMusicSnapshotDate } from '../src/regional-music-store.js';
 
-export async function collectRegionalR2Run({load,save,now=Date.now(),all=false,fetchImpl=fetch,collectors=REGIONAL_MUSIC_SERVICE_COLLECTORS_BY_ID,bindings={}}) {
-  const services=all ? [...REGIONAL_MUSIC_DAILY_SERVICES] : regionalMusicR2DueServices(now);
+const REGIONAL_SERVICE_SET=new Set(REGIONAL_MUSIC_DAILY_SERVICES);
+
+export function parseRegionalServiceSelection(argv=process.argv.slice(2)) {
+  const argument=(argv || []).find(value=>String(value).startsWith('--services='));
+  if(!argument) return [];
+  const services=[...new Set(String(argument).slice('--services='.length).split(',').map(value=>value.trim()).filter(Boolean))];
+  const invalid=services.filter(service=>!REGIONAL_SERVICE_SET.has(service));
+  if(invalid.length) throw new Error(`Unknown regional services: ${invalid.join(', ')}`);
+  return services;
+}
+
+export async function collectRegionalR2Run({load,save,now=Date.now(),all=false,services:requestedServices=[],fetchImpl=fetch,collectors=REGIONAL_MUSIC_SERVICE_COLLECTORS_BY_ID,bindings={}}) {
+  const explicit=[...new Set((requestedServices || []).map(value=>String(value).trim()).filter(Boolean))];
+  const invalid=explicit.filter(service=>!REGIONAL_SERVICE_SET.has(service));
+  if(invalid.length) throw new Error(`Unknown regional services: ${invalid.join(', ')}`);
+  const services=explicit.length ? explicit : all ? [...REGIONAL_MUSIC_DAILY_SERVICES] : regionalMusicR2DueServices(now);
+  const force=all || explicit.length>0;
   const results=[];
   // Small services finish before the large Genie catalog. An interrupted Genie
   // run does not discard the already persisted snapshots of other providers.
   for(const service of services.filter(value=>value!=='genie')) {
+    const collect=collectors[service];
+    if(typeof collect!=='function') throw new Error(`Regional collector missing: ${service}`);
     const controller=new AbortController();
     const timer=setTimeout(()=>controller.abort(),90_000);
     const fetchService=(url,options={})=>fetchImpl(url,{...options,signal:options.signal ? AbortSignal.any([options.signal,controller.signal]) : controller.signal});
     try {
       const previous=await load(regionalSnapshotKey(service));
-      if(!all && previous?.day===regionalMusicSnapshotDate(now) && previous.state?.status==='ok') {
+      if(!force && previous?.day===regionalMusicSnapshotDate(now) && previous.state?.status==='ok') {
         results.push({service,status:'ok',reused:true});
         continue;
       }
-      const snapshot=await collectRegionalR2Snapshot({service,collect:collectors[service],previous,now,fetchImpl:fetchService,bindings});
+      const snapshot=await collectRegionalR2Snapshot({service,collect,previous,now,fetchImpl:fetchService,bindings});
       await save(regionalDayKey(service,snapshot.day),snapshot);
       await save(regionalSnapshotKey(service),snapshot);
       results.push({service,status:snapshot.state.status});
@@ -68,8 +85,9 @@ async function main() {
     await r2.put(key,JSON.stringify(value));
     console.log(JSON.stringify({event:'regional_r2_saved',key,tracks:value.tracks?.length,status:value.state?.status}));
   };
+  const requestedServices=parseRegionalServiceSelection();
   let results;
-  try {results=await collectRegionalR2Run({load,save,all:process.argv.includes('--all'),bindings:{MINUTE_DB:minuteDb}});}
+  try {results=await collectRegionalR2Run({load,save,all:process.argv.includes('--all'),services:requestedServices,bindings:{MINUTE_DB:minuteDb}});}
   finally {
     // Even an interrupted provider must publish all completed service snapshots.
     const api=async(path,body)=>{
@@ -80,7 +98,7 @@ async function main() {
     };
     await enqueueGeniePublication(config,api,Date.now());
   }
-  console.log(JSON.stringify({event:'regional_r2_complete',results,collection_d1_writes:0,canonical_d1_reads:true,publication_messages:1}));
+  console.log(JSON.stringify({event:'regional_r2_complete',results,requested_services:requestedServices,collection_d1_writes:0,canonical_d1_reads:true,publication_messages:1}));
   if(results.some(row=>row.status==='error' || row.status==='degraded')) process.exitCode=1;
 }
 if(import.meta.url===pathToFileURL(process.argv[1] || '').href) main().catch(error=>{console.error(error.message);process.exitCode=1;});
