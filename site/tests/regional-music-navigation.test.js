@@ -19,8 +19,12 @@ const rows = [
   ['4', ['plern', 'fungjai', 'zing_mp3', 'jiosaavn', 'gaana', 'langit_musik']],
 ];
 
-test('music subscriptions use four explicit source rows', () => {
+test('music subscriptions are grouped into global and local source rows', () => {
   assert.match(html, /id="subscriptionSourceTabsTemplate"/);
+  assert.match(html, /href="#spotify" data-subscription-group="global">グローバル<\/a>/);
+  assert.match(html, /href="#genie" data-subscription-group="local">ローカル<\/a>/);
+  assert.match(html, /data-subscription-group-content="global"/);
+  assert.match(html, /data-subscription-group-content="local"/);
   for (const [row, services] of rows) {
     const match = html.match(new RegExp(`<div class="dashboard-source-row" data-row="${row}"[\\s\\S]*?<\\/div>`));
     assert.ok(match, `subscription row ${row} must exist`);
@@ -29,7 +33,9 @@ test('music subscriptions use four explicit source rows', () => {
   assert.match(tabs, /REGIONAL_MUSIC_MODES/);
   assert.match(tabs, /subscriptionSourceTabsTemplate/);
   assert.match(css, /\.dashboard-source-tabs\.is-multiline/);
-  assert.match(css, /\.dashboard-source-row/);
+  assert.match(css, /\.dashboard-subscription-groups/);
+  assert.match(css, /:has\(\[data-subscription-group-content="global"\] \.active\)/);
+  assert.match(css, /\.dashboard-source-row\[data-row="1"\]/);
 });
 
 test('regional service views share the materialized read model endpoint', () => {
