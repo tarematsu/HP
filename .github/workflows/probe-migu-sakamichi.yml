@@ -6,11 +6,13 @@ on:
     paths:
       - '.github/workflows/probe-migu-sakamichi.yml'
       - 'worker/scripts/probe-migu-sakamichi.mjs'
+      - 'worker/scripts/probe-migu-known-tracks.mjs'
   push:
     branches: [main]
     paths:
       - '.github/workflows/probe-migu-sakamichi.yml'
       - 'worker/scripts/probe-migu-sakamichi.mjs'
+      - 'worker/scripts/probe-migu-known-tracks.mjs'
 
 permissions:
   contents: read
@@ -27,6 +29,9 @@ jobs:
       - name: Probe Migu catalog, ranks, and play-count endpoints
         working-directory: worker
         run: node scripts/probe-migu-sakamichi.mjs
+      - name: Probe representative Sakamichi tracks
+        working-directory: worker
+        run: node scripts/probe-migu-known-tracks.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
