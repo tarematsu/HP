@@ -1,0 +1,51 @@
+name: Probe Kuwo frontend history parameters
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-frontend-history-probe.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Inspect rank page bundles and API parameter names
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import re, urllib.parse, urllib.request
+          headers={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'}
+          urls=[
+            'https://m.kuwo.cn/newh5app/ranklist_detail/183',
+            'https://m.kuwo.cn/newh5/bang/index',
+            'https://www.kuwo.cn/rankList'
+          ]
+          def read(u,timeout=15):
+            q=urllib.request.Request(u,headers=headers)
+            with urllib.request.urlopen(q,timeout=timeout) as r:return r.geturl(),r.read().decode('utf-8','replace')
+          alljs=[]
+          for u in urls:
+            try:
+              final,html=read(u)
+              print('PAGE',u,'FINAL',final,'LEN',len(html))
+              for m in re.findall(r'<script[^>]+src=["\']([^"\']+)',html,re.I):
+                ju=urllib.parse.urljoin(final,m)
+                if ju not in alljs: alljs.append(ju)
+              for key in ['bangid','currentVolume','third_id','volume','musicList','ranklist_detail']:
+                if key.lower() in html.lower(): print('HTML_KEY',u,key)
+            except Exception as e: print('PAGE_ERR',u,repr(e))
+          print('JS_COUNT',len(alljs))
+          for ju in alljs[:50]:
+            try:
+              final,js=read(ju,15)
+              low=js.lower()
+              if any(k.lower() in low for k in ['bangid','currentvolume','third_id','ranklist_detail','ksong.s']):
+                print('JS_HIT',ju,'LEN',len(js))
+                for pat in ['bangid','currentVolume','third_id','ksong.s','musicList','volume']:
+                  pos=low.find(pat.lower())
+                  if pos>=0:
+                    s=max(0,pos-500); e=min(len(js),pos+1200)
+                    print('CTX',pat,js[s:e].replace('\n',' ')[:1800])
+            except Exception as e: print('JS_ERR',ju,repr(e))
+          PY
