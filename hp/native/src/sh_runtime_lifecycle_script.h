@@ -30,7 +30,9 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
   let progressStalledAt = 0;
   let progressRepairTried = false;
   let progressSyntheticKeyWait = false;
+  let progressConfirmed = false;
   const progressProbeMs = 4000;
+  const progressHealthyProbeMs = 8000;
   const progressStallMs = 12000;
 
   const beginKeyWait = event => {
@@ -64,7 +66,9 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
     // Reuse the same four-second probe to retry recoverable Connect/Reconnect
     // discovery after playback has been established and then lost. The
     // onboarding owner enforces that state gate, so this adds no recovery
-    // clicks during healthy playback and requires no separate high-rate poller.
+    // clicks during unhealthy playback. Once the same media clock is confirmed
+    // advancing and native audio agrees, healthy playback backs off to eight
+    // seconds and immediately returns to four seconds on any anomaly.
     publishRecoverableOnboarding();
     const media = Array.from(document.querySelectorAll('audio,video')).find(
       element => element instanceof HTMLMediaElement && !element.paused &&
@@ -74,12 +78,14 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
       progressTime = 0;
       progressStalledAt = 0;
       progressRepairTried = false;
+      progressConfirmed = false;
       clearSyntheticKeyWait();
     } else if (keyWaitingMedia === media) {
       progressMedia = media;
       progressTime = Number(media.currentTime) || 0;
       progressStalledAt = 0;
       progressRepairTried = false;
+      progressConfirmed = false;
       clearSyntheticKeyWait();
     } else {
       const current = Number(media.currentTime);
@@ -89,6 +95,7 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
         progressTime = 0;
         progressStalledAt = 0;
         progressRepairTried = false;
+        progressConfirmed = false;
         clearSyntheticKeyWait();
       } else if (progressMedia !== media) {
         // First sight of a media element is only a baseline. A stale/replaced
@@ -98,11 +105,13 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
         progressTime = current;
         progressStalledAt = 0;
         progressRepairTried = false;
+        progressConfirmed = false;
         clearSyntheticKeyWait();
       } else if (current > progressTime + 0.10) {
         progressTime = current;
         progressStalledAt = 0;
         progressRepairTried = false;
+        progressConfirmed = true;
         clearSyntheticKeyWait();
         // Native confirmation writes this flag true. Until then, publish every
         // real same-element advance so a lost first message cannot leave a
@@ -116,6 +125,7 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
         if (!progressRepairTried) {
           progressRepairTried = true;
           progressStalledAt = now;
+          progressConfirmed = false;
           try {
             media.pause();
             const result = media.play?.();
@@ -124,11 +134,19 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
         } else if (!progressSyntheticKeyWait) {
           progressSyntheticKeyWait = true;
           progressStalledAt = now;
+          progressConfirmed = false;
           postText('drm-waiting');
         }
       }
     }
-    progressTimer = nativeTimeout(probeMediaProgress, progressProbeMs);
+    const healthyProgress =
+      media && progressMedia === media && progressConfirmed &&
+      progressStalledAt === 0 && !progressRepairTried &&
+      !progressSyntheticKeyWait && keyWaitingMedia !== media &&
+      window.__homepanelAudioPlaying === true;
+    progressTimer = nativeTimeout(
+      probeMediaProgress,
+      healthyProgress ? progressHealthyProbeMs : progressProbeMs);
   };
 
   for (const eventName of [
