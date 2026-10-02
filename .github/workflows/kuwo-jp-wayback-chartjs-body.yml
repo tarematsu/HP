@@ -1,0 +1,29 @@
+name: Print archived Kuwo chart.js bodies
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-wayback-chartjs-body.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Print known archived chart.js
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import urllib.request
+          urls=[
+            'https://web.archive.org/web/20200612131038id_/http://m.kuwo.cn/static/h5/js/bang/chart.js',
+            'https://web.archive.org/web/20220904140530id_/http://kuwo.cn/static/h5/js/bang/chart.js',
+            'https://web.archive.org/web/20250123210251id_/https://kuwo.cn/static/h5/js/bang/chart.js',
+          ]
+          for u in urls:
+            try:
+              q=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0'})
+              with urllib.request.urlopen(q,timeout=12) as r:b=r.read().decode('utf-8','replace')
+              print('\nURL',u,'\n',b)
+            except Exception as e: print('ERR',u,repr(e))
+          PY
