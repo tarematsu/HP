@@ -1,0 +1,62 @@
+name: Probe Kuwo Japanese chart v4 fast
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-chart-probe-v4.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fast page chart 183
+        run: |
+          python3 <<'PY'
+          import json,re,urllib.request,pathlib,time
+          aliases={'櫻坂46':['櫻坂46','樱坂46','sakurazaka46'],'乃木坂46':['乃木坂46','nogizaka46'],'日向坂46':['日向坂46','hinatazaka46'],'欅坂46':['欅坂46','keyakizaka46']}
+          def n(s): return re.sub(r'[^0-9a-z一-龯ぁ-んァ-ヶ]','',str(s or '').casefold())
+          def get(pn):
+            u=f'https://kbangserver.kuwo.cn/ksong.s?from=pc&fmt=json&pn={pn}&rn=5&type=bang&data=content&id=183&show_copyright_off=0&pcmp4=1&isbang=1&userid=0'
+            try:
+              q=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'})
+              with urllib.request.urlopen(q,timeout=4) as r: return r.status,r.read().decode('utf-8','replace')
+            except Exception as e:return 0,''
+          def rows(x):
+            if not isinstance(x,dict):return []
+            for v in [x.get('musiclist'),x.get('musicList'),x.get('list'),(x.get('data') or {}).get('musiclist') if isinstance(x.get('data'),dict) else None,(x.get('data') or {}).get('musicList') if isinstance(x.get('data'),dict) else None]:
+              if isinstance(v,list):return v
+            return []
+          allr=[]; seen=set(); diag=[]
+          for pn in range(80):
+            st,t=get(pn)
+            try:p=json.loads(t)
+            except:p={}
+            rs=rows(p); diag.append({'pn':pn,'status':st,'rows':len(rs),'bytes':len(t)})
+            if not rs:
+              if pn==0: continue
+              break
+            added=0
+            for r in rs:
+              key=str(r.get('rid') or r.get('id') or '')+'|'+str(r.get('name') or r.get('title') or '')
+              if key in seen:continue
+              seen.add(key);allr.append(r);added+=1
+            if added==0:break
+            time.sleep(.05)
+          hits=[]
+          for i,r in enumerate(allr,1):
+            h=n(' '.join(str(r.get(k,'')) for k in ['artist','artistName','singer','name','title']))
+            for g,aa in aliases.items():
+              if any(n(a) in h for a in aa):hits.append({'rank':i,'group':g,'name':r.get('name') or r.get('title'),'artist':r.get('artist') or r.get('artistName') or r.get('singer'),'rid':r.get('rid') or r.get('id')})
+          tracks=[{'rank':i,'name':r.get('name') or r.get('title'),'artist':r.get('artist') or r.get('artistName') or r.get('singer'),'rid':r.get('rid') or r.get('id')} for i,r in enumerate(allr,1)]
+          rep={'observed_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'chart_id':183,'count':len(tracks),'matches':hits,'tracks':tracks,'diagnostics':diag}
+          pathlib.Path('kuwo-v4.json').write_text(json.dumps(rep,ensure_ascii=False,indent=2),encoding='utf-8')
+          print('COUNT',len(tracks));print('MATCHES',json.dumps(hits,ensure_ascii=False));print('TOP20')
+          for x in tracks[:20]:print(f"#{x['rank']} {x['name']} — {x['artist']}")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kuwo-jp-chart-v4
+          path: kuwo-v4.json
+          retention-days: 7
