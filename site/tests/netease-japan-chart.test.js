@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const index = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+const shell = readFileSync(new URL('../public/regional-music-shell.js', import.meta.url), 'utf8');
 const ui = readFileSync(new URL('../public/netease-japan-chart-ui.js', import.meta.url), 'utf8');
 
 test('网易云音乐 tab and chart UI use official names', () => {
   assert.match(index, /data-source="netease_cloud_music">🇨🇳网易云音乐<\/button>/);
-  assert.match(index, /netease-japan-chart-ui\.js/);
+  assert.doesNotMatch(index, /netease-japan-chart-ui\.js/);
+  assert.match(shell, /import\('\.\/netease-japan-chart-ui\.js\?v=20261003\.1'\)/);
   assert.match(ui, /网易云日语榜 グループ別最高順位推移/);
   assert.match(ui, /网易云日语榜 ランクイン履歴/);
   assert.doesNotMatch(ui, /NetEase Cloud Music 日語榜/);
