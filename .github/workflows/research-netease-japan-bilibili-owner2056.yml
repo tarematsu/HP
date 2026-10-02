@@ -20,7 +20,7 @@ jobs:
           python-version: '3.12'
       - name: Install yt-dlp
         run: python -m pip install --disable-pip-version-check -U yt-dlp
-      - name: Enumerate and resolve uploader videos
+      - name: Resolve saved uploader videos
         shell: bash
         run: |
           set +e
@@ -28,17 +28,21 @@ jobs:
           python - <<'PY'
           import json, pathlib, subprocess, time
 
-          space='https://space.bilibili.com/2056224222/video'
-          flat=subprocess.run(['yt-dlp','--flat-playlist','--dump-single-json',space],capture_output=True,text=True,timeout=180)
-          pathlib.Path('research-owner2056/space.err').write_text(flat.stderr or '')
-          try: root=json.loads(flat.stdout)
-          except Exception: root={}
-          entries=[e for e in (root.get('entries') or []) if isinstance(e,dict)]
-          print('SPACE_ENTRIES',len(entries),'RC',flat.returncode)
-          ids=[]
-          for e in entries:
-              vid=str(e.get('id') or '')
-              if vid and vid not in ids: ids.append(vid)
+          # Saved from the successful space enumeration for uploader 2056224222.
+          # Keeping these IDs here avoids transient Bilibili space API 412/null responses.
+          ids='''
+          BV1F2RyBwE7w BV1yMRrB8EkP BV13F9xBoEPY BV1fpogBiEih BV1ceoTBYETK
+          BV1F7P9zLE69 BV1HUPKzUEiA BV1wQPMzsE67 BV1aHAXzfEPr BV1HYfHBjEQz
+          BV1gyfLByESE BV1g2fLBVEXn BV1dLfjBpE5T BV16VZxBQE6P BV1TaFCznE7o
+          BV1s2FLzTEJN BV1Y26sBbEGS BV1Rbr3B4ET8 BV1MXSxB2ERr BV1KNC5BbEvL
+          BV1QbsmzNEsy BV1uehrzFENp BV19RvNzCEPB BV1kpefz3ECK BV1TiexzWEFh
+          BV1tKbWzBEqg BV1h7ukz5EwF BV1p5uuzTETK BV1oFG4znE8t BV1MTGnzpEqr
+          BV1HR3yzCE18 BV1NW3rzMEu4 BV1p438ziE4z BV13rgQzkE8h BV1emg2zAEML
+          BV1Q8gozsEnr BV1zQNdzXEuS BV1eLTRzjEQP BV1h3jbzxEgV BV1aGE1z2Eoz
+          BV1XGdfYNErJ BV1TsASeDEsE BV1YVAKeuEoJ BV12BPDe9E5J BV1XMwEeTEzA
+          BV1NrcCeZEyY BV1DZcAe9ETr
+          '''.split()
+          print('SAVED_ENTRIES',len(ids))
 
           needles=['网易云日语榜','云音乐日语榜','日语榜','日语歌周榜','日语周榜','周榜','年榜','网易云']
           groups=['乃木坂46','櫻坂46','桜坂46','日向坂46','欅坂46','けやき坂46','Nogizaka46','Sakurazaka46','Hinatazaka46']
@@ -46,26 +50,24 @@ jobs:
           for i,vid in enumerate(ids):
               url='https://www.bilibili.com/video/'+vid
               try:
-                  cp=subprocess.run(['yt-dlp','--dump-single-json','--skip-download','--extractor-retries','2',url],capture_output=True,text=True,timeout=90)
-              except subprocess.TimeoutExpired as e:
+                  cp=subprocess.run(['yt-dlp','--dump-single-json','--skip-download','--extractor-retries','1',url],capture_output=True,text=True,timeout=60)
+              except subprocess.TimeoutExpired:
                   rows.append({'id':vid,'rc':-999,'error':'timeout'}); print('TIMEOUT',vid); continue
-              try: d=json.loads(cp.stdout)
+              try: d=json.loads(cp.stdout) if cp.stdout.strip() else {}
               except Exception: d={}
+              if not isinstance(d,dict): d={}
               row={
                 'id':vid,'rc':cp.returncode,'aid':d.get('aid'),'title':d.get('title'),'description':d.get('description'),
                 'timestamp':d.get('timestamp'),'upload_date':d.get('upload_date'),'duration':d.get('duration'),
                 'uploader':d.get('uploader'),'uploader_id':d.get('uploader_id'),'tags':d.get('tags'),'webpage_url':d.get('webpage_url'),
-                'stderr':(cp.stderr or '')[-3000:]
+                'stderr':(cp.stderr or '')[-2000:]
               }
               hay=json.dumps(row,ensure_ascii=False)
               row['chart_terms']=[x for x in needles if x.lower() in hay.lower()]
               row['sakamichi']=[x for x in groups if x.lower() in hay.lower()]
               rows.append(row)
-              if row['chart_terms'] or row['sakamichi']:
-                  print('MATCH',json.dumps(row,ensure_ascii=False)[:30000])
-              else:
-                  print('VIDEO',i+1,'/',len(ids),vid,row.get('title'),'rc',cp.returncode)
-              time.sleep(.35)
+              print(('MATCH' if row['chart_terms'] or row['sakamichi'] else 'VIDEO'),i+1,'/',len(ids),json.dumps(row,ensure_ascii=False)[:12000])
+              time.sleep(.2)
 
           pathlib.Path('research-owner2056/videos.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2))
           matches=[r for r in rows if r.get('chart_terms') or r.get('sakamichi')]
