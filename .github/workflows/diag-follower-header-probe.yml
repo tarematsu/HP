@@ -1,0 +1,66 @@
+name: Temporary follower header probe
+
+on:
+  push:
+    branches:
+      - diag/follower-prod-20261003-2
+    paths:
+      - .github/workflows/diag-follower-header-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Probe exact Worker header variants
+        shell: bash
+        run: |
+          node <<'NODE'
+          const API = 'https://production1.stationhead.com';
+          const WEB = 'https://www.stationhead.com';
+          const deviceUid = crypto.randomUUID();
+          const bootstrap = {
+            accept: 'application/json, text/plain, */*',
+            'accept-language': 'ja,en-US;q=0.9,en;q=0.8',
+            'app-platform': 'web',
+            'app-version': '1.0.0',
+            'content-type': 'application/json',
+            origin: WEB,
+            referer: `${WEB}/c/ilys`,
+            'sth-device-uid': deviceUid,
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/149 Safari/537.36',
+          };
+          const tokenRes = await fetch(`${API}/web/token`, { method: 'POST', headers: bootstrap, body: '' });
+          const token = String(tokenRes.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
+          const loginRes = await fetch(`${API}/web/guest/login`, { method: 'POST', headers: { ...bootstrap, authorization: `Bearer ${token}` }, body: '' });
+          console.log('bootstrap', tokenRes.status, loginRes.status, Boolean(token));
+
+          const exactWorkerHeaders = {
+            accept: 'application/json, text/plain, */*',
+            'accept-language': 'ja,en-US;q=0.9,en;q=0.8',
+            'app-platform': 'web',
+            'app-version': '1.0.0',
+            origin: WEB,
+            referer: `${WEB}/`,
+            'sth-device-uid': deviceUid,
+            authorization: `Bearer ${token}`,
+          };
+          const variants = {
+            exact_worker: exactWorkerHeaders,
+            plus_user_agent: { ...exactWorkerHeaders, 'user-agent': bootstrap['user-agent'] },
+            plus_content_type: { ...exactWorkerHeaders, 'content-type': 'application/json' },
+            plus_both: { ...exactWorkerHeaders, 'content-type': 'application/json', 'user-agent': bootstrap['user-agent'] },
+            minimal: { authorization: `Bearer ${token}`, 'sth-device-uid': deviceUid },
+          };
+          for (const [name, headers] of Object.entries(variants)) {
+            const res = await fetch(`${API}/account/handle/sakuramankai`, { headers });
+            const text = await res.text();
+            console.log(name, res.status, res.headers.get('allow'), text.slice(0, 180).replace(/\s+/g, ' '));
+          }
+          NODE
