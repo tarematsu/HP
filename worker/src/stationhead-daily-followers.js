@@ -255,18 +255,36 @@ async function runStatements(db, statements) {
 
 export async function discoverStationheadFollowerTargets(env, discoveredAt = Date.now()) {
   if (typeof env?.OTHER_DB?.prepare !== 'function') throw new Error('OTHER_DB binding is unavailable');
-  if (typeof env?.BUDDIES_DB?.prepare !== 'function') throw new Error('BUDDIES_DB binding is unavailable');
 
-  const [existingResult, buddiesResult] = await Promise.all([
-    env.OTHER_DB.prepare(`SELECT handle,source_mask
-      FROM sh_stationhead_follower_targets ORDER BY handle`).all(),
-    env.BUDDIES_DB.prepare(`SELECT DISTINCT LOWER(TRIM(h.current_handle)) AS handle
-      FROM sh_broadcast_sessions AS s
-      JOIN sh_hosts AS h ON h.id=s.host_id
-      WHERE s.host_id IS NOT NULL
-        AND h.current_handle IS NOT NULL
-        AND TRIM(h.current_handle)<>''`).all(),
+  const existingPromise = env.OTHER_DB.prepare(`SELECT handle,source_mask
+    FROM sh_stationhead_follower_targets ORDER BY handle`).all();
+  const discoverBuddiesHosts = async () => {
+    if (typeof env?.MINUTE_DB?.prepare !== 'function') {
+      return { result: { results: [] }, error: 'MINUTE_DB binding is unavailable', reads: 0 };
+    }
+    try {
+      const result = await env.MINUTE_DB.prepare(`SELECT DISTINCT LOWER(TRIM(h.current_handle)) AS handle
+        FROM sh_broadcast_sessions AS s
+        JOIN sh_hosts AS h ON h.id=s.host_id
+        WHERE s.host_id IS NOT NULL
+          AND h.current_handle IS NOT NULL
+          AND TRIM(h.current_handle)<>''`).all();
+      return { result, error: '', reads: 1 };
+    } catch (error) {
+      const message = String(error?.message || error).slice(0, 500);
+      console.warn(JSON.stringify({
+        event: 'stationhead_follower_target_discovery_degraded',
+        error: message,
+      }));
+      return { result: { results: [] }, error: message, reads: 1 };
+    }
+  };
+
+  const [existingResult, buddiesState] = await Promise.all([
+    existingPromise,
+    discoverBuddiesHosts(),
   ]);
+  const buddiesResult = buddiesState.result;
 
   const existing = new Map();
   for (const row of resultRows(existingResult)) {
@@ -297,8 +315,9 @@ export async function discoverStationheadFollowerTargets(env, discoveredAt = Dat
     source_masks: Object.fromEntries(desired),
     target_writes: targetWrites,
     buddies_discovered: resultRows(buddiesResult).length,
+    buddies_discovery_error: buddiesState.error || null,
     other_d1_reads: 1,
-    buddies_d1_reads: 1,
+    buddies_d1_reads: buddiesState.reads,
   };
 }
 

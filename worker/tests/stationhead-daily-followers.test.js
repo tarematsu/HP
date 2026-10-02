@@ -61,7 +61,7 @@ test('Buddies broadcast hosts are merged into the permanent follower target regi
   existingRows.push({ handle: 'ohisamahost', source_mask: 4 });
   const writes = [];
   const env = {
-    BUDDIES_DB: {
+    MINUTE_DB: {
       prepare(sql) {
         assert.match(sql, /FROM sh_broadcast_sessions AS s/);
         assert.match(sql, /JOIN sh_hosts AS h/);
@@ -97,6 +97,32 @@ test('Buddies broadcast hosts are merged into the permanent follower target regi
   assert.deepEqual(writes, [['buddyhost', 2, MIDNIGHT_JST]]);
   assert.equal(result.target_writes, 1);
   assert.equal(result.buddies_discovered, 1);
+});
+
+test('target discovery keeps fixed and registered handles when minute-facts discovery fails', async () => {
+  const existingRows = STATIONHEAD_DAILY_FOLLOWER_HANDLES.map((handle) => ({ handle, source_mask: 1 }));
+  existingRows.push({ handle: 'ohisamahost', source_mask: 4 });
+  const env = {
+    MINUTE_DB: {
+      prepare() {
+        return { async all() { throw new Error('D1_ERROR: no such table: sh_broadcast_sessions'); } };
+      },
+    },
+    OTHER_DB: {
+      prepare(sql) {
+        if (/SELECT handle,source_mask/.test(sql)) {
+          return { async all() { return { results: existingRows }; } };
+        }
+        return { bind() { return { async run() { return { meta: { changes: 0 } }; } }; } };
+      },
+    },
+  };
+
+  const result = await discoverStationheadFollowerTargets(env, MIDNIGHT_JST);
+  assert.deepEqual(result.handles, [...STATIONHEAD_DAILY_FOLLOWER_HANDLES, 'ohisamahost']);
+  assert.equal(result.buddies_discovered, 0);
+  assert.match(result.buddies_discovery_error, /no such table/);
+  assert.equal(result.buddies_d1_reads, 1);
 });
 
 test('collector fetches fixed and auto-added targets while keeping one compact daily D1 row', async () => {
