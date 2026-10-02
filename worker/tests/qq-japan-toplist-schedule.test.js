@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   collectQqJapanToplistAttempt,
+  finalizeQqJapanToplistCycle,
   QQ_JAPAN_TOPLIST_MARKER_KEY,
   qqJapanToplistCycleKey,
   qqJapanToplistFingerprint,
@@ -95,6 +96,29 @@ test('successful cycle marker skips QQ network access on later hourly runs', asy
   assert.equal(fetched, 0);
 });
 
+test('collected-but-unpublished cycle retries publication without QQ network access', async () => {
+  const now = Date.parse('2026-10-01T12:00:00Z');
+  let fetched = 0;
+  const result = await collectQqJapanToplistAttempt({
+    now,
+    load:async (key) => key === QQ_JAPAN_TOPLIST_MARKER_KEY
+      ? {
+          version:1,
+          cycle:'2026-10-01',
+          status:'collected',
+          provider_update_time:'2026-10-01',
+          fingerprint:'1:chart-1',
+          entries:100,
+          collected_at:now - 60_000,
+        }
+      : null,
+    save:async () => assert.fail('publication retry must not rewrite collection data'),
+    fetchChart:async () => { fetched += 1; return chart(); },
+  });
+  assert.equal(result.status, 'needs_publication');
+  assert.equal(fetched, 0);
+});
+
 test('unchanged provider chart retries later without overwriting R2', async () => {
   const now = Date.parse('2026-10-01T09:00:00Z');
   const previous = previousSnapshot('2026-10-01');
@@ -109,7 +133,7 @@ test('unchanged provider chart retries later without overwriting R2', async () =
   assert.equal(writes.length, 0);
 });
 
-test('new provider update is merged into QQ R2 snapshot and closes the weekly cycle', async () => {
+test('new provider update is merged, then only marked complete after publication', async () => {
   const now = Date.parse('2026-10-01T10:00:00Z');
   const previous = previousSnapshot('2026-09-24');
   const objects = new Map([[regionalSnapshotKey('qq_music'), previous]]);
@@ -123,7 +147,7 @@ test('new provider update is merged into QQ R2 snapshot and closes the weekly cy
     },
     fetchChart:async () => chart('2026-10-01'),
   });
-  assert.equal(result.status, 'updated');
+  assert.equal(result.status, 'collected');
   assert.equal(result.cycle, '2026-10-01');
   const latest = objects.get(regionalSnapshotKey('qq_music'));
   assert.equal(latest.state.status, 'ok');
@@ -134,9 +158,19 @@ test('new provider update is merged into QQ R2 snapshot and closes the weekly cy
       .map((row) => row.position),
     [1,2],
   );
+  const collectedMarker = objects.get(QQ_JAPAN_TOPLIST_MARKER_KEY);
+  assert.equal(collectedMarker.status, 'collected');
+  assert.ok(writes.some((row) => row.key.includes('/days/')));
+
+  const finalized = await finalizeQqJapanToplistCycle({
+    save:async (key,value) => objects.set(key,structuredClone(value)),
+    result,
+    publishedAt:now + 1_000,
+  });
+  assert.equal(finalized.status, 'updated');
   const marker = objects.get(QQ_JAPAN_TOPLIST_MARKER_KEY);
   assert.equal(marker.cycle, '2026-10-01');
   assert.equal(marker.status, 'updated');
   assert.equal(marker.provider_update_time, '2026-10-01');
-  assert.ok(writes.some((row) => row.key.includes('/days/')));
+  assert.equal(marker.published_at, now + 1_000);
 });
