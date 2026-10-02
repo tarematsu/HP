@@ -37,9 +37,16 @@ async function run({
   };
   const article = (id, label = 'normal', initiallyLiked = false, baseTop = 0, options = {}) => {
     let liked = initiallyLiked;
+    const existingLikes = options.likeCount ?? 8;
+    const countText = String(existingLikes);
     const likeButton = {
       disabled: false,
-      getAttribute: () => null,
+      innerText: countText,
+      textContent: countText,
+      getAttribute: name => name === 'aria-label' ? `${countText} Likes` : null,
+      querySelector: selector => selector === '[data-testid="app-text-transition-container"]'
+        ? { innerText: countText, textContent: countText }
+        : null,
       getBoundingClientRect: () => ({
         left: 40,
         top: baseTop + 96 - scrollOffset,
@@ -86,16 +93,19 @@ async function run({
     ? '広告'
     : (bodyMentionsRepost ? 'リポストお願いします' : 'normal');
   const articles = [
-    article(1, 'Promoted', false, 40, { promoted: true }),
-    article(2, 'repost', false, 90, { socialContext: 'user reposted' }),
-    article(3, 'Boosted', false, 140, { promoted: true }),
-    article(4, 'normal', true, 190),
+    article(1, 'Promoted', false, 40, { promoted: true, likeCount: 50 }),
+    article(2, 'repost', false, 90, { socialContext: 'user reposted', likeCount: 50 }),
+    article(3, 'Boosted', false, 140, { promoted: true, likeCount: 50 }),
+    article(4, 'normal', true, 190, { likeCount: 50 }),
     ...Array.from({ length: 8 }, (_, i) => article(
       i + 10,
       normalLabel,
       false,
       320 + i * 220,
-      i === 0 ? { socialContext: 'Pinned' } : {},
+      {
+        ...(i === 0 ? { socialContext: 'Pinned' } : {}),
+        likeCount: i === 0 ? 4 : 5 + i,
+      },
     )),
   ];
   const timers = [];
@@ -168,11 +178,24 @@ test('approaches like buttons at double scroll speed and uses the same DOM click
   assert.equal(result.state.completed, true);
 });
 
-test('pre-click wait is randomly selected from 5, 10 and 15 seconds', async () => {
-  const result = await run({ randomValues: [0, 0.5, 0.99] });
-  assert.ok(result.state.likeWaitHistoryMs.length >= 3);
-  assert.deepEqual(Array.from(result.state.likeWaitHistoryMs.slice(0, 3)), [5000, 10000, 15000]);
-  assert.ok(result.state.likeWaitHistoryMs.every(ms => [5000, 10000, 15000].includes(ms)));
+test('posts below five existing likes are skipped', async () => {
+  const result = await run({ randomValues: [0] });
+  assert.ok(!result.clickedIds.includes(10));
+  assert.ok(result.clickedIds.some(id => id >= 11));
+  assert.match(source, /const minimumExistingLikes = 5/);
+  assert.match(source, /existingLikeCount\(article\) < minimumExistingLikes/);
+  assert.match(source, /suffix === 'K' \|\| suffix === '千'/);
+  assert.match(source, /suffix === '万'/);
+});
+
+test('pre-click wait is randomly selected from 5, 10, 15 and 20 seconds', async () => {
+  const result = await run({ randomValues: [0, 0.26, 0.51, 0.99] });
+  assert.ok(result.state.likeWaitHistoryMs.length >= 4);
+  assert.deepEqual(
+    Array.from(result.state.likeWaitHistoryMs.slice(0, 4)),
+    [5000, 10000, 15000, 20000],
+  );
+  assert.ok(result.state.likeWaitHistoryMs.every(ms => [5000, 10000, 15000, 20000].includes(ms)));
   for (let i = 0; i < Math.min(result.clickTimes.length, result.state.likeWaitHistoryMs.length); i++) {
     const previousScroll = result.scrollTimes.filter(time => time <= result.clickTimes[i]).at(-1);
     assert.ok(previousScroll != null);
