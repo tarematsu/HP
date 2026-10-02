@@ -1,4 +1,29 @@
-export const API_CONTRACT_VERSION = 18;
+export const API_CONTRACT_VERSION = 19;
+
+export const REGIONAL_MUSIC_API_SERVICES = Object.freeze([
+  'youtube_music',
+  'genie',
+  'bugs',
+  'joox',
+  'nhaccuatui',
+  'anghami',
+  'melon',
+  'qq_music',
+  'netease_cloud_music',
+  'kugou_music',
+  'naver_vibe',
+  'flo',
+  'yandex_music',
+  'boomplay',
+  'plern',
+  'fungjai',
+  'zing_mp3',
+  'jiosaavn',
+  'gaana',
+  'langit_musik',
+]);
+
+const regionalMusicApiServices = new Set(REGIONAL_MUSIC_API_SERVICES);
 
 export const API_GROUPS = Object.freeze({
   status: Object.freeze([
@@ -27,7 +52,7 @@ export const API_GROUPS = Object.freeze({
     { path: '/api/apple-music', methods: ['GET'], description: 'Latest Sakurazaka Apple Music regional artist-popularity read model' },
     { path: '/api/apple-music-playlists', methods: ['GET'], description: 'Public Apple Music playlist memberships discovered from music.apple.com pages' },
     { path: '/api/followers', methods: ['GET'], description: 'Daily Stationhead follower history and comparison for tracked accounts' },
-    { path: '/api/regional-music', methods: ['GET'], description: 'Regional music-service artist, track, playlist, and collector-health read model' },
+    { path: '/api/regional-music', methods: ['GET'], description: 'Service-scoped regional music read model selected by the service query parameter' },
   ]),
 });
 
@@ -64,6 +89,12 @@ function onlyParameters(url, allowed = []) {
   return true;
 }
 
+function regionalMusicModelKey(url) {
+  if (!onlyParameters(url, ['service'])) return null;
+  const service = String(url.searchParams.get('service') || '').trim();
+  return regionalMusicApiServices.has(service) ? `regional-music:${service}` : null;
+}
+
 export function materializedApiKey(input) {
   const url = input instanceof URL ? input : new URL(input);
   const pathname = normalizedPathname(url.pathname);
@@ -81,7 +112,7 @@ export function materializedApiKey(input) {
     return 'spotify-playcounts';
   }
   if (pathname === '/api/followers' && onlyParameters(url)) return 'followers';
-  if (pathname === '/api/regional-music' && onlyParameters(url)) return 'regional-music';
+  if (pathname === '/api/regional-music') return regionalMusicModelKey(url);
   return null;
 }
 
@@ -104,7 +135,7 @@ export function apiCacheTtlSeconds(request) {
 
 export function materializedResponseCadenceSeconds(modelKey) {
   const key = String(modelKey || '');
-  if (key === 'followers' || key === 'regional-music') return 0;
+  if (key === 'followers' || key.startsWith('regional-music:')) return 0;
   const variant = materializedVariantsByKey.get(key);
   if (variant?.event_driven === true) return 0;
   const cadenceMinutes = Number(variant?.cadence_minutes);
@@ -114,7 +145,7 @@ export function materializedResponseCadenceSeconds(modelKey) {
 
 export function materializedResponseMaximumAge(modelKey, env = {}) {
   const key = String(modelKey || '');
-  if (key === 'followers' || key === 'regional-music') return Number.MAX_SAFE_INTEGER;
+  if (key === 'followers' || key.startsWith('regional-music:')) return Number.MAX_SAFE_INTEGER;
   const variant = materializedVariantsByKey.get(key);
   if (variant?.event_driven === true || variant?.revision_driven === true) {
     return Number.MAX_SAFE_INTEGER;
