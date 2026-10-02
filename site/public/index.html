@@ -47,11 +47,12 @@
   </main>
   <template id="subscriptionSourceTabsTemplate">
     <div class="dashboard-subscription-groups" role="group" aria-label="音楽サブスク区分">
-      <a href="#spotify" data-subscription-group="global">グローバル</a>
+      <a href="#spotify" data-subscription-group="major">主要</a>
       <a href="#genie" data-subscription-group="local">ローカル</a>
+      <a href="#qq_music" data-subscription-group="china">中国</a>
     </div>
-    <div class="dashboard-source-group" data-subscription-group-content="global">
-      <div class="dashboard-source-row" data-row="1" role="group" aria-label="グローバルサービス">
+    <div class="dashboard-source-group" data-subscription-group-content="major">
+      <div class="dashboard-source-row" data-row="1" role="group" aria-label="主要サービス">
         <button type="button" data-source="spotify">Spotify</button>
         <button type="button" data-source="apple-music">Apple Music</button>
         <button type="button" data-source="amazon-music">Amazon Music</button>
@@ -66,23 +67,27 @@
         <button type="button" data-source="nhaccuatui">NhacCuaTui</button>
         <button type="button" data-source="anghami">Anghami</button>
         <button type="button" data-source="melon">Melon</button>
-        <button type="button" data-source="qq_music">🇨🇳QQ音乐</button>
       </div>
       <div class="dashboard-source-row" data-row="3" role="group" aria-label="ローカルサービス 2">
-        <button type="button" data-source="netease_cloud_music">NetEase Cloud Music</button>
-        <button type="button" data-source="kugou_music">🇨🇳酷狗音乐</button>
         <button type="button" data-source="naver_vibe">Naver VIBE</button>
         <button type="button" data-source="flo">FLO</button>
         <button type="button" data-source="yandex_music">Yandex Music</button>
         <button type="button" data-source="boomplay">Boomplay</button>
-      </div>
-      <div class="dashboard-source-row" data-row="4" role="group" aria-label="ローカルサービス 3">
         <button type="button" data-source="plern">Plern</button>
         <button type="button" data-source="fungjai">Fungjai</button>
+      </div>
+      <div class="dashboard-source-row" data-row="4" role="group" aria-label="ローカルサービス 3">
         <button type="button" data-source="zing_mp3">Zing MP3</button>
         <button type="button" data-source="jiosaavn">JioSaavn</button>
         <button type="button" data-source="gaana">Gaana</button>
         <button type="button" data-source="langit_musik">Langit Musik</button>
+      </div>
+    </div>
+    <div class="dashboard-source-group" data-subscription-group-content="china">
+      <div class="dashboard-source-row" data-row="5" role="group" aria-label="中国サービス">
+        <button type="button" data-source="qq_music">🇨🇳QQ音乐</button>
+        <button type="button" data-source="netease_cloud_music">NetEase Cloud Music</button>
+        <button type="button" data-source="kugou_music">🇨🇳酷狗音乐</button>
       </div>
     </div>
   </template>

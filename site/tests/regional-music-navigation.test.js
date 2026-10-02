@@ -16,19 +16,30 @@ const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta
 
 const rows = [
   ['1', ['spotify', 'apple-music', 'amazon-music', 'youtube-music']],
-  ['2', ['genie', 'bugs', 'joox', 'nhaccuatui', 'anghami', 'melon', 'qq_music']],
-  ['3', ['netease_cloud_music', 'kugou_music', 'naver_vibe', 'flo', 'yandex_music', 'boomplay']],
-  ['4', ['plern', 'fungjai', 'zing_mp3', 'jiosaavn', 'gaana', 'langit_musik']],
+  ['2', ['genie', 'bugs', 'joox', 'nhaccuatui', 'anghami', 'melon']],
+  ['3', ['naver_vibe', 'flo', 'yandex_music', 'boomplay', 'plern', 'fungjai']],
+  ['4', ['zing_mp3', 'jiosaavn', 'gaana', 'langit_musik']],
+  ['5', ['qq_music', 'netease_cloud_music', 'kugou_music']],
 ];
 
-test('music subscriptions are grouped into global and local source rows', () => {
+test('music subscriptions are grouped into major, local and China source rows', () => {
   assert.match(html, /id="subscriptionSourceTabsTemplate"/);
-  assert.match(html, /href="#spotify" data-subscription-group="global">グローバル<\/a>/);
+  assert.match(html, /href="#spotify" data-subscription-group="major">主要<\/a>/);
   assert.match(html, /href="#genie" data-subscription-group="local">ローカル<\/a>/);
-  assert.match(html, /data-subscription-group-content="global"/);
+  assert.match(html, /href="#qq_music" data-subscription-group="china">中国<\/a>/);
+  assert.match(html, /data-subscription-group-content="major"/);
   assert.match(html, /data-subscription-group-content="local"/);
+  assert.match(html, /data-subscription-group-content="china"/);
   assert.match(html, /data-source="qq_music">🇨🇳QQ音乐<\/button>/);
   assert.match(html, /data-source="kugou_music">🇨🇳酷狗音乐<\/button>/);
+  const localGroup = html.match(/data-subscription-group-content="local"[\s\S]*?<\/div>\s*<div class="dashboard-source-group" data-subscription-group-content="china">/);
+  assert.ok(localGroup, 'local subscription group must exist before China group');
+  assert.doesNotMatch(localGroup[0], /data-source="(?:qq_music|netease_cloud_music|kugou_music)"/);
+  const chinaGroup = html.match(/data-subscription-group-content="china"[\s\S]*?<\/div>\s*<\/template>/);
+  assert.ok(chinaGroup, 'China subscription group must exist');
+  for (const service of ['qq_music', 'netease_cloud_music', 'kugou_music']) {
+    assert.match(chinaGroup[0], new RegExp(`data-source="${service}"`));
+  }
   for (const [row, services] of rows) {
     const match = html.match(new RegExp(`<div class="dashboard-source-row" data-row="${row}"[\\s\\S]*?<\\/div>`));
     assert.ok(match, `subscription row ${row} must exist`);
@@ -38,7 +49,8 @@ test('music subscriptions are grouped into global and local source rows', () => 
   assert.match(tabs, /subscriptionSourceTabsTemplate/);
   assert.match(css, /\.dashboard-source-tabs\.is-multiline/);
   assert.match(css, /\.dashboard-subscription-groups/);
-  assert.match(css, /:has\(\[data-subscription-group-content="global"\] \.active\)/);
+  assert.match(css, /:has\(\[data-subscription-group-content="major"\] \.active\)/);
+  assert.match(css, /:has\(\[data-subscription-group-content="china"\] \.active\)/);
   assert.match(css, /\.dashboard-source-row\[data-row="1"\]/);
 });
 
@@ -54,7 +66,7 @@ test('regional service views share the materialized read model endpoint', () => 
 });
 
 test('Kugou uses a compact Japan chart view with one shared artist filter for graph and history', () => {
-  assert.match(html, /data-subscription-group-content="local"[\s\S]*data-source="kugou_music"/);
+  assert.match(html, /data-subscription-group-content="china"[\s\S]*data-source="kugou_music"/);
   assert.match(runtime, /payload\?\.kugou_japan_chart/);
   assert.match(runtime, /renderRankHistoryChart/);
   assert.match(runtime, /service === 'kugou_music'/);

@@ -83,8 +83,9 @@
   white-space: nowrap;
 }
 
-.dashboard-source-tabs:has([data-subscription-group-content="global"] .active) [data-subscription-group="global"],
-.dashboard-source-tabs:has([data-subscription-group-content="local"] .active) [data-subscription-group="local"] {
+.dashboard-source-tabs:has([data-subscription-group-content="major"] .active) [data-subscription-group="major"],
+.dashboard-source-tabs:has([data-subscription-group-content="local"] .active) [data-subscription-group="local"],
+.dashboard-source-tabs:has([data-subscription-group-content="china"] .active) [data-subscription-group="china"] {
   background: var(--panel);
   color: var(--text);
   box-shadow: 0 1px 4px rgba(31, 45, 68, .08);
@@ -96,8 +97,9 @@
   min-width: 0;
 }
 
-.dashboard-source-tabs:has([data-subscription-group-content="global"] .active) [data-subscription-group-content="global"],
-.dashboard-source-tabs:has([data-subscription-group-content="local"] .active) [data-subscription-group-content="local"] {
+.dashboard-source-tabs:has([data-subscription-group-content="major"] .active) [data-subscription-group-content="major"],
+.dashboard-source-tabs:has([data-subscription-group-content="local"] .active) [data-subscription-group-content="local"],
+.dashboard-source-tabs:has([data-subscription-group-content="china"] .active) [data-subscription-group-content="china"] {
   display: grid;
 }
 
