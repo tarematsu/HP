@@ -46,7 +46,8 @@ test('toolbars, controls, fitting tables and fitting charts use shared semantic 
   assert.doesNotMatch(playedTracksShell, /view-toolbar played-tracks-toolbar/);
   assert.match(spotifyShell, /dashboardTable/);
   assert.match(spotifyShell, /wrapClassName: 'table-fit-mobile'/);
-  assert.match(spotifyShell, /dashboardChartCard/);
+  assert.match(spotifyShell, /regional-chart-section/);
+  assert.match(spotifyShell, /regional-chart-meta/);
 });
 
 test('history renderer assigns table meaning classes without injecting layout CSS', () => {
