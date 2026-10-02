@@ -1,0 +1,41 @@
+name: Collect Spotify monthly listeners manually
+on:
+  workflow_dispatch:
+    inputs:
+      snapshot_date:
+        description: Snapshot date (JST, YYYY-MM-DD)
+        required: true
+        default: '2026-10-02'
+  push:
+    branches: [main]
+    paths: [.github/workflows/collect-spotify-monthly-listeners-manual.yml]
+permissions:
+  contents: read
+concurrency:
+  group: spotify-monthly-listeners-manual
+  cancel-in-progress: false
+jobs:
+  collect:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      SPOTIFY_MONTHLY_SNAPSHOT_DATE: ${{ inputs.snapshot_date || '2026-10-02' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        working-directory: worker
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Collect and verify monthly listeners
+        working-directory: worker
+        run: node scripts/collect-spotify-monthly-listeners-actions.mjs
+      - name: Refresh Spotify Pages read model
+        working-directory: worker
+        run: node scripts/bootstrap-spotify-read-model.mjs
