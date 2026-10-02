@@ -19,11 +19,11 @@ test('Ohisama Spotify enrichment reuses shared Spotify metadata resolver', () =>
 });
 
 test('Ohisama Spotify enrichment fills presentation data without replacing identity', () => {
-  assert.match(script, /UPDATE sh_tracks SET/);
-  assert.match(script, /WHERE id=\$\{row\.track_id\} AND spotify_id=/);
+  assert.match(script, /UPDATE sh_tracks SET\s+title=CASE[\s\S]{0,500}artist=CASE[\s\S]{0,500}WHERE id=\$\{row\.track_id\} AND spotify_id=/);
   assert.match(script, /INSERT INTO sh_track_metadata/);
   assert.match(script, /ON CONFLICT\(spotify_id\) DO UPDATE SET/);
-  assert.doesNotMatch(script, /UPDATE sh_tracks SET[\s\S]*spotify_id=/);
+  assert.doesNotMatch(script, /UPDATE sh_tracks SET\s+spotify_id=/);
+  assert.doesNotMatch(script, /UPDATE sh_tracks SET\s+isrc=/);
 });
 
 test('Ohisama Spotify enrichment repairs local history and daily summaries by canonical track_id', () => {
