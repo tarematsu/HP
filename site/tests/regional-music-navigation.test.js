@@ -16,10 +16,26 @@ const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta
 
 const rows = [
   ['1', ['spotify', 'apple-music', 'amazon-music', 'youtube-music']],
-  ['2', ['genie', 'bugs', 'joox', 'nhaccuatui', 'anghami', 'melon']],
-  ['3', ['naver_vibe', 'flo', 'yandex_music', 'boomplay', 'plern', 'fungjai']],
-  ['4', ['zing_mp3', 'jiosaavn', 'gaana', 'langit_musik', 'kkbox']],
+  ['2', ['genie', 'kkbox']],
   ['5', ['qq_music', 'netease_cloud_music', 'kugou_music']],
+];
+
+const removedLocalServices = [
+  'bugs',
+  'joox',
+  'nhaccuatui',
+  'anghami',
+  'melon',
+  'naver_vibe',
+  'flo',
+  'yandex_music',
+  'boomplay',
+  'plern',
+  'fungjai',
+  'zing_mp3',
+  'jiosaavn',
+  'gaana',
+  'langit_musik',
 ];
 
 test('music subscriptions are grouped into major, local and China source rows', () => {
@@ -34,7 +50,12 @@ test('music subscriptions are grouped into major, local and China source rows', 
   assert.match(html, /data-source="kugou_music">🇨🇳酷狗音乐<\/button>/);
   const localGroup = html.match(/data-subscription-group-content="local"[\s\S]*?<\/div>\s*<div class="dashboard-source-group" data-subscription-group-content="china">/);
   assert.ok(localGroup, 'local subscription group must exist before China group');
+  assert.match(localGroup[0], /data-source="genie"/);
+  assert.match(localGroup[0], /data-source="kkbox"/);
   assert.doesNotMatch(localGroup[0], /data-source="(?:qq_music|netease_cloud_music|kugou_music)"/);
+  for (const service of removedLocalServices) {
+    assert.doesNotMatch(localGroup[0], new RegExp(`data-source="${service}"`));
+  }
   const chinaGroup = html.match(/data-subscription-group-content="china"[\s\S]*?<\/div>\s*<\/template>/);
   assert.ok(chinaGroup, 'China subscription group must exist');
   for (const service of ['qq_music', 'netease_cloud_music', 'kugou_music']) {
