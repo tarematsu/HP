@@ -1,15 +1,23 @@
-import { REGIONAL_MUSIC_ARTISTS } from './regional-music-service-registry.js';
+import { canonicalRegionalArtist, REGIONAL_MUSIC_ARTISTS } from './regional-music-service-registry.js';
 import {
   saveRegionalArtist,
   saveRegionalCollectorState,
+  saveRegionalPlaylist,
+  saveRegionalPlaylistMembership,
+  saveRegionalPlaylistSnapshot,
   saveRegionalTrack,
 } from './regional-music-store.js';
+import {
+  NETEASE_JAPAN_CHART_ID,
+  NETEASE_JAPAN_CHART_NAME,
+} from './netease-japan-chart-history.js';
 
 const NETEASE_HOT_LIMIT = 20;
 const NETEASE_ALBUM_BATCH = 6;
 const NETEASE_COMMENT_BATCH = 5;
 const VERIFIED_ARTIST_IDS = Object.freeze({ sakurazaka46: '36908026', hinatazaka46: '13163121', nogizaka46: '20846' });
 const DAY_MS = 86_400_000;
+const CHINA_OFFSET_MS = 8 * 60 * 60 * 1000;
 
 function normalize(value) {
   return String(value || '').normalize('NFKC').toLocaleLowerCase('en-US').replace(/\s+/g, '');
@@ -45,6 +53,10 @@ export function neteaseSongUrl(trackId) {
 
 export function neteaseCommentUrl(trackId) {
   return `https://music.163.com/api/v1/resource/comments/R_SO_4_${encodeURIComponent(trackId)}?limit=1&offset=0`;
+}
+
+export function neteaseJapanChartUrl() {
+  return `https://music.163.com/api/playlist/detail?id=${NETEASE_JAPAN_CHART_ID}`;
 }
 
 export function parseNeteaseArtistId(payload, aliases) {
@@ -122,6 +134,41 @@ export function parseNeteaseCommentCount(payload) {
   return Number.isFinite(value) && value >= 0 ? Math.trunc(value) : null;
 }
 
+function chartArtist(track) {
+  for (const artist of trackArtists(track)) {
+    const canonicalArtist = canonicalRegionalArtist(artist?.name);
+    if (canonicalArtist) {
+      return {
+        canonical_artist: canonicalArtist,
+        service_artist_id: artist?.id == null ? null : String(artist.id),
+      };
+    }
+  }
+  return null;
+}
+
+export function parseNeteaseJapanChart(payload) {
+  const playlist = payload?.playlist || payload?.result || payload?.data?.playlist || payload?.data || {};
+  const list = playlist?.tracks || playlist?.songs || [];
+  const tracks = Array.isArray(list) ? list : [];
+  const entries = [];
+  for (const [index, track] of tracks.entries()) {
+    const artist = chartArtist(track);
+    if (!artist) continue;
+    const normalized = normalizeTrack(track, index + 1);
+    if (!normalized) continue;
+    entries.push({ ...normalized, ...artist });
+  }
+  const updateTime = Number(playlist?.updateTime ?? playlist?.trackUpdateTime ?? payload?.updateTime);
+  return {
+    id:String(playlist?.id ?? NETEASE_JAPAN_CHART_ID),
+    name:playlist?.name || NETEASE_JAPAN_CHART_NAME,
+    update_time:Number.isFinite(updateTime) && updateTime > 0 ? updateTime : null,
+    track_count:Number(playlist?.trackCount ?? tracks.length) || tracks.length,
+    entries,
+  };
+}
+
 async function requestJson(fetchImpl, url, options = {}) {
   const response = await fetchImpl(url, {
     ...options,
@@ -164,12 +211,63 @@ async function optionalCommentCount(fetchImpl, trackId) {
   }
 }
 
+async function collectJapaneseChart(env, observedAt, fetchImpl) {
+  const payload = await requestJson(fetchImpl, neteaseJapanChartUrl());
+  const chart = parseNeteaseJapanChart(payload);
+  const updateDate = chart.update_time ? new Date(chart.update_time + CHINA_OFFSET_MS).toISOString().slice(0, 10) : null;
+  await saveRegionalPlaylist(env, {
+    service:'netease_cloud_music',
+    service_playlist_id:NETEASE_JAPAN_CHART_ID,
+    playlist_name:chart.name || NETEASE_JAPAN_CHART_NAME,
+    playlist_url:`https://music.163.com/#/discover/toplist?id=${NETEASE_JAPAN_CHART_ID}`,
+    playlist_type:'official_chart',
+    owner_name:'网易云音乐',
+    provider_updated_at:chart.update_time,
+    provider_update_date:updateDate,
+    observed_at:observedAt,
+  });
+  await saveRegionalPlaylistSnapshot(env, {
+    service:'netease_cloud_music',
+    service_playlist_id:NETEASE_JAPAN_CHART_ID,
+    item_count:chart.track_count,
+    observed_at:observedAt,
+  });
+  for (const entry of chart.entries) {
+    await saveRegionalTrack(env, {
+      service:'netease_cloud_music',
+      service_track_id:entry.track_id,
+      service_artist_id:entry.service_artist_id,
+      canonical_artist:entry.canonical_artist,
+      title:entry.title,
+      album_name:entry.album_name,
+      track_url:neteaseSongUrl(entry.track_id),
+      observed_at:observedAt,
+    });
+    await saveRegionalPlaylistMembership(env, {
+      service:'netease_cloud_music',
+      service_playlist_id:NETEASE_JAPAN_CHART_ID,
+      service_track_id:entry.track_id,
+      position:entry.rank,
+      observed_at:observedAt,
+    });
+  }
+  return chart;
+}
+
 export async function collectNeteaseCloudMusic(env, observedAt = Date.now(), fetchImpl = fetch) {
   const failures = [];
   let artists = 0;
   let tracks = 0;
   let comments = 0;
   let albums = 0;
+  let japanChartEntries = 0;
+
+  try {
+    const chart = await collectJapaneseChart(env, observedAt, fetchImpl);
+    japanChartEntries = chart.entries.length;
+  } catch (error) {
+    failures.push({ scope:'japanese_chart', error:String(error?.message || error) });
+  }
 
   for (const [canonicalArtist, artist] of Object.entries(REGIONAL_MUSIC_ARTISTS)) {
     try {
@@ -227,8 +325,8 @@ export async function collectNeteaseCloudMusic(env, observedAt = Date.now(), fet
               canonical_artist: canonicalArtist,
               title: entry.title,
               album_name: entry.album_name || album.name,
-              track_url: neteaseSongUrl(entry.track_id),
-              observed_at: observedAt,
+              track_url:neteaseSongUrl(entry.track_id),
+              observed_at:observedAt,
             });
             tracks += 1;
           }
@@ -243,18 +341,18 @@ export async function collectNeteaseCloudMusic(env, observedAt = Date.now(), fet
     }
   }
 
-  const status = failures.length === 0 ? 'ok' : (artists || tracks) ? 'degraded' : 'error';
+  const status = failures.length === 0 ? 'ok' : (artists || tracks || japanChartEntries) ? 'degraded' : 'error';
   await saveRegionalCollectorState(env, {
-    service: 'netease_cloud_music',
+    service:'netease_cloud_music',
     status,
-    last_attempt_at: observedAt,
-    last_success_at: (artists || tracks) ? observedAt : null,
-    last_error_class: failures.length ? 'collection_error' : null,
-    last_error_message: failures.length ? JSON.stringify(failures).slice(0, 1000) : null,
-    entity_counts: { artists, albums, tracks, tracks_with_comments: comments, failures: failures.length },
-    updated_at: observedAt,
+    last_attempt_at:observedAt,
+    last_success_at:(artists || tracks || japanChartEntries) ? observedAt : null,
+    last_error_class:failures.length ? 'collection_error' : null,
+    last_error_message:failures.length ? JSON.stringify(failures).slice(0,1000) : null,
+    entity_counts:{ artists, albums, tracks, tracks_with_comments:comments, japan_chart_entries:japanChartEntries, failures:failures.length },
+    updated_at:observedAt,
   });
-  return { service: 'netease_cloud_music', status, artists, albums, tracks, tracks_with_comments: comments, failures };
+  return { service:'netease_cloud_music', status, artists, albums, tracks, tracks_with_comments:comments, japan_chart_entries:japanChartEntries, failures };
 }
 
 export function validateNeteaseResponse(payload) {
