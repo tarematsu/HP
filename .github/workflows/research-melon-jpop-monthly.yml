@@ -6,6 +6,8 @@ on:
       - research/melon-jpop-history-backfill
     paths:
       - '.github/workflows/research-melon-jpop-monthly.yml'
+      - 'worker/src/melon-jpop-history.js'
+      - 'worker/scripts/backfill-melon-jpop-history-actions.mjs'
   workflow_dispatch:
 
 permissions:
