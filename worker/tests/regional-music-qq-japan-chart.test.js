@@ -96,4 +96,7 @@ test('QQ Music daily collector stores Japan chart tracks and ordered memberships
   const chartTrack = writes.find((row) => row.field === 'tracks' && row.value.service_track_id === 'chart-1')?.value;
   assert.equal(chartTrack.canonical_artist, 'sakurazaka46');
   assert.deepEqual(chartTrack.provider_artists, ['櫻坂46']);
+  const unrelatedTrack = writes.find((row) => row.field === 'tracks' && row.value.service_track_id === 'chart-2')?.value;
+  assert.equal(Object.hasOwn(unrelatedTrack, 'canonical_artist'), false);
+  assert.equal(Object.hasOwn(unrelatedTrack, 'service_artist_id'), false);
 });
