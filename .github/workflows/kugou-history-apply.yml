@@ -1,0 +1,70 @@
+name: Apply Kugou legacy history integration
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/kugou-history-apply.yml'
+      - 'worker/src/kugou-japan-chart-legacy.js'
+      - 'worker/src/kugou-japan-chart-history.js'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Update Pages coverage and regression expectations
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const runtimePath = 'site/public/regional-music.js';
+          let runtime = fs.readFileSync(runtimePath, 'utf8');
+          const oldCoverage = "setText('kugouJapanCoverage', `最古取得可能: ${oldest} / 最終確認号: ${latestChecked} / 最終ランクイン: ${latestRankIn}（${count}件）。2024/10/31より前は現行APIでは正しい過去Top 100を復元できないため未収録。`);";
+          const newCoverage = "setText('kugouJapanCoverage', `最古取得可能: ${oldest} / 最終確認号: ${latestChecked} / 最終ランクイン: ${latestRankIn}（${count}件）。2021/01/01〜2024/10/30は旧Webランキング、2024/10/31以降は現行APIから復元。`);";
+          if (!runtime.includes(oldCoverage)) throw new Error('Kugou coverage text target not found');
+          runtime = runtime.replace(oldCoverage, newCoverage);
+          const oldIssue = "Number.isFinite(Number(item.issue)) ? `第${integerFormat.format(Number(item.issue))}期` : '-',";
+          const newIssue = "Number.isFinite(Number(item.issue)) ? `第${integerFormat.format(Number(item.issue))}期` : Number.isFinite(Number(item.volid)) ? `volid ${integerFormat.format(Number(item.volid))}` : '-',";
+          if (!runtime.includes(oldIssue)) throw new Error('Kugou issue cell target not found');
+          runtime = runtime.replace(oldIssue, newIssue);
+          fs.writeFileSync(runtimePath, runtime);
+
+          const testPath = 'worker/tests/regional-music-read-model.test.js';
+          let test = fs.readFileSync(testPath, 'utf8');
+          const replacements = [
+            ["assert.equal(history.length, 115);", "assert.equal(history.length, 1012);"],
+            ["assert.equal(payload.kugou_japan_chart.coverage.oldest_available, '2024-10-31 10:10:01');", "assert.equal(payload.kugou_japan_chart.coverage.oldest_available, '2021-01-01');\n  assert.equal(payload.kugou_japan_chart.coverage.oldest_rank_in, '2021-01-21');\n  assert.equal(payload.kugou_japan_chart.coverage.legacy_web_through, '2024-10-30');\n  assert.equal(payload.kugou_japan_chart.coverage.current_api_from, '2024-10-31');"],
+            ["assert.equal(counts.get('sakurazaka46'), 53);", "assert.equal(counts.get('sakurazaka46'), 113);"],
+            ["assert.equal(counts.get('nogizaka46'), 56);", "assert.equal(counts.get('nogizaka46'), 784);"],
+            ["assert.equal(counts.get('hinatazaka46'), 6);", "assert.equal(counts.get('hinatazaka46'), 115);"],
+            ["assert.equal(best('sakurazaka46'), 19);", "assert.equal(best('sakurazaka46'), 15);"],
+            ["assert.equal(best('nogizaka46'), 2);", "assert.equal(best('nogizaka46'), 1);"],
+            ["assert.equal(best('hinatazaka46'), 8);", "assert.equal(best('hinatazaka46'), 4);"],
+            ["assert.equal(writes[0].body.kugou_japan_chart.history.length, 115);", "assert.equal(writes[0].body.kugou_japan_chart.history.length, 1012);"],
+            ["kugou_japan_chart_entries: 115,", "kugou_japan_chart_entries: 1012,"],
+          ];
+          for (const [from, to] of replacements) {
+            if (!test.includes(from)) throw new Error(`test target not found: ${from}`);
+            test = test.replace(from, to);
+          }
+          fs.writeFileSync(testPath, test);
+          NODE
+      - name: Commit integration updates
+        run: |
+          if git diff --quiet -- site/public/regional-music.js worker/tests/regional-music-read-model.test.js; then
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add site/public/regional-music.js worker/tests/regional-music-read-model.test.js
+          git commit -m 'Integrate Kugou legacy chart history in Pages'
+          git push origin HEAD:${{ github.head_ref }}
