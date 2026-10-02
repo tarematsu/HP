@@ -142,12 +142,14 @@ function installRouteObserver() {
 
 async function loadReadModel() {
   if (!readModelPromise) {
-    readModelPromise = fetch('/api/regional-music', {
+    readModelPromise = fetch('/api/regional-music?service=netease_cloud_music', {
       headers:{ accept:'application/json' }, cache:'default',
     }).then(async (response) => {
-      if (!response.ok) throw new Error(`regional music HTTP ${response.status}`);
+      if (!response.ok) throw new Error(`regional music NetEase HTTP ${response.status}`);
       const payload = await response.json();
-      if (!payload?.ok) throw new Error(payload?.error || 'regional music read model unavailable');
+      if (!payload?.ok || payload.service !== 'netease_cloud_music') {
+        throw new Error(payload?.error || 'NetEase Cloud Music read model unavailable');
+      }
       return payload;
     }).catch((error) => {
       readModelPromise = null;
