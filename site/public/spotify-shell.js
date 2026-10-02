@@ -4,8 +4,10 @@ import {
   dashboardTable,
   mountDashboardShell,
 } from './dashboard-ui-common.js?v=20261001.1';
+import { installSpotifyAllTracksFilter } from './spotify-all-tracks.js?v=20261002.1';
 
 const artistTabs = dashboardModeTabs([
+  { value: 'all', label: 'すべて' },
   { value: 'sakurazaka46', label: '櫻坂46', active: true },
   { value: 'nogizaka46', label: '乃木坂46' },
   { value: 'hinatazaka46', label: '日向坂46' },
@@ -68,3 +70,5 @@ mountDashboardShell({
       ${tracksPanel}`,
   },
 });
+
+installSpotifyAllTracksFilter();
