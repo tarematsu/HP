@@ -11,8 +11,12 @@ import { collectGenieSnapshot } from '../src/genie-catalog-snapshot.js';
 import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
 import { regionalMusicSnapshotDate } from '../src/regional-music-store.js';
 
-export async function collectRegionalR2Run({load,save,now=Date.now(),all=false,fetchImpl=fetch,collectors=REGIONAL_MUSIC_SERVICE_COLLECTORS_BY_ID,bindings={}}) {
-  const services=all ? [...REGIONAL_MUSIC_DAILY_SERVICES] : regionalMusicR2DueServices(now);
+export async function collectRegionalR2Run({load,save,now=Date.now(),all=false,onlyServices=null,fetchImpl=fetch,collectors=REGIONAL_MUSIC_SERVICE_COLLECTORS_BY_ID,bindings={}}) {
+  const services=all
+    ? [...REGIONAL_MUSIC_DAILY_SERVICES]
+    : Array.isArray(onlyServices)
+      ? [...onlyServices]
+      : regionalMusicR2DueServices(now);
   const results=[];
   // Small services finish before the large Genie catalog. An interrupted Genie
   // run does not discard the already persisted snapshots of other providers.
@@ -69,7 +73,16 @@ async function main() {
     console.log(JSON.stringify({event:'regional_r2_saved',key,tracks:value.tracks?.length,status:value.state?.status}));
   };
   let results;
-  try {results=await collectRegionalR2Run({load,save,all:process.argv.includes('--all'),bindings:{MINUTE_DB:minuteDb}});}
+  try {
+    const kugouOnly=process.argv.includes('--kugou');
+    results=await collectRegionalR2Run({
+      load,
+      save,
+      all:process.argv.includes('--all'),
+      onlyServices:kugouOnly ? ['kugou_music'] : null,
+      bindings:{MINUTE_DB:minuteDb},
+    });
+  }
   finally {
     // Even an interrupted provider must publish all completed service snapshots.
     const api=async(path,body)=>{
