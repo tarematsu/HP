@@ -10,6 +10,7 @@ import {
   mountDashboardShell,
 } from './dashboard-ui-common.js?v=20261001.1';
 import './history/history-table-gaps.js?v=20261002.1';
+import './history/history-ranking-compact-layout.js?v=20261003.1';
 
 const controls = dashboardControls({
   id: 'controls',
@@ -62,12 +63,18 @@ const weekly = dashboardDataCard({
   hidden: true,
 });
 
+const rankingMeta = `
+  <div id="rankingCompactMeta" class="regional-chart-meta" hidden>
+    <span>更新日時 <strong id="rankingUpdatedAt">-</strong></span>
+    <span>更新周期 <strong>毎日00:00</strong></span>
+  </div>`;
+
 mountDashboardShell({
   view: {
     id: 'historyView',
     className: 'history-view',
     anchorId: 'currentView',
     position: 'afterend',
-    html: `<div id="guide" hidden aria-hidden="true"><p class="kicker"></p><h2 id="guideTitle"></h2><p id="guideText"></p></div>${controls}${dashboardNotice({ id: 'notice', hidden: false })}${summary}${chart}${data}${weekly}`,
+    html: `<div id="guide" hidden aria-hidden="true"><p class="kicker"></p><h2 id="guideTitle"></h2><p id="guideText"></p></div>${rankingMeta}${controls}${dashboardNotice({ id: 'notice', hidden: false })}${summary}${chart}${data}${weekly}`,
   },
 });
