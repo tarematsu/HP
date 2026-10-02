@@ -1,0 +1,112 @@
+name: Targeted Kuwo Japanese chart archive recovery
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-cc-targeted.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Query selected Common Crawl indexes and recover captures
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import json, urllib.request, urllib.parse, gzip, io, re, pathlib, concurrent.futures, time
+          UA='Mozilla/5.0'
+          def get(url,timeout=8,headers=None):
+            h={'User-Agent':UA}; h.update(headers or {})
+            try:
+              req=urllib.request.Request(url,headers=h)
+              with urllib.request.urlopen(req,timeout=timeout) as r:return r.status,dict(r.headers),r.read()
+            except Exception as e:return 0,{},b''
+          st,_,raw=get('https://index.commoncrawl.org/collinfo.json',10)
+          colls=json.loads(raw) if st==200 else []
+          ids=[x.get('id') for x in colls if x.get('id')]
+          # keep recent 12 plus roughly one crawl per year back to 2016
+          chosen=[]
+          for x in ids[:12]:
+            if x not in chosen: chosen.append(x)
+          for year in range(2025,2015,-1):
+            c=next((x for x in ids if f'CC-MAIN-{year}-' in x),None)
+            if c and c not in chosen: chosen.append(c)
+          targets=[
+            'kuwo.cn/newh5/bang/index',
+            'm.kuwo.cn/newh5/bang/index',
+            'm.kuwo.cn/newh5app/ranklist_detail/183',
+            'www.kuwo.cn/rankList/183',
+            'www.kuwo.cn/rankList',
+          ]
+          def qidx(args):
+            idx,target=args
+            q=urllib.parse.urlencode({'url':target,'output':'json','filter':'status:200','collapse':'digest','limit':'20'})
+            st,_,raw=get(f'https://index.commoncrawl.org/{idx}-index?{q}',8)
+            rows=[]
+            if st==200:
+              for ln in raw.decode('utf-8','replace').splitlines():
+                try:rows.append(json.loads(ln))
+                except:pass
+            return idx,target,rows
+          results=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+            for idx,target,rows in ex.map(qidx,[(i,t) for i in chosen for t in targets]):
+              if rows: results.append({'index':idx,'target':target,'rows':rows})
+          candidates=[]; seen=set()
+          for block in results:
+            # oldest + newest from each index/target; avoids huge download count
+            rows=sorted(block['rows'],key=lambda r:r.get('timestamp',''))
+            picks=(rows[:1]+rows[-1:]) if len(rows)>1 else rows
+            for r in picks:
+              k=(r.get('timestamp'),r.get('digest'))
+              if k not in seen: seen.add(k); candidates.append(r)
+          candidates=sorted(candidates,key=lambda r:r.get('timestamp',''))
+          def recover(r):
+            try: off=int(r['offset']); ln=int(r['length']); fn=r['filename']
+            except:return None
+            st,_,raw=get('https://data.commoncrawl.org/'+fn,10,{'Range':f'bytes={off}-{off+ln-1}'})
+            if st not in (200,206): return None
+            try:data=gzip.GzipFile(fileobj=io.BytesIO(raw)).read()
+            except:data=raw
+            # strip WARC and HTTP headers
+            for _ in range(2):
+              p=data.find(b'\r\n\r\n')
+              if p>=0:data=data[p+4:]
+            txt=data.decode('utf-8','replace')
+            # Decode escaped unicode often embedded in JSON/NUXT enough for marker search.
+            alt=txt
+            try: alt=txt.encode('utf-8').decode('unicode_escape')
+            except: pass
+            blob=txt+'\n'+alt
+            marker='酷我日语榜'
+            pos=blob.find(marker)
+            snippet=blob[max(0,pos-1500):pos+7000] if pos>=0 else ''
+            # collect Sakamichi names anywhere in payload
+            sak=[]
+            for n in ['櫻坂46','樱坂46','Sakurazaka46','乃木坂46','Nogizaka46','日向坂46','Hinatazaka46','欅坂46','Keyakizaka46']:
+              if n.lower() in blob.lower(): sak.append(n)
+            return {'timestamp':r.get('timestamp'),'url':r.get('url'),'digest':r.get('digest'),'bytes':len(data),'has_jp_chart':pos>=0,'sakamichi':sak,'snippet':snippet[:7000]}
+          recovered=[]
+          # Cap downloads; selected exact pages should be enough.
+          with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+            for x in ex.map(recover,candidates[-80:]):
+              if x and (x['has_jp_chart'] or x['sakamichi']): recovered.append(x)
+          out={'indexes':chosen,'index_hits':results,'candidate_count':len(candidates),'recovered':recovered}
+          pathlib.Path('kuwo-jp-cc-targeted.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8')
+          print('indexes',len(chosen),'blocks',len(results),'candidates',len(candidates),'recovered',len(recovered))
+          for x in recovered:
+            print('REC',x['timestamp'],x['url'],'JP',x['has_jp_chart'],'SAKA',x['sakamichi'])
+            if x['has_jp_chart']:
+              s=re.sub(r'\s+',' ',x['snippet'])
+              print('SNIP',s[:1000])
+          PY
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kuwo-jp-cc-targeted
+          path: kuwo-jp-cc-targeted.json
+          if-no-files-found: ignore
+          retention-days: 7
