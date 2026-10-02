@@ -1,0 +1,83 @@
+name: Backfill older Kuwo Japanese chart 2026
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-backfill-older-2026.yml]
+permissions:
+  contents: read
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Discover older bangids and fetch Top100
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import concurrent.futures,datetime,json,pathlib,re,time,urllib.parse,urllib.request
+          BASE='https://kbangserver.kuwo.cn/ksong.s'
+          COMMON={'from':'pc','fmt':'json','pn':'0','rn':'1','type':'bang','data':'content','id':'183','show_copyright_off':'0','pcmp4':'1','isbang':'1','userid':'0'}
+          GROUPS={
+            '櫻坂46':['櫻坂46','樱坂46','Sakurazaka46','Sakurazaka 46'],
+            '乃木坂46':['乃木坂46','Nogizaka46','Nogizaka 46'],
+            '日向坂46':['日向坂46','Hinatazaka46','Hinatazaka 46'],
+            '欅坂46':['欅坂46','Keyakizaka46','Keyakizaka 46'],
+          }
+          def norm(s): return re.sub(r'[\s._・･\-—–/\\()\[\]（）【】「」『』]','',str(s or '').casefold())
+          def get(bid,rn=1,timeout=5):
+            q={**COMMON,'rn':str(rn),'bangid':str(bid)}
+            u=BASE+'?'+urllib.parse.urlencode(q)
+            try:
+              req=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'})
+              with urllib.request.urlopen(req,timeout=timeout) as r:return json.loads(r.read().decode('utf-8','replace'))
+            except Exception as e:return {'_error':repr(e)}
+          def probe(bid):
+            j=get(bid,1); return bid,j.get('currentVolume')
+          def find_volume(vol,prev_bid):
+            target=f'2026|{vol}'
+            # Global chart edition ids move roughly 70-80/day; search a safe bounded window below previous id.
+            for lo_delta,hi_delta in [(35,115),(1,180),(1,260)]:
+              ids=list(range(prev_bid-hi_delta,prev_bid-lo_delta+1))
+              with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
+                for bid,cv in ex.map(probe,ids):
+                  if cv==target:return bid
+            return None
+          def fetch_edition(vol,bid):
+            j=get(bid,100,10); rows=j.get('musiclist') or j.get('musicList') or []
+            hits=[]
+            for i,r in enumerate(rows,1):
+              hay=norm(' '.join(str(r.get(k,'')) for k in ('artist','artistName','singer','name','title')))
+              for g,aliases in GROUPS.items():
+                if any(norm(a) in hay for a in aliases):
+                  hits.append({'rank':i,'group':g,'name':r.get('name') or r.get('title'),'artist':r.get('artist') or r.get('artistName') or r.get('singer'),'rid':r.get('rid') or r.get('id')})
+            date=(datetime.date(2026,1,1)+datetime.timedelta(days=vol-1)).isoformat()
+            return {'volume':vol,'date':date,'bangid':bid,'currentVolume':j.get('currentVolume'),'row_count':len(rows),'top10':[{'rank':i+1,'name':r.get('name') or r.get('title'),'artist':r.get('artist') or r.get('artistName') or r.get('singer'),'rid':r.get('rid') or r.get('id')} for i,r in enumerate(rows[:10])],'sakamichi':hits,'error':j.get('_error')}
+
+          # Known anchors discovered from the live Kuwo API.
+          prev_vol=214; prev_bid=268216
+          results=[]; discovered=[]
+          for vol in range(213,183,-1):
+            bid=find_volume(vol,prev_bid)
+            print('DISCOVER',vol,bid)
+            if bid is None:
+              results.append({'volume':vol,'date':(datetime.date(2026,1,1)+datetime.timedelta(days=vol-1)).isoformat(),'bangid':None,'row_count':0,'sakamichi':[],'error':'bangid_not_found'})
+              break
+            discovered.append({'volume':vol,'bangid':bid,'gap':prev_bid-bid})
+            x=fetch_edition(vol,bid); results.append(x)
+            print('EDITION',x['date'],'VOL',vol,'BANGID',bid,'ROWS',x['row_count'],'TOP3',json.dumps(x['top10'][:3],ensure_ascii=False),'HITS',json.dumps(x['sakamichi'],ensure_ascii=False))
+            prev_bid=bid; prev_vol=vol
+
+          hits=[{'date':x.get('date'),'volume':x.get('volume'),'bangid':x.get('bangid'),**h} for x in results for h in x.get('sakamichi',[])]
+          report={'observed_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'anchor':{'volume':214,'bangid':268216},'discovered':discovered,'edition_count':len([x for x in results if x.get('row_count')==100]),'sakamichi_hits':hits,'editions':results}
+          pathlib.Path('kuwo-jp-older-2026.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          print('SUMMARY editions',report['edition_count'],'hits',len(hits),'oldest',results[-1]['date'] if results else None)
+          for h in hits:print('SAKAMICHI',json.dumps(h,ensure_ascii=False))
+          PY
+      - name: Upload older history
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kuwo-jp-older-2026
+          path: kuwo-jp-older-2026.json
+          if-no-files-found: ignore
+          retention-days: 7
