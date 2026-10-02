@@ -43,6 +43,20 @@ function normalize(value) {
     .replace(/[\s\p{P}\p{S}]+/gu, '');
 }
 
+function normalizePeriod(value) {
+  const match = String(value || '').match(/(\d{4})\D+(\d{1,2})(?:\D|$)/);
+  return match ? `${match[1]}_${Number(match[2])}` : null;
+}
+
+function parseJsonLike(text) {
+  const source = String(text || '').trim();
+  if (!source) throw new Error('empty response');
+  try { return JSON.parse(source); } catch {}
+  const match = source.match(/^[^(]*\((\{[\s\S]*\}|\[[\s\S]*\])\)\s*;?$/);
+  if (!match) throw new Error('invalid JSON/JSONP response');
+  return JSON.parse(match[1]);
+}
+
 function isoWeekPeriod(dateLike) {
   const input = dateLike instanceof Date ? dateLike : new Date(dateLike);
   const date = new Date(Date.UTC(input.getUTCFullYear(), input.getUTCMonth(), input.getUTCDate()));
@@ -66,6 +80,7 @@ function latestThursdayJst(now = Date.now()) {
 
 function periods(now = Date.now(), startDate = DEFAULT_START) {
   const earliest = new Date(`${startDate}T00:00:00Z`);
+  if (!Number.isFinite(earliest.getTime())) throw new Error('invalid start date');
   const output = [];
   const seen = new Set();
   for (let date = latestThursdayJst(now); date >= earliest; date = new Date(date.getTime() - WEEK_MS)) {
@@ -106,7 +121,7 @@ async function fetchPeriod(period) {
     signal:AbortSignal.timeout(30_000),
   });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const payload = JSON.parse(await response.text());
+  const payload = parseJsonLike(await response.text());
   if (payload?.code || payload?.req_1?.code) throw new Error('provider error');
   const chart = parseQqJapanToplist(payload);
   return { ...chart, provider_period:providerPeriod(payload), fingerprint:fingerprint(chart.entries) };
@@ -136,11 +151,18 @@ async function main() {
         errors.push({ period, error:'empty chart' });
         continue;
       }
+
+      const normalizedProviderPeriod = normalizePeriod(chart.provider_period);
+      if (normalizedProviderPeriod && normalizedProviderPeriod !== period) {
+        errors.push({ period, provider_period:chart.provider_period, error:'provider period mismatch; stopping before storing stale data' });
+        break;
+      }
+
       if (chart.fingerprint === previousFingerprint) repeated += 1;
       else repeated = 0;
       previousFingerprint = chart.fingerprint;
       if (repeated >= 4) {
-        errors.push({ period, error:'provider appears to ignore older period; stopping' });
+        errors.push({ period, error:'provider appears to ignore older period; stopping before storing repeated chart' });
         break;
       }
 
@@ -155,9 +177,10 @@ async function main() {
         canonical_artist:entry.canonical_artist ?? null,
         artists:(entry.artists || []).map((artist) => artist.name).filter(Boolean),
       }));
+      const targetRows = rows.filter(isTarget);
       weeks.push({ period, provider_period:chart.provider_period ?? null, update_time:chart.update_time ?? null, rows });
-      hits.push(...rows.filter(isTarget));
-      console.log(JSON.stringify({ event:'qq_anime_period', period, provider_period:chart.provider_period ?? null, rows:rows.length, hits:rows.filter(isTarget).length }));
+      hits.push(...targetRows);
+      console.log(JSON.stringify({ event:'qq_anime_period', period, provider_period:chart.provider_period ?? null, rows:rows.length, hits:targetRows.length }));
     } catch (error) {
       errors.push({ period, error:String(error?.message || error) });
     }
