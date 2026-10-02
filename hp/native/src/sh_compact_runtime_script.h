@@ -66,7 +66,7 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
 ;
 (() => {
   const host = String(location.hostname || '').toLowerCase();
-  if ((host !== 'stationhead.com' && !host.ends_with?.('.stationhead.com')) ||
+  if ((host !== 'stationhead.com' && !host.endsWith('.stationhead.com')) ||
       window.top !== window || window.__homepanelStationheadInteractionBridge) {
     return;
   }
