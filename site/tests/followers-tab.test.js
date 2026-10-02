@@ -24,6 +24,15 @@ test('followers is registered in the common lazy router after its shell mounts',
   assert.match(shell, /label: 'フォロワー'/);
 });
 
+test('followers shows update timestamp and daily midnight cadence', () => {
+  assert.match(shell, /id="followersCompactMeta" class="regional-chart-meta"/);
+  assert.match(shell, /更新日時 <strong id="followersUpdatedAt">-<\/strong>/);
+  assert.match(shell, /更新周期 <strong>毎日00:00<\/strong>/);
+  assert.match(runtime, /payload\?\.updated_at/);
+  assert.match(runtime, /timeZone: 'Asia\/Tokyo'/);
+  assert.match(runtime, /formatUpdatedAt/);
+});
+
 test('followers tab keeps the fixed accounts and renders through the shared Canvas foundation', () => {
   for (const handle of FIXED_HANDLES) assert.match(runtime, new RegExp(`'${handle}'`));
   assert.match(runtime, /payloadHandles\(payload\)/);

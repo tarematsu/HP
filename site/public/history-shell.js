@@ -66,7 +66,7 @@ const weekly = dashboardDataCard({
 const rankingMeta = `
   <div id="rankingCompactMeta" class="regional-chart-meta" hidden>
     <span>更新日時 <strong id="rankingUpdatedAt">-</strong></span>
-    <span>更新周期 <strong>毎日00:00</strong></span>
+    <span>更新周期 <strong>毎週月曜日夜</strong></span>
   </div>`;
 
 mountDashboardShell({

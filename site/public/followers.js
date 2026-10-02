@@ -45,6 +45,14 @@ const FALLBACK_MEMBERSHIPS = Object.freeze({
   sakurazaka46jp: Object.freeze({ affiliation: '櫻坂46公式', group: 'sakurazaka46' }),
   nogizaka46smej: Object.freeze({ affiliation: '乃木坂46公式', group: 'nogizaka46' }),
 });
+const jstDateTime = new Intl.DateTimeFormat('ja-JP', {
+  timeZone: 'Asia/Tokyo',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
 
 let currentPayload = null;
 let loadPromise = null;
@@ -117,6 +125,18 @@ function followerValue(value) {
 function formatFollower(value) {
   const parsed = followerValue(value);
   return parsed == null ? '-' : numberFormat.format(parsed);
+}
+
+function formatUpdatedAt(value) {
+  const timestamp = Number(value);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return '-';
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '-';
+  const parts = Object.fromEntries(jstDateTime.formatToParts(date)
+    .filter((part) => part.type !== 'literal')
+    .map((part) => [part.type, part.value]));
+  if (!parts.month || !parts.day || !parts.hour || !parts.minute) return '-';
+  return `${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
 function normalizeRows(rows, handles) {
@@ -374,6 +394,8 @@ function render(payload) {
   const handles = payloadHandles(payload);
   const rows = normalizeRows(payload?.rows, handles);
   const accounts = normalizeAccounts(payload, rows, handles);
+  const updatedAt = byId('followersUpdatedAt');
+  if (updatedAt) updatedAt.textContent = formatUpdatedAt(payload?.updated_at);
   const chart = byId('followersChart');
   if (chart) chart.setAttribute('aria-label', `${handles.length}アカウントのフォロワー数推移`);
   renderLegend(accounts);
