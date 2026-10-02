@@ -54,10 +54,11 @@ test('music subscriptions are grouped into major, local and China source rows', 
   assert.match(css, /\.dashboard-source-row\[data-row="1"\]/);
 });
 
-test('regional service views share the materialized read model endpoint', () => {
-  assert.match(runtime, /fetch\('\/api\/regional-music'/);
-  assert.match(runtime, /let readModelPromise = null/);
-  assert.match(runtime, /item\.service === service/);
+test('regional service views load one materialized read model per service', () => {
+  assert.match(runtime, /const readModelPromises = new Map\(\)/);
+  assert.match(runtime, /fetch\(`\/api\/regional-music\?service=\$\{encodeURIComponent\(serviceId\)\}`/);
+  assert.match(runtime, /payload\.service !== serviceId/);
+  assert.match(runtime, /regionalMusicUpdated', dateTimeText\(payload\.updated_at\)/);
   assert.match(shell, /id: 'regionalMusicView'/);
   assert.match(shell, /regionalMusicArtistBody/);
   assert.match(shell, /regionalMusicTrackBody/);
@@ -73,7 +74,7 @@ test('Kugou uses weekday 11:30 cadence and date-only chart/history labels', () =
   assert.match(runtime, /kugouArtistFilter/);
   assert.match(runtime, /kugouArtistVisible/);
   assert.match(runtime, /kugou_music: '平日11:30'/);
-  assert.match(runtime, /dateLabel: providerDateText/);
+  assert.match(runtime, /dateLabel:\s*providerDateText/);
   assert.match(runtime, /providerDateText\(item\.published_at\)/);
   assert.doesNotMatch(runtime, /providerDateTimeText/);
   assert.doesNotMatch(runtime, /Number\(item\.issue\)/);
@@ -105,6 +106,7 @@ test('QQ uses Thursday 18:00 cadence and date-only chart/history labels', () => 
   assert.match(shell, /headers: \['更新日', 'グループ', '順位', '曲名'\]/);
   assert.doesNotMatch(shell, /headers: \['週',/);
   assert.match(qqRuntime, /QQ_CHART_CADENCE = '毎週木曜日18:00'/);
+  assert.match(qqRuntime, /fetch\('\/api\/regional-music\?service=qq_music'/);
   assert.match(qqRuntime, /dateLabel:providerDateText/);
   assert.doesNotMatch(qqRuntime, /function periodText/);
   assert.match(qqRuntime, /activeArtistFilter/);
@@ -116,13 +118,15 @@ test('QQ uses Thursday 18:00 cadence and date-only chart/history labels', () => 
   assert.doesNotMatch(shell, /qqJapanCoverage/);
 });
 
-test('YouTube Music uses the shared R2 read model but renders public metrics in its first-row tab', () => {
+test('YouTube Music uses its service-scoped R2 read model and renders public metrics in its first-row tab', () => {
   assert.match(tabs, /'youtube-music':[\s\S]*viewId: 'youtubeMusicView'/);
-  assert.match(youtubeRuntime, /fetch\('\/api\/regional-music'/);
+  assert.match(youtubeRuntime, /fetch\('\/api\/regional-music\?service=youtube_music'/);
+  assert.match(youtubeRuntime, /payload\.service !== SERVICE/);
   assert.match(youtubeRuntime, /const SERVICE = 'youtube_music'/);
   assert.match(youtubeRuntime, /monthly_audience/);
   assert.match(youtubeRuntime, /total_views/);
   assert.match(youtubeRuntime, /payload\.releases/);
+  assert.match(youtubeRuntime, /youtubeMusicUpdated', dateTimeText\(payload\.updated_at\)/);
   assert.match(youtubeShell, /月間視聴者/);
   assert.match(youtubeShell, /総視聴回数/);
   assert.match(youtubeShell, /youtubeMusicReleaseBody/);
