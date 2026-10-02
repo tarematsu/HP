@@ -21,19 +21,25 @@ test('media WebViews keep background timers active without forcing renderer fore
   assert.match(environment, /--disable-background-timer-throttling/);
 });
 
-test('Spotify has an event-independent media progression watchdog', () => {
+test('Spotify has an adaptive event-independent media progression watchdog', () => {
   assert.match(spotifyEvents, /progressProbeMs = 4000/);
+  assert.match(spotifyEvents, /progressHealthyProbeMs = 8000/);
   assert.match(spotifyEvents, /progressStallMs = 12000/);
   assert.match(spotifyEvents, /const probeProgress = \(\) =>/);
   assert.match(spotifyEvents, /current > progressTime \+ 0\.10/);
+  assert.match(spotifyEvents, /progressConfirmed = true/);
+  assert.match(spotifyEvents, /healthyProgress \? progressHealthyProbeMs : progressProbeMs/);
   assert.match(spotifyEvents, /keyWaitingMedia === media/);
   assert.match(spotifyEvents, /post\('spotify:timed-interrupted'\)/);
 });
 
-test('Stationhead re-kicks a frozen media clock then enters native DRM recovery', () => {
+test('Stationhead backs off healthy probes but keeps fast frozen-media recovery', () => {
   assert.match(stationheadLifecycle, /progressProbeMs = 4000/);
+  assert.match(stationheadLifecycle, /progressHealthyProbeMs = 8000/);
   assert.match(stationheadLifecycle, /progressStallMs = 12000/);
   assert.match(stationheadLifecycle, /const probeMediaProgress = \(\) =>/);
+  assert.match(stationheadLifecycle, /progressConfirmed = true/);
+  assert.match(stationheadLifecycle, /healthyProgress \? progressHealthyProbeMs : progressProbeMs/);
   assert.match(stationheadLifecycle, /media\.pause\(\)/);
   assert.match(stationheadLifecycle, /media\.play\?\.\(\)/);
   assert.match(stationheadLifecycle, /progressSyntheticKeyWait = true/);
