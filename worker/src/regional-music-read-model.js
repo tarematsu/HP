@@ -1,6 +1,8 @@
 import { saveMaterializedActionsR2Response } from './pages-response-r2.js';
-import { regionalMusicService } from './regional-music-service-registry.js';
-import { REGIONAL_MUSIC_DAILY_SERVICES } from './regional-music-dispatch-plan.js';
+import {
+  REGIONAL_MUSIC_SERVICES,
+  regionalMusicService,
+} from './regional-music-service-registry.js';
 import { regionalSnapshotKey, mergeRegionalR2Snapshot } from './regional-music-r2-snapshot.js';
 import {
   QQ_JAPAN_HISTORY_INDEX_KEY,
@@ -12,8 +14,12 @@ import {
   KUGOU_JAPAN_CHART_HISTORY,
 } from './kugou-japan-chart-history.js';
 
+// Kept only for callers that still import the historical aggregate key. New
+// regional read models are always stored under regional-music:<service>.
 export const REGIONAL_MUSIC_READ_MODEL_KEY = 'regional-music';
+export const REGIONAL_MUSIC_READ_MODEL_PREFIX = 'regional-music:';
 export const REGIONAL_MUSIC_READ_MODEL_CADENCE_SECONDS = 24 * 60 * 60;
+export const REGIONAL_MUSIC_READ_MODEL_SERVICES = Object.freeze(Object.keys(REGIONAL_MUSIC_SERVICES));
 
 const JSON_HEADERS = Object.freeze({
   'content-type': 'application/json; charset=utf-8',
@@ -27,6 +33,12 @@ function rows(result) {
 async function all(db, sql) {
   const result = await db.prepare(sql).all();
   return rows(result);
+}
+
+export function regionalMusicReadModelKey(service) {
+  const serviceId = String(service || '').trim();
+  if (!regionalMusicService(serviceId)) throw new Error(`unknown regional music service: ${serviceId || '(empty)'}`);
+  return `${REGIONAL_MUSIC_READ_MODEL_PREFIX}${serviceId}`;
 }
 
 export async function loadRegionalMusicReadModel(db) {
@@ -177,6 +189,52 @@ export function neteaseJapanChartReadModel(view) {
   };
 }
 
+function serviceRows(value, service) {
+  return (Array.isArray(value) ? value : []).filter((row) => row?.service === service);
+}
+
+export function regionalMusicServiceSnapshot(snapshot, service) {
+  const serviceId = String(service || '').trim();
+  if (!regionalMusicService(serviceId)) throw new Error(`unknown regional music service: ${serviceId || '(empty)'}`);
+  return {
+    artists:serviceRows(snapshot?.artists, serviceId),
+    tracks:serviceRows(snapshot?.tracks, serviceId),
+    releases:serviceRows(snapshot?.releases, serviceId),
+    playlists:serviceRows(snapshot?.playlists, serviceId),
+    memberships:serviceRows(snapshot?.memberships, serviceId),
+    services:serviceRows(snapshot?.services, serviceId),
+    artistTrackOrders:serviceRows(snapshot?.artistTrackOrders, serviceId),
+  };
+}
+
+export function regionalMusicServiceReadModelPayload(snapshot, service, updatedAt = Date.now()) {
+  const serviceId = String(service || '').trim();
+  const scoped = regionalMusicServiceSnapshot(snapshot, serviceId);
+  const payload = {
+    ok:true,
+    service:serviceId,
+    updated_at:Number(updatedAt) || Date.now(),
+    artists:scoped.artists,
+    tracks:scoped.tracks,
+    releases:scoped.releases,
+    playlists:scoped.playlists,
+    playlist_memberships:scoped.memberships,
+    artist_track_orders:scoped.artistTrackOrders,
+    services:scoped.services.map(normalizedCollectorState),
+  };
+  if (serviceId === 'qq_music') payload.qq_japan_chart = qqJapanChartReadModel(snapshot?.qqJapanChart, snapshot?.qqJapanChartIndex);
+  if (serviceId === 'netease_cloud_music') payload.netease_japan_chart = neteaseJapanChartReadModel(snapshot?.neteaseJapanChart);
+  if (serviceId === 'kugou_music') {
+    payload.kugou_japan_chart = {
+      coverage:KUGOU_JAPAN_CHART_COVERAGE,
+      history:KUGOU_JAPAN_CHART_HISTORY,
+    };
+  }
+  return payload;
+}
+
+// Compatibility helper for unit-level consumers. Production publication no longer
+// writes this aggregate payload.
 export function regionalMusicReadModelPayload(snapshot, updatedAt = Date.now()) {
   return {
     ok: true,
@@ -197,57 +255,86 @@ export function regionalMusicReadModelPayload(snapshot, updatedAt = Date.now()) 
   };
 }
 
-export async function publishRegionalMusicReadModel(env, updatedAt = Date.now(), dependencies = {}) {
+async function r2Json(r2, key) {
+  if (typeof r2?.get !== 'function') return null;
+  const object = await r2.get(key);
+  return object ? object.json() : null;
+}
+
+async function hydrateServicePayload(env, baseSnapshot, service, updatedAt) {
+  const serviceId = String(service || '').trim();
+  let payload = regionalMusicServiceReadModelPayload(baseSnapshot, serviceId, updatedAt);
+  const r2 = env?.PAGES_RESPONSE_R2;
+  if (typeof r2?.get !== 'function') return payload;
+
+  const reads = [r2Json(r2, regionalSnapshotKey(serviceId))];
+  if (serviceId === 'qq_music') {
+    reads.push(r2Json(r2, QQ_JAPAN_HISTORY_VIEW_KEY), r2Json(r2, QQ_JAPAN_HISTORY_INDEX_KEY));
+  } else if (serviceId === 'netease_cloud_music') {
+    reads.push(r2Json(r2, NETEASE_JAPAN_HISTORY_VIEW_KEY));
+  }
+  const [regionalSnapshot, extraA, extraB] = await Promise.all(reads);
+  payload = mergeRegionalR2Snapshot(payload, regionalSnapshot);
+  payload.service = serviceId;
+  payload.updated_at = Number(updatedAt) || Date.now();
+  if (serviceId === 'qq_music') payload.qq_japan_chart = qqJapanChartReadModel(extraA, extraB);
+  if (serviceId === 'netease_cloud_music') payload.netease_japan_chart = neteaseJapanChartReadModel(extraA);
+  return payload;
+}
+
+export async function publishRegionalMusicReadModels(
+  env,
+  services = REGIONAL_MUSIC_READ_MODEL_SERVICES,
+  updatedAt = Date.now(),
+  dependencies = {},
+) {
   if (typeof env?.PAGES_RESPONSE_R2?.put !== 'function') {
     throw new Error('PAGES_RESPONSE_R2 binding is unavailable');
   }
+  const selected = [...new Set((services || []).map((value) => String(value || '').trim()).filter(Boolean))];
+  for (const service of selected) regionalMusicReadModelKey(service);
+  if (!selected.length) return { storage:'r2-split', models:0, results:[] };
+
   const load = dependencies.loadReadModel || loadRegionalMusicReadModel;
   const save = dependencies.saveR2Response || saveMaterializedActionsR2Response;
   const snapshot = await load(env?.OTHER_DB);
-  let payload = regionalMusicReadModelPayload(snapshot, updatedAt);
-  if (typeof env.PAGES_RESPONSE_R2.get === 'function') {
-    const [snapshots, qqHistoryView, qqHistoryIndex, neteaseHistoryView] = await Promise.all([
-      Promise.all(REGIONAL_MUSIC_DAILY_SERVICES.map(async service => {
-        const object = await env.PAGES_RESPONSE_R2.get(regionalSnapshotKey(service));
-        return object ? object.json() : null;
-      })),
-      (async () => {
-        const object = await env.PAGES_RESPONSE_R2.get(QQ_JAPAN_HISTORY_VIEW_KEY);
-        return object ? object.json() : null;
-      })(),
-      (async () => {
-        const object = await env.PAGES_RESPONSE_R2.get(QQ_JAPAN_HISTORY_INDEX_KEY);
-        return object ? object.json() : null;
-      })(),
-      (async () => {
-        const object = await env.PAGES_RESPONSE_R2.get(NETEASE_JAPAN_HISTORY_VIEW_KEY);
-        return object ? object.json() : null;
-      })(),
-    ]);
-    for (const regionalSnapshot of snapshots) payload = mergeRegionalR2Snapshot(payload,regionalSnapshot);
-    payload.qq_japan_chart = qqJapanChartReadModel(qqHistoryView, qqHistoryIndex);
-    payload.netease_japan_chart = neteaseJapanChartReadModel(neteaseHistoryView);
+  const results = [];
+  for (const service of selected) {
+    const payload = await hydrateServicePayload(env, snapshot, service, updatedAt);
+    const body = JSON.stringify(payload);
+    const modelKey = regionalMusicReadModelKey(service);
+    const saved = await save(
+      env.PAGES_RESPONSE_R2,
+      modelKey,
+      body,
+      200,
+      JSON_HEADERS,
+      updatedAt,
+      REGIONAL_MUSIC_READ_MODEL_CADENCE_SECONDS,
+    );
+    if (!saved) throw new Error(`regional music R2 read model write failed: ${service}`);
+    results.push({
+      service,
+      model_key:modelKey,
+      updated_at:payload.updated_at,
+      ...saved,
+      artists:payload.artists.length,
+      tracks:payload.tracks.length,
+      releases:payload.releases.length,
+      playlists:payload.playlists.length,
+      playlist_memberships:payload.playlist_memberships.length,
+    });
   }
-  const body = JSON.stringify(payload);
-  const saved = await save(
-    env.PAGES_RESPONSE_R2,
-    REGIONAL_MUSIC_READ_MODEL_KEY,
-    body,
-    200,
-    JSON_HEADERS,
-    updatedAt,
-    REGIONAL_MUSIC_READ_MODEL_CADENCE_SECONDS,
-  );
-  if (!saved) throw new Error('regional music R2 read model write failed');
-  return {
-    ...saved,
-    artists: payload.artists.length,
-    tracks: payload.tracks.length,
-    releases: payload.releases.length,
-    playlists: payload.playlists.length,
-    playlist_memberships: payload.playlist_memberships.length,
-    services: payload.services.length,
-    qq_japan_chart_entries: payload.qq_japan_chart.history.length,
-    kugou_japan_chart_entries: payload.kugou_japan_chart.history.length,
-  };
+  return { storage:'r2-split', models:results.length, results };
+}
+
+export async function publishRegionalMusicServiceReadModel(env, service, updatedAt = Date.now(), dependencies = {}) {
+  const published = await publishRegionalMusicReadModels(env, [service], updatedAt, dependencies);
+  return published.results[0] || null;
+}
+
+// Bootstrap/legacy queue compatibility: publish every per-service model instead
+// of recreating the retired aggregate regional-music object.
+export async function publishRegionalMusicReadModel(env, updatedAt = Date.now(), dependencies = {}) {
+  return publishRegionalMusicReadModels(env, REGIONAL_MUSIC_READ_MODEL_SERVICES, updatedAt, dependencies);
 }
