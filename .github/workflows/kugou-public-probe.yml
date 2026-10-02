@@ -32,12 +32,12 @@ jobs:
       - name: Probe Kugou current signed Japan ranking API
         working-directory: worker
         run: node scripts/probe-kugou-current-rank.mjs | tee kugou-current-rank-probe.json
-      - name: Crawl Kugou Japan ranking history
-        working-directory: worker
-        run: node scripts/probe-kugou-japan-history.mjs
       - name: Probe Kugou legacy historical rank API
         working-directory: worker
         run: node scripts/probe-kugou-legacy-rank.mjs | tee kugou-legacy-rank-probe.json
+      - name: Crawl Kugou Japan ranking history
+        working-directory: worker
+        run: node scripts/probe-kugou-japan-history.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: kugou-public-probe
