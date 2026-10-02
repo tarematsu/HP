@@ -1,0 +1,71 @@
+name: Probe Kuwo history selector v2
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-history-selector-v2.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Test H5 and legacy API selectors
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import json,re,urllib.parse,urllib.request
+          UA='Mozilla/5.0'
+          def get(u,t=7):
+            try:
+              q=urllib.request.Request(u,headers={'User-Agent':UA,'Referer':'https://m.kuwo.cn/'})
+              with urllib.request.urlopen(q,timeout=t) as r:return r.status,r.read().decode('utf-8','replace')
+            except Exception as e:return 0,repr(e)
+          def h5(extra):
+            u='https://www.kuwo.cn/newh5/bang/content?'+urllib.parse.urlencode(extra)
+            st,s=get(u)
+            title=re.search(r'<title>(.*?)</title>',s,re.S|re.I)
+            pub=re.search(r'(20\d\d[-/.]\d\d[-/.]\d\d)',s)
+            songs=[]
+            for m in re.finditer(r'<li[^>]+mid=["\']?(\d+)["\']?[^>]*>[\s\S]*?<p[^>]*>([^<]+)</p>[\s\S]*?<p class=["\']singName["\']>([^<]+)</p>',s,re.I):
+              songs.append((m.group(1),m.group(2).strip(),m.group(3).strip()))
+              if len(songs)>=5:break
+            return {'http':st,'title':title.group(1).strip() if title else None,'date':pub.group(1) if pub else None,'bytes':len(s),'top':songs}
+          cases=[
+            ('control',{'bid':'183'}),
+            ('bid-third',{'bid':'272685'}),
+            ('third_id',{'bid':'183','third_id':'272685'}),
+            ('thirdId',{'bid':'183','thirdId':'272685'}),
+            ('tid',{'bid':'183','tid':'272685'}),
+            ('cid',{'bid':'183','cid':'272685'}),
+            ('vid',{'bid':'183','vid':'272685'}),
+            ('volume-third',{'bid':'183','volume':'272685'}),
+            ('volume-num',{'bid':'183','volume':'274'}),
+            ('vol',{'bid':'183','vol':'274'}),
+            ('issue',{'bid':'183','issue':'274'}),
+            ('term',{'bid':'183','term':'274'}),
+            ('year-vol',{'bid':'183','year':'2026','volume':'274'}),
+            ('year-issue',{'bid':'183','year':'2026','issue':'274'}),
+          ]
+          print('H5')
+          for label,q in cases:print(label,json.dumps(h5(q),ensure_ascii=False))
+
+          base='https://kbangserver.kuwo.cn/ksong.s'
+          common={'from':'pc','fmt':'json','pn':'0','rn':'5','type':'bang','id':'183','show_copyright_off':'0','pcmp4':'1','isbang':'1','userid':'0'}
+          api_cases=[]
+          for data in ['volume','history','content','list','volumelist','bangvolume']:
+            api_cases.append((f'data={data}',{**common,'data':data}))
+          for k,v in [
+            ('vol','274'),('issue','274'),('version','274'),('version_id','272685'),('versionId','272685'),
+            ('vid','272685'),('tid','272685'),('cid','272685'),('third','272685'),('thirdid','272685'),
+            ('year','2026'),('term','274'),('periodId','272685'),('period_id','272685'),('volumeId','272685'),
+          ]:api_cases.append((f'{k}={v}',{**common,'data':'content',k:v}))
+          print('API')
+          for label,q in api_cases:
+            st,s=get(base+'?'+urllib.parse.urlencode(q))
+            try:
+              j=json.loads(s); rows=j.get('musiclist') or j.get('musicList') or []
+              x={'http':st,'keys':list(j.keys()),'name':j.get('name'),'pub':j.get('pub'),'cv':j.get('currentVolume'),'num':j.get('num'),'top':[(z.get('name'),z.get('artist')) for z in rows[:5]]}
+            except Exception:x={'http':st,'head':s[:300]}
+            print(label,json.dumps(x,ensure_ascii=False))
+          PY
