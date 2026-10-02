@@ -1,0 +1,83 @@
+name: Enumerate archived Kuwo chart landing variants
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-wayback-landing-variants.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Enumerate yearly prefix captures
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import concurrent.futures,html,json,pathlib,re,urllib.parse,urllib.request
+          bases=['https://www.kuwo.cn/newh5/bang/index','http://www.kuwo.cn/newh5/bang/index','https://kuwo.cn/newh5/bang/index','http://kuwo.cn/newh5/bang/index','https://m.kuwo.cn/newh5/bang/index','http://m.kuwo.cn/newh5/bang/index']
+          years=range(2019,2027)
+          def get(u,t=12):
+            try:
+              q=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0'})
+              with urllib.request.urlopen(q,timeout=t) as r:return r.status,r.read().decode('utf-8','replace')
+            except Exception as e:return 0,repr(e)
+          def query(x):
+            base,yr=x
+            q={'url':base,'matchType':'prefix','from':str(yr),'to':str(yr),'output':'json','fl':'timestamp,original,statuscode,digest,mimetype','filter':'statuscode:200','collapse':'digest','limit':'1000'}
+            st,s=get('https://web.archive.org/cdx/search/cdx?'+urllib.parse.urlencode(q),15)
+            rows=[]
+            try:
+              a=json.loads(s)
+              if isinstance(a,list) and len(a)>1:rows=[{'timestamp':z[0],'original':z[1],'status':z[2],'digest':z[3],'mime':z[4]} for z in a[1:]]
+            except:pass
+            return base,yr,st,rows,s[:100] if not rows else ''
+          with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:blocks=list(ex.map(query,[(b,y) for b in bases for y in years]))
+          caps=[];seen=set()
+          for b,y,st,rows,h in blocks:
+            for r in rows:
+              # Only index page variants, exclude deeper paths accidentally caught by prefix.
+              p=urllib.parse.urlparse(r['original'])
+              if not p.path.rstrip('/').endswith('/newh5/bang/index'):continue
+              k=(r['timestamp'],r['digest'],r['original'])
+              if k in seen:continue
+              seen.add(k);caps.append(r)
+          caps.sort(key=lambda x:x['timestamp'])
+          def replay(c):
+            st,s=get(f"https://web.archive.org/web/{c['timestamp']}id_/{c['original']}",18)
+            x={**c,'http':st,'bytes':len(s)}
+            if st!=200:return x
+            s=html.unescape(s)
+            p=s.find('酷我日语榜')
+            if p<0:return x
+            x['has_jp']=True
+            frag=s[p:p+7000]
+            m=re.search(r'<h3>酷我日语榜</h3>[\s\S]*?<div[^>]*class=["\']chart_detail["\'][^>]*>([\s\S]*?)</div>',frag,re.I)
+            area=m.group(1) if m else frag
+            rows=[]
+            pat=re.compile(r'<span[^>]*class=["\']chart_num["\'][^>]*>\s*(\d+)\s*</span>\s*<span[^>]*class=["\']chart_songname["\'][^>]*>(.*?)</span>\s*<span[^>]*class=["\']chart_artname["\'][^>]*>\s*-?\s*(.*?)</span>',re.I|re.S)
+            strip=lambda z:re.sub(r'<[^>]+>','',z).strip()
+            for z in pat.finditer(area):rows.append({'rank':int(z.group(1)),'name':strip(z.group(2)),'artist':strip(z.group(3))})
+            x['top']=rows
+            return x
+          # Replay all if manageable; sample if huge.
+          chosen=caps
+          if len(chosen)>120:
+            step=max(1,len(chosen)//120);chosen=chosen[::step][:120]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:rec=list(ex.map(replay,chosen)) if chosen else []
+          print('CAPTURE_VARIANTS',len(caps),'REPLAYED',len(rec))
+          for b,y,st,rows,h in blocks:
+            if rows:print('BLOCK',y,st,len(rows),b)
+          for x in rec:
+            if x.get('has_jp'):
+              print('JP',x['timestamp'],x['original'],json.dumps(x.get('top',[])[:3],ensure_ascii=False))
+          pathlib.Path('kuwo-wayback-landing-variants.json').write_text(json.dumps({'captures':caps,'recovered':rec},ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kuwo-wayback-landing-variants
+          path: kuwo-wayback-landing-variants.json
+          if-no-files-found: ignore
+          retention-days: 7
