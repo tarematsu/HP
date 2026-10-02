@@ -79,7 +79,7 @@ function artistFilterButtons(prefix, label) {
 
 const qqChartSection = `
   <section id="qqJapanChartSection" class="music-service-section regional-chart-section" hidden>
-    <div class="regional-chart-section-head"><h2>QQ Music 日本榜 グループ別最高順位推移</h2></div>
+    <div class="regional-chart-section-head"><h2>QQ音乐 日本榜 グループ別最高順位推移</h2></div>
     <div id="qqJapanRankLegend" class="regional-music-rank-legend" aria-label="グループ凡例"></div>
     <div id="qqJapanRankChart" class="regional-music-rank-chart"></div>
   </section>`;
@@ -87,21 +87,21 @@ const qqChartSection = `
 const qqHistorySection = `
   <section id="qqJapanHistorySection" class="music-service-section regional-chart-section" hidden>
     <div class="regional-chart-section-head">
-      <h2>QQ Music 日本榜 ランクイン履歴</h2>
-      ${artistFilterButtons('qq', 'QQ Music 日本榜 表示グループ')}
+      <h2>QQ音乐 日本榜 ランクイン履歴</h2>
+      ${artistFilterButtons('qq', 'QQ音乐 日本榜 表示グループ')}
     </div>
     ${qqHistoryTable}
   </section>`;
 
 const qqPopularitySection = `
   <section id="qqArtistPopularitySection" class="music-service-section regional-chart-section" hidden>
-    <div class="regional-chart-section-head"><h2>QQ Music アーティスト別人気曲順位</h2></div>
+    <div class="regional-chart-section-head"><h2>QQ音乐 アーティスト別人気曲順位</h2></div>
     ${qqPopularityTable}
   </section>`;
 
 const kugouChartSection = `
   <section id="kugouJapanChartSection" class="music-service-section regional-chart-section" hidden>
-    <div class="regional-chart-section-head"><h2>Kugou Music 日本榜 グループ別最高順位推移</h2></div>
+    <div class="regional-chart-section-head"><h2>酷狗音乐 日本榜 グループ別最高順位推移</h2></div>
     <div id="kugouJapanRankLegend" class="regional-music-rank-legend" aria-label="グループ凡例"></div>
     <div id="kugouJapanRankChart" class="regional-music-rank-chart"></div>
   </section>`;
@@ -109,8 +109,8 @@ const kugouChartSection = `
 const kugouHistorySection = `
   <section id="kugouJapanHistorySection" class="music-service-section regional-chart-section" hidden>
     <div class="regional-chart-section-head">
-      <h2>Kugou Music 日本榜 ランクイン履歴</h2>
-      ${artistFilterButtons('kugou', 'Kugou Music 日本榜 表示グループ')}
+      <h2>酷狗音乐 日本榜 ランクイン履歴</h2>
+      ${artistFilterButtons('kugou', '酷狗音乐 日本榜 表示グループ')}
     </div>
     ${kugouHistoryTable}
   </section>`;
