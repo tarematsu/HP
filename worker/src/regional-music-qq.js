@@ -10,8 +10,11 @@ import {
 
 const QQ_TRACK_LIMIT = 20;
 export const QQ_JAPAN_TOPLIST_ID = 17;
+export const QQ_ANIME_TOPLIST_ID = 72;
 export const QQ_JAPAN_TOPLIST_LIMIT = 100;
+export const QQ_ANIME_TOPLIST_LIMIT = 100;
 export const QQ_JAPAN_TOPLIST_PLAYLIST_ID = `toplist:${QQ_JAPAN_TOPLIST_ID}`;
+export const QQ_ANIME_TOPLIST_PLAYLIST_ID = `toplist:${QQ_ANIME_TOPLIST_ID}`;
 
 function normalize(value) {
   return String(value || '').normalize('NFKC').toLocaleLowerCase('en-US').replace(/\s+/g, '');
@@ -55,12 +58,20 @@ export function qqSingerTracksUrl(singerMid) {
   return `https://u.y.qq.com/cgi-bin/musicu.fcg?${new URLSearchParams({data:JSON.stringify(data)})}`;
 }
 
-export function qqJapanToplistUrl() {
+export function qqToplistUrl(topId, limit = 100, period = '') {
   const data = { comm: { ct:24, cv:0 }, req_1: {
     module: 'musicToplist.ToplistInfoServer', method: 'GetDetail',
-    param: { topId:QQ_JAPAN_TOPLIST_ID, offset:0, num:QQ_JAPAN_TOPLIST_LIMIT, period:'' },
+    param: { topId:Number(topId), offset:0, num:Number(limit) || 100, period:String(period || '') },
   } };
   return `https://u.y.qq.com/cgi-bin/musicu.fcg?${new URLSearchParams({g_tk:'5381',format:'json',data:JSON.stringify(data)})}`;
+}
+
+export function qqJapanToplistUrl() {
+  return qqToplistUrl(QQ_JAPAN_TOPLIST_ID, QQ_JAPAN_TOPLIST_LIMIT);
+}
+
+export function qqAnimeToplistUrl() {
+  return qqToplistUrl(QQ_ANIME_TOPLIST_ID, QQ_ANIME_TOPLIST_LIMIT);
 }
 
 export function qqSingerUrl(singerMid) {
@@ -71,8 +82,16 @@ export function qqSongUrl(songMid) {
   return `https://y.qq.com/n/ryqq/songDetail/${encodeURIComponent(songMid)}`;
 }
 
+export function qqToplistPageUrl(topId) {
+  return `https://y.qq.com/n/ryqq/toplist/${Number(topId)}`;
+}
+
 export function qqJapanToplistPageUrl() {
-  return `https://y.qq.com/n/ryqq/toplist/${QQ_JAPAN_TOPLIST_ID}`;
+  return qqToplistPageUrl(QQ_JAPAN_TOPLIST_ID);
+}
+
+export function qqAnimeToplistPageUrl() {
+  return qqToplistPageUrl(QQ_ANIME_TOPLIST_ID);
 }
 
 export function parseQqSingerId(payload, aliases) {
@@ -132,10 +151,10 @@ export function parseQqSingerTracks(payload, singerMid, aliases) {
   return output;
 }
 
-export function parseQqJapanToplist(payload) {
+export function parseQqToplist(payload, fallbackTitle = 'QQ音乐榜单') {
   const data = payload?.req_1?.data || payload?.detail?.data || payload?.data || {};
   const list = data?.songInfoList || data?.songlist || data?.list || [];
-  if (!Array.isArray(list)) return { title:'日本榜', update_time:null, entries:[] };
+  if (!Array.isArray(list)) return { title:fallbackTitle, update_time:null, entries:[] };
   const entries = [];
   for (const [index, wrapper] of list.entries()) {
     const track = wrapper?.songInfo || wrapper?.musicData || wrapper?.song || wrapper;
@@ -152,10 +171,18 @@ export function parseQqJapanToplist(payload) {
     });
   }
   return {
-    title:data?.title || data?.titleDetail || '日本榜',
+    title:data?.title || data?.titleDetail || fallbackTitle,
     update_time:data?.updateTime || data?.update_time || null,
     entries,
   };
+}
+
+export function parseQqJapanToplist(payload) {
+  return parseQqToplist(payload, '日本榜');
+}
+
+export function parseQqAnimeToplist(payload) {
+  return parseQqToplist(payload, '动漫音乐榜');
 }
 
 async function fetchJson(fetchImpl, url) {
@@ -179,22 +206,36 @@ async function discoverSinger(fetchImpl, artist) {
   return null;
 }
 
-export async function fetchQqJapanToplist(fetchImpl = fetch) {
-  const payload = await fetchJson(fetchImpl, qqJapanToplistUrl());
-  if (payload?.code || payload?.req_1?.code) throw new Error('Japan toplist API returned a provider error');
-  const chart = parseQqJapanToplist(payload);
-  if (!chart.entries.length) throw new Error('Japan toplist empty');
+export async function fetchQqToplist({ fetchImpl = fetch, topId, limit = 100, fallbackTitle = 'QQ音乐榜单' }) {
+  const payload = await fetchJson(fetchImpl, qqToplistUrl(topId, limit));
+  if (payload?.code || payload?.req_1?.code) throw new Error(`${fallbackTitle} API returned a provider error`);
+  const chart = parseQqToplist(payload, fallbackTitle);
+  if (!chart.entries.length) throw new Error(`${fallbackTitle} empty`);
   return chart;
 }
 
-export async function saveQqJapanToplist(env, chart, observedAt = Date.now()) {
-  if (!chart?.entries?.length) throw new Error('Japan toplist empty');
+export async function fetchQqJapanToplist(fetchImpl = fetch) {
+  return fetchQqToplist({ fetchImpl, topId:QQ_JAPAN_TOPLIST_ID, limit:QQ_JAPAN_TOPLIST_LIMIT, fallbackTitle:'日本榜' });
+}
+
+export async function fetchQqAnimeToplist(fetchImpl = fetch) {
+  return fetchQqToplist({ fetchImpl, topId:QQ_ANIME_TOPLIST_ID, limit:QQ_ANIME_TOPLIST_LIMIT, fallbackTitle:'动漫音乐榜' });
+}
+
+export async function saveQqToplist(env, {
+  chart,
+  observedAt = Date.now(),
+  playlistId,
+  topId,
+  fallbackTitle,
+}) {
+  if (!chart?.entries?.length) throw new Error(`${fallbackTitle} empty`);
 
   await saveRegionalPlaylist(env, {
     service:'qq_music',
-    service_playlist_id:QQ_JAPAN_TOPLIST_PLAYLIST_ID,
-    playlist_name:chart.title || '日本榜',
-    playlist_url:qqJapanToplistPageUrl(),
+    service_playlist_id:playlistId,
+    playlist_name:chart.title || fallbackTitle,
+    playlist_url:qqToplistPageUrl(topId),
     playlist_type:'chart',
     owner_name:'QQ Music',
     provider_update_time:chart.update_time,
@@ -202,7 +243,7 @@ export async function saveQqJapanToplist(env, chart, observedAt = Date.now()) {
   });
   await saveRegionalPlaylistSnapshot(env, {
     service:'qq_music',
-    service_playlist_id:QQ_JAPAN_TOPLIST_PLAYLIST_ID,
+    service_playlist_id:playlistId,
     item_count:chart.entries.length,
     observed_at:observedAt,
   });
@@ -227,13 +268,33 @@ export async function saveQqJapanToplist(env, chart, observedAt = Date.now()) {
     });
     await saveRegionalPlaylistMembership(env, {
       service:'qq_music',
-      service_playlist_id:QQ_JAPAN_TOPLIST_PLAYLIST_ID,
+      service_playlist_id:playlistId,
       service_track_id:entry.track_id,
       position:entry.position,
       observed_at:observedAt,
     });
   }
   return chart;
+}
+
+export async function saveQqJapanToplist(env, chart, observedAt = Date.now()) {
+  return saveQqToplist(env, {
+    chart,
+    observedAt,
+    playlistId:QQ_JAPAN_TOPLIST_PLAYLIST_ID,
+    topId:QQ_JAPAN_TOPLIST_ID,
+    fallbackTitle:'日本榜',
+  });
+}
+
+export async function saveQqAnimeToplist(env, chart, observedAt = Date.now()) {
+  return saveQqToplist(env, {
+    chart,
+    observedAt,
+    playlistId:QQ_ANIME_TOPLIST_PLAYLIST_ID,
+    topId:QQ_ANIME_TOPLIST_ID,
+    fallbackTitle:'动漫音乐榜',
+  });
 }
 
 export async function collectQqJapanToplist(env, observedAt = Date.now(), fetchImpl = fetch) {
@@ -250,6 +311,22 @@ export async function collectQqJapanToplist(env, observedAt = Date.now(), fetchI
     updated_at:observedAt,
   });
   return { service:'qq_music', status:'ok', japan_chart_entries:chart.entries.length, chart };
+}
+
+export async function collectQqAnimeToplist(env, observedAt = Date.now(), fetchImpl = fetch) {
+  const chart = await fetchQqAnimeToplist(fetchImpl);
+  await saveQqAnimeToplist(env, chart, observedAt);
+  await saveRegionalCollectorState(env, {
+    service:'qq_music',
+    status:'ok',
+    last_attempt_at:observedAt,
+    last_success_at:observedAt,
+    last_error_class:null,
+    last_error_message:null,
+    entity_counts:{ anime_chart_entries:chart.entries.length },
+    updated_at:observedAt,
+  });
+  return { service:'qq_music', status:'ok', anime_chart_entries:chart.entries.length, chart };
 }
 
 export async function collectQqMusic(env, observedAt = Date.now(), fetchImpl = fetch) {
