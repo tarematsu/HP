@@ -72,8 +72,6 @@ jobs:
               'error':j.get('_error'),
             }
 
-          # Walk metadata windows backwards. Start current, then select the oldest visible
-          # third_id and inspect whether Kuwo returns an older 60-entry volume window.
           seed=fetch(None,1)
           windows=[]; all_entries={}; seen_windows=set(); cursor=None
           for depth in range(12):
@@ -94,7 +92,6 @@ jobs:
           print('WINDOWS',json.dumps(windows,ensure_ascii=False))
           print('UNIQUE_EDITIONS',len(ordered),'NEWEST',ordered[0] if ordered else None,'OLDEST',ordered[-1] if ordered else None)
 
-          # Fetch editions in parallel but conservatively to avoid Kuwo throttling.
           results=[]
           def wrapped(e):
             x=scan_one(e); time.sleep(.05); return x
@@ -118,3 +115,4 @@ jobs:
           path: kuwo-jp-volume-backfill.json
           if-no-files-found: ignore
           retention-days: 7
+# rerun 2026-10-02T19:55+09:00
