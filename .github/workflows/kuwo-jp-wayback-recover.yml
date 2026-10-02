@@ -1,0 +1,106 @@
+name: Recover historical Kuwo Japanese chart from Wayback snapshots
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-wayback-recover.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch archived rank pages and probe API snapshots
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import urllib.request,urllib.parse,json,re,html,pathlib,concurrent.futures,itertools
+          snaps=[
+            ('2017-12-22','20171222050128','http://m.kuwo.cn:80/newh5/bang/index'),
+            ('2020-06-12','20200612130922','http://m.kuwo.cn/newh5/bang/index'),
+            ('2022-05-08','20220508100423','http://m.kuwo.cn/newh5/bang/index'),
+            ('2022-09-04','20220904135022','http://kuwo.cn/newh5/bang/index'),
+            ('2024-01-05','20240105224544','http://kuwo.cn/newh5/bang/index'),
+            ('2025-01-23a','20250123175218','http://kuwo.cn/newh5/bang/index'),
+            ('2025-01-23b','20250123182654','https://kuwo.cn/newh5/bang/index'),
+          ]
+          UA='Mozilla/5.0'
+          def get(u,t=15):
+            try:
+              q=urllib.request.Request(u,headers={'User-Agent':UA})
+              with urllib.request.urlopen(q,timeout=t) as r:return r.status,r.geturl(),r.read().decode('utf-8','replace')
+            except Exception as e:return 0,u,''
+          out={'pages':[],'api_availability':[]}
+          for label,ts,orig in snaps:
+            # id_ asks Wayback for original bytes without rewriting when supported
+            urls=[f'https://web.archive.org/web/{ts}id_/{orig}',f'https://web.archive.org/web/{ts}/{orig}']
+            body=''; used=''; st=0
+            for u in urls:
+              st,used,body=get(u,20)
+              if st==200 and body:break
+            un=html.unescape(body)
+            pos=un.find('酷我日语榜')
+            if pos<0:
+              # escaped unicode or JS strings
+              for needle in ['\\u9177\\u6211\\u65e5\\u8bed\\u699c','\\u9177\\u6211\\u65e5\\u8a9e\\u699c']:
+                pos=body.find(needle)
+                if pos>=0:break
+            snippet=un[max(0,pos-3000):pos+12000] if pos>=0 else ''
+            # Extract likely song/artist text around Japanese chart heading.
+            text=re.sub(r'<script\b[^>]*>.*?</script>',' ',snippet,flags=re.S|re.I)
+            text=re.sub(r'<style\b[^>]*>.*?</style>',' ',text,flags=re.S|re.I)
+            text=re.sub(r'<[^>]+>',' ',text)
+            text=re.sub(r'\s+',' ',text).strip()
+            # Search HTML/JS for 183 and API/rank detail references.
+            refs=sorted(set(re.findall(r'https?[^\"\'<> ]{0,400}(?:183|rankList|ranklist|ksong|bang)[^\"\'<> ]{0,400}',body,re.I)))[:30]
+            out['pages'].append({'label':label,'timestamp':ts,'status':st,'used':used,'bytes':len(body),'has_jp':pos>=0,'text':text[:6000],'refs':refs})
+            print('\nPAGE',label,ts,'status',st,'bytes',len(body),'JP',pos>=0)
+            if text: print('JP_TEXT',text[:2500])
+            for r in refs[:10]: print('REF',r[:500])
+
+          # Probe exact historic API URL shapes at the snapshot dates via Availability API.
+          api_templates=[]
+          for scheme in ['http','https']:
+            host=f'{scheme}://kbangserver.kuwo.cn/ksong.s'
+            for rn in [3,20,30,100]:
+              for pn in [0,1]:
+                q={'from':'pc','fmt':'json','pn':str(pn),'rn':str(rn),'type':'bang','data':'content','id':'183','show_copyright_off':'0','pcmp4':'1','isbang':'1'}
+                api_templates.append(host+'?'+urllib.parse.urlencode(q))
+                q2=q|{'userid':'0'}
+                api_templates.append(host+'?'+urllib.parse.urlencode(q2))
+          for scheme in ['http','https']:
+            host=f'{scheme}://www.kuwo.cn/api/www/bang/bang/musicList'
+            for rn in [20,30,100]:
+              for pn in [0,1]:
+                api_templates.append(host+'?'+urllib.parse.urlencode({'bangId':'183','pn':pn,'rn':rn,'httpsStatus':'1'}))
+          dates=['20171222','20200612','20220508','20220904','20240105','20250123']
+          def avail(x):
+            target,date=x
+            u='https://archive.org/wayback/available?'+urllib.parse.urlencode({'url':target,'timestamp':date})
+            st,_,txt=get(u,8)
+            if st!=200:return None
+            try:c=(json.loads(txt).get('archived_snapshots') or {}).get('closest') or {}
+            except:return None
+            if c.get('available'):return {'target':target,'requested':date,'snapshot':c}
+          found=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
+            for z in ex.map(avail,itertools.product(api_templates,dates)):
+              if z: found.append(z)
+          seen=set()
+          for z in found:
+            c=z['snapshot']; key=(c.get('timestamp'),c.get('url'))
+            if key in seen:continue
+            seen.add(key); out['api_availability'].append(z)
+            print('API_FOUND',z['requested'],z['target'],'=>',json.dumps(c,ensure_ascii=False))
+          print('API_UNIQUE',len(seen),'API_QUERIES',len(api_templates)*len(dates))
+          pathlib.Path('kuwo-jp-wayback-recover.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kuwo-jp-wayback-recover
+          path: kuwo-jp-wayback-recover.json
+          if-no-files-found: ignore
+          retention-days: 14
