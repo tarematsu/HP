@@ -1,0 +1,42 @@
+name: Diagnose Stationhead followers
+
+on:
+  push:
+    branches: [fix/follower-metadata-and-collection]
+    paths:
+      - '.github/workflows/diagnose-stationhead-followers.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - name: Install worker dependencies
+        working-directory: worker
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Query follower collection state
+        working-directory: worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '--- daily rows ---'
+          npx wrangler d1 execute stationhead-other --remote --config wrangler.other.jsonc --json --command "SELECT observed_date_jst,scheduled_at,collected_at,followers_json,failures_json FROM sh_stationhead_daily_followers_v2 ORDER BY observed_date_jst DESC LIMIT 5;"
+          echo '--- failures ---'
+          npx wrangler d1 execute stationhead-other --remote --config wrangler.other.jsonc --json --command "SELECT observed_date_jst,scheduled_at,failed_at,error,details_json FROM sh_stationhead_daily_follower_failures ORDER BY failed_at DESC LIMIT 20;"
+          echo '--- auth control (no token values) ---'
+          npx wrangler d1 execute stationhead-buddies --remote --config wrangler.buddies-collector.jsonc --json --command "SELECT id,token_expires_at,updated_at FROM sh_worker_collector_state WHERE id='stationhead'; SELECT id,last_attempt_at,last_success_at,last_error,lock_until,updated_at FROM sh_worker_auth_control WHERE id='stationhead';"
