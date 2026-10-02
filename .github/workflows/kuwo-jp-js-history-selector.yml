@@ -1,0 +1,63 @@
+name: Inspect Kuwo web JS history selector
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-js-history-selector.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch Kuwo pages and inspect JS bundles
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import concurrent.futures,html,re,urllib.parse,urllib.request
+          UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140 Safari/537.36'
+          pages=[
+            'https://www.kuwo.cn/rankList/183',
+            'https://www.kuwo.cn/rankList',
+            'https://m.kuwo.cn/newh5/bang/index',
+            'https://www.kuwo.cn/newh5/bang/index',
+            'https://www.kuwo.cn/newh5/bang/content?bid=183',
+          ]
+          def get(u,t=12):
+            try:
+              q=urllib.request.Request(u,headers={'User-Agent':UA,'Referer':'https://www.kuwo.cn/'})
+              with urllib.request.urlopen(q,timeout=t) as r:return r.status,r.geturl(),r.read().decode('utf-8','replace')
+            except Exception as e:return 0,u,repr(e)
+          scripts=[]
+          for p in pages:
+            st,final,s=get(p)
+            print('\nPAGE',st,final,'bytes',len(s))
+            for n in ['currentVolume','volume','third_id','thirdId','second_id','ksong.s','musicList']:
+              if n.lower() in s.lower():
+                print(' PAGE_HIT',n)
+                for m in list(re.finditer(re.escape(n),s,re.I))[:5]:print('  ',s[max(0,m.start()-400):m.start()+800].replace('\n',' ')[:1200])
+            for src in re.findall(r'<script[^>]+src=["\']([^"\']+)',s,re.I):
+              u=urllib.parse.urljoin(final,html.unescape(src))
+              if u not in scripts:scripts.append(u)
+          print('\nSCRIPTS',len(scripts))
+          def scan(u):
+            st,final,s=get(u,15)
+            hits=[]
+            needles=['currentVolume','third_id','thirdId','second_id','current_volume','ksong.s','bang/bang/musicList','volume']
+            for n in needles:
+              poss=[m.start() for m in re.finditer(re.escape(n),s,re.I)]
+              if poss:
+                snippets=[]
+                for p in poss[:20]:snippets.append(s[max(0,p-1000):p+2000].replace('\n',' ')[:3000])
+                hits.append((n,len(poss),snippets))
+            return u,st,len(s),hits
+          with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+            res=list(ex.map(scan,scripts[:80]))
+          for u,st,n,hits in res:
+            if hits:
+              print('\nBUNDLE',st,n,u)
+              for needle,count,snips in hits:
+                print('HIT',needle,'COUNT',count)
+                for x in snips[:5]:print('SNIP',x)
+          PY
