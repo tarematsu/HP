@@ -33,11 +33,16 @@ const aliases = {
 };
 
 function groupFor(entry) {
+  const authorNames = Array.isArray(entry?.authors)
+    ? entry.authors.map((author) => author?.author_name || author?.name).filter(Boolean)
+    : [];
   const haystack = normalize([
     entry?.singername,
     entry?.singer_name,
     entry?.author_name,
+    ...authorNames,
     entry?.filename,
+    entry?.business?.filename,
     entry?.songname,
     entry?.song_name,
   ].filter(Boolean).join(' '));
@@ -63,6 +68,7 @@ function findArrays(value, path = '$', depth = 0, found = []) {
 
 function candidateEntries(json) {
   const candidates = [
+    json?.data?.songlist,
     json?.data?.info,
     json?.data?.list,
     json?.data?.song_list,
@@ -74,6 +80,22 @@ function candidateEntries(json) {
   ];
   for (const value of candidates) if (Array.isArray(value)) return value;
   return [];
+}
+
+function rankSummary(entry, index) {
+  return {
+    rank: entry?.business?.sort ?? index + 1,
+    previous_rank: entry?.business?.last_sort ?? null,
+    rank_count: entry?.business?.rank_count ?? null,
+    author_name: entry?.author_name ?? null,
+    songname: entry?.songname ?? null,
+    album_name: entry?.album_info?.album_name ?? null,
+    album_audio_id: entry?.album_audio_id ?? null,
+    audio_id: entry?.audio_id ?? null,
+    rank_issue: entry?.business?.issue ?? null,
+    rank_publish_date: entry?.business?.rank_id_publish_date ?? null,
+    parent_rank_id: entry?.business?.parent_id ?? null,
+  };
 }
 
 const mid = calculateMid(GUID);
@@ -134,6 +156,7 @@ try {
   let json = null;
   try { json = JSON.parse(text); } catch {}
   const entries = json ? candidateEntries(json) : [];
+  const indexed = entries.map((entry, index) => ({ entry, index }));
   out.response = {
     http_status: response.status,
     ok: response.ok,
@@ -143,15 +166,15 @@ try {
     api_status: json?.status ?? null,
     error_code: json?.error_code ?? json?.errcode ?? null,
     error: json?.error ?? json?.errmsg ?? json?.msg ?? null,
+    total: json?.data?.total ?? json?.total ?? null,
     arrays: json ? findArrays(json) : [],
     entry_count: entries.length,
     matches: {
-      sakurazaka46: entries.map((entry, index) => ({ entry, rank: index + 1 })).filter(({ entry }) => groupFor(entry) === 'sakurazaka46'),
-      hinatazaka46: entries.map((entry, index) => ({ entry, rank: index + 1 })).filter(({ entry }) => groupFor(entry) === 'hinatazaka46'),
-      nogizaka46: entries.map((entry, index) => ({ entry, rank: index + 1 })).filter(({ entry }) => groupFor(entry) === 'nogizaka46'),
+      sakurazaka46: indexed.filter(({ entry }) => groupFor(entry) === 'sakurazaka46').map(({ entry, index }) => rankSummary(entry, index)),
+      hinatazaka46: indexed.filter(({ entry }) => groupFor(entry) === 'hinatazaka46').map(({ entry, index }) => rankSummary(entry, index)),
+      nogizaka46: indexed.filter(({ entry }) => groupFor(entry) === 'nogizaka46').map(({ entry, index }) => rankSummary(entry, index)),
     },
-    first_30: entries.slice(0, 30),
-    body_sample: text.slice(0, 30000),
+    entries: entries.map(rankSummary),
   };
 } catch (error) {
   out.response = { ok: false, transport_error: String(error?.stack || error) };
