@@ -9,7 +9,7 @@ test('leaderboard uses QQ-style update metadata above chart and data', () => {
   assert.match(shell, /history-ranking-compact-layout\.js/);
   assert.match(shell, /id="rankingCompactMeta" class="regional-chart-meta"/);
   assert.match(shell, /更新日時 <strong id="rankingUpdatedAt">-<\/strong>/);
-  assert.match(shell, /更新周期 <strong>毎日00:00<\/strong>/);
+  assert.match(shell, /更新周期 <strong>毎週月曜日夜<\/strong>/);
   assert.match(compact, /detail\.data\?\.materialized_at/);
   assert.match(compact, /timeZone: 'Asia\/Tokyo'/);
 });
