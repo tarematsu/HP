@@ -1,0 +1,166 @@
+name: Fast scan Kuwo Japanese chart archives
+
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-backfill-fast.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Query Common Crawl in parallel
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import concurrent.futures, gzip, io, json, pathlib, re, time, urllib.parse, urllib.request
+
+          UA='kuwo-backfill-fast/1.0'
+          ALIASES=['櫻坂46','樱坂46','Sakurazaka46','乃木坂46','Nogizaka46','日向坂46','Hinatazaka46','欅坂46','Keyakizaka46']
+          def req(url, timeout=7, headers=None):
+            h={'User-Agent':UA}
+            if headers: h.update(headers)
+            try:
+              q=urllib.request.Request(url,headers=h)
+              with urllib.request.urlopen(q,timeout=timeout) as r:
+                return r.status,dict(r.headers),r.read()
+            except Exception as e:
+              return 0,{},repr(e).encode()
+
+          st,_,raw=req('https://index.commoncrawl.org/collinfo.json',10)
+          colls=json.loads(raw) if st==200 else []
+          indices=[x['id'] for x in colls if re.match(r'CC-MAIN-(2024|2025|2026)-',x.get('id',''))]
+
+          # Page URLs use prefix matching to catch stale parameter variants.
+          searches=[
+            ('page-mobile','https://m.kuwo.cn/newh5/bang/index','prefix'),
+            ('page-www','https://kuwo.cn/newh5/bang/index','prefix'),
+            ('detail-mobile','https://m.kuwo.cn/newh5app/ranklist_detail/183','prefix'),
+            ('ranklist-www','https://www.kuwo.cn/rankList/183','prefix'),
+          ]
+          # Exact API shapes seen in current/third-party clients.
+          for rn in (5,20,30,100):
+            for proto in ('http','https'):
+              searches.append((f'api-{proto}-rn{rn}',f'{proto}://kbangserver.kuwo.cn/ksong.s?from=pc&fmt=json&pn=0&rn={rn}&type=bang&data=content&id=183','prefix'))
+
+          def index_query(task):
+            idx,label,url,mode=task
+            q={'url':url,'output':'json','filter':'status:200','limit':'100'}
+            if mode: q['matchType']=mode
+            target=f'https://index.commoncrawl.org/{idx}-index?'+urllib.parse.urlencode(q)
+            st,_,b=req(target,6)
+            rows=[]
+            if st==200:
+              for line in b.decode('utf-8','replace').splitlines():
+                try: rows.append(json.loads(line))
+                except: pass
+            return {'index':idx,'label':label,'query':url,'status':st,'rows':rows}
+
+          tasks=[(idx,*s) for idx in indices for s in searches]
+          blocks=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=24) as ex:
+            for x in ex.map(index_query,tasks):
+              if x['rows']: blocks.append(x)
+
+          # Deduplicate captures, prefer exact target captures over broad pages.
+          captures={}
+          for b in blocks:
+            for r in b['rows']:
+              k=(r.get('timestamp'),r.get('digest'),r.get('url'))
+              captures[k]=dict(r, _label=b['label'], _index=b['index'])
+          caps=sorted(captures.values(),key=lambda x:x.get('timestamp',''))
+
+          def extract_payload(r):
+            try:
+              off=int(r['offset']); ln=int(r['length']); fn=r['filename']
+            except:return None
+            st,_,b=req('https://data.commoncrawl.org/'+fn,10,{'Range':f'bytes={off}-{off+ln-1}'})
+            if st not in (200,206): return None
+            try: data=gzip.GzipFile(fileobj=io.BytesIO(b)).read()
+            except: data=b
+            # WARC header -> HTTP header -> body
+            p=data
+            a=p.find(b'\r\n\r\n')
+            if a>=0:p=p[a+4:]
+            a=p.find(b'\r\n\r\n')
+            if p.startswith(b'HTTP/') and a>=0:p=p[a+4:]
+            return p
+
+          # Limit WARC fetches but sample across time, not only newest.
+          chosen=[]
+          if caps:
+            # keep all API captures first
+            api=[r for r in caps if 'kbangserver.kuwo.cn/ksong.s' in r.get('url','')]
+            pages=[r for r in caps if r not in api]
+            chosen.extend(api[:80])
+            if len(pages)<=80: chosen.extend(pages)
+            else:
+              step=max(1,len(pages)//80)
+              chosen.extend(pages[::step][:80])
+          # unique again
+          seen=set(); chosen2=[]
+          for r in chosen:
+            k=(r.get('timestamp'),r.get('digest'),r.get('url'))
+            if k in seen:continue
+            seen.add(k);chosen2.append(r)
+
+          recovered=[]
+          def fetch_cap(r):
+            p=extract_payload(r)
+            if p is None:return None
+            text=p.decode('utf-8','replace')
+            item={'timestamp':r.get('timestamp'),'url':r.get('url'),'index':r.get('_index'),'label':r.get('_label'),'bytes':len(p),'aliases':[a for a in ALIASES if a.lower() in text.lower()]}
+            # Parse direct API JSON where possible.
+            try:j=json.loads(text)
+            except:j=None
+            rows=[]
+            if isinstance(j,dict):
+              for v in [j.get('musiclist'),j.get('musicList'),(j.get('data') or {}).get('musicList') if isinstance(j.get('data'),dict) else None,(j.get('data') or {}).get('musiclist') if isinstance(j.get('data'),dict) else None]:
+                if isinstance(v,list): rows=v;break
+            if rows:
+              item['kind']='api'
+              item['count']=len(rows)
+              item['top10']=[{'rank':i+1,'name':x.get('name') or x.get('title'),'artist':x.get('artist') or x.get('artistName') or x.get('singer'),'rid':x.get('rid') or x.get('id')} for i,x in enumerate(rows[:10])]
+              hits=[]
+              for i,x in enumerate(rows,1):
+                s=' '.join(str(x.get(k,'')) for k in ('artist','artistName','singer','name','title'))
+                for a in ALIASES:
+                  if a.lower() in s.lower(): hits.append({'alias':a,'rank':i,'name':x.get('name') or x.get('title'),'artist':x.get('artist') or x.get('artistName') or x.get('singer')})
+              item['sakamichi']=hits
+              item['publication']=j.get('pub') or (j.get('data') or {}).get('pub') if isinstance(j.get('data'),dict) else j.get('pub')
+            else:
+              item['kind']='page'
+              m=re.search(r'酷我日语榜.{0,12000}',text,re.S)
+              item['has_jp_chart']='酷我日语榜' in text
+              item['snippet']=(m.group(0)[:12000] if m else '')
+            return item
+
+          with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex:
+            for x in ex.map(fetch_cap,chosen2):
+              if x: recovered.append(x)
+
+          report={'observed_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'indices':indices,'searches':searches,'hit_blocks':[{'index':b['index'],'label':b['label'],'count':len(b['rows'])} for b in blocks],'capture_count':len(caps),'recovered':recovered}
+          pathlib.Path('kuwo-jp-backfill-fast.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          print('INDICES',len(indices),'HIT_BLOCKS',len(blocks),'CAPTURES',len(caps),'RECOVERED',len(recovered))
+          for b in report['hit_blocks']:
+            print('BLOCK',b)
+          for x in recovered:
+            print('REC',x['timestamp'],x['kind'],x['url'],'bytes',x['bytes'],'aliases',x.get('aliases'))
+            if x.get('sakamichi'): print('  SAKAMICHI',json.dumps(x['sakamichi'],ensure_ascii=False))
+            if x.get('top10'): print('  TOP3',json.dumps(x['top10'][:3],ensure_ascii=False))
+            if x.get('kind')=='page' and x.get('has_jp_chart'):
+              print('  HAS_JP_CHART',x.get('snippet','')[:1200].replace('\n',' '))
+          PY
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kuwo-jp-backfill-fast
+          path: kuwo-jp-backfill-fast.json
+          if-no-files-found: ignore
+          retention-days: 7
