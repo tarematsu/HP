@@ -85,3 +85,15 @@ test('album batching preserves shared artist targets and skips unknown targets',
     && body.snapshot_date === '2026-09-30' && body.run_token === 'run'
     && body.message_type === 'spotify-playcount-album' && body.message_version === 3));
 });
+
+test('manual collection targets today in JST without consuming an older incomplete run', async () => {
+  const { selectScheduledSnapshot } = await import('../src/spotify-playcount-schedule.js');
+  const now = Date.parse('2026-10-02T09:00:00Z');
+  const db = { prepare() { throw new Error('manual selection must not select an older run'); } };
+  assert.deepEqual(await selectScheduledSnapshot(db, now, { manualSnapshotDate: '2026-10-02' }), {
+    snapshotDate: '2026-10-02', forceRefresh: true, confirmationPass: true, recovery: 'manual',
+  });
+  await assert.rejects(selectScheduledSnapshot(db, now, { manualSnapshotDate: '2026-10-01' }), /today in JST/);
+  await assert.rejects(selectScheduledSnapshot(db, now, { manualSnapshotDate: '2026-10-03' }), /today in JST/);
+  assert.equal((await selectScheduledSnapshot(db, Date.parse('2026-10-02T15:00:00Z'), { manualSnapshotDate: '2026-10-03' })).snapshotDate, '2026-10-03');
+});

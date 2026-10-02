@@ -175,7 +175,11 @@ export async function missingTargetArtists(db, snapshotDate) {
   return keys.filter((key) => !present.has(key));
 }
 
-async function selectScheduledSnapshot(db, scheduledTime) {
+export async function selectScheduledSnapshot(db, scheduledTime, { manualSnapshotDate } = {}) {
+  if (manualSnapshotDate !== undefined) {
+    if (manualSnapshotDate !== jstDateKey(scheduledTime)) throw new Error("Manual Spotify collection must target today in JST");
+    return { snapshotDate: manualSnapshotDate, forceRefresh: true, confirmationPass: true, recovery: "manual" };
+  }
   const today = jstDateKey(scheduledTime);
   const todayRun = await readRun(db, today);
   if (todayRun?.status === 'complete') {
@@ -229,7 +233,7 @@ async function failRun(db, snapshotDate, runToken, error) {
     .bind(Date.now(), truncateError(error), snapshotDate, runToken).run();
 }
 
-export async function runSpotifyPlaycountScheduled(controller, env) {
+export async function runSpotifyPlaycountScheduled(controller, env, options = {}) {
   if (!enabled(env?.SPOTIFY_PLAYCOUNT_ENABLED, true)) {
     logEvent('spotify_playcount_scheduled', { skipped: true, reason: 'disabled' });
     return { skipped: true, reason: 'disabled' };
@@ -239,7 +243,7 @@ export async function runSpotifyPlaycountScheduled(controller, env) {
 
   const raw = Number(controller?.scheduledTime);
   const scheduledTime = Number.isFinite(raw) ? raw : Date.now();
-  const selection = await selectScheduledSnapshot(db, scheduledTime);
+  const selection = await selectScheduledSnapshot(db, scheduledTime, options);
   if (!selection.snapshotDate) {
     logEvent('spotify_playcount_scheduled', { skipped: true, reason: selection.skip });
     return { skipped: true, reason: selection.skip };
