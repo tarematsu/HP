@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   SPOTIFY_ALWAYS_COLLECT_ARTISTS,
   SPOTIFY_CURRENT_TOP20_ARTISTS,
+  SPOTIFY_TARGET_ARTISTS,
   SPOTIFY_TOP20_RANKING_DATE,
 } from '../src/spotify-playcount-common.js';
 
@@ -24,42 +25,34 @@ test('initial Top 20 includes all three Sakamichi groups at the agreed filtered 
   assert.equal(byKey.get('hinatazaka46')?.rank, 18);
 });
 
-test('explicit collection additions include Ebichu and Nearly Equal Joy with canonical Spotify IDs', () => {
-  assert.deepEqual(SPOTIFY_ALWAYS_COLLECT_ARTISTS, [
-    {
-      artist_key: 'shiritsu-ebisu-chugaku',
-      artist_name: '私立恵比寿中学',
-      spotify_artist_id: '0hWvpmIrUgyPKOYvEGcERp',
-    },
-    {
-      artist_key: 'nearly-equal-joy',
-      artist_name: '≒JOY',
-      spotify_artist_id: '0CXdxGaAia8vQLHVRFXW8a',
-    },
+test('historical explicit additions remain defined but are not collection targets', () => {
+  assert.deepEqual(SPOTIFY_ALWAYS_COLLECT_ARTISTS.map(({ artist_key }) => artist_key), [
+    'shiritsu-ebisu-chugaku',
+    'nearly-equal-joy',
   ]);
-  const allIds = [
-    ...SPOTIFY_CURRENT_TOP20_ARTISTS,
-    ...SPOTIFY_ALWAYS_COLLECT_ARTISTS,
-  ].map(({ spotify_artist_id }) => spotify_artist_id);
-  assert.equal(new Set(allIds).size, 22);
+  assert.deepEqual(SPOTIFY_TARGET_ARTISTS.map(({ artist_key }) => artist_key), [
+    'nogizaka46',
+    'sakurazaka46',
+    'hinatazaka46',
+  ]);
 });
 
-test('collection roster keeps ever-Top-20 artists and explicit always-collect artists', () => {
+test('collection roster is strictly the three Sakamichi groups', () => {
   const schedule = readFileSync(new URL('../src/spotify-playcount-schedule.js', import.meta.url), 'utf8');
-  assert.match(schedule, /SPOTIFY_ALWAYS_COLLECT_ARTISTS/);
-  assert.match(schedule, /INSERT INTO sh_spotify_artists/);
-  assert.match(schedule, /FROM sh_spotify_artists a/);
-  assert.match(schedule, /EXISTS \(\s*SELECT 1 FROM sh_spotify_top20_history h WHERE h\.artist_key=a\.artist_key/);
-  assert.match(schedule, /a\.artist_key IN \(\$\{placeholders\}\)/);
+  assert.match(schedule, /SPOTIFY_TARGET_ARTISTS/);
+  assert.match(schedule, /return SPOTIFY_TARGET_ARTISTS\.map/);
+  assert.match(schedule, /t\.artist_key IN \(\$\{placeholders\}\)/);
   assert.match(schedule, /INSERT INTO sh_spotify_top20_history/);
+  assert.doesNotMatch(schedule, /SPOTIFY_ALWAYS_COLLECT_ARTISTS/);
+  assert.doesNotMatch(schedule, /EXISTS \(\s*SELECT 1 FROM sh_spotify_top20_history h WHERE h\.artist_key=a\.artist_key/);
   assert.doesNotMatch(schedule, /DELETE FROM sh_spotify_artists/);
 });
 
-test('completed current day is reopened once when always-collect artists are missing', () => {
+test('completed current day is reopened only when a Sakamichi target is missing', () => {
   const schedule = readFileSync(new URL('../src/spotify-playcount-schedule.js', import.meta.url), 'utf8');
-  assert.match(schedule, /missingAlwaysCollectArtists/);
+  assert.match(schedule, /missingTargetArtists/);
   assert.match(schedule, /FROM sh_spotify_artist_daily/);
-  assert.match(schedule, /recovery: 'always-collect-backfill'/);
+  assert.match(schedule, /recovery: 'target-backfill'/);
   assert.match(schedule, /forceRefresh: true/);
   assert.match(schedule, /Boolean\(selection\.forceRefresh\)/);
 });
