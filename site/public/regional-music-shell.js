@@ -41,7 +41,7 @@ const playlistTable = dashboardTable({
 
 const kugouHistoryTable = dashboardTable({
   className: 'regional-music-table regional-music-kugou-history-table music-service-track-table',
-  headers: ['日時', 'グループ', '順位', '曲名', '号'],
+  headers: ['年月日', 'グループ', '順位', '曲名'],
   bodyId: 'kugouJapanHistoryBody',
   wrapClassName: 'regional-music-table-wrap',
 });
