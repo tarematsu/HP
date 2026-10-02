@@ -57,5 +57,6 @@ async function main() {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
-  main().catch((error) => { console.error(error.message); process.exitCode = 1; });
+  console.error('Regional collection moved to R2. Run: node scripts/collect-regional-r2-actions.mjs --all');
+  process.exitCode = 1;
 }

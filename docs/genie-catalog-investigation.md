@@ -58,14 +58,15 @@ Run `node worker/scripts/probe-genie-catalog.mjs /tmp/genie-catalog-evidence` wi
 - Conclusion: full public catalog discovery works, and broader cumulative metric collection has a verified route. Full 1,610-song metric coverage was not attempted in this investigation. Implement resumable batches and partial-failure accounting before production expansion.
 - Production collector remains at five songs per artist; this PR is research/evidence, not a deployed expansion.
 
-## Low Cloudflare usage implementation
+## Active implementation: all 19 regional services
 
-- `collect-genie-r2.yml` runs daily at 07:00 JST on main only, or manually. Public HTML fetching runs in GitHub Actions with at most four requests concurrently and a 38-minute soft budget.
-- Per-day progress saves every 100 pending songs. Same-day restarts reuse successful metrics, only retry missing IDs, and preserve the verified catalog/popularity order.
-- Daily full snapshots and the latest snapshot live in the configured existing PAGES_RESPONSE_R2 bucket. Full-catalog metric collection makes no D1 calls and sends no per-song Queue messages.
-- One final regional-music-publish message regenerates the existing shared regional read model. This publication retains its existing D1 reads for the other services; it is not a zero-D1 entire pipeline.
-- Both Worker publication and deployment/manual bootstrap merge the Genie R2 snapshot. Legacy five-song D1 collection remains as a small compatibility fallback and cannot replace the full R2 catalog.
-- Catalog outages preserve prior data with error health. Missing detail metrics retain prior-day values and their original timestamps, with degraded status and current-day coverage. On budget exhaustion partial results publish and same-day reruns resume.
-- At 1,610 distinct IDs, estimated R2 collection writes are 20 per successful day (one initial checkpoint, 17 batch checkpoints, day and latest), plus the shared read-model object. Instead of about 4,830 per-song SQL statements and potentially thousands of messages, the new collector uses zero song SQL statements and one publication message. Counts are design estimates, not measured billing.
-- Tradeoff: public detail requests are still required for each song, and run on Actions minutes. Daily lists are intentionally refreshed to find new songs and maintain current recent-week popularity order. No claim of free total execution is made.
-- No production deployment has occurred in this PR yet.
+- Single main-only Actions schedule: `0 15 * * *` = 00:00 JST.
+- QQ Music and NetEase Cloud Music collect daily. The remaining 17 providers, including Genie, collect every Monday at 00:00 JST. Monday runs each service once.
+- All newly collected artists, tracks, releases, playlists, memberships, per-artist orders and collector health save to per-service daily/latest R2 JSON. Collection has no D1 binding, no per-track messages, and no per-provider Queue messages.
+- Genie retains verified full-catalog pagination, a maximum of four simultaneous detail requests, 100-song persistent checkpoints and a 38-minute soft budget. Other providers reuse their existing parsers with R2 storage hooks and 90-second fetch budgets.
+- Scheduled same-day reruns reuse complete provider snapshots; failures retry. Manual all-service collection explicitly refreshes via the same shared R2 lock.
+- Old per-minute dispatch is disabled. The separate 07:00 Genie workflow is removed. The legacy manual queue script is blocked from executing; manual workflow uses the R2 collector.
+- One final publication message per run refreshes the shared read model. Worker publication and deployment/manual bootstrap merge all 19 R2 snapshots, preserving per-service timestamps and error health. Existing D1 observations remain a read fallback during migration; no new regional observations are written to D1 by the active workflows.
+- First R2 collection seeds prior observations from the existing published R2 response without a D1 migration query. Explicit empty playlist snapshots clear old memberships, including on later partial failures.
+- Design estimate: daily QQ/NetEase collection writes four snapshot objects, plus one shared read-model publication. A weekly full run at the verified Genie count writes about 56 snapshot/checkpoint objects, plus publication. Provider HTTP requests and Actions runtime remain necessary; billing has not been measured.
+- New scheduled data collection begins after merge/production deployment. No deployment has occurred yet.

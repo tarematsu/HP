@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {collectRegionalR2Snapshot,mergeRegionalR2Snapshot} from '../src/regional-music-r2-snapshot.js';
+import {collectRegionalR2Snapshot,mergeRegionalR2Snapshot,regionalSnapshotFromPayload} from '../src/regional-music-r2-snapshot.js';
 import {saveRegionalArtist,saveRegionalTrack,saveRegionalRelease,saveRegionalPlaylist,saveRegionalPlaylistSnapshot,saveRegionalPlaylistMembership,saveRegionalCollectorState} from '../src/regional-music-store.js';
 import {collectRegionalR2Run} from '../scripts/collect-regional-r2-actions.mjs';
 const now=Date.parse('2026-10-05T15:00:00Z');
@@ -34,9 +34,18 @@ test('provider failure retains previous records and an empty playlist clears mem
   assert.equal(result.state.last_success_at,1);
   assert.equal(result.tracks[0].observed_at,1);
   assert.equal(result.playlist_memberships.length,0);
-  const payload=mergeRegionalR2Snapshot({tracks:[{service:'genie'}],services:[]},result);
+  const payload=mergeRegionalR2Snapshot({tracks:[{service:'genie'}],services:[],playlist_memberships:previous.playlist_memberships},result);
   assert.equal(payload.tracks.length,2);
+  assert.equal(payload.playlist_memberships.length,0);
   assert.equal(payload.services[0].status,'error');
+});
+test('first R2 migration seeds published observations without changing their timestamps',()=>{
+  const payload={updated_at:now,services:[{service:'qq_music',updated_at:123,status:'ok'}],tracks:[{service:'qq_music',service_track_id:'old',observed_at:100},{service:'genie'}]};
+  const snapshot=regionalSnapshotFromPayload(payload,'qq_music');
+  assert.equal(snapshot.updated_at,123);
+  assert.equal(snapshot.tracks.length,1);
+  assert.equal(snapshot.tracks[0].observed_at,100);
+  assert.equal(regionalSnapshotFromPayload(payload,'missing'),null);
 });
 test('daily runner invokes only NetEase and QQ with zero SQL and writes daily/latest objects',async()=>{
   const writes=[];const called=[];
@@ -44,4 +53,9 @@ test('daily runner invokes only NetEase and QQ with zero SQL and writes daily/la
   const result=await collectRegionalR2Run({now,collectors,load:async()=>null,save:async(key)=>writes.push(key)});
   assert.deepEqual(called,['netease_cloud_music','qq_music']);
   assert.equal(result.length,2);assert.equal(writes.length,4);
+});
+test('scheduled retry reuses complete same-day services without provider requests or writes',async()=>{
+  const result=await collectRegionalR2Run({now,collectors:{},load:async()=>({day:'2026-10-06',state:{status:'ok'}}),save:async()=>{throw new Error('must not write');}});
+  assert.equal(result.length,2);
+  assert.ok(result.every(row=>row.reused));
 });

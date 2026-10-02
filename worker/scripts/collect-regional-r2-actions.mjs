@@ -5,8 +5,10 @@ import { createWranglerRemoteR2 } from './remote-r2-json-adapter.mjs';
 import { enqueueGeniePublication } from './collect-genie-r2-actions.mjs';
 import { REGIONAL_MUSIC_SERVICE_COLLECTORS_BY_ID } from '../src/regional-music-entry.js';
 import { REGIONAL_MUSIC_DAILY_SERVICES,regionalMusicR2DueServices } from '../src/regional-music-dispatch-plan.js';
-import { collectRegionalR2Snapshot,regionalSnapshotKey,regionalDayKey } from '../src/regional-music-r2-snapshot.js';
+import { collectRegionalR2Snapshot,regionalSnapshotKey,regionalDayKey,regionalSnapshotFromPayload } from '../src/regional-music-r2-snapshot.js';
 import { collectGenieSnapshot } from '../src/genie-catalog-snapshot.js';
+import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+import { regionalMusicSnapshotDate } from '../src/regional-music-store.js';
 
 export async function collectRegionalR2Run({load,save,now=Date.now(),all=false,fetchImpl=fetch,collectors=REGIONAL_MUSIC_SERVICE_COLLECTORS_BY_ID}) {
   const services=all ? [...REGIONAL_MUSIC_DAILY_SERVICES] : regionalMusicR2DueServices(now);
@@ -19,6 +21,10 @@ export async function collectRegionalR2Run({load,save,now=Date.now(),all=false,f
     const fetchService=(url,options={})=>fetchImpl(url,{...options,signal:options.signal ? AbortSignal.any([options.signal,controller.signal]) : controller.signal});
     try {
       const previous=await load(regionalSnapshotKey(service));
+      if(!all && previous?.day===regionalMusicSnapshotDate(now) && previous.state?.status==='ok') {
+        results.push({service,status:'ok',reused:true});
+        continue;
+      }
       const snapshot=await collectRegionalR2Snapshot({service,collect:collectors[service],previous,now,fetchImpl:fetchService});
       await save(regionalDayKey(service,snapshot.day),snapshot);
       await save(regionalSnapshotKey(service),snapshot);
@@ -44,7 +50,15 @@ async function main() {
   const account=process.env.CLOUDFLARE_ACCOUNT_ID,token=process.env.CLOUDFLARE_API_TOKEN;
   if(!account || !token) throw new Error('Cloudflare account context missing');
   const r2=createWranglerRemoteR2({bucket,cwd:root,wranglerScript:join(root,'node_modules/wrangler/bin/wrangler.js')});
-  const load=async key=>(await r2.get(key))?.json() ?? null;
+  const published=await r2.get(pagesActionsR2ResponseKey('regional-music'));
+  const envelope=published ? await published.json() : null;
+  const legacy=envelope?.body ? JSON.parse(envelope.body) : null;
+  const load=async key=>{
+    const object=await r2.get(key);
+    if(object) return object.json();
+    const service=key.match(/^regional-music\/([a-z_]+)\/latest\.json$/)?.[1];
+    return service && legacy ? regionalSnapshotFromPayload(legacy,service) : null;
+  };
   const save=async(key,value)=>{
     await r2.put(key,JSON.stringify(value));
     console.log(JSON.stringify({event:'regional_r2_saved',key,tracks:value.tracks?.length,status:value.state?.status}));
