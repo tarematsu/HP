@@ -18,7 +18,7 @@ const rows = [
   ['1', ['spotify', 'apple-music', 'amazon-music', 'youtube-music']],
   ['2', ['genie', 'bugs', 'joox', 'nhaccuatui', 'anghami', 'melon']],
   ['3', ['naver_vibe', 'flo', 'yandex_music', 'boomplay', 'plern', 'fungjai']],
-  ['4', ['zing_mp3', 'jiosaavn', 'gaana', 'langit_musik']],
+  ['4', ['zing_mp3', 'jiosaavn', 'gaana', 'langit_musik', 'kkbox']],
   ['5', ['qq_music', 'netease_cloud_music', 'kugou_music']],
 ];
 
@@ -46,6 +46,8 @@ test('music subscriptions are grouped into major, local and China source rows', 
     for (const service of services) assert.match(match[0], new RegExp(`data-source="${service}"`));
   }
   assert.match(tabs, /REGIONAL_MUSIC_MODES/);
+  assert.match(tabs, /\bkkbox\b/);
+  assert.match(runtime, /kkbox: 'KKBOX'/);
   assert.match(tabs, /subscriptionSourceTabsTemplate/);
   assert.match(css, /\.dashboard-source-tabs\.is-multiline/);
   assert.match(css, /\.dashboard-subscription-groups/);

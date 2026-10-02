@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { REGIONAL_MUSIC_SERVICE_COLLECTORS_BY_ID } from '../src/regional-music-entry.js';
 const directory = '../regional-response-evidence';
 await mkdir(directory, { recursive: true });
-const services = ['genie','joox','qq_music','netease_cloud_music','kugou_music','yandex_music','boomplay','plern','fungjai','jiosaavn','gaana','zing_mp3','langit_musik'];
+const services = ['genie','joox','kkbox','qq_music','netease_cloud_music','kugou_music','yandex_music','boomplay','plern','fungjai','jiosaavn','gaana','zing_mp3','langit_musik'];
 const summary = [];
 for (let start = 0; start < services.length; start += 4) {
   await Promise.all(services.slice(start,start+4).map(async (service) => {

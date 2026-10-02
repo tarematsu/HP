@@ -37,6 +37,7 @@ export const REGIONAL_MUSIC_SERVICES = Object.freeze({
   netease_cloud_music: Object.freeze({ region: 'CN', phase: 2, metrics: ['catalog', 'comments', 'rankings'] }),
   kugou_music: Object.freeze({ region: 'CN', phase: 2, metrics: ['catalog', 'rankings'] }),
   melon: Object.freeze({ region: 'KR', phase: 2, metrics: ['artist_followers', 'catalog', 'rankings', 'playlists'] }),
+  kkbox: Object.freeze({ region: 'TW/HK', phase: 2, metrics: ['catalog', 'rankings'] }),
   naver_vibe: Object.freeze({ region: 'KR', phase: 2, metrics: ['artist_likes', 'track_likes', 'catalog'] }),
   flo: Object.freeze({ region: 'KR', phase: 2, metrics: ['catalog'] }),
   yandex_music: Object.freeze({ region: 'RU/CIS', phase: 3, metrics: ['catalog'] }),

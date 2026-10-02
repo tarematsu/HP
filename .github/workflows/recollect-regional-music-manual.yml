@@ -35,6 +35,6 @@ jobs:
       - name: Install Worker dependencies
         working-directory: worker
         run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Recollect all 19 services to R2 and publish their results
+      - name: Recollect all 20 services to R2 and publish their results
         working-directory: worker
         run: node scripts/collect-regional-r2-actions.mjs --all
