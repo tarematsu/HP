@@ -79,6 +79,7 @@ function mountChannelLayout() {
     { value: 'history', label: '過去' },
     { value: 'played-tracks', label: '再生履歴' },
     { value: 'likes', label: 'いいね' },
+    { value: 'broadcasts', label: 'リスパ' },
   ], {
     dataAttribute: 'hinata-section',
     className: 'hinata-subtabs',
@@ -141,6 +142,15 @@ function mountChannelLayout() {
     bodyHtml: likesTable,
   })}`;
 
+  const broadcastsPanel = document.createElement('div');
+  broadcastsPanel.dataset.hinataPanel = 'broadcasts';
+  broadcastsPanel.hidden = true;
+  broadcastsPanel.innerHTML = dashboardDataCard({
+    title: 'リスパ',
+    kicker: 'LISTENING PARTY',
+    bodyHtml: '<p class="shared-empty">リスパデータはまだありません。</p>',
+  });
+
   const primaryNotice = byId('hinataNotice');
   const anchor = primaryNotice?.nextSibling || root.firstChild;
   root.insertBefore(tabs, anchor);
@@ -149,6 +159,7 @@ function mountChannelLayout() {
   root.insertBefore(historyPanel, currentPanel.nextSibling);
   root.insertBefore(playedPanel, historyPanel.nextSibling);
   root.insertBefore(likesPanel, playedPanel.nextSibling);
+  root.insertBefore(broadcastsPanel, likesPanel.nextSibling);
   root.dataset.channelTabsMounted = '1';
   return root;
 }
