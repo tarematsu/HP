@@ -12,52 +12,74 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
-      - name: Probe alternate endpoints
+      - name: Probe candidate metadata endpoints
         shell: bash
         run: |
           mkdir -p research-bilibili-alt
           python - <<'PY'
           import json, pathlib, urllib.request, urllib.error
-          aids=['254120575','115683098626622','116014163497529','117041147218209']
-          templates=[
-            'https://api.bilibili.com/x/web-interface/view/detail?aid={}',
-            'http://api.bilibili.com/x/web-interface/view?aid={}',
-            'https://www.bilibili.com/widget/getPageList?aid={}',
-            'http://www.bilibili.com/widget/getPageList?aid={}',
-            'https://api.bilibili.com/x/web-interface/archive/stat?aid={}',
-            'https://api.bilibili.com/x/tag/archive/tags?aid={}',
+          aids=[
+            '117369359829633','117371524093376','117330889739757','116014163497529',
+            '117363487871024','117354511993139','117269250251689','117311444943324',
+            '117339966149092','117372044182531','115683098626622','117347935324584',
+            '117371591333078','254120575','117370920108833','117041147218209',
+            '117361642308028','117365685684594','117246215128850','117369158501135'
           ]
-          uas=[
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-            'Mozilla/5.0 BiliDroid/7.76.0 (bbcallen@gmail.com)',
-          ]
-          rows=[]
+          templates={
+            'tags':'https://api.bilibili.com/x/tag/archive/tags?aid={}',
+            'pages':'https://api.bilibili.com/x/player/pagelist?aid={}',
+            'desc':'https://api.bilibili.com/x/web-interface/archive/desc?aid={}',
+            'related':'https://api.bilibili.com/x/web-interface/archive/related?aid={}',
+          }
+          ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+          def get(url, aid):
+            req=urllib.request.Request(url,headers={'User-Agent':ua,'Referer':'https://www.bilibili.com/video/av'+aid,'Accept':'application/json,text/plain,*/*'})
+            try:
+              with urllib.request.urlopen(req,timeout=15) as r:
+                return r.status,r.read(500000).decode('utf-8','replace'),None
+            except urllib.error.HTTPError as e:
+              try: body=e.read(500000).decode('utf-8','replace')
+              except Exception: body=''
+              return e.code,body,repr(e)
+            except Exception as e:
+              return None,'',repr(e)
+          rows=[]; summaries=[]
+          needles=['日语','日語','日本','排行榜','网易云','網易雲','JPOP','J-POP','歌单','音乐分享官']
           for aid in aids:
-            for tmpl in templates:
+            result={'aid':aid,'endpoints':{}}
+            summary={'aid':aid,'tags':[],'parts':[],'descriptions':[],'signals':[]}
+            for name,tmpl in templates.items():
               url=tmpl.format(aid)
-              for ua in uas:
-                req=urllib.request.Request(url,headers={'User-Agent':ua,'Referer':'https://www.bilibili.com/video/av'+aid,'Accept':'application/json,text/plain,*/*'})
-                row={'aid':aid,'url':url,'ua':ua[:24]}
-                try:
-                  with urllib.request.urlopen(req,timeout=15) as r:
-                    body=r.read(500000).decode('utf-8','replace')
-                    row.update(status=r.status,headers=dict(r.headers),body=body[:20000])
-                except urllib.error.HTTPError as e:
-                  try: body=e.read(500000).decode('utf-8','replace')
-                  except Exception: body=''
-                  row.update(status=e.code,headers=dict(e.headers),body=body[:20000],error=repr(e))
-                except Exception as e:
-                  row.update(status=None,error=repr(e))
-                rows.append(row)
-                print('\n###',aid,row.get('status'),url,ua[:20])
-                print(row.get('body','')[:2500])
+              status,body,error=get(url,aid)
+              item={'name':name,'status':status,'body':body[:50000],'error':error}
+              result['endpoints'][name]=item
+              if status==200 and body:
+                try: data=json.loads(body)
+                except Exception: data={}
+                payload=data.get('data')
+                if name=='tags' and isinstance(payload,list):
+                  summary['tags']=[str(x.get('tag_name') or '') for x in payload if isinstance(x,dict)]
+                elif name=='pages' and isinstance(payload,list):
+                  summary['parts']=[str(x.get('part') or '') for x in payload if isinstance(x,dict)]
+                elif name=='desc':
+                  if isinstance(payload,str): summary['descriptions'].append(payload)
+                  elif isinstance(payload,dict): summary['descriptions'].append(str(payload.get('desc') or payload))
+                elif name=='related' and isinstance(payload,list):
+                  # Related items often expose the source video's topic neighborhood; keep compact titles.
+                  summary['related_titles']=[str(x.get('title') or '') for x in payload[:10] if isinstance(x,dict)]
+            hay=' '.join(summary.get('tags',[])+summary.get('parts',[])+summary.get('descriptions',[])+summary.get('related_titles',[]))
+            summary['signals']=[n for n in needles if n.lower() in hay.lower()]
+            rows.append(result); summaries.append(summary)
+            print(json.dumps(summary,ensure_ascii=False))
           pathlib.Path('research-bilibili-alt/probe.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2))
-          useful=[r for r in rows if r.get('status')==200 and r.get('body') and not r['body'].lstrip().lower().startswith('<!doctype html')]
-          pathlib.Path('research-bilibili-alt/useful.json').write_text(json.dumps(useful,ensure_ascii=False,indent=2))
-          print('\nUSEFUL',len(useful))
+          pathlib.Path('research-bilibili-alt/summaries.json').write_text(json.dumps(summaries,ensure_ascii=False,indent=2))
+          likely=[s for s in summaries if any(x in s['signals'] for x in ['日语','日語','网易云','網易雲','JPOP','J-POP']) or ('排行榜' in s['signals'] and '音乐分享官' in s['signals'])]
+          pathlib.Path('research-bilibili-alt/likely.json').write_text(json.dumps(likely,ensure_ascii=False,indent=2))
+          print('\nLIKELY CANDIDATES',len(likely))
+          for s in likely: print('LIKELY',json.dumps(s,ensure_ascii=False))
           PY
       - name: Upload probe
         if: always()
