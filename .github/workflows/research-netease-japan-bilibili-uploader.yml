@@ -1,0 +1,88 @@
+name: Scan Ajisai_Z uploads for NetEase Japanese chart snapshots
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/research-netease-japan-bilibili-uploader.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install yt-dlp
+        run: python -m pip install --disable-pip-version-check -U yt-dlp
+      - name: Search uploader name and inspect candidate metadata
+        shell: bash
+        run: |
+          set +e
+          mkdir -p research-bilibili-uploader
+          python - <<'PY'
+          import json, pathlib, subprocess, urllib.request, time
+          queries=['Ajisai_Z','Ajisai_Z 日语','Ajisai_Z 网易云','Ajisai_Z 排行榜','Ajisai_Z JPOP']
+          ids=[]; search_rows=[]
+          for qi,q in enumerate(queries):
+              cp=subprocess.run(['yt-dlp','--flat-playlist','--dump-single-json',f'bilisearch100:{q}'],capture_output=True,text=True,timeout=120)
+              pathlib.Path(f'research-bilibili-uploader/search-{qi}.out').write_text(cp.stdout or '')
+              pathlib.Path(f'research-bilibili-uploader/search-{qi}.err').write_text(cp.stderr or '')
+              try: data=json.loads(cp.stdout)
+              except Exception: data={}
+              for e in data.get('entries') or []:
+                  if not isinstance(e,dict): continue
+                  aid=str(e.get('id') or '')
+                  if not aid: continue
+                  if aid not in ids: ids.append(aid)
+                  search_rows.append({'query':q,'aid':aid,'title':e.get('title'),'url':e.get('url'),'uploader':e.get('uploader'),'uploader_id':e.get('uploader_id'),'timestamp':e.get('timestamp'),'upload_date':e.get('upload_date')})
+          pathlib.Path('research-bilibili-uploader/search-rows.json').write_text(json.dumps(search_rows,ensure_ascii=False,indent=2))
+          print('UNIQUE_IDS',len(ids))
+          headers={'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130 Safari/537.36','Referer':'https://www.bilibili.com/'}
+          def get_json(url,aid):
+              req=urllib.request.Request(url,headers={**headers,'Referer':'https://www.bilibili.com/video/av'+aid})
+              try:
+                  with urllib.request.urlopen(req,timeout=12) as r: return r.status,json.loads(r.read().decode('utf-8','replace'))
+              except Exception as e: return None,{'error':repr(e)}
+          signals=['网易云日语榜','云音乐日语榜','日语榜','日語榜','网易云','日语','日語','JPOP','J-POP','排行榜','榜单','前三十','TOP30']
+          rows=[]
+          for n,aid in enumerate(ids[:180]):
+              s={'aid':aid}
+              for key,url in [
+                  ('pages',f'https://api.bilibili.com/x/player/pagelist?aid={aid}'),
+                  ('tags',f'https://api.bilibili.com/x/tag/archive/tags?aid={aid}'),
+                  ('desc',f'https://api.bilibili.com/x/web-interface/archive/desc?aid={aid}')]:
+                  st,j=get_json(url,aid); s[key+'_status']=st
+                  data=j.get('data') if isinstance(j,dict) else None
+                  if key=='pages' and isinstance(data,list): s['parts']=[{'cid':x.get('cid'),'part':x.get('part'),'duration':x.get('duration')} for x in data if isinstance(x,dict)]
+                  elif key=='tags' and isinstance(data,list): s['tags']=[x.get('tag_name') for x in data if isinstance(x,dict)]
+                  elif key=='desc': s['desc']=data
+              related=[r for r in search_rows if r['aid']==aid]
+              s['search']=related
+              hay=json.dumps(s,ensure_ascii=False)
+              s['signals']=[x for x in signals if x.lower() in hay.lower()]
+              s['score']=sum(4 if x in ['网易云日语榜','云音乐日语榜','日语榜','日語榜'] else 2 if x in ['网易云','排行榜','榜单','前三十','TOP30'] else 1 for x in s['signals'])
+              rows.append(s)
+              if s['score']:
+                  print('CANDIDATE',json.dumps(s,ensure_ascii=False)[:12000])
+              if n and n%30==0: time.sleep(1)
+          rows.sort(key=lambda x:(-x.get('score',0),x['aid']))
+          pathlib.Path('research-bilibili-uploader/candidates.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2))
+          likely=[x for x in rows if x.get('score',0)>=3]
+          pathlib.Path('research-bilibili-uploader/likely.json').write_text(json.dumps(likely,ensure_ascii=False,indent=2))
+          print('LIKELY',len(likely))
+          for x in likely[:60]: print(json.dumps(x,ensure_ascii=False)[:12000])
+          PY
+      - name: Upload uploader scan
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: netease-japan-bilibili-uploader-scan
+          path: research-bilibili-uploader
+          if-no-files-found: warn
+          retention-days: 7
