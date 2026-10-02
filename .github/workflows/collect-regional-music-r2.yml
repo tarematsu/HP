@@ -1,8 +1,9 @@
 name: Collect regional music to R2
 on:
   schedule:
-    - cron: '0 15 * * *' # 00:00 JST; NetEase daily, non-QQ regional services Mondays
+    - cron: '0 15 * * *' # 00:00 JST; NetEase daily, non-QQ/non-Kugou regional services Mondays
     - cron: '0 9 * * 4' # Thursday 18:00 JST; QQ Music weekly collection
+    - cron: '30 2 * * 1-5' # Weekdays 11:30 JST; Kugou Music Japan chart collection
   workflow_dispatch:
 permissions:
   contents: read
@@ -29,4 +30,9 @@ jobs:
         run: npm ci --prefer-offline --no-audit --no-fund
       - name: Collect due services into R2 snapshots
         working-directory: worker
-        run: node scripts/collect-regional-r2-actions.mjs
+        run: |
+          if [ "${{ github.event.schedule }}" = "30 2 * * 1-5" ]; then
+            node scripts/collect-regional-r2-actions.mjs --kugou
+          else
+            node scripts/collect-regional-r2-actions.mjs
+          fi
