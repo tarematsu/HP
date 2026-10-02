@@ -1,0 +1,139 @@
+name: Resolve NetEase Japanese chart Bilibili owners
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/research-netease-japan-bilibili-owner.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install yt-dlp
+        run: python -m pip install --disable-pip-version-check -U yt-dlp
+      - name: Resolve owners and search their chart uploads
+        shell: bash
+        run: |
+          set +e
+          mkdir -p research-bilibili-owner
+          python - <<'PY'
+          import json, pathlib, subprocess, urllib.request, urllib.parse, time
+
+          aids=['113148027798915','113809284925497','113769875315066']
+          rows=[]
+          def ytdlp(url, timeout=120):
+              cp=subprocess.run(['yt-dlp','--dump-single-json','--skip-download',url],capture_output=True,text=True,timeout=timeout)
+              try: data=json.loads(cp.stdout)
+              except Exception: data={}
+              return {'rc':cp.returncode,'data':data,'stderr':cp.stderr[-12000:]}
+
+          for aid in aids:
+              r=ytdlp('https://www.bilibili.com/video/av'+aid)
+              d=r['data'] if isinstance(r['data'],dict) else {}
+              compact={
+                'aid':aid,'rc':r['rc'],'id':d.get('id'),'title':d.get('title'),'description':d.get('description'),
+                'timestamp':d.get('timestamp'),'upload_date':d.get('upload_date'),'duration':d.get('duration'),
+                'uploader':d.get('uploader'),'uploader_id':d.get('uploader_id'),'uploader_url':d.get('uploader_url'),
+                'channel':d.get('channel'),'channel_id':d.get('channel_id'),'channel_url':d.get('channel_url'),
+                'webpage_url':d.get('webpage_url'),'tags':d.get('tags'),'categories':d.get('categories'),
+                'playlist':d.get('playlist'),'playlist_id':d.get('playlist_id'),'stderr':r['stderr']
+              }
+              rows.append(compact)
+              print('VIDEO',json.dumps(compact,ensure_ascii=False)[:30000])
+
+          pathlib.Path('research-bilibili-owner/videos.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2))
+
+          owners=[]
+          for r in rows:
+              key=str(r.get('uploader_id') or r.get('channel_id') or '')
+              if key and key not in owners: owners.append(key)
+          print('OWNER_IDS',owners)
+
+          # Try exact uploader search even when uploader_id is unavailable.
+          queries=[]
+          for r in rows:
+              name=r.get('uploader') or r.get('channel')
+              if name:
+                  queries += [f'{name} 网易云日语榜',f'{name} 云音乐日语榜',f'{name} 日语榜',f'{name} 日语歌周榜']
+          queries += ['网易云日语榜 2020','网易云日语榜 2021','网易云日语榜 2022','网易云日语榜 2023','网易云日语榜 2024','网易云日语榜 2025','云音乐日语榜 2020','云音乐日语榜 2021','云音乐日语榜 2022','云音乐日语榜 2023','云音乐日语榜 2024','云音乐日语榜 2025','网易云日语歌周榜 2020','网易云日语歌周榜 2021','网易云日语歌周榜 2022','网易云日语歌周榜 2023','网易云日语歌周榜 2024','网易云日语歌周榜 2025']
+          seen=set(); hits=[]
+          for qi,q in enumerate(dict.fromkeys(queries)):
+              cp=subprocess.run(['yt-dlp','--flat-playlist','--dump-single-json',f'bilisearch100:{q}'],capture_output=True,text=True,timeout=120)
+              try: data=json.loads(cp.stdout)
+              except Exception: data={}
+              for e in data.get('entries') or []:
+                  if not isinstance(e,dict): continue
+                  aid=str(e.get('id') or '')
+                  if not aid: continue
+                  k=(q,aid)
+                  if k in seen: continue
+                  seen.add(k)
+                  item={'query':q,'aid':aid,'title':e.get('title'),'uploader':e.get('uploader'),'uploader_id':e.get('uploader_id'),'url':e.get('url'),'timestamp':e.get('timestamp'),'upload_date':e.get('upload_date')}
+                  hits.append(item)
+              print('SEARCH',q,'entries',len(data.get('entries') or []),'rc',cp.returncode)
+          pathlib.Path('research-bilibili-owner/search.json').write_text(json.dumps(hits,ensure_ascii=False,indent=2))
+
+          # Probe uploader spaces if IDs were resolved. yt-dlp first, public search API fallback metadata only.
+          space_rows=[]
+          for mid in owners:
+              urls=[f'https://space.bilibili.com/{mid}/video',f'https://space.bilibili.com/{mid}']
+              for url in urls:
+                  cp=subprocess.run(['yt-dlp','--flat-playlist','--dump-single-json',url],capture_output=True,text=True,timeout=150)
+                  rec={'mid':mid,'url':url,'rc':cp.returncode,'stderr':cp.stderr[-12000:]}
+                  try:
+                      data=json.loads(cp.stdout)
+                      rec['title']=data.get('title'); rec['channel']=data.get('channel'); rec['channel_id']=data.get('channel_id')
+                      rec['entries']=[{'id':e.get('id'),'title':e.get('title'),'url':e.get('url'),'timestamp':e.get('timestamp'),'upload_date':e.get('upload_date')} for e in (data.get('entries') or [])[:500] if isinstance(e,dict)]
+                  except Exception: rec['entries']=[]
+                  space_rows.append(rec)
+                  print('SPACE',json.dumps(rec,ensure_ascii=False)[:30000])
+                  if rec['entries']: break
+          pathlib.Path('research-bilibili-owner/spaces.json').write_text(json.dumps(space_rows,ensure_ascii=False,indent=2))
+
+          # Pull working pagelist/tags/desc for strongest search hits, then score exact chart terms and Sakamichi names.
+          headers={'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130 Safari/537.36','Referer':'https://www.bilibili.com/'}
+          def getj(url, aid):
+              try:
+                  req=urllib.request.Request(url,headers={**headers,'Referer':'https://www.bilibili.com/video/av'+aid})
+                  with urllib.request.urlopen(req,timeout=12) as r: return json.loads(r.read().decode('utf-8','replace'))
+              except Exception as e: return {'error':repr(e)}
+          candidate_ids=[]
+          needles=['网易云日语榜','云音乐日语榜','日语榜','日语歌周榜']
+          for h in hits:
+              hay=(h.get('query') or '')+' '+(h.get('title') or '')
+              if any(n in hay for n in needles):
+                  aid=h['aid']
+                  if aid not in candidate_ids: candidate_ids.append(aid)
+          enriched=[]
+          for i,aid in enumerate(candidate_ids[:120]):
+              pages=getj('https://api.bilibili.com/x/player/pagelist?aid='+aid,aid)
+              tags=getj('https://api.bilibili.com/x/tag/archive/tags?aid='+aid,aid)
+              desc=getj('https://api.bilibili.com/x/web-interface/archive/desc?aid='+aid,aid)
+              parts=[x.get('part') for x in (pages.get('data') or []) if isinstance(x,dict)] if isinstance(pages.get('data'),list) else []
+              tnames=[x.get('tag_name') for x in (tags.get('data') or []) if isinstance(x,dict)] if isinstance(tags.get('data'),list) else []
+              d=desc.get('data')
+              hay=json.dumps({'parts':parts,'tags':tnames,'desc':d},ensure_ascii=False)
+              item={'aid':aid,'parts':parts,'tags':tnames,'desc':d,'exact_terms':[n for n in needles if n in hay], 'sakamichi':[n for n in ['乃木坂46','櫻坂46','桜坂46','日向坂46','欅坂46','けやき坂46','Nogizaka46','Sakurazaka46','Hinatazaka46'] if n.lower() in hay.lower()]}
+              enriched.append(item)
+              if item['exact_terms'] or item['sakamichi']: print('ENRICHED',json.dumps(item,ensure_ascii=False)[:30000])
+              if i and i%30==0: time.sleep(1)
+          pathlib.Path('research-bilibili-owner/enriched.json').write_text(json.dumps(enriched,ensure_ascii=False,indent=2))
+          print('SUMMARY',json.dumps({'videos':len(rows),'owner_ids':owners,'search_hits':len(hits),'candidate_ids':len(candidate_ids),'enriched':len(enriched),'sakamichi_hits':sum(bool(x['sakamichi']) for x in enriched)},ensure_ascii=False))
+          PY
+      - name: Upload owner research
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: netease-japan-bilibili-owner-research
+          path: research-bilibili-owner
+          if-no-files-found: warn
+          retention-days: 7
