@@ -1,0 +1,41 @@
+name: Probe Kuwo Japanese chart history tree
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-history-tree-probe.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe qukudata history tree variants
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import json, urllib.parse, urllib.request
+          base='http://qukudata.kuwo.cn/q.k'
+          H={'User-Agent':'Mozilla/5.0','Referer':'http://www.kuwo.cn/'}
+          tests=[]
+          for node in ['183','2']:
+            for level in ['1','2','3','4']:
+              for cont in ['tree','bang','volume','list']:
+                tests.append({'op':'query','cont':cont,'node':node,'pn':'0','rn':'1000','fmt':'json','level':level})
+          for q in tests:
+            u=base+'?'+urllib.parse.urlencode(q)
+            try:
+              req=urllib.request.Request(u,headers=H)
+              with urllib.request.urlopen(req,timeout=8) as r:
+                raw=r.read().decode('utf-8','replace')
+              try:j=json.loads(raw)
+              except:
+                print('NONJSON',q,'len',len(raw),raw[:300]); continue
+              s=json.dumps(j,ensure_ascii=False)
+              interesting=('third_id' in s or '酷我日语榜' in s or '2026' in s or 'currentVolume' in s)
+              print('TEST',q,'keys',list(j) if isinstance(j,dict) else type(j).__name__,'len',len(s),'interesting',interesting)
+              if interesting:
+                print('BODY',s[:12000])
+            except Exception as e:
+              print('ERR',q,repr(e))
+          PY
