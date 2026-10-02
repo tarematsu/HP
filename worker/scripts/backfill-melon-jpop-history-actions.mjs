@@ -52,6 +52,29 @@ function periodUrls(period) {
     : melonMonthlyUrlCandidates(period.period);
 }
 
+function compact(value) {
+  return String(value || '').replaceAll('-', '');
+}
+
+function periodEvidence(period, html) {
+  const source = String(html || '');
+  const needles = period.type === 'week'
+    ? [compact(period.start), compact(period.end), period.start, period.end]
+    : [compact(period.period), period.period];
+  for (const needle of needles) {
+    const index = source.indexOf(needle);
+    if (index >= 0) return source.slice(Math.max(0, index - 180), Math.min(source.length, index + needle.length + 260)).replace(/\s+/g, ' ');
+  }
+  const patterns = period.type === 'week'
+    ? [/startDay[\s\S]{0,300}/i, /endDay[\s\S]{0,300}/i, /\d{4}[.\/-]\d{2}[.\/-]\d{2}[\s\S]{0,180}/i]
+    : [/rankMonth[\s\S]{0,300}/i, /data-(?:month|period)[\s\S]{0,300}/i, /\d{4}[.\/-]\d{2}[\s\S]{0,180}/i];
+  for (const pattern of patterns) {
+    const match = source.match(pattern)?.[0];
+    if (match) return match.replace(/\s+/g, ' ').slice(0, 480);
+  }
+  return `html_length=${source.length}`;
+}
+
 async function sleep(ms) {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -85,7 +108,7 @@ export async function collectMelonHistoricalPeriod(period, fetchImpl = fetch) {
       const html = await fetchHtml(url, fetchImpl);
       const parsedPeriod = parsePeriod(period.type, html);
       if (!periodMatches(period, parsedPeriod)) {
-        errors.push(`${url}: period mismatch (${JSON.stringify(parsedPeriod)})`);
+        errors.push(`${url}: period mismatch (${JSON.stringify(parsedPeriod)}); evidence=${periodEvidence(period, html)}`);
         continue;
       }
       return {
