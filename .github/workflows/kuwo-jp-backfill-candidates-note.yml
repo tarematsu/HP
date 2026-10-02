@@ -1,0 +1,13 @@
+name: Kuwo backfill candidate note
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-backfill-candidates-note.yml]
+permissions:
+  contents: read
+jobs:
+  note:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          printf '%s\n' 'Candidate sources:' '1. Common Crawl WARC snapshots of ranklist_detail/183' '2. Common Crawl captures of kbangserver id=183 API responses' '3. Wayback wildcard query variants' '4. stale search-index copies of parameterized Kuwo URLs' '5. future daily self-archive'
