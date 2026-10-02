@@ -1,0 +1,37 @@
+name: Fast test Kuwo previous chart edition
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-thirdid-fast.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Test previous edition 274
+        run: |
+          python3 <<'PY'
+          import json,urllib.parse,urllib.request
+          base='https://kbangserver.kuwo.cn/ksong.s'
+          common={'from':'pc','fmt':'json','pn':'0','rn':'5','type':'bang','data':'content','show_copyright_off':'0','pcmp4':'1','isbang':'1','userid':'0'}
+          cases={
+            'control':{'id':'183'},
+            'id-third':{'id':'272685'},
+            'third_id':{'id':'183','third_id':'272685'},
+            'thirdId':{'id':'183','thirdId':'272685'},
+            'volume-num':{'id':'183','volume':'274'},
+            'volume-pair':{'id':'183','volume':'2026|274'},
+            'currentVolume':{'id':'183','currentVolume':'2026|274'},
+            'id+third+volume':{'id':'183','third_id':'272685','volume':'274'},
+          }
+          for label,x in cases.items():
+            u=base+'?'+urllib.parse.urlencode({**common,**x})
+            try:
+              q=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'})
+              with urllib.request.urlopen(q,timeout=5) as r:j=json.loads(r.read().decode('utf-8','replace'))
+              rows=j.get('musiclist') or j.get('musicList') or []
+              print(label,'PUB',j.get('pub'),'CV',j.get('currentVolume'),'NAME',j.get('name'),'NUM',j.get('num'),'TOP',json.dumps([(z.get('name'),z.get('artist')) for z in rows[:5]],ensure_ascii=False))
+            except Exception as e:print(label,'ERR',repr(e))
+          PY
