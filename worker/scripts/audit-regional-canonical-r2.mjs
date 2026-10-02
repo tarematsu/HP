@@ -1,6 +1,7 @@
 import { appendFileSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 import { createWranglerRemoteR2 } from './remote-r2-json-adapter.mjs';
 import { regionalSnapshotKey } from '../src/regional-music-r2-snapshot.js';
 
@@ -40,13 +41,32 @@ export function summarizeRegionalCanonicalSnapshot(service,snapshot) {
   };
 }
 
+async function exactTitleCandidates(db,titles) {
+  const result=new Map();
+  const unique=[...new Set(titles.filter(Boolean))];
+  for(let offset=0;offset<unique.length;offset+=40) {
+    const part=unique.slice(offset,offset+40);
+    const placeholders=part.map(()=>'?').join(',');
+    const query=await db.prepare(`SELECT id,title,artist,isrc,spotify_id FROM sh_tracks WHERE title IN (${placeholders}) ORDER BY title,id`).bind(...part).all();
+    for(const row of query.results || []) {
+      const rows=result.get(row.title) || [];
+      rows.push(row);
+      result.set(row.title,rows);
+    }
+  }
+  return result;
+}
+
 async function main() {
   const root=resolve(import.meta.dirname,'..');
   const config=JSON.parse(readFileSync(join(root,'wrangler.regional-music.jsonc'),'utf8'));
   const bucket=config.r2_buckets.find(row=>row.binding==='PAGES_RESPONSE_R2')?.bucket_name;
+  const minuteDatabase=config.d1_databases.find(row=>row.binding==='MINUTE_DB')?.database_name;
   if(!bucket) throw new Error('PAGES_RESPONSE_R2 configuration missing');
+  if(!minuteDatabase) throw new Error('MINUTE_DB configuration missing');
   const wranglerScript=join(root,'node_modules/wrangler/bin/wrangler.js');
   const r2=createWranglerRemoteR2({bucket,cwd:root,wranglerScript});
+  const minuteDb=createWranglerRemoteD1({database:minuteDatabase,cwd:root,wranglerScript});
   const summaries=[];
   for(const service of TARGET_SERVICES) {
     const object=await r2.get(regionalSnapshotKey(service));
@@ -55,18 +75,21 @@ async function main() {
     summaries.push(summary);
     console.log(JSON.stringify({event:'regional_canonical_audit',...summary}));
   }
+  const unresolved=summaries.flatMap(summary=>summary.unresolved_tracks.map(track=>({...track,service:summary.service})));
+  const exact=await exactTitleCandidates(minuteDb,unresolved.map(row=>row.title));
+  for(const row of unresolved) {
+    const candidates=(exact.get(row.title) || []).map(candidate=>({id:candidate.id,title:candidate.title,artist:candidate.artist,isrc:candidate.isrc,spotify_id:candidate.spotify_id}));
+    console.log(JSON.stringify({event:'regional_canonical_unresolved_diagnostic',...row,exact_title_candidates:candidates}));
+  }
   const stepSummary=process.env.GITHUB_STEP_SUMMARY;
   if(stepSummary) {
     const lines=['## QQ / Kugou sh_tracks.id integration audit','','| Service | Tracks | Linked | Unresolved | Linked % |','|---|---:|---:|---:|---:|'];
     for(const row of summaries) lines.push(`| ${row.service} | ${row.total} | ${row.linked} | ${row.unresolved} | ${row.linked_percent}% |`);
-    lines.push('');
+    const exactCandidateCount=unresolved.filter(row=>(exact.get(row.title) || []).length).length;
+    lines.push('',`Exact-title sh_tracks candidates found for ${exactCandidateCount}/${unresolved.length} unresolved provider rows.`);
     for(const row of summaries) {
-      lines.push(`### ${row.service}`);
+      lines.push('',`### ${row.service}`);
       for(const [artist,value] of Object.entries(row.by_artist)) lines.push(`- ${artist}: ${value.linked}/${value.total} linked, ${value.unresolved} unresolved`);
-      if(row.unresolved_tracks.length) {
-        lines.push('- Unresolved sample:');
-        for(const track of row.unresolved_tracks.slice(0,20)) lines.push(`  - ${track.canonical_artist}: ${track.title || '(untitled)'} [${track.service_track_id}]`);
-      }
     }
     appendFileSync(stepSummary,`${lines.join('\n')}\n`,'utf8');
   }
