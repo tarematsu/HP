@@ -3,7 +3,6 @@ import {
   byId,
   dashboardControls,
   dashboardDataCard,
-  dashboardModeTabs,
   dashboardNotice,
   dashboardSummary,
   dashboardSummaryItem,
@@ -14,6 +13,7 @@ import {
 } from './dashboard-ui-common.js?v=20261001.1';
 import { appendTableRow } from './dashboard-table-dom.js?v=20261001.1';
 import { stationheadPlaybackCards } from './stationhead-playback-shell.js?v=20261001.1';
+import { bindStationheadChannelTabs, stationheadChannelTabs } from './stationhead-channel-tabs.js?v=20261003.1';
 
 const HINATA_URL = '/api/hinata';
 const REFRESH_INTERVAL_MS = 5 * 60_000;
@@ -74,15 +74,10 @@ function mountChannelLayout() {
   });
 
   const tabsHost = document.createElement('div');
-  tabsHost.innerHTML = dashboardModeTabs([
-    { value: 'current', label: '現在', active: true },
-    { value: 'history', label: '過去' },
-    { value: 'played-tracks', label: '再生履歴' },
-    { value: 'likes', label: 'いいね' },
-  ], {
+  tabsHost.innerHTML = stationheadChannelTabs({
     dataAttribute: 'hinata-section',
-    className: 'hinata-subtabs',
     ariaLabel: 'Ohisama表示切替',
+    active: 'current',
   });
   const tabs = tabsHost.firstElementChild;
 
@@ -91,6 +86,7 @@ function mountChannelLayout() {
   const notice = noticeHost.firstElementChild;
 
   const currentPanel = document.createElement('div');
+  currentPanel.className = 'stationhead-channel-panel';
   currentPanel.dataset.hinataPanel = 'current';
   currentPanel.append(metrics, liveCard);
   const playbackHost = document.createElement('div');
@@ -115,11 +111,13 @@ function mountChannelLayout() {
   currentPanel.append(...playbackHost.children);
 
   const historyPanel = document.createElement('div');
+  historyPanel.className = 'stationhead-channel-panel';
   historyPanel.dataset.hinataPanel = 'history';
   historyPanel.hidden = true;
   historyPanel.append(dailyCard, dailyData);
 
   const playedPanel = document.createElement('div');
+  playedPanel.className = 'stationhead-channel-panel';
   playedPanel.dataset.hinataPanel = 'played-tracks';
   playedPanel.hidden = true;
   playedPanel.innerHTML = `${controls}${playedSummary}${dashboardDataCard({
@@ -129,6 +127,7 @@ function mountChannelLayout() {
   })}`;
 
   const likesPanel = document.createElement('div');
+  likesPanel.className = 'stationhead-channel-panel';
   likesPanel.dataset.hinataPanel = 'likes';
   likesPanel.hidden = true;
   likesPanel.innerHTML = `${likesSummary}${dashboardDataCard({
@@ -141,6 +140,16 @@ function mountChannelLayout() {
     bodyHtml: likesTable,
   })}`;
 
+  const broadcastsPanel = document.createElement('div');
+  broadcastsPanel.className = 'stationhead-channel-panel';
+  broadcastsPanel.dataset.hinataPanel = 'broadcasts';
+  broadcastsPanel.hidden = true;
+  broadcastsPanel.innerHTML = dashboardDataCard({
+    title: 'リスパ',
+    kicker: 'LISTENING PARTY',
+    bodyHtml: '<p class="shared-empty">リスパデータはまだありません。</p>',
+  });
+
   const primaryNotice = byId('hinataNotice');
   const anchor = primaryNotice?.nextSibling || root.firstChild;
   root.insertBefore(tabs, anchor);
@@ -149,6 +158,7 @@ function mountChannelLayout() {
   root.insertBefore(historyPanel, currentPanel.nextSibling);
   root.insertBefore(playedPanel, historyPanel.nextSibling);
   root.insertBefore(likesPanel, playedPanel.nextSibling);
+  root.insertBefore(broadcastsPanel, likesPanel.nextSibling);
   root.dataset.channelTabsMounted = '1';
   return root;
 }
@@ -433,25 +443,13 @@ async function refresh() {
   }
 }
 
-function selectSection(section) {
-  const root = byId('hinataView');
-  if (!root) return;
-  root.querySelectorAll('[data-hinata-section]').forEach((button) => {
-    const active = button.dataset.hinataSection === section;
-    button.classList.toggle('active', active);
-    button.setAttribute('aria-selected', active ? 'true' : 'false');
-  });
-  root.querySelectorAll('[data-hinata-panel]').forEach((panel) => {
-    panel.hidden = panel.dataset.hinataPanel !== section;
-  });
-  requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
-}
-
 const root = mountChannelLayout();
-root?.querySelectorAll('[data-hinata-section]').forEach((button) => {
-  button.addEventListener('click', () => selectSection(button.dataset.hinataSection || 'current'));
+bindStationheadChannelTabs(root, {
+  dataAttribute: 'hinata-section',
+  panelAttribute: 'hinata-panel',
+  initial: 'current',
+  onSelect: () => requestAnimationFrame(() => window.dispatchEvent(new Event('resize'))),
 });
-selectSection('current');
 void refresh();
 setInterval(() => { if (!document.hidden) void refresh(); }, REFRESH_INTERVAL_MS);
 setInterval(() => { if (!document.hidden && state.payload) updatePlaybackProgress(); }, 1_000);
