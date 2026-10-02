@@ -1,4 +1,7 @@
-import { saveMaterializedActionsR2Response } from './pages-response-r2.js';
+import {
+  pagesActionsR2ResponseKey,
+  saveMaterializedActionsR2Response,
+} from './pages-response-r2.js';
 import {
   REGIONAL_MUSIC_SERVICES,
   regionalMusicService,
@@ -18,6 +21,7 @@ import {
 // regional read models are always stored under regional-music:<service>.
 export const REGIONAL_MUSIC_READ_MODEL_KEY = 'regional-music';
 export const REGIONAL_MUSIC_READ_MODEL_PREFIX = 'regional-music:';
+export const REGIONAL_MUSIC_READ_MODEL_VERSION = 1;
 export const REGIONAL_MUSIC_READ_MODEL_CADENCE_SECONDS = 24 * 60 * 60;
 export const REGIONAL_MUSIC_READ_MODEL_SERVICES = Object.freeze(Object.keys(REGIONAL_MUSIC_SERVICES));
 
@@ -33,6 +37,26 @@ function rows(result) {
 async function all(db, sql) {
   const result = await db.prepare(sql).all();
   return rows(result);
+}
+
+function positiveTime(value) {
+  const time = Number(value);
+  return Number.isFinite(time) && time > 0 ? time : 0;
+}
+
+function maximumTime(values) {
+  return Math.max(0, ...values.map(positiveTime));
+}
+
+function rowSourceTime(row) {
+  return maximumTime([
+    row?.updated_at,
+    row?.observed_at,
+    row?.last_attempt_at,
+    row?.last_success_at,
+    row?.last_seen_at,
+    row?.provider_updated_at,
+  ]);
 }
 
 export function regionalMusicReadModelKey(service) {
@@ -207,13 +231,27 @@ export function regionalMusicServiceSnapshot(snapshot, service) {
   };
 }
 
+function scopedSourceUpdatedAt(scoped) {
+  return maximumTime([
+    ...scoped.artists.map(rowSourceTime),
+    ...scoped.tracks.map(rowSourceTime),
+    ...scoped.releases.map(rowSourceTime),
+    ...scoped.playlists.map(rowSourceTime),
+    ...scoped.memberships.map(rowSourceTime),
+    ...scoped.services.map(rowSourceTime),
+    ...scoped.artistTrackOrders.map(rowSourceTime),
+  ]);
+}
+
 export function regionalMusicServiceReadModelPayload(snapshot, service, updatedAt = Date.now()) {
   const serviceId = String(service || '').trim();
   const scoped = regionalMusicServiceSnapshot(snapshot, serviceId);
   const payload = {
     ok:true,
+    read_model_version:REGIONAL_MUSIC_READ_MODEL_VERSION,
     service:serviceId,
     updated_at:Number(updatedAt) || Date.now(),
+    source_updated_at:scopedSourceUpdatedAt(scoped),
     artists:scoped.artists,
     tracks:scoped.tracks,
     releases:scoped.releases,
@@ -261,9 +299,21 @@ async function r2Json(r2, key) {
   return object ? object.json() : null;
 }
 
-async function hydrateServicePayload(env, baseSnapshot, service, updatedAt) {
+async function existingMaterializedPayload(r2, modelKey) {
+  const envelope = await r2Json(r2, pagesActionsR2ResponseKey(modelKey));
+  if (Number(envelope?.version) !== 1 || typeof envelope?.body !== 'string') return null;
+  try {
+    const payload = JSON.parse(envelope.body);
+    if (!payload || payload.service !== modelKey.slice(REGIONAL_MUSIC_READ_MODEL_PREFIX.length)) return null;
+    return { envelope, payload };
+  } catch {
+    return null;
+  }
+}
+
+async function hydrateServicePayload(env, baseSnapshot, service, generatedAt) {
   const serviceId = String(service || '').trim();
-  let payload = regionalMusicServiceReadModelPayload(baseSnapshot, serviceId, updatedAt);
+  let payload = regionalMusicServiceReadModelPayload(baseSnapshot, serviceId, generatedAt);
   const r2 = env?.PAGES_RESPONSE_R2;
   if (typeof r2?.get !== 'function') return payload;
 
@@ -275,11 +325,23 @@ async function hydrateServicePayload(env, baseSnapshot, service, updatedAt) {
   }
   const [regionalSnapshot, extraA, extraB] = await Promise.all(reads);
   payload = mergeRegionalR2Snapshot(payload, regionalSnapshot);
+  payload.read_model_version = REGIONAL_MUSIC_READ_MODEL_VERSION;
   payload.service = serviceId;
-  payload.updated_at = Number(updatedAt) || Date.now();
+  payload.source_updated_at = maximumTime([
+    payload.source_updated_at,
+    regionalSnapshot?.updated_at,
+    extraA?.updated_at,
+    extraB?.updated_at,
+  ]);
+  payload.updated_at = Number(generatedAt) || Date.now();
   if (serviceId === 'qq_music') payload.qq_japan_chart = qqJapanChartReadModel(extraA, extraB);
   if (serviceId === 'netease_cloud_music') payload.netease_japan_chart = neteaseJapanChartReadModel(extraA);
   return payload;
+}
+
+function unchangedReadModel(existing, payload) {
+  return existing?.payload?.read_model_version === REGIONAL_MUSIC_READ_MODEL_VERSION
+    && Number(existing.payload.source_updated_at || 0) === Number(payload.source_updated_at || 0);
 }
 
 export async function publishRegionalMusicReadModels(
@@ -293,23 +355,42 @@ export async function publishRegionalMusicReadModels(
   }
   const selected = [...new Set((services || []).map((value) => String(value || '').trim()).filter(Boolean))];
   for (const service of selected) regionalMusicReadModelKey(service);
-  if (!selected.length) return { storage:'r2-split', models:0, results:[] };
+  if (!selected.length) return { storage:'r2-split', models:0, written:0, skipped:0, results:[] };
 
   const load = dependencies.loadReadModel || loadRegionalMusicReadModel;
   const save = dependencies.saveR2Response || saveMaterializedActionsR2Response;
   const snapshot = await load(env?.OTHER_DB);
   const results = [];
   for (const service of selected) {
-    const payload = await hydrateServicePayload(env, snapshot, service, updatedAt);
-    const body = JSON.stringify(payload);
     const modelKey = regionalMusicReadModelKey(service);
+    const payload = await hydrateServicePayload(env, snapshot, service, updatedAt);
+    const existing = typeof env.PAGES_RESPONSE_R2?.get === 'function'
+      ? await existingMaterializedPayload(env.PAGES_RESPONSE_R2, modelKey)
+      : null;
+    if (unchangedReadModel(existing, payload)) {
+      results.push({
+        service,
+        model_key:modelKey,
+        updated_at:Number(existing.payload.updated_at) || Number(existing.envelope.updated_at) || 0,
+        source_updated_at:payload.source_updated_at,
+        skipped:true,
+        artists:existing.payload.artists?.length || 0,
+        tracks:existing.payload.tracks?.length || 0,
+        releases:existing.payload.releases?.length || 0,
+        playlists:existing.payload.playlists?.length || 0,
+        playlist_memberships:existing.payload.playlist_memberships?.length || 0,
+      });
+      continue;
+    }
+
+    const body = JSON.stringify(payload);
     const saved = await save(
       env.PAGES_RESPONSE_R2,
       modelKey,
       body,
       200,
       JSON_HEADERS,
-      updatedAt,
+      payload.updated_at,
       REGIONAL_MUSIC_READ_MODEL_CADENCE_SECONDS,
     );
     if (!saved) throw new Error(`regional music R2 read model write failed: ${service}`);
@@ -317,6 +398,8 @@ export async function publishRegionalMusicReadModels(
       service,
       model_key:modelKey,
       updated_at:payload.updated_at,
+      source_updated_at:payload.source_updated_at,
+      skipped:false,
       ...saved,
       artists:payload.artists.length,
       tracks:payload.tracks.length,
@@ -325,7 +408,8 @@ export async function publishRegionalMusicReadModels(
       playlist_memberships:payload.playlist_memberships.length,
     });
   }
-  return { storage:'r2-split', models:results.length, results };
+  const written = results.filter((row) => !row.skipped).length;
+  return { storage:'r2-split', models:results.length, written, skipped:results.length - written, results };
 }
 
 export async function publishRegionalMusicServiceReadModel(env, service, updatedAt = Date.now(), dependencies = {}) {
@@ -333,8 +417,8 @@ export async function publishRegionalMusicServiceReadModel(env, service, updated
   return published.results[0] || null;
 }
 
-// Bootstrap/legacy queue compatibility: publish every per-service model instead
-// of recreating the retired aggregate regional-music object.
+// Bootstrap/legacy queue compatibility: inspect every per-service model, but
+// unchanged source revisions are skipped so unrelated service timestamps stay put.
 export async function publishRegionalMusicReadModel(env, updatedAt = Date.now(), dependencies = {}) {
   return publishRegionalMusicReadModels(env, REGIONAL_MUSIC_READ_MODEL_SERVICES, updatedAt, dependencies);
 }
