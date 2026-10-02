@@ -1,12 +1,22 @@
 import { regionalMusicSnapshotDate } from './regional-music-store.js';
 import { regionalMusicService } from './regional-music-service-registry.js';
+import { resolveRegionalMusicCanonicalTrack } from './regional-music-track-canonical.js';
 
 export const regionalSnapshotKey = service => `regional-music/${service}/latest.json`;
 export const regionalDayKey = (service,day) => `regional-music/${service}/days/${day}.json`;
 const fields=['artists','tracks','releases','playlists','playlist_memberships','artist_track_orders'];
 const keyOf=(field,row)=> field==='artists' ? row.canonical_artist : field==='releases' ? row.service_release_id : field==='playlists' ? row.service_playlist_id : field==='artist_track_orders' ? `${row.canonical_artist}/${row.service_track_id}` : field==='playlist_memberships' ? `${row.service_playlist_id}/${row.service_track_id}` : row.service_track_id;
 
-export async function collectRegionalR2Snapshot({service,collect,previous,now,fetchImpl=fetch}) {
+async function canonicalizeSnapshotTracks(env,data) {
+  if (!env?.MINUTE_DB?.prepare || !data?.tracks?.size) return;
+  for (const [key,row] of data.tracks) {
+    if (Number.isSafeInteger(Number(row?.canonical_track_id)) && Number(row.canonical_track_id)>0) continue;
+    const resolved=await resolveRegionalMusicCanonicalTrack(env,row);
+    if (resolved!==row) data.tracks.set(key,{...row,...resolved});
+  }
+}
+
+export async function collectRegionalR2Snapshot({service,collect,previous,now,fetchImpl=fetch,bindings={}}) {
   const data=Object.fromEntries(fields.map(field=>[field,new Map((previous?.[field] || []).map(row=>[keyOf(field,row),row]))]));
   const authoritative=new Set(previous ? fields : []);
   let state;
@@ -35,8 +45,13 @@ export async function collectRegionalR2Snapshot({service,collect,previous,now,fe
       data.artist_track_orders.set(keyOf('artist_track_orders',order),order);
     }
   };
-  try {await collect({REGIONAL_MUSIC_SNAPSHOT_STORE:store},now,fetchImpl);}
+  const collectorEnv={...bindings,REGIONAL_MUSIC_SNAPSHOT_STORE:store};
+  try {await collect(collectorEnv,now,fetchImpl);}
   catch(error) {state={service,status:'error',last_attempt_at:now,last_error_class:'collection_error',last_error_message:String(error.message).slice(0,250),entity_counts:{}};}
+  try {await canonicalizeSnapshotTracks(collectorEnv,data);}
+  catch(error) {
+    if(state?.status==='ok') state={...state,status:'degraded',last_error_class:'canonical_track_resolution_error',last_error_message:String(error.message).slice(0,250)};
+  }
   if(!state) state={service,status:'error',last_attempt_at:now,last_error_class:'collector_state_missing',last_error_message:'Collector did not report terminal state',entity_counts:{}};
   state={...state,updated_at:now,last_success_at:state.last_success_at ?? previous?.state?.last_success_at ?? null};
   return {version:1,service,day:regionalMusicSnapshotDate(now),updated_at:now,authoritative_fields:[...authoritative],...Object.fromEntries(fields.map(field=>[field,[...data[field].values()]])),state};
