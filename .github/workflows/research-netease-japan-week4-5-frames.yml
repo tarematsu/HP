@@ -1,0 +1,81 @@
+name: Extract NetEase Japanese chart week 4 and 5 frames
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/research-netease-japan-week4-5-frames.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - name: Download both chart videos and extract frames
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, pathlib, urllib.request
+          videos=[
+            {'label':'week4','bvid':'BV1NrcCeZEyY','aid':'113818227179785','cid':'27838385489','period':'2024-12-31/2025-01-07'},
+            {'label':'week5','bvid':'BV12BPDe9E5J','aid':'113937496474616','cid':'28194111687','period':'next-week-after-week4'},
+          ]
+          root=pathlib.Path('research-week45'); root.mkdir(exist_ok=True)
+          for v in videos:
+            out=root/v['label']; out.mkdir(exist_ok=True); (out/'frames').mkdir(exist_ok=True)
+            headers={'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130 Safari/537.36','Referer':'https://www.bilibili.com/video/av'+v['aid']}
+            urls=[
+              f"https://api.bilibili.com/x/player/playurl?avid={v['aid']}&cid={v['cid']}&qn=16&fnval=0&platform=html5&high_quality=0",
+              f"https://api.bilibili.com/x/player/playurl?avid={v['aid']}&cid={v['cid']}&qn=32&fnval=0&platform=html5&high_quality=0",
+              f"https://api.bilibili.com/x/player/playurl?avid={v['aid']}&cid={v['cid']}&qn=16&fnval=1",
+            ]
+            payloads=[]; media=None
+            for u in urls:
+              try:
+                req=urllib.request.Request(u,headers=headers)
+                with urllib.request.urlopen(req,timeout=20) as r: j=json.loads(r.read().decode('utf-8','replace'))
+                payloads.append({'url':u,'json':j})
+                arr=(j.get('data') or {}).get('durl') or []
+                if arr and arr[0].get('url'): media=arr[0]['url']; break
+              except Exception as e: payloads.append({'url':u,'error':repr(e)})
+            (out/'playurl.json').write_text(json.dumps(payloads,ensure_ascii=False,indent=2))
+            if not media: raise SystemExit(f"no media URL for {v['label']}")
+            req=urllib.request.Request(media,headers=headers)
+            with urllib.request.urlopen(req,timeout=60) as r, open(out/'video.mp4','wb') as f:
+              total=0
+              while True:
+                chunk=r.read(1024*1024)
+                if not chunk: break
+                f.write(chunk); total+=len(chunk)
+                if total>120*1024*1024: raise RuntimeError('video too large')
+            (out/'meta.json').write_text(json.dumps(v,ensure_ascii=False,indent=2))
+            print(v['label'],'downloaded',total)
+          PY
+          for d in research-week45/week4 research-week45/week5; do
+            ffprobe -v error -show_format -show_streams -of json "$d/video.mp4" > "$d/ffprobe.json"
+            # Dense 2-second sampling: enough to capture every scrolling/rank card in ~7 min videos.
+            ffmpeg -hide_banner -loglevel error -i "$d/video.mp4" -vf "fps=1/2,scale=1280:-2" -q:v 2 "$d/frames/frame-%04d.jpg"
+            # 12 readable thumbnails per sheet, ~24 seconds per sheet.
+            ffmpeg -hide_banner -loglevel error -i "$d/video.mp4" -vf "fps=1/2,scale=640:-2,tile=4x3:padding=4:margin=4" -q:v 2 "$d/contact-%03d.jpg"
+            ls -lh "$d"/contact-*.jpg | tail -3 || true
+          done
+      - name: Upload week 4 and 5 frames
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: netease-japan-week4-5-frames
+          path: |
+            research-week45/*/meta.json
+            research-week45/*/playurl.json
+            research-week45/*/ffprobe.json
+            research-week45/*/contact-*.jpg
+            research-week45/*/frames/*.jpg
+          if-no-files-found: warn
+          retention-days: 7
