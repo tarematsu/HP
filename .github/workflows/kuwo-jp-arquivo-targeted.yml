@@ -1,0 +1,77 @@
+name: Targeted Arquivo Kuwo Japanese chart recovery
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-arquivo-targeted.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Query Arquivo.pt URL history
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import json,urllib.request,urllib.parse,re,pathlib,concurrent.futures
+          UA='Mozilla/5.0'
+          urls=[
+            'https://kuwo.cn/newh5/bang/index',
+            'https://m.kuwo.cn/newh5/bang/index',
+            'https://m.kuwo.cn/newh5app/ranklist_detail/183',
+            'https://www.kuwo.cn/rankList/183',
+            'http://www.kuwo.cn/rankList/183',
+          ]
+          def get(u,t=8):
+            try:
+              q=urllib.request.Request(u,headers={'User-Agent':UA})
+              with urllib.request.urlopen(q,timeout=t) as r:return r.status,r.read().decode('utf-8','replace')
+            except Exception as e:return 0,''
+          def hist(target):
+            q=urllib.parse.urlencode({'prettyPrint':'false','versionHistory':target,'maxItems':'200'})
+            st,txt=get('https://arquivo.pt/textsearch?'+q,10)
+            try:p=json.loads(txt)
+            except:p={}
+            return target,p.get('response_items') or []
+          histories=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=5) as ex:
+            for target,items in ex.map(hist,urls):
+              if items: histories.append({'target':target,'items':items})
+          captures=[]
+          for h in histories:
+            items=h['items']
+            # choose first, last, and evenly spaced captures, max 15 per URL
+            picks=[]
+            if items:
+              step=max(1,len(items)//12)
+              picks=items[::step][:13]
+              if items[-1] not in picks:picks.append(items[-1])
+            for x in picks:
+              a=x.get('linkToArchive')
+              if not a:continue
+              # noFrame often yields extractable archived HTML
+              a=a.replace('/wayback/','/wayback/noFrame/')
+              st,txt=get(a,10)
+              if st!=200:continue
+              pos=txt.find('酷我日语榜')
+              sak=[n for n in ['櫻坂46','樱坂46','Sakurazaka46','乃木坂46','Nogizaka46','日向坂46','Hinatazaka46','欅坂46','Keyakizaka46'] if n.lower() in txt.lower()]
+              if pos>=0 or sak:
+                captures.append({'tstamp':x.get('tstamp'),'originalURL':x.get('originalURL'),'archive':x.get('linkToArchive'),'has_jp_chart':pos>=0,'sakamichi':sak,'snippet':txt[max(0,pos-1500):pos+7000] if pos>=0 else ''})
+          out={'histories':[{'target':h['target'],'count':len(h['items']),'timestamps':[x.get('tstamp') for x in h['items'][:5]]} for h in histories],'captures':captures}
+          pathlib.Path('kuwo-jp-arquivo-targeted.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8')
+          print('histories',[(x['target'],x['count']) for x in out['histories']])
+          print('captures',len(captures))
+          for x in captures:
+            print('REC',x['tstamp'],x['originalURL'],'JP',x['has_jp_chart'],'SAKA',x['sakamichi'])
+            if x['has_jp_chart']: print('SNIP',re.sub(r'\s+',' ',x['snippet'])[:1000])
+          PY
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kuwo-jp-arquivo-targeted
+          path: kuwo-jp-arquivo-targeted.json
+          if-no-files-found: ignore
+          retention-days: 7
