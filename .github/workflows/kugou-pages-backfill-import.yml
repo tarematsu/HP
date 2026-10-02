@@ -1,0 +1,59 @@
+name: Kugou pages backfill import
+
+on:
+  push:
+    branches:
+      - feat/kugou-japan-history-pages-backfill
+    paths:
+      - .github/workflows/kugou-pages-backfill-import.yml
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/kugou-japan-history-pages-backfill
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Download verified backfill artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/kugou
+          gh run download 36988590743 -n kugou-web-history-backfill -D /tmp/kugou
+      - name: Generate production history seed
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const data = JSON.parse(fs.readFileSync('/tmp/kugou/kugou-web-history-backfill.json','utf8'));
+          const rows = data.matches.filter(x => x.date >= '2021-01-01' && x.date <= '2024-10-30');
+          for (const year of ['2021','2022','2023','2024']) {
+            const items = rows.filter(x => x.date.startsWith(year)).map(x => ({
+              published_at:x.date,
+              canonical_artist:x.group,
+              rank:Number(x.rank),
+              title:x.title,
+            }));
+            fs.writeFileSync(`worker/src/kugou-japan-chart-legacy-${year}.js`,
+              `export const KUGOU_JAPAN_CHART_LEGACY_${year} = Object.freeze(${JSON.stringify(items)});\n`);
+          }
+          const covered = data.issues
+            .filter(x => x.complete && x.date >= '2021-01-01' && x.date <= '2024-10-30')
+            .map(x => x.date);
+          fs.writeFileSync('worker/src/kugou-japan-chart-legacy-covered-dates.js',
+            `export const KUGOU_JAPAN_CHART_LEGACY_COVERED_DATES = Object.freeze(${JSON.stringify(covered)});\n`);
+          console.log({ rows:rows.length, covered:covered.length, first:covered[0], last:covered.at(-1) });
+          NODE
+      - name: Commit generated seed
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add worker/src/kugou-japan-chart-legacy-*.js
+          git commit -m "Add Kugou Japan legacy chart backfill seed"
+          git push origin HEAD:feat/kugou-japan-history-pages-backfill
