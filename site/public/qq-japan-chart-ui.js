@@ -17,6 +17,7 @@ const GROUP_COLORS = Object.freeze({
   hinatazaka46: '#9ecff3',
 });
 const ARTIST_ORDER = ['sakurazaka46','nogizaka46','hinatazaka46'];
+const OUT_OF_CHART_RANK = 101;
 
 let readModelPromise = null;
 let requestId = 0;
@@ -90,22 +91,44 @@ async function loadReadModel() {
   return readModelPromise;
 }
 
-function qqSeries(history) {
+function qqStoredPeriods(chart, history) {
+  const byPeriod = new Map();
+  for (const item of Array.isArray(chart?.periods) ? chart.periods : []) {
+    const period = String(item?.period || '');
+    const date = providerDate(item?.published_at);
+    if (!periodParts(period) || !date) continue;
+    byPeriod.set(period, { period, date });
+  }
+  if (!byPeriod.size) {
+    for (const item of history) {
+      const period = String(item?.period || '');
+      const date = providerDate(item?.published_at);
+      if (!periodParts(period) || !date || byPeriod.has(period)) continue;
+      byPeriod.set(period, { period, date });
+    }
+  }
+  return [...byPeriod.values()].sort((a, b) => comparePeriods(a.period, b.period));
+}
+
+function qqSeries(history, periods) {
   return ARTIST_ORDER.map((canonicalArtist) => {
-    const byDate = new Map();
+    const byPeriod = new Map();
     for (const item of history) {
       if (item?.canonical_artist !== canonicalArtist) continue;
-      const date = providerDate(item.published_at);
+      const period = String(item?.period || '');
       const rank = Number(item.rank);
-      if (!date || !Number.isFinite(rank) || rank < 1) continue;
-      const previous = byDate.get(date);
-      if (!previous || rank < previous.rank) byDate.set(date, { date, rank });
+      if (!periodParts(period) || !Number.isFinite(rank) || rank < 1) continue;
+      const previous = byPeriod.get(period);
+      if (!previous || rank < previous.rank) byPeriod.set(period, { rank });
     }
     return {
       id:canonicalArtist,
       title:ARTIST_LABELS[canonicalArtist] || canonicalArtist,
       color:GROUP_COLORS[canonicalArtist],
-      points:[...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
+      points:periods.map(({ period, date }) => ({
+        date,
+        rank:byPeriod.get(period)?.rank ?? OUT_OF_CHART_RANK,
+      })),
     };
   }).filter((series) => series.points.length);
 }
@@ -121,12 +144,11 @@ function render(payload) {
   const chart = payload?.qq_japan_chart || {};
   const history = Array.isArray(chart.history) ? chart.history : [];
   const coverage = chart.coverage || {};
-  const series = qqSeries(history);
-  const dates = [...new Set(series.flatMap((item) => item.points.map((point) => point.date)))].sort();
-  const ranks = series.flatMap((item) => item.points.map((point) => point.rank));
-  const maxRank = Math.max(1, ...ranks);
-  const yMax = Math.max(10, Math.min(100, Math.ceil(maxRank / 10) * 10));
-  const rankTicks = [...new Set([1, 25, 50, 75, 100, yMax].filter((rank) => rank <= yMax))].sort((a, b) => a - b);
+  const periods = qqStoredPeriods(chart, history);
+  const series = qqSeries(history, periods);
+  const dates = periods.map((item) => item.date);
+  const yMax = OUT_OF_CHART_RANK;
+  const rankTicks = [1, 25, 50, 75, 100, OUT_OF_CHART_RANK];
 
   renderRankHistoryChart({
     container:byId('qqJapanRankChart'),
@@ -137,11 +159,11 @@ function render(payload) {
     yMax,
     rankTicks,
     dateTickCount:5,
-    ariaLabel:'QQ Music日本榜における櫻坂46、乃木坂46、日向坂46の各週最高順位推移。1位が上。',
+    ariaLabel:'QQ Music日本榜における櫻坂46、乃木坂46、日向坂46の各週最高順位推移。保存済み週の圏外も含み、1位が上。',
     lineClass:'kugou-rank-line',
     emptyClass:'regional-music-rank-empty',
     emptyText:'QQ Music日本榜の順位履歴はまだありません。',
-    rankLabel:(rank) => `${rank}位`,
+    rankLabel:(rank) => rank === OUT_OF_CHART_RANK ? '圏外' : `${rank}位`,
     dateLabel:providerShortDate,
     latestPoint:{ radius:() => 2.5 },
     legendContainer:byId('qqJapanRankLegend'),
