@@ -2,6 +2,10 @@ import { saveMaterializedActionsR2Response } from './pages-response-r2.js';
 import { regionalMusicService } from './regional-music-service-registry.js';
 import { REGIONAL_MUSIC_DAILY_SERVICES } from './regional-music-dispatch-plan.js';
 import { regionalSnapshotKey, mergeRegionalR2Snapshot } from './regional-music-r2-snapshot.js';
+import {
+  KUGOU_JAPAN_CHART_COVERAGE,
+  KUGOU_JAPAN_CHART_HISTORY,
+} from './kugou-japan-chart-history.js';
 
 export const REGIONAL_MUSIC_READ_MODEL_KEY = 'regional-music';
 export const REGIONAL_MUSIC_READ_MODEL_CADENCE_SECONDS = 24 * 60 * 60;
@@ -128,6 +132,10 @@ export function regionalMusicReadModelPayload(snapshot, updatedAt = Date.now()) 
     playlists: Array.isArray(snapshot?.playlists) ? snapshot.playlists : [],
     playlist_memberships: Array.isArray(snapshot?.memberships) ? snapshot.memberships : [],
     artist_track_orders: Array.isArray(snapshot?.artistTrackOrders) ? snapshot.artistTrackOrders : [],
+    kugou_japan_chart: {
+      coverage: KUGOU_JAPAN_CHART_COVERAGE,
+      history: KUGOU_JAPAN_CHART_HISTORY,
+    },
     services: (Array.isArray(snapshot?.services) ? snapshot.services : []).map(normalizedCollectorState),
   };
 }
@@ -166,5 +174,6 @@ export async function publishRegionalMusicReadModel(env, updatedAt = Date.now(),
     playlists: payload.playlists.length,
     playlist_memberships: payload.playlist_memberships.length,
     services: payload.services.length,
+    kugou_japan_chart_entries: payload.kugou_japan_chart.history.length,
   };
 }

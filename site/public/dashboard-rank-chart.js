@@ -48,7 +48,7 @@ function paint(options) {
     legendContainer.replaceChildren(...series.map((item, index) => {
       const label = document.createElement('span');
       const dot = document.createElement('i');
-      dot.style.background = seriesColor(lineClass, index, hueStep);
+      dot.style.background = item?.color || seriesColor(lineClass, index, hueStep);
       label.append(dot, `${item.title}${item.currentRank == null ? '' : ` ${item.currentRank}位`}`);
       return label;
     }));
@@ -114,7 +114,7 @@ function paint(options) {
   series.forEach((item, seriesIndex) => {
     const byDate = new Map((item.points || []).map((point) => [point.date, point]));
     const rows = dates.map((date) => ({ date, rank: Number(byDate.get(date)?.rank) }));
-    const color = seriesColor(lineClass, seriesIndex, hueStep, String(lineClass).includes('amazon') ? .48 : .92);
+    const color = item?.color || seriesColor(lineClass, seriesIndex, hueStep, String(lineClass).includes('amazon') ? .48 : .92);
     drawDashboardLine(context, rows, {
       x: (row) => xFor(row.date),
       y: (rank) => yFor(rank),
@@ -128,7 +128,7 @@ function paint(options) {
     const latest = (item.points || []).filter((point) => Number.isFinite(point?.rank)).at(-1);
     if (!latest) return;
     context.save();
-    context.fillStyle = seriesColor(lineClass, seriesIndex, hueStep, .9);
+    context.fillStyle = item?.color || seriesColor(lineClass, seriesIndex, hueStep, .9);
     context.beginPath();
     context.arc(
       xFor(latest.date),

@@ -42,6 +42,45 @@
   overflow-wrap: anywhere;
 }
 
+.regional-music-rank-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: 0 0 8px;
+  min-height: 18px;
+  color: var(--muted);
+  font-size: .75rem;
+  font-weight: 700;
+}
+
+.regional-music-rank-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.regional-music-rank-legend i {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+}
+
+.regional-music-rank-chart {
+  width: 100%;
+  min-width: 0;
+}
+
+.regional-music-rank-chart canvas {
+  display: block;
+  width: 100%;
+}
+
+.regional-music-rank-coverage {
+  margin: 8px 0 0;
+  line-height: 1.55;
+}
+
 .regional-music-table th,
 .regional-music-table td {
   white-space: nowrap;
@@ -50,9 +89,16 @@
 .regional-music-track-table th:nth-child(2),
 .regional-music-track-table td:nth-child(2),
 .regional-music-playlist-table th:first-child,
-.regional-music-playlist-table td:first-child {
+.regional-music-playlist-table td:first-child,
+.regional-music-kugou-history-table th:nth-child(4),
+.regional-music-kugou-history-table td:nth-child(4) {
   min-width: 180px;
   white-space: normal;
+}
+
+.regional-music-kugou-history-table th:first-child,
+.regional-music-kugou-history-table td:first-child {
+  min-width: 136px;
 }
 
 @media (max-width: 760px) {
@@ -71,5 +117,9 @@
 
   .regional-music-health-list dd {
     margin-bottom: 8px;
+  }
+
+  .regional-music-rank-legend {
+    gap: 6px 10px;
   }
 }

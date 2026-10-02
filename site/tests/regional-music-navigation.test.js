@@ -9,6 +9,7 @@ const shell = readFileSync(new URL('../public/regional-music-shell.js', import.m
 const youtubeRuntime = readFileSync(new URL('../public/youtube-music.js', import.meta.url), 'utf8');
 const youtubeShell = readFileSync(new URL('../public/youtube-music-shell.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/dashboard-navigation.css', import.meta.url), 'utf8');
+const regionalCss = readFileSync(new URL('../public/regional-music.css', import.meta.url), 'utf8');
 const build = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 
@@ -47,6 +48,27 @@ test('regional service views share the materialized read model endpoint', () => 
   assert.match(shell, /regionalMusicTrackBody/);
   assert.match(shell, /regionalMusicPlaylistBody/);
   assert.match(build, /'regional-music\.css'/);
+});
+
+test('Kugou renders Japan chart history from the local subscription group read model', () => {
+  assert.match(html, /data-subscription-group-content="local"[\s\S]*data-source="kugou_music"/);
+  assert.match(runtime, /payload\?\.kugou_japan_chart/);
+  assert.match(runtime, /renderRankHistoryChart/);
+  assert.match(runtime, /service === 'kugou_music'/);
+  assert.match(runtime, /sakurazaka46: '#f3a6c8'/);
+  assert.match(runtime, /nogizaka46: '#8264b0'/);
+  assert.match(runtime, /hinatazaka46: '#9ecff3'/);
+  assert.match(runtime, /最古取得可能/);
+  assert.match(runtime, /最終確認号/);
+  assert.match(runtime, /最終ランクイン/);
+  assert.match(shell, /kugouJapanRankChart/);
+  assert.match(shell, /kugouJapanRankLegend/);
+  assert.match(shell, /kugouJapanCoverage/);
+  assert.match(shell, /kugouJapanHistoryBody/);
+  assert.match(shell, /日本榜 グループ別最高順位推移/);
+  assert.match(shell, /日本榜 ランクイン履歴/);
+  assert.match(regionalCss, /\.regional-music-rank-chart/);
+  assert.match(regionalCss, /\.regional-music-kugou-history-table/);
 });
 
 test('YouTube Music uses the shared R2 read model but renders public metrics in its first-row tab', () => {
