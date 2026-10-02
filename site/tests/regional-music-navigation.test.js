@@ -63,10 +63,11 @@ test('Kugou uses a compact Japan chart view with one shared artist filter for gr
   assert.match(runtime, /毎週月曜 00:00 JST/);
   assert.match(shell, /Kugou Music 日本榜 グループ別最高順位推移/);
   assert.match(shell, /Kugou Music 日本榜 ランクイン履歴/);
-  assert.match(shell, /data-kugou-artist-filter="all"[^>]*>すべて<\/button>/);
-  assert.match(shell, /data-kugou-artist-filter="sakurazaka46"[^>]*>櫻坂<\/button>/);
-  assert.match(shell, /data-kugou-artist-filter="nogizaka46"[^>]*>乃木坂<\/button>/);
-  assert.match(shell, /data-kugou-artist-filter="hinatazaka46"[^>]*>日向坂<\/button>/);
+  assert.match(shell, /artistFilterButtons\('kugou', 'Kugou Music 日本榜 表示グループ'\)/);
+  assert.match(shell, /data-\$\{prefix\}-artist-filter="all"[^>]*>すべて<\/button>/);
+  assert.match(shell, /data-\$\{prefix\}-artist-filter="sakurazaka46"[^>]*>櫻坂<\/button>/);
+  assert.match(shell, /data-\$\{prefix\}-artist-filter="nogizaka46"[^>]*>乃木坂<\/button>/);
+  assert.match(shell, /data-\$\{prefix\}-artist-filter="hinatazaka46"[^>]*>日向坂<\/button>/);
   assert.match(shell, /kugouJapanRankChart/);
   assert.match(shell, /kugouJapanRankLegend/);
   assert.match(shell, /kugouJapanHistoryBody/);
@@ -82,10 +83,7 @@ test('QQ uses the same compact artist filter and includes artist popularity rank
   assert.match(shell, /QQ Music 日本榜 ランクイン履歴/);
   assert.match(shell, /QQ Music アーティスト別人気曲順位/);
   assert.match(shell, /qqArtistPopularityBody/);
-  assert.match(shell, /data-qq-artist-filter="all"[^>]*>すべて<\/button>/);
-  assert.match(shell, /data-qq-artist-filter="sakurazaka46"[^>]*>櫻坂<\/button>/);
-  assert.match(shell, /data-qq-artist-filter="nogizaka46"[^>]*>乃木坂<\/button>/);
-  assert.match(shell, /data-qq-artist-filter="hinatazaka46"[^>]*>日向坂<\/button>/);
+  assert.match(shell, /artistFilterButtons\('qq', 'QQ Music 日本榜 表示グループ'\)/);
   assert.match(runtime, /qq_music: '毎日 00:00 JST'/);
   assert.match(qqRuntime, /activeArtistFilter/);
   assert.match(qqRuntime, /artistVisible/);
