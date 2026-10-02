@@ -1,0 +1,133 @@
+name: Probe Kuwo Japanese chart v3
+
+on:
+  push:
+    branches:
+      - research/kuwo-jp-chart-probe
+    paths:
+      - .github/workflows/kuwo-jp-chart-probe-v3.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fetch chart 183 page by page
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import json, re, urllib.request, urllib.parse, pathlib, time
+
+          CHART_ID=183
+          UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140 Safari/537.36'
+          GROUPS={
+            '櫻坂46':['櫻坂46','樱坂46','sakurazaka46','sakurazaka 46'],
+            '乃木坂46':['乃木坂46','nogizaka46','nogizaka 46'],
+            '日向坂46':['日向坂46','hinatazaka46','hinatazaka 46'],
+            '欅坂46':['欅坂46','keyakizaka46','keyakizaka 46'],
+          }
+          def norm(s): return re.sub(r'[\s._・･\-—–/\\()\[\]（）【】「」『』]','',str(s or '').casefold())
+          def fetch(url,timeout=15):
+            try:
+              req=urllib.request.Request(url,headers={'User-Agent':UA,'Accept':'application/json,text/plain,*/*','Referer':'https://m.kuwo.cn/'})
+              with urllib.request.urlopen(req,timeout=timeout) as r:
+                b=r.read(); return {'status':r.status,'url':r.geturl(),'text':b.decode('utf-8','replace'),'bytes':len(b),'error':None}
+            except Exception as e:
+              return {'status':0,'url':url,'text':'','bytes':0,'error':repr(e)}
+          def parse(text):
+            try:return json.loads(text)
+            except:return None
+          def rows(p):
+            if not isinstance(p,dict):return []
+            candidates=[p.get('musiclist'),p.get('musicList'),p.get('list')]
+            d=p.get('data')
+            if isinstance(d,dict): candidates += [d.get('musiclist'),d.get('musicList'),d.get('list')]
+            for v in candidates:
+              if isinstance(v,list): return v
+            return []
+          def who(r):
+            hay=norm(' '.join(str(r.get(k,'')) for k in ('artist','artistName','singer','name','title')))
+            return [g for g,aa in GROUPS.items() if any(norm(a) in hay for a in aa)]
+          def item(r,rank):
+            return {'rank':rank,'name':r.get('name') or r.get('title'),'artist':r.get('artist') or r.get('artistName') or r.get('singer'),'rid':r.get('rid') or r.get('id')}
+          def url(proto,pn,rn,extra=True):
+            base=f'{proto}://kbangserver.kuwo.cn/ksong.s?from=pc&fmt=json&pn={pn}&rn={rn}&type=bang&data=content&id={CHART_ID}'
+            return base + ('&show_copyright_off=0&pcmp4=1&isbang=1&userid=0' if extra else '')
+
+          report={'observed_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'chart_id':CHART_ID,'attempts':[],'tracks':[],'matches':[],'history':{'captures':[],'matches':[],'notes':[]}}
+
+          # The previous probe proved rn=5 works but rn=300 can return an empty payload.
+          # Try conservative page sizes and endpoint variants, stopping at the first usable variant.
+          chosen=None
+          for proto,rn,extra in [('https',30,True),('https',20,True),('http',30,True),('http',20,True),('http',100,False),('https',100,False)]:
+            collected=[]; seen=set(); diagnostics=[]
+            for pn in range(0,20):
+              r=fetch(url(proto,pn,rn,extra)); p=parse(r['text']); rs=rows(p)
+              diagnostics.append({'pn':pn,'status':r['status'],'bytes':r['bytes'],'rows':len(rs),'error':r['error'],'keys':list(p.keys()) if isinstance(p,dict) else [],'head':r['text'][:120] if not isinstance(p,dict) else ''})
+              if not rs: break
+              for row in rs:
+                key=str(row.get('rid') or row.get('id') or '')+'|'+str(row.get('name') or row.get('title') or '')+'|'+str(row.get('artist') or row.get('artistName') or row.get('singer') or '')
+                if key in seen: continue
+                seen.add(key); collected.append(row)
+              if len(rs)<rn: break
+            report['attempts'].append({'proto':proto,'rn':rn,'extra':extra,'pages':diagnostics,'unique_rows':len(collected)})
+            if collected:
+              chosen=(proto,rn,extra,collected); break
+
+          if chosen:
+            proto,rn,extra,allrows=chosen
+            report['variant']={'proto':proto,'rn':rn,'extra':extra}
+            report['tracks']=[item(r,i) for i,r in enumerate(allrows,1)]
+            for i,r in enumerate(allrows,1):
+              for g in who(r):
+                x=item(r,i); x['group']=g; report['matches'].append(x)
+
+            # Best-effort historical lookup for the exact usable first-page URL and a common compact URL.
+            originals=[url('http',0,rn,extra),f'http://kbangserver.kuwo.cn/ksong.s?from=pc&fmt=json&pn=0&rn={rn}&type=bang&data=content&id={CHART_ID}']
+            for original in originals:
+              q='https://web.archive.org/cdx/search/cdx?'+urllib.parse.urlencode({'url':original,'output':'json','fl':'timestamp,original,statuscode,digest','filter':'statuscode:200','collapse':'digest','from':'2018','to':'2026','limit':'200'})
+              c=fetch(q,20); cj=parse(c['text'])
+              if isinstance(cj,list) and len(cj)>1:
+                for z in cj[1:]:
+                  cap={'timestamp':z[0],'original':z[1],'status':z[2],'digest':z[3]}
+                  if cap not in report['history']['captures']: report['history']['captures'].append(cap)
+              else:
+                report['history']['notes'].append(f'No CDX captures for {original} (HTTP {c["status"]}, bytes {c["bytes"]}).')
+            for cap in report['history']['captures'][-40:]:
+              s=fetch(f"https://web.archive.org/web/{cap['timestamp']}id_/{cap['original']}",15); sr=rows(parse(s['text']))
+              for i,r in enumerate(sr,1):
+                for g in who(r):
+                  x=item(r,i); x.update({'timestamp':cap['timestamp'],'group':g}); report['history']['matches'].append(x)
+          else:
+            report['variant']=None
+            report['history']['notes'].append('No usable chart rows returned by tested Kuwo endpoint variants.')
+
+          pathlib.Path('kuwo-jp-chart-v3.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          lines=['# Kuwo 酷我日语榜 — chart 183',f"Observed: {report['observed_at']}",f"Rows: {len(report['tracks'])}"]
+          if report.get('variant'): lines.append(f"Variant: {report['variant']}")
+          lines+=['','## 坂道該当']
+          if report['tracks']:
+            lines += [f"- #{m['rank']} {m['group']}: {m['name']} — {m['artist']} (RID {m['rid']})" for m in report['matches']] or ['- 現行取得範囲に櫻坂46・乃木坂46・日向坂46・欅坂46なし']
+          else: lines.append('- 判定不能（ランキング本文を取得できず）')
+          lines+=['','## Top 20']+[f"- #{r['rank']} {r['name']} — {r['artist']}" for r in report['tracks'][:20]]
+          lines+=['','## 履歴',f"- Wayback captures: {len(report['history']['captures'])}"]
+          lines += [f"- {m['timestamp']} #{m['rank']} {m['group']}: {m['name']} — {m['artist']}" for m in report['history']['matches']] or ['- 復元できた過去坂道エントリーなし']
+          lines += [f"- {n}" for n in report['history']['notes']]
+          pathlib.Path('kuwo-jp-chart-v3.md').write_text('\n'.join(lines)+'\n',encoding='utf-8')
+          print('\n'.join(lines))
+          PY
+      - name: Job summary
+        if: always()
+        run: test -f kuwo-jp-chart-v3.md && cat kuwo-jp-chart-v3.md >> "$GITHUB_STEP_SUMMARY" || true
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kuwo-jp-chart-probe-v3
+          path: kuwo-jp-chart-v3.*
+          if-no-files-found: ignore
+          retention-days: 7
