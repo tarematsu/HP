@@ -25,58 +25,13 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           source_path = Path('worker/src/stationhead-daily-followers.js')
           source = source_path.read_text()
-          old = '''export async function discoverStationheadFollowerTargets(env, discoveredAt = Date.now()) {
-            if (typeof env?.OTHER_DB?.prepare !== 'function') throw new Error('OTHER_DB binding is unavailable');
-            if (typeof env?.BUDDIES_DB?.prepare !== 'function') throw new Error('BUDDIES_DB binding is unavailable');
-
-            const [existingResult, buddiesResult] = await Promise.all([
-              env.OTHER_DB.prepare(`SELECT handle,source_mask
-                FROM sh_stationhead_follower_targets ORDER BY handle`).all(),
-              env.BUDDIES_DB.prepare(`SELECT DISTINCT LOWER(TRIM(h.current_handle)) AS handle
-                FROM sh_broadcast_sessions AS s
-                JOIN sh_hosts AS h ON h.id=s.host_id
-                WHERE s.host_id IS NOT NULL
-                  AND h.current_handle IS NOT NULL
-                  AND TRIM(h.current_handle)<>''`).all(),
-            ]);
-
-            const existing = new Map();
-            for (const row of resultRows(existingResult)) {
-              const handle = normalizedHandle(row?.handle);
-              if (handle) existing.set(handle, Number(row?.source_mask || 0));
-            }
-
-            const desired = new Map(existing);
-            for (const handle of STATIONHEAD_DAILY_FOLLOWER_HANDLES) addSource(desired, handle, FOLLOWER_SOURCE_FIXED);
-            for (const row of resultRows(buddiesResult)) addSource(desired, row?.handle, FOLLOWER_SOURCE_BUDDIES);
-
-            const mutations = [];
-            for (const [handle, sourceMask] of desired) {
-              const previousMask = Number(existing.get(handle) || 0);
-              if ((previousMask & sourceMask) === sourceMask) continue;
-              mutations.push(env.OTHER_DB.prepare(`INSERT INTO sh_stationhead_follower_targets(
-                  handle,source_mask,first_seen_at
-                ) VALUES(?,?,?)
-                ON CONFLICT(handle) DO UPDATE SET
-                  source_mask=(sh_stationhead_follower_targets.source_mask | excluded.source_mask)
-                WHERE (sh_stationhead_follower_targets.source_mask & excluded.source_mask)<>excluded.source_mask`)
-                .bind(handle, sourceMask, discoveredAt));
-            }
-
-            const targetWrites = await runStatements(env.OTHER_DB, mutations);
-            return {
-              handles: orderedHandles([...desired.keys()]),
-              source_masks: Object.fromEntries(desired),
-              target_writes: targetWrites,
-              buddies_discovered: resultRows(buddiesResult).length,
-              other_d1_reads: 1,
-              buddies_d1_reads: 1,
-            };
-          }'''
-          new = '''export async function discoverStationheadFollowerTargets(env, discoveredAt = Date.now()) {
+          start = source.index('export async function discoverStationheadFollowerTargets(')
+          end = source.index('\nexport async function loadBuddiesFollowerSession', start)
+          replacement = '''export async function discoverStationheadFollowerTargets(env, discoveredAt = Date.now()) {
             if (typeof env?.OTHER_DB?.prepare !== 'function') throw new Error('OTHER_DB binding is unavailable');
 
             const existingPromise = env.OTHER_DB.prepare(`SELECT handle,source_mask
@@ -142,30 +97,17 @@ jobs:
               other_d1_reads: 1,
               buddies_d1_reads: buddiesState.reads,
             };
-          }'''
-          if old not in source:
-              raise SystemExit('target discovery block not found')
-          source_path.write_text(source.replace(old, new))
+          }
+          '''
+          source_path.write_text(source[:start] + replacement + source[end:])
 
           test_path = Path('worker/tests/stationhead-daily-followers.test.js')
           tests = test_path.read_text()
-          old_test = '''    BUDDIES_DB: {
-              prepare(sql) {
-                assert.match(sql, /FROM sh_broadcast_sessions AS s/);
-                assert.match(sql, /JOIN sh_hosts AS h/);
-                return { async all() { return { results: [{ handle: 'BuddyHost' }] }; } };
-              },
-            },'''
-          new_test = '''    MINUTE_DB: {
-              prepare(sql) {
-                assert.match(sql, /FROM sh_broadcast_sessions AS s/);
-                assert.match(sql, /JOIN sh_hosts AS h/);
-                return { async all() { return { results: [{ handle: 'BuddyHost' }] }; } };
-              },
-            },'''
-          if old_test not in tests:
-              raise SystemExit('discovery test binding block not found')
-          tests = tests.replace(old_test, new_test, 1)
+          pattern = r"(test\('Buddies broadcast hosts are merged into the permanent follower target registry'.*?const env = \{\s*)BUDDIES_DB:"
+          tests, count = re.subn(pattern, r'\1MINUTE_DB:', tests, count=1, flags=re.S)
+          if count != 1:
+              raise SystemExit('discovery test binding not replaced')
+
           marker = "test('collector fetches fixed and auto-added targets while keeping one compact daily D1 row', async () => {"
           regression = '''test('target discovery keeps fixed and registered handles when minute-facts discovery fails', async () => {
             const existingRows = STATIONHEAD_DAILY_FOLLOWER_HANDLES.map((handle) => ({ handle, source_mask: 1 }));
@@ -208,5 +150,5 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add worker/src/stationhead-daily-followers.js worker/tests/stationhead-daily-followers.test.js
-          git commit -m 'Fix follower target discovery database' || exit 0
+          git commit -m 'Fix follower target discovery database'
           git push origin HEAD:fix/follower-metadata-and-collection
