@@ -1,0 +1,59 @@
+name: Probe Kuwo archived Japanese chart detail
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-wayback-detail-probe.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Find and parse archived detail pages
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import json,re,time,urllib.parse,urllib.request
+          H={'User-Agent':'Mozilla/5.0'}
+          def read(u,t=25):
+            q=urllib.request.Request(u,headers=H)
+            with urllib.request.urlopen(q,timeout=t) as r:return r.read().decode('utf-8','replace')
+          pats=[
+            'm.kuwo.cn/newh5/bang/content?bid=183*',
+            'kuwo.cn/newh5/bang/content?bid=183*',
+            'www.kuwo.cn/newh5/bang/content?bid=183*',
+            'm.kuwo.cn/newh5/bang/content*bid=183*',
+            'kuwo.cn/newh5/bang/content*bid=183*',
+          ]
+          caps=[]
+          for pat in pats:
+            u='https://web.archive.org/cdx/search/cdx?'+urllib.parse.urlencode({'url':pat,'output':'json','filter':'statuscode:200','fl':'timestamp,original,digest','collapse':'digest','limit':'500'})
+            try:
+              a=json.loads(read(u,30)); print('CDX',pat,max(0,len(a)-1)); caps += a[1:]
+            except Exception as e:print('CDX_ERR',pat,repr(e))
+          uniq={(x[0],x[1]):x for x in caps}; caps=sorted(uniq.values(),reverse=True)
+          print('TOTAL_CAPTURES',len(caps))
+          for ts,url,dig in caps[:100]:
+            replay=f'https://web.archive.org/web/{ts}id_/{url}'
+            try: body=read(replay,25)
+            except Exception as e: print('REPLAY_ERR',ts,url,repr(e)); continue
+            # extract rows from known server-rendered markup and generic title/artist structures
+            rows=[]
+            for m in re.finditer(r'class=["\'][^"\']*(?:songname|song_name)[^"\']*["\'][^>]*>(.*?)</[^>]+>.*?class=["\'][^"\']*(?:artname|artist|singer)[^"\']*["\'][^>]*>(.*?)</',body,re.I|re.S):
+              clean=lambda s:re.sub(r'<[^>]+>','',s).strip().replace('&amp;','&')
+              rows.append((clean(m.group(1)),clean(m.group(2))))
+            # also inspect embedded JSON-ish song fields
+            pairs=[]
+            for m in re.finditer(r'["\']name["\']\s*:\s*["\']([^"\']+)["\'].{0,500}?["\']artist["\']\s*:\s*["\']([^"\']*)',body,re.I|re.S): pairs.append((m.group(1),m.group(2)))
+            keys=[k for k in ['musiclist','third_id','currentVolume','酷我日语榜','chart_songname'] if k.lower() in body.lower()]
+            print('CAPTURE',ts,url,'LEN',len(body),'KEYS',keys,'ROWS',len(rows),'JSONPAIRS',len(pairs))
+            if rows:
+              for i,x in enumerate(rows[:100],1): print('ROW',ts,i,json.dumps(x,ensure_ascii=False))
+            elif pairs:
+              for i,x in enumerate(pairs[:100],1): print('PAIR',ts,i,json.dumps(x,ensure_ascii=False))
+            for key in ['musiclist','third_id','currentVolume']:
+              p=body.lower().find(key.lower())
+              if p>=0:print('CTX',ts,key,body[max(0,p-500):p+2000].replace('\n',' ')[:2500])
+            time.sleep(.1)
+          PY
