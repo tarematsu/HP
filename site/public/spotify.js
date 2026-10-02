@@ -319,9 +319,14 @@ function renderArtistRankChart(chart = {}, trend = {}) {
 }
 
 function renderCharts(trend, artistChart, monthlyListenerRows) {
-  renderTrendChart(overviewTrend(trend, monthlyListenerRows), {
-    containerId: 'spotifyTrendCharts', metricKey: 'total_delta', secondaryMetricKey: 'monthly_listeners',
-    ariaLabel: '櫻坂46・乃木坂46・日向坂46の全曲合計再生数前日比とSpotify月間リスナー推移。左軸が再生数前日比、右軸が月間リスナー。',
+  renderTrendChart(trend, {
+    containerId: 'spotifyTrendCharts', metricKey: 'total_delta',
+    ariaLabel: '櫻坂46・乃木坂46・日向坂46の全曲合計再生数前日比推移',
+  });
+  renderTrendChart(monthlyListenerTrend(monthlyListenerRows), {
+    containerId: 'spotifyMonthlyListenerTrendCharts', metricKey: 'monthly_listeners',
+    latestFormatter: formatInteger,
+    ariaLabel: '櫻坂46・乃木坂46・日向坂46のSpotify月間リスナー推移',
   });
   renderTrendChart(trend, {
     containerId: 'spotifyTop10YearTrendCharts', metricKey: 'top10_year_delta',
