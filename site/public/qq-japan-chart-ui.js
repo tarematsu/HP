@@ -179,23 +179,27 @@ function renderHistory(history) {
 function renderPopularity(payload) {
   const body = replaceBody('qqArtistPopularityBody');
   if (!body) return;
-  const rows = (Array.isArray(payload?.tracks) ? payload.tracks : [])
+  const trackById = new Map((Array.isArray(payload?.tracks) ? payload.tracks : [])
+    .filter((item) => item?.service === 'qq_music')
+    .map((item) => [String(item.service_track_id || ''), item]));
+  const rows = (Array.isArray(payload?.artist_track_orders) ? payload.artist_track_orders : [])
     .filter((item) => item?.service === 'qq_music')
     .filter((item) => ARTIST_ORDER.includes(item?.canonical_artist))
     .filter((item) => artistVisible(item?.canonical_artist))
-    .filter((item) => Number.isFinite(Number(item?.popularity_rank)) && Number(item.popularity_rank) > 0)
+    .filter((item) => Number.isFinite(Number(item?.position)) && Number(item.position) > 0)
     .sort((a, b) => ARTIST_ORDER.indexOf(a.canonical_artist) - ARTIST_ORDER.indexOf(b.canonical_artist)
-      || Number(a.popularity_rank) - Number(b.popularity_rank)
-      || String(a.title || '').localeCompare(String(b.title || '')));
+      || Number(a.position) - Number(b.position)
+      || String(trackById.get(String(a.service_track_id || ''))?.title || '').localeCompare(String(trackById.get(String(b.service_track_id || ''))?.title || '')));
   if (!rows.length) {
     appendEmptyTableRow(body, 'QQ Music のアーティスト別人気曲順位はありません。', 3);
     return;
   }
   for (const item of rows) {
+    const track = trackById.get(String(item.service_track_id || ''));
     body.append(row([
       ARTIST_LABELS[item.canonical_artist] || item.canonical_artist || '-',
-      `${integerFormat.format(Number(item.popularity_rank))}位`,
-      item.title || item.service_track_id || '-',
+      `${integerFormat.format(Number(item.position))}位`,
+      track?.title || item.service_track_id || '-',
     ]));
   }
 }
