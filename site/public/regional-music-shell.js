@@ -53,6 +53,13 @@ const qqHistoryTable = dashboardTable({
   wrapClassName: 'regional-music-table-wrap',
 });
 
+const qqAnimeHistoryTable = dashboardTable({
+  className: 'regional-music-table regional-music-kugou-history-table regional-music-qq-history-table music-service-track-table',
+  headers: ['更新日', 'グループ', '順位', '曲名'],
+  bodyId: 'qqAnimeHistoryBody',
+  wrapClassName: 'regional-music-table-wrap',
+});
+
 const qqPopularityTable = dashboardTable({
   className: 'regional-music-table regional-music-qq-popularity-table music-service-track-table',
   headers: ['グループ', '順位', '曲名'],
@@ -91,6 +98,22 @@ const qqHistorySection = `
       ${artistFilterButtons('qq', 'QQ音乐 日本榜 表示グループ')}
     </div>
     ${qqHistoryTable}
+  </section>`;
+
+const qqAnimeChartSection = `
+  <section id="qqAnimeChartSection" class="music-service-section regional-chart-section" hidden>
+    <div class="regional-chart-section-head"><h2>QQ音乐 动漫音乐榜 グループ別最高順位推移</h2></div>
+    <div id="qqAnimeRankLegend" class="regional-music-rank-legend" aria-label="グループ凡例"></div>
+    <div id="qqAnimeRankChart" class="regional-music-rank-chart"></div>
+  </section>`;
+
+const qqAnimeHistorySection = `
+  <section id="qqAnimeHistorySection" class="music-service-section regional-chart-section" hidden>
+    <div class="regional-chart-section-head">
+      <h2>QQ音乐 动漫音乐榜 ランクイン履歴</h2>
+      ${artistFilterButtons('qq', 'QQ音乐 动漫音乐榜 表示グループ')}
+    </div>
+    ${qqAnimeHistoryTable}
   </section>`;
 
 const qqPopularitySection = `
@@ -139,6 +162,8 @@ mountDashboardShell({
       <div id="regionalMusicCompactNotice" hidden>${dashboardNotice({ id: 'regionalMusicCompactNoticeText' })}</div>
       ${qqChartSection}
       ${qqHistorySection}
+      ${qqAnimeChartSection}
+      ${qqAnimeHistorySection}
       ${qqPopularitySection}
       ${kugouChartSection}
       ${kugouHistorySection}
@@ -150,5 +175,5 @@ mountDashboardShell({
   },
 });
 
-void import('./qq-japan-chart-ui.js?v=20261002.2').then(({ initQqJapanHistoryUi }) => initQqJapanHistoryUi());
+void import('./qq-japan-chart-ui.js?v=20261003.1').then(({ initQqJapanHistoryUi }) => initQqJapanHistoryUi());
 void import('./netease-japan-chart-ui.js?v=20261003.1');
