@@ -19,18 +19,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Backfill Kugou legacy Japan ranking web history
-        working-directory: worker
-        run: node scripts/backfill-kugou-web-history.mjs
       - name: Backfill Kugou Japan ranking before 2021
         working-directory: worker
         run: node scripts/backfill-kugou-pre2021-web-history.mjs
       - uses: actions/upload-artifact@v4
         with:
-          name: kugou-web-history-backfill
+          name: kugou-pre2021-web-history-backfill
           path: |
-            worker/kugou-web-history-backfill.json
-            worker/kugou-web-history-backfill.csv
             worker/kugou-pre2021-web-history-backfill.json
             worker/kugou-pre2021-web-history-backfill.csv
           retention-days: 7
