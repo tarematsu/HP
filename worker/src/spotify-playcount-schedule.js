@@ -1,8 +1,8 @@
 import {
   FIRST_CHECK_HOUR_JST,
   QUEUE_BATCH_SIZE,
-  SPOTIFY_ALWAYS_COLLECT_ARTISTS,
   SPOTIFY_CURRENT_TOP20_ARTISTS,
+  SPOTIFY_TARGET_ARTISTS,
   SPOTIFY_TOP20_RANKING_DATE,
   enabled,
   integer,
@@ -24,7 +24,7 @@ export async function syncCollectionRoster(db) {
   const writes = [];
   const artistsByKey = new Map([
     ...SPOTIFY_CURRENT_TOP20_ARTISTS,
-    ...SPOTIFY_ALWAYS_COLLECT_ARTISTS,
+    ...SPOTIFY_TARGET_ARTISTS,
   ].map((artist) => [artist.artist_key, artist]));
 
   for (const artist of artistsByKey.values()) {
@@ -49,19 +49,11 @@ export async function syncCollectionRoster(db) {
   return readCollectionArtists(db);
 }
 
-export async function readCollectionArtists(db) {
-  const alwaysCollectKeys = SPOTIFY_ALWAYS_COLLECT_ARTISTS.map((artist) => artist.artist_key);
-  const placeholders = alwaysCollectKeys.map(() => '?').join(',');
-  const result = await db.prepare(`SELECT a.artist_key,a.spotify_artist_id,a.artist_name
-    FROM sh_spotify_artists a
-    WHERE EXISTS (
-      SELECT 1 FROM sh_spotify_top20_history h WHERE h.artist_key=a.artist_key
-    ) OR a.artist_key IN (${placeholders})
-    ORDER BY a.artist_key`).bind(...alwaysCollectKeys).all();
-  return resultsOf(result).map((row) => ({
-    artist_key: String(row.artist_key),
-    spotify_artist_id: String(row.spotify_artist_id),
-    artist_name: String(row.artist_name),
+export async function readCollectionArtists(_db) {
+  return SPOTIFY_TARGET_ARTISTS.map((artist) => ({
+    artist_key: artist.artist_key,
+    spotify_artist_id: artist.spotify_artist_id,
+    artist_name: artist.artist_name,
   }));
 }
 
@@ -148,10 +140,13 @@ export async function sendCatalogMessage(env, body) {
 export async function queueActiveReleases(env, snapshotDate, runToken, collectionArtists) {
   const queue = env.SPOTIFY_PLAYCOUNT_QUEUE;
   if (!queue?.send && !queue?.sendBatch) throw new Error('SPOTIFY_PLAYCOUNT_QUEUE binding is required');
+  const targetKeys = collectionArtists.map((artist) => artist.artist_key);
+  const placeholders = targetKeys.map(() => '?').join(',');
   const query = await env.OTHER_DB.prepare(`SELECT r.album_id,GROUP_CONCAT(t.artist_key, ',') AS target_keys
     FROM sh_spotify_releases r
     INNER JOIN sh_spotify_release_targets t ON t.album_id=r.album_id
-    WHERE t.is_active=1 GROUP BY r.album_id ORDER BY r.album_id`).all();
+    WHERE t.is_active=1 AND t.artist_key IN (${placeholders})
+    GROUP BY r.album_id ORDER BY r.album_id`).bind(...targetKeys).all();
   const targetByKey = new Map(collectionArtists.map((artist) => [artist.artist_key, artist]));
   const bodies = resultsOf(query)
     .map((row) => albumQueueMessage(snapshotDate, runToken, row, targetByKey)).filter(Boolean);
@@ -170,9 +165,8 @@ async function oldestIncompleteRun(db, today) {
     .bind(today).first();
 }
 
-export async function missingAlwaysCollectArtists(db, snapshotDate) {
-  const keys = SPOTIFY_ALWAYS_COLLECT_ARTISTS.map((artist) => artist.artist_key);
-  if (!keys.length) return [];
+export async function missingTargetArtists(db, snapshotDate) {
+  const keys = SPOTIFY_TARGET_ARTISTS.map((artist) => artist.artist_key);
   const placeholders = keys.map(() => '?').join(',');
   const result = await db.prepare(`SELECT artist_key FROM sh_spotify_artist_daily
     WHERE snapshot_date=? AND artist_key IN (${placeholders})`)
@@ -185,13 +179,13 @@ async function selectScheduledSnapshot(db, scheduledTime) {
   const today = jstDateKey(scheduledTime);
   const todayRun = await readRun(db, today);
   if (todayRun?.status === 'complete') {
-    const missingArtistKeys = await missingAlwaysCollectArtists(db, today);
+    const missingArtistKeys = await missingTargetArtists(db, today);
     if (missingArtistKeys.length) {
       return {
         snapshotDate: today,
         forceRefresh: true,
         confirmationPass: true,
-        recovery: 'always-collect-backfill',
+        recovery: 'target-backfill',
         missingArtistKeys,
       };
     }
@@ -251,8 +245,7 @@ export async function runSpotifyPlaycountScheduled(controller, env) {
     return { skipped: true, reason: selection.skip };
   }
 
-  // Synchronize the configured roster only for an actual collection attempt, not every hourly wake-up.
-  // Ever-Top-20 artists remain additive, while explicit always-collect artists do not alter rank history.
+  // Keep rank-history metadata for comparison, but collection itself is strictly the three Sakamichi groups.
   const collectionArtists = await syncCollectionRoster(db);
   if (!collectionArtists.length) throw new Error('Spotify collection roster is empty');
 
