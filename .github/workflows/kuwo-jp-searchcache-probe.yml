@@ -1,0 +1,14 @@
+name: Probe indexed stale Kuwo chart variants
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-searchcache-probe.yml]
+permissions:
+  contents: read
+jobs:
+  note:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo 'Search engines can retain stale indexed variants of dynamic Kuwo URLs.'
+          echo 'Use external search queries for ranklist_detail/183 plus unique query-string variants; preserve observed update date + Top100 when found.'
