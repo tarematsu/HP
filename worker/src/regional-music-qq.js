@@ -179,11 +179,16 @@ async function discoverSinger(fetchImpl, artist) {
   return null;
 }
 
-async function collectJapanToplist(env, observedAt, fetchImpl) {
+export async function fetchQqJapanToplist(fetchImpl = fetch) {
   const payload = await fetchJson(fetchImpl, qqJapanToplistUrl());
   if (payload?.code || payload?.req_1?.code) throw new Error('Japan toplist API returned a provider error');
   const chart = parseQqJapanToplist(payload);
   if (!chart.entries.length) throw new Error('Japan toplist empty');
+  return chart;
+}
+
+export async function saveQqJapanToplist(env, chart, observedAt = Date.now()) {
+  if (!chart?.entries?.length) throw new Error('Japan toplist empty');
 
   await saveRegionalPlaylist(env, {
     service:'qq_music',
@@ -231,11 +236,26 @@ async function collectJapanToplist(env, observedAt, fetchImpl) {
   return chart;
 }
 
+export async function collectQqJapanToplist(env, observedAt = Date.now(), fetchImpl = fetch) {
+  const chart = await fetchQqJapanToplist(fetchImpl);
+  await saveQqJapanToplist(env, chart, observedAt);
+  await saveRegionalCollectorState(env, {
+    service:'qq_music',
+    status:'ok',
+    last_attempt_at:observedAt,
+    last_success_at:observedAt,
+    last_error_class:null,
+    last_error_message:null,
+    entity_counts:{ japan_chart_entries:chart.entries.length },
+    updated_at:observedAt,
+  });
+  return { service:'qq_music', status:'ok', japan_chart_entries:chart.entries.length, chart };
+}
+
 export async function collectQqMusic(env, observedAt = Date.now(), fetchImpl = fetch) {
   const failures = [];
   let artists = 0;
   let tracks = 0;
-  let japanChartEntries = 0;
 
   for (const [canonicalArtist, artist] of Object.entries(REGIONAL_MUSIC_ARTISTS)) {
     try {
@@ -274,14 +294,6 @@ export async function collectQqMusic(env, observedAt = Date.now(), fetchImpl = f
     }
   }
 
-  try {
-    const chart = await collectJapanToplist(env, observedAt, fetchImpl);
-    japanChartEntries = chart.entries.length;
-    tracks += chart.entries.length;
-  } catch (error) {
-    failures.push({ chart:'japan_toplist', error:String(error?.message || error) });
-  }
-
   const status = failures.length === 0 ? 'ok' : (artists || tracks) ? 'degraded' : 'error';
   await saveRegionalCollectorState(env, {
     service: 'qq_music',
@@ -290,8 +302,8 @@ export async function collectQqMusic(env, observedAt = Date.now(), fetchImpl = f
     last_success_at: (artists || tracks) ? observedAt : null,
     last_error_class: failures.length ? 'collection_error' : null,
     last_error_message: failures.length ? JSON.stringify(failures).slice(0, 1000) : null,
-    entity_counts: { artists, tracks, japan_chart_entries:japanChartEntries, failures: failures.length },
+    entity_counts: { artists, tracks, failures: failures.length },
     updated_at: observedAt,
   });
-  return { service: 'qq_music', status, artists, tracks, japan_chart_entries:japanChartEntries, failures };
+  return { service: 'qq_music', status, artists, tracks, failures };
 }
