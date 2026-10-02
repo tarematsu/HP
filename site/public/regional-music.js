@@ -49,6 +49,7 @@ const STATUS_LABELS = Object.freeze({
 });
 
 const COMPACT_CHART_CADENCE = Object.freeze({
+  melon: '毎週月曜日 00:00',
   qq_music: '毎日 00:00 JST',
   kugou_music: '平日11:30',
 });
@@ -57,6 +58,8 @@ const OUT_OF_CHART_RANK = 101;
 
 let readModelPromise = null;
 let activeRequest = 0;
+let melonArtistFilter = 'all';
+let lastMelonPayload = null;
 let kugouArtistFilter = 'all';
 let lastKugouPayload = null;
 
@@ -245,7 +248,7 @@ function renderHealth(state) {
 }
 
 function compactChartMode(service) {
-  return service === 'qq_music' || service === 'kugou_music';
+  return service === 'melon' || service === 'qq_music' || service === 'kugou_music';
 }
 
 function setCompactChartMode(service) {
@@ -269,6 +272,69 @@ function setCompactNotice(message = '', error = false) {
   if (!wrapper) return;
   wrapper.hidden = !message;
   setNotice('regionalMusicCompactNoticeText', message || undefined, error);
+}
+
+function melonArtistVisible(canonicalArtist) {
+  return melonArtistFilter === 'all' || canonicalArtist === melonArtistFilter;
+}
+
+function syncMelonFilterButtons() {
+  for (const button of document.querySelectorAll('[data-melon-artist-filter]')) {
+    const active = button.dataset.melonArtistFilter === melonArtistFilter;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
+}
+
+function bindMelonFilters() {
+  for (const button of document.querySelectorAll('[data-melon-artist-filter]')) {
+    if (button.dataset.melonFilterBound === '1') continue;
+    button.dataset.melonFilterBound = '1';
+    button.addEventListener('click', () => {
+      const next = button.dataset.melonArtistFilter || 'all';
+      if (next === melonArtistFilter) return;
+      melonArtistFilter = next;
+      if (lastMelonPayload && location.hash.slice(1) === 'melon') renderMelonPopularity(lastMelonPayload, 'melon');
+      else syncMelonFilterButtons();
+    });
+  }
+}
+
+function renderMelonPopularity(payload, service) {
+  const section = byId('melonArtistPopularitySection');
+  const visible = service === 'melon';
+  if (section) section.hidden = !visible;
+  if (!visible) return;
+
+  lastMelonPayload = payload;
+  bindMelonFilters();
+  syncMelonFilterButtons();
+  const trackById = new Map((Array.isArray(payload?.tracks) ? payload.tracks : [])
+    .filter((item) => item?.service === 'melon')
+    .map((item) => [String(item.service_track_id || ''), item]));
+  const rows = (Array.isArray(payload?.artist_track_orders) ? payload.artist_track_orders : [])
+    .filter((item) => item?.service === 'melon')
+    .filter((item) => item?.rank_source === 'provider_popularity_order')
+    .filter((item) => ARTIST_DISPLAY_ORDER.slice(0, 3).includes(item?.canonical_artist))
+    .filter((item) => melonArtistVisible(item?.canonical_artist))
+    .filter((item) => Number.isFinite(Number(item?.position)) && Number(item.position) > 0)
+    .sort((a, b) => artistPosition(a.canonical_artist) - artistPosition(b.canonical_artist)
+      || Number(a.position) - Number(b.position)
+      || String(trackById.get(String(a.service_track_id || ''))?.title || '').localeCompare(String(trackById.get(String(b.service_track_id || ''))?.title || '')));
+  const body = replaceBody('melonArtistPopularityBody');
+  if (!body) return;
+  if (!rows.length) {
+    appendEmptyTableRow(body, 'Melon のアーティスト別人気曲順位はありません。', 3);
+    return;
+  }
+  for (const item of rows) {
+    const track = trackById.get(String(item.service_track_id || ''));
+    body.append(row([
+      ARTIST_LABELS[item.canonical_artist] || item.canonical_artist || '-',
+      `${integerFormat.format(Number(item.position))}位`,
+      track?.title || item.service_track_id || '-',
+    ]));
+  }
 }
 
 function kugouArtistVisible(canonicalArtist) {
@@ -408,6 +474,7 @@ function renderService(payload, service) {
     if (state?.status === 'error') setCompactNotice('収集エラーが発生しています。直前までの正常データを表示しています。', true);
     else if (state?.status === 'degraded') setCompactNotice('一部項目の取得に失敗しています。取得できたデータのみ表示しています。');
     else setCompactNotice();
+    renderMelonPopularity(payload, service);
     renderKugouHistory(payload, service);
     return;
   }
@@ -423,10 +490,17 @@ function renderService(payload, service) {
   }
 
   renderHealth(state);
+  renderMelonPopularity(payload, service);
   renderKugouHistory(payload, service);
   renderArtists(artists);
   renderTracks(tracks, payload.artist_track_orders);
   renderPlaylists(playlists, memberships);
+}
+
+function resetMelonSection() {
+  const section = byId('melonArtistPopularitySection');
+  if (section) section.hidden = true;
+  replaceBody('melonArtistPopularityBody');
 }
 
 function resetKugouSections() {
@@ -447,6 +521,7 @@ export async function loadRegionalMusicView(service) {
   setText('regionalMusicChartCadence', COMPACT_CHART_CADENCE[serviceId] || '-');
   setText('regionalMusicRegion', '');
   for (const id of ['regionalMusicHealth', 'regionalMusicArtistBody', 'regionalMusicTrackBody', 'regionalMusicPlaylistBody']) replaceBody(id);
+  resetMelonSection();
   resetKugouSections();
   setCompactNotice();
   if (!compactChartMode(serviceId)) setNotice('regionalMusicNotice', 'データを読み込んでいます。');
