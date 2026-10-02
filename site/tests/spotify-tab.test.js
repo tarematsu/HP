@@ -209,7 +209,7 @@ test('Spotify API reports missing D1 only on the producer path', async () => {
   assert.equal(missing.status, 503);
 });
 
-test('Spotify tab uses one materialized read model and one shared Canvas renderer for three graphs', () => {
+test('Spotify tab uses the compact chart-and-list layout with the shared Canvas renderer', () => {
   const shell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
   const styles = readFileSync(new URL('../public/spotify.css', import.meta.url), 'utf8');
@@ -222,9 +222,18 @@ test('Spotify tab uses one materialized read model and one shared Canvas rendere
   assert.doesNotMatch(shell, /id="spotifyMonthlyListenerTrendCharts"/);
   assert.match(shell, /Spotify 今年リリース上位10曲合計の再生数前日比推移（坂道3グループ）/);
   assert.match(shell, /Spotify Daily Top Artist（日本）の順位推移（坂道3グループ）/);
-  assert.match(shell, /集計日/);
-  assert.match(shell, /櫻坂46の楽曲数/);
-  assert.match(shell, /櫻坂46の再生数前日比合計/);
+  assert.match(shell, /regional-music-view is-chart-compact/);
+  assert.match(shell, /regional-chart-meta spotify-chart-meta/);
+  assert.match(shell, /更新日/);
+  assert.match(shell, /更新周期/);
+  assert.match(shell, /<strong>毎日<\/strong>/);
+  assert.match(shell, /regional-chart-section-head/);
+  assert.match(shell, /className: 'regional-chart-filter'/);
+  assert.match(shell, /label: '櫻坂46'/);
+  assert.match(shell, /label: '乃木坂46'/);
+  assert.match(shell, /label: '日向坂46'/);
+  assert.doesNotMatch(shell, /dashboardSummary|dashboardSummaryItem|spotify-summary/);
+  assert.doesNotMatch(shell, /spotifyPlaylistSection|spotifyPlaylistMount|loadMusicServicePlaylists/);
   assert.match(shell, /headers: \['順位', '曲名', '累計再生数', '前日比'\]/);
   assert.match(shell, /id="spotifyTrendCharts"/);
   assert.match(shell, /id="spotifyTop10YearTrendCharts"/);
