@@ -161,20 +161,22 @@ export function buildFollowerReadModel({
     sourceMasks.set(handle, Number(sourceMasks.get(handle) || 0) | SOURCE_FIXED);
   }
 
+  const handles = orderedHandles([...sourceMasks.keys()]);
+  const allowedHandles = new Set(handles);
   const normalizedRows = [];
-  const allHandles = new Set(sourceMasks.keys());
   for (const row of Array.isArray(historyRows) ? historyRows : []) {
     const date = String(row?.observed_date_jst || row?.date || '');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
     const followers = row?.followers_json != null
       ? parsedFollowerJson(row.followers_json)
       : parsedFollowerJson(JSON.stringify(row));
-    if (!Object.keys(followers).length) continue;
-    Object.keys(followers).forEach((handle) => allHandles.add(handle));
-    normalizedRows.push({ date, ...followers });
+    const filteredFollowers = Object.fromEntries(
+      Object.entries(followers).filter(([handle]) => allowedHandles.has(handle)),
+    );
+    if (!Object.keys(filteredFollowers).length) continue;
+    normalizedRows.push({ date, ...filteredFollowers });
   }
   normalizedRows.sort((a, b) => a.date.localeCompare(b.date));
-  const handles = orderedHandles([...allHandles]);
   const byDate = new Map(normalizedRows.map((row) => [row.date, row]));
   const latest = byDate.get(latestDate) || { date: latestDate };
   const previous = byDate.get(offsetDateKey(latestDate, -1));
