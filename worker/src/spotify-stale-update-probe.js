@@ -18,7 +18,7 @@ function resultsOf(result) {
 async function readOldestStaleRun(db, today) {
   return db.prepare(`SELECT snapshot_date,run_token
     FROM sh_spotify_collection_runs
-    WHERE snapshot_date < ? AND status='stale'
+    WHERE snapshot_date <= ? AND status='stale'
     ORDER BY snapshot_date LIMIT 1`).bind(today).first();
 }
 
