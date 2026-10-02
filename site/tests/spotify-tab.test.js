@@ -218,8 +218,9 @@ test('Spotify tab uses the compact chart-and-list layout with the shared Canvas 
   const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
   const dashboard = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 
-  assert.match(shell, /Spotify 全曲合計再生数前日比・月間リスナー推移（坂道3グループ）/);
-  assert.doesNotMatch(shell, /id="spotifyMonthlyListenerTrendCharts"/);
+  assert.match(shell, /Spotify 全曲合計再生数前日比推移（坂道3グループ）/);
+  assert.match(shell, /Spotify 月間リスナー推移（坂道3グループ）/);
+  assert.match(shell, /id="spotifyMonthlyListenerTrendCharts"/);
   assert.match(shell, /Spotify 今年リリース上位10曲合計の再生数前日比推移（坂道3グループ）/);
   assert.match(shell, /Spotify Daily Top Artist（日本）の順位推移（坂道3グループ）/);
   assert.match(shell, /regional-music-view is-chart-compact/);
@@ -244,8 +245,8 @@ test('Spotify tab uses the compact chart-and-list layout with the shared Canvas 
   assert.match(runtime, /nogizaka46: '#8264b0'/);
   assert.match(runtime, /sakurazaka46: '#f3a6c8'/);
   assert.match(runtime, /hinatazaka46: '#9ecff3'/);
-  assert.match(runtime, /overviewTrend\(trend, monthlyListenerRows\)/);
-  assert.match(runtime, /lineDash: \[6, 4\]/);
+  assert.match(runtime, /containerId: 'spotifyTrendCharts', metricKey: 'total_delta'/);
+  assert.match(runtime, /containerId: 'spotifyMonthlyListenerTrendCharts', metricKey: 'monthly_listeners'/);
   assert.match(runtime, /metricKey: 'top10_year_delta'/);
   assert.doesNotMatch(runtime, /spotifyTop10TrendCharts|metricKey: 'top10_delta'/);
   assert.match(runtime, /graphTrendSeries\(normalizeTrendSeries\(trend\)\)/);
