@@ -35,15 +35,6 @@ jobs:
         working-directory: worker
         run: npm ci --no-audit --no-fund --ignore-scripts
 
-      - name: Wait for next five-minute production cron
-        shell: bash
-        run: |
-          now=$(date +%s)
-          target=$(( ((now / 300) + 1) * 300 + 25 ))
-          delay=$(( target - now ))
-          echo "Checking ${delay}s after the next five-minute boundary"
-          sleep "$delay"
-
       - name: Query follower snapshot rows
         working-directory: worker
         run: |
