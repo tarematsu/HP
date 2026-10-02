@@ -8,7 +8,8 @@ LR"JS(
   if (state.started) return true;
   state.started = true;
   const deadline = performance.now() + 120 * 1000;
-  const likeWaitChoicesMs = [5 * 1000, 10 * 1000, 15 * 1000];
+  const likeWaitChoicesMs = [5 * 1000, 10 * 1000, 15 * 1000, 20 * 1000];
+  const minimumExistingLikes = 5;
   const maxLikeAttemptsPerPost = 3;
   const pauseAfterLikeMs = 800;
   const scrollDelayMs = 450;
@@ -101,11 +102,40 @@ LR"JS(
   };
   const articleForId = id => timelineArticles()
       .find(article => articleId(article) === id);
+  const parseCompactCount = value => {
+    const normalized = String(value || '').replace(/,/g, '').trim();
+    const match = normalized.match(/(\d+(?:\.\d+)?)\s*([KMB万千]?)/i);
+    if (!match) return 0;
+    const base = Number(match[1]);
+    if (!Number.isFinite(base)) return 0;
+    const suffix = match[2].toUpperCase();
+    const multiplier = suffix === 'K' || suffix === '千' ? 1000
+        : suffix === 'M' ? 1000000
+        : suffix === 'B' ? 1000000000
+        : suffix === '万' ? 10000
+        : 1;
+    return base * multiplier;
+  };
+  const existingLikeCount = article => {
+    const button = article?.querySelector?.('[data-testid="like"]');
+    if (!button) return 0;
+    const countNode = button.querySelector?.(
+        '[data-testid="app-text-transition-container"]');
+    const values = [
+      button.getAttribute?.('aria-label'),
+      button.innerText,
+      button.textContent,
+      countNode?.innerText,
+      countNode?.textContent,
+    ];
+    return Math.max(0, ...values.map(parseCompactCount));
+  };
   const validLikeButton = article => {
     const button = article?.querySelector?.('[data-testid="like"]');
     if (!button || button.disabled ||
         button.getAttribute('aria-disabled') === 'true' ||
-        article.querySelector('[data-testid="unlike"]')) return null;
+        article.querySelector('[data-testid="unlike"]') ||
+        existingLikeCount(article) < minimumExistingLikes) return null;
     const rect = button.getBoundingClientRect();
     if (!rect || rect.width <= 0 || rect.height <= 0) return null;
     return { button, rect };
