@@ -20,6 +20,7 @@ function positive(value) {
 }
 
 export async function saveRegionalArtist(env, value) {
+  if (env.REGIONAL_MUSIC_SNAPSHOT_STORE) return env.REGIONAL_MUSIC_SNAPSHOT_STORE('artists',value);
   const observedAt = Number(value.observed_at) || Date.now();
   const db = dbOf(env);
   await db.prepare(`INSERT INTO regional_music_artist_profiles(
@@ -46,6 +47,7 @@ export async function saveRegionalArtist(env, value) {
 }
 
 export async function saveRegionalTrack(env, value) {
+  if (env.REGIONAL_MUSIC_SNAPSHOT_STORE) return env.REGIONAL_MUSIC_SNAPSHOT_STORE('tracks',value);
   const observedAt = Number(value.observed_at) || Date.now();
   const db = dbOf(env);
   await db.prepare(`INSERT INTO regional_music_tracks(
@@ -90,6 +92,7 @@ export async function saveRegionalTrack(env, value) {
 }
 
 export async function saveRegionalRelease(env, value) {
+  if (env.REGIONAL_MUSIC_SNAPSHOT_STORE) return env.REGIONAL_MUSIC_SNAPSHOT_STORE('releases',value);
   const observedAt = Number(value.observed_at) || Date.now();
   return dbOf(env).prepare(`INSERT INTO regional_music_releases(
     service,service_release_id,canonical_artist,title,release_type,release_year,release_url,first_seen_at,last_seen_at
@@ -106,6 +109,7 @@ export async function saveRegionalRelease(env, value) {
 }
 
 export async function saveRegionalPlaylist(env, value) {
+  if (env.REGIONAL_MUSIC_SNAPSHOT_STORE) return env.REGIONAL_MUSIC_SNAPSHOT_STORE('playlists',value);
   const observedAt = Number(value.observed_at) || Date.now();
   const db = dbOf(env);
   await db.prepare(`INSERT INTO regional_music_playlists(
@@ -122,6 +126,7 @@ export async function saveRegionalPlaylist(env, value) {
 }
 
 export async function saveRegionalPlaylistSnapshot(env, value) {
+  if (env.REGIONAL_MUSIC_SNAPSHOT_STORE) return env.REGIONAL_MUSIC_SNAPSHOT_STORE('playlist_snapshots',value);
   const observedAt = Number(value.observed_at) || Date.now();
   const snapshotDate = value.snapshot_date || regionalMusicSnapshotDate(observedAt);
   return dbOf(env).prepare(`INSERT INTO regional_music_playlist_snapshots(
@@ -133,6 +138,7 @@ export async function saveRegionalPlaylistSnapshot(env, value) {
 }
 
 export async function saveRegionalPlaylistMembership(env, value) {
+  if (env.REGIONAL_MUSIC_SNAPSHOT_STORE) return env.REGIONAL_MUSIC_SNAPSHOT_STORE('playlist_memberships',value);
   const observedAt = Number(value.observed_at) || Date.now();
   const snapshotDate = value.snapshot_date || regionalMusicSnapshotDate(observedAt);
   return dbOf(env).prepare(`INSERT INTO regional_music_playlist_memberships(
@@ -145,6 +151,7 @@ export async function saveRegionalPlaylistMembership(env, value) {
 }
 
 export async function saveRegionalCollectorState(env, value) {
+  if (env.REGIONAL_MUSIC_SNAPSHOT_STORE) return env.REGIONAL_MUSIC_SNAPSHOT_STORE('state',value);
   const updatedAt = Number(value.updated_at) || Date.now();
   return dbOf(env).prepare(`INSERT INTO regional_music_collector_state(
     service,status,last_attempt_at,last_success_at,last_error_class,last_error_message,entity_counts_json,updated_at

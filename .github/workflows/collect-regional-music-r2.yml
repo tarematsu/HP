@@ -1,19 +1,15 @@
-# Manual collection shares the R2 path and lock with scheduled collection.
-name: Recollect regional music manually
-
+name: Collect regional music to R2
 on:
+  schedule:
+    - cron: '0 15 * * *' # 00:00 JST; QQ/NetEase daily, others Mondays
   workflow_dispatch:
-
 permissions:
   contents: read
-  actions: read
-
 concurrency:
   group: regional-music-r2-collection
   cancel-in-progress: false
-
 jobs:
-  recollect:
+  collect:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 75
@@ -27,14 +23,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Wait for the official production deployment of this commit
-        working-directory: worker
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: node scripts/wait-for-production-deploy.mjs
       - name: Install Worker dependencies
         working-directory: worker
         run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Recollect all 19 services to R2 and publish their results
+      - name: Collect due services into R2 snapshots
         working-directory: worker
-        run: node scripts/collect-regional-r2-actions.mjs --all
+        run: node scripts/collect-regional-r2-actions.mjs

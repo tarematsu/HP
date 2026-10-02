@@ -1,5 +1,7 @@
 import { saveMaterializedActionsR2Response } from './pages-response-r2.js';
 import { regionalMusicService } from './regional-music-service-registry.js';
+import { REGIONAL_MUSIC_DAILY_SERVICES } from './regional-music-dispatch-plan.js';
+import { regionalSnapshotKey, mergeRegionalR2Snapshot } from './regional-music-r2-snapshot.js';
 
 export const REGIONAL_MUSIC_READ_MODEL_KEY = 'regional-music';
 export const REGIONAL_MUSIC_READ_MODEL_CADENCE_SECONDS = 24 * 60 * 60;
@@ -137,7 +139,14 @@ export async function publishRegionalMusicReadModel(env, updatedAt = Date.now(),
   const load = dependencies.loadReadModel || loadRegionalMusicReadModel;
   const save = dependencies.saveR2Response || saveMaterializedActionsR2Response;
   const snapshot = await load(env?.OTHER_DB);
-  const payload = regionalMusicReadModelPayload(snapshot, updatedAt);
+  let payload = regionalMusicReadModelPayload(snapshot, updatedAt);
+  if (typeof env.PAGES_RESPONSE_R2.get === 'function') {
+    const snapshots = await Promise.all(REGIONAL_MUSIC_DAILY_SERVICES.map(async service => {
+      const object = await env.PAGES_RESPONSE_R2.get(regionalSnapshotKey(service));
+      return object ? object.json() : null;
+    }));
+    for (const snapshot of snapshots) payload = mergeRegionalR2Snapshot(payload,snapshot);
+  }
   const body = JSON.stringify(payload);
   const saved = await save(
     env.PAGES_RESPONSE_R2,

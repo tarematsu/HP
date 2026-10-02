@@ -1,43 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-
-import {
-  REGIONAL_MUSIC_DAILY_SERVICES,
-  REGIONAL_MUSIC_DISPATCH_UTC_HOUR,
-  enqueueRegionalMusicDispatch,
-  regionalMusicDispatchForTimestamp,
-} from '../src/regional-music-dispatch-plan.js';
-
-test('regional services dispatch one per minute from 06:00 through 06:18 JST', () => {
-  assert.equal(REGIONAL_MUSIC_DAILY_SERVICES.length, 19);
-  assert.equal(new Set(REGIONAL_MUSIC_DAILY_SERVICES).size, 19);
-  assert.equal(REGIONAL_MUSIC_DISPATCH_UTC_HOUR, 21);
-
-  const base = Date.UTC(2026, 9, 1, 21, 0, 0);
-  const messages = REGIONAL_MUSIC_DAILY_SERVICES.map((service, minute) => {
-    const message = regionalMusicDispatchForTimestamp(base + minute * 60_000);
-    assert.equal(message.message_type, 'regional-music-collect');
-    assert.equal(message.service, service);
-    return message;
-  });
-  assert.equal(messages.length, 19);
-  assert.equal(regionalMusicDispatchForTimestamp(base + 19 * 60_000), null);
+import {REGIONAL_MUSIC_DAILY_SERVICES,REGIONAL_MUSIC_DISPATCH_UTC_HOUR,regionalMusicR2DueServices,regionalMusicDispatchForTimestamp,enqueueRegionalMusicDispatch} from '../src/regional-music-dispatch-plan.js';
+test('JST midnight Sunday collects only daily exceptions and Monday collects all 19 once',()=>{
+  assert.equal(REGIONAL_MUSIC_DISPATCH_UTC_HOUR,15);
+  assert.deepEqual(regionalMusicR2DueServices(Date.parse('2026-10-03T15:00:00Z')),['netease_cloud_music','qq_music']);
+  assert.deepEqual(regionalMusicR2DueServices(Date.parse('2026-10-04T15:00:00Z')),REGIONAL_MUSIC_DAILY_SERVICES);
+  assert.equal(new Set(regionalMusicR2DueServices(Date.parse('2026-10-04T15:00:00Z'))).size,19);
+  assert.deepEqual(regionalMusicR2DueServices(Date.parse('2026-10-05T15:00:00Z')),['netease_cloud_music','qq_music']);
 });
-
-test('regional scheduler has no fixed-time read-model publication', () => {
-  assert.equal(regionalMusicDispatchForTimestamp(Date.UTC(2026, 9, 1, 21, 30, 0)), null);
-  assert.equal(regionalMusicDispatchForTimestamp(Date.UTC(2026, 9, 1, 20, 30, 0)), null);
-});
-
-test('shared scheduler sends only due regional queue messages', async () => {
-  const sent = [];
-  const env = { REGIONAL_MUSIC_QUEUE: { send: async (body) => sent.push(body) } };
-  const due = Date.UTC(2026, 9, 1, 21, 5, 0);
-  const idle = Date.UTC(2026, 9, 1, 22, 5, 0);
-
-  const message = await enqueueRegionalMusicDispatch(env, due);
-  assert.equal(message.service, REGIONAL_MUSIC_DAILY_SERVICES[5]);
-  assert.equal(sent.length, 1);
-  assert.equal(await enqueueRegionalMusicDispatch(env, idle), null);
-  assert.equal(sent.length, 1);
+test('old minute scheduler never enqueues duplicate D1 collectors',async()=>{
+  const env={REGIONAL_MUSIC_QUEUE:{send:async()=>{throw new Error('must not enqueue');}}};
+  for(const hour of [15,21]) for(let minute=0;minute<60;minute++) {
+    const timestamp=Date.UTC(2026,9,4,hour,minute);
+    assert.equal(regionalMusicDispatchForTimestamp(timestamp),null);
+    assert.equal(await enqueueRegionalMusicDispatch(env,timestamp),null);
+  }
 });
