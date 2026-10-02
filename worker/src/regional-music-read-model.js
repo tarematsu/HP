@@ -2,7 +2,10 @@ import { saveMaterializedActionsR2Response } from './pages-response-r2.js';
 import { regionalMusicService } from './regional-music-service-registry.js';
 import { REGIONAL_MUSIC_DAILY_SERVICES } from './regional-music-dispatch-plan.js';
 import { regionalSnapshotKey, mergeRegionalR2Snapshot } from './regional-music-r2-snapshot.js';
-import { QQ_JAPAN_HISTORY_VIEW_KEY } from './qq-japan-chart-history-view.js';
+import {
+  QQ_JAPAN_HISTORY_INDEX_KEY,
+  QQ_JAPAN_HISTORY_VIEW_KEY,
+} from './qq-japan-chart-history-view.js';
 import {
   KUGOU_JAPAN_CHART_COVERAGE,
   KUGOU_JAPAN_CHART_HISTORY,
@@ -123,11 +126,46 @@ function normalizedCollectorState(row) {
   };
 }
 
-export function qqJapanChartReadModel(view) {
-  return {
+function qqPeriodParts(value) {
+  const match = String(value || '').match(/^(\d{4})_(\d{1,2})$/);
+  return match ? { year:Number(match[1]), week:Number(match[2]) } : null;
+}
+
+function compareQqPeriods(left, right) {
+  const a = qqPeriodParts(left);
+  const b = qqPeriodParts(right);
+  if (!a || !b) return String(left || '').localeCompare(String(right || ''));
+  return (a.year - b.year) || (a.week - b.week);
+}
+
+function qqPeriodThursday(period) {
+  const parsed = qqPeriodParts(period);
+  if (!parsed) return '';
+  const jan4 = new Date(Date.UTC(parsed.year, 0, 4));
+  const jan4Weekday = (jan4.getUTCDay() + 6) % 7;
+  const monday = new Date(jan4.getTime() - jan4Weekday * 24 * 60 * 60 * 1000 + (parsed.week - 1) * 7 * 24 * 60 * 60 * 1000);
+  return new Date(monday.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+function qqJapanStoredPeriods(index) {
+  const weeks = index?.weeks && typeof index.weeks === 'object' ? index.weeks : null;
+  if (!weeks) return [];
+  return Object.keys(weeks).sort(compareQqPeriods).map((period) => {
+    const summary = weeks[period] || {};
+    const updateTime = String(summary?.update_time || '').trim();
+    const publishedAt = /^\d{4}-\d{2}-\d{2}/.test(updateTime) ? updateTime.slice(0, 10) : qqPeriodThursday(period);
+    return { period, published_at:publishedAt };
+  });
+}
+
+export function qqJapanChartReadModel(view, index = null) {
+  const payload = {
     coverage:view?.coverage && typeof view.coverage === 'object' ? view.coverage : {},
     history:Array.isArray(view?.history) ? view.history : [],
   };
+  const periods = qqJapanStoredPeriods(index);
+  if (periods.length) payload.periods = periods;
+  return payload;
 }
 
 export function regionalMusicReadModelPayload(snapshot, updatedAt = Date.now()) {
@@ -140,7 +178,7 @@ export function regionalMusicReadModelPayload(snapshot, updatedAt = Date.now()) 
     playlists: Array.isArray(snapshot?.playlists) ? snapshot.playlists : [],
     playlist_memberships: Array.isArray(snapshot?.memberships) ? snapshot.memberships : [],
     artist_track_orders: Array.isArray(snapshot?.artistTrackOrders) ? snapshot.artistTrackOrders : [],
-    qq_japan_chart: qqJapanChartReadModel(snapshot?.qqJapanChart),
+    qq_japan_chart: qqJapanChartReadModel(snapshot?.qqJapanChart, snapshot?.qqJapanChartIndex),
     kugou_japan_chart: {
       coverage: KUGOU_JAPAN_CHART_COVERAGE,
       history: KUGOU_JAPAN_CHART_HISTORY,
@@ -158,7 +196,7 @@ export async function publishRegionalMusicReadModel(env, updatedAt = Date.now(),
   const snapshot = await load(env?.OTHER_DB);
   let payload = regionalMusicReadModelPayload(snapshot, updatedAt);
   if (typeof env.PAGES_RESPONSE_R2.get === 'function') {
-    const [snapshots, qqHistoryView] = await Promise.all([
+    const [snapshots, qqHistoryView, qqHistoryIndex] = await Promise.all([
       Promise.all(REGIONAL_MUSIC_DAILY_SERVICES.map(async service => {
         const object = await env.PAGES_RESPONSE_R2.get(regionalSnapshotKey(service));
         return object ? object.json() : null;
@@ -167,9 +205,13 @@ export async function publishRegionalMusicReadModel(env, updatedAt = Date.now(),
         const object = await env.PAGES_RESPONSE_R2.get(QQ_JAPAN_HISTORY_VIEW_KEY);
         return object ? object.json() : null;
       })(),
+      (async () => {
+        const object = await env.PAGES_RESPONSE_R2.get(QQ_JAPAN_HISTORY_INDEX_KEY);
+        return object ? object.json() : null;
+      })(),
     ]);
     for (const regionalSnapshot of snapshots) payload = mergeRegionalR2Snapshot(payload,regionalSnapshot);
-    payload.qq_japan_chart = qqJapanChartReadModel(qqHistoryView);
+    payload.qq_japan_chart = qqJapanChartReadModel(qqHistoryView, qqHistoryIndex);
   }
   const body = JSON.stringify(payload);
   const saved = await save(
