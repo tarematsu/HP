@@ -32,7 +32,7 @@ jobs:
         working-directory: worker
         run: |
           if [ "${{ github.event.schedule }}" = "30 2 * * 1-5" ]; then
-            node scripts/collect-regional-r2-actions.mjs --kugou
+            node scripts/collect-regional-r2-actions.mjs --services=kugou_music
           else
             node scripts/collect-regional-r2-actions.mjs
           fi
