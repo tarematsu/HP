@@ -1,0 +1,149 @@
+name: Probe archived Kuwo chart API near saved dates
+
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-wayback-api-near-captures.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Query Wayback API captures near known page snapshots
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import concurrent.futures, json, pathlib, re, time, urllib.parse, urllib.request
+
+          UA='kuwo-wayback-api-near/1.0'
+          WINDOWS=[
+            ('2022-09-04','20220903000000','20220905235959'),
+            ('2022-09-30','20220929000000','20221001235959'),
+            ('2025-01-23','20250122000000','20250124235959'),
+          ]
+          TARGETS=[
+            ('ksong-http','http://kbangserver.kuwo.cn/ksong.s','prefix'),
+            ('ksong-https','https://kbangserver.kuwo.cn/ksong.s','prefix'),
+            ('musiclist-http','http://www.kuwo.cn/api/www/bang/bang/musicList','prefix'),
+            ('musiclist-https','https://www.kuwo.cn/api/www/bang/bang/musicList','prefix'),
+            ('musiclist-bare-http','http://kuwo.cn/api/www/bang/bang/musicList','prefix'),
+            ('musiclist-bare-https','https://kuwo.cn/api/www/bang/bang/musicList','prefix'),
+          ]
+          aliases=['櫻坂46','樱坂46','Sakurazaka46','乃木坂46','Nogizaka46','日向坂46','Hinatazaka46','欅坂46','Keyakizaka46']
+
+          def get(url,timeout=12):
+            try:
+              q=urllib.request.Request(url,headers={'User-Agent':UA})
+              with urllib.request.urlopen(q,timeout=timeout) as r:
+                return r.status,r.geturl(),r.read().decode('utf-8','replace')
+            except Exception as e:
+              return 0,url,repr(e)
+
+          def cdx(task):
+            label,fr,to,tname,url,match=task
+            q={
+              'url':url,
+              'matchType':match,
+              'from':fr,
+              'to':to,
+              'output':'json',
+              'fl':'timestamp,original,statuscode,digest,mimetype,length',
+              'filter':'statuscode:200',
+              'collapse':'digest',
+              'limit':'2000',
+            }
+            st,_,txt=get('https://web.archive.org/cdx/search/cdx?'+urllib.parse.urlencode(q),15)
+            rows=[]
+            try:
+              arr=json.loads(txt)
+              if isinstance(arr,list) and len(arr)>1:
+                for z in arr[1:]:
+                  rows.append({'timestamp':z[0],'original':z[1],'status':z[2],'digest':z[3],'mime':z[4],'length':z[5] if len(z)>5 else None})
+            except: pass
+            return {'date':label,'target':tname,'status':st,'rows':rows,'head':txt[:500] if not rows else ''}
+
+          tasks=[(label,fr,to,tname,url,match) for label,fr,to in WINDOWS for tname,url,match in TARGETS]
+          blocks=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex:
+            blocks=list(ex.map(cdx,tasks))
+
+          # Collect all possible chart-183 captures; also retain all API URLs for inspection.
+          candidates=[]; all_urls=[]
+          for b in blocks:
+            for r in b['rows']:
+              u=r['original']
+              all_urls.append({'date':b['date'],'target':b['target'],**r})
+              if re.search(r'(?:[?&](?:id|bangId|bangid|sourceid)=183(?:&|$))',u,re.I):
+                candidates.append({'date':b['date'],'target':b['target'],**r})
+
+          # Some old Kuwo URLs append cache-buster before id or encode separators. Also inspect
+          # every returned URL that mentions 183 anywhere, but mark confidence separately.
+          for x in all_urls:
+            if '183' in urllib.parse.unquote(x['original']) and not any(x['timestamp']==c['timestamp'] and x['original']==c['original'] for c in candidates):
+              y=dict(x); y['weak_match']=True; candidates.append(y)
+
+          # Dedupe and replay snapshots.
+          uniq=[]; seen=set()
+          for c in sorted(candidates,key=lambda x:x['timestamp']):
+            k=(c['timestamp'],c['original'],c['digest'])
+            if k in seen:continue
+            seen.add(k);uniq.append(c)
+
+          def replay(c):
+            su=f"https://web.archive.org/web/{c['timestamp']}id_/{c['original']}"
+            st,final,txt=get(su,20)
+            out={**c,'replay_status':st,'replay_url':final,'bytes':len(txt)}
+            if st!=200:return out
+            try:j=json.loads(txt)
+            except:j=None
+            rows=[]
+            if isinstance(j,dict):
+              vals=[j.get('musiclist'),j.get('musicList'),j.get('list')]
+              d=j.get('data')
+              if isinstance(d,dict): vals += [d.get('musiclist'),d.get('musicList'),d.get('list')]
+              for v in vals:
+                if isinstance(v,list):rows=v;break
+            if rows:
+              out['row_count']=len(rows)
+              out['metadata']={k:v for k,v in j.items() if not isinstance(v,(dict,list))}
+              out['top10']=[{'rank':i+1,'name':r.get('name') or r.get('title'),'artist':r.get('artist') or r.get('artistName') or r.get('singer'),'rid':r.get('rid') or r.get('id'),'trend':r.get('trend'),'rank_change':r.get('rank_change'),'isnew':r.get('isnew') or r.get('isNew')} for i,r in enumerate(rows[:10])]
+              hits=[]
+              for i,r in enumerate(rows,1):
+                hay=' '.join(str(r.get(k,'')) for k in ('artist','artistName','singer','name','title'))
+                for a in aliases:
+                  if a.lower() in hay.lower():hits.append({'alias':a,'rank':i,'name':r.get('name') or r.get('title'),'artist':r.get('artist') or r.get('artistName') or r.get('singer'),'rid':r.get('rid') or r.get('id')})
+              out['sakamichi']=hits
+            else:
+              out['text_head']=txt[:1000]
+            return out
+
+          with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+            recovered=list(ex.map(replay,uniq)) if uniq else []
+
+          report={'observed_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'windows':WINDOWS,'blocks':[{'date':b['date'],'target':b['target'],'status':b['status'],'count':len(b['rows']),'head':b['head']} for b in blocks],'all_url_count':len(all_urls),'all_urls':all_urls,'candidate_count':len(uniq),'recovered':recovered}
+          pathlib.Path('kuwo-wayback-api-near.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+
+          print('ALL_URLS',len(all_urls),'CANDIDATES',len(uniq))
+          for b in report['blocks']:
+            print('BLOCK',b['date'],b['target'],'HTTP',b['status'],'COUNT',b['count'],b['head'][:120])
+          if all_urls:
+            print('SAMPLE_URLS')
+            for x in all_urls[:80]:print(x['date'],x['timestamp'],x['original'])
+          for x in recovered:
+            print('REC',x['date'],x['timestamp'],'HTTP',x['replay_status'],'ROWS',x.get('row_count'),x['original'])
+            if x.get('top10'):print('TOP3',json.dumps(x['top10'][:3],ensure_ascii=False))
+            if x.get('sakamichi'):print('SAKAMICHI',json.dumps(x['sakamichi'],ensure_ascii=False))
+          PY
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kuwo-wayback-api-near
+          path: kuwo-wayback-api-near.json
+          if-no-files-found: ignore
+          retention-days: 7
