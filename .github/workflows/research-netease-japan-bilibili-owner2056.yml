@@ -18,18 +18,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install yt-dlp
-        run: python -m pip install --disable-pip-version-check -U yt-dlp
-      - name: Resolve saved uploader videos
+      - name: Resolve saved uploader videos through lightweight APIs
         shell: bash
         run: |
           set +e
           mkdir -p research-owner2056
           python - <<'PY'
-          import json, pathlib, subprocess, time
+          import json, pathlib, time, urllib.request
 
-          # Saved from the successful space enumeration for uploader 2056224222.
-          # Keeping these IDs here avoids transient Bilibili space API 412/null responses.
           ids='''
           BV1F2RyBwE7w BV1yMRrB8EkP BV13F9xBoEPY BV1fpogBiEih BV1ceoTBYETK
           BV1F7P9zLE69 BV1HUPKzUEiA BV1wQPMzsE67 BV1aHAXzfEPr BV1HYfHBjEQz
@@ -42,37 +38,77 @@ jobs:
           BV1XGdfYNErJ BV1TsASeDEsE BV1YVAKeuEoJ BV12BPDe9E5J BV1XMwEeTEzA
           BV1NrcCeZEyY BV1DZcAe9ETr
           '''.split()
-          print('SAVED_ENTRIES',len(ids))
 
-          needles=['网易云日语榜','云音乐日语榜','日语榜','日语歌周榜','日语周榜','周榜','年榜','网易云']
+          # Current 51-bit BV/AV algorithm. Sanity check against the known 2024-09-17 chart video.
+          ALPHABET='FcwAPNKTMug3GV5Lj7EJnHpWsx4tb8haYeviqBz6rkCy12mUSDQX9RdoZf'
+          XOR_CODE=23442827791579
+          MASK_CODE=2251799813685247
+          def bv_to_av(bvid):
+              b=list(bvid)
+              b[3],b[9]=b[9],b[3]
+              b[4],b[7]=b[7],b[4]
+              n=0
+              for ch in b[3:]: n=n*58+ALPHABET.index(ch)
+              return (n & MASK_CODE) ^ XOR_CODE
+          assert bv_to_av('BV12st4eUEXh') == 113148027798915
+
+          headers={
+            'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130 Safari/537.36',
+            'Referer':'https://www.bilibili.com/'
+          }
+          def getj(url, aid):
+              last=None
+              for attempt in range(3):
+                  try:
+                      req=urllib.request.Request(url,headers={**headers,'Referer':f'https://www.bilibili.com/video/av{aid}'})
+                      with urllib.request.urlopen(req,timeout=15) as r:
+                          return {'status':r.status,'json':json.loads(r.read().decode('utf-8','replace'))}
+                  except Exception as e:
+                      last=repr(e)
+                      time.sleep(1.5*(attempt+1))
+              return {'status':None,'error':last,'json':{}}
+
+          chart_terms=['网易云日语榜','云音乐日语榜','日语榜','日语歌周榜','日语周榜','周榜','年榜','网易云']
           groups=['乃木坂46','櫻坂46','桜坂46','日向坂46','欅坂46','けやき坂46','Nogizaka46','Sakurazaka46','Hinatazaka46']
           rows=[]
-          for i,vid in enumerate(ids):
-              url='https://www.bilibili.com/video/'+vid
-              try:
-                  cp=subprocess.run(['yt-dlp','--dump-single-json','--skip-download','--extractor-retries','1',url],capture_output=True,text=True,timeout=60)
-              except subprocess.TimeoutExpired:
-                  rows.append({'id':vid,'rc':-999,'error':'timeout'}); print('TIMEOUT',vid); continue
-              try: d=json.loads(cp.stdout) if cp.stdout.strip() else {}
-              except Exception: d={}
-              if not isinstance(d,dict): d={}
+          for i,bvid in enumerate(ids):
+              aid=bv_to_av(bvid)
+              pages=getj(f'https://api.bilibili.com/x/player/pagelist?aid={aid}',aid)
+              tags=getj(f'https://api.bilibili.com/x/tag/archive/tags?aid={aid}',aid)
+              desc=getj(f'https://api.bilibili.com/x/web-interface/archive/desc?aid={aid}',aid)
+
+              pj=pages.get('json') or {}; tj=tags.get('json') or {}; dj=desc.get('json') or {}
+              pdata=pj.get('data') if isinstance(pj,dict) else None
+              tdata=tj.get('data') if isinstance(tj,dict) else None
+              ddata=dj.get('data') if isinstance(dj,dict) else None
+              parts=[]
+              if isinstance(pdata,list):
+                  parts=[{'cid':x.get('cid'),'page':x.get('page'),'part':x.get('part'),'duration':x.get('duration')} for x in pdata if isinstance(x,dict)]
+              tnames=[]
+              if isinstance(tdata,list): tnames=[x.get('tag_name') for x in tdata if isinstance(x,dict)]
               row={
-                'id':vid,'rc':cp.returncode,'aid':d.get('aid'),'title':d.get('title'),'description':d.get('description'),
-                'timestamp':d.get('timestamp'),'upload_date':d.get('upload_date'),'duration':d.get('duration'),
-                'uploader':d.get('uploader'),'uploader_id':d.get('uploader_id'),'tags':d.get('tags'),'webpage_url':d.get('webpage_url'),
-                'stderr':(cp.stderr or '')[-2000:]
+                'bvid':bvid,'aid':aid,'parts':parts,'tags':tnames,'desc':ddata,
+                'status':{'pages':pages.get('status'),'tags':tags.get('status'),'desc':desc.get('status')},
+                'api_codes':{'pages':pj.get('code') if isinstance(pj,dict) else None,'tags':tj.get('code') if isinstance(tj,dict) else None,'desc':dj.get('code') if isinstance(dj,dict) else None}
               }
               hay=json.dumps(row,ensure_ascii=False)
-              row['chart_terms']=[x for x in needles if x.lower() in hay.lower()]
+              row['chart_terms']=[x for x in chart_terms if x.lower() in hay.lower()]
               row['sakamichi']=[x for x in groups if x.lower() in hay.lower()]
               rows.append(row)
-              print(('MATCH' if row['chart_terms'] or row['sakamichi'] else 'VIDEO'),i+1,'/',len(ids),json.dumps(row,ensure_ascii=False)[:12000])
-              time.sleep(.2)
+              marker='MATCH' if row['chart_terms'] or row['sakamichi'] else 'VIDEO'
+              print(marker,i+1,'/',len(ids),json.dumps(row,ensure_ascii=False)[:30000])
+              time.sleep(.25)
 
           pathlib.Path('research-owner2056/videos.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2))
-          matches=[r for r in rows if r.get('chart_terms') or r.get('sakamichi')]
+          matches=[r for r in rows if r['chart_terms'] or r['sakamichi']]
           pathlib.Path('research-owner2056/matches.json').write_text(json.dumps(matches,ensure_ascii=False,indent=2))
-          print('SUMMARY',json.dumps({'entries':len(ids),'resolved':sum(bool(r.get('title')) for r in rows),'matches':len(matches),'sakamichi_matches':sum(bool(r.get('sakamichi')) for r in rows),'failed':sum(r.get('rc') not in [0,None] for r in rows)},ensure_ascii=False))
+          print('SUMMARY',json.dumps({
+             'entries':len(rows),
+             'with_parts':sum(bool(r['parts']) for r in rows),
+             'with_desc':sum(r['desc'] is not None for r in rows),
+             'matches':len(matches),
+             'sakamichi_matches':sum(bool(r['sakamichi']) for r in rows)
+          },ensure_ascii=False))
           for r in matches: print('FINAL_MATCH',json.dumps(r,ensure_ascii=False)[:30000])
           PY
       - name: Upload resolved metadata
