@@ -7,6 +7,11 @@ import {
 import { spotifyArtistDailyRefreshStatements } from './spotify-playcount-summary.js';
 import { requestSpotifyReadModelRefresh } from './spotify-pages-read-model.js';
 import { configureStationheadTrackResolver } from './spotify-stationhead-identity.js';
+import { probeStaleSpotifyUpdate } from './spotify-stale-update-probe.js';
+import {
+  isSpotifyFastRetryWindow,
+  isSpotifyHourlyBoundary,
+} from './spotify-playcount-timing.js';
 
 async function carryForwardExpiredStaleDays(db, scheduledTime) {
   if (!db?.prepare || jstHour(scheduledTime) !== 5) return 0;
@@ -69,6 +74,41 @@ async function carryForwardExpiredStaleDays(db, scheduledTime) {
   return carried;
 }
 
+async function runScheduledCollection(controller, env, scheduledTime) {
+  if (isSpotifyFastRetryWindow(scheduledTime)) {
+    const probe = await probeStaleSpotifyUpdate(env, scheduledTime);
+    if (probe.stale) {
+      console.log(JSON.stringify({
+        event: 'spotify_stale_source_probe',
+        scheduled_at: scheduledTime,
+        ...probe,
+      }));
+      if (probe.changed) return runSpotifyPlaycountScheduled(controller, env);
+
+      // A stale run with no usable candidate rows can still be repaired by the
+      // existing hourly collector. Source errors do not trigger an expensive
+      // fallback because the same source would be used by the full collection.
+      if (probe.reason === 'no-probe-tracks' && isSpotifyHourlyBoundary(scheduledTime)) {
+        return runSpotifyPlaycountScheduled(controller, env);
+      }
+      return {
+        skipped: true,
+        reason: probe.reason,
+        snapshot_date: probe.snapshot_date || null,
+        checked_tracks: probe.checked_tracks || 0,
+      };
+    }
+
+    // Ten-minute ticks exist only to watch an unresolved stale prior day.
+    // Preserve the former hourly cadence for all other recovery states.
+    if (!isSpotifyHourlyBoundary(scheduledTime)) {
+      return { skipped: true, reason: 'fast-retry-no-stale-day' };
+    }
+  }
+
+  return runSpotifyPlaycountScheduled(controller, env);
+}
+
 export default {
   async scheduled(controller, env, ctx) {
     const rawScheduledTime = Number(controller?.scheduledTime);
@@ -78,7 +118,7 @@ export default {
       if (carried > 0) {
         await requestSpotifyReadModelRefresh(env, 'playcount-carry-forward', { carried_days: carried });
       }
-      return runSpotifyPlaycountScheduled(controller, env);
+      return runScheduledCollection(controller, env, scheduledTime);
     })();
     if (ctx?.waitUntil) {
       ctx.waitUntil(work);
