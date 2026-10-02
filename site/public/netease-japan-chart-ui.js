@@ -106,9 +106,10 @@ function mountSections() {
 }
 
 function setSectionsVisible(visible) {
+  const hidden = !visible;
   for (const id of ['neteaseJapanChartSection','neteaseJapanHistorySection']) {
     const section = byId(id);
-    if (section) section.hidden = !visible;
+    if (section && section.hidden !== hidden) section.hidden = hidden;
   }
 }
 
@@ -116,13 +117,16 @@ function assertCompact() {
   if (!routeVisible() || enforcing) return;
   enforcing = true;
   try {
-    byId('regionalMusicView')?.classList.add('is-chart-compact');
+    const view = byId('regionalMusicView');
+    if (view && !view.classList.contains('is-chart-compact')) {
+      view.classList.add('is-chart-compact');
+    }
     const genericHeader = byId('regionalMusicGenericHeader');
     const genericTables = byId('regionalMusicGenericTables');
     const compactMeta = byId('regionalMusicCompactMeta');
-    if (genericHeader) genericHeader.hidden = true;
-    if (genericTables) genericTables.hidden = true;
-    if (compactMeta) compactMeta.hidden = false;
+    if (genericHeader && !genericHeader.hidden) genericHeader.hidden = true;
+    if (genericTables && !genericTables.hidden) genericTables.hidden = true;
+    if (compactMeta && compactMeta.hidden) compactMeta.hidden = false;
     setText('regionalMusicTitle','网易云音乐');
     setText('regionalMusicChartCadence','毎週火曜（网易云日语榜更新）');
   } finally {
