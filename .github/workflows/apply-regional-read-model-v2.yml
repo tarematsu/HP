@@ -21,7 +21,7 @@ jobs:
       - name: Apply original PR delta with three-way merge
         shell: bash
         run: |
-          set -euo pipefail
+          set -u
           git fetch origin refactor/regional-read-models-by-service
           files=(
             site/functions/api/regional-music.js
@@ -41,7 +41,15 @@ jobs:
             worker/tests/regional-music-read-model.test.js
           )
           git diff 11311c5fda9ec8a8feb3934d489d71f751e10b14..origin/refactor/regional-read-models-by-service -- "${files[@]}" > /tmp/regional-read-model.patch
-          git apply --3way --index /tmp/regional-read-model.patch
+          if ! git apply --3way --index /tmp/regional-read-model.patch; then
+            echo '=== regional-music-read-model.js conflicts ==='
+            git checkout --conflict=merge -- worker/src/regional-music-read-model.js || true
+            grep -n -B25 -A80 -E '^(<<<<<<<|=======|>>>>>>>)' worker/src/regional-music-read-model.js || true
+            echo '=== regional-music-read-model.test.js conflicts ==='
+            git checkout --conflict=merge -- worker/tests/regional-music-read-model.test.js || true
+            grep -n -B25 -A100 -E '^(<<<<<<<|=======|>>>>>>>)' worker/tests/regional-music-read-model.test.js || true
+            exit 1
+          fi
 
       - name: Run focused checks
         shell: bash
