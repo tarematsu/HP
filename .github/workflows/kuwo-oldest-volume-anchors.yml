@@ -1,0 +1,58 @@
+name: Find oldest Kuwo chart volume anchors
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-oldest-volume-anchors.yml]
+permissions:
+  contents: read
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Enumerate all board volume histories and oldest global ids
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import json,urllib.parse,urllib.request,concurrent.futures
+          H={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'}
+          def get(u,t=15):
+            q=urllib.request.Request(u,headers=H)
+            with urllib.request.urlopen(q,timeout=t) as r:return json.loads(r.read().decode('utf-8','replace'))
+          tree=get('http://qukudata.kuwo.cn/q.k?op=query&cont=tree&node=2&pn=0&rn=1000&fmt=json&level=2')
+          boards=[]
+          def walk(x):
+            if isinstance(x,dict):
+              if str(x.get('source',''))=='1' and str(x.get('sourceid','')).isdigit(): boards.append((int(x['sourceid']),x.get('name')))
+              for v in x.values():walk(v)
+            elif isinstance(x,list):
+              for v in x:walk(v)
+          walk(tree)
+          boards=sorted(set(boards)); print('BOARDS',len(boards))
+          B='https://kbangserver.kuwo.cn/ksong.s'
+          def one(pair):
+            cid,name=pair
+            p={'from':'pc','fmt':'json','pn':'0','rn':'1','type':'bang','data':'content','id':str(cid),'show_copyright_off':'0','pcmp4':'1','isbang':'1','userid':'0'}
+            try:j=get(B+'?'+urllib.parse.urlencode(p),10)
+            except:return {'id':cid,'name':name,'error':True}
+            arr=[]
+            for year,xs in (j.get('volume') or {}).items():
+              if isinstance(xs,list):
+                for x in xs:
+                  if isinstance(x,dict) and x.get('third_id'):
+                    arr.append({'year':str(year),'name':str(x.get('name')),'third_id':int(x.get('third_id'))})
+            return {'id':cid,'name':name,'currentVolume':j.get('currentVolume'),'pub':j.get('pub'),'count':len(arr),'first':arr[0] if arr else None,'last':arr[-1] if arr else None,'min_id':min((x['third_id'] for x in arr),default=None),'entries':arr}
+          rows=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex:
+            for x in ex.map(one,boards):rows.append(x)
+          good=[x for x in rows if x.get('count')]
+          good.sort(key=lambda x:(x.get('min_id') or 10**12))
+          for x in good[:100]: print('BOARD',json.dumps({k:x.get(k) for k in ('id','name','currentVolume','pub','count','last','min_id')},ensure_ascii=False))
+          with open('kuwo-oldest-volume-anchors.json','w',encoding='utf-8') as f:json.dump(rows,f,ensure_ascii=False,indent=2)
+          PY
+      - name: Upload anchors
+        uses: actions/upload-artifact@v4
+        with:
+          name: kuwo-oldest-volume-anchors
+          path: kuwo-oldest-volume-anchors.json
+          retention-days: 7
