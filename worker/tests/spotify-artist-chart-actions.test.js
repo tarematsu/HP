@@ -4,63 +4,104 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
-  matchSpotifyArtistChartEntries,
-  validateSpotifyArtistChartCapture,
-} from '../scripts/persist-spotify-artist-chart-actions.mjs';
+  normalizeSpotifyArtistChart,
+  refreshSpotifyChartsAccessToken,
+  updateSpotifyRefreshWorkerSecret,
+} from '../src/spotify-artist-chart-collector.js';
+import { shouldDispatchSpotifyArtistChart } from '../src/spotify-playcount-timing.js';
 
-const pythonPath = new URL('../scripts/collect-spotify-artist-chart-actions.py', import.meta.url);
+const bootstrapPath = new URL('../scripts/bootstrap-spotify-charts-refresh.py', import.meta.url);
 const workflowPath = new URL('../../.github/workflows/collect-spotify-artist-chart.yml', import.meta.url);
-const refreshPath = new URL('../scripts/refresh-spotify-read-model-actions.mjs', import.meta.url);
+const collectorPath = new URL('../src/spotify-artist-chart-collector.js', import.meta.url);
+const storePath = new URL('../scripts/store-spotify-charts-worker-secrets.mjs', import.meta.url);
 
-function capture(entries = []) {
-  const filler = Array.from({ length: Math.max(0, 50 - entries.length) }, (_, index) => ({
-    rank: entries.length + index + 1,
-    artist_name: `Other ${index}`,
-    artist_id: `ArtistId${String(index).padStart(10, '0')}`,
-  }));
-  return {
-    version: 1,
-    chart_id: 'artist-jp-daily',
-    chart_date: '2026-10-02',
-    observed_at: 1_800_000_000_000,
-    received_at: 1_800_000_000_000,
-    entries: [...entries, ...filler],
-  };
+function atJst(hour, minute) {
+  return Date.UTC(2026, 9, 3, (hour + 15) % 24, minute, 0);
 }
 
-test('browserless Spotify chart fetcher is valid Python and uses PKCE rather than WebView', () => {
-  execFileSync('python3', ['-m', 'py_compile', pythonPath.pathname]);
-  const source = readFileSync(pythonPath, 'utf8');
+test('one-time Spotify bootstrap is valid Python and uses PKCE without browser automation', () => {
+  execFileSync('python3', ['-m', 'py_compile', bootstrapPath.pathname]);
+  const source = readFileSync(bootstrapPath, 'utf8');
   assert.match(source, /oauth2\/v2\/auth/);
   assert.match(source, /code_challenge_method/);
+  assert.match(source, /refresh_token/);
   assert.match(source, /SPOTIFY_CHARTS_SP_DC/);
-  assert.match(source, /charts-spotify-com-service\.spotify\.com\/auth\/v0\/charts\/artist-jp-daily\/latest/);
   assert.doesNotMatch(source, /WebView2|selenium|playwright|puppeteer/i);
 });
 
-test('artist chart normalization matches tracked artists by Spotify ID before name', () => {
-  const normalized = validateSpotifyArtistChartCapture(capture([
-    { rank: 5, artist_name: '別名', artist_id: '08lN7bm4Etec8ETFxaTUmq' },
-    { rank: 16, artist_name: '櫻坂46', artist_id: '0Ti7MfCiVVQAK8zLSiqlto' },
-  ]));
-  const matched = matchSpotifyArtistChartEntries(normalized, [
-    { artist_key: 'nogizaka46', artist_name: '乃木坂46', spotify_artist_id: '08lN7bm4Etec8ETFxaTUmq' },
-    { artist_key: 'sakurazaka46', artist_name: '櫻坂46', spotify_artist_id: '0Ti7MfCiVVQAK8zLSiqlto' },
-  ]);
-  assert.deepEqual(matched.map(({ artist, entry }) => [artist.artist_key, entry.rank]), [
-    ['nogizaka46', 5],
-    ['sakurazaka46', 16],
-  ]);
+test('Daily Top Artist is retried hourly from 07:20 through 11:20 JST', () => {
+  assert.equal(shouldDispatchSpotifyArtistChart(atJst(7, 20)), true);
+  assert.equal(shouldDispatchSpotifyArtistChart(atJst(9, 20)), true);
+  assert.equal(shouldDispatchSpotifyArtistChart(atJst(11, 20)), true);
+  assert.equal(shouldDispatchSpotifyArtistChart(atJst(7, 10)), false);
+  assert.equal(shouldDispatchSpotifyArtistChart(atJst(12, 20)), false);
 });
 
-test('Daily Top Artist workflow is once daily at 07:20 JST and refreshes the canonical Spotify model', () => {
+test('Spotify PKCE refresh rotates the Cloudflare Worker secret only when Spotify returns a new token', async () => {
+  const tokenCalls = [];
+  const refreshed = await refreshSpotifyChartsAccessToken('old-refresh', async (url, init) => {
+    tokenCalls.push({ url, init });
+    return new Response(JSON.stringify({
+      access_token: 'access-token',
+      refresh_token: 'new-refresh',
+      expires_in: 3600,
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  });
+  assert.equal(refreshed.rotated, true);
+  assert.equal(refreshed.refresh_token, 'new-refresh');
+  assert.equal(tokenCalls.length, 1);
+
+  const secretCalls = [];
+  await updateSpotifyRefreshWorkerSecret({
+    CLOUDFLARE_WORKER_SECRET_TOKEN: 'cf-token',
+    CLOUDFLARE_WORKER_SECRET_ACCOUNT_ID: 'account-id',
+  }, 'new-refresh', async (url, init) => {
+    secretCalls.push({ url, init });
+    return new Response(JSON.stringify({ success: true, result: { name: 'SPOTIFY_CHARTS_REFRESH_TOKEN' } }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+  assert.equal(secretCalls.length, 1);
+  assert.match(secretCalls[0].url, /workers\/scripts\/sh-spotify-playcount-collector\/secrets$/);
+  assert.deepEqual(JSON.parse(secretCalls[0].init.body), {
+    name: 'SPOTIFY_CHARTS_REFRESH_TOKEN',
+    text: 'new-refresh',
+    type: 'secret_text',
+  });
+});
+
+test('chart payload normalization keeps rank metadata for the existing D1 model', () => {
+  const entries = Array.from({ length: 50 }, (_, index) => ({
+    chartEntryData: {
+      currentRank: index + 1,
+      previousRank: index + 2,
+      peakRank: 1,
+      consecutiveAppearancesOnChart: 3,
+    },
+    artistMetadata: {
+      artistName: `Artist ${index}`,
+      artistUri: `spotify:artist:ArtistId${String(index).padStart(10, '0')}`,
+    },
+  }));
+  const normalized = normalizeSpotifyArtistChart({ chartDate: '2026-10-02', entries }, 12345);
+  assert.equal(normalized.chart_date, '2026-10-02');
+  assert.equal(normalized.entries.length, 50);
+  assert.equal(normalized.entries[0].rank, 1);
+  assert.equal(normalized.entries[0].previous_rank, 2);
+});
+
+test('GitHub Action is bootstrap-only and Cloudflare Worker owns recurring collection', () => {
   const workflow = readFileSync(workflowPath, 'utf8');
-  const refresh = readFileSync(refreshPath, 'utf8');
-  assert.match(workflow, /cron: '20 22 \* \* \*'/);
-  assert.match(workflow, /SPOTIFY_CHARTS_SP_DC/);
-  assert.match(workflow, /curl-cffi==0\.16\.3/);
-  assert.match(workflow, /persist-spotify-artist-chart-actions\.mjs/);
-  assert.match(workflow, /refresh-spotify-read-model-actions\.mjs/);
-  assert.match(refresh, /publishSpotifyPagesReadModel/);
-  assert.match(refresh, /PAGES_RESPONSE_R2/);
+  const collector = readFileSync(collectorPath, 'utf8');
+  const store = readFileSync(storePath, 'utf8');
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.doesNotMatch(workflow, /^\s+schedule:/m);
+  assert.match(workflow, /bootstrap-spotify-charts-refresh\.py/);
+  assert.match(workflow, /store-spotify-charts-worker-secrets\.mjs/);
+  assert.match(collector, /SPOTIFY_CHARTS_REFRESH_TOKEN/);
+  assert.match(collector, /CLOUDFLARE_WORKER_SECRET_TOKEN/);
+  assert.match(collector, /publishSpotifyPagesReadModel/);
+  assert.match(store, /CLOUDFLARE_API_TOKEN/);
+  assert.match(store, /Workers\/scripts/i);
 });
