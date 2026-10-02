@@ -1,0 +1,56 @@
+name: Probe archived Kuwo rank APIs
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-wayback-api-probe.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Search Wayback CDX for Kuwo rank API captures
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import json,urllib.parse,urllib.request
+          H={'User-Agent':'Mozilla/5.0'}
+          def read(u,t=30):
+            q=urllib.request.Request(u,headers=H)
+            with urllib.request.urlopen(q,timeout=t) as r:return r.read().decode('utf-8','replace')
+          patterns=[
+            'kbangserver.kuwo.cn/ksong.s*',
+            'wbd.kuwo.cn/api/bd/bang/bang_info*',
+            'www.kuwo.cn/api/www/bang/bang/musicList*',
+            'm.kuwo.cn/newh5app/wapi/api/www/bang/bang/musicList*',
+            'm.kuwo.cn/api/mobile/v1/music/rank/183*'
+          ]
+          for pat in patterns:
+            params={'url':pat,'output':'json','fl':'timestamp,original,statuscode,digest','filter':'statuscode:200','collapse':'digest','limit':'1000','from':'2019','to':'2026'}
+            u='https://web.archive.org/cdx/search/cdx?'+urllib.parse.urlencode(params)
+            try:a=json.loads(read(u,40))
+            except Exception as e:print('CDX_ERR',pat,repr(e));continue
+            rows=a[1:] if a else []
+            cand=[]
+            for x in rows:
+              orig=x[1]
+              if pat.startswith('kbangserver'):
+                if 'id=183' not in urllib.parse.unquote(orig) and 'id%3D183' not in orig:continue
+              elif '183' not in urllib.parse.unquote(orig):
+                # non-path APIs may encode bang id in query; keep only Japanese chart candidates
+                continue
+              cand.append(x)
+            print('PATTERN',pat,'CDX',len(rows),'CANDIDATES',len(cand))
+            for ts,orig,status,digest in cand[:100]:
+              print('CAPTURE',ts,orig)
+              try:
+                body=read(f'https://web.archive.org/web/{ts}id_/{orig}',25)
+                print('BODY',ts,'LEN',len(body),'HEAD',body[:500].replace('\n',' '))
+                try:
+                  j=json.loads(body)
+                  rows2=j.get('musiclist') or j.get('musicList') or (j.get('data') or {}).get('musicList') or (j.get('data') or {}).get('list') or []
+                  if rows2: print('TOP',ts,json.dumps([(r.get('name'),r.get('artist') or r.get('artistName')) for r in rows2[:10]],ensure_ascii=False))
+                except:pass
+              except Exception as e:print('REPLAY_ERR',ts,repr(e))
+          PY
