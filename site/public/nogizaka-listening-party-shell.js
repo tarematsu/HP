@@ -2,13 +2,13 @@ import {
   dashboardChartCard,
   dashboardDataCard,
   dashboardLegend,
-  dashboardModeTabs,
   dashboardNotice,
   dashboardSummary,
   dashboardSummaryItem,
   dashboardTable,
   mountDashboardShell,
 } from './dashboard-ui-common.js?v=20261001.1';
+import { stationheadChannelTabs } from './stationhead-channel-tabs.js?v=20261003.1';
 
 const summary = dashboardSummary([
   dashboardSummaryItem({ label: '期間数', valueId: 'nogizakaPartyPeriods' }),
@@ -23,19 +23,15 @@ const partyTable = dashboardTable({
   bodyId: 'nogizakaPartyTbody',
 });
 
-const subtabs = dashboardModeTabs([
-  { value: 'current', label: '現在' },
-  { value: 'history', label: '過去' },
-  { value: 'played-tracks', label: '再生履歴' },
-  { value: 'likes', label: 'いいね' },
-  { value: 'broadcasts', label: 'リスパ', active: true },
-], {
+const subtabs = stationheadChannelTabs({
   dataAttribute: 'nogizaka-section',
-  className: 'nogizaka-subtabs',
   ariaLabel: 'Nogizaka表示切替',
+  active: 'broadcasts',
+  enabled: ['broadcasts'],
+  unavailableTitle: 'Nogizakaでは未提供',
 });
 
-const listeningPartyPanel = `<div data-nogizaka-panel="broadcasts">${summary}${dashboardChartCard({
+const listeningPartyPanel = `<div class="stationhead-channel-panel" data-nogizaka-panel="broadcasts">${summary}${dashboardChartCard({
   title: '乃木坂 公式リスパ 同接推移',
   kicker: 'TREND',
   trailingHtml: dashboardLegend({ id: 'nogizakaPartyLegend', className: 'chart-legend' }),
@@ -48,7 +44,7 @@ const listeningPartyPanel = `<div data-nogizaka-panel="broadcasts">${summary}${d
   bodyHtml: partyTable,
 })}</div>`;
 
-const mounted = mountDashboardShell({
+mountDashboardShell({
   tab: {
     view: 'nogizaka',
     label: 'Nogizaka',
@@ -62,12 +58,4 @@ const mounted = mountDashboardShell({
     position: 'beforebegin',
     html: `${dashboardNotice({ id: 'nogizakaListeningPartyNotice' })}${subtabs}${listeningPartyPanel}`,
   },
-});
-
-mounted.view?.querySelectorAll('[data-nogizaka-section]').forEach((button) => {
-  const available = button.dataset.nogizakaSection === 'broadcasts';
-  button.disabled = !available;
-  button.setAttribute('aria-disabled', available ? 'false' : 'true');
-  if (available) button.setAttribute('aria-current', 'page');
-  else button.title = 'Nogizakaでは未提供';
 });
