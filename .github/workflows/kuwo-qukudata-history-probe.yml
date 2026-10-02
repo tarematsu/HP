@@ -1,0 +1,44 @@
+name: Probe Kuwo qukudata rank tree history
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-qukudata-history-probe.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect rank tree nodes and Japanese chart metadata
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import json,urllib.parse,urllib.request
+          H={'User-Agent':'Mozilla/5.0'}
+          B='http://qukudata.kuwo.cn/q.k'
+          queries=[
+            {'op':'query','cont':'tree','node':'2','pn':'0','rn':'1000','fmt':'json','level':'2'},
+            {'op':'query','cont':'tree','node':'183','pn':'0','rn':'1000','fmt':'json','level':'1'},
+            {'op':'query','cont':'tree','node':'183','pn':'0','rn':'1000','fmt':'json','level':'2'},
+            {'op':'query','cont':'tree','node':'183','pn':'0','rn':'1000','fmt':'json','level':'3'},
+          ]
+          for p in queries:
+            u=B+'?'+urllib.parse.urlencode(p)
+            try:
+              req=urllib.request.Request(u,headers=H)
+              with urllib.request.urlopen(req,timeout=15) as r:raw=r.read().decode('utf-8','replace')
+              print('QUERY',p,'LEN',len(raw),'HEAD',raw[:300])
+              try:j=json.loads(raw)
+              except:continue
+              def walk(x,path='root'):
+                if isinstance(x,dict):
+                  text=json.dumps(x,ensure_ascii=False)
+                  if '183' in text or '日语' in text or '日語' in text:
+                    print('MATCH',path,json.dumps(x,ensure_ascii=False)[:8000])
+                  for k,v in x.items():walk(v,path+'.'+str(k))
+                elif isinstance(x,list):
+                  for i,v in enumerate(x):walk(v,path+f'[{i}]')
+              walk(j)
+            except Exception as e:print('ERR',p,repr(e))
+          PY
