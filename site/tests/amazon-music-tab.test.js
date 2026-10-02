@@ -96,7 +96,8 @@ test('Amazon Music title comparison and artist modes use Worker title-track flag
 
 test('Amazon Music rank chart keeps first place at the top and fits mobile width', () => {
   assert.match(runtime, /renderRankHistoryChart\(/);
-  assert.match(rankChart, /const yFor = \(rank\) => margin\.top \+ \(rank - 1\)/);
+  assert.match(rankChart, /const boundedRank = Math\.min\(ceiling, Math\.max\(1, Number\(rank\)\)\)/);
+  assert.match(rankChart, /return margin\.top \+ \(boundedRank - 1\)/);
   assert.match(runtime, /坂道3グループ全楽曲のAmazon Music総合順位推移。1位が上。/);
   assert.match(shell, /className: 'amazon-rank-chart chart-fit'/);
   assert.match(sharedUi, /joinClasses\('shared-svg-chart', className\)/);
