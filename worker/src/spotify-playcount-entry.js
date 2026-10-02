@@ -75,7 +75,13 @@ async function carryForwardExpiredStaleDays(db, scheduledTime) {
 }
 
 async function runScheduledCollection(controller, env, scheduledTime) {
-  if (isSpotifyFastRetryWindow(scheduledTime)) {
+  const hourlyBoundary = isSpotifyHourlyBoundary(scheduledTime);
+  const fastRetryWindow = isSpotifyFastRetryWindow(scheduledTime);
+
+  // Every scheduled hourly check first probes unresolved stale data with at most
+  // a few representative tracks. The 00:00-04:50 ten-minute checks use the same
+  // path. A full recollection starts only after Spotify publishes a changed value.
+  if (hourlyBoundary || fastRetryWindow) {
     const probe = await probeStaleSpotifyUpdate(env, scheduledTime);
     if (probe.stale) {
       console.log(JSON.stringify({
@@ -85,10 +91,10 @@ async function runScheduledCollection(controller, env, scheduledTime) {
       }));
       if (probe.changed) return runSpotifyPlaycountScheduled(controller, env);
 
-      // A stale run with no usable candidate rows can still be repaired by the
-      // existing hourly collector. Source errors do not trigger an expensive
-      // fallback because the same source would be used by the full collection.
-      if (probe.reason === 'no-probe-tracks' && isSpotifyHourlyBoundary(scheduledTime)) {
+      // Missing probe candidates indicate a broken/legacy stale state rather than
+      // a merely delayed Spotify update. Keep the hourly repair fallback for that
+      // exceptional case, while source errors and unchanged values stay lightweight.
+      if (probe.reason === 'no-probe-tracks' && hourlyBoundary) {
         return runSpotifyPlaycountScheduled(controller, env);
       }
       return {
@@ -99,9 +105,9 @@ async function runScheduledCollection(controller, env, scheduledTime) {
       };
     }
 
-    // Ten-minute ticks exist only to watch an unresolved stale prior day.
-    // Preserve the former hourly cadence for all other recovery states.
-    if (!isSpotifyHourlyBoundary(scheduledTime)) {
+    // Ten-minute ticks exist only to watch an unresolved stale run. Other states
+    // retain the normal hourly cadence.
+    if (fastRetryWindow && !hourlyBoundary) {
       return { skipped: true, reason: 'fast-retry-no-stale-day' };
     }
   }
