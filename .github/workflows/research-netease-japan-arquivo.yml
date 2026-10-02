@@ -1,0 +1,32 @@
+name: Research NetEase Japanese chart via Arquivo.pt
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/research-netease-japan-arquivo.yml'
+      - 'worker/scripts/research-netease-japan-arquivo.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  arquivo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Probe Arquivo.pt snapshots and text index
+        working-directory: worker
+        run: node scripts/research-netease-japan-arquivo.mjs
+      - name: Upload Arquivo.pt research report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: netease-japan-arquivo-research
+          path: worker/netease-japan-arquivo.json
+          if-no-files-found: warn
+          retention-days: 7
