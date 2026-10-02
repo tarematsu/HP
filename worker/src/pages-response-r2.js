@@ -220,8 +220,8 @@ export async function loadMaterializedR2Response(
   now = Date.now(),
   maximumAgeMs = Number.MAX_SAFE_INTEGER,
 ) {
-  // Actions owns the general materialized API variants. Track history and the
-  // daily follower comparison are Worker-owned and use the direct Worker key.
+  // Actions owns the general materialized API variants. Track history stays
+  // Worker-owned; followers prefer Actions because Stationhead blocks Worker egress.
   if (modelKey === TRACK_HISTORY_STATUS_MODEL_KEY) {
     return (await loadActionsEnvelope(r2, modelKey, now, maximumAgeMs))
       || loadWorkerR2Response(r2, modelKey, now, maximumAgeMs);
@@ -231,7 +231,8 @@ export async function loadMaterializedR2Response(
   }
   if (modelKey === FOLLOWERS_MODEL_KEY) {
     return sanitizeFollowersResponse(
-      (await loadWorkerR2Response(r2, modelKey, now, maximumAgeMs))
+      (await loadActionsEnvelope(r2, modelKey, now, maximumAgeMs))
+        || (await loadWorkerR2Response(r2, modelKey, now, maximumAgeMs))
         || emptyFollowersResponse(now),
     );
   }

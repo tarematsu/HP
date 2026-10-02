@@ -104,17 +104,33 @@ test('track history reads its Worker-owned key directly with one R2 get', async 
   assert.deepEqual(await response.json(), { source: 'worker' });
 });
 
-test('followers read model reads its Worker-owned key directly with one R2 get', async () => {
-  const expected = pagesR2ResponseKey('followers');
+test('followers read model prefers the Actions-owned key', async () => {
+  const expected = pagesActionsR2ResponseKey('followers');
   const calls = [];
   const response = await loadMaterializedR2Response({
     async get(key) {
       calls.push(key);
-      return key === expected ? workerObject({ source: 'followers-worker' }) : null;
+      return key === expected ? actionsObject({ source: 'followers-actions' }) : null;
     },
   }, 'followers', NOW, Number.MAX_SAFE_INTEGER);
 
   assert.deepEqual(calls, [expected]);
+  assert.equal(response.headers.get('x-api-source'), 'actions-r2');
+  assert.deepEqual(await response.json(), { source: 'followers-actions' });
+});
+
+test('followers read model falls back to the legacy Worker key', async () => {
+  const actionsKey = pagesActionsR2ResponseKey('followers');
+  const workerKey = pagesR2ResponseKey('followers');
+  const calls = [];
+  const response = await loadMaterializedR2Response({
+    async get(key) {
+      calls.push(key);
+      return key === workerKey ? workerObject({ source: 'followers-worker' }) : null;
+    },
+  }, 'followers', NOW, Number.MAX_SAFE_INTEGER);
+
+  assert.deepEqual(calls, [actionsKey, workerKey]);
   assert.equal(response.headers.get('x-api-source'), 'worker-r2');
   assert.deepEqual(await response.json(), { source: 'followers-worker' });
 });
@@ -151,7 +167,8 @@ test('followers response excludes 46fm and buddy46 from all public fields', asyn
 });
 
 test('followers read model returns an empty materialized response before first collection', async () => {
-  const expected = pagesR2ResponseKey('followers');
+  const actionsKey = pagesActionsR2ResponseKey('followers');
+  const workerKey = pagesR2ResponseKey('followers');
   const calls = [];
   const response = await loadMaterializedR2Response({
     async get(key) {
@@ -160,7 +177,7 @@ test('followers read model returns an empty materialized response before first c
     },
   }, 'followers', NOW, Number.MAX_SAFE_INTEGER);
 
-  assert.deepEqual(calls, [expected]);
+  assert.deepEqual(calls, [actionsKey, workerKey]);
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('x-api-source'), 'worker-r2-empty');
   const payload = await response.json();
