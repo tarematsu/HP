@@ -1,0 +1,28 @@
+name: Fast check Kuwo historical bangid
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-bangid-fast.yml]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Fetch current and previous edition
+        run: |
+          python3 <<'PY'
+          import json,urllib.parse,urllib.request
+          base='https://kbangserver.kuwo.cn/ksong.s'
+          common={'from':'pc','fmt':'json','pn':'0','rn':'5','type':'bang','data':'content','show_copyright_off':'0','pcmp4':'1','isbang':'1','userid':'0'}
+          cases=[('current-id',{'id':'183'}),('prev-bangid-only',{'bangid':'272685'}),('prev-id+bangid',{'id':'183','bangid':'272685'}),('prev-second+bangid',{'id':'183','second_id':'183','bangid':'272685'})]
+          for label,p in cases:
+            u=base+'?'+urllib.parse.urlencode({**common,**p})
+            try:
+              q=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'})
+              with urllib.request.urlopen(q,timeout=4) as r:j=json.loads(r.read().decode('utf-8','replace'))
+              rows=j.get('musiclist') or j.get('musicList') or []
+              print(label,'keys',list(j.keys()),'pub',j.get('pub'),'cv',j.get('currentVolume'),'name',j.get('name'),'num',j.get('num'),'top',json.dumps([(x.get('name'),x.get('artist')) for x in rows],ensure_ascii=False))
+            except Exception as e: print(label,'ERR',repr(e))
+          PY
