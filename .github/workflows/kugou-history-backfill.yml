@@ -1,0 +1,30 @@
+name: Kugou history backfill
+
+on:
+  pull_request:
+    paths:
+      - 'worker/scripts/backfill-kugou-web-history.mjs'
+      - '.github/workflows/kugou-history-backfill.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Backfill Kugou legacy Japan ranking web history
+        working-directory: worker
+        run: node scripts/backfill-kugou-web-history.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kugou-web-history-backfill
+          path: |
+            worker/kugou-web-history-backfill.json
+            worker/kugou-web-history-backfill.csv
+          retention-days: 7
