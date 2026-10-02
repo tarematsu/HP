@@ -1,6 +1,6 @@
 # Kugou live probe — 2026-10-02
 
-Observed at approximately 2026-10-02 09:59–10:06 JST from GitHub Actions. Read-only probe; no D1/R2 writes.
+Observed at approximately 2026-10-02 09:59–10:20 JST from GitHub Actions. Read-only probe; no D1/R2 writes.
 
 ## Sakurazaka46 artist page
 
@@ -98,6 +98,41 @@ Both calls returned HTTP 200, `errcode: 0`, `is_publish: 1`, the expected song t
 
 This metric is specifically **Kugou MV play count**, not the audio-track streaming count. It should therefore be stored separately from any future song/audio `plays` metric.
 
+## Japan chart: full current top 100 confirmed
+
+The current Kugou client ranking endpoint was successfully queried read-only with the normal anonymous Android request signature:
+
+`POST https://gateway.kugou.com/openapi/kmr/v2/rank/audio`
+
+Parameters used for the Japan chart:
+
+- `rank_id`: `31312`
+- `page`: `1`
+- `pagesize`: `100`
+- `appid`: `1005`
+- `clientver`: `20489`
+- no login/cookie/account authentication
+
+The response returned HTTP 200, API `status: 1`, `error_code: 0`, and exactly **100** entries in `data.songlist`. No SSA/device challenge was returned.
+
+The retrieved issue was:
+
+- issue: `196`
+- chart publish time: `2026-10-01 10:10:00`
+- parent rank ID: `31312`
+
+All 100 entries were checked against Japanese, English and Simplified-Chinese name variants for the three Sakamichi groups.
+
+| group | entries in current Japan top 100 |
+| --- | ---: |
+| 櫻坂46 / Sakurazaka46 / 樱坂46 | **0** |
+| 日向坂46 / Hinatazaka46 | **0** |
+| 乃木坂46 / Nogizaka46 | **0** |
+
+Therefore **Sakurazaka46 is not in the current Kugou Japan chart top 100 for issue 196**. This is a full top-100 check, not an inference from the public web page's truncated ranking display.
+
+The endpoint also exposes useful historical-ranking fields per song, including current rank (`business.sort`), previous rank (`business.last_sort`), appearance/rank count (`business.rank_count`), issue number, chart publish time, `album_audio_id`, `audio_id`, album information and MV/video metadata. This makes weekly chart snapshot collection feasible with one ranking request.
+
 ## Favourite / collection count: not available unsigned
 
 An unsigned request to `/count/v1/audio/mget_collect` returned transport HTTP 200 but API failure:
@@ -111,6 +146,8 @@ The current artist-page objects also expose `ownercount`, but it is `0` for all 
 ## Search endpoint
 
 The legacy `msearchcdn.kugou.com/api/v3/search/song` endpoint returned `fetch failed` from the GitHub-hosted runner for Sakurazaka46, Hinatazaka46 and Nogizaka46. It should not be a required production dependency while the fixed artist pages remain healthy.
+
+The old mobile ranking endpoint `m.kugou.com/rank/info` no longer returns the ranking dataset; it returns a generic `outsidetpl.html` configuration payload. Use the current `kmr/v2/rank/audio` endpoint for ranking research instead.
 
 ## Practical collection scope now
 
@@ -127,12 +164,12 @@ Can collect immediately with high confidence:
 - privilege / VIP / quality flags
 - per-track comment count using the public hash-based route
 - per-MV `play_count` using the public MV-detail route
+- full 100-entry Japan chart snapshot, including current/previous rank and rank history counters
 
 Not yet safe to treat as canonical metrics:
 
 - `ownercount` as favourite count
 - cumulative audio-track play count
 - signed favourite-count API
-- signed full-catalog / ranking APIs
 
-The next production-worthy extension is comment-count collection plus MV play-count collection for tracks that expose an MV hash. Keep MV plays in a distinct metric because they are video views, not audio streams.
+The next production-worthy extension is comment-count collection plus MV play-count collection for tracks that expose an MV hash, and a low-frequency Japan-chart snapshot. Keep MV plays in a distinct metric because they are video views, not audio streams.
