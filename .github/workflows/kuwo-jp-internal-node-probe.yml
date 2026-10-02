@@ -1,0 +1,29 @@
+name: Probe Kuwo Japanese chart internal nodes
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-internal-node-probe.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe internal chart node ids
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import json, urllib.parse, urllib.request
+          H={'User-Agent':'Mozilla/5.0','Referer':'http://www.kuwo.cn/'}
+          base='http://qukudata.kuwo.cn/q.k'
+          for node in ['509617','509618','509619']:
+            for cont in ['ninfo','tree']:
+              for level in ['1','2','3','4']:
+                q={'op':'query','cont':cont,'node':node,'pn':'0','rn':'1000','fmt':'json','src':'mbox','level':level}
+                try:
+                  req=urllib.request.Request(base+'?'+urllib.parse.urlencode(q),headers=H)
+                  with urllib.request.urlopen(req,timeout=8) as r: raw=r.read().decode('utf-8','replace')
+                  print('TEST',node,cont,level,'LEN',len(raw),'BODY',raw[:10000])
+                except Exception as e: print('ERR',node,cont,level,repr(e))
+          PY
