@@ -1,0 +1,131 @@
+name: Probe Kuwo Sakamichi fan surfaces
+
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-sakamichi-fans-probe.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Probe Kuwo catalog and fan surfaces
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import json, urllib.request, urllib.parse, pathlib, re, time
+
+          UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140 Safari/537.36'
+          groups={
+            '櫻坂46':['櫻坂46','樱坂46','Sakurazaka46'],
+            '乃木坂46':['乃木坂46','Nogizaka46'],
+            '日向坂46':['日向坂46','Hinatazaka46'],
+          }
+          needles=['粉丝公会','粉絲公會','铁粉榜','鐵粉榜','数字专辑','數字專輯','铭牌','銘牌','今日铁粉榜','累计铁粉榜']
+          def fetch(url,timeout=10):
+            try:
+              req=urllib.request.Request(url,headers={'User-Agent':UA,'Accept':'application/json,text/plain,text/html,*/*','Referer':'https://m.kuwo.cn/'})
+              with urllib.request.urlopen(req,timeout=timeout) as r:
+                b=r.read(); return {'status':r.status,'url':r.geturl(),'text':b.decode('utf-8','replace'),'bytes':len(b),'error':None}
+            except Exception as e:
+              return {'status':0,'url':url,'text':'','bytes':0,'error':repr(e)}
+          def jload(s):
+            try:return json.loads(s)
+            except:return None
+          def search(alias,ft,rn=50):
+            q={
+              'client':'kt','all':alias,'pn':'0','rn':str(rn),'uid':'0','ver':'kwplayer_ar_9.3.7.2','vipver':'1',
+              'show_copyright_off':'1','newver':'1','ft':ft,'cluster':'0','strategy':'2012','encoding':'utf8','rformat':'json','mobi':'1'
+            }
+            return fetch('https://search.kuwo.cn/r.s?'+urllib.parse.urlencode(q),12)
+          def flatten(o):
+            out=[]
+            if isinstance(o,dict):
+              # search API usually carries abslist; keep any dict that looks entity-like
+              if any(k in o for k in ['ARTIST','ARTISTID','ALBUM','ALBUMID','NAME','MUSICRID','DC_TARGETID']): out.append(o)
+              for v in o.values(): out.extend(flatten(v))
+            elif isinstance(o,list):
+              for v in o: out.extend(flatten(v))
+            return out
+          def norm(s): return re.sub(r'\s+','',str(s or '').casefold())
+          def relevant(row,aliases):
+            hay=norm(' '.join(str(row.get(k,'')) for k in ['ARTIST','NAME','ALBUM','SONGNAME','ALBUM_NAME','ARTIST_NAME']))
+            return any(norm(a) in hay for a in aliases)
+          def hits(text): return [n for n in needles if n in text]
+
+          report={'observed_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'groups':{},'template_probe':{}}
+
+          # Establish what the fan/digital-album template actually contains today.
+          templ=fetch('https://vip1.kuwo.cn/fans/fanss/template2_1/index.html',12)
+          report['template_probe']={'status':templ['status'],'bytes':templ['bytes'],'markers':hits(templ['text'])}
+
+          for group,aliases in groups.items():
+            g={'searches':[],'entities':[],'artist_ids':[],'album_ids':[],'surface_probes':[],'fan_surface_found':False}
+            seen=set()
+            for alias in aliases:
+              for ft in ['artist','album','music']:
+                r=search(alias,ft)
+                p=jload(r['text']); rows=flatten(p)
+                keep=[]
+                for row in rows:
+                  if not relevant(row,aliases): continue
+                  slim={k:row.get(k) for k in ['ARTIST','ARTISTID','NAME','ALBUM','ALBUMID','MUSICRID','DC_TARGETID','PAY','FEE_TYPE','ISVIP','COPYRIGHT','WEBPAGE'] if row.get(k) not in [None,'']}
+                  key=json.dumps(slim,sort_keys=True,ensure_ascii=False)
+                  if key in seen: continue
+                  seen.add(key); keep.append(slim); g['entities'].append(slim)
+                  for k in ['ARTISTID']:
+                    try:
+                      v=int(str(row.get(k)).strip())
+                      if v>0:g['artist_ids'].append(v)
+                    except:pass
+                  for k in ['ALBUMID','DC_TARGETID']:
+                    try:
+                      v=int(str(row.get(k)).strip())
+                      if v>0:g['album_ids'].append(v)
+                    except:pass
+                g['searches'].append({'alias':alias,'ft':ft,'status':r['status'],'bytes':r['bytes'],'matches':keep[:20]})
+
+            g['artist_ids']=sorted(set(g['artist_ids']))[:10]
+            g['album_ids']=sorted(set(g['album_ids']))[:30]
+
+            # Probe public artist/album pages for fan/digital-album markers or outbound fan links.
+            urls=[]
+            for aid in g['artist_ids']:
+              urls += [f'https://m.kuwo.cn/newh5app/artist/artist?artistId={aid}',f'https://www.kuwo.cn/singer_detail/{aid}']
+            for alid in g['album_ids']:
+              urls += [f'https://m.kuwo.cn/newh5app/album_detail/{alid}',f'https://www.kuwo.cn/album_detail/{alid}']
+            for u in urls[:60]:
+              r=fetch(u,8); hs=hits(r['text'])
+              fanlinks=sorted(set(re.findall(r'https?://[^\"\'<> ]*vip1\.kuwo\.cn/fans/[^\"\'<> ]*',r['text'],flags=re.I)))[:10]
+              if hs or fanlinks:
+                g['fan_surface_found']=True
+                g['surface_probes'].append({'url':u,'status':r['status'],'bytes':r['bytes'],'markers':hs,'fan_links':fanlinks})
+            report['groups'][group]=g
+
+          pathlib.Path('kuwo-sakamichi-fans-probe.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          print('# Kuwo 坂道 fan-surface probe')
+          print('Template markers:',report['template_probe'])
+          for group,g in report['groups'].items():
+            print('\n##',group)
+            print('artist_ids',g['artist_ids'])
+            print('album_ids',g['album_ids'][:10], 'count',len(g['album_ids']))
+            print('entities',len(g['entities']))
+            print('fan_surface_found',g['fan_surface_found'])
+            if g['surface_probes']:
+              print(json.dumps(g['surface_probes'],ensure_ascii=False,indent=2))
+            # show a few exact matched entities for verification
+            for e in g['entities'][:8]: print(json.dumps(e,ensure_ascii=False))
+          PY
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kuwo-sakamichi-fans-probe
+          path: kuwo-sakamichi-fans-probe.json
+          if-no-files-found: ignore
+          retention-days: 7
