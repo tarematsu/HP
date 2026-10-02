@@ -10,11 +10,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Map bangids to historical volumes and fetch discovered Top100
+      - name: Map lower bangids to historical volumes and fetch Top100
         shell: bash
         run: |
           python3 <<'PY'
-          import concurrent.futures,datetime,json,pathlib,re,time,urllib.parse,urllib.request
+          import concurrent.futures,datetime,json,pathlib,urllib.parse,urllib.request
           BASE='https://kbangserver.kuwo.cn/ksong.s'
           COMMON={'from':'pc','fmt':'json','pn':'0','rn':'1','type':'bang','data':'content','id':'183','show_copyright_off':'0','pcmp4':'1','isbang':'1','userid':'0'}
           H={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'}
@@ -25,39 +25,33 @@ jobs:
               with urllib.request.urlopen(q,timeout=t) as r:return json.loads(r.read().decode('utf-8','replace'))
             except:return {}
           def probe(bid): return bid,get(bid,1,4).get('currentVolume')
-          # We have already verified vol209=267921 and vol210=267861. Scan the lower neighborhood
-          # and record every historical Japanese-chart edition, rather than searching one target at a time.
-          ids=range(266500,267922)
+          ids=range(265000,267650)
           found={}
           with concurrent.futures.ThreadPoolExecutor(max_workers=24) as ex:
             for bid,cv in ex.map(probe,ids,chunksize=1):
               if cv and cv.startswith('2026|'):
                 try:v=int(cv.split('|')[1])
                 except:continue
-                if v<=209:
-                  found.setdefault(v,[]).append(bid)
+                if v<=205:found.setdefault(v,[]).append(bid)
           print('MAPPED',json.dumps(found,ensure_ascii=False,sort_keys=True))
           aliases=['櫻坂46','樱坂46','Sakurazaka46','乃木坂46','Nogizaka46','日向坂46','Hinatazaka46','欅坂46','Keyakizaka46']
           editions=[]; hits=[]
           for vol in sorted(found,reverse=True):
-            bid=found[vol][0]
-            j=get(bid,100,12); rows=j.get('musiclist') or j.get('musicList') or []
-            date=(datetime.date(2026,1,1)+datetime.timedelta(days=vol-1)).isoformat()
-            clean=[]
+            bid=found[vol][0]; j=get(bid,100,12); rows=j.get('musiclist') or j.get('musicList') or []
+            date=(datetime.date(2026,1,1)+datetime.timedelta(days=vol-1)).isoformat(); clean=[]
             for i,x in enumerate(rows,1):
-              item={'rank':i,'name':x.get('name') or x.get('title'),'artist':x.get('artist') or x.get('artistName') or x.get('singer'),'rid':x.get('rid') or x.get('id')}
-              clean.append(item)
+              item={'rank':i,'name':x.get('name') or x.get('title'),'artist':x.get('artist') or x.get('artistName') or x.get('singer'),'rid':x.get('rid') or x.get('id')}; clean.append(item)
               hay=(str(item['artist'])+' '+str(item['name'])).lower().replace(' ','')
-              if any(a.lower().replace(' ','') in hay for a in aliases): hits.append({'date':date,'volume':vol,'bangid':bid,**item})
+              if any(a.lower().replace(' ','') in hay for a in aliases):hits.append({'date':date,'volume':vol,'bangid':bid,**item})
             editions.append({'date':date,'volume':vol,'bangid':bid,'candidate_bangids':found[vol],'row_count':len(rows),'musiclist':clean})
             print('EDITION',date,vol,bid,'CANDIDATES',found[vol],'ROWS',len(rows),'TOP3',json.dumps(clean[:3],ensure_ascii=False))
           print('SUMMARY VOLUMES',len(found),'RANGE',min(found) if found else None,max(found) if found else None,'HITS',len(hits))
-          for h in hits: print('SAKAMICHI',json.dumps(h,ensure_ascii=False))
-          pathlib.Path('kuwo-older-volume-map.json').write_text(json.dumps({'mapped':found,'editions':editions,'sakamichi_hits':hits},ensure_ascii=False,indent=2),encoding='utf-8')
+          for h in hits:print('SAKAMICHI',json.dumps(h,ensure_ascii=False))
+          pathlib.Path('kuwo-older-volume-map-2.json').write_text(json.dumps({'mapped':found,'editions':editions,'sakamichi_hits':hits},ensure_ascii=False,indent=2),encoding='utf-8')
           PY
       - name: Upload map
         uses: actions/upload-artifact@v4
         with:
-          name: kuwo-older-volume-map
-          path: kuwo-older-volume-map.json
+          name: kuwo-older-volume-map-2
+          path: kuwo-older-volume-map-2.json
           retention-days: 7
