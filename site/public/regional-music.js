@@ -277,7 +277,14 @@ function renderKugouHistory(payload, service) {
   const chart = payload?.kugou_japan_chart || {};
   const history = Array.isArray(chart.history) ? chart.history : [];
   const coverage = chart.coverage || {};
-  const coveredDates = providerWeekdays(coverage.oldest_available, coverage.latest_checked || coverage.latest_available);
+  const legacyCoveredDates = Array.isArray(coverage.legacy_covered_dates)
+    ? coverage.legacy_covered_dates.map(providerDate).filter(Boolean)
+    : [];
+  const currentCoveredDates = providerWeekdays(
+    coverage.current_api_oldest_available || coverage.oldest_available,
+    coverage.latest_checked || coverage.latest_available,
+  );
+  const coveredDates = [...new Set([...legacyCoveredDates, ...currentCoveredDates])].sort();
   const series = kugouSeries(history, coveredDates);
   const dates = coveredDates.length
     ? coveredDates
@@ -308,7 +315,8 @@ function renderKugouHistory(payload, service) {
   const latestChecked = providerDateTimeText(coverage.latest_checked || coverage.latest_available);
   const latestRankIn = providerDateTimeText(coverage.latest_rank_in || coverage.latest_available);
   const count = Number.isFinite(Number(coverage.entries)) ? integerFormat.format(Number(coverage.entries)) : integerFormat.format(history.length);
-  setText('kugouJapanCoverage', `最古取得可能: ${oldest} / 最終確認号: ${latestChecked} / 最終ランクイン: ${latestRankIn}（${count}件）。2024/10/31より前は現行APIでは正しい過去Top 100を復元できないため未収録。`);
+  const coverageNote = String(coverage.note || '').trim();
+  setText('kugouJapanCoverage', `最古取得可能: ${oldest} / 最終確認号: ${latestChecked} / 最終ランクイン: ${latestRankIn}（${count}件）${coverageNote ? `。${coverageNote}` : ''}`);
 
   const body = replaceBody('kugouJapanHistoryBody');
   if (!body) return;
