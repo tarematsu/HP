@@ -9,6 +9,7 @@ import {
   readRun,
   resultsOf,
   safeText,
+  SPOTIFY_TARGET_ARTISTS,
   truncateError,
 } from './spotify-playcount-common.js';
 import {
@@ -194,9 +195,14 @@ async function finalizeAttempt(db, message) {
   }
 
   const previousDate = previousDateKey(message.snapshot_date);
-  const previous = resultsOf(await db.prepare(`SELECT track_id,playcount
-    FROM sh_spotify_playcount_daily_canonical WHERE snapshot_date=? ORDER BY track_id`)
-    .bind(previousDate).all());
+  const targetKeys = SPOTIFY_TARGET_ARTISTS.map((artist) => artist.artist_key);
+  const placeholders = targetKeys.map(() => '?').join(',');
+  const previous = resultsOf(await db.prepare(`SELECT DISTINCT d.track_id,d.playcount
+    FROM sh_spotify_playcount_daily_canonical d
+    INNER JOIN sh_spotify_track_targets t ON t.track_id=d.track_id
+    WHERE d.snapshot_date=? AND t.artist_key IN (${placeholders})
+    ORDER BY d.track_id`)
+    .bind(previousDate, ...targetKeys).all());
   if (previous.length) {
     const candidateIds = new Set(candidates.map((row) => String(row.track_id)));
     const missing = previous.filter((row) => !candidateIds.has(String(row.track_id)));
