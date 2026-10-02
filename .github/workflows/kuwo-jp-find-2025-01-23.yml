@@ -1,0 +1,42 @@
+name: Locate Kuwo Japanese chart 2025-01-23
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-find-2025-01-23.yml]
+permissions:
+  contents: read
+jobs:
+  find:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Scan predicted historical ID band
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import concurrent.futures,json,urllib.parse,urllib.request
+          base='https://kbangserver.kuwo.cn/ksong.s'
+          common={'from':'pc','fmt':'json','pn':'0','rn':'3','type':'bang','data':'content','id':'183','show_copyright_off':'0','pcmp4':'1','isbang':'1','userid':'0'}
+          expected='2025|23'
+          def probe(bid):
+            u=base+'?'+urllib.parse.urlencode({**common,'bangid':str(bid)})
+            try:
+              q=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'})
+              with urllib.request.urlopen(q,timeout=4) as r:j=json.loads(r.read().decode('utf-8','replace'))
+              cv=j.get('currentVolume'); rows=j.get('musiclist') or j.get('musicList') or []
+              return bid,cv,[(x.get('name'),x.get('artist')) for x in rows[:3]]
+            except:return bid,None,[]
+          # 2026-10-02 volume275 third_id272758; ~617 days back * ~74.4 IDs/day.
+          center=226850
+          found=[]
+          for radius in (250,600,1200):
+            lo=center-radius;hi=center+radius
+            ids=list(range(lo,hi+1))
+            print('SCAN',lo,hi)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=20) as ex:
+              for bid,cv,top in ex.map(probe,ids):
+                if cv==expected:
+                  found.append((bid,cv,top));print('FOUND',bid,cv,json.dumps(top,ensure_ascii=False));break
+            if found:break
+          print('RESULT',json.dumps(found,ensure_ascii=False))
+          PY
