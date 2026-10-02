@@ -4,6 +4,7 @@ import {
   logEvent,
   resultsOf,
   safeText,
+  SPOTIFY_TARGET_ARTISTS,
   truncateError,
 } from './spotify-playcount-common.js';
 
@@ -12,6 +13,15 @@ const ARTIST_OVERVIEW_HASH = '5b9e64f43843fa3a9b6a98543600299b0a2cbbbccfdcdcef24
 const PUBLIC_PAGE_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/145.0.0.0 Safari/537.36';
 const FETCH_CONCURRENCY = 5;
+
+export const SPOTIFY_MONTHLY_LISTENER_ARTISTS = Object.freeze([
+  ...SPOTIFY_TARGET_ARTISTS,
+  Object.freeze({
+    artist_key: 'sakamichi-selection',
+    artist_name: '坂道選抜',
+    spotify_artist_id: '44VXOtivzQwdqj1Xs80SaX',
+  }),
+]);
 
 export function monthlyListenersFromArtistOverview(payload) {
   const value = integer(payload?.data?.artistUnion?.stats?.monthlyListeners);
@@ -60,24 +70,22 @@ async function fetchArtistMonthlyListeners(artist, env, session, fetchImpl) {
   return monthlyListeners;
 }
 
+async function ensureMonthlyListenerArtists(db) {
+  await db.batch(SPOTIFY_MONTHLY_LISTENER_ARTISTS.map((artist) => db.prepare(`INSERT OR IGNORE INTO sh_spotify_artists (
+      artist_key,artist_name,spotify_artist_id
+    ) VALUES (?,?,?)`)
+    .bind(artist.artist_key, artist.artist_name, artist.spotify_artist_id)));
+}
+
 async function artistsForSnapshot(db, snapshotDate, missingOnly = false) {
-  const result = await db.prepare(`SELECT DISTINCT
-      daily.artist_key,
-      artist.artist_name,
-      artist.spotify_artist_id
-    FROM sh_spotify_artist_daily daily
-    INNER JOIN sh_spotify_artists artist ON artist.artist_key=daily.artist_key
-    LEFT JOIN sh_spotify_artist_monthly_listeners_daily monthly
-      ON monthly.snapshot_date=daily.snapshot_date AND monthly.artist_key=daily.artist_key
-    WHERE daily.snapshot_date=?
-      AND trim(artist.spotify_artist_id)<>''
-      AND (?=0 OR monthly.artist_key IS NULL)
-    ORDER BY daily.artist_key`).bind(snapshotDate, missingOnly ? 1 : 0).all();
-  return resultsOf(result).map((row) => ({
-    artist_key: safeText(row?.artist_key),
-    artist_name: safeText(row?.artist_name),
-    spotify_artist_id: safeText(row?.spotify_artist_id),
-  })).filter((artist) => artist.artist_key && artist.spotify_artist_id);
+  await ensureMonthlyListenerArtists(db);
+  if (!missingOnly) return SPOTIFY_MONTHLY_LISTENER_ARTISTS;
+
+  const result = await db.prepare(`SELECT artist_key
+    FROM sh_spotify_artist_monthly_listeners_daily
+    WHERE snapshot_date=?`).bind(snapshotDate).all();
+  const existing = new Set(resultsOf(result).map((row) => safeText(row?.artist_key)).filter(Boolean));
+  return SPOTIFY_MONTHLY_LISTENER_ARTISTS.filter((artist) => !existing.has(artist.artist_key));
 }
 
 export async function collectSpotifyMonthlyListeners(env, snapshotDate, dependencies = {}) {
