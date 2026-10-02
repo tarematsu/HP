@@ -17,7 +17,8 @@ constexpr int64_t StationheadJstTimeOfDayMs(int64_t unixMs) noexcept {
 
 constexpr std::wstring_view StationheadScheduledUrl(int64_t unixMs) noexcept {
   const int64_t time = StationheadJstTimeOfDayMs(unixMs);
-  if (time >= (23 * 60 + 45) * kStationheadMinuteMs || time < 15 * kStationheadMinuteMs)
+  if (time >= (21 * 60 + 45) * kStationheadMinuteMs &&
+      time < (22 * 60 + 15) * kStationheadMinuteMs)
     return L"https://www.stationhead.com/c/ohisama";
   if (time >= (11 * 60 + 45) * kStationheadMinuteMs &&
       time < (12 * 60 + 15) * kStationheadMinuteMs)
@@ -28,14 +29,15 @@ constexpr std::wstring_view StationheadScheduledUrl(int64_t unixMs) noexcept {
 constexpr int64_t StationheadNextRouteChangeAt(int64_t unixMs) noexcept {
   const int64_t today = unixMs - StationheadJstTimeOfDayMs(unixMs);
   const int64_t time = StationheadJstTimeOfDayMs(unixMs);
-  if (time < 15 * kStationheadMinuteMs) return today + 15 * kStationheadMinuteMs;
   if (time < (11 * 60 + 45) * kStationheadMinuteMs)
     return today + (11 * 60 + 45) * kStationheadMinuteMs;
   if (time < (12 * 60 + 15) * kStationheadMinuteMs)
     return today + (12 * 60 + 15) * kStationheadMinuteMs;
-  if (time < (23 * 60 + 45) * kStationheadMinuteMs)
-    return today + (23 * 60 + 45) * kStationheadMinuteMs;
-  return today + kStationheadDayMs + 15 * kStationheadMinuteMs;
+  if (time < (21 * 60 + 45) * kStationheadMinuteMs)
+    return today + (21 * 60 + 45) * kStationheadMinuteMs;
+  if (time < (22 * 60 + 15) * kStationheadMinuteMs)
+    return today + (22 * 60 + 15) * kStationheadMinuteMs;
+  return today + kStationheadDayMs + (11 * 60 + 45) * kStationheadMinuteMs;
 }
 
 static_assert(StationheadScheduledUrl(0) == L"https://www.stationhead.com/sakuramankai");
@@ -47,13 +49,15 @@ static_assert(StationheadNextRouteChangeAt((2 * 60 + 45) * kStationheadMinuteMs)
               (3 * 60 + 15) * kStationheadMinuteMs);
 static_assert(StationheadScheduledUrl((3 * 60 + 15) * kStationheadMinuteMs) ==
               L"https://www.stationhead.com/sakuramankai");
-static_assert(StationheadScheduledUrl((14 * 60 + 45) * kStationheadMinuteMs) ==
-              L"https://www.stationhead.com/c/ohisama");
-static_assert(StationheadScheduledUrl(15 * 60 * kStationheadMinuteMs) ==
-              L"https://www.stationhead.com/c/ohisama");
-static_assert(StationheadScheduledUrl((15 * 60 + 15) * kStationheadMinuteMs) ==
+static_assert(StationheadScheduledUrl((12 * 60 + 44) * kStationheadMinuteMs) ==
               L"https://www.stationhead.com/sakuramankai");
-static_assert(StationheadNextRouteChangeAt((14 * 60 + 45) * kStationheadMinuteMs) ==
-              (15 * 60 + 15) * kStationheadMinuteMs);
+static_assert(StationheadScheduledUrl((12 * 60 + 45) * kStationheadMinuteMs) ==
+              L"https://www.stationhead.com/c/ohisama");
+static_assert(StationheadScheduledUrl(13 * 60 * kStationheadMinuteMs) ==
+              L"https://www.stationhead.com/c/ohisama");
+static_assert(StationheadScheduledUrl((13 * 60 + 15) * kStationheadMinuteMs) ==
+              L"https://www.stationhead.com/sakuramankai");
+static_assert(StationheadNextRouteChangeAt((12 * 60 + 45) * kStationheadMinuteMs) ==
+              (13 * 60 + 15) * kStationheadMinuteMs);
 
 }  // namespace hp

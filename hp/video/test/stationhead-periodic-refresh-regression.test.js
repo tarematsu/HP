@@ -27,7 +27,7 @@ test('native schedule owns Stationhead destinations', () => {
   assert.match(cloudConfig, /config\.stationhead\.fallbackUrl\.clear\(\)/);
   assert.doesNotMatch(cloudConfig, /kCanonicalFallbackStationheadUrl/);
 
-  assert.match(route, /23 \* 60 \+ 45[\s\S]*https:\/\/www\.stationhead\.com\/c\/ohisama/);
+  assert.match(route, /21 \* 60 \+ 45[\s\S]*22 \* 60 \+ 15[\s\S]*https:\/\/www\.stationhead\.com\/c\/ohisama/);
   assert.match(route, /11 \* 60 \+ 45[\s\S]*12 \* 60 \+ 15[\s\S]*https:\/\/www\.stationhead\.com\/c\/unity/);
   assert.match(route, /return L"https:\/\/www\.stationhead\.com\/sakuramankai"/);
   assert.match(player, /StationheadNextRouteChangeAt\(UnixMillis\(\) - routeDelayMs_\) \+ routeDelayMs_/);
