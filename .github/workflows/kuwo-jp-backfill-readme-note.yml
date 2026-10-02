@@ -1,0 +1,8 @@
+name: Kuwo archive source note
+on:
+  workflow_dispatch:
+jobs:
+  note:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Historical recovery research only'
