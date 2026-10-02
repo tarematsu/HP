@@ -35,6 +35,53 @@ function metadataStateCached(spotifyId, now = Date.now()) {
   return cached;
 }
 
+function decodeHtmlEntities(value) {
+  return String(value || '')
+    .replace(/&#x([0-9a-f]+);/gi, (_match, code) => String.fromCodePoint(Number.parseInt(code, 16)))
+    .replace(/&#([0-9]+);/g, (_match, code) => String.fromCodePoint(Number.parseInt(code, 10)))
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>');
+}
+
+function htmlAttributeContent(html, property) {
+  const source = String(html || '');
+  const escaped = property.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const propertyFirst = new RegExp(`<meta[^>]+(?:property|name)=["']${escaped}["'][^>]+content=["']([^"']+)["'][^>]*>`, 'i');
+  const contentFirst = new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${escaped}["'][^>]*>`, 'i');
+  return decodeHtmlEntities(source.match(propertyFirst)?.[1] || source.match(contentFirst)?.[1] || '').trim() || null;
+}
+
+function spotifyPageMetadata(html) {
+  const source = String(html || '');
+  const rawTitle = decodeHtmlEntities(source.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '').trim();
+  if (!rawTitle) return null;
+  const parsed = cleanSpotifyTitle(rawTitle);
+  if (!parsed.title || !parsed.artist) return null;
+  return {
+    title: parsed.title,
+    artist: parsed.artist,
+    displayTitle: parsed.displayTitle,
+    thumbnail_url: htmlAttributeContent(source, 'og:image'),
+    rawTitle,
+  };
+}
+
+async function fetchSpotifyPage(spotifyUrl, config) {
+  return fetch(spotifyUrl, {
+    headers: {
+      accept: 'text/html,application/xhtml+xml',
+      'user-agent': 'Mozilla/5.0 (compatible; HomePanelMetadata/1.0)',
+    },
+    signal: combinedAbortSignal(config.collectionSignal, config.requestTimeoutMs),
+  }).then(async (response) => {
+    if (!response.ok) return null;
+    return spotifyPageMetadata(await response.text());
+  }).catch(() => null);
+}
+
 export async function fetchTrackMetadata(track, config) {
   const spotifyId = track?.spotify_id;
   if (!spotifyId) return null;
@@ -47,24 +94,45 @@ export async function fetchTrackMetadata(track, config) {
       signal: combinedAbortSignal(config.collectionSignal, config.requestTimeoutMs),
     },
   ).then((response) => response.ok ? response.json() : null).catch(() => null);
-  if (!spotify?.title) return null;
 
-  const parsed = cleanSpotifyTitle(spotify.title);
-  const title = parsed.title;
-  const artist = String(spotify.author_name || spotify.author || '').trim()
-    || parsed.artist
-    || null;
+  if (spotify?.title) {
+    const parsed = cleanSpotifyTitle(spotify.title);
+    const title = parsed.title;
+    const artist = String(spotify.author_name || spotify.author || '').trim()
+      || parsed.artist
+      || null;
+    return {
+      spotify_id: spotifyId,
+      isrc: normalizedIsrc(track?.isrc),
+      spotify_url: spotifyUrl,
+      title,
+      artist,
+      display_title: title && artist ? `${title} — ${artist}` : parsed.displayTitle,
+      thumbnail_url: spotify.thumbnail_url || null,
+      source: 'spotify_oembed',
+      fetched_at: Date.now(),
+      raw: { spotify },
+    };
+  }
+
+  const page = await fetchSpotifyPage(spotifyUrl, config);
+  if (!page?.title || !page?.artist) return null;
   return {
     spotify_id: spotifyId,
     isrc: normalizedIsrc(track?.isrc),
     spotify_url: spotifyUrl,
-    title,
-    artist,
-    display_title: title && artist ? `${title} — ${artist}` : parsed.displayTitle,
-    thumbnail_url: spotify.thumbnail_url || null,
+    title: page.title,
+    artist: page.artist,
+    display_title: page.displayTitle || `${page.title} — ${page.artist}`,
+    thumbnail_url: page.thumbnail_url || null,
+    // Keep the existing authoritative source class. raw.spotify_page records
+    // that the public track page, rather than oEmbed, supplied the metadata.
     source: 'spotify_oembed',
     fetched_at: Date.now(),
-    raw: { spotify },
+    raw: {
+      spotify: null,
+      spotify_page: { title: page.rawTitle, thumbnail_url: page.thumbnail_url || null },
+    },
   };
 }
 
