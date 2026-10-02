@@ -41,12 +41,11 @@ jobs:
           worker/tests/regional-music-read-model.test.js
           site/tests/regional-music-navigation.test.js
           site/tests/api-contract.test.js
-      - name: Remove one-shot generator
-        run: rm worker/scripts/apply-kkbox-implementation.mjs .github/workflows/apply-kkbox-implementation.yml
-      - name: Commit implementation
+      - name: Commit implementation sources
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A
+          git add worker site
+          git reset worker/scripts/apply-kkbox-implementation.mjs
           git commit -m "Add KKBOX regional chart collection"
           git push origin HEAD:feature/kkbox-regional-collection
