@@ -39,6 +39,13 @@ const playlistTable = dashboardTable({
   wrapClassName: 'regional-music-table-wrap',
 });
 
+const melonPopularityTable = dashboardTable({
+  className: 'regional-music-table regional-music-melon-popularity-table music-service-track-table',
+  headers: ['グループ', '順位', '曲名'],
+  bodyId: 'melonArtistPopularityBody',
+  wrapClassName: 'regional-music-table-wrap',
+});
+
 const kugouHistoryTable = dashboardTable({
   className: 'regional-music-table regional-music-kugou-history-table music-service-track-table',
   headers: ['年月日', 'グループ', '順位', '曲名'],
@@ -76,6 +83,15 @@ function artistFilterButtons(prefix, label) {
       <button type="button" data-${prefix}-artist-filter="hinatazaka46" aria-pressed="false">日向坂</button>
     </div>`;
 }
+
+const melonPopularitySection = `
+  <section id="melonArtistPopularitySection" class="music-service-section regional-chart-section" hidden>
+    <div class="regional-chart-section-head">
+      <h2>Melon アーティスト別人気曲順位</h2>
+      ${artistFilterButtons('melon', 'Melon 人気曲 表示グループ')}
+    </div>
+    ${melonPopularityTable}
+  </section>`;
 
 const qqChartSection = `
   <section id="qqJapanChartSection" class="music-service-section regional-chart-section" hidden>
@@ -137,6 +153,7 @@ mountDashboardShell({
         <span>更新周期 <strong id="regionalMusicChartCadence">-</strong></span>
       </div>
       <div id="regionalMusicCompactNotice" hidden>${dashboardNotice({ id: 'regionalMusicCompactNoticeText' })}</div>
+      ${melonPopularitySection}
       ${qqChartSection}
       ${qqHistorySection}
       ${qqPopularitySection}
