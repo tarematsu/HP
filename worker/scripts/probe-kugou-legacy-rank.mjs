@@ -1,6 +1,6 @@
 const RANK_ID = 31312;
-const TEST_VOLS = [80379, 48141, 48078, 47523, 85535, 129499];
-const hosts = ['http://mobilecdnbj.kugou.com', 'http://mobilecdn.kugou.com', 'https://mobilecdnbj.kugou.com', 'https://mobilecdn.kugou.com'];
+const TEST_VOLS = [80379, 48141, 48078, 47523, 31356, 85535, 129499];
+const hosts = ['http://mobilecdnbj.kugou.com', 'http://mobilecdn.kugou.com'];
 const aliases = ['櫻坂46','桜坂46','Sakurazaka46','樱坂46','日向坂46','Hinatazaka46','乃木坂46','Nogizaka46'];
 
 function norm(v) { return String(v || '').normalize('NFKC').toLowerCase().replace(/\s+/g,''); }
@@ -26,7 +26,7 @@ for (const host of hosts) {
 }
 
 for (const host of hosts) {
-  for (const rankCid of [null, 48141, 48078, 47523, 40000]) {
+  for (const rankCid of [null, 48141, 48078, 47523, 31356, 31355]) {
     const cid = rankCid == null ? '' : `&rank_cid=${rankCid}`;
     const url = `${host}/api/v3/rank/vol?rankid=${RANK_ID}&plat=0&version=9108&ranktype=1${cid}`;
     try {
