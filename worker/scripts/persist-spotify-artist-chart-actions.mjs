@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { pathToFileURL } from 'node:url';
 
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 
@@ -145,7 +145,7 @@ async function main() {
   console.log(JSON.stringify({ ok: true, event: 'spotify_artist_chart_persisted', ...result }));
 }
 
-if (process.argv[1] && import.meta.url === fileURLToPath(new URL(`file://${process.argv[1]}`)).startsWith('/') ? new URL(`file://${process.argv[1]}`).href : import.meta.url) {
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   main().catch((error) => {
     console.error(JSON.stringify({ ok: false, event: 'spotify_artist_chart_persist_failed', error: String(error?.message || error) }));
     process.exitCode = 1;
