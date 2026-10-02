@@ -80,17 +80,20 @@ function track(name = 'Song A') {
   };
 }
 
-test('stable Spotify identity mappings do not rewrite timestamps within twelve hours', async () => {
+test('stable Spotify identity mappings use the fast path and refresh weekly', async () => {
   const sqlite = createDatabase();
   const db = d1(sqlite);
   const start = Date.UTC(2026, 8, 28, 0, 0, 0);
 
-  await resolveCanonicalSpotifyTracks(db, [track()], start);
+  const initial = await resolveCanonicalSpotifyTracks(db, [track()], start);
   const afterInsert = totalChanges(sqlite);
   assert.equal(afterInsert, 2);
+  assert.equal(initial[0].identity_cached, false);
 
-  await resolveCanonicalSpotifyTracks(db, [track()], start + 60 * 60 * 1000);
+  const cached = await resolveCanonicalSpotifyTracks(db, [track()], start + 60 * 60 * 1000);
   assert.equal(totalChanges(sqlite), afterInsert);
+  assert.equal(cached[0].identity_cached, true);
+  assert.equal(cached[0].track_id, 'track-1');
 
   const identityBeforeRefresh = {
     ...sqlite.prepare('SELECT created_at,updated_at FROM sh_spotify_song_identities').get(),
@@ -101,9 +104,10 @@ test('stable Spotify identity mappings do not rewrite timestamps within twelve h
   assert.deepEqual(identityBeforeRefresh, { created_at: start, updated_at: start });
   assert.deepEqual(aliasBeforeRefresh, { first_seen_at: start, last_seen_at: start });
 
-  const refreshAt = start + 12 * 60 * 60 * 1000;
-  await resolveCanonicalSpotifyTracks(db, [track()], refreshAt);
+  const refreshAt = start + 7 * 24 * 60 * 60 * 1000;
+  const refreshed = await resolveCanonicalSpotifyTracks(db, [track()], refreshAt);
   assert.equal(totalChanges(sqlite), afterInsert + 2);
+  assert.equal(refreshed[0].identity_cached, false);
   assert.equal(
     Number(sqlite.prepare('SELECT updated_at FROM sh_spotify_song_identities').get().updated_at),
     refreshAt,
@@ -114,16 +118,17 @@ test('stable Spotify identity mappings do not rewrite timestamps within twelve h
   );
 });
 
-test('changed Spotify identity mapping updates immediately inside the throttle window', async () => {
+test('changed Spotify identity mapping bypasses the fast path immediately', async () => {
   const sqlite = createDatabase();
   const db = d1(sqlite);
   const start = Date.UTC(2026, 8, 28, 0, 0, 0);
 
   await resolveCanonicalSpotifyTracks(db, [track('Song A')], start);
   const afterInsert = totalChanges(sqlite);
-  await resolveCanonicalSpotifyTracks(db, [track('Song B')], start + 60_000);
+  const changed = await resolveCanonicalSpotifyTracks(db, [track('Song B')], start + 60_000);
 
   assert.equal(totalChanges(sqlite), afterInsert + 2);
+  assert.equal(changed[0].identity_cached, false);
   const alias = {
     ...sqlite.prepare(`SELECT song_key,canonical_track_id,last_seen_at
       FROM sh_spotify_track_aliases WHERE source_track_id='track-1'`).get(),
