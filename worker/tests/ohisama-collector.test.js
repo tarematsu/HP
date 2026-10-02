@@ -93,13 +93,14 @@ test('ohisama normalization reads syndicated station owner and host broadcaster'
   assert.equal(value.host_handle, 'hinatapr0211');
 });
 
-test('ohisama active host is permanently added to the follower target registry', async () => {
+test('ohisama follower target requires a handle observed during an active broadcast', async () => {
   let bound = null;
   let runs = 0;
   const env = {
     OTHER_DB: {
       prepare(sql) {
         assert.match(sql, /INSERT INTO sh_stationhead_follower_targets/);
+        assert.match(sql, /live_confirmed_at/);
         assert.match(sql, /source_mask=.*source_mask \| excluded\.source_mask/s);
         return {
           bind(...values) {
@@ -119,21 +120,21 @@ test('ohisama active host is permanently added to the follower target registry',
     is_broadcasting: 1,
     host_handle: 'ohisamahost',
   }, 123456), true);
-  assert.deepEqual(bound, ['ohisamahost', 4, 123456]);
+  assert.deepEqual(bound, ['ohisamahost', 4, 123456, 123456]);
   assert.equal(runs, 1);
 
   assert.equal(await registerOhisamaFollowerTarget(env, {
-  is_broadcasting: 0,
-  host_handle: 'idlehost',
-}, 123457), true);
-  assert.deepEqual(bound, ['idlehost', 4, 123457]);
-  assert.equal(runs, 2);
+    is_broadcasting: 0,
+    host_handle: 'idlehost',
+  }, 123457), false);
+  assert.deepEqual(bound, ['ohisamahost', 4, 123456, 123456]);
+  assert.equal(runs, 1);
 
   assert.equal(await registerOhisamaFollowerTarget(env, {
     is_broadcasting: 1,
     host_handle: null,
   }, 123458), false);
-  assert.equal(runs, 2);
+  assert.equal(runs, 1);
 });
 
 test('ohisama auth acquisition is fixed to ILYS while collection remains ohisama', () => {
