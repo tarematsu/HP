@@ -39,6 +39,12 @@ test('Buddies keeps first-week comparison inside listening parties while global 
   assert.match(route, /new MutationObserver/);
 });
 
+test('in-app route changes notify hash-driven views after pushState', () => {
+  assert.match(route, /const oldURL = location\.href;/);
+  assert.match(route, /history\[replace \? 'replaceState' : 'pushState'\]\(null, '', target\);/);
+  assert.match(route, /new HashChangeEvent\('hashchange', \{ oldURL, newURL \}\)/);
+});
+
 test('navigation styles are bundled and responsive', () => {
   assert.match(build, /'dashboard-navigation\.css'/);
   assert.match(css, /\.dashboard-section-tabs/);
