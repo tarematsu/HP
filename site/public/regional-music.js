@@ -285,9 +285,10 @@ function renderKugouHistory(payload, service) {
   });
 
   const oldest = providerDateTimeText(coverage.oldest_available);
-  const latest = providerDateTimeText(coverage.latest_available);
+  const latestChecked = providerDateTimeText(coverage.latest_checked || coverage.latest_available);
+  const latestRankIn = providerDateTimeText(coverage.latest_rank_in || coverage.latest_available);
   const count = Number.isFinite(Number(coverage.entries)) ? integerFormat.format(Number(coverage.entries)) : integerFormat.format(history.length);
-  setText('kugouJapanCoverage', `取得可能期間: ${oldest} ～ ${latest}（${count}件）。2024/10/31より前は現行APIでは正しい過去Top 100を復元できないため未収録。`);
+  setText('kugouJapanCoverage', `最古取得可能: ${oldest} / 最終確認号: ${latestChecked} / 最終ランクイン: ${latestRankIn}（${count}件）。2024/10/31より前は現行APIでは正しい過去Top 100を復元できないため未収録。`);
 
   const body = replaceBody('kugouJapanHistoryBody');
   if (!body) return;
