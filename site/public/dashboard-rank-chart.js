@@ -84,7 +84,10 @@ function paint(options) {
     const index = dateIndex.get(date) ?? 0;
     return margin.left + (dates.length <= 1 ? plotWidth / 2 : index / (dates.length - 1) * plotWidth);
   };
-  const yFor = (rank) => margin.top + (rank - 1) / Math.max(1, ceiling - 1) * plotHeight;
+  const yFor = (rank) => {
+    const boundedRank = Math.min(ceiling, Math.max(1, Number(rank)));
+    return margin.top + (boundedRank - 1) / Math.max(1, ceiling - 1) * plotHeight;
+  };
 
   context.font = '500 11px system-ui';
   context.fillStyle = '#667287';

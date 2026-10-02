@@ -48,6 +48,8 @@ const STATUS_LABELS = Object.freeze({
   error: 'エラー',
 });
 
+const OUT_OF_CHART_RANK = 101;
+
 let readModelPromise = null;
 let activeRequest = 0;
 
@@ -86,6 +88,21 @@ function providerDateTimeText(value) {
 function providerShortDate(value) {
   const date = providerDate(value);
   return date ? `${date.slice(5, 7)}/${date.slice(8, 10)}` : String(value || '');
+}
+
+function providerWeekdays(startValue, endValue) {
+  const start = providerDate(startValue);
+  const end = providerDate(endValue);
+  if (!start || !end || start > end) return [];
+  const cursor = new Date(`${start}T00:00:00Z`);
+  const last = new Date(`${end}T00:00:00Z`);
+  const dates = [];
+  while (cursor <= last) {
+    const weekday = cursor.getUTCDay();
+    if (weekday >= 1 && weekday <= 5) dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return dates;
 }
 
 function replaceBody(id) {
@@ -227,7 +244,7 @@ function renderHealth(state) {
   }
 }
 
-function kugouSeries(history) {
+function kugouSeries(history, coveredDates = []) {
   return ARTIST_DISPLAY_ORDER.slice(0, 3).map((canonicalArtist) => {
     const byDate = new Map();
     for (const item of history) {
@@ -242,7 +259,9 @@ function kugouSeries(history) {
       id: canonicalArtist,
       title: ARTIST_LABELS[canonicalArtist] || canonicalArtist,
       color: GROUP_COLORS[canonicalArtist],
-      points: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
+      points: coveredDates.length
+        ? coveredDates.map((date) => ({ date, rank: byDate.get(date)?.rank ?? OUT_OF_CHART_RANK }))
+        : [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
     };
   }).filter((series) => series.points.length);
 }
@@ -258,12 +277,13 @@ function renderKugouHistory(payload, service) {
   const chart = payload?.kugou_japan_chart || {};
   const history = Array.isArray(chart.history) ? chart.history : [];
   const coverage = chart.coverage || {};
-  const series = kugouSeries(history);
-  const dates = [...new Set(series.flatMap((item) => item.points.map((point) => point.date)))].sort();
-  const ranks = series.flatMap((item) => item.points.map((point) => point.rank));
-  const maxRank = Math.max(1, ...ranks);
-  const yMax = Math.max(10, Math.ceil(maxRank / 10) * 10);
-  const rankTicks = [...new Set([1, 25, 50, 75, 100, yMax].filter((rank) => rank <= yMax))].sort((a, b) => a - b);
+  const coveredDates = providerWeekdays(coverage.oldest_available, coverage.latest_checked || coverage.latest_available);
+  const series = kugouSeries(history, coveredDates);
+  const dates = coveredDates.length
+    ? coveredDates
+    : [...new Set(series.flatMap((item) => item.points.map((point) => point.date)))].sort();
+  const yMax = OUT_OF_CHART_RANK;
+  const rankTicks = [1, 25, 50, 75, 100, OUT_OF_CHART_RANK];
 
   renderRankHistoryChart({
     container: byId('kugouJapanRankChart'),
@@ -274,11 +294,11 @@ function renderKugouHistory(payload, service) {
     yMax,
     rankTicks,
     dateTickCount: 5,
-    ariaLabel: 'Kugou日本榜における櫻坂46、乃木坂46、日向坂46の各日最高順位推移。1位が上。',
+    ariaLabel: 'Kugou日本榜における櫻坂46、乃木坂46、日向坂46の各日最高順位推移。取得済み平日の圏外も含み、1位が上。',
     lineClass: 'kugou-rank-line',
     emptyClass: 'regional-music-rank-empty',
     emptyText: 'Kugou日本榜の順位履歴はまだありません。',
-    rankLabel: (rank) => `${rank}位`,
+    rankLabel: (rank) => rank === OUT_OF_CHART_RANK ? '圏外' : `${rank}位`,
     dateLabel: providerShortDate,
     latestPoint: { radius: () => 2.5 },
     legendContainer: byId('kugouJapanRankLegend'),
@@ -298,10 +318,11 @@ function renderKugouHistory(payload, service) {
     return;
   }
   for (const item of ordered) {
+    const rank = Number(item.rank);
     body.append(row([
       providerDateTimeText(item.published_at),
       ARTIST_LABELS[item.canonical_artist] || item.canonical_artist || '-',
-      Number.isFinite(Number(item.rank)) ? `${integerFormat.format(Number(item.rank))}位` : '-',
+      Number.isFinite(rank) ? (rank === OUT_OF_CHART_RANK ? '圏外' : `${integerFormat.format(rank)}位`) : '-',
       item.title || '-',
       Number.isFinite(Number(item.issue)) ? `第${integerFormat.format(Number(item.issue))}期` : '-',
     ]));
