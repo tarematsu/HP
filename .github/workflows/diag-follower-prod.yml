@@ -1,0 +1,51 @@
+name: Temporary follower production diagnostic
+
+on:
+  push:
+    branches:
+      - diag/follower-prod-20261003-2
+    paths:
+      - .github/workflows/diag-follower-prod.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          show-progress: false
+
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci --no-audit --no-fund --ignore-scripts
+
+      - name: Query follower snapshot rows
+        working-directory: worker
+        run: |
+          npx wrangler d1 execute stationhead-other --remote --yes --config wrangler.buddies-collector.jsonc --json --command "SELECT observed_date_jst,scheduled_at,collected_at,followers_json,failures_json FROM sh_stationhead_daily_followers_v2 ORDER BY observed_date_jst DESC LIMIT 5;"
+
+      - name: Query follower failures
+        working-directory: worker
+        run: |
+          npx wrangler d1 execute stationhead-other --remote --yes --config wrangler.buddies-collector.jsonc --json --command "SELECT observed_date_jst,scheduled_at,failed_at,error,details_json FROM sh_stationhead_daily_follower_failures ORDER BY failed_at DESC LIMIT 20;"
+
+      - name: Query public follower API
+        run: |
+          curl -fsS --max-time 20 https://skrzk.pages.dev/api/followers | head -c 12000
+          echo
