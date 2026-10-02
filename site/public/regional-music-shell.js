@@ -151,3 +151,4 @@ mountDashboardShell({
 });
 
 void import('./qq-japan-chart-ui.js?v=20261002.2').then(({ initQqJapanHistoryUi }) => initQqJapanHistoryUi());
+void import('./netease-japan-chart-ui.js?v=20261003.1');
