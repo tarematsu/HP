@@ -1,0 +1,132 @@
+name: Probe Kuwo Japanese chart alternate archives
+
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-archive-alt-probe.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Probe Wayback and Arquivo.pt
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import concurrent.futures, json, pathlib, re, time, urllib.parse, urllib.request
+          UA='kuwo-alt-archive-probe/1.0'
+          ALIASES=['櫻坂46','樱坂46','Sakurazaka46','乃木坂46','Nogizaka46','日向坂46','Hinatazaka46','欅坂46','Keyakizaka46']
+          URLS=[
+            'https://kuwo.cn/newh5/bang/index',
+            'https://www.kuwo.cn/newh5/bang/index',
+            'https://m.kuwo.cn/newh5/bang/index',
+            'https://kuwo.cn/newh5/bang/index?qq-pf-to=pcqq.c2c',
+            'https://m.kuwo.cn/newh5/bang/index?from=singlemessage&isappinstalled=0',
+            'https://m.kuwo.cn/newh5/bang/index?lan=cn',
+            'https://m.kuwo.cn/newh5app/ranklist_detail/183',
+            'https://www.kuwo.cn/rankList/183',
+          ]
+          for rn in (5,20,30,100):
+            URLS += [
+              f'http://kbangserver.kuwo.cn/ksong.s?from=pc&fmt=json&pn=0&rn={rn}&type=bang&data=content&id=183&show_copyright_off=0&pcmp4=1&isbang=1',
+              f'https://kbangserver.kuwo.cn/ksong.s?from=pc&fmt=json&pn=0&rn={rn}&type=bang&data=content&id=183&show_copyright_off=0&pcmp4=1&isbang=1',
+            ]
+          def get(url,timeout=10):
+            try:
+              q=urllib.request.Request(url,headers={'User-Agent':UA})
+              with urllib.request.urlopen(q,timeout=timeout) as r:return r.status,r.geturl(),r.read().decode('utf-8','replace')
+            except Exception as e:return 0,url,repr(e)
+          report={'observed_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'wayback':[],'arquivo':[],'recovered':[]}
+
+          def wb(u):
+            q={'url':u,'output':'json','fl':'timestamp,original,statuscode,digest,mimetype','filter':'statuscode:200','collapse':'digest','limit':'500'}
+            st,_,txt=get('https://web.archive.org/cdx/search/cdx?'+urllib.parse.urlencode(q),10)
+            arr=[]
+            try:arr=json.loads(txt)
+            except:pass
+            rows=[]
+            if isinstance(arr,list) and len(arr)>1:
+              for z in arr[1:]:rows.append({'timestamp':z[0],'original':z[1],'status':z[2],'digest':z[3],'mime':z[4]})
+            return {'url':u,'status':st,'count':len(rows),'rows':rows,'head':txt[:300] if not rows else ''}
+
+          def arq(u):
+            q={'versionHistory':u,'maxItems':'200','prettyPrint':'false'}
+            st,_,txt=get('https://arquivo.pt/textsearch?'+urllib.parse.urlencode(q),10)
+            rows=[]
+            try:
+              j=json.loads(txt)
+              for x in j.get('response_items',[]):
+                rows.append({'title':x.get('title'),'originalURL':x.get('originalURL'),'tstamp':x.get('tstamp'),'linkToArchive':x.get('linkToArchive')})
+            except:pass
+            return {'url':u,'status':st,'count':len(rows),'rows':rows,'head':txt[:300] if not rows else ''}
+
+          with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex:
+            report['wayback']=list(ex.map(wb,URLS))
+            report['arquivo']=list(ex.map(arq,URLS))
+
+          # Fetch a bounded number of Arquivo snapshots and inspect for the Japanese chart/Sakamichi.
+          snaps=[]
+          for block in report['arquivo']:
+            for r in block['rows']:
+              if r.get('linkToArchive'):snaps.append((block['url'],r))
+          # one per unique timestamp+archive link, up to 50
+          seen=set(); chosen=[]
+          for src,r in sorted(snaps,key=lambda z:str(z[1].get('tstamp') or '')):
+            k=(r.get('tstamp'),r.get('linkToArchive'))
+            if k in seen:continue
+            seen.add(k);chosen.append((src,r))
+          if len(chosen)>50:
+            step=max(1,len(chosen)//50);chosen=chosen[::step][:50]
+          def recover(pair):
+            src,r=pair
+            st,final,txt=get(r['linkToArchive'],12)
+            out={'source_url':src,'tstamp':r.get('tstamp'),'archive_url':r.get('linkToArchive'),'status':st,'bytes':len(txt),'has_jp':'酷我日语榜' in txt,'aliases':[a for a in ALIASES if a.lower() in txt.lower()]}
+            m=re.search(r'酷我日语榜.{0,12000}',txt,re.S)
+            if m:out['snippet']=m.group(0)[:12000]
+            try:j=json.loads(txt)
+            except:j=None
+            if isinstance(j,dict):
+              rows=[]
+              for v in [j.get('musiclist'),j.get('musicList'),(j.get('data') or {}).get('musicList') if isinstance(j.get('data'),dict) else None,(j.get('data') or {}).get('musiclist') if isinstance(j.get('data'),dict) else None]:
+                if isinstance(v,list):rows=v;break
+              if rows:
+                out['api_rows']=len(rows)
+                out['top3']=[{'rank':i+1,'name':x.get('name') or x.get('title'),'artist':x.get('artist') or x.get('artistName') or x.get('singer')} for i,x in enumerate(rows[:3])]
+                hits=[]
+                for i,x in enumerate(rows,1):
+                  hay=' '.join(str(x.get(k,'')) for k in ('artist','artistName','singer','name','title'))
+                  for a in ALIASES:
+                    if a.lower() in hay.lower():hits.append({'alias':a,'rank':i,'name':x.get('name') or x.get('title'),'artist':x.get('artist') or x.get('artistName') or x.get('singer')})
+                out['sakamichi']=hits
+            return out
+          with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+            report['recovered']=list(ex.map(recover,chosen)) if chosen else []
+
+          pathlib.Path('kuwo-jp-archive-alt.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          print('WAYBACK')
+          for x in report['wayback']:
+            if x['count'] or x['status']!=200:print(x['status'],x['count'],x['url'],x.get('head',''))
+          print('ARQUIVO')
+          for x in report['arquivo']:
+            if x['count'] or x['status']!=200:print(x['status'],x['count'],x['url'],x.get('head',''))
+          print('RECOVERED',len(report['recovered']))
+          for x in report['recovered']:
+            if x.get('has_jp') or x.get('api_rows') or x.get('aliases'):
+              print('REC',x['tstamp'],x['status'],x['source_url'],'jp',x.get('has_jp'),'aliases',x.get('aliases'),'rows',x.get('api_rows'))
+              if x.get('top3'):print('TOP3',json.dumps(x['top3'],ensure_ascii=False))
+              if x.get('sakamichi'):print('SAKAMICHI',json.dumps(x['sakamichi'],ensure_ascii=False))
+              if x.get('snippet'):print('SNIP',x['snippet'][:1200].replace('\n',' '))
+          PY
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kuwo-jp-archive-alt
+          path: kuwo-jp-archive-alt.json
+          if-no-files-found: ignore
+          retention-days: 7
