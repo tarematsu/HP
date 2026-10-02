@@ -1,0 +1,51 @@
+name: Fast check Kuwo Sakamichi digital album flags
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-sakamichi-fans-fast.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Query Kuwo search API
+        run: |
+          python3 <<'PY'
+          import json,urllib.request,urllib.parse,re
+          groups={'櫻坂46':['櫻坂46','Sakurazaka46','樱坂46'],'乃木坂46':['乃木坂46','Nogizaka46'],'日向坂46':['日向坂46','Hinatazaka46']}
+          def get(alias,ft):
+            q={'client':'kt','all':alias,'pn':'0','rn':'20','uid':'0','ver':'kwplayer_ar_9.3.7.2','vipver':'1','show_copyright_off':'1','newver':'1','ft':ft,'cluster':'0','strategy':'2012','encoding':'utf8','rformat':'json','mobi':'1'}
+            u='https://search.kuwo.cn/r.s?'+urllib.parse.urlencode(q)
+            try:
+              req=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'})
+              with urllib.request.urlopen(req,timeout=5) as r:return r.status,r.read().decode('utf-8','replace')
+            except Exception as e:return 0,''
+          def flatten(x):
+            if isinstance(x,dict):
+              yield x
+              for v in x.values():yield from flatten(v)
+            elif isinstance(x,list):
+              for v in x:yield from flatten(v)
+          def norm(s):return re.sub(r'\s+','',str(s or '').casefold())
+          for group,aliases in groups.items():
+            print('\n##',group)
+            seen=set()
+            for alias in aliases:
+              for ft in ['artist','album','music']:
+                st,t=get(alias,ft)
+                try:p=json.loads(t)
+                except:p={}
+                found=[]
+                for r in flatten(p):
+                  hay=norm(' '.join(str(r.get(k,'')) for k in ['ARTIST','NAME','ALBUM','SONGNAME','ALBUM_NAME','ARTIST_NAME']))
+                  if not any(norm(a) in hay for a in aliases):continue
+                  slim={k:r.get(k) for k in ['ARTIST','ARTISTID','NAME','ALBUM','ALBUMID','MUSICRID','DC_TARGETID','PAY','FEE_TYPE','ISVIP','COPYRIGHT','DIGITAL','ALBUM_PAY','VIP'] if r.get(k) not in [None,'']}
+                  if not slim:continue
+                  key=json.dumps(slim,sort_keys=True,ensure_ascii=False)
+                  if key in seen:continue
+                  seen.add(key);found.append(slim)
+                print(alias,ft,'HTTP',st,'matches',len(found))
+                for x in found[:6]:print(json.dumps(x,ensure_ascii=False))
+          PY
