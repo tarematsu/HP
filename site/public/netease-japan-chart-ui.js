@@ -2,6 +2,7 @@ import {
   appendEmptyTableRow,
   byId,
   integerFormat,
+  setText,
 } from './dashboard-ui-common.js?v=20261001.1';
 import { renderRankHistoryChart } from './dashboard-rank-chart.js?v=20261002.1';
 
@@ -143,7 +144,7 @@ function renderHistory(history) {
       || Number(a.rank) - Number(b.rank)
       || String(a.title || '').localeCompare(String(b.title || '')));
   if (!ordered.length) {
-    appendEmptyTableRow(body, 'NetEase Cloud Music 日語榜のランクイン履歴はありません。', 4);
+    appendEmptyTableRow(body, '网易云日语榜のランクイン履歴はありません。', 4);
     return;
   }
   for (const item of ordered) {
@@ -159,6 +160,7 @@ function renderHistory(history) {
 function render(payload) {
   lastPayload = payload;
   syncFilterButtons();
+  setText('regionalMusicChartCadence', '毎週火曜（网易云日语榜更新）');
   const chart = payload?.netease_japan_chart || {};
   const history = Array.isArray(chart.history) ? chart.history : [];
   const periods = storedPeriods(chart, history);
@@ -174,10 +176,10 @@ function render(payload) {
     yMax:OUT_OF_CHART_RANK,
     rankTicks:[1, 25, 50, 75, 100, OUT_OF_CHART_RANK],
     dateTickCount:5,
-    ariaLabel:'NetEase Cloud Music 日語榜における選択グループの各週最高順位推移。保存済み週の圏外も含み、1位が上。',
+    ariaLabel:'网易云日语榜における選択グループの各週最高順位推移。保存済み週の圏外も含み、1位が上。',
     lineClass:'kugou-rank-line',
     emptyClass:'regional-music-rank-empty',
-    emptyText:'NetEase Cloud Music 日語榜の順位履歴はまだありません。',
+    emptyText:'网易云日语榜の順位履歴はまだありません。',
     rankLabel:(rank) => rank === OUT_OF_CHART_RANK ? '圏外' : `${rank}位`,
     dateLabel:providerShortDate,
     latestPoint:{ radius:() => 2.5 },
@@ -206,6 +208,8 @@ async function renderForRoute() {
   const visible = location.hash.slice(1) === 'netease_cloud_music';
   setVisible(visible);
   if (!visible) return;
+  setText('regionalMusicTitle', '网易云音乐');
+  setText('regionalMusicChartCadence', '毎週火曜（网易云日语榜更新）');
   bindFilters();
   replaceBody('neteaseJapanRankLegend');
   replaceBody('neteaseJapanRankChart');
@@ -217,7 +221,7 @@ async function renderForRoute() {
   } catch {
     if (id !== requestId || location.hash.slice(1) !== 'netease_cloud_music') return;
     const historyBody = replaceBody('neteaseJapanHistoryBody');
-    if (historyBody) appendEmptyTableRow(historyBody, 'NetEase Cloud Music 日語榜の履歴を取得できませんでした。', 4);
+    if (historyBody) appendEmptyTableRow(historyBody, '网易云日语榜の履歴を取得できませんでした。', 4);
   }
 }
 
