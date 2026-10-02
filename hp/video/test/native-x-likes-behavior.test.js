@@ -178,14 +178,13 @@ test('approaches like buttons at double scroll speed and uses the same DOM click
   assert.equal(result.state.completed, true);
 });
 
-test('posts below five existing likes are skipped', async () => {
+test('existing like count does not restrict eligible posts', async () => {
   const result = await run({ randomValues: [0] });
-  assert.ok(!result.clickedIds.includes(10));
+  assert.ok(result.clickedIds.includes(10));
   assert.ok(result.clickedIds.some(id => id >= 11));
-  assert.match(source, /const minimumExistingLikes = 5/);
-  assert.match(source, /existingLikeCount\(article\) < minimumExistingLikes/);
-  assert.match(source, /suffix === 'K' \|\| suffix === '千'/);
-  assert.match(source, /suffix === '万'/);
+  assert.doesNotMatch(source, /minimumExistingLikes/);
+  assert.doesNotMatch(source, /existingLikeCount/);
+  assert.doesNotMatch(source, /parseCompactCount/);
 });
 
 test('pre-click wait is randomly selected from 5, 10, 15 and 20 seconds', async () => {
