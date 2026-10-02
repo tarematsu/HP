@@ -1,0 +1,74 @@
+name: Export full Kuwo Japanese chart history
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-export-full-history.yml]
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fetch and persist full Top100 editions
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import concurrent.futures,datetime,json,pathlib,re,time,urllib.parse,urllib.request
+          BASE='https://kbangserver.kuwo.cn/ksong.s'
+          COMMON={'from':'pc','fmt':'json','pn':'0','rn':'100','type':'bang','data':'content','id':'183','show_copyright_off':'0','pcmp4':'1','isbang':'1','userid':'0'}
+          GROUPS={
+            '櫻坂46':['櫻坂46','樱坂46','Sakurazaka46','Sakurazaka 46'],
+            '乃木坂46':['乃木坂46','Nogizaka46','Nogizaka 46'],
+            '日向坂46':['日向坂46','Hinatazaka46','Hinatazaka 46'],
+            '欅坂46':['欅坂46','Keyakizaka46','Keyakizaka 46'],
+          }
+          def norm(s): return re.sub(r'[\s._・･\-—–/\\()\[\]（）【】「」『』]','',str(s or '').casefold())
+          def get(bid=None,rn=100):
+            q={**COMMON,'rn':str(rn)}
+            if bid is not None:q['bangid']=str(bid)
+            u=BASE+'?'+urllib.parse.urlencode(q)
+            req=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'})
+            with urllib.request.urlopen(req,timeout=15) as r:return json.loads(r.read().decode('utf-8','replace'))
+          seed=get(None,1)
+          ids={}
+          for year,arr in (seed.get('volume') or {}).items():
+            if str(year)!='2026' or not isinstance(arr,list):continue
+            for x in arr:
+              try: ids[int(x['name'])]=int(x['third_id'])
+              except: pass
+          ids.update({210:267861,211:267996,212:268069,213:268143,214:268216,215:268291})
+          vols=sorted(ids)
+          print('VOLUMES',min(vols),max(vols),len(vols))
+          def one(vol):
+            bid=ids[vol]
+            try:
+              j=get(bid,100)
+              rows=j.get('musiclist') or j.get('musicList') or []
+              clean=[]; hits=[]
+              for i,r in enumerate(rows,1):
+                item={'rank':i,'name':r.get('name') or r.get('title'),'artist':r.get('artist') or r.get('artistName') or r.get('singer'),'rid':r.get('rid') or r.get('id'),'album':r.get('album'),'duration':r.get('duration'),'raw':r}
+                clean.append(item)
+                hay=norm(' '.join(str(r.get(k,'')) for k in ('artist','artistName','singer','name','title')))
+                for g,aliases in GROUPS.items():
+                  if any(norm(a) in hay for a in aliases):hits.append({'rank':i,'group':g,'name':item['name'],'artist':item['artist'],'rid':item['rid']})
+              date=(datetime.date(2026,1,1)+datetime.timedelta(days=vol-1)).isoformat()
+              return {'volume':vol,'date':date,'bangid':bid,'currentVolume':j.get('currentVolume'),'pub':j.get('pub'),'timestamp':j.get('timestamp'),'row_count':len(rows),'musiclist':clean,'sakamichi':hits}
+            except Exception as e:
+              return {'volume':vol,'date':(datetime.date(2026,1,1)+datetime.timedelta(days=vol-1)).isoformat(),'bangid':bid,'row_count':0,'musiclist':[],'sakamichi':[],'error':repr(e)}
+          editions=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+            for x in ex.map(one,vols):
+              editions.append(x); print('FETCH',x['date'],'VOL',x['volume'],'BID',x['bangid'],'ROWS',x['row_count'],'HITS',len(x['sakamichi']))
+          hits=[{'date':x['date'],'volume':x['volume'],'bangid':x['bangid'],**h} for x in editions for h in x['sakamichi']]
+          report={'observed_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'chart_id':183,'chart_name':'酷我日语榜','edition_count':len(editions),'row_count':sum(x['row_count'] for x in editions),'date_from':editions[0]['date'],'date_to':editions[-1]['date'],'sakamichi_hits':hits,'editions':editions}
+          pathlib.Path('kuwo-jp-full-history.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          print('SUMMARY',json.dumps({k:report[k] for k in ('edition_count','row_count','date_from','date_to')},ensure_ascii=False),'SAKAMICHI_HITS',len(hits))
+          for h in hits:print('SAKAMICHI',json.dumps(h,ensure_ascii=False))
+          PY
+      - name: Upload full chart data
+        uses: actions/upload-artifact@v4
+        with:
+          name: kuwo-jp-full-history
+          path: kuwo-jp-full-history.json
+          retention-days: 7
