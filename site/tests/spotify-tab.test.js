@@ -229,9 +229,9 @@ test('Spotify tab uses the compact chart-and-list layout with the shared Canvas 
   assert.match(shell, /<strong>毎日<\/strong>/);
   assert.match(shell, /regional-chart-section-head/);
   assert.match(shell, /className: 'regional-chart-filter'/);
-  assert.match(shell, /label: '櫻坂'/);
-  assert.match(shell, /label: '乃木坂'/);
-  assert.match(shell, /label: '日向坂'/);
+  assert.match(shell, /label: '櫻坂46'/);
+  assert.match(shell, /label: '乃木坂46'/);
+  assert.match(shell, /label: '日向坂46'/);
   assert.doesNotMatch(shell, /dashboardSummary|dashboardSummaryItem|spotify-summary/);
   assert.doesNotMatch(shell, /spotifyPlaylistSection|spotifyPlaylistMount|loadMusicServicePlaylists/);
   assert.match(shell, /headers: \['順位', '曲名', '累計再生数', '前日比'\]/);
