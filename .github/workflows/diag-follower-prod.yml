@@ -43,7 +43,52 @@ jobs:
       - name: Query follower failures
         working-directory: worker
         run: |
-          npx wrangler d1 execute stationhead-other --remote --yes --config wrangler.buddies-collector.jsonc --json --command "SELECT observed_date_jst,scheduled_at,failed_at,error,details_json FROM sh_stationhead_daily_follower_failures ORDER BY failed_at DESC LIMIT 20;"
+          npx wrangler d1 execute stationhead-other --remote --yes --config wrangler.buddies-collector.jsonc --json --command "SELECT observed_date_jst,scheduled_at,failed_at,error,details_json FROM sh_stationhead_daily_follower_failures ORDER BY failed_at DESC LIMIT 8;"
+
+      - name: Probe Stationhead auth and profile endpoint
+        shell: bash
+        run: |
+          node <<'NODE'
+          const API = 'https://production1.stationhead.com';
+          const WEB = 'https://www.stationhead.com';
+          const deviceUid = crypto.randomUUID();
+          const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
+          const baseHeaders = (token = '', referer = `${WEB}/c/ilys`) => ({
+            accept: 'application/json, text/plain, */*',
+            'accept-language': 'ja,en-US;q=0.9,en;q=0.8',
+            'app-platform': 'web',
+            'app-version': '1.0.0',
+            'content-type': 'application/json',
+            origin: WEB,
+            referer,
+            'sth-device-uid': deviceUid,
+            'user-agent': ua,
+            ...(token ? { authorization: `Bearer ${token}` } : {}),
+          });
+          const tokenRes = await fetch(`${API}/web/token`, { method: 'POST', headers: baseHeaders(), body: '' });
+          const token = String(tokenRes.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
+          console.log('token', tokenRes.status, Boolean(token));
+          const loginRes = await fetch(`${API}/web/guest/login`, { method: 'POST', headers: baseHeaders(token), body: '' });
+          console.log('login', loginRes.status);
+          const urls = [
+            `${WEB}/api/account/handle/sakuramankai`,
+            `${API}/account/handle/sakuramankai`,
+            `${API}/api/account/handle/sakuramankai`,
+          ];
+          for (const url of urls) {
+            const res = await fetch(url, { headers: baseHeaders(token, `${WEB}/`) });
+            const body = await res.text();
+            console.log('before-verify', url, res.status, body.slice(0, 200).replace(/\s+/g, ' '));
+          }
+          const verifyRes = await fetch(`${API}/station/handle/ilys/guest`, { method: 'POST', headers: baseHeaders(token), body: '' });
+          const verifyBody = await verifyRes.text();
+          console.log('verify', verifyRes.status, verifyBody.slice(0, 200).replace(/\s+/g, ' '));
+          for (const url of urls) {
+            const res = await fetch(url, { headers: baseHeaders(token, `${WEB}/`) });
+            const body = await res.text();
+            console.log('after-verify', url, res.status, body.slice(0, 300).replace(/\s+/g, ' '));
+          }
+          NODE
 
       - name: Query public follower API
         run: |
