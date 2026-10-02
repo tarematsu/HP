@@ -1,0 +1,57 @@
+name: Resolve Kuwo Japanese chart third_id history
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-thirdid-probe.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Test historical edition selectors
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import hashlib,json,time,urllib.parse,urllib.request
+          BASE='https://kbangserver.kuwo.cn/ksong.s'
+          common={'from':'pc','fmt':'json','pn':'0','rn':'5','type':'bang','data':'content','show_copyright_off':'0','pcmp4':'1','isbang':'1','userid':'0'}
+          editions=[
+            ('275','272758'), # current
+            ('274','272685'),
+            ('273','272610'),
+            ('250','270896'),
+            ('216','268368'),
+          ]
+          def fetch(q):
+            u=BASE+'?'+urllib.parse.urlencode({**common,**q})
+            try:
+              req=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'})
+              with urllib.request.urlopen(req,timeout=8) as r:j=json.loads(r.read().decode('utf-8','replace'))
+              rows=j.get('musiclist') or j.get('musicList') or []
+              sig=[(x.get('id') or x.get('rid'),x.get('name'),x.get('artist')) for x in rows]
+              return {'q':q,'name':j.get('name'),'pub':j.get('pub'),'timestamp':j.get('timestamp'),'currentVolume':j.get('currentVolume'),'num':j.get('num'),'hash':hashlib.sha1(json.dumps(sig,ensure_ascii=False).encode()).hexdigest()[:12] if sig else None,'top':sig}
+            except Exception as e:return {'q':q,'error':repr(e)}
+          cases=[('control',{'id':'183'})]
+          for vol,tid in editions:
+            cases += [
+              (f'id={tid}',{'id':tid}),
+              (f'id183-third_id={tid}',{'id':'183','third_id':tid}),
+              (f'id183-thirdId={tid}',{'id':'183','thirdId':tid}),
+              (f'id183-thirdid={tid}',{'id':'183','thirdid':tid}),
+              (f'id183-volume={vol}',{'id':'183','volume':vol}),
+              (f'id183-currentVolume=2026|{vol}',{'id':'183','currentVolume':f'2026|{vol}'}),
+              (f'id183-volume=2026|{vol}',{'id':'183','volume':f'2026|{vol}'}),
+              (f'id183-third_id+volume',{'id':'183','third_id':tid,'volume':vol}),
+              (f'id183-bangId={tid}',{'id':'183','bangId':tid}),
+            ]
+          results=[]
+          for label,q in cases:
+            x=fetch(q);results.append((label,x));print(label,json.dumps(x,ensure_ascii=False));time.sleep(.05)
+          ctrl=results[0][1]
+          diffs=[(l,x) for l,x in results[1:] if x.get('hash') and (x.get('hash')!=ctrl.get('hash') or x.get('pub')!=ctrl.get('pub') or x.get('currentVolume')!=ctrl.get('currentVolume'))]
+          print('DIFF_COUNT',len(diffs))
+          for l,x in diffs:print('DIFF',l,json.dumps(x,ensure_ascii=False))
+          PY
