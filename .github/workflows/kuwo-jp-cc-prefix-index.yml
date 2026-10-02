@@ -1,0 +1,72 @@
+name: Kuwo Japanese chart Common Crawl prefix index
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-cc-prefix-index.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Search prefix captures only
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import json,urllib.request,urllib.parse,re,pathlib,concurrent.futures
+          def get(u,t=8):
+            try:
+              q=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0'})
+              with urllib.request.urlopen(q,timeout=t) as r:return r.status,r.read().decode('utf-8','replace')
+            except Exception:return 0,''
+          st,txt=get('https://index.commoncrawl.org/collinfo.json',10)
+          colls=json.loads(txt) if st==200 else []
+          ids=[x['id'] for x in colls if x.get('id')]
+          chosen=[]
+          for x in ids[:10]:
+            if x not in chosen:chosen.append(x)
+          for y in range(2025,2015,-1):
+            x=next((z for z in ids if f'CC-MAIN-{y}-' in z),None)
+            if x and x not in chosen:chosen.append(x)
+          targets=[
+            ('bang_index','kuwo.cn/newh5/bang/index',200),
+            ('bang_index_m','m.kuwo.cn/newh5/bang/index',200),
+            ('rank_detail','m.kuwo.cn/newh5app/ranklist_detail/183',200),
+            ('ranklist','www.kuwo.cn/rankList/183',200),
+            ('ksong','kbangserver.kuwo.cn/ksong.s',800),
+            ('api_musiclist','www.kuwo.cn/api/www/bang/bang/musicList',800),
+          ]
+          def query(a):
+            idx,(label,target,limit)=a
+            p={'url':target,'matchType':'prefix','output':'json','filter':'status:200','collapse':'digest','limit':str(limit)}
+            st,txt=get(f'https://index.commoncrawl.org/{idx}-index?'+urllib.parse.urlencode(p),9)
+            rows=[]
+            if st==200:
+              for ln in txt.splitlines():
+                try:r=json.loads(ln)
+                except:continue
+                u=r.get('url','')
+                if label in ('ksong','api_musiclist'):
+                  if not re.search(r'(?:[?&](?:id|bangId|sourceid)=183(?:&|$))',u,re.I):continue
+                rows.append({k:r.get(k) for k in ['url','timestamp','digest','offset','length','filename','status','mime']})
+            return idx,label,target,st,rows
+          out=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+            for idx,label,target,st,rows in ex.map(query,[(i,t) for i in chosen for t in targets]):
+              if rows:
+                out.append({'index':idx,'label':label,'target':target,'rows':rows})
+                print('HIT',idx,label,len(rows))
+                for r in rows[:8]:print(' ',r['timestamp'],r['url'])
+          pathlib.Path('kuwo-jp-cc-prefix-index.json').write_text(json.dumps({'indexes':chosen,'hits':out},ensure_ascii=False,indent=2),encoding='utf-8')
+          print('BLOCKS',len(out),'ROWS',sum(len(x['rows']) for x in out))
+          PY
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kuwo-jp-cc-prefix-index
+          path: kuwo-jp-cc-prefix-index.json
+          if-no-files-found: ignore
+          retention-days: 7
