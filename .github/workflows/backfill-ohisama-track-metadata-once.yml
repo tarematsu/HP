@@ -36,6 +36,6 @@ jobs:
       - name: Backfill Ohisama canonical identities
         working-directory: worker
         run: node scripts/backfill-ohisama-track-metadata.mjs --apply
-      - name: Enrich missing Ohisama titles and artists from Spotify
+      - name: Enrich missing Ohisama titles and artists with Spotify page fallback
         working-directory: worker
         run: node scripts/enrich-ohisama-track-metadata.mjs
