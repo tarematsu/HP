@@ -20,6 +20,7 @@ const REQUEST_TIMEOUT_MS = 25_000;
 const MAX_RETRIES = 2;
 const DEFAULT_CONCURRENCY = 2;
 const DEFAULT_OUTPUT = 'artifacts/melon-jpop-history.json';
+const MIN_POPULATED_CHART_ROWS = 20;
 
 function argumentValue(name, argv = process.argv.slice(2)) {
   const prefix = `--${name}=`;
@@ -54,6 +55,14 @@ function periodUrls(period) {
 
 function compact(value) {
   return String(value || '').replaceAll('-', '');
+}
+
+function populatedChartRows(html) {
+  return (String(html || '').match(/<tr\b[^>]*data-song-no=["']\d+["'][\s\S]*?<\/tr>/gi) || []).length;
+}
+
+function isModernPeriodUrl(url) {
+  return /\/chart\/(?:week|month)\/index\.htm\?/i.test(String(url || ''));
 }
 
 function periodEvidence(period, html) {
@@ -107,14 +116,19 @@ export async function collectMelonHistoricalPeriod(period, fetchImpl = fetch) {
     try {
       const html = await fetchHtml(url, fetchImpl);
       const parsedPeriod = parsePeriod(period.type, html);
-      if (!periodMatches(period, parsedPeriod)) {
-        errors.push(`${url}: period mismatch (${JSON.stringify(parsedPeriod)}); evidence=${periodEvidence(period, html)}`);
+      const chartRows = populatedChartRows(html);
+      const validatedByPage = periodMatches(period, parsedPeriod);
+      const validatedByModernQuery = !parsedPeriod && isModernPeriodUrl(url) && chartRows >= MIN_POPULATED_CHART_ROWS;
+      if (!validatedByPage && !validatedByModernQuery) {
+        errors.push(`${url}: period mismatch (${JSON.stringify(parsedPeriod)}), chart_rows=${chartRows}; evidence=${periodEvidence(period, html)}`);
         continue;
       }
       return {
         ...period,
         status: 'ok',
         source_url: url,
+        validation: validatedByPage ? 'page_period' : 'query_with_populated_chart',
+        chart_rows: chartRows,
         entries: parseMelonJpopHistoryEntries(html),
       };
     } catch (error) {
