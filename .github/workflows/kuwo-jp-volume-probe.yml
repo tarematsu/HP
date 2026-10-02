@@ -1,0 +1,60 @@
+name: Inspect Kuwo Japanese chart volume fields
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-volume-probe.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Inspect volume/current_volume and test selectors
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import json,urllib.parse,urllib.request,time
+          BASE='https://kbangserver.kuwo.cn/ksong.s'
+          q0={'from':'pc','fmt':'json','pn':'0','rn':'5','type':'bang','data':'content','id':'183','show_copyright_off':'0','pcmp4':'1','isbang':'1','userid':'0'}
+          def get(extra=None):
+            q={**q0,**(extra or {})};u=BASE+'?'+urllib.parse.urlencode(q)
+            try:
+              req=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'})
+              with urllib.request.urlopen(req,timeout=8) as r:j=json.loads(r.read().decode('utf-8','replace'))
+              rows=j.get('musiclist') or j.get('musicList') or []
+              return j,[str(x.get('id') or x.get('rid')) for x in rows]
+            except Exception as e:return {'error':repr(e)},[]
+          j,sig=get()
+          print('TOP_KEYS',sorted(j.keys()) if isinstance(j,dict) else type(j))
+          for k in ['name','leader','term','info','pub','timestamp','num','volume','current_volume','currentVolume','volumes','period','periods']:
+            if isinstance(j,dict) and k in j: print('FIELD',k,json.dumps(j[k],ensure_ascii=False)[:20000])
+          print('CONTROL_SIG',sig)
+          # discover candidate historical selectors from volume structure if present
+          candidates=[]
+          def walk(x,path=''):
+            if isinstance(x,dict):
+              for k,v in x.items():
+                if str(k).lower() in ('id','second_id','secondid','third_id','thirdid','volume','current_volume') and not isinstance(v,(dict,list)):
+                  candidates.append((path+'/'+str(k),str(v)))
+                walk(v,path+'/'+str(k))
+            elif isinstance(x,list):
+              for i,v in enumerate(x):walk(v,path+f'/{i}')
+          if isinstance(j,dict): walk(j.get('volume'))
+          print('CANDIDATES',json.dumps(candidates[:100],ensure_ascii=False))
+          vals=[]
+          for p,v in candidates:
+            if v and v not in vals:vals.append(v)
+          # test a bounded set of likely selector names and values
+          keys=['volume','current_volume','currentVolume','volumeId','volume_id','second_id','secondId','third_id','thirdId','period','periodId','term']
+          for v in vals[:12]:
+            for k in keys:
+              jj,ss=get({k:v})
+              pub=jj.get('pub') if isinstance(jj,dict) else None
+              ts=jj.get('timestamp') if isinstance(jj,dict) else None
+              cv=jj.get('current_volume') if isinstance(jj,dict) else None
+              if ss and (ss!=sig or pub!=j.get('pub') or ts!=j.get('timestamp') or cv!=j.get('current_volume')):
+                print('DIFF',k,v,'pub',pub,'timestamp',ts,'current_volume',cv,'sig',ss)
+              time.sleep(.03)
+          PY
