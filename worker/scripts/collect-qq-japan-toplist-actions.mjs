@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 import { createWranglerRemoteR2 } from './remote-r2-json-adapter.mjs';
 import { enqueueGeniePublication } from './collect-genie-r2-actions.mjs';
 import {
@@ -88,6 +89,7 @@ export async function collectQqJapanToplistAttempt({
   now = Date.now(),
   fetchImpl = fetch,
   fetchChart = fetchQqJapanToplist,
+  bindings = {},
 }) {
   const cycle = qqJapanToplistCycleKey(now);
   const marker = await load(QQ_JAPAN_TOPLIST_MARKER_KEY);
@@ -129,6 +131,7 @@ export async function collectQqJapanToplistAttempt({
     previous,
     now,
     fetchImpl,
+    bindings,
   });
   if (snapshot.state?.status !== 'ok') {
     throw new Error(snapshot.state?.last_error_message || 'QQ Japan toplist snapshot failed');
@@ -182,14 +185,22 @@ async function main() {
   const root = resolve(import.meta.dirname, '..');
   const config = JSON.parse(readFileSync(join(root, 'wrangler.regional-music.jsonc'), 'utf8'));
   const bucket = config.r2_buckets.find((row) => row.binding === 'PAGES_RESPONSE_R2')?.bucket_name;
+  const minuteDatabase = config.d1_databases.find((row) => row.binding === 'MINUTE_DB')?.database_name;
   const account = process.env.CLOUDFLARE_ACCOUNT_ID;
   const token = process.env.CLOUDFLARE_API_TOKEN;
   if (!account || !token) throw new Error('Cloudflare account context missing');
+  if (!minuteDatabase) throw new Error('MINUTE_DB configuration missing');
 
+  const wranglerScript = join(root, 'node_modules/wrangler/bin/wrangler.js');
   const r2 = createWranglerRemoteR2({
     bucket,
     cwd:root,
-    wranglerScript:join(root, 'node_modules/wrangler/bin/wrangler.js'),
+    wranglerScript,
+  });
+  const minuteDb = createWranglerRemoteD1({
+    database:minuteDatabase,
+    cwd:root,
+    wranglerScript,
   });
   const published = await r2.get(pagesActionsR2ResponseKey('regional-music'));
   const envelope = published ? await published.json() : null;
@@ -210,7 +221,7 @@ async function main() {
     }));
   };
 
-  let result = await collectQqJapanToplistAttempt({ load, save });
+  let result = await collectQqJapanToplistAttempt({ load, save, bindings:{ MINUTE_DB:minuteDb } });
 
   if (['collected','needs_publication'].includes(result.status)) {
     const api = async (path, body) => {
