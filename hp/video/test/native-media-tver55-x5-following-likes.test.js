@@ -107,13 +107,14 @@ test('X waits without interaction until the authenticated Following tab exists',
   assert.doesNotMatch(waiting, /scrollTo\(|scrollBy\(/);
 });
 
-test('X likes use Following DOM clicks, require five existing likes, and randomize pre-click waits', () => {
+test('X likes use Following DOM clicks without an existing-like-count threshold and randomize pre-click waits', () => {
   assert.match(xRuntime, /\^\(\?:Following\|フォロー中\)\$/);
   assert.match(xRuntime, /tab\.click\(\)/);
   assert.match(xRuntime, /button\.click\(\)/);
   assert.match(xRuntime, /const likeWaitChoicesMs = \[5 \* 1000, 10 \* 1000, 15 \* 1000, 20 \* 1000\]/);
-  assert.match(xRuntime, /const minimumExistingLikes = 5/);
-  assert.match(xRuntime, /existingLikeCount\(article\) < minimumExistingLikes/);
+  assert.doesNotMatch(xRuntime, /minimumExistingLikes/);
+  assert.doesNotMatch(xRuntime, /existingLikeCount/);
+  assert.doesNotMatch(xRuntime, /parseCompactCount/);
   assert.match(xRuntime, /Math\.floor\(Math\.random\(\) \* likeWaitChoicesMs\.length\)/);
   assert.match(xRuntime, /state\.result = 'waiting-before-like'/);
   assert.match(xRuntime, /await sleep\(waitMs\)/);
