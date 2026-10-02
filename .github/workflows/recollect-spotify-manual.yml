@@ -8,7 +8,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: spotify-manual-collection
+  group: spotify-manual-collection-recovery-20261002
   cancel-in-progress: true
 jobs:
   recollect:
