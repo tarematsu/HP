@@ -26,12 +26,16 @@ async function persistCandidateTracks(db, message, tracks, collectedAt) {
   const resolvedTracks = await resolveCanonicalSpotifyTracks(db, tracks, collectedAt);
   const writes = [];
   for (const track of resolvedTracks) {
+    if (!track.identity_cached) {
+      writes.push(
+        db.prepare(`INSERT OR IGNORE INTO sh_spotify_tracks (
+            track_id,album_id,name,disc_number,track_number,duration_ms,artists_json,updated_at
+          ) VALUES (?,?,?,?,?,?,?,?)`)
+          .bind(track.track_id, message.album_id, track.name, track.disc_number,
+            track.track_number, track.duration_ms, track.artists_json, collectedAt),
+      );
+    }
     writes.push(
-      db.prepare(`INSERT OR IGNORE INTO sh_spotify_tracks (
-          track_id,album_id,name,disc_number,track_number,duration_ms,artists_json,updated_at
-        ) VALUES (?,?,?,?,?,?,?,?)`)
-        .bind(track.track_id, message.album_id, track.name, track.disc_number,
-          track.track_number, track.duration_ms, track.artists_json, collectedAt),
       db.prepare(`INSERT INTO sh_spotify_playcount_candidates (
           snapshot_date,run_token,track_id,album_id,playcount,collected_at
         ) SELECT ?,?,?,?,?,? WHERE EXISTS (

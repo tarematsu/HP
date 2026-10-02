@@ -2,7 +2,7 @@ import { attachStationheadTrackIds } from './spotify-stationhead-identity.js';
 
 const QUERY_CHUNK_SIZE = 80;
 const WRITE_CHUNK_SIZE = 50;
-const IDENTITY_SEEN_REFRESH_MS = 12 * 60 * 60 * 1000;
+const IDENTITY_SEEN_REFRESH_MS = 7 * 24 * 60 * 60 * 1000;
 const LEGACY_ALIAS_BOOTSTRAP_KEY = 'legacy-alias-bootstrap-v1';
 const LEGACY_ALIAS_BOOTSTRAP_WINDOW = 100;
 let aliasBootstrapComplete = false;
@@ -63,16 +63,80 @@ export function spotifySongKey(track) {
   return `song:v2:${name}\u001f${artistIds.join(',')}`;
 }
 
+async function readKnownAliases(db, keyedTracks) {
+  const sourceTrackIds = [...new Set(keyedTracks
+    .map(({ track }) => String(track?.track_id || '').trim())
+    .filter(Boolean))];
+  const aliasBySourceTrackId = new Map();
+  for (const group of chunks(sourceTrackIds, QUERY_CHUNK_SIZE)) {
+    const placeholders = group.map(() => '?').join(',');
+    const result = await db.prepare(`SELECT
+        source_track_id,song_key,canonical_track_id,last_seen_at
+      FROM sh_spotify_track_aliases
+      WHERE source_track_id IN (${placeholders})`)
+      .bind(...group)
+      .all();
+    for (const row of rowsOf(result)) {
+      aliasBySourceTrackId.set(String(row.source_track_id), {
+        songKey: String(row.song_key || ''),
+        canonicalTrackId: String(row.canonical_track_id || ''),
+        lastSeenAt: Number(row.last_seen_at || 0),
+      });
+    }
+  }
+  return aliasBySourceTrackId;
+}
+
+function canonicalizedTrack(track, canonicalTrackId, identityCached) {
+  const artistIds = normalizedArtistIds(track?.artists_json);
+  return {
+    ...track,
+    source_track_id: String(track.track_id),
+    track_id: canonicalTrackId,
+    artists_json: artistIds.length
+      ? JSON.stringify(artistIds)
+      : String(track?.artists_json || '[]'),
+    identity_cached: identityCached,
+  };
+}
+
 export async function resolveCanonicalSpotifyTracks(db, tracks, seenAt) {
-  const identifiedTracks = await attachStationheadTrackIds(tracks);
-  const keyedTracks = (identifiedTracks || []).map((track) => ({
+  const keyedTracks = (tracks || []).map((track) => ({
     track,
     songKey: spotifySongKey(track),
   }));
   if (!keyedTracks.length) return [];
 
+  const aliasBySourceTrackId = await readKnownAliases(db, keyedTracks);
+  const resolved = new Array(keyedTracks.length);
+  const pending = [];
+  const refreshCutoff = Number(seenAt) - IDENTITY_SEEN_REFRESH_MS;
+
+  for (const [index, entry] of keyedTracks.entries()) {
+    const sourceTrackId = String(entry.track?.track_id || '').trim();
+    const alias = aliasBySourceTrackId.get(sourceTrackId);
+    const stableAlias = alias
+      && alias.songKey === entry.songKey
+      && alias.canonicalTrackId
+      && Number.isFinite(alias.lastSeenAt)
+      && alias.lastSeenAt > refreshCutoff;
+    if (stableAlias) {
+      resolved[index] = canonicalizedTrack(entry.track, alias.canonicalTrackId, true);
+    } else {
+      pending.push({ index, ...entry });
+    }
+  }
+
+  if (!pending.length) return resolved;
+
+  const identifiedTracks = await attachStationheadTrackIds(pending.map(({ track }) => track));
+  const pendingKeyedTracks = pending.map((entry, index) => ({
+    ...entry,
+    track: identifiedTracks[index],
+  }));
+
   const initialCanonicalByKey = new Map();
-  for (const { track, songKey } of keyedTracks) {
+  for (const { track, songKey } of pendingKeyedTracks) {
     if (!initialCanonicalByKey.has(songKey)) {
       initialCanonicalByKey.set(songKey, String(track.track_id));
     }
@@ -103,7 +167,7 @@ export async function resolveCanonicalSpotifyTracks(db, tracks, seenAt) {
     throw new Error('Spotify song identity resolution was incomplete');
   }
 
-  await batchWrites(db, keyedTracks.map(({ track, songKey }) => {
+  await batchWrites(db, pendingKeyedTracks.map(({ track, songKey }) => {
     const sourceTrackId = String(track.track_id);
     const canonicalTrackId = canonicalByKey.get(songKey);
     const stationheadTrackId = positiveInteger(track?.stationhead_track_id);
@@ -138,17 +202,10 @@ export async function resolveCanonicalSpotifyTracks(db, tracks, seenAt) {
       );
   }));
 
-  return keyedTracks.map(({ track, songKey }) => {
-    const artistIds = normalizedArtistIds(track?.artists_json);
-    return {
-      ...track,
-      source_track_id: String(track.track_id),
-      track_id: canonicalByKey.get(songKey),
-      artists_json: artistIds.length
-        ? JSON.stringify(artistIds)
-        : String(track?.artists_json || '[]'),
-    };
-  });
+  for (const { index, track, songKey } of pendingKeyedTracks) {
+    resolved[index] = canonicalizedTrack(track, canonicalByKey.get(songKey), false);
+  }
+  return resolved;
 }
 
 export function resetSpotifyAliasBootstrapVerification() {
