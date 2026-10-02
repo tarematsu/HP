@@ -1,0 +1,55 @@
+name: Map older Kuwo Japanese chart bangids
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-bangid-map-wide.yml]
+permissions:
+  contents: read
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - start: 252000
+            end: 256000
+          - start: 256000
+            end: 260000
+          - start: 260000
+            end: 264000
+          - start: 264000
+            end: 268000
+    steps:
+      - name: Scan bangids for volumes 180-215
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import concurrent.futures,json,os,urllib.parse,urllib.request,time
+          BASE='https://kbangserver.kuwo.cn/ksong.s'
+          H={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'}
+          common={'from':'pc','fmt':'json','pn':'0','rn':'1','type':'bang','data':'content','id':'183','show_copyright_off':'0','pcmp4':'1','isbang':'1','userid':'0'}
+          start=int('${{ matrix.start }}'); end=int('${{ matrix.end }}')
+          targets={f'2026|{v}' for v in range(180,216)}
+          def probe(bid):
+            u=BASE+'?'+urllib.parse.urlencode({**common,'bangid':str(bid)})
+            try:
+              q=urllib.request.Request(u,headers=H)
+              with urllib.request.urlopen(q,timeout=4) as r:j=json.loads(r.read().decode('utf-8','replace'))
+              cv=j.get('currentVolume')
+              if cv in targets:
+                rows=j.get('musiclist') or j.get('musicList') or []
+                top=rows[0] if rows else {}
+                return {'bangid':bid,'currentVolume':cv,'top1':{'name':top.get('name'),'artist':top.get('artist')}}
+            except Exception:
+              pass
+            return None
+          hits=[]; t=time.time()
+          with concurrent.futures.ThreadPoolExecutor(max_workers=24) as ex:
+            for x in ex.map(probe,range(start,end)):
+              if x:
+                hits.append(x); print('HIT',json.dumps(x,ensure_ascii=False),flush=True)
+          hits.sort(key=lambda x:int(x['currentVolume'].split('|')[1]))
+          print('SUMMARY',start,end,'count',len(hits),'elapsed',round(time.time()-t,1),json.dumps(hits,ensure_ascii=False))
+          PY
