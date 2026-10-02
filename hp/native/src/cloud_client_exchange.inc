@@ -1,4 +1,3 @@
-#include "spotify_artist_chart_capture_spool.h"
 #include "stationhead_leaderboard_capture_spool.h"
 #include "stationhead_leaderboard_diagnostics.h"
 
@@ -60,17 +59,6 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
     for (size_t index = 0; index < leaderboardCapture.size(); ++index) {
       if (index != 0) body.push_back(',');
       body += leaderboardCapture[index];
-    }
-    body.push_back(']');
-  }
-
-  const std::vector<std::string> spotifyArtistChartCapture =
-      spotify_artist_chart_capture_spool::ReadBatch();
-  if (!spotifyArtistChartCapture.empty()) {
-    body += ",\"spotifyArtistChart\":[";
-    for (size_t index = 0; index < spotifyArtistChartCapture.size(); ++index) {
-      if (index != 0) body.push_back(',');
-      body += spotifyArtistChartCapture[index];
     }
     body.push_back(']');
   }
@@ -170,27 +158,6 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
       }
     } catch (...) {
       // Keep the capture spool for the next exchange if acknowledgement is malformed.
-    }
-  }
-
-  if (!spotifyArtistChartCapture.empty() && root.HasKey(L"spotifyArtistChart") &&
-      root.GetNamedValue(L"spotifyArtistChart").ValueType() == JsonValueType::Object) {
-    try {
-      const JsonObject receipt = root.GetNamedObject(L"spotifyArtistChart");
-      const bool reported = receipt.GetNamedBoolean(L"reported", false);
-      const double acceptedValue = receipt.GetNamedNumber(L"accepted", 0);
-      size_t accepted = 0;
-      if (acceptedValue > 0 && std::isfinite(acceptedValue) &&
-          std::trunc(acceptedValue) == acceptedValue &&
-          acceptedValue <= static_cast<double>(spotifyArtistChartCapture.size())) {
-        accepted = static_cast<size_t>(acceptedValue);
-      }
-      if (reported && accepted > 0) {
-        spotify_artist_chart_capture_spool::Acknowledge(
-            spotifyArtistChartCapture, accepted);
-      }
-    } catch (...) {
-      // Keep chart records for the next exchange when acknowledgement is malformed.
     }
   }
   return translated;
