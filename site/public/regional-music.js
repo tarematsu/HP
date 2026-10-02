@@ -50,7 +50,7 @@ const STATUS_LABELS = Object.freeze({
 
 const COMPACT_CHART_CADENCE = Object.freeze({
   qq_music: '毎日 00:00 JST',
-  kugou_music: '毎週月曜 00:00 JST',
+  kugou_music: '平日11:30',
 });
 
 const OUT_OF_CHART_RANK = 101;
@@ -85,16 +85,9 @@ function providerDate(value) {
   return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : '';
 }
 
-function providerDateTimeText(value) {
-  const text = String(value || '').trim();
-  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}):(\d{2}))?/);
-  if (!match) return '-';
-  return `${match[1]}/${match[2]}/${match[3]}${match[4] ? ` ${match[4]}:${match[5]}:${match[6]}` : ''}`;
-}
-
-function providerShortDate(value) {
+function providerDateText(value) {
   const date = providerDate(value);
-  return date ? `${date.slice(5, 7)}/${date.slice(8, 10)}` : String(value || '');
+  return date ? date.replaceAll('-', '/') : String(value || '-');
 }
 
 function providerWeekdays(startValue, endValue) {
@@ -367,7 +360,7 @@ function renderKugouHistory(payload, service) {
     emptyClass: 'regional-music-rank-empty',
     emptyText: 'Kugou Music 日本榜の順位履歴はまだありません。',
     rankLabel: (rank) => rank === OUT_OF_CHART_RANK ? '圏外' : `${rank}位`,
-    dateLabel: providerShortDate,
+    dateLabel: providerDateText,
     latestPoint: { radius: () => 2.5 },
     legendContainer: byId('kugouJapanRankLegend'),
   });
@@ -378,17 +371,16 @@ function renderKugouHistory(payload, service) {
     .filter((item) => kugouArtistVisible(item?.canonical_artist))
     .sort((a, b) => String(b.published_at || '').localeCompare(String(a.published_at || '')) || Number(a.rank) - Number(b.rank));
   if (!ordered.length) {
-    appendEmptyTableRow(body, 'Kugou Music 日本榜のランクイン履歴はありません。', 5);
+    appendEmptyTableRow(body, 'Kugou Music 日本榜のランクイン履歴はありません。', 4);
     return;
   }
   for (const item of ordered) {
     const rank = Number(item.rank);
     body.append(row([
-      providerDateTimeText(item.published_at),
+      providerDateText(item.published_at),
       ARTIST_LABELS[item.canonical_artist] || item.canonical_artist || '-',
       Number.isFinite(rank) ? (rank >= OUT_OF_CHART_RANK ? '圏外' : `${integerFormat.format(rank)}位`) : '-',
       item.title || '-',
-      Number.isFinite(Number(item.issue)) ? `第${integerFormat.format(Number(item.issue))}期` : '-',
     ]));
   }
 }
