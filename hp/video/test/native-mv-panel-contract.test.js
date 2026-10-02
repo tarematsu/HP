@@ -70,7 +70,7 @@ test('YouTube and TVer reuse one profile and navigate the same controller', () =
   assert.match(mediaHost, /put_IsInPrivateModeEnabled\(FALSE\)/);
   assert.match(mediaBase, /kNativeMediaYoutubeContentPhaseMs = 60U \* 60U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaTverContentDurationMs = 58U \* 60U \* 1000U/);
-  assert.match(mediaBase, /kNativeMediaXPhaseMs = 1U \* 60U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaXPhaseMs = 2U \* 60U \* 1000U/);
   assert.match(mediaHost, /Phase::YouTube \? SwitchToTver\(\) : SwitchToYouTube\(\)/);
   assert.doesNotMatch(
     mediaHost,

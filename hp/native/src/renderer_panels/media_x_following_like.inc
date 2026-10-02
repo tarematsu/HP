@@ -7,7 +7,7 @@ LR"JS(
       (window.__homePanelXLikeRuntime = {});
   if (state.started) return true;
   state.started = true;
-  const deadline = performance.now() + 60 * 1000;
+  const deadline = performance.now() + 120 * 1000;
   const likeWaitChoicesMs = [5 * 1000, 10 * 1000, 15 * 1000];
   const maxLikeAttemptsPerPost = 3;
   const pauseAfterLikeMs = 800;
@@ -39,7 +39,7 @@ LR"JS(
     try { startupUntil = Number(sessionStorage.getItem(startupKey) || 0); }
     catch (_) {}
     if (!Number.isFinite(startupUntil) || startupUntil <= Date.now()) {
-      startupUntil = Date.now() + 60 * 1000;
+      startupUntil = Date.now() + 120 * 1000;
       try { sessionStorage.setItem(startupKey, String(startupUntil)); }
       catch (_) {}
     }

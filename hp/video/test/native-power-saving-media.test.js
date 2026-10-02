@@ -68,10 +68,10 @@ int main() {
   Host h;
   h.ForceAllXSlots(false);
   h.ArmPhaseTimer();
-  assert(timers[kNativeMediaPhaseTimer] == 62 * minute);
-  assert(timers[kNativeMediaXStartTimer] == 61 * minute);
+  assert(timers[kNativeMediaPhaseTimer] == 64 * minute);
+  assert(timers[kNativeMediaXStartTimer] == 62 * minute);
   h.OnTimer(kNativeMediaXStartTimer);
-  assert(!h.xPhaseActive_ && timers[kNativeMediaXStartTimer] == 61 * minute);
+  assert(!h.xPhaseActive_ && timers[kNativeMediaXStartTimer] == 62 * minute);
   tick += 30 * minute;
   gNativeMediaPowerSaving = true;
   h.ApplyPowerSavingMode();
@@ -87,7 +87,7 @@ int main() {
   tick += 20 * minute;
   gNativeMediaPowerSaving = false;
   h.ApplyPowerSavingMode();
-  assert(timers[kNativeMediaPhaseTimer] == 39 * minute);
+  assert(timers[kNativeMediaPhaseTimer] == 40 * minute);
   assert(timers[kNativeMediaXStartTimer] == 38 * minute);
   tick += 38 * minute;
   h.OnTimer(kNativeMediaXStartTimer);
@@ -97,7 +97,7 @@ int main() {
   assert(!h.xPhaseActive_);
   assert(timers[kNativeMediaPhaseTimer] == 2 * minute);
   assert(h.navigations == 2); // enter X, then restore TVer
-  tick += minute;
+  tick += 2 * minute;
   gNativeMediaPowerSaving = false;
   h.ApplyPowerSavingMode();
   assert(h.phase_ == Host::Phase::YouTube); // expired normal phase advances

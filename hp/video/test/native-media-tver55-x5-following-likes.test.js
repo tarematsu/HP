@@ -29,7 +29,7 @@ test('media cycle randomly selects one or two X slots once per X-YouTube-X-TVer 
   assert.match(mediaBase, /NativeMediaXSlotEnabled\(false\)/);
 });
 
-test('unused X slots are skipped instead of displaying the current media for an extra minute', () => {
+test('unused X slots are skipped instead of displaying the current media for an extra two minutes', () => {
   assert.match(mediaBase, /return startupPrefix \+ youtubeContentDurationMs \+ 1000U/);
   assert.match(mediaBase, /return tverContentDurationMs \+ 1000U/);
   assert.match(
@@ -45,7 +45,7 @@ test('unused X slots are skipped instead of displaying the current media for an 
 });
 
 test('startup reserves the first X slot only when that slot is selected', () => {
-  assert.match(mediaBase, /kNativeMediaStartupXPhaseMs = 1U \* 60U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaStartupXPhaseMs = 2U \* 60U \* 1000U/);
   assert.match(mediaBase, /https:\/\/x\.com\/home\?homepanel=startup/);
   assert.match(mediaBase, /NativeMediaStartupYoutubePhaseActive/);
   assert.match(mediaBase, /const bool startupXEnabled = NativeMediaXSlotEnabled\(true\)/);
@@ -53,7 +53,7 @@ test('startup reserves the first X slot only when that slot is selected', () => 
   assert.match(mediaBase, /return startupPrefix \+ youtubeContentDurationMs \+ tailX/);
   assert.match(xRuntime, /homepanel:startup-x-until:v2/);
   assert.match(xRuntime, /homepanel=startup/);
-  assert.match(xRuntime, /Date\.now\(\) \+ 60 \* 1000/);
+  assert.match(xRuntime, /Date\.now\(\) \+ 120 \* 1000/);
   assert.match(xRuntime, /location\.assign\(youtubeStart\)/);
 });
 
@@ -65,7 +65,8 @@ test('YouTube draws one stable 45-75 minute content duration and can hand off to
   assert.match(mediaBase, /plan\.youtubeContentDurationMs = youtubeMinutes \* 60U \* 1000U/);
   assert.match(mediaBase, /UINT NativeMediaCurrentYoutubeContentDurationMs\(\) noexcept/);
   assert.match(mediaBase, /const UINT youtubeContentDurationMs = NativeMediaCurrentYoutubeContentDurationMs\(\)/);
-  assert.match(mediaBase, /kNativeMediaXPhaseMs = 1U \* 60U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaXPhaseMs = 2U \* 60U \* 1000U/);
+  assert.match(xRuntime, /const deadline = performance\.now\(\) \+ 120 \* 1000/);
   assert.doesNotMatch(youtubePolicy, /media_youtube_x_transition/);
   assert.match(host, /ArmTimer\(kNativeMediaXStartTimer, xRemaining\)/);
   assert.match(host, /Navigate\(L"https:\/\/x\.com\/home"\)/);
