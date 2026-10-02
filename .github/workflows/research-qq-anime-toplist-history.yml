@@ -1,0 +1,51 @@
+name: Research QQ Music anime chart history
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/research-qq-anime-toplist-history.yml'
+      - 'worker/scripts/research-qq-anime-toplist-history.mjs'
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: Earliest date to scan (YYYY-MM-DD)
+        required: false
+        default: '2018-01-01'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qq-music-anime-history-research
+  cancel-in-progress: false
+
+jobs:
+  research:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      QQ_ANIME_HISTORY_START: ${{ inputs.start_date || '2018-01-01' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Scan QQ Music 动漫音乐榜 history
+        working-directory: worker
+        run: node scripts/research-qq-anime-toplist-history.mjs
+
+      - name: Upload research result
+        uses: actions/upload-artifact@v4
+        with:
+          name: qq-anime-toplist-history
+          path: worker/artifacts/qq-anime-toplist-history.json
+          retention-days: 30
