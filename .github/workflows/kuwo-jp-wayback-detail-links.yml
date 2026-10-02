@@ -1,0 +1,93 @@
+name: Recover Kuwo Japanese chart historical detail links
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-wayback-detail-links.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Extract ID 183 detail URLs and query Wayback
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import urllib.request,urllib.parse,re,html,json,concurrent.futures,itertools
+          snaps=[
+            ('2020-06-12','20200612130922','http://m.kuwo.cn/newh5/bang/index'),
+            ('2022-09-04','20220904135022','http://kuwo.cn/newh5/bang/index'),
+            ('2025-01-23','20250123175218','http://kuwo.cn/newh5/bang/index'),
+          ]
+          def get(u,t=12):
+            try:
+              q=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0'})
+              with urllib.request.urlopen(q,timeout=t) as r:return r.status,r.geturl(),r.read().decode('utf-8','replace')
+            except Exception as e:return 0,u,''
+          candidates=[]
+          for label,ts,orig in snaps:
+            st,url,b=get(f'https://web.archive.org/web/{ts}id_/{orig}',15)
+            u=html.unescape(b)
+            p=u.find('酷我日语榜')
+            print('\nPAGE',label,'status',st,'pos',p,'bytes',len(b))
+            if p>=0:
+              raw=u[max(0,p-5000):p+5000]
+              print('RAW',re.sub(r'\s+',' ',raw)[:7000])
+              # Extract all quoted strings and hrefs nearby that mention 183/bid/bang/content
+              vals=set(re.findall(r'["\']([^"\']+)["\']',raw))
+              for v in sorted(vals):
+                if re.search(r'(183|bid=|bang|content)',v,re.I):
+                  print('CAND',v)
+                  candidates.append((label,ts,orig,v))
+          # Add route hypotheses seen in old pages.
+          route_hyp=[]
+          hosts=['http://m.kuwo.cn','https://m.kuwo.cn','http://kuwo.cn','https://kuwo.cn','http://www.kuwo.cn','https://www.kuwo.cn']
+          paths=[
+            '/newh5/bang/content?bid=183',
+            '/newh5/bang/content?bangId=183',
+            '/newh5/bang/content?id=183',
+            '/newh5app/ranklist_detail/183',
+            '/rankList/183',
+          ]
+          for h,p in itertools.product(hosts,paths):route_hyp.append(h+p)
+          # Normalize extracted relative URLs.
+          extracted=[]
+          for label,ts,orig,v in candidates:
+            if v.startswith('http'): extracted.append(v)
+            elif v.startswith('/'):
+              po=urllib.parse.urlparse(orig); extracted.append(f'{po.scheme}://{po.netloc}{v}')
+            elif 'content?' in v or 'bang/' in v:
+              extracted.append(urllib.parse.urljoin(orig,v))
+          targets=list(dict.fromkeys(extracted+route_hyp))
+          dates=['20200612','20220904','20250123']
+          def avail(x):
+            target,date=x
+            u='https://archive.org/wayback/available?'+urllib.parse.urlencode({'url':target,'timestamp':date})
+            st,_,txt=get(u,7)
+            if st!=200:return None
+            try:c=(json.loads(txt).get('archived_snapshots') or {}).get('closest') or {}
+            except:return None
+            return (target,date,c) if c.get('available') else None
+          found=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
+            for z in ex.map(avail,itertools.product(targets,dates)):
+              if z:found.append(z)
+          seen=set()
+          for target,date,c in found:
+            k=(c.get('timestamp'),c.get('url'))
+            if k in seen:continue
+            seen.add(k)
+            print('FOUND',date,target,'=>',json.dumps(c,ensure_ascii=False))
+            # Fetch snapshot and print if it looks like Japanese chart detail.
+            snap=c.get('url','').replace('http://web.archive.org','https://web.archive.org')
+            st,u,b=get(snap.replace('/web/','/web/').replace('/http','id_/http',1) if False else snap,12)
+            marker=any(x in b for x in ['酷我日语榜','宇多田','チノカテ','Plazma'])
+            print(' DETAIL_STATUS',st,'bytes',len(b),'marker',marker,'url',u)
+            if marker:
+              s=html.unescape(b); s=re.sub(r'<script\b[^>]*>.*?</script>',' ',s,flags=re.I|re.S); s=re.sub(r'<style\b[^>]*>.*?</style>',' ',s,flags=re.I|re.S); s=re.sub(r'<[^>]+>',' ',s); s=re.sub(r'\s+',' ',s)
+              pos=max(s.find('酷我日语榜'),0)
+              print(' DETAIL_TEXT',s[pos:pos+7000])
+          print('TARGETS',len(targets),'FOUND_UNIQUE',len(seen))
+          PY
