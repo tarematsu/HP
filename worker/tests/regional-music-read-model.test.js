@@ -41,6 +41,23 @@ test('regional music read model normalizes collector health and implemented serv
   assert.deepEqual(payload.services[1].metrics, []);
 });
 
+test('regional read model includes complete Kugou Japan chart seed and coverage boundary', () => {
+  const payload = regionalMusicReadModelPayload({}, 456);
+  const history = payload.kugou_japan_chart.history;
+  const counts = history.reduce((map, item) => map.set(item.canonical_artist, (map.get(item.canonical_artist) || 0) + 1), new Map());
+  const best = (artist) => Math.min(...history.filter((item) => item.canonical_artist === artist).map((item) => item.rank));
+
+  assert.equal(history.length, 115);
+  assert.equal(payload.kugou_japan_chart.coverage.oldest_available, '2024-10-31 10:10:01');
+  assert.equal(payload.kugou_japan_chart.coverage.latest_available, '2026-09-30 10:10:01');
+  assert.equal(counts.get('sakurazaka46'), 53);
+  assert.equal(counts.get('nogizaka46'), 56);
+  assert.equal(counts.get('hinatazaka46'), 6);
+  assert.equal(best('sakurazaka46'), 19);
+  assert.equal(best('nogizaka46'), 2);
+  assert.equal(best('hinatazaka46'), 8);
+});
+
 test('YouTube Music collector metadata exposes free public metrics without account-only fields', () => {
   const payload = regionalMusicReadModelPayload({
     artists: [{
@@ -117,6 +134,7 @@ test('regional music publication writes one compact R2 object', async () => {
   assert.equal(writes[0].cadence, 86400);
   assert.equal(writes[0].body.releases.length, 1);
   assert.equal(writes[0].body.playlist_memberships.length, 1);
+  assert.equal(writes[0].body.kugou_japan_chart.history.length, 115);
   assert.deepEqual(writes[0].body.services[0].metrics, ['artist_likes']);
   assert.deepEqual(result, {
     storage: 'r2',
@@ -127,5 +145,6 @@ test('regional music publication writes one compact R2 object', async () => {
     playlists: 1,
     playlist_memberships: 1,
     services: 1,
+    kugou_japan_chart_entries: 115,
   });
 });
