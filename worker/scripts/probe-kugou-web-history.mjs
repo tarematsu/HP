@@ -7,37 +7,95 @@ const cases = [
   { volid: 84646, expected_date: '2024-10-03' },
   { volid: 84901, expected_date: '2024-10-11' },
 ];
-const aliases = ['櫻坂46','桜坂46','Sakurazaka46','樱坂46','日向坂46','Hinatazaka46','乃木坂46','Nogizaka46'];
+const aliases = {
+  sakurazaka46: ['櫻坂46','桜坂46','Sakurazaka46','樱坂46'],
+  hinatazaka46: ['日向坂46','Hinatazaka46'],
+  nogizaka46: ['乃木坂46','Nogizaka46'],
+};
 const hosts = ['https://pc.service.kugou.com','https://www2.kugou.kugou.com'];
 
-function snippets(text, needle, radius = 220) {
-  const out = [];
-  let from = 0;
-  const lower = text.toLowerCase();
-  const target = needle.toLowerCase();
-  while (out.length < 8) {
-    const i = lower.indexOf(target, from);
-    if (i < 0) break;
-    out.push(text.slice(Math.max(0, i - radius), Math.min(text.length, i + target.length + radius)).replace(/\s+/g, ' '));
-    from = i + target.length;
-  }
-  return out;
+function normalize(value) {
+  return String(value || '').normalize('NFKC').toLocaleLowerCase('en-US').replace(/\s+/g, '');
 }
 
-function extractInteresting(text) {
+function groupFor(entry) {
+  const haystack = normalize([entry?.singername, entry?.author_name, entry?.filename, entry?.songname].filter(Boolean).join(' '));
+  for (const [group, names] of Object.entries(aliases)) {
+    if (names.some((name) => haystack.includes(normalize(name)))) return group;
+  }
+  return null;
+}
+
+function extractJsonArrayAfter(text, marker) {
+  const markerIndex = text.indexOf(marker);
+  if (markerIndex < 0) return null;
+  const start = text.indexOf('[', markerIndex + marker.length);
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') { inString = true; continue; }
+    if (ch === '[') depth += 1;
+    else if (ch === ']') {
+      depth -= 1;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+function parseFeatures(text) {
+  const raw = extractJsonArrayAfter(text, 'global.features');
+  if (!raw) return { entries: [], error: 'global.features not found' };
+  try { return { entries: JSON.parse(raw), error: null }; }
+  catch (error) { return { entries: [], error: String(error) }; }
+}
+
+function titleFor(entry) {
+  const song = String(entry?.songname || '').trim();
+  if (song) return song;
+  const filename = String(entry?.filename || '').trim();
+  const singer = String(entry?.singername || '').trim();
+  if (singer && filename.startsWith(`${singer} - `)) return filename.slice(singer.length + 3);
+  const split = filename.indexOf(' - ');
+  return split >= 0 ? filename.slice(split + 3) : filename;
+}
+
+function singerFor(entry) {
+  const singer = String(entry?.singername || '').trim();
+  if (singer) return singer;
+  const filename = String(entry?.filename || '').trim();
+  const split = filename.indexOf(' - ');
+  return split >= 0 ? filename.slice(0, split) : '';
+}
+
+function pageData(text) {
   const date = text.match(/(20\d{2})[-\/.年](\d{1,2})[-\/.月](\d{1,2})/)?.[0] || null;
-  const markers = {};
-  for (const key of ['rankinfo','global.features','songs','songlist','rankList','rank_list','filename','songname','singername']) {
-    const i = text.toLowerCase().indexOf(key.toLowerCase());
-    if (i >= 0) markers[key] = text.slice(Math.max(0, i - 180), Math.min(text.length, i + 900)).replace(/\s+/g,' ');
-  }
-  const alias_hits = {};
-  for (const alias of aliases) {
-    const hit = snippets(text, alias);
-    if (hit.length) alias_hits[alias] = hit;
-  }
-  const links = [...text.matchAll(/href=["']([^"']*31312[^"']*)["']/gi)].slice(0,80).map(m=>m[1]);
-  return { date, markers, alias_hits, rank_links: [...new Set(links)] };
+  const parsed = parseFeatures(text);
+  const matches = parsed.entries.map((entry, index) => ({ entry, index })).flatMap(({ entry, index }) => {
+    const group = groupFor(entry);
+    if (!group) return [];
+    return [{
+      group,
+      rank: index + 1,
+      singer: singerFor(entry),
+      title: titleFor(entry),
+      album_id: entry?.album_id ?? null,
+      album_audio_id: entry?.album_audio_id ?? null,
+      audio_id: entry?.audio_id ?? entry?.scid ?? null,
+      hash: entry?.hash ?? entry?.HASH ?? null,
+      last_day_rank: entry?.last_day_rank ?? null,
+    }];
+  });
+  return { date, feature_count: parsed.entries.length, parse_error: parsed.error, matches };
 }
 
 const out = { observed_at: new Date().toISOString(), rank_id: RANK_ID, pages: [] };
@@ -48,7 +106,7 @@ for (const item of cases) {
       try {
         const response = await fetch(url, { redirect:'follow', headers:{ 'user-agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140 Safari/537.36', accept:'text/html,application/xhtml+xml' }});
         const text = await response.text();
-        out.pages.push({ expected_date:item.expected_date, volid:item.volid, host, version, url, final_url:response.url, status:response.status, ok:response.ok, length:text.length, content_type:response.headers.get('content-type'), ...extractInteresting(text), head:text.slice(0,500).replace(/\s+/g,' ') });
+        out.pages.push({ expected_date:item.expected_date, volid:item.volid, host, version, url, final_url:response.url, status:response.status, ok:response.ok, length:text.length, content_type:response.headers.get('content-type'), ...pageData(text) });
       } catch (error) {
         out.pages.push({ expected_date:item.expected_date, volid:item.volid, host, version, url, ok:false, error:String(error?.stack || error) });
       }
