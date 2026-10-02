@@ -50,6 +50,7 @@ const STATUS_LABELS = Object.freeze({
 
 const COMPACT_CHART_CADENCE = Object.freeze({
   qq_music: '毎日 00:00 JST',
+  netease_cloud_music: '毎週火曜（NetEase公式榜更新）',
   kugou_music: '毎週月曜 00:00 JST',
 });
 
@@ -252,7 +253,7 @@ function renderHealth(state) {
 }
 
 function compactChartMode(service) {
-  return service === 'qq_music' || service === 'kugou_music';
+  return service === 'qq_music' || service === 'netease_cloud_music' || service === 'kugou_music';
 }
 
 function setCompactChartMode(service) {
