@@ -248,7 +248,6 @@ export async function publishRegionalMusicReadModel(env, updatedAt = Date.now(),
     playlist_memberships: payload.playlist_memberships.length,
     services: payload.services.length,
     qq_japan_chart_entries: payload.qq_japan_chart.history.length,
-    netease_japan_chart_entries: payload.netease_japan_chart.history.length,
     kugou_japan_chart_entries: payload.kugou_japan_chart.history.length,
   };
 }
