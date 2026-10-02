@@ -21,6 +21,10 @@ import {
   KUGOU_JAPAN_CHART_COVERAGE,
   KUGOU_JAPAN_CHART_HISTORY,
 } from './kugou-japan-chart-history.js';
+import {
+  KUGOU_ACG_HISTORY_INDEX_KEY,
+  KUGOU_ACG_HISTORY_VIEW_KEY,
+} from './kugou-acg-chart-history.js';
 
 // Kept only for callers that still import the historical aggregate key. New
 // regional read models are always stored under regional-music:<service>.
@@ -194,7 +198,7 @@ function qqJapanStoredPeriods(index) {
   if (!weeks) return [];
   return Object.keys(weeks).sort(compareQqPeriods).map((period) => {
     const summary = weeks[period] || {};
-    const updateTime = String(summary?.update_time || '').trim();
+    const updateTime = String(summary?.update_time || summary?.published_at || '').trim();
     const publishedAt = /^\d{4}-\d{2}-\d{2}/.test(updateTime) ? updateTime.slice(0, 10) : qqPeriodThursday(period);
     return { period, published_at:publishedAt };
   });
@@ -288,6 +292,7 @@ export function regionalMusicServiceReadModelPayload(snapshot, service, updatedA
       coverage:KUGOU_JAPAN_CHART_COVERAGE,
       history:KUGOU_JAPAN_CHART_HISTORY,
     };
+    payload.kugou_acg_chart = qqJapanChartReadModel(snapshot?.kugouAcgChart, snapshot?.kugouAcgChartIndex);
   }
   return payload;
 }
@@ -312,6 +317,7 @@ export function regionalMusicReadModelPayload(snapshot, updatedAt = Date.now()) 
       coverage: KUGOU_JAPAN_CHART_COVERAGE,
       history: KUGOU_JAPAN_CHART_HISTORY,
     },
+    kugou_acg_chart: qqJapanChartReadModel(snapshot?.kugouAcgChart, snapshot?.kugouAcgChartIndex),
     services: (Array.isArray(snapshot?.services) ? snapshot.services : []).map(normalizedCollectorState),
   };
 }
@@ -364,6 +370,13 @@ async function hydrateServicePayload(env, baseSnapshot, service, generatedAt) {
     const view = await r2Json(r2, MELON_JPOP_HISTORY_VIEW_KEY);
     payload.melon_jpop_chart = melonJpopChartReadModel(view);
     extraTimes.push(view?.updated_at);
+  } else if (serviceId === 'kugou_music') {
+    const [acgView, acgIndex] = await Promise.all([
+      r2Json(r2, KUGOU_ACG_HISTORY_VIEW_KEY),
+      r2Json(r2, KUGOU_ACG_HISTORY_INDEX_KEY),
+    ]);
+    payload.kugou_acg_chart = qqJapanChartReadModel(acgView, acgIndex);
+    extraTimes.push(acgView?.updated_at, acgIndex?.updated_at);
   }
 
   payload.source_updated_at = maximumTime([payload.source_updated_at, ...extraTimes]);

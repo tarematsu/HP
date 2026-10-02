@@ -53,6 +53,13 @@ const kugouHistoryTable = dashboardTable({
   wrapClassName: 'regional-music-table-wrap',
 });
 
+const kugouAcgHistoryTable = dashboardTable({
+  className: 'regional-music-table regional-music-kugou-history-table music-service-track-table',
+  headers: ['更新日', 'グループ', '順位', '曲名'],
+  bodyId: 'kugouAcgHistoryBody',
+  wrapClassName: 'regional-music-table-wrap',
+});
+
 const qqHistoryTable = dashboardTable({
   className: 'regional-music-table regional-music-kugou-history-table regional-music-qq-history-table music-service-track-table',
   headers: ['更新日', 'グループ', '順位', '曲名'],
@@ -154,6 +161,22 @@ const kugouHistorySection = `
     ${kugouHistoryTable}
   </section>`;
 
+const kugouAcgChartSection = `
+  <section id="kugouAcgChartSection" class="music-service-section regional-chart-section" hidden>
+    <div class="regional-chart-section-head"><h2>酷狗音乐 ACG新歌榜 グループ別最高順位推移</h2></div>
+    <div id="kugouAcgRankLegend" class="regional-music-rank-legend" aria-label="グループ凡例"></div>
+    <div id="kugouAcgRankChart" class="regional-music-rank-chart"></div>
+  </section>`;
+
+const kugouAcgHistorySection = `
+  <section id="kugouAcgHistorySection" class="music-service-section regional-chart-section" hidden>
+    <div class="regional-chart-section-head">
+      <h2>酷狗音乐 ACG新歌榜 ランクイン履歴</h2>
+      ${artistFilterButtons('kugou', '酷狗音乐 ACG新歌榜 表示グループ')}
+    </div>
+    ${kugouAcgHistoryTable}
+  </section>`;
+
 mountDashboardShell({
   view: {
     id: 'regionalMusicView',
@@ -184,6 +207,8 @@ mountDashboardShell({
       ${qqPopularitySection}
       ${kugouChartSection}
       ${kugouHistorySection}
+      ${kugouAcgChartSection}
+      ${kugouAcgHistorySection}
       <div id="regionalMusicGenericTables">
         ${musicServiceSection({ id: 'regionalMusicArtistSection', kicker: 'ARTISTS', title: 'アーティスト', bodyHtml: artistTable })}
         ${musicServiceSection({ id: 'regionalMusicTrackSection', kicker: 'TRACKS', title: '楽曲', bodyHtml: trackTable })}
