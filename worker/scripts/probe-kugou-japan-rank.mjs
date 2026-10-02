@@ -46,6 +46,10 @@ function summarize(entry, rank, page) {
   };
 }
 
+function firstArray(...values) {
+  return values.find(Array.isArray) || [];
+}
+
 async function fetchPage(page) {
   const url = `https://m.kugou.com/rank/info/?rankid=31312&page=${page}&json=true`;
   try {
@@ -53,18 +57,29 @@ async function fetchPage(page) {
     const text = await response.text();
     let json = null;
     try { json = JSON.parse(text); } catch {}
-    const list = json?.songs?.list;
+    const list = firstArray(
+      json?.songs?.list,
+      json?.data?.songs?.list,
+      json?.data?.list,
+      json?.data?.info,
+      json?.list,
+    );
     return {
       page,
       url,
       http_status: response.status,
       ok: response.ok,
-      rank_name: json?.info?.rankname ?? null,
-      update_frequency: json?.info?.update_frequency ?? null,
-      intro: json?.info?.intro ?? null,
-      total: json?.songs?.total ?? null,
-      list: Array.isArray(list) ? list : [],
-      body_sample: json ? null : text.slice(0, 1000),
+      rank_name: json?.info?.rankname ?? json?.data?.info?.rankname ?? json?.data?.rankname ?? null,
+      update_frequency: json?.info?.update_frequency ?? json?.data?.info?.update_frequency ?? null,
+      intro: json?.info?.intro ?? json?.data?.info?.intro ?? null,
+      total: json?.songs?.total ?? json?.data?.songs?.total ?? json?.data?.total ?? null,
+      list,
+      json_keys: json && typeof json === 'object' ? Object.keys(json) : [],
+      data_keys: json?.data && typeof json.data === 'object' ? Object.keys(json.data) : [],
+      status: json?.status ?? null,
+      errcode: json?.errcode ?? json?.error_code ?? null,
+      error: json?.error ?? json?.errmsg ?? json?.msg ?? null,
+      body_sample: text.slice(0, 4000),
     };
   } catch (error) {
     return {
@@ -95,6 +110,10 @@ for (let page = 1; page <= 5; page += 1) {
     intro: result.intro ?? null,
     total: result.total ?? null,
     list_count: result.list.length,
+    json_keys: result.json_keys ?? [],
+    data_keys: result.data_keys ?? [],
+    status: result.status ?? null,
+    errcode: result.errcode ?? null,
     error: result.error ?? null,
     body_sample: result.body_sample ?? null,
   });
