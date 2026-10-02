@@ -1,0 +1,120 @@
+name: Backfill Kuwo Japanese chart volume history
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-backfill-volume-chain.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Walk historical volume windows and scan Sakamichi
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import concurrent.futures, datetime, json, pathlib, re, time, urllib.parse, urllib.request
+
+          BASE='https://kbangserver.kuwo.cn/ksong.s'
+          COMMON={'from':'pc','fmt':'json','pn':'0','rn':'100','type':'bang','data':'content','id':'183','show_copyright_off':'0','pcmp4':'1','isbang':'1','userid':'0'}
+          GROUPS={
+            '櫻坂46':['櫻坂46','樱坂46','Sakurazaka46','Sakurazaka 46'],
+            '乃木坂46':['乃木坂46','Nogizaka46','Nogizaka 46'],
+            '日向坂46':['日向坂46','Hinatazaka46','Hinatazaka 46'],
+            '欅坂46':['欅坂46','Keyakizaka46','Keyakizaka 46'],
+          }
+          def norm(s): return re.sub(r'[\s._・･\-—–/\\()\[\]（）【】「」『』]','',str(s or '').casefold())
+          def fetch(bangid=None,rn=100,timeout=10):
+            q=dict(COMMON); q['rn']=str(rn)
+            if bangid: q['bangid']=str(bangid)
+            u=BASE+'?'+urllib.parse.urlencode(q)
+            try:
+              req=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'})
+              with urllib.request.urlopen(req,timeout=timeout) as r:j=json.loads(r.read().decode('utf-8','replace'))
+              return j
+            except Exception as e:return {'_error':repr(e),'_url':u}
+          def entries(j):
+            out=[]
+            v=j.get('volume') if isinstance(j,dict) else None
+            if isinstance(v,dict):
+              for year,arr in v.items():
+                if isinstance(arr,list):
+                  for x in arr:
+                    if isinstance(x,dict) and x.get('third_id'):
+                      out.append({'year':str(year),'id':str(x.get('id','')),'second_id':str(x.get('second_id','')),'third_id':str(x.get('third_id')),'name':str(x.get('name',''))})
+            return out
+          def date_from_volume(year,name):
+            try:
+              y=int(year); doy=int(name)
+              return (datetime.date(y,1,1)+datetime.timedelta(days=doy-1)).isoformat()
+            except:return None
+          def scan_one(e):
+            j=fetch(e['third_id'])
+            rows=j.get('musiclist') or j.get('musicList') or []
+            hits=[]
+            for i,r in enumerate(rows,1):
+              hay=norm(' '.join(str(r.get(k,'')) for k in ('artist','artistName','singer','name','title')))
+              for g,aa in GROUPS.items():
+                if any(norm(a) in hay for a in aa):
+                  hits.append({'rank':i,'group':g,'name':r.get('name') or r.get('title'),'artist':r.get('artist') or r.get('artistName') or r.get('singer'),'rid':r.get('rid') or r.get('id')})
+            return {
+              **e,
+              'date':date_from_volume(e['year'],e['name']),
+              'currentVolume':j.get('currentVolume'),
+              'pub':j.get('pub'),
+              'timestamp':j.get('timestamp'),
+              'row_count':len(rows),
+              'top10':[{'rank':i+1,'name':r.get('name') or r.get('title'),'artist':r.get('artist') or r.get('artistName') or r.get('singer'),'rid':r.get('rid') or r.get('id')} for i,r in enumerate(rows[:10])],
+              'sakamichi':hits,
+              'volume_entries':entries(j),
+              'error':j.get('_error'),
+            }
+
+          # Walk metadata windows backwards. Start current, then select the oldest visible
+          # third_id and inspect whether Kuwo returns an older 60-entry volume window.
+          seed=fetch(None,1)
+          windows=[]; all_entries={}; seen_windows=set(); cursor=None
+          for depth in range(12):
+            j=seed if depth==0 else fetch(cursor,1)
+            es=entries(j)
+            cv=j.get('currentVolume')
+            sig=(cv,tuple((x['year'],x['name'],x['third_id']) for x in es))
+            windows.append({'depth':depth,'selector':cursor,'currentVolume':cv,'pub':j.get('pub'),'count':len(es),'first':es[0] if es else None,'last':es[-1] if es else None,'error':j.get('_error')})
+            if not es or sig in seen_windows: break
+            seen_windows.add(sig)
+            for e in es: all_entries[(e['year'],e['name'])]=e
+            oldest=es[-1]
+            next_cursor=oldest['third_id']
+            if next_cursor==cursor: break
+            cursor=next_cursor
+
+          ordered=sorted(all_entries.values(),key=lambda e:(int(e['year']) if e['year'].isdigit() else 9999,int(e['name']) if e['name'].isdigit() else 9999),reverse=True)
+          print('WINDOWS',json.dumps(windows,ensure_ascii=False))
+          print('UNIQUE_EDITIONS',len(ordered),'NEWEST',ordered[0] if ordered else None,'OLDEST',ordered[-1] if ordered else None)
+
+          # Fetch editions in parallel but conservatively to avoid Kuwo throttling.
+          results=[]
+          def wrapped(e):
+            x=scan_one(e); time.sleep(.05); return x
+          with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+            for x in ex.map(wrapped,ordered): results.append(x)
+
+          hits=[{'date':x['date'],'year':x['year'],'volume':x['name'],'third_id':x['third_id'],**h} for x in results for h in x['sakamichi']]
+          failures=[x for x in results if x['row_count']!=100]
+          report={'observed_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'windows':windows,'edition_count':len(results),'newest_date':results[0]['date'] if results else None,'oldest_date':results[-1]['date'] if results else None,'sakamichi_hits':hits,'failures':[{'date':x['date'],'volume':x['name'],'third_id':x['third_id'],'rows':x['row_count'],'error':x['error']} for x in failures],'editions':results}
+          pathlib.Path('kuwo-jp-volume-backfill.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          print('EDITION_COUNT',len(results),'DATE_RANGE',report['newest_date'],report['oldest_date'],'FAILURES',len(failures),'SAKAMICHI_HITS',len(hits))
+          for h in hits:print('SAKAMICHI',json.dumps(h,ensure_ascii=False))
+          for x in results[:3]+results[-3:]:
+            print('EDITION',x['date'],'VOL',x['name'],'CV',x['currentVolume'],'TOP3',json.dumps(x['top10'][:3],ensure_ascii=False),'NEXT_WINDOW',len(x['volume_entries']))
+          PY
+      - name: Upload full backfill
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kuwo-jp-volume-backfill
+          path: kuwo-jp-volume-backfill.json
+          if-no-files-found: ignore
+          retention-days: 7
