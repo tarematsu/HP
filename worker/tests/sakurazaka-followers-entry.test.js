@@ -7,12 +7,16 @@ const sakurazakaConfig = JSON.parse(readFileSync(new URL('../wrangler.sakurazaka
 const sakurazakaEntry = readFileSync(new URL('../src/sakurazaka-followers-entry.js', import.meta.url), 'utf8');
 const buddiesConfig = JSON.parse(readFileSync(new URL('../wrangler.buddies-collector.jsonc', import.meta.url), 'utf8'));
 const buddiesEntry = readFileSync(new URL('../src/buddies-collector-entry.js', import.meta.url), 'utf8');
+const followerWorkflow = readFileSync(
+  new URL('../../.github/workflows/stationhead-daily-followers.yml', import.meta.url),
+  'utf8',
+);
 const migration = readFileSync(
   new URL('../../database/other-migrations/055_stationhead_daily_followers.sql', import.meta.url),
   'utf8',
 );
 
-test('Sakurazaka minute cron is the shared scheduler while Buddies stays independent', () => {
+test('Sakurazaka minute cron is shared, Buddies stays independent, and followers belong to Actions', () => {
   assert.equal(sakurazakaConfig.main, 'src/sakurazaka-followers-entry.js');
   assert.deepEqual(sakurazakaConfig.triggers?.crons, ['* * * * *']);
   assert.deepEqual(sakurazakaConfig.services, [
@@ -35,8 +39,10 @@ test('Sakurazaka minute cron is the shared scheduler while Buddies stays indepen
   assert.deepEqual(buddiesConfig.triggers?.crons, ['*/5 * * * *']);
   assert.ok(buddiesConfig.d1_databases.some((item) => item.binding === 'BUDDIES_DB'));
   assert.ok(buddiesConfig.d1_databases.some((item) => item.binding === 'OTHER_DB'));
-  assert.match(buddiesEntry, /isJstFollowerCollectionMinute\(scheduledAt\)/);
-  assert.match(buddiesEntry, /collectStationheadDailyFollowersResilient/);
+  assert.doesNotMatch(buddiesEntry, /isJstFollowerCollectionMinute/);
+  assert.doesNotMatch(buddiesEntry, /collectStationheadDailyFollowersResilient/);
+  assert.match(followerWorkflow, /cron: '0 15 \* \* \*'/);
+  assert.match(followerWorkflow, /collect-stationhead-followers-actions\.mjs/);
 });
 
 test('Spotify checks every ten minutes from 00:00 through 04:50 JST and hourly otherwise', () => {
