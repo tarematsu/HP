@@ -1,0 +1,60 @@
+name: Search Common Crawl for Kuwo Japanese chart APIs
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-commoncrawl-api-history.yml]
+permissions:
+  contents: read
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Search all Common Crawl indexes for chart 183 API URLs
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import concurrent.futures,json,urllib.parse,urllib.request
+          H={'User-Agent':'Mozilla/5.0'}
+          def read(u,t=10):
+            q=urllib.request.Request(u,headers=H)
+            with urllib.request.urlopen(q,timeout=t) as r:return r.read().decode('utf-8','replace')
+          try: cols=json.loads(read('https://index.commoncrawl.org/collinfo.json',20))
+          except Exception as e: print('COLLINFO_ERR',repr(e)); raise
+          targets=[
+            'www.kuwo.cn/api/www/bang/bang/musicList?bangId=183',
+            'm.kuwo.cn/newh5app/wapi/api/www/bang/bang/musicList?bangId=183',
+            'm.kuwo.cn/api/mobile/v1/music/rank/183',
+            'kbangserver.kuwo.cn/ksong.s?from=pc&fmt=json&pn=0&rn=100&type=bang&data=content&id=183'
+          ]
+          def one(args):
+            idx,target=args
+            p={'url':target,'output':'json','matchType':'prefix','filter':'status:200','limit':'500'}
+            u='https://index.commoncrawl.org/'+idx+'-index?'+urllib.parse.urlencode(p)
+            try: raw=read(u,9)
+            except Exception as e:return idx,target,[],repr(e)
+            rows=[]
+            for ln in raw.splitlines():
+              try:x=json.loads(ln)
+              except:continue
+              url=urllib.parse.unquote(x.get('url',''))
+              if ('183' in url):rows.append(x)
+            return idx,target,rows,None
+          tasks=[(c['id'],t) for c in cols for t in targets]
+          hits=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
+            for idx,target,rows,err in ex.map(one,tasks):
+              if rows:
+                print('INDEX_HIT',idx,target,'N',len(rows))
+                for x in rows[:50]:
+                  rec={k:x.get(k) for k in ('timestamp','url','filename','offset','length','digest','status')}
+                  hits.append({'index':idx,'target':target,**rec}); print('CAPTURE',json.dumps(rec,ensure_ascii=False))
+          print('TOTAL_HITS',len(hits))
+          with open('kuwo-commoncrawl-api-hits.json','w',encoding='utf-8') as f:json.dump(hits,f,ensure_ascii=False,indent=2)
+          PY
+      - name: Upload hits
+        uses: actions/upload-artifact@v4
+        with:
+          name: kuwo-commoncrawl-api-hits
+          path: kuwo-commoncrawl-api-hits.json
+          retention-days: 7
