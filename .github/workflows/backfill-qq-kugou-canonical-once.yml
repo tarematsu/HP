@@ -33,9 +33,9 @@ jobs:
       - name: Install Worker dependencies
         working-directory: worker
         run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Recollect QQ and Kugou with sh_tracks.id resolution
+      - name: Recollect QQ and Kugou with preferred sh_tracks.id resolution
         working-directory: worker
         run: node scripts/collect-regional-r2-actions.mjs --services=qq_music,kugou_music
-      - name: Audit and diagnose unresolved canonical tracks
+      - name: Audit remaining unresolved canonical tracks
         working-directory: worker
         run: node scripts/audit-regional-canonical-r2.mjs

@@ -1,13 +1,17 @@
 import { REGIONAL_MUSIC_ARTISTS } from './regional-music-service-registry.js';
 
 const TARGET_SERVICES = new Set(['qq_music', 'kugou_music']);
-const QUERY_CHUNK_SIZE = 70;
 const BACKFILL_LIMIT = 500;
 const UPDATE_BATCH_SIZE = 20;
+const EXTRA_ARTIST_ALIASES = Object.freeze({
+  sakurazaka46: Object.freeze(['사쿠라자카46']),
+  nogizaka46: Object.freeze(['노기자카46']),
+  hinatazaka46: Object.freeze(['히나타자카46']),
+});
 
 // Japanese releases on Chinese services often keep the original title and append
-// a Chinese translation, e.g. `17分間 (17分钟)`.  A smaller set is published with
-// simplified/traditional character substitutions only.  Fold those character
+// a Chinese translation, e.g. `17分間 (17分钟)`. A smaller set is published with
+// simplified/traditional character substitutions only. Fold those character
 // variants before comparing; do not translate words or guess semantically.
 const CJK_FOLD = Object.freeze({
   '櫻': '樱', '桜': '樱', '認': '认', '愛': '爱', '歲': '岁', '歳': '岁',
@@ -54,7 +58,7 @@ function titleParts(value) {
   if (!source) return [];
   const variants = new Set([source]);
 
-  // Keep both the original-title part and the translated annotation.  Matching
+  // Keep both the original-title part and the translated annotation. Matching
   // against the original-title part is the important case for Chinese catalogs.
   for (const match of source.matchAll(/[（(【\[《「『]([^）)】\]》」』]+)[）)】\]》」』]/gu)) {
     if (text(match[1])) variants.add(match[1].trim());
@@ -82,7 +86,7 @@ function candidateMatchScore(providerTitle, candidateTitle) {
   if (candidateKeys.some((key) => providerKeys.includes(key))) return 100;
 
   // Only allow containment when the provider explicitly marks a translated or
-  // alternate title.  This avoids treating ordinary title prefixes as matches.
+  // alternate title. This avoids treating ordinary title prefixes as matches.
   const decorated = /[（(【\[《「『）)】\]》」』|｜/／]/u.test(String(providerTitle || ''));
   if (!decorated) return 0;
   const providerFull = compactTitle(providerTitle);
@@ -90,24 +94,36 @@ function candidateMatchScore(providerTitle, candidateTitle) {
   return contained ? 80 : 0;
 }
 
+function candidateIdentityScore(candidate) {
+  // ISRC is the strongest portable recording identity. Spotify ID is also a
+  // high-confidence identity and, in this database, usually marks the enriched
+  // canonical row rather than an old Stationhead-only duplicate.
+  return (text(candidate?.isrc) ? 4 : 0) + (text(candidate?.spotify_id) ? 2 : 0);
+}
+
 export function matchRegionalMusicCanonicalTrack(providerTitle, candidates = []) {
-  let bestScore = 0;
-  let bestIds = new Set();
-  let best = null;
+  const matches=[];
+  let bestTitleScore=0;
   for (const candidate of candidates || []) {
     const id = positiveInteger(candidate?.id);
     if (id == null) continue;
-    const score = candidateMatchScore(providerTitle, candidate?.title);
-    if (!score) continue;
-    if (score > bestScore) {
-      bestScore = score;
-      bestIds = new Set([id]);
-      best = candidate;
-    } else if (score === bestScore) {
-      bestIds.add(id);
-    }
+    const titleScore = candidateMatchScore(providerTitle, candidate?.title);
+    if (!titleScore) continue;
+    if (titleScore > bestTitleScore) bestTitleScore=titleScore;
+    matches.push({candidate,id,titleScore,identityScore:candidateIdentityScore(candidate)});
   }
-  return bestIds.size === 1 ? best : null;
+  const best=matches.filter(row=>row.titleScore===bestTitleScore);
+  if (!best.length) return null;
+  const ids=new Set(best.map(row=>row.id));
+  if (ids.size===1) return best[0].candidate;
+
+  // Duplicate sh_tracks rows are common. Prefer one enriched identity only when
+  // it is uniquely stronger; ties stay unresolved rather than guessing.
+  const strongest=Math.max(...best.map(row=>row.identityScore));
+  if (strongest<=0) return null;
+  const preferred=best.filter(row=>row.identityScore===strongest);
+  const preferredIds=new Set(preferred.map(row=>row.id));
+  return preferredIds.size===1 ? preferred[0].candidate : null;
 }
 
 async function rows(db, sql, bindings = []) {
@@ -134,13 +150,18 @@ async function loadCatalog(env, canonicalArtist) {
   const cache = cacheFor(catalogCache, env);
   if (cache.has(canonicalArtist)) return cache.get(canonicalArtist);
 
-  const aliases = [...new Set([definition.displayName, ...(definition.aliases || [])].filter(Boolean))];
-  const placeholders = aliases.map(() => '?').join(',');
+  const aliases=[...new Set([
+    definition.displayName,
+    ...(definition.aliases || []),
+    ...(EXTRA_ARTIST_ALIASES[canonicalArtist] || []),
+  ].filter(Boolean))];
+  const predicates=aliases.map(()=>`artist COLLATE NOCASE LIKE ?`).join(' OR ');
+  const bindings=aliases.map(alias=>`%${alias}%`);
   const result = await rows(env.MINUTE_DB, `SELECT id,title,artist,isrc,spotify_id
     FROM sh_tracks
     WHERE title IS NOT NULL AND artist IS NOT NULL
-      AND artist COLLATE NOCASE IN (${placeholders})
-    ORDER BY id ASC`, aliases);
+      AND (${predicates})
+    ORDER BY id ASC`, bindings);
   cache.set(canonicalArtist, result);
   return result;
 }
