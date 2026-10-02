@@ -1,5 +1,6 @@
 import { saveMaterializedActionsR2Response } from './pages-response-r2.js';
 import { regionalMusicService } from './regional-music-service-registry.js';
+import { GENIE_SNAPSHOT_KEY, mergeGenieSnapshot } from './genie-catalog-snapshot.js';
 
 export const REGIONAL_MUSIC_READ_MODEL_KEY = 'regional-music';
 export const REGIONAL_MUSIC_READ_MODEL_CADENCE_SECONDS = 24 * 60 * 60;
@@ -137,7 +138,11 @@ export async function publishRegionalMusicReadModel(env, updatedAt = Date.now(),
   const load = dependencies.loadReadModel || loadRegionalMusicReadModel;
   const save = dependencies.saveR2Response || saveMaterializedActionsR2Response;
   const snapshot = await load(env?.OTHER_DB);
-  const payload = regionalMusicReadModelPayload(snapshot, updatedAt);
+  let payload = regionalMusicReadModelPayload(snapshot, updatedAt);
+  if (typeof env.PAGES_RESPONSE_R2.get === 'function') {
+    const genie = await env.PAGES_RESPONSE_R2.get(GENIE_SNAPSHOT_KEY);
+    if (genie) payload = mergeGenieSnapshot(payload, await genie.json());
+  }
   const body = JSON.stringify(payload);
   const saved = await save(
     env.PAGES_RESPONSE_R2,
