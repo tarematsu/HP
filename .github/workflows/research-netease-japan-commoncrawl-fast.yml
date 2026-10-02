@@ -1,0 +1,31 @@
+name: Fast NetEase Japanese chart Common Crawl research
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/research-netease-japan-commoncrawl-fast.yml'
+      - 'worker/scripts/research-netease-japan-commoncrawl-fast.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  commoncrawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Probe Common Crawl snapshots
+        working-directory: worker
+        run: node scripts/research-netease-japan-commoncrawl-fast.mjs
+      - name: Upload Common Crawl report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: netease-japan-commoncrawl-fast
+          path: worker/netease-japan-commoncrawl-fast.json
+          if-no-files-found: warn
