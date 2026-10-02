@@ -1,0 +1,85 @@
+name: Research QQ Music anime chart history
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/research-qq-anime-toplist-history.yml'
+      - 'worker/scripts/research-qq-anime-toplist-history.mjs'
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: Earliest date to scan (YYYY-MM-DD)
+        required: false
+        default: '2018-01-01'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: qq-music-anime-history-research
+  cancel-in-progress: false
+
+jobs:
+  research:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      QQ_ANIME_HISTORY_START: ${{ inputs.start_date || '2018-01-01' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Scan QQ Music 动漫音乐榜 history
+        working-directory: worker
+        run: node scripts/research-qq-anime-toplist-history.mjs
+
+      - name: Build compact summary
+        working-directory: worker
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFile, writeFile } from 'node:fs/promises';
+          const full = JSON.parse(await readFile('artifacts/qq-anime-toplist-history.json', 'utf8'));
+          const summary = {
+            version: full.version,
+            chart: full.chart,
+            top_id: full.top_id,
+            generated_at: full.generated_at,
+            requested_periods: full.requested_periods,
+            stored_periods: full.stored_periods,
+            earliest_period: full.earliest_period,
+            latest_period: full.latest_period,
+            hits: full.hits,
+            errors: full.errors,
+          };
+          await writeFile('artifacts/qq-anime-toplist-summary.json', `${JSON.stringify(summary, null, 2)}\n`);
+          NODE
+
+      - name: Upload research result
+        uses: actions/upload-artifact@v4
+        with:
+          name: qq-anime-toplist-history
+          path: |
+            worker/artifacts/qq-anime-toplist-history.json
+            worker/artifacts/qq-anime-toplist-summary.json
+          retention-days: 30
+
+      - name: Persist compact summary to repository
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f worker/artifacts/qq-anime-toplist-summary.json
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'Update QQ anime chart research summary'
+          git push origin HEAD:main

@@ -1,18 +1,26 @@
-name: Backfill QQ and Kugou canonical track ids
+name: Backfill QQ Music anime chart history
 
 on:
   push:
     branches:
       - main
     paths:
-      - '.github/workflows/backfill-qq-kugou-canonical-once.yml'
+      - '.github/workflows/backfill-qq-anime-toplist-history.yml'
+      - 'worker/scripts/backfill-qq-anime-toplist-history-actions.mjs'
+      - 'worker/src/qq-anime-chart-history-view.js'
+      - 'worker/src/regional-music-qq.js'
   workflow_dispatch:
+    inputs:
+      start_date:
+        description: Earliest date to scan (YYYY-MM-DD)
+        required: false
+        default: '2020-06-01'
 
 permissions:
   contents: read
 
 concurrency:
-  group: regional-music-r2-collection
+  group: qq-music-anime-history-backfill
   cancel-in-progress: false
 
 jobs:
@@ -22,20 +30,22 @@ jobs:
     timeout-minutes: 30
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      QQ_ANIME_HISTORY_START: ${{ inputs.start_date || '2020-06-01' }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: ./.github/actions/cloudflare-context
         with:
           api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+
       - name: Install Worker dependencies
         working-directory: worker
         run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Recollect QQ and Kugou with preferred sh_tracks.id resolution
+
+      - name: Backfill QQ Music anime chart history
         working-directory: worker
-        run: node scripts/collect-regional-r2-actions.mjs --services=qq_music,kugou_music
-      - name: Audit remaining unresolved canonical tracks
-        working-directory: worker
-        run: node scripts/audit-regional-canonical-r2.mjs
+        run: node scripts/backfill-qq-anime-toplist-history-actions.mjs
