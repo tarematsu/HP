@@ -2,7 +2,7 @@ name: Collect Kugou ACG chart
 
 on:
   schedule:
-    - cron: '40 2 * * 4' # Thursday 11:40 JST, after regular Kugou collection
+    - cron: '40 2 * * 3' # Wednesday 11:40 JST, after regular Kugou collection
   workflow_dispatch:
 
 permissions:
