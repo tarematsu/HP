@@ -1,0 +1,34 @@
+name: Inspect Kuwo Japanese chart rank change
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-rankchange-probe.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Inspect old chart endpoint fields
+        run: |
+          python3 <<'PY'
+          import json,urllib.request
+          allr=[]
+          for pn in range(20):
+            u=f'https://kbangserver.kuwo.cn/ksong.s?from=pc&fmt=json&pn={pn}&rn=5&type=bang&data=content&id=183&show_copyright_off=0&pcmp4=1&isbang=1&userid=0'
+            try:
+              q=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'})
+              with urllib.request.urlopen(q,timeout=5) as r:p=json.loads(r.read().decode('utf-8','replace'))
+            except Exception as e:
+              print('ERR',pn,repr(e));continue
+            rs=p.get('musiclist') or p.get('musicList') or (p.get('data') or {}).get('musicList') or []
+            if not rs:break
+            allr.extend(rs)
+          print('COUNT',len(allr))
+          keys=sorted(set().union(*(x.keys() for x in allr))) if allr else []
+          print('KEYS',keys)
+          for i,x in enumerate(allr[:100],1):
+            vals={k:x.get(k) for k in keys if any(t in k.lower() for t in ['rank','trend','new','change','last','pre'])}
+            if vals: print(i,x.get('name'),x.get('artist'),json.dumps(vals,ensure_ascii=False))
+          PY
