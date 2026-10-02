@@ -1,6 +1,7 @@
 import app from './sakurazaka-entry.js';
 import { dispatchScheduledService } from './internal-scheduled-dispatch.js';
 import { enqueueRegionalMusicDispatch } from './regional-music-dispatch-plan.js';
+import { shouldDispatchSpotifyPlaycount } from './spotify-playcount-timing.js';
 
 export const STATIONHEAD_DAILY_FOLLOWERS_MESSAGE = 'stationhead-daily-followers';
 export const SHARED_STATIONHEAD_CRON = '* * * * *';
@@ -27,7 +28,10 @@ async function runSharedTargets(env, scheduledAt) {
   if (minute % 5 === 1) {
     tasks.push(['ohisama', dispatchScheduledService(env?.OHISAMA_SCHEDULED, OHISAMA_CRON, scheduledAt)]);
   }
-  if (minute === 0) {
+  // Keep the normal hourly check, but from 00:00 through 04:50 JST dispatch a
+  // lightweight stale-source probe every ten minutes. The Spotify worker only
+  // starts the full collection after that probe observes a source change.
+  if (shouldDispatchSpotifyPlaycount(scheduledAt)) {
     tasks.push(['spotify-playcount', dispatchScheduledService(env?.SPOTIFY_PLAYCOUNT_SCHEDULED, SPOTIFY_PLAYCOUNT_CRON, scheduledAt)]);
   }
 
