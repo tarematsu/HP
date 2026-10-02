@@ -6,6 +6,7 @@ on:
       - 'worker/scripts/probe-kugou-public.mjs'
       - 'worker/scripts/probe-kugou-japan-rank.mjs'
       - 'worker/scripts/probe-kugou-current-rank.mjs'
+      - 'worker/scripts/probe-kugou-japan-history.mjs'
       - '.github/workflows/kugou-public-probe.yml'
   workflow_dispatch:
 
@@ -15,7 +16,7 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,6 +31,9 @@ jobs:
       - name: Probe Kugou current signed Japan ranking API
         working-directory: worker
         run: node scripts/probe-kugou-current-rank.mjs | tee kugou-current-rank-probe.json
+      - name: Crawl Kugou Japan ranking history
+        working-directory: worker
+        run: node scripts/probe-kugou-japan-history.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: kugou-public-probe
@@ -37,4 +41,6 @@ jobs:
             worker/kugou-public-probe.json
             worker/kugou-japan-rank-probe.json
             worker/kugou-current-rank-probe.json
+            worker/kugou-japan-history.json
+            worker/kugou-japan-history.csv
           retention-days: 7
