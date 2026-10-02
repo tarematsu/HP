@@ -1,0 +1,37 @@
+name: Locate Kuwo Japanese chart volume 205 symmetric
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-find-volume-205-symmetric.yml]
+permissions:
+  contents: read
+jobs:
+  find:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Scan symmetric ID band
+        run: |
+          python3 <<'PY'
+          import concurrent.futures,json,urllib.parse,urllib.request
+          base='https://kbangserver.kuwo.cn/ksong.s'
+          common={'from':'pc','fmt':'json','pn':'0','rn':'1','type':'bang','data':'content','id':'183','show_copyright_off':'0','pcmp4':'1','isbang':'1','userid':'0'}
+          expected='2026|205'; center=267650
+          def probe(bid):
+            u=base+'?'+urllib.parse.urlencode({**common,'bangid':str(bid)})
+            try:
+              q=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'})
+              with urllib.request.urlopen(q,timeout=4) as r:j=json.loads(r.read().decode('utf-8','replace'))
+              return bid,j.get('currentVolume'),[(x.get('name'),x.get('artist')) for x in (j.get('musiclist') or [])[:1]]
+            except:return bid,None,[]
+          for radius in (150,350,700,1200):
+            ids=list(range(center-radius,center+radius+1))
+            print('SCAN',ids[0],ids[-1])
+            found=[]
+            with concurrent.futures.ThreadPoolExecutor(max_workers=20) as ex:
+              for bid,cv,top in ex.map(probe,ids):
+                if cv==expected:
+                  found.append((bid,cv,top));print('FOUND',bid,cv,json.dumps(top,ensure_ascii=False));break
+            if found:
+              print('RESULT',json.dumps(found,ensure_ascii=False));break
+          PY
