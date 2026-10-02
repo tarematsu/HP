@@ -17,6 +17,7 @@ const GROUP_COLORS = Object.freeze({
 });
 const ARTIST_ORDER = ['sakurazaka46','nogizaka46','hinatazaka46'];
 const OUT_OF_CHART_RANK = 101;
+const QQ_CHART_CADENCE = '毎週木曜日18:00';
 
 let readModelPromise = null;
 let requestId = 0;
@@ -36,19 +37,9 @@ function comparePeriods(left, right) {
   return (a.year - b.year) || (a.week - b.week);
 }
 
-function periodText(value) {
-  const period = periodParts(value);
-  return period ? `${period.year}年第${period.week}週` : String(value || '-');
-}
-
 function providerDate(value) {
   const text = String(value || '').trim();
   return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : '';
-}
-
-function providerShortDate(value) {
-  const date = providerDate(value);
-  return date ? `${date.slice(5, 7)}/${date.slice(8, 10)}` : String(value || '');
 }
 
 function providerDateText(value) {
@@ -84,6 +75,12 @@ function syncFilterButtons() {
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', active ? 'true' : 'false');
   }
+}
+
+function syncCadenceLabel() {
+  if (location.hash.slice(1) !== 'qq_music') return;
+  const cadence = byId('regionalMusicChartCadence');
+  if (cadence && cadence.textContent !== QQ_CHART_CADENCE) cadence.textContent = QQ_CHART_CADENCE;
 }
 
 async function loadReadModel() {
@@ -162,16 +159,15 @@ function renderHistory(history) {
       || Number(a.rank) - Number(b.rank)
       || String(a.title || '').localeCompare(String(b.title || '')));
   if (!ordered.length) {
-    appendEmptyTableRow(body, 'QQ Music 日本榜のランクイン履歴はありません。', 5);
+    appendEmptyTableRow(body, 'QQ Music 日本榜のランクイン履歴はありません。', 4);
     return;
   }
   for (const item of ordered) {
     body.append(row([
-      periodText(item.period),
+      providerDateText(item.published_at),
       ARTIST_LABELS[item.canonical_artist] || item.canonical_artist || '-',
       Number.isFinite(Number(item.rank)) ? `${integerFormat.format(Number(item.rank))}位` : '-',
       item.title || '-',
-      providerDateText(item.published_at),
     ]));
   }
 }
@@ -207,6 +203,7 @@ function renderPopularity(payload) {
 function render(payload) {
   lastPayload = payload;
   syncFilterButtons();
+  syncCadenceLabel();
   const chart = payload?.qq_japan_chart || {};
   const history = Array.isArray(chart.history) ? chart.history : [];
   const periods = qqStoredPeriods(chart, history);
@@ -222,12 +219,12 @@ function render(payload) {
     yMax:OUT_OF_CHART_RANK,
     rankTicks:[1, 25, 50, 75, 100, OUT_OF_CHART_RANK],
     dateTickCount:5,
-    ariaLabel:'QQ Music 日本榜における選択グループの各週最高順位推移。保存済み週の圏外も含み、1位が上。',
+    ariaLabel:'QQ Music 日本榜における選択グループの更新日別最高順位推移。保存済み更新日の圏外も含み、1位が上。',
     lineClass:'kugou-rank-line',
     emptyClass:'regional-music-rank-empty',
     emptyText:'QQ Music 日本榜の順位履歴はまだありません。',
     rankLabel:(rank) => rank === OUT_OF_CHART_RANK ? '圏外' : `${rank}位`,
-    dateLabel:providerShortDate,
+    dateLabel:providerDateText,
     latestPoint:{ radius:() => 2.5 },
     legendContainer:byId('qqJapanRankLegend'),
   });
@@ -255,6 +252,7 @@ async function renderForRoute() {
   const visible = location.hash.slice(1) === 'qq_music';
   setVisible(visible);
   if (!visible) return;
+  syncCadenceLabel();
   bindFilters();
   replaceBody('qqJapanRankLegend');
   replaceBody('qqJapanRankChart');
@@ -267,7 +265,7 @@ async function renderForRoute() {
   } catch {
     if (id !== requestId || location.hash.slice(1) !== 'qq_music') return;
     const historyBody = replaceBody('qqJapanHistoryBody');
-    if (historyBody) appendEmptyTableRow(historyBody, 'QQ Music 日本榜の履歴を取得できませんでした。', 5);
+    if (historyBody) appendEmptyTableRow(historyBody, 'QQ Music 日本榜の履歴を取得できませんでした。', 4);
     const popularityBody = replaceBody('qqArtistPopularityBody');
     if (popularityBody) appendEmptyTableRow(popularityBody, 'QQ Music の人気曲順位を取得できませんでした。', 3);
   }
@@ -277,6 +275,10 @@ export function initQqJapanHistoryUi() {
   if (initialized) return;
   initialized = true;
   bindFilters();
+  const cadence = byId('regionalMusicChartCadence');
+  if (cadence) {
+    new MutationObserver(syncCadenceLabel).observe(cadence, { childList:true, characterData:true, subtree:true });
+  }
   window.addEventListener('hashchange', renderForRoute);
   window.addEventListener('popstate', renderForRoute);
   void renderForRoute();
