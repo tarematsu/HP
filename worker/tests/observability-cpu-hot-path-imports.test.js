@@ -125,7 +125,8 @@ test('serving-only Pages module does not import generation or publication graphs
 
 test('cached Pages reads do not clone response bodies before returning them', () => {
   assert.equal((pagesResponseFetch.match(/\.clone\(\)/g) || []).length, 1);
-  assert.match(pagesResponseFetch, /cache\.put\(key, response\.clone\(\)\)/);
+  assert.match(pagesResponseFetch, /const cachedResponse = response\.clone\(\)/);
+  assert.match(pagesResponseFetch, /cache\.put\(key, cachedResponse\)/);
 });
 
 test('minute enrichment is queue-only and does not preload Pages generation', () => {

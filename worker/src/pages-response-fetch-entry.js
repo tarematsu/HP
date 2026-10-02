@@ -86,11 +86,14 @@ function staleMaterializedResponse(response) {
   });
 }
 
-function freshMaterializedResponse(response, now, maximumAge) {
+function freshMaterializedResponse(response, now, maximumAge, sourceMaximumAge) {
   const updatedAt = Number(response?.headers?.get('x-materialized-at'));
+  const cachedAt = Number(response?.headers?.get('x-pages-edge-cached-at') ?? updatedAt);
   const age = Number(maximumAge);
+  if (responseIsStale(response, now, sourceMaximumAge)) return null;
+  if (!Number.isFinite(cachedAt) || cachedAt > now) return null;
   if (!Number.isFinite(updatedAt) || updatedAt < 0) return null;
-  if (Number.isFinite(age) && age >= 0 && now - updatedAt > age) return null;
+  if (Number.isFinite(age) && age >= 0 && now - cachedAt > age) return null;
   const headers = new Headers(response.headers);
   headers.set('x-api-source', 'edge-cache');
   return new Response(response.body, {
@@ -100,10 +103,10 @@ function freshMaterializedResponse(response, now, maximumAge) {
   });
 }
 
-async function loadEdgeCachedResponse(cache, key, now, maximumAge) {
+async function loadEdgeCachedResponse(cache, key, now, maximumAge, sourceMaximumAge) {
   if (!cache?.match) return null;
   try {
-    return freshMaterializedResponse(await cache.match(key), now, maximumAge);
+    return freshMaterializedResponse(await cache.match(key), now, maximumAge, sourceMaximumAge);
   } catch (error) {
     console.warn(JSON.stringify({
       event: 'pages_response_edge_cache_read_failed',
@@ -113,9 +116,11 @@ async function loadEdgeCachedResponse(cache, key, now, maximumAge) {
   }
 }
 
-function cacheResponse(cache, key, response, context) {
+function cacheResponse(cache, key, response, context, now) {
   if (!cache?.put || !response?.headers?.get('x-materialized-at')) return null;
-  const write = cache.put(key, response.clone()).catch((error) => {
+  const cachedResponse = response.clone();
+  cachedResponse.headers.set('x-pages-edge-cached-at', String(now));
+  const write = cache.put(key, cachedResponse).catch((error) => {
     console.warn(JSON.stringify({
       event: 'pages_response_edge_cache_write_failed',
       error: String(error?.message || error).slice(0, 300),
@@ -152,7 +157,7 @@ export async function runPagesResponseFetch(
     const edgeMaximumAge = modelKey === DASHBOARD_MODEL_KEY
       ? Math.min(configuredEdgeMaximumAge, DASHBOARD_EDGE_CACHE_MAX_AGE_MS)
       : configuredEdgeMaximumAge;
-    const edgeResponse = await loadEdgeCachedResponse(cache, cacheKey, now, edgeMaximumAge);
+    const edgeResponse = await loadEdgeCachedResponse(cache, cacheKey, now, edgeMaximumAge, maximumAge);
     if (edgeResponse) return edgeResponse;
 
     let response;
@@ -206,7 +211,7 @@ export async function runPagesResponseFetch(
       }
     }
     if (response && response.headers.get('x-materialized-stale') !== '1') {
-      await cacheResponse(cache, cacheKey, response, context);
+      await cacheResponse(cache, cacheKey, response, context, now);
     }
     return response || new Response(null, {
       status: 404,
