@@ -1,5 +1,4 @@
 name: Recollect Spotify today manually
-# manual trigger: 2026-10-02 completeness fix
 on:
   workflow_dispatch:
   push:
@@ -27,6 +26,7 @@ jobs:
         with:
           node-version: '22'
       - name: Wait for official production deployment
+        if: github.event_name == 'workflow_dispatch'
         working-directory: worker
         env:
           GH_TOKEN: ${{ github.token }}
