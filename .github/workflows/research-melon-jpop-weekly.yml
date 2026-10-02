@@ -1,0 +1,34 @@
+name: Research Melon J-pop weekly history
+
+on:
+  push:
+    branches:
+      - research/melon-jpop-history-backfill
+    paths:
+      - '.github/workflows/research-melon-jpop-weekly.yml'
+      - 'worker/src/melon-jpop-history.js'
+      - 'worker/scripts/backfill-melon-jpop-history-actions.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  research-weekly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Scan Melon J-pop weekly history
+        working-directory: worker
+        run: node scripts/backfill-melon-jpop-history-actions.mjs --start=2016-01-01 --types=week --concurrency=4 --output=artifacts/melon-jpop-weekly-history.json
+      - name: Upload weekly result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: melon-jpop-weekly-history
+          path: worker/artifacts/melon-jpop-weekly-history.json
+          if-no-files-found: warn
