@@ -1,0 +1,196 @@
+name: Probe Kuwo Japanese chart
+
+on:
+  push:
+    branches:
+      - research/kuwo-jp-chart-probe
+    paths:
+      - .github/workflows/kuwo-jp-chart-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Probe Kuwo chart and history
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140 Safari/537.36';
+          const targets = [
+            { group: '櫻坂46', aliases: ['櫻坂46','樱坂46','sakurazaka46','sakurazaka 46'] },
+            { group: '乃木坂46', aliases: ['乃木坂46','nogizaka46','nogizaka 46'] },
+            { group: '日向坂46', aliases: ['日向坂46','hinatazaka46','hinatazaka 46'] },
+          ];
+          const normalize = s => String(s ?? '').normalize('NFKC').toLowerCase().replace(/[\s._・･\-—–/\\()[\]（）【】「」『』]/g, '');
+          const targetMatch = row => {
+            const hay = normalize([row.artist,row.artistName,row.singer,row.name,row.title].filter(Boolean).join(' | '));
+            return targets.find(t => t.aliases.some(a => hay.includes(normalize(a))));
+          };
+          const sleep = ms => new Promise(r => setTimeout(r, ms));
+          async function get(url, timeout=12000) {
+            const c = new AbortController();
+            const t = setTimeout(() => c.abort(), timeout);
+            try {
+              const r = await fetch(url, {headers:{'user-agent':UA,'accept':'application/json,text/plain,text/html,*/*','referer':'https://m.kuwo.cn/'},redirect:'follow',signal:c.signal});
+              const text = await r.text();
+              return {ok:r.ok,status:r.status,url:r.url,text};
+            } catch (e) {
+              return {ok:false,status:0,url,error:String(e?.message || e),text:''};
+            } finally { clearTimeout(t); }
+          }
+          function json(text) { try { return JSON.parse(text); } catch { return null; } }
+          function rowsFrom(payload) {
+            if (!payload || typeof payload !== 'object') return [];
+            const direct = [payload.musiclist,payload.musicList,payload?.data?.musicList,payload?.data?.musiclist,payload?.data?.list,payload.list];
+            for (const v of direct) if (Array.isArray(v) && v.length) return v;
+            return [];
+          }
+          function walk(o, out=[]) {
+            if (!o || typeof o !== 'object') return out;
+            if (Array.isArray(o)) { for (const v of o) walk(v,out); return out; }
+            const name = String(o.name ?? o.title ?? o.bangName ?? '');
+            if (name.includes('日语榜') || name.includes('日語榜')) out.push(o);
+            for (const v of Object.values(o)) walk(v,out);
+            return out;
+          }
+          function candidateIds(o) {
+            const keys = ['sourceid','sourceId','id','bangId','bangid'];
+            return [...new Set(keys.map(k => Number(o?.[k])).filter(n => Number.isInteger(n) && n > 0 && n < 10000))];
+          }
+          const chartUrl = id => `https://kbangserver.kuwo.cn/ksong.s?from=pc&fmt=json&pn=0&rn=300&type=bang&data=content&id=${id}&show_copyright_off=0&pcmp4=1&isbang=1&userid=0`;
+          const chartTopUrl = id => `https://kbangserver.kuwo.cn/ksong.s?from=pc&fmt=json&pn=0&rn=5&type=bang&data=content&id=${id}&show_copyright_off=0&pcmp4=1&isbang=1&userid=0`;
+
+          const report = { observed_at: new Date().toISOString(), discovery: [], chart: null, matches: [], history: {available:false, captures:[], matches:[], notes:[]} };
+          const ids = new Set();
+
+          for (const url of ['https://wapi.kuwo.cn/api/pc/bang/list','http://wapi.kuwo.cn/api/pc/bang/list']) {
+            const r = await get(url);
+            const p = json(r.text);
+            const found = walk(p);
+            report.discovery.push({method:'menu',url,status:r.status,found:found.map(x=>({name:x.name ?? x.title,sourceid:x.sourceid,id:x.id,bangId:x.bangId}))});
+            for (const x of found) for (const id of candidateIds(x)) ids.add(id);
+          }
+
+          const h5 = await get('https://m.kuwo.cn/newh5/bang/index');
+          report.discovery.push({method:'h5',status:h5.status,containsJapaneseChart:h5.text.includes('酷我日语榜'),bytes:h5.text.length});
+          if (h5.text.includes('酷我日语榜')) {
+            const pos = h5.text.indexOf('酷我日语榜');
+            const slice = h5.text.slice(Math.max(0,pos-5000),pos+5000);
+            for (const re of [/(?:sourceid|sourceId|bangId|bangid|\"id\")[\"']?\s*[:=]\s*[\"']?(\d{1,4})/g, /(?:bang\/|bangId=)(\d{1,4})/g]) {
+              for (const m of slice.matchAll(re)) ids.add(Number(m[1]));
+            }
+          }
+
+          async function fetchTop(id) {
+            const r = await get(chartTopUrl(id),8000);
+            const p = json(r.text);
+            return {id,r,p,rows:rowsFrom(p)};
+          }
+          const currentTop3Hints = ['ありがとう','nightdancer','cryforme','myall','planet'];
+          function hintScore(rows) {
+            return rows.reduce((score,row) => {
+              const s = normalize(`${row.name ?? row.title ?? ''} ${row.artist ?? row.artistName ?? ''}`);
+              return score + currentTop3Hints.filter(h => s.includes(normalize(h))).length;
+            },0);
+          }
+
+          let chosen = null;
+          for (const id of [...ids]) {
+            const q = await fetchTop(id);
+            if (q.rows.length && hintScore(q.rows) >= 1) { chosen = q; break; }
+          }
+          if (!chosen) {
+            report.discovery.push({method:'id_scan',range:'1..400',note:'scan chart IDs against current 酷我日语榜 top-song hints'});
+            let next = 1;
+            const workers = Array.from({length:20}, async()=>{
+              while (!chosen) {
+                const id = next++;
+                if (id > 400) break;
+                const q = await fetchTop(id);
+                if (q.rows.length && hintScore(q.rows) >= 2) chosen = q;
+                await sleep(10);
+              }
+            });
+            await Promise.all(workers);
+          }
+
+          if (!chosen) {
+            report.chart = {status:'not_found',candidateIds:[...ids]};
+          } else {
+            const id = chosen.id;
+            const full = await get(chartUrl(id));
+            const payload = json(full.text);
+            const rows = rowsFrom(payload);
+            report.chart = {
+              status: full.status,
+              id,
+              count: rows.length,
+              payloadKeys: payload && typeof payload === 'object' ? Object.keys(payload) : [],
+              metadata: payload && typeof payload === 'object' ? Object.fromEntries(Object.entries(payload).filter(([k,v])=>!Array.isArray(v) && (typeof v!=='object' || v===null))) : {},
+              top10: rows.slice(0,10).map((r,i)=>({rank:i+1,name:r.name ?? r.title,artist:r.artist ?? r.artistName ?? r.singer,rid:r.rid ?? r.id})),
+            };
+            report.matches = rows.map((r,i)=>({row:r,rank:i+1,target:targetMatch(r)})).filter(x=>x.target).map(x=>({group:x.target.group,rank:x.rank,name:x.row.name ?? x.row.title,artist:x.row.artist ?? x.row.artistName ?? x.row.singer,rid:x.row.rid ?? x.row.id}));
+
+            // Kuwo's live endpoint exposes only the current list. Probe the Internet Archive
+            // for snapshots of this exact official endpoint as a best-effort historical source.
+            const original = `http://kbangserver.kuwo.cn/ksong.s?from=pc&fmt=json&pn=0&rn=300&type=bang&data=content&id=${id}&show_copyright_off=0&pcmp4=1&isbang=1&userid=0`;
+            const cdx = `https://web.archive.org/cdx/search/cdx?url=${encodeURIComponent(original)}&output=json&fl=timestamp,original,statuscode,digest&filter=statuscode:200&collapse=digest&from=2018&to=2026&limit=100`;
+            const ar = await get(cdx,20000);
+            const aj = json(ar.text);
+            if (Array.isArray(aj) && aj.length > 1) {
+              const captures = aj.slice(1).map(r=>({timestamp:r[0],original:r[1],status:r[2],digest:r[3]}));
+              report.history.available = true;
+              report.history.captures = captures;
+              for (const cap of captures.slice(-30)) {
+                const snap = await get(`https://web.archive.org/web/${cap.timestamp}id_/${cap.original}`,15000);
+                const sp = json(snap.text);
+                const srows = rowsFrom(sp);
+                const hits = srows.map((r,i)=>({row:r,rank:i+1,target:targetMatch(r)})).filter(x=>x.target);
+                for (const x of hits) report.history.matches.push({timestamp:cap.timestamp,group:x.target.group,rank:x.rank,name:x.row.name ?? x.row.title,artist:x.row.artist ?? x.row.artistName ?? x.row.singer});
+              }
+            } else {
+              report.history.notes.push(`Wayback exact-endpoint captures unavailable or CDX blocked (HTTP ${ar.status}).`);
+            }
+            report.history.notes.push('Official live kbangserver response was inspected for date/history fields; no separate historical-series endpoint is assumed unless exposed in payload metadata.');
+          }
+
+          fs.writeFileSync('kuwo-jp-chart-report.json', JSON.stringify(report,null,2));
+          const lines = [];
+          lines.push('# Kuwo 酷我日语榜 probe');
+          lines.push(`Observed: ${report.observed_at}`);
+          if (report.chart?.id) lines.push(`Chart ID: ${report.chart.id}; fetched rows: ${report.chart.count}`);
+          else lines.push(`Chart discovery failed; candidates: ${(report.chart?.candidateIds||[]).join(', ') || 'none'}`);
+          lines.push('');
+          lines.push('## Current Sakamichi matches');
+          if (report.matches.length) for (const m of report.matches) lines.push(`- #${m.rank} ${m.group}: ${m.name} — ${m.artist} (RID ${m.rid})`);
+          else lines.push('- No 櫻坂46 / 乃木坂46 / 日向坂46 match found in fetched chart rows.');
+          lines.push('');
+          lines.push('## Top 10');
+          for (const r of report.chart?.top10 || []) lines.push(`- #${r.rank} ${r.name} — ${r.artist}`);
+          lines.push('');
+          lines.push('## History');
+          lines.push(`- Archive captures discovered: ${report.history.captures.length}`);
+          if (report.history.matches.length) for (const m of report.history.matches) lines.push(`- ${m.timestamp}: #${m.rank} ${m.group} ${m.name} — ${m.artist}`);
+          else lines.push('- No historical Sakamichi match recovered from available exact-endpoint captures.');
+          for (const n of report.history.notes) lines.push(`- ${n}`);
+          fs.writeFileSync('kuwo-jp-chart-report.md', lines.join('\n')+'\n');
+          console.log(lines.join('\n'));
+          NODE
+      - name: Publish job summary
+        shell: bash
+        run: cat kuwo-jp-chart-report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload probe report
+        uses: actions/upload-artifact@v4
+        with:
+          name: kuwo-jp-chart-probe
+          path: |
+            kuwo-jp-chart-report.json
+            kuwo-jp-chart-report.md
+          retention-days: 7
