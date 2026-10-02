@@ -58,6 +58,9 @@ test('Kugou renders Japan chart history from the local subscription group read m
   assert.match(runtime, /sakurazaka46: '#f3a6c8'/);
   assert.match(runtime, /nogizaka46: '#8264b0'/);
   assert.match(runtime, /hinatazaka46: '#9ecff3'/);
+  assert.match(runtime, /最古取得可能/);
+  assert.match(runtime, /最終確認号/);
+  assert.match(runtime, /最終ランクイン/);
   assert.match(shell, /kugouJapanRankChart/);
   assert.match(shell, /kugouJapanRankLegend/);
   assert.match(shell, /kugouJapanCoverage/);
@@ -77,7 +80,7 @@ test('YouTube Music uses the shared R2 read model but renders public metrics in 
   assert.match(youtubeRuntime, /payload\.releases/);
   assert.match(youtubeShell, /月間視聴者/);
   assert.match(youtubeShell, /総視聴回数/);
-  assert.match(youtubeShell, /youtubeMusicReleaseBody/);
+  assert.match(youtubeMusicReleaseBody/);
   assert.doesNotMatch(youtubeRuntime, /タブのみ先行追加|専用収集\/read model接続後/);
 });
 
