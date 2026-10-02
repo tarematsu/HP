@@ -90,13 +90,17 @@ test('Kugou uses a compact Japan chart view with one shared artist filter for gr
   assert.match(regionalCss, /\.regional-chart-filter\.mode-tabs/);
 });
 
-test('QQ uses the same compact artist filter and includes artist popularity ranking', () => {
+test('QQ uses Thursday 18:00 cadence and date-only chart/history labels', () => {
   assert.match(shell, /QQ音乐 日本榜 グループ別最高順位推移/);
   assert.match(shell, /QQ音乐 日本榜 ランクイン履歴/);
   assert.match(shell, /QQ音乐 アーティスト別人気曲順位/);
   assert.match(shell, /qqArtistPopularityBody/);
   assert.match(shell, /artistFilterButtons\('qq', 'QQ音乐 日本榜 表示グループ'\)/);
-  assert.match(runtime, /qq_music: '毎日 00:00 JST'/);
+  assert.match(shell, /headers: \['更新日', 'グループ', '順位', '曲名'\]/);
+  assert.doesNotMatch(shell, /headers: \['週',/);
+  assert.match(qqRuntime, /QQ_CHART_CADENCE = '毎週木曜日18:00'/);
+  assert.match(qqRuntime, /dateLabel:providerDateText/);
+  assert.doesNotMatch(qqRuntime, /function periodText/);
   assert.match(qqRuntime, /activeArtistFilter/);
   assert.match(qqRuntime, /artistVisible/);
   assert.match(qqRuntime, /payload\?\.artist_track_orders/);

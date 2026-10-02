@@ -47,15 +47,23 @@ test('first R2 migration seeds published observations without changing their tim
   assert.equal(snapshot.tracks[0].observed_at,100);
   assert.equal(regionalSnapshotFromPayload(payload,'missing'),null);
 });
-test('daily runner invokes only NetEase and QQ with zero SQL and writes daily/latest objects',async()=>{
+test('daily runner invokes only NetEase with zero SQL and writes daily/latest objects',async()=>{
   const writes=[];const called=[];
-  const collectors=Object.fromEntries(['netease_cloud_music','qq_music'].map(service=>[service,async env=>{called.push(service);assert.equal(env.OTHER_DB,undefined);await saveRegionalCollectorState(env,{service,status:'ok',last_success_at:now});}]));
+  const collectors={netease_cloud_music:async env=>{called.push('netease_cloud_music');assert.equal(env.OTHER_DB,undefined);await saveRegionalCollectorState(env,{service:'netease_cloud_music',status:'ok',last_success_at:now});}};
   const result=await collectRegionalR2Run({now,collectors,load:async()=>null,save:async(key)=>writes.push(key)});
-  assert.deepEqual(called,['netease_cloud_music','qq_music']);
-  assert.equal(result.length,2);assert.equal(writes.length,4);
+  assert.deepEqual(called,['netease_cloud_music']);
+  assert.equal(result.length,1);assert.equal(writes.length,2);
+});
+test('Thursday 18:00 runner invokes only QQ Music',async()=>{
+  const qqNow=Date.parse('2026-10-08T09:00:00Z');
+  const writes=[];const called=[];
+  const collectors={qq_music:async env=>{called.push('qq_music');assert.equal(env.OTHER_DB,undefined);await saveRegionalCollectorState(env,{service:'qq_music',status:'ok',last_success_at:qqNow});}};
+  const result=await collectRegionalR2Run({now:qqNow,collectors,load:async()=>null,save:async(key)=>writes.push(key)});
+  assert.deepEqual(called,['qq_music']);
+  assert.equal(result.length,1);assert.equal(writes.length,2);
 });
 test('scheduled retry reuses complete same-day services without provider requests or writes',async()=>{
   const result=await collectRegionalR2Run({now,collectors:{},load:async()=>({day:'2026-10-06',state:{status:'ok'}}),save:async()=>{throw new Error('must not write');}});
-  assert.equal(result.length,2);
+  assert.equal(result.length,1);
   assert.ok(result.every(row=>row.reused));
 });
