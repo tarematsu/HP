@@ -1,0 +1,50 @@
+name: Backfill QQ Music Japan chart history
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/backfill-qq-japan-toplist-history.yml'
+      - 'worker/scripts/backfill-qq-japan-toplist-history-actions.mjs'
+      - 'worker/tests/qq-japan-toplist-history-backfill.test.js'
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: Earliest date to scan (YYYY-MM-DD)
+        required: false
+        default: '2018-01-01'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qq-music-japan-history-backfill
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      QQ_JAPAN_HISTORY_START: ${{ inputs.start_date || '2018-01-01' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Backfill QQ Music 日本榜 history for Sakamichi groups
+        working-directory: worker
+        run: node scripts/backfill-qq-japan-toplist-history-actions.mjs
