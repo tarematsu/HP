@@ -96,15 +96,22 @@ test('catalog outage publishes error health while preserving known data',async()
   assert.equal(merged.tracks.length,3);
   assert.equal(merged.services[0].status,'error');
 });
-test('deployment bootstrap merges full R2 catalog instead of republishing legacy rows',async()=>{
-  let published;
+test('deployment bootstrap publishes the full Genie R2 catalog only in the Genie read model',async()=>{
+  const published=[];
   const snapshot={version:1,service:'genie',updated_at:now,tracks:catalog,artists:[],artist_track_orders:[],state:{service:'genie',status:'ok',updated_at:now}};
   await bootstrapProducerReadModel('wrangler.regional-music.jsonc',{
     now,
     config:{d1_databases:[{binding:'OTHER_DB',database_name:'test'}],r2_buckets:[{binding:'PAGES_RESPONSE_R2',bucket_name:'test'}]},
     db:{prepare:()=>({all:async()=>({results:[]})})},
-    r2:{get:async key=>key===GENIE_SNAPSHOT_KEY ? {json:async()=>snapshot} : null,put:async(_key,body)=>{published=JSON.parse(JSON.parse(body).body);}},
+    r2:{
+      get:async key=>key===GENIE_SNAPSHOT_KEY ? {json:async()=>snapshot} : null,
+      put:async(_key,body)=>{published.push(JSON.parse(JSON.parse(body).body));},
+    },
   });
-  assert.equal(published.tracks.length,3);
-  assert.equal(published.services[0].storage,'r2');
+  const genie=published.find((payload)=>payload.service==='genie');
+  assert.ok(genie);
+  assert.equal(genie.tracks.length,3);
+  assert.equal(genie.read_model_version,1);
+  assert.equal(genie.source_updated_at,now);
+  assert.ok(published.every((payload)=>payload.tracks.every((track)=>track.service===payload.service)));
 });

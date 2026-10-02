@@ -56,7 +56,7 @@ const COMPACT_CHART_CADENCE = Object.freeze({
 
 const OUT_OF_CHART_RANK = 101;
 
-let readModelPromise = null;
+const readModelPromises = new Map();
 let activeRequest = 0;
 let melonArtistFilter = 'all';
 let lastMelonPayload = null;
@@ -126,22 +126,26 @@ function row(values) {
   return tr;
 }
 
-async function loadReadModel() {
-  if (!readModelPromise) {
-    readModelPromise = fetch('/api/regional-music', {
+async function loadReadModel(service) {
+  const serviceId = String(service || '').trim();
+  if (!readModelPromises.has(serviceId)) {
+    const request = fetch(`/api/regional-music?service=${encodeURIComponent(serviceId)}`, {
       headers: { accept: 'application/json' },
       cache: 'default',
     }).then(async (response) => {
-      if (!response.ok) throw new Error(`regional music HTTP ${response.status}`);
+      if (!response.ok) throw new Error(`regional music ${serviceId} HTTP ${response.status}`);
       const payload = await response.json();
-      if (!payload?.ok) throw new Error(payload?.error || 'regional music read model unavailable');
+      if (!payload?.ok || payload.service !== serviceId) {
+        throw new Error(payload?.error || `regional music ${serviceId} read model unavailable`);
+      }
       return payload;
     }).catch((error) => {
-      readModelPromise = null;
+      readModelPromises.delete(serviceId);
       throw error;
     });
+    readModelPromises.set(serviceId, request);
   }
-  return readModelPromise;
+  return readModelPromises.get(serviceId);
 }
 
 const ARTIST_DISPLAY_ORDER = ['sakurazaka46','nogizaka46','hinatazaka46','aobazaka46'];
@@ -377,9 +381,9 @@ function kugouSeries(history, coveredDates = []) {
     return {
       id: canonicalArtist,
       title: ARTIST_LABELS[canonicalArtist] || canonicalArtist,
-      color: GROUP_COLORS[canonicalArtist],
-      points: coveredDates.length
-        ? coveredDates.map((date) => ({ date, rank: byDate.get(date)?.rank ?? OUT_OF_CHART_RANK }))
+      color:GROUP_COLORS[canonicalArtist],
+      points:coveredDates.length
+        ? coveredDates.map((date) => ({ date, rank:byDate.get(date)?.rank ?? OUT_OF_CHART_RANK }))
         : [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
     };
   }).filter((series) => series.points.length);
@@ -413,22 +417,22 @@ function renderKugouHistory(payload, service) {
     : [...new Set(series.flatMap((item) => item.points.map((point) => point.date)))].sort();
 
   renderRankHistoryChart({
-    container: byId('kugouJapanRankChart'),
+    container:byId('kugouJapanRankChart'),
     series,
     dates,
-    height: 320,
-    margin: { left: 58, right: 18, top: 12, bottom: 34 },
-    yMax: OUT_OF_CHART_RANK,
-    rankTicks: [1, 25, 50, 75, 100, OUT_OF_CHART_RANK],
-    dateTickCount: 5,
-    ariaLabel: 'Kugou Music 日本榜における選択グループの各日最高順位推移。取得済み平日の圏外も含み、1位が上。',
-    lineClass: 'kugou-rank-line',
-    emptyClass: 'regional-music-rank-empty',
-    emptyText: 'Kugou Music 日本榜の順位履歴はまだありません。',
-    rankLabel: (rank) => rank === OUT_OF_CHART_RANK ? '圏外' : `${rank}位`,
-    dateLabel: providerDateText,
-    latestPoint: { radius: () => 2.5 },
-    legendContainer: byId('kugouJapanRankLegend'),
+    height:320,
+    margin:{ left:58, right:18, top:12, bottom:34 },
+    yMax:OUT_OF_CHART_RANK,
+    rankTicks:[1, 25, 50, 75, 100, OUT_OF_CHART_RANK],
+    dateTickCount:5,
+    ariaLabel:'Kugou Music 日本榜における選択グループの各日最高順位推移。取得済み平日の圏外も含み、1位が上。',
+    lineClass:'kugou-rank-line',
+    emptyClass:'regional-music-rank-empty',
+    emptyText:'Kugou Music 日本榜の順位履歴はまだありません。',
+    rankLabel:(rank) => rank === OUT_OF_CHART_RANK ? '圏外' : `${rank}位`,
+    dateLabel:providerDateText,
+    latestPoint:{ radius:() => 2.5 },
+    legendContainer:byId('kugouJapanRankLegend'),
   });
 
   const body = replaceBody('kugouJapanHistoryBody');
@@ -462,6 +466,7 @@ function renderService(payload, service) {
   setCompactChartMode(service);
   setText('regionalMusicTitle', SERVICE_LABELS[service] || service);
   setText('regionalMusicRegion', state?.region || '');
+  // The top timestamp is the selected service read-model generation time.
   setText('regionalMusicUpdated', dateTimeText(payload.updated_at));
   setText('regionalMusicChartUpdated', dateTimeText(payload.updated_at));
   setText('regionalMusicChartCadence', COMPACT_CHART_CADENCE[service] || '-');
@@ -526,7 +531,7 @@ export async function loadRegionalMusicView(service) {
   setCompactNotice();
   if (!compactChartMode(serviceId)) setNotice('regionalMusicNotice', 'データを読み込んでいます。');
   try {
-    const payload = await loadReadModel();
+    const payload = await loadReadModel(serviceId);
     if (request === activeRequest) renderService(payload, serviceId);
   } catch (error) {
     if (request !== activeRequest) return;
