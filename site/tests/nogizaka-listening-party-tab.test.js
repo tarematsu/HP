@@ -6,6 +6,8 @@ import { formatNogizakaBroadcastContent } from '../functions/api/nogizaka-listen
 const shell = readFileSync(new URL('../public/nogizaka-listening-party-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/nogizaka-listening-party.js', import.meta.url), 'utf8');
 const partyUi = readFileSync(new URL('../public/official-listening-party-ui.js', import.meta.url), 'utf8');
+const stationheadTabs = readFileSync(new URL('../public/stationhead-channel-tabs.js', import.meta.url), 'utf8');
+const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/nogizaka-listening-party.js', import.meta.url), 'utf8');
 const publisher = readFileSync(new URL('../../worker/src/nogizaka-pages-read-model.js', import.meta.url), 'utf8');
@@ -20,21 +22,28 @@ test('Nogizaka tab is mounted immediately before Hinata when available', () => {
   assert.match(tabs, /loadNogizakaListeningPartyView/);
 });
 
-test('Nogizaka exposes the shared five Stationhead subtabs with only listening party enabled', () => {
+test('Nogizaka uses the shared five Stationhead subtabs with only listening party enabled', () => {
   for (const pair of [
     ["value: 'current', label: '現在'", '現在'],
     ["value: 'history', label: '過去'", '過去'],
     ["value: 'played-tracks', label: '再生履歴'", '再生履歴'],
     ["value: 'likes', label: 'いいね'", 'いいね'],
-    ["value: 'broadcasts', label: 'リスパ', active: true", 'リスパ'],
+    ["value: 'broadcasts', label: 'リスパ'", 'リスパ'],
   ]) {
-    assert.match(shell, new RegExp(pair[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), pair[1]);
+    assert.match(stationheadTabs, new RegExp(pair[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), pair[1]);
   }
-  assert.match(shell, /dashboardModeTabs/);
-  assert.match(shell, /data-nogizaka-panel="broadcasts"/);
-  assert.match(shell, /const available = button\.dataset\.nogizakaSection === 'broadcasts'/);
-  assert.match(shell, /button\.disabled = !available/);
-  assert.match(shell, /Nogizakaでは未提供/);
+  assert.match(shell, /stationheadChannelTabs/);
+  assert.match(shell, /active: 'broadcasts'/);
+  assert.match(shell, /enabled: \['broadcasts'\]/);
+  assert.match(shell, /unavailableTitle: 'Nogizakaでは未提供'/);
+  assert.match(shell, /class="stationhead-channel-panel" data-nogizaka-panel="broadcasts"/);
+  assert.match(stationheadTabs, /disabled aria-disabled="true"/);
+});
+
+test('Unavailable Nogizaka tabs are visibly struck through by the shared Stationhead style', () => {
+  assert.match(sharedCss, /\.stationhead-subtabs\s*>\s*button:disabled\s*\{[^}]*opacity:\s*\.42/s);
+  assert.match(sharedCss, /\.stationhead-subtabs\s*>\s*button:disabled\s*\{[^}]*text-decoration-line:\s*line-through/s);
+  assert.match(sharedCss, /\.stationhead-subtabs\s*\{[^}]*grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\)/s);
 });
 
 test('Nogizaka tab keeps the shared official listening-party presentation', () => {
