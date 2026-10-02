@@ -1,0 +1,101 @@
+name: Adaptive backfill Kuwo Japanese chart 2026
+on:
+  push:
+    branches: [research/kuwo-jp-chart-probe]
+    paths: [.github/workflows/kuwo-jp-backfill-2026-adaptive.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Discover historical IDs and scan Sakamichi
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import concurrent.futures,datetime,json,pathlib,re,time,urllib.parse,urllib.request
+          BASE='https://kbangserver.kuwo.cn/ksong.s'
+          COMMON={'from':'pc','fmt':'json','pn':'0','rn':'1','type':'bang','data':'content','id':'183','show_copyright_off':'0','pcmp4':'1','isbang':'1','userid':'0'}
+          GROUPS={
+            '櫻坂46':['櫻坂46','樱坂46','Sakurazaka46','Sakurazaka 46'],
+            '乃木坂46':['乃木坂46','Nogizaka46','Nogizaka 46'],
+            '日向坂46':['日向坂46','Hinatazaka46','Hinatazaka 46'],
+            '欅坂46':['欅坂46','Keyakizaka46','Keyakizaka 46'],
+          }
+          def norm(s):return re.sub(r'[\s._・･\-—–/\\()\[\]（）【】「」『』]','',str(s or '').casefold())
+          def fetch(bid,rn=1,timeout=5):
+            q=dict(COMMON);q['rn']=str(rn);q['bangid']=str(bid)
+            u=BASE+'?'+urllib.parse.urlencode(q)
+            try:
+              req=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0','Referer':'https://m.kuwo.cn/'})
+              with urllib.request.urlopen(req,timeout=timeout) as r:j=json.loads(r.read().decode('utf-8','replace'))
+              return j
+            except:return {}
+          def probe(bid):
+            j=fetch(bid,1,4);return bid,j.get('currentVolume')
+          # Known anchor from current volume metadata.
+          known={216:268368,215:268291,214:268216}
+          current_vol=214;current_tid=known[current_vol]
+          request_est=0; failures=[]
+          # Adaptive search around ~75 IDs/day. Search narrow first, then widen only if needed.
+          for target in range(213,0,-1):
+            expected=f'2026|{target}'
+            center=current_tid-75
+            found=None
+            searched=set()
+            for radius in (6,16,40,90,180):
+              cand=[x for x in range(center-radius,center+radius+1) if x>0 and x not in searched]
+              searched.update(cand);request_est+=len(cand)
+              with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
+                for bid,cv in ex.map(probe,cand):
+                  if cv==expected:
+                    found=bid;break
+              if found is not None:break
+            if found is None:
+              # Last-resort wider window centered on prior ID; catches historical discontinuities.
+              cand=[x for x in range(max(1,current_tid-600),current_tid) if x not in searched]
+              request_est+=len(cand)
+              with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex:
+                for bid,cv in ex.map(probe,cand):
+                  if cv==expected:
+                    found=bid;break
+            if found is None:
+              failures.append({'volume':target,'after_tid':current_tid});print('DISCOVERY_FAIL',target,'after',current_tid);break
+            known[target]=found
+            delta=current_tid-found
+            print('DISCOVER',target,found,'delta',delta)
+            current_vol,target_prev=target,target-1
+            current_tid=found
+
+          print('DISCOVERED',len(known),'MIN_VOL',min(known),'MAX_VOL',max(known),'REQUEST_EST',request_est,'FAILURES',failures)
+
+          def full(vol_tid):
+            vol,tid=vol_tid;j=fetch(tid,100,10);rows=j.get('musiclist') or j.get('musicList') or []
+            hits=[]
+            for i,r in enumerate(rows,1):
+              hay=norm(' '.join(str(r.get(k,'')) for k in ('artist','artistName','singer','name','title')))
+              for g,aa in GROUPS.items():
+                if any(norm(a) in hay for a in aa):hits.append({'rank':i,'group':g,'name':r.get('name') or r.get('title'),'artist':r.get('artist') or r.get('artistName') or r.get('singer'),'rid':r.get('rid') or r.get('id')})
+            date=(datetime.date(2026,1,1)+datetime.timedelta(days=vol-1)).isoformat()
+            return {'volume':vol,'date':date,'third_id':tid,'currentVolume':j.get('currentVolume'),'rows':len(rows),'top10':[{'rank':i+1,'name':r.get('name') or r.get('title'),'artist':r.get('artist') or r.get('artistName') or r.get('singer')} for i,r in enumerate(rows[:10])],'sakamichi':hits}
+
+          editions=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+            for x in ex.map(full,sorted(known.items(),reverse=True)):editions.append(x)
+          hits=[{'date':e['date'],'volume':e['volume'],'third_id':e['third_id'],**h} for e in editions for h in e['sakamichi']]
+          bad=[{'date':e['date'],'volume':e['volume'],'third_id':e['third_id'],'rows':e['rows']} for e in editions if e['rows']!=100]
+          report={'observed_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'discovered_count':len(known),'min_volume':min(known),'request_estimate':request_est,'discovery_failures':failures,'sakamichi_hits':hits,'fetch_failures':bad,'editions':editions,'volume_ids':{str(k):v for k,v in sorted(known.items())}}
+          pathlib.Path('kuwo-jp-2026-backfill.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          print('FINAL EDITIONS',len(editions),'BAD',len(bad),'SAKAMICHI_HITS',len(hits))
+          for h in hits:print('SAKAMICHI',json.dumps(h,ensure_ascii=False))
+          PY
+      - name: Upload backfill
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kuwo-jp-2026-backfill
+          path: kuwo-jp-2026-backfill.json
+          if-no-files-found: ignore
+          retention-days: 7
