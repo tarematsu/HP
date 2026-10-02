@@ -17,7 +17,7 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -35,9 +35,6 @@ jobs:
       - name: Probe Kugou legacy historical rank API
         working-directory: worker
         run: node scripts/probe-kugou-legacy-rank.mjs | tee kugou-legacy-rank-probe.json
-      - name: Crawl Kugou Japan ranking history
-        working-directory: worker
-        run: node scripts/probe-kugou-japan-history.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: kugou-public-probe
@@ -45,7 +42,5 @@ jobs:
             worker/kugou-public-probe.json
             worker/kugou-japan-rank-probe.json
             worker/kugou-current-rank-probe.json
-            worker/kugou-japan-history.json
-            worker/kugou-japan-history.csv
             worker/kugou-legacy-rank-probe.json
           retention-days: 7
