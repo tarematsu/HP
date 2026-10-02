@@ -1,0 +1,96 @@
+name: Extract 2024 NetEase Japanese chart video frames
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/research-netease-japan-video-frames.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - name: Resolve and download low-resolution video stream
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p research-video/frames
+          python - <<'PY'
+          import json, pathlib, urllib.request, urllib.parse
+          aid='113148027798915'; cid='25887836896'
+          headers={
+            'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130 Safari/537.36',
+            'Referer':'https://www.bilibili.com/video/av'+aid,
+          }
+          urls=[
+            f'https://api.bilibili.com/x/player/playurl?avid={aid}&cid={cid}&qn=16&fnval=0&platform=html5&high_quality=0',
+            f'https://api.bilibili.com/x/player/playurl?avid={aid}&cid={cid}&qn=32&fnval=0&platform=html5&high_quality=0',
+            f'https://api.bilibili.com/x/player/playurl?avid={aid}&cid={cid}&qn=16&fnval=1',
+          ]
+          payloads=[]; media=None
+          for u in urls:
+            try:
+              req=urllib.request.Request(u,headers=headers)
+              with urllib.request.urlopen(req,timeout=20) as r:
+                body=r.read().decode('utf-8','replace')
+              j=json.loads(body); payloads.append({'url':u,'json':j})
+              d=j.get('data') or {}
+              arr=d.get('durl') or []
+              if arr and arr[0].get('url'):
+                media=arr[0]['url']; break
+            except Exception as e:
+              payloads.append({'url':u,'error':repr(e)})
+          pathlib.Path('research-video/playurl.json').write_text(json.dumps(payloads,ensure_ascii=False,indent=2))
+          if not media:
+            print(json.dumps(payloads,ensure_ascii=False)[:20000])
+            raise SystemExit('no media URL')
+          pathlib.Path('research-video/media-url.txt').write_text(media)
+          print('MEDIA',media[:500])
+          req=urllib.request.Request(media,headers=headers)
+          with urllib.request.urlopen(req,timeout=60) as r, open('research-video/video.mp4','wb') as f:
+            total=0
+            while True:
+              chunk=r.read(1024*1024)
+              if not chunk: break
+              f.write(chunk); total+=len(chunk)
+              if total>150*1024*1024: raise RuntimeError('video too large')
+          print('downloaded',total)
+          PY
+      - name: Extract dense contact frames
+        shell: bash
+        run: |
+          ffprobe -v error -show_format -show_streams -of json research-video/video.mp4 > research-video/ffprobe.json
+          # 14:42 / 30 ~= 29.4s. Sample every 7s so every chart card/transition is covered.
+          ffmpeg -hide_banner -loglevel error -i research-video/video.mp4 -vf "fps=1/7,scale=960:-2" -q:v 3 research-video/frames/frame-%04d.jpg
+          python - <<'PY'
+          from pathlib import Path
+          files=sorted(Path('research-video/frames').glob('frame-*.jpg'))
+          print('frames',len(files))
+          Path('research-video/frame-list.txt').write_text('\n'.join(str(x) for x in files))
+          PY
+      - name: Create contact sheets
+        shell: bash
+        run: |
+          # 20 thumbnails per sheet, preserving enough resolution to read overlay text.
+          ffmpeg -hide_banner -loglevel error -i research-video/video.mp4 -vf "fps=1/7,scale=480:-2,tile=5x4:padding=4:margin=4" -q:v 3 research-video/contact-%03d.jpg
+          ls -lh research-video/contact-*.jpg research-video/video.mp4 || true
+      - name: Upload research frames
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: netease-japan-2024-video-frames
+          path: |
+            research-video/playurl.json
+            research-video/ffprobe.json
+            research-video/frame-list.txt
+            research-video/contact-*.jpg
+            research-video/frames/*.jpg
+          if-no-files-found: warn
+          retention-days: 7
