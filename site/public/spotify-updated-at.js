@@ -1,20 +1,10 @@
-import { dashboardDateTimeFormatter } from './dashboard-time.js?v=20261003.1';
+import {
+  MUSIC_ARTIST_LABELS,
+  MUSIC_ARTIST_ORDER,
+  musicDateTimeText,
+} from './music-service-runtime-common.js?v=20261004.1';
 
-const ARTIST_KEYS = Object.freeze(['sakurazaka46', 'nogizaka46', 'hinatazaka46']);
-const ARTIST_NAMES = Object.freeze({
-  sakurazaka46: '櫻坂46',
-  nogizaka46: '乃木坂46',
-  hinatazaka46: '日向坂46',
-});
-const JST_UPDATE_TIME = dashboardDateTimeFormatter({
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  hourCycle: 'h23',
-});
-
+const ARTIST_KEYS = Object.freeze(MUSIC_ARTIST_ORDER.slice(0, 3));
 let readModelPromise = null;
 let currentArtistKey = 'sakurazaka46';
 
@@ -37,16 +27,13 @@ export function latestSpotifyCollectedAt(model = {}, artistKey = 'all') {
 }
 
 export function formatSpotifyUpdatedAt(value) {
-  const timestamp = validTimestamp(value);
-  if (timestamp == null) return '-';
-  const date = new Date(timestamp);
-  return Number.isNaN(date.getTime()) ? '-' : JST_UPDATE_TIME.format(date);
+  return musicDateTimeText(validTimestamp(value));
 }
 
 function updatedAtTitle(model, artistKey) {
   const keys = artistKey === 'all' ? ARTIST_KEYS : [artistKey];
   return keys.map((key) => {
-    const label = ARTIST_NAMES[key] || key;
+    const label = MUSIC_ARTIST_LABELS[key] || key;
     return `${label}: ${formatSpotifyUpdatedAt(latestSpotifyCollectedAt(model, key))}`;
   }).join(' / ');
 }
