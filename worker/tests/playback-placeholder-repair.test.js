@@ -68,6 +68,27 @@ test('placeholder playback names are treated as missing metadata', () => {
   });
 });
 
+test('Spotify ID values are treated as unresolved presentation metadata', () => {
+  const spotifyId = '6abcdefghijklmnopqrstu';
+  const queue = { tracks: [{
+    spotify_id: spotifyId,
+    title: spotifyId,
+    artist: spotifyId,
+    display_title: spotifyId,
+    thumbnail_url: 'https://img.example/stale.jpg',
+  }] };
+
+  assert.equal(trackNeedsHydration(queue.tracks[0]), true);
+  assert.equal(queueNeedsHydration(queue), true);
+  assert.deepEqual(sanitizeQueueTrackMetadata(queue).tracks[0], {
+    spotify_id: spotifyId,
+    title: null,
+    artist: null,
+    display_title: null,
+    thumbnail_url: 'https://img.example/stale.jpg',
+  });
+});
+
 test('playback repair replaces persisted placeholders with canonical metadata', async () => {
   const updates = [];
   const result = await repairPlaybackReadModels({ MINUTE_DB: database(updates) });

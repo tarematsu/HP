@@ -22,6 +22,12 @@ function normalizedText(value) {
   return String(value ?? '').trim();
 }
 
+function isSpotifyIdPlaceholder(value, spotifyId) {
+  const text = normalizedText(value);
+  const id = normalizedText(spotifyId);
+  return Boolean(text && id && text === id);
+}
+
 export function trackTitleValue(value) {
   const text = normalizedText(value);
   if (!text) return null;
@@ -60,13 +66,22 @@ export function trackDisplayTitleParts(value, knownTitle = null) {
 }
 
 function resolvedTrackMetadata(track) {
-  const directTitle = trackTitleValue(track?.title);
-  const directArtist = trackArtistValue(track?.artist);
-  const display = trackDisplayTitleParts(track?.display_title, directTitle);
+  const spotifyId = normalizedText(track?.spotify_id);
+  const rawTitle = trackTitleValue(track?.title);
+  const rawArtist = trackArtistValue(track?.artist);
+  const directTitle = isSpotifyIdPlaceholder(rawTitle, spotifyId) ? null : rawTitle;
+  const directArtist = isSpotifyIdPlaceholder(rawArtist, spotifyId) ? null : rawArtist;
+  const displaySource = isSpotifyIdPlaceholder(track?.display_title, spotifyId)
+    ? null
+    : track?.display_title;
+  const display = trackDisplayTitleParts(displaySource, directTitle);
+  const displayTitle = isSpotifyIdPlaceholder(display.displayTitle, spotifyId) ? null : display.displayTitle;
+  const displayResolvedTitle = isSpotifyIdPlaceholder(display.title, spotifyId) ? null : display.title;
+  const displayArtist = isSpotifyIdPlaceholder(display.artist, spotifyId) ? null : display.artist;
   return {
-    title: directTitle || display.title,
-    artist: directArtist || display.artist,
-    displayTitle: display.displayTitle,
+    title: directTitle || displayResolvedTitle,
+    artist: directArtist || displayArtist,
+    displayTitle,
   };
 }
 
@@ -93,11 +108,12 @@ export function sanitizeQueueTrackMetadata(queue) {
     const displayChanged = displayTitle !== (normalizedText(track.display_title) || null);
     if (!titleChanged && !artistChanged && !displayChanged) return track;
     changed = true;
+    const hasDisplayTitle = Object.prototype.hasOwnProperty.call(track, 'display_title');
     return {
       ...track,
       title,
       artist,
-      ...(displayTitle ? { display_title: displayTitle } : {}),
+      ...(displayTitle || hasDisplayTitle ? { display_title: displayTitle } : {}),
     };
   });
   return changed ? { ...queue, tracks } : queue;
@@ -106,10 +122,11 @@ export function sanitizeQueueTrackMetadata(queue) {
 export function sanitizeMetadataRow(row) {
   if (!row || typeof row !== 'object') return row;
   const resolved = resolvedTrackMetadata(row);
+  const hasDisplayTitle = Object.prototype.hasOwnProperty.call(row, 'display_title');
   return {
     ...row,
     title: resolved.title,
     artist: resolved.artist,
-    ...(resolved.displayTitle ? { display_title: resolved.displayTitle } : {}),
+    ...(resolved.displayTitle || hasDisplayTitle ? { display_title: resolved.displayTitle || null } : {}),
   };
 }
