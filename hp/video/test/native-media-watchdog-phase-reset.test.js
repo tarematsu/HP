@@ -11,18 +11,20 @@ const mediaSection = readFileSync(
   'utf8',
 );
 
-test('watchdog timeout recovery stays inside the current media phase', () => {
+test('stale watchdog timeouts cannot recreate a different media phase', () => {
   const timerCase = hostWindow.slice(
     hostWindow.indexOf('case WM_TIMER:'),
     hostWindow.indexOf('case WM_ERASEBKGND:'),
   );
 
   assert.match(timerCase, /NativeMediaWatchdogExecutionTimedOut\(hwnd, timerId\)/);
-  assert.doesNotMatch(
+  assert.match(timerCase, /watchdogMatchesCurrentPhase/);
+  assert.match(timerCase, /NativeMediaXCycleLastPhaseTver\(\)/);
+  assert.match(
     timerCase,
-    /PostMessageW\(hwnd,\s*kNativeMediaRecreateMessage/,
+    /NativeMediaWatchdogExecutionTimedOut\(hwnd, timerId\)\s*&&\s*watchdogMatchesCurrentPhase/,
   );
-  assert.match(timerCase, /host->OnTimer\(timerId\)/);
+  assert.match(timerCase, /PostMessageW\(hwnd, kNativeMediaRecreateMessage, 0, 0\)/);
 });
 
 test('real WebView process failure can still recreate the media host', () => {
