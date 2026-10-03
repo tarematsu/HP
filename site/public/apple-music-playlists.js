@@ -1,6 +1,5 @@
 import {
   byId as element,
-  dashboardDataCard,
   dashboardTable,
   integerFormat,
   safeInteger as integer,
@@ -23,25 +22,15 @@ function selectedArtist() {
 function ensurePlaylistTable() {
   const existing = element('applePlaylistTable');
   if (existing) return existing;
-  const view = element('appleMusicView');
-  if (!view) return null;
+  const mount = element('applePlaylistMount');
+  if (!mount) return null;
 
   const table = dashboardTable({
     id: 'applePlaylistTable',
-    className: 'apple-table apple-playlist-table music-service-playlist-table',
+    className: 'apple-table apple-playlist-table regional-music-table music-service-playlist-table',
     wrapClassName: 'apple-region-table-wrap',
   });
-  const holder = document.createElement('div');
-  holder.innerHTML = dashboardDataCard({
-    title: '櫻坂46 楽曲別プレイリスト掲載一覧',
-    titleId: 'applePlaylistTitle',
-    kicker: 'PLAYLISTS',
-    className: 'apple-data-panel music-service-panel',
-    bodyHtml: `<p id="applePlaylistNote" class="music-service-playlist-note">Apple Music公式サイト上で検出できた公開プレイリストを、櫻坂46楽曲ごとに表示します。</p>${table}`,
-  });
-  const panel = holder.firstElementChild;
-  if (!panel) return null;
-  (element('applePlaylistMount') || view).append(panel);
+  mount.insertAdjacentHTML('beforeend', `<p id="applePlaylistNote" class="music-service-playlist-note">Apple Music公式サイト上で検出できた公開プレイリストを、櫻坂46楽曲ごとに表示します。</p>${table}`);
   return element('applePlaylistTable');
 }
 

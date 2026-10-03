@@ -139,12 +139,14 @@ test('Apple Music view fixes the top graph to Japan and uses one regional rankin
   assert.match(runtime, /point\?\.regions\?\.jp/);
 });
 
-test('Apple Music lazy playlist view lists public-site playlist memberships by song', () => {
-  assert.match(playlistRuntime, /dashboardDataCard/);
+test('Apple Music lazy playlist view uses the shared QQ section without a nested card', () => {
+  assert.doesNotMatch(playlistRuntime, /dashboardDataCard/);
   assert.match(playlistRuntime, /dashboardTable/);
   assert.match(playlistRuntime, /id: 'applePlaylistTable'/);
-  assert.match(playlistRuntime, /楽曲別プレイリスト掲載一覧/);
+  assert.match(shell, /title: '櫻坂46 楽曲別プレイリスト掲載一覧'/);
+  assert.match(shell, /titleId: 'applePlaylistTitle'/);
   assert.match(playlistRuntime, /Apple Music公式サイト上で検出できた公開プレイリスト/);
+  assert.match(playlistRuntime, /applePlaylistMount/);
   assert.match(playlistRuntime, /safeAppleMusicUrl/);
   assert.match(playlistRuntime, /membership\?\.position/);
   assert.match(playlistRuntime, /loadAppleMusicPlaylistMemberships/);

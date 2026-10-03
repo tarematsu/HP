@@ -5,6 +5,7 @@ import test from 'node:test';
 const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
 const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 const sharedRoute = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+const musicServiceShell = readFileSync(new URL('../public/music-service-shell.js', import.meta.url), 'utf8');
 const canvasChart = readFileSync(new URL('../public/dashboard-chart-canvas.js', import.meta.url), 'utf8');
 const currentChart = readFileSync(new URL('../public/dashboard-chart-comparison.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
@@ -162,11 +163,17 @@ test('dashboard shells share reusable UI components without runtime stylesheet l
     assert.match(shells[name], /dashboardMetric/);
     assert.match(shells[name], /dashboardMetrics/);
   }
-  for (const name of ['history-shell.js', 'likes-shell.js', 'apple-music-shell.js', 'played-tracks-shell.js', 'nogizaka-listening-party-shell.js']) {
+  for (const name of ['history-shell.js', 'likes-shell.js', 'played-tracks-shell.js', 'nogizaka-listening-party-shell.js']) {
     assert.match(shells[name], /dashboard(?:Summary|DataCard|ChartCard)/, `${name} must compose shared cards`);
   }
-  assert.match(shells['spotify-shell.js'], /regional-chart-section/);
-  assert.match(shells['spotify-shell.js'], /regional-chart-meta/);
+  for (const name of ['spotify-shell.js', 'apple-music-shell.js', 'amazon-music-shell.js']) {
+    assert.match(shells[name], /musicServiceMeta/, `${name} must use the QQ metadata primitive`);
+    assert.match(shells[name], /musicServiceSection/, `${name} must use the QQ section primitive`);
+    assert.match(shells[name], /musicServiceViewClassName/, `${name} must use the QQ view primitive`);
+  }
+  assert.match(musicServiceShell, /regional-chart-meta/);
+  assert.match(musicServiceShell, /regional-chart-section/);
+  assert.match(musicServiceShell, /'regional-music-view', 'is-chart-compact', 'music-service-view'/);
   for (const name of ['followers-shell.js', 'apple-music-shell.js', 'amazon-music-shell.js']) {
     assert.match(shells[name], /dashboardChartHost/, `${name} must use the shared chart host`);
   }
