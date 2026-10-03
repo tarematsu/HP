@@ -5,6 +5,7 @@ const JSON_HEADERS = {
   'cache-control': 'public, max-age=300, s-maxage=900, stale-while-revalidate=3600',
 };
 
+const LEADERBOARD_MODEL_KEY = 'leaderboard';
 const FEATURED_HOSTS = ['sakuramankai', 'sakurazaka46jp', 'nogizaka46smej'];
 const STATIONHEAD_CHANNEL_BY_HOST = new Map([
   ['sakuramankai', 'Buddies'],
@@ -184,6 +185,51 @@ function matchingHostKeys(rows, search) {
   return keys;
 }
 
+async function loadLeaderboardReadModel(env) {
+  const service = env?.PAGES_READ_MODEL_SERVICE;
+  if (typeof service?.fetch === 'function') {
+    const url = new URL('https://pages-read-model.internal/_internal/pages-response');
+    url.searchParams.set('key', LEADERBOARD_MODEL_KEY);
+    let response;
+    try {
+      response = await service.fetch(new Request(url, {
+        method: 'GET',
+        headers: { accept: 'application/json' },
+      }));
+    } catch {
+      return null;
+    }
+    if (!response?.ok) return null;
+    let model;
+    try {
+      model = await response.json();
+    } catch {
+      return null;
+    }
+    if (!model || typeof model !== 'object' || Array.isArray(model)) return null;
+    return {
+      model,
+      refreshed_at: Number(response.headers.get('x-materialized-at')) || Number(model.refreshed_at) || null,
+      source_max_ranking_date: model.source_max_ranking_date || null,
+      read_path: 'leaderboard-r2-read-model',
+    };
+  }
+
+  // Local/test fallback only. Production has PAGES_READ_MODEL_SERVICE and therefore
+  // never touches D1 for leaderboard reads.
+  if (!env?.OTHER_DB?.prepare) return null;
+  const stored = await env.OTHER_DB.prepare(READ_MODEL_SQL).first();
+  if (!stored?.payload_json) return null;
+  const model = await loadWeeklyRankingReadModel(env.OTHER_DB, stored);
+  if (!model) return null;
+  return {
+    model,
+    refreshed_at: Number(stored.refreshed_at) || Number(model.refreshed_at) || null,
+    source_max_ranking_date: stored.source_max_ranking_date || model.source_max_ranking_date || null,
+    read_path: 'weekly-ranking-read-model',
+  };
+}
+
 function readModelUnavailable(from, to, scope, hostSearch) {
   return json({
     ok: true,
@@ -202,7 +248,7 @@ function readModelUnavailable(from, to, scope, hostSearch) {
     host_count: 0,
     ranking_summary: { week_count: 0, host_count: 0, ranked_entry_count: 0, out_of_rank_count: 0 },
     setup_required: true,
-    read_path: 'weekly-ranking-read-model',
+    read_path: 'leaderboard-r2-read-model',
   });
 }
 
@@ -214,10 +260,9 @@ export async function loadRanking(requestUrl, env, _summaryLoader) {
   const limit = Math.min(Math.max(Number(requestUrl.searchParams.get('limit')) || 5000, 20), 10000);
 
   try {
-    const stored = await env.OTHER_DB.prepare(READ_MODEL_SQL).first();
-    if (!stored?.payload_json) return readModelUnavailable(from, to, scope, hostSearch);
-    const model = await loadWeeklyRankingReadModel(env.OTHER_DB, stored);
-    if (!model) return readModelUnavailable(from, to, scope, hostSearch);
+    const loaded = await loadLeaderboardReadModel(env);
+    if (!loaded?.model) return readModelUnavailable(from, to, scope, hostSearch);
+    const { model } = loaded;
 
     const sourceActual = (Array.isArray(model.actual_rows) ? model.actual_rows : [])
       .filter((row) => inRange(row, from, to))
@@ -286,9 +331,9 @@ export async function loadRanking(requestUrl, env, _summaryLoader) {
       truncated,
       live_overlay_count: 0,
       latest_live_observed_at: null,
-      materialized_at: Number(stored.refreshed_at) || Number(model.refreshed_at) || null,
-      source_max_ranking_date: stored.source_max_ranking_date || model.source_max_ranking_date || null,
-      read_path: 'weekly-ranking-read-model',
+      materialized_at: loaded.refreshed_at,
+      source_max_ranking_date: loaded.source_max_ranking_date,
+      read_path: loaded.read_path,
     });
   } catch (error) {
     if (/no such table|no such column/i.test(String(error?.message || ''))) {
