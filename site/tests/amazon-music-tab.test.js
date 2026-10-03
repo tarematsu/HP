@@ -69,7 +69,7 @@ test('Amazon Music API preserves real materialized-service failures', async () =
 });
 
 test('Amazon Music view keeps metadata first and exposes Sakamichi switches', () => {
-  assert.match(shell, /musicServiceMeta\(\{ valueId: 'amazonSnapshotDate' \}\)/);
+  assert.match(shell, /musicServiceMeta\(\{ label: '更新日時', valueId: 'amazonUpdatedAt', cadence: '毎日朝ごろ' \}\)/);
   assert.match(shell, /className: 'amazon-music-view music-service-view'/);
   assert.match(shell, /title: '推移'/);
   assert.match(shell, /title: '楽曲'/);
