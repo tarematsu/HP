@@ -35,8 +35,9 @@ test('QQ metadata order is shared by Spotify Apple Amazon YouTube and regional s
   assert.match(regional, /valueId: 'regionalMusicChartUpdated'/);
   assert.match(regional, /cadenceId: 'regionalMusicChartCadence'/);
   assert.match(commonShell, /qq_music: '毎週木曜日18:00'/);
-  assert.match(commonShell, /netease_cloud_music: '毎週火曜日 16:00'/);
+  assert.match(commonShell, /kugou_music: '平日11:30 \/ ACG新歌榜: 水曜11:40'/);
   assert.match(commonShell, /return service \? '毎週月曜日0:00' : '-'/);
+  assert.doesNotMatch(commonShell, /netease_cloud_music/);
 });
 
 test('service shells keep data-specific sections but no longer own overview-card layout', () => {
@@ -49,7 +50,7 @@ test('service shells keep data-specific sections but no longer own overview-card
   assert.match(youtube, /youtubeMusicArtistSection/);
   assert.match(regional, /qqJapanChartSection/);
   assert.match(regional, /kugouJapanChartSection/);
-  assert.match(regional, /melonArtistPopularitySection/);
+  assert.doesNotMatch(regional, /melonArtistPopularitySection/);
   assert.doesNotMatch(regional, /regionalMusicGenericHeader|regional-music-summary|regionalMusicHealth/);
 });
 
