@@ -3,6 +3,9 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
+  loadSpotifyLatestRows,
+  spotifyLatestDetailSql,
+  spotifyLatestSnapshotDatesSql,
   spotifyPlaycountAllSql,
   spotifyReadModelAll,
 } from '../functions/api/spotify-playcounts.js';
@@ -40,13 +43,59 @@ test('Sakamichi Spotify read model keeps each artist latest detail and sorts tra
   assert.deepEqual(model.groups.hinatazaka46.tracks.map((track) => track.delta), [70, 60]);
 });
 
-test('Sakamichi detail SQL selects latest date independently per artist', () => {
-  const sql = spotifyPlaycountAllSql();
-  assert.match(sql, /artist_key IN \('sakurazaka46','nogizaka46','hinatazaka46'\)/);
-  assert.match(sql, /GROUP BY artist_key/);
-  assert.match(sql, /FROM sh_spotify_artist_daily/);
-  assert.match(sql, /d\.snapshot_date=latest\.snapshot_date/);
-  assert.match(sql, /d\.delta DESC/);
+test('Sakamichi detail reads latest dates once and uses the artist-first index for each group', () => {
+  const datesSql = spotifyLatestSnapshotDatesSql();
+  assert.match(datesSql, /artist_key IN \(\?,\?,\?\)/);
+  assert.match(datesSql, /GROUP BY artist_key/);
+
+  const detailSql = spotifyLatestDetailSql();
+  assert.match(detailSql, /INDEXED BY idx_sh_spotify_track_targets_artist/);
+  assert.match(detailSql, /d\.snapshot_date=\?/);
+  assert.match(detailSql, /WHERE target\.artist_key=\?/);
+  assert.doesNotMatch(detailSql, /WITH latest|GROUP BY artist_key/);
+
+  const compatibilitySql = spotifyPlaycountAllSql();
+  assert.match(compatibilitySql, /INDEXED BY idx_sh_spotify_track_targets_artist/g);
+  assert.match(compatibilitySql, /UNION ALL/);
+  assert.doesNotMatch(compatibilitySql, /target\.artist_key=latest\.artist_key/);
+});
+
+test('Sakamichi latest loader performs one small date lookup and one indexed detail lookup per artist', async () => {
+  const calls = [];
+  const db = {
+    prepare(sql) {
+      return {
+        bind(...params) {
+          calls.push({ sql, params });
+          return {
+            async all() {
+              if (sql === spotifyLatestSnapshotDatesSql()) {
+                return {
+                  results: [
+                    { artist_key: 'sakurazaka46', snapshot_date: '2026-10-01' },
+                    { artist_key: 'nogizaka46', snapshot_date: '2026-10-02' },
+                    { artist_key: 'hinatazaka46', snapshot_date: '2026-10-03' },
+                  ],
+                };
+              }
+              const [snapshotDate, artistKey] = params;
+              return { results: [row(artistKey, calls.length, artistKey, 100, 10, snapshotDate)] };
+            },
+          };
+        },
+      };
+    },
+  };
+
+  const rows = await loadSpotifyLatestRows(db);
+  assert.equal(rows.length, 3);
+  assert.equal(calls.length, 4);
+  assert.deepEqual(calls[0].params, ['sakurazaka46', 'nogizaka46', 'hinatazaka46']);
+  assert.deepEqual(calls.slice(1).map(({ params }) => params), [
+    ['2026-10-01', 'sakurazaka46'],
+    ['2026-10-02', 'nogizaka46'],
+    ['2026-10-03', 'hinatazaka46'],
+  ]);
 });
 
 test('Spotify detail UI switches the shared table between all three Sakamichi groups', () => {
