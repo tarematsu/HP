@@ -6,6 +6,13 @@ import { liveTailContainsTelemetryViolations } from '../.github/scripts/observab
 
 const navigationCss = readFileSync(new URL('../site/public/dashboard-navigation.css', import.meta.url), 'utf8');
 
+test('compact section tabs wrap long labels inside their half-width cells', () => {
+  assert.match(
+    navigationCss,
+    /@media \(max-width: 760px\)[\s\S]*\.dashboard-section-tabs > button\s*\{[^}]*white-space:\s*normal;[^}]*overflow-wrap:\s*anywhere;/,
+  );
+});
+
 test('compact five-column Stationhead tabs wrap inside their grid cells', () => {
   assert.match(
     navigationCss,

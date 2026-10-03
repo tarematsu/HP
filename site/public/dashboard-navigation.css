@@ -159,6 +159,9 @@
     min-height: 38px;
     padding-inline: 6px;
     font-size: 12px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-wrap: balance;
   }
 
   /* Stationhead has five sources. Keep every source visible without a clipped
