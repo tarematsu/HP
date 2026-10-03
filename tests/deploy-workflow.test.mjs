@@ -222,6 +222,7 @@ test('Worker package scripts contain only active deployment and bundle operation
       'deploy:spotify-playcount': 'node scripts/deploy-spotify-playcount.mjs',
       'deploy:amazon-music': 'node scripts/deploy-amazon-music.mjs',
       'deploy:regional-music': 'node scripts/deploy-regional-music.mjs',
+      'deploy:scheduled-collection-jobs': 'node scripts/deploy-scheduled-collection-jobs.mjs',
       'deploy:cron-dispatcher': 'node scripts/deploy-cron-dispatcher.mjs',
       'deploy:runtime': 'node scripts/deploy-runtime.mjs',
     },
@@ -237,6 +238,7 @@ test('Worker package scripts contain only active deployment and bundle operation
   assert.equal(workerPackage.scripts['check:spotify-playcount-bundle'] !== undefined, true);
   assert.equal(workerPackage.scripts['check:amazon-music-bundle'] !== undefined, true);
   assert.equal(workerPackage.scripts['check:regional-music-bundle'] !== undefined, true);
+  assert.equal(workerPackage.scripts['check:scheduled-collection-jobs-bundle'] !== undefined, true);
   assert.equal(workerPackage.scripts['check:cron-dispatcher-bundle'] !== undefined, true);
   assert.equal(workerPackage.scripts['check:runtime-bundle'] !== undefined, true);
 
