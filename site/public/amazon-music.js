@@ -165,13 +165,6 @@ function renderRankChart(payload, { containerId, metricKey, emptyText, ariaLabel
   });
 }
 
-function renderSummary(payload) {
-  const date = element('amazonSnapshotDate');
-  const count = element('amazonTrackCount');
-  if (date) date.textContent = formatFullDate(payload?.snapshot_date);
-  if (count) count.textContent = numberFormat.format((Array.isArray(payload?.tracks) ? payload.tracks : []).length);
-}
-
 function renderTable(payload) {
   const tbody = element('amazonMusicTbody');
   if (!tbody) return;
@@ -195,7 +188,7 @@ function renderTable(payload) {
 function renderModeButtons() {
   for (const button of document.querySelectorAll('[data-amazon-mode]')) {
     const selected = button.dataset.amazonMode === activeMode;
-    button.classList.toggle('is-active', selected);
+    button.classList.toggle('active', selected);
     button.setAttribute('aria-pressed', selected ? 'true' : 'false');
   }
 }
@@ -216,7 +209,6 @@ function bindModeButtons() {
 function render(payload) {
   bindModeButtons();
   renderModeButtons();
-  renderSummary(payload);
   const copy = modeCopy(activeMode);
   const chartTitle = element('amazonAllRankTitle');
   const tableTitle = element('amazonTracksTitle');

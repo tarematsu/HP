@@ -183,10 +183,22 @@ export function dashboardTable({
   return `<div class="${joinClasses('table-wrap', wrapClassName)}"><table${id ? ` id="${id}"` : ''} class="${joinClasses(numeric && 'shared-numeric-table', className)}">${colgroupHtml}${tableHead}<tbody${bodyId ? ` id="${bodyId}"` : ''}>${bodyHtml}</tbody></table></div>`;
 }
 
-export function dashboardModeTabs(items = [], { dataAttribute = 'mode', className = '', ariaLabel = '' } = {}) {
+export function dashboardModeTabs(items = [], {
+  dataAttribute = 'mode',
+  className = '',
+  ariaLabel = '',
+  role = '',
+  selection = '',
+} = {}) {
   const attribute = String(dataAttribute || 'mode').replace(/[^a-z0-9-]/gi, '');
-  const buttons = items.map((item) => `<button type="button" data-${attribute}="${item.value}"${item.active ? ' class="active"' : ''}>${item.label}</button>`).join('');
-  return `<div class="${joinClasses('mode-tabs', className)}"${ariaLabel ? ` aria-label="${ariaLabel}"` : ''}>${buttons}</div>`;
+  const buttons = items.map((item) => {
+    const active = Boolean(item.active);
+    const state = selection === 'pressed'
+      ? ` aria-pressed="${active ? 'true' : 'false'}"`
+      : selection === 'current' && active ? ' aria-current="page"' : '';
+    return `<button type="button" data-${attribute}="${item.value}"${active ? ' class="active"' : ''}${item.disabled ? ' disabled aria-disabled="true"' : ''}${item.title ? ` title="${item.title}"` : ''}${state}>${item.label}</button>`;
+  }).join('');
+  return `<div class="${joinClasses('mode-tabs', className)}"${role ? ` role="${role}"` : ''}${ariaLabel ? ` aria-label="${ariaLabel}"` : ''}>${buttons}</div>`;
 }
 
 export function dashboardDataCard({

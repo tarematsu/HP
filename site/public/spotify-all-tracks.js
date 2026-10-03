@@ -5,8 +5,13 @@ import {
   setNotice as setSharedNotice,
   signedInteger,
 } from './dashboard-ui-common.js?v=20260930.1';
+import { appendTableRow } from './dashboard-table-dom.js?v=20261001.1';
+import {
+  MUSIC_ARTIST_ORDER,
+  replaceMusicTableBody,
+} from './music-service-runtime-common.js?v=20261004.1';
 
-const ARTIST_KEYS = Object.freeze(['sakurazaka46', 'nogizaka46', 'hinatazaka46']);
+const ARTIST_KEYS = Object.freeze(MUSIC_ARTIST_ORDER.slice(0, 3));
 const ARTIST_NAMES = Object.freeze({
   sakurazaka46: '櫻坂46',
   nogizaka46: '乃木坂46',
@@ -76,24 +81,16 @@ export function spotifyAllTracksPayload(model = {}) {
 }
 
 function renderRows(payload) {
-  const body = document.getElementById('spotifyTbody');
+  const body = replaceMusicTableBody('spotifyTbody');
   if (!body) return;
-  body.replaceChildren();
   for (const track of payload.tracks || []) {
-    const row = document.createElement('tr');
-    row.dataset.artistKey = track.artist_key || '';
-    const rank = document.createElement('td');
-    const name = document.createElement('td');
-    const playcount = document.createElement('td');
-    const delta = document.createElement('td');
-    rank.textContent = numberFormat.format(Number(track.rank) || 0);
-    name.textContent = `${track.artist_name || ''} · ${String(track.name || '曲名不明')}`;
-    playcount.textContent = numberFormat.format(Number(track.playcount) || 0);
-    delta.textContent = signedInteger(track.delta);
-    playcount.className = 'spotify-number';
-    delta.className = 'spotify-number';
-    row.append(rank, name, playcount, delta);
-    body.append(row);
+    const row = appendTableRow(body, [
+      numberFormat.format(Number(track.rank) || 0),
+      `${track.artist_name || ''} · ${String(track.name || '曲名不明')}`,
+      { text:numberFormat.format(Number(track.playcount) || 0), className:'spotify-number' },
+      { text:signedInteger(track.delta), className:'spotify-number' },
+    ]);
+    if (row) row.dataset.artistKey = track.artist_key || '';
   }
 }
 

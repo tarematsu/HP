@@ -38,7 +38,8 @@ test('Nogizaka uses the shared five Stationhead subtabs with only listening part
   assert.match(shell, /enabled: \['broadcasts'\]/);
   assert.match(shell, /unavailableTitle: 'Nogizakaでは未提供'/);
   assert.match(shell, /class="stationhead-channel-panel" data-nogizaka-panel="broadcasts"/);
-  assert.match(stationheadTabs, /disabled aria-disabled="true"/);
+  assert.match(stationheadTabs, /dashboardModeTabs/);
+  assert.match(stationheadTabs, /disabled: !enabledSet\.has\(value\)/);
   assert.match(stationheadTabs, /if \(!requested \|\| requested\.disabled\) return/);
 });
 

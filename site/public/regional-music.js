@@ -5,65 +5,26 @@ import {
   setNotice,
   setText,
 } from './dashboard-ui-common.js?v=20261001.1';
+import { appendTableRow } from './dashboard-table-dom.js?v=20261001.1';
 import { renderRankHistoryChart } from './dashboard-rank-chart.js?v=20261003.1';
+import {
+  MUSIC_ARTIST_LABELS,
+  MUSIC_ARTIST_ORDER,
+  REGIONAL_MUSIC_CADENCE,
+  SAKAMICHI_GROUP_COLORS,
+  loadRegionalMusicReadModel,
+  musicDateTimeText,
+  musicValueText,
+  replaceMusicTableBody,
+} from './music-service-runtime-common.js?v=20261004.1';
 
-const SERVICE_LABELS = Object.freeze({
-  kkbox: 'KKBOX',
-  qq_music: 'QQ Music',
-  kugou_music: 'Kugou Music',
-});
-
-const ARTIST_LABELS = Object.freeze({
-  sakurazaka46: '櫻坂46',
-  nogizaka46: '乃木坂46',
-  hinatazaka46: '日向坂46',
-});
-
-const GROUP_COLORS = Object.freeze({
-  sakurazaka46: '#f3a6c8',
-  nogizaka46: '#8264b0',
-  hinatazaka46: '#9ecff3',
-});
-
-const STATUS_LABELS = Object.freeze({
-  ok: '正常',
-  degraded: '一部取得',
-  pending: '待機',
-  error: 'エラー',
-});
-
-const COMPACT_CHART_CADENCE = Object.freeze({
-  qq_music: '毎日 00:00 JST',
-  kugou_music: '平日11:30 / ACG新歌榜: 水曜11:40',
-});
-
+const SUPPORTED_SERVICES = new Set(['kkbox', 'qq_music', 'kugou_music']);
 const OUT_OF_CHART_RANK = 101;
 const CHART_START_DATE = '2021-01-01';
 
-const readModelPromises = new Map();
 let activeRequest = 0;
 let kugouArtistFilter = 'all';
 let lastKugouPayload = null;
-
-function valueText(value) {
-  if (value === null || value === undefined || value === '') return '-';
-  const number = Number(value);
-  return Number.isFinite(number) ? integerFormat.format(number) : String(value);
-}
-
-function dateTimeText(value) {
-  const timestamp = Number(value);
-  if (!Number.isFinite(timestamp) || timestamp <= 0) return '-';
-  return new Intl.DateTimeFormat('ja-JP', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(new Date(timestamp));
-}
 
 function providerDate(value) {
   const text = String(value || '').trim();
@@ -90,66 +51,25 @@ function providerWeekdays(startValue, endValue) {
   return dates;
 }
 
-function replaceBody(id) {
-  const body = byId(id);
-  if (body) body.replaceChildren();
-  return body;
-}
-
-function cell(text) {
-  const td = document.createElement('td');
-  td.textContent = String(text ?? '-');
-  return td;
-}
-
-function row(values) {
-  const tr = document.createElement('tr');
-  values.forEach((value) => tr.append(cell(value)));
-  return tr;
-}
-
-async function loadReadModel(service) {
-  const serviceId = String(service || '').trim();
-  if (!readModelPromises.has(serviceId)) {
-    const request = fetch(`/api/regional-music?service=${encodeURIComponent(serviceId)}`, {
-      headers: { accept: 'application/json' },
-      cache: 'default',
-    }).then(async (response) => {
-      if (!response.ok) throw new Error(`regional music ${serviceId} HTTP ${response.status}`);
-      const payload = await response.json();
-      if (!payload?.ok || payload.service !== serviceId) {
-        throw new Error(payload?.error || `regional music ${serviceId} read model unavailable`);
-      }
-      return payload;
-    }).catch((error) => {
-      readModelPromises.delete(serviceId);
-      throw error;
-    });
-    readModelPromises.set(serviceId, request);
-  }
-  return readModelPromises.get(serviceId);
-}
-
-const ARTIST_DISPLAY_ORDER = ['sakurazaka46','nogizaka46','hinatazaka46','aobazaka46'];
 function artistPosition(artist) {
-  const index = ARTIST_DISPLAY_ORDER.indexOf(artist);
-  return index < 0 ? ARTIST_DISPLAY_ORDER.length : index;
+  const index = MUSIC_ARTIST_ORDER.indexOf(artist);
+  return index < 0 ? MUSIC_ARTIST_ORDER.length : index;
 }
 
 function renderArtists(rows) {
-  const body = replaceBody('regionalMusicArtistBody');
+  const body = replaceMusicTableBody('regionalMusicArtistBody');
   if (!body) return;
   if (!rows.length) {
     appendEmptyTableRow(body, 'アーティストデータがありません。', 4);
     return;
   }
   for (const item of [...rows].sort((a,b) => artistPosition(a.canonical_artist)-artistPosition(b.canonical_artist))) {
-    body.append(row([
-      ARTIST_LABELS[item.canonical_artist] || item.display_name || item.canonical_artist || '-',
-      valueText(item.followers),
-      valueText(item.likes),
+    appendTableRow(body, [
+      MUSIC_ARTIST_LABELS[item.canonical_artist] || item.display_name || item.canonical_artist || '-',
+      musicValueText(item.followers),
+      musicValueText(item.likes),
       item.service_artist_id || '-',
-    ]));
+    ]);
   }
 }
 
@@ -170,28 +90,30 @@ export function regionalTrackRows(rows, orders = []) {
 }
 
 function renderTracks(rows, orders = []) {
-  const body = replaceBody('regionalMusicTrackBody');
+  const body = replaceMusicTableBody('regionalMusicTrackBody');
   if (!body) return;
   if (!rows.length) {
     appendEmptyTableRow(body, '楽曲データがありません。', 7);
     return;
   }
   for (const item of regionalTrackRows(rows, orders)) {
-    const rank = item.rank_source === 'artist_page_order' ? `${valueText(item.popularity_rank)}（掲載順・推定）` : valueText(item.popularity_rank);
-    body.append(row([
-      ARTIST_LABELS[item.canonical_artist] || item.canonical_artist || '-',
+    const rank = item.rank_source === 'artist_page_order'
+      ? `${musicValueText(item.popularity_rank)}（掲載順・推定）`
+      : musicValueText(item.popularity_rank);
+    appendTableRow(body, [
+      MUSIC_ARTIST_LABELS[item.canonical_artist] || item.canonical_artist || '-',
       item.title || item.service_track_id || '-',
-      valueText(item.plays),
-      valueText(item.listeners),
-      valueText(item.likes),
-      valueText(item.comments),
+      musicValueText(item.plays),
+      musicValueText(item.listeners),
+      musicValueText(item.likes),
+      musicValueText(item.comments),
       rank,
-    ]));
+    ]);
   }
 }
 
 function renderPlaylists(rows, memberships) {
-  const body = replaceBody('regionalMusicPlaylistBody');
+  const body = replaceMusicTableBody('regionalMusicPlaylistBody');
   if (!body) return;
   if (!rows.length) {
     appendEmptyTableRow(body, 'プレイリストデータがありません。', 4);
@@ -203,33 +125,12 @@ function renderPlaylists(rows, memberships) {
     counts.set(key, (counts.get(key) || 0) + 1);
   }
   for (const item of rows) {
-    body.append(row([
+    appendTableRow(body, [
       item.playlist_name || item.service_playlist_id || '-',
       item.playlist_type || '-',
       item.owner_name || '-',
-      valueText(counts.get(String(item.service_playlist_id || '')) || 0),
-    ]));
-  }
-}
-
-function renderHealth(state) {
-  const mount = byId('regionalMusicHealth');
-  if (!mount) return;
-  mount.replaceChildren();
-  const entries = [
-    ['状態', STATUS_LABELS[state?.status] || state?.status || '未取得'],
-    ['最終試行', dateTimeText(state?.last_attempt_at)],
-    ['最終成功', dateTimeText(state?.last_success_at)],
-    ['取得項目', Array.isArray(state?.metrics) && state.metrics.length ? state.metrics.join(', ') : '-'],
-    ['エラー種別', state?.last_error_class || '-'],
-    ['エラー内容', state?.last_error_message || '-'],
-  ];
-  for (const [label, value] of entries) {
-    const dt = document.createElement('dt');
-    dt.textContent = label;
-    const dd = document.createElement('dd');
-    dd.textContent = String(value);
-    mount.append(dt, dd);
+      musicValueText(counts.get(String(item.service_playlist_id || '')) || 0),
+    ]);
   }
 }
 
@@ -239,12 +140,9 @@ function compactChartMode(service) {
 
 function setCompactChartMode(service) {
   const compact = compactChartMode(service);
-  const view = byId('regionalMusicView');
-  view?.classList.toggle('is-chart-compact', compact);
-  const genericHeader = byId('regionalMusicGenericHeader');
+  byId('regionalMusicView')?.classList.toggle('is-chart-compact', compact);
   const genericTables = byId('regionalMusicGenericTables');
   const compactMeta = byId('regionalMusicCompactMeta');
-  if (genericHeader) genericHeader.hidden = compact;
   if (genericTables) genericTables.hidden = compact;
   if (compactMeta) compactMeta.hidden = !compact;
   if (!compact) {
@@ -287,7 +185,7 @@ function bindKugouFilters() {
 }
 
 function kugouSeries(history, coveredDates = []) {
-  return ARTIST_DISPLAY_ORDER.slice(0, 3).filter(kugouArtistVisible).map((canonicalArtist) => {
+  return MUSIC_ARTIST_ORDER.slice(0, 3).filter(kugouArtistVisible).map((canonicalArtist) => {
     const byDate = new Map();
     for (const item of history) {
       if (item?.canonical_artist !== canonicalArtist) continue;
@@ -299,8 +197,8 @@ function kugouSeries(history, coveredDates = []) {
     }
     return {
       id: canonicalArtist,
-      title: ARTIST_LABELS[canonicalArtist] || canonicalArtist,
-      color:GROUP_COLORS[canonicalArtist],
+      title: MUSIC_ARTIST_LABELS[canonicalArtist] || canonicalArtist,
+      color: SAKAMICHI_GROUP_COLORS[canonicalArtist],
       points:coveredDates.length
         ? coveredDates.map((date) => ({ date, rank:byDate.get(date)?.rank ?? OUT_OF_CHART_RANK }))
         : [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
@@ -336,7 +234,7 @@ function renderKugouRankChart({ containerId, legendId, history, coveredDates, ar
 }
 
 function renderKugouHistoryTable({ bodyId, history, emptyText }) {
-  const body = replaceBody(bodyId);
+  const body = replaceMusicTableBody(bodyId);
   if (!body) return;
   const ordered = history
     .filter((item) => kugouArtistVisible(item?.canonical_artist))
@@ -347,12 +245,12 @@ function renderKugouHistoryTable({ bodyId, history, emptyText }) {
   }
   for (const item of ordered) {
     const rank = Number(item.rank);
-    body.append(row([
+    appendTableRow(body, [
       providerDateText(item.published_at),
-      ARTIST_LABELS[item.canonical_artist] || item.canonical_artist || '-',
+      MUSIC_ARTIST_LABELS[item.canonical_artist] || item.canonical_artist || '-',
       Number.isFinite(rank) ? (rank >= OUT_OF_CHART_RANK ? '圏外' : `${integerFormat.format(rank)}位`) : '-',
       item.title || '-',
-    ]));
+    ]);
   }
 }
 
@@ -422,18 +320,11 @@ function renderService(payload, service) {
   const compact = compactChartMode(service);
 
   setCompactChartMode(service);
-  setText('regionalMusicTitle', SERVICE_LABELS[service] || service);
-  setText('regionalMusicRegion', state?.region || '');
-  // The top timestamp is the selected service read-model generation time.
-  setText('regionalMusicUpdated', dateTimeText(payload.updated_at));
-  setText('regionalMusicChartUpdated', dateTimeText(payload.updated_at));
-  setText('regionalMusicChartCadence', COMPACT_CHART_CADENCE[service] || '-');
-  setText('regionalMusicStatus', STATUS_LABELS[state?.status] || state?.status || '未取得');
-  setText('regionalMusicArtistCount', integerFormat.format(artists.length));
-  setText('regionalMusicTrackCount', integerFormat.format(tracks.length));
-  setText('regionalMusicPlaylistCount', integerFormat.format(playlists.length));
+  setText('regionalMusicChartUpdated', musicDateTimeText(payload.updated_at));
+  setText('regionalMusicChartCadence', REGIONAL_MUSIC_CADENCE[service] || '-');
 
   if (compact) {
+    setNotice('regionalMusicNotice');
     if (state?.status === 'error') setCompactNotice('収集エラーが発生しています。直前までの正常データを表示しています。', true);
     else if (state?.status === 'degraded') setCompactNotice('一部項目の取得に失敗しています。取得できたデータのみ表示しています。');
     else setCompactNotice();
@@ -451,7 +342,6 @@ function renderService(payload, service) {
     setNotice('regionalMusicNotice');
   }
 
-  renderHealth(state);
   renderKugouHistory(payload, service);
   renderArtists(artists);
   renderTracks(tracks, payload.artist_track_orders);
@@ -466,26 +356,24 @@ function resetKugouSections() {
   for (const id of [
     'kugouJapanRankLegend','kugouJapanRankChart','kugouJapanHistoryBody',
     'kugouAcgRankLegend','kugouAcgRankChart','kugouAcgHistoryBody',
-  ]) replaceBody(id);
+  ]) replaceMusicTableBody(id);
 }
 
 export async function loadRegionalMusicView(service) {
   const request = ++activeRequest;
   const serviceId = String(service || location.hash.slice(1) || '');
-  if (!SERVICE_LABELS[serviceId]) throw new Error(`unknown regional music service: ${serviceId}`);
+  if (!SUPPORTED_SERVICES.has(serviceId)) throw new Error(`unknown regional music service: ${serviceId}`);
   setCompactChartMode(serviceId);
-  setText('regionalMusicTitle', SERVICE_LABELS[serviceId]);
-  for (const id of ['regionalMusicUpdated', 'regionalMusicChartUpdated', 'regionalMusicStatus', 'regionalMusicArtistCount', 'regionalMusicTrackCount', 'regionalMusicPlaylistCount']) setText(id, '-');
-  setText('regionalMusicChartCadence', COMPACT_CHART_CADENCE[serviceId] || '-');
-  setText('regionalMusicRegion', '');
-  for (const id of ['regionalMusicHealth', 'regionalMusicArtistBody', 'regionalMusicTrackBody', 'regionalMusicPlaylistBody']) replaceBody(id);
+  setText('regionalMusicChartUpdated', '-');
+  setText('regionalMusicChartCadence', REGIONAL_MUSIC_CADENCE[serviceId] || '-');
+  for (const id of ['regionalMusicArtistBody', 'regionalMusicTrackBody', 'regionalMusicPlaylistBody']) replaceMusicTableBody(id);
   resetKugouSections();
   setCompactNotice();
   if (!compactChartMode(serviceId)) setNotice('regionalMusicNotice', 'データを読み込んでいます。');
   try {
-    const payload = await loadReadModel(serviceId);
+    const payload = await loadRegionalMusicReadModel(serviceId);
     if (request === activeRequest) renderService(payload, serviceId);
-  } catch (error) {
+  } catch {
     if (request !== activeRequest) return;
     if (compactChartMode(serviceId)) {
       setCompactNotice('データを取得できませんでした。時間をおいて再度お試しください。', true);

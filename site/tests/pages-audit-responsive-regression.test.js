@@ -21,5 +21,5 @@ test('Nogizaka chart and empty state stay inside the chart-fit wrapper', () => {
 test('YouTube Music renders unknown release types as missing values and busts the runtime cache', () => {
   assert.match(youtubeRuntime, /text\.toLowerCase\(\) === 'unknown' \? '-' : text/);
   assert.match(youtubeRuntime, /optionalText\(item\.release_type\)/);
-  assert.match(tabs, /youtube-music\.js\?v=20261003\.4/);
+  assert.match(tabs, /youtube-music\.js\?v=20261004\.1/);
 });

@@ -3,24 +3,20 @@ import {
   byId,
   integerFormat,
 } from './dashboard-ui-common.js?v=20261001.1';
+import { appendTableRow } from './dashboard-table-dom.js?v=20261001.1';
 import { renderRankHistoryChart } from './dashboard-rank-chart.js?v=20261003.1';
+import {
+  MUSIC_ARTIST_LABELS,
+  MUSIC_ARTIST_ORDER,
+  SAKAMICHI_GROUP_COLORS,
+  loadRegionalMusicReadModel,
+  replaceMusicTableBody,
+} from './music-service-runtime-common.js?v=20261004.1';
 
-const ARTIST_LABELS = Object.freeze({
-  sakurazaka46: '櫻坂46',
-  nogizaka46: '乃木坂46',
-  hinatazaka46: '日向坂46',
-});
-const GROUP_COLORS = Object.freeze({
-  sakurazaka46: '#f3a6c8',
-  nogizaka46: '#8264b0',
-  hinatazaka46: '#9ecff3',
-});
-const ARTIST_ORDER = ['sakurazaka46','nogizaka46','hinatazaka46'];
+const ARTIST_ORDER = MUSIC_ARTIST_ORDER.slice(0, 3);
 const OUT_OF_CHART_RANK = 101;
-const QQ_CHART_CADENCE = '毎週木曜日18:00';
 const CHART_START_DATE = '2021-01-01';
 
-let readModelPromise = null;
 let requestId = 0;
 let initialized = false;
 let activeArtistFilter = 'all';
@@ -48,24 +44,6 @@ function providerDateText(value) {
   return date ? date.replaceAll('-', '/') : '-';
 }
 
-function replaceBody(id) {
-  const node = byId(id);
-  if (node) node.replaceChildren();
-  return node;
-}
-
-function cell(text) {
-  const td = document.createElement('td');
-  td.textContent = String(text ?? '-');
-  return td;
-}
-
-function row(values) {
-  const tr = document.createElement('tr');
-  values.forEach((value) => tr.append(cell(value)));
-  return tr;
-}
-
 function artistVisible(canonicalArtist) {
   return activeArtistFilter === 'all' || canonicalArtist === activeArtistFilter;
 }
@@ -76,32 +54,6 @@ function syncFilterButtons() {
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', active ? 'true' : 'false');
   }
-}
-
-function syncCadenceLabel() {
-  if (location.hash.slice(1) !== 'qq_music') return;
-  const cadence = byId('regionalMusicChartCadence');
-  if (cadence && cadence.textContent !== QQ_CHART_CADENCE) cadence.textContent = QQ_CHART_CADENCE;
-}
-
-async function loadReadModel() {
-  if (!readModelPromise) {
-    readModelPromise = fetch('/api/regional-music?service=qq_music', {
-      headers:{ accept:'application/json' },
-      cache:'default',
-    }).then(async (response) => {
-      if (!response.ok) throw new Error(`regional music QQ HTTP ${response.status}`);
-      const payload = await response.json();
-      if (!payload?.ok || payload.service !== 'qq_music') {
-        throw new Error(payload?.error || 'QQ Music read model unavailable');
-      }
-      return payload;
-    }).catch((error) => {
-      readModelPromise = null;
-      throw error;
-    });
-  }
-  return readModelPromise;
 }
 
 function qqStoredPeriods(chart, history) {
@@ -136,8 +88,8 @@ function qqSeries(history, periods) {
     }
     return {
       id:canonicalArtist,
-      title:ARTIST_LABELS[canonicalArtist] || canonicalArtist,
-      color:GROUP_COLORS[canonicalArtist],
+      title:MUSIC_ARTIST_LABELS[canonicalArtist] || canonicalArtist,
+      color:SAKAMICHI_GROUP_COLORS[canonicalArtist],
       points:periods.map(({ period, date }) => ({
         date,
         rank:byPeriod.get(period)?.rank ?? OUT_OF_CHART_RANK,
@@ -160,7 +112,7 @@ function setVisible(visible) {
 }
 
 function renderHistory(history, bodyId, emptyText) {
-  const body = replaceBody(bodyId);
+  const body = replaceMusicTableBody(bodyId);
   if (!body) return;
   const ordered = history
     .filter((item) => artistVisible(item?.canonical_artist))
@@ -172,28 +124,23 @@ function renderHistory(history, bodyId, emptyText) {
     return;
   }
   for (const item of ordered) {
-    body.append(row([
+    appendTableRow(body, [
       providerDateText(item.published_at),
-      ARTIST_LABELS[item.canonical_artist] || item.canonical_artist || '-',
+      MUSIC_ARTIST_LABELS[item.canonical_artist] || item.canonical_artist || '-',
       Number.isFinite(Number(item.rank)) ? `${integerFormat.format(Number(item.rank))}位` : '-',
       item.title || '-',
-    ]));
+    ]);
   }
 }
 
-function renderRankChart(chart, {
-  chartId,
-  legendId,
-  label,
-}) {
+function renderRankChart(chart, { chartId, legendId, label }) {
   const history = Array.isArray(chart?.history) ? chart.history : [];
   const periods = qqStoredPeriods(chart, history).filter(({ date }) => date >= CHART_START_DATE);
   const series = qqSeries(history, periods);
-  const dates = periods.map((item) => item.date);
   renderRankHistoryChart({
     container:byId(chartId),
     series,
-    dates,
+    dates:periods.map((item) => item.date),
     height:320,
     margin:{ left:58, right:18, top:12, bottom:34 },
     yMax:OUT_OF_CHART_RANK,
@@ -212,7 +159,7 @@ function renderRankChart(chart, {
 }
 
 function renderPopularity(payload) {
-  const body = replaceBody('qqArtistPopularityBody');
+  const body = replaceMusicTableBody('qqArtistPopularityBody');
   if (!body) return;
   const trackById = new Map((Array.isArray(payload?.tracks) ? payload.tracks : [])
     .filter((item) => item?.service === 'qq_music')
@@ -231,18 +178,17 @@ function renderPopularity(payload) {
   }
   for (const item of rows) {
     const track = trackById.get(String(item.service_track_id || ''));
-    body.append(row([
-      ARTIST_LABELS[item.canonical_artist] || item.canonical_artist || '-',
+    appendTableRow(body, [
+      MUSIC_ARTIST_LABELS[item.canonical_artist] || item.canonical_artist || '-',
       `${integerFormat.format(Number(item.position))}位`,
       track?.title || item.service_track_id || '-',
-    ]));
+    ]);
   }
 }
 
 function render(payload) {
   lastPayload = payload;
   syncFilterButtons();
-  syncCadenceLabel();
 
   const japanHistory = renderRankChart(payload?.qq_japan_chart || {}, {
     chartId:'qqJapanRankChart',
@@ -280,24 +226,23 @@ async function renderForRoute() {
   const visible = location.hash.slice(1) === 'qq_music';
   setVisible(visible);
   if (!visible) return;
-  syncCadenceLabel();
   bindFilters();
   for (const target of [
     'qqJapanRankLegend', 'qqJapanRankChart', 'qqJapanHistoryBody',
     'qqAnimeRankLegend', 'qqAnimeRankChart', 'qqAnimeHistoryBody',
     'qqArtistPopularityBody',
-  ]) replaceBody(target);
+  ]) replaceMusicTableBody(target);
   try {
-    const payload = await loadReadModel();
+    const payload = await loadRegionalMusicReadModel('qq_music');
     if (id !== requestId || location.hash.slice(1) !== 'qq_music') return;
     render(payload);
   } catch {
     if (id !== requestId || location.hash.slice(1) !== 'qq_music') return;
-    const japanBody = replaceBody('qqJapanHistoryBody');
+    const japanBody = replaceMusicTableBody('qqJapanHistoryBody');
     if (japanBody) appendEmptyTableRow(japanBody, 'QQ Music 日本榜の履歴を取得できませんでした。', 4);
-    const animeBody = replaceBody('qqAnimeHistoryBody');
+    const animeBody = replaceMusicTableBody('qqAnimeHistoryBody');
     if (animeBody) appendEmptyTableRow(animeBody, 'QQ Music 动漫音乐榜の履歴を取得できませんでした。', 4);
-    const popularityBody = replaceBody('qqArtistPopularityBody');
+    const popularityBody = replaceMusicTableBody('qqArtistPopularityBody');
     if (popularityBody) appendEmptyTableRow(popularityBody, 'QQ Music の人気曲順位を取得できませんでした。', 3);
   }
 }
@@ -306,10 +251,6 @@ export function initQqJapanHistoryUi() {
   if (initialized) return;
   initialized = true;
   bindFilters();
-  const cadence = byId('regionalMusicChartCadence');
-  if (cadence) {
-    new MutationObserver(syncCadenceLabel).observe(cadence, { childList:true, characterData:true, subtree:true });
-  }
   window.addEventListener('hashchange', renderForRoute);
   window.addEventListener('popstate', renderForRoute);
   void renderForRoute();
