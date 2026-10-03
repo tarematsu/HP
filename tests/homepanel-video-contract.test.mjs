@@ -6,9 +6,11 @@ import { expectAll, expectNone, readSource } from './helpers/source-contract.mjs
 
 test('HomePanel video runtime is integrated and bounded', async () => {
   const unifiedEntry = readSource('hp/cloud/src/unified_worker.js');
+  const schedulerEntry = readSource('hp/cloud/src/scheduler_dispatch_worker.js');
   const videoEntry = readSource('hp/video/src/entry.js');
   const coordinator = readSource('hp/video/src/video-feed-coordinator.js');
   const cloudConfig = readSource('hp/cloud/wrangler.jsonc');
+  const schedulerConfig = readSource('hp/cloud/wrangler.scheduler.jsonc');
   const statusReport = readSource('hp/video/src/status-report.js');
   const statusLists = readSource('hp/video/src/status-lists.js');
   const liveness = readSource('hp/video/src/liveness-monitor.js');
@@ -42,9 +44,26 @@ test('HomePanel video runtime is integrated and bounded', async () => {
     '"queue": "videoscraper-manual-imports"',
     '"name": "VIDEO_FEED_COORDINATOR"',
     '"class_name": "VideoFeedCoordinator"',
+  ]);
+  expectNone(cloudConfig, [
+    '"binding": "VIDEO_SERVICE"',
+    '"service": "homepanel-video"',
+    '"crons"',
+  ]);
+  expectAll(schedulerConfig, [
+    '"name": "homepanel-cloud-scheduler"',
+    '"main": "src/scheduler_dispatch_worker.js"',
+    '"script_name": "homepanel-cloud"',
+    '"name": "SCHEDULER_COORDINATOR"',
+    '"name": "VIDEO_FEED_COORDINATOR"',
     '"0 * * * *"',
   ]);
-  expectNone(cloudConfig, ['"binding": "VIDEO_SERVICE"', '"service": "homepanel-video"']);
+  expectAll(schedulerEntry, [
+    "objectName: 'global'",
+    "objectName: 'video-liveness'",
+    "objectName: 'tver-feed-refresh'",
+    'Promise.all(DISPATCHES.map',
+  ]);
   await assert.rejects(access(new URL('../hp/video/wrangler.jsonc', import.meta.url)));
   await assert.rejects(access(new URL('../hp/video/src/retired-entry.js', import.meta.url)));
 
@@ -119,8 +138,8 @@ test('unified observability includes only active Workers', async () => {
   }
   const observability = readSource('.github/workflows/sh-observability.yml');
   expectAll(observability, [
-    'CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,sh-spotify-playcount-collector,homepanel-cloud',
-    'D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc',
+    'CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,sh-spotify-playcount-collector,homepanel-cloud,homepanel-cloud-scheduler',
+    'D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler*.jsonc',
     'query-cloudflare-observability.py',
     'audit-deployed-cloudflare-telemetry.py',
     'audit-observability-collection.mjs',
