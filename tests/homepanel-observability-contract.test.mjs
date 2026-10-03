@@ -6,7 +6,7 @@ import { expectAll, expectNone, readSource } from './helpers/source-contract.mjs
 
 const root = new URL('../', import.meta.url);
 
-const workerList = 'sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,sh-spotify-playcount-collector,homepanel-cloud';
+const workerList = 'sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,sh-spotify-playcount-collector,homepanel-cloud,homepanel-cloud-scheduler';
 
 test('HomePanel observability is covered by the canonical unified workflow and issue', async () => {
   const workflow = readSource('.github/workflows/sh-observability.yml');
@@ -25,8 +25,8 @@ test('HomePanel observability is covered by the canonical unified workflow and i
     `CLOUDFLARE_WORKERS: ${workerList}`,
     'CLOUDFLARE_PUBLIC_HEALTH_WORKERS: "HomePanel Cloud health|homepanel-cloud|/api/health"',
     '.github/scripts/cloudflare-worker-public-url.mjs',
-    'D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc',
-    'CLOUDFLARE_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc',
+    'D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler*.jsonc',
+    'CLOUDFLARE_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler*.jsonc',
     'CLOUDFLARE_DO_BINDINGS: BUDDIES_COLLECTOR_COORDINATOR,SCHEDULER_COORDINATOR,DEVICE_SYNC_COORDINATOR,RADAR_BUNDLE_COORDINATOR,VIDEO_FEED_COORDINATOR',
     'D1_QUERY_OUTPUT_DIR: d1-insights',
     'D1_INSIGHTS_OUTCOME',
