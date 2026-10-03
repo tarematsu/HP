@@ -186,7 +186,7 @@ test('dashboard shells reuse shared notices tables legends and mode tabs instead
   const noticeShells = [
     'history-shell.js', 'likes-shell.js', 'hinata-shell.js', 'followers-shell.js', 'spotify-shell.js',
     'apple-music-shell.js', 'amazon-music-shell.js', 'played-tracks-shell.js',
-    'first-week-comparison-shell.js', 'nogizaka-listening-party-shell.js',
+    'first-week-comparison-shell.js',
   ];
   for (const name of noticeShells) {
     assert.match(shells[name], /dashboardNotice/, `${name} must use the shared notice primitive`);

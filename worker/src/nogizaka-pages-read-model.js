@@ -3,6 +3,7 @@ import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
 
 export const NOGIZAKA_LISTENING_PARTY_MODEL_KEY = 'nogizaka-listening-party';
 export const NOGIZAKA_LISTENING_PARTY_CADENCE_SECONDS = 60;
+const HISTORY_LIMIT = 100;
 
 const JSON_HEADERS = Object.freeze({
   'content-type': 'application/json; charset=utf-8',
@@ -23,6 +24,12 @@ function jstDayBounds(now = Date.now()) {
   return { day, start, end: start + 86_400_000 };
 }
 
+function jstDayKey(value, fallbackDay) {
+  const timestamp = finite(value);
+  if (timestamp == null) return fallbackDay.replaceAll('-', '');
+  return new Date(timestamp + 9 * 3_600_000).toISOString().slice(0, 10).replaceAll('-', '');
+}
+
 async function loadEvent(db, start, end) {
   return db.prepare(`SELECT
       id,news_url,title,event_name,scheduled_at,first_broadcast_at,last_broadcast_at,status
@@ -35,6 +42,26 @@ async function loadEvent(db, start, end) {
     ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'scheduled' THEN 1 WHEN 'ended' THEN 2 ELSE 3 END,
       COALESCE(first_broadcast_at,scheduled_at,last_broadcast_at) DESC,id DESC
     LIMIT 1`).bind(start, end).first();
+}
+
+async function loadHistory(db) {
+  const result = await db.prepare(`WITH latest_sources AS (
+      SELECT event_name,MAX(id) AS id
+      FROM sh_nogizaka_official_news_announcements
+      WHERE status<>'invalid'
+      GROUP BY event_name
+    )
+    SELECT
+      s.event_name,s.started_at,s.ended_at,s.sample_count,s.listener_avg,s.listener_min,s.listener_max,
+      s.likes_max,s.distinct_tracks,s.host_handle,s.refreshed_at,
+      a.news_url AS source_url,a.title AS source_title
+    FROM sh_official_broadcast_summary AS s
+    LEFT JOIN latest_sources AS latest ON latest.event_name=s.event_name
+    LEFT JOIN sh_nogizaka_official_news_announcements AS a ON a.id=latest.id
+    WHERE s.host_handle='nogizaka46smej'
+    ORDER BY s.started_at DESC
+    LIMIT ?`).bind(HISTORY_LIMIT).all();
+  return Array.isArray(result?.results) ? result.results : [];
 }
 
 async function loadSummary(db, event) {
@@ -97,55 +124,92 @@ function pointStats(points) {
   };
 }
 
-function buildPayload(event, summary, readSeries, generatedAt, day) {
-  if (!event) {
-    return {
-      ok: true,
-      handle: 'nogizaka46smej',
-      date: day,
-      generated_at: generatedAt,
-      collection_active: false,
-      refresh_hint_ms: 60_000,
-      event: null,
-      row: null,
-      series: [],
+function summaryRow(summary) {
+  if (!summary?.event_name) return null;
+  const listenerAvg = finite(summary.listener_avg);
+  const distinctTracks = finite(summary.distinct_tracks);
+  return {
+    event_name: String(summary.event_name),
+    started_at: finite(summary.started_at),
+    ended_at: finite(summary.ended_at),
+    sample_count: finite(summary.sample_count),
+    listener_avg: listenerAvg,
+    listener_min: finite(summary.listener_min),
+    listener_max: finite(summary.listener_max),
+    likes_max: finite(summary.likes_max),
+    distinct_tracks: distinctTracks,
+    estimated_streams: listenerAvg != null && distinctTracks != null
+      ? Math.round(listenerAvg * distinctTracks)
+      : null,
+    host_handle: 'nogizaka46smej',
+    broadcast_content: formatNogizakaBroadcastContent({
+      event_name: summary.event_name,
+      title: summary.source_title,
+    }),
+    source_url: summary.source_url || null,
+    status: 'ended',
+  };
+}
+
+function mergeRows(currentRow, history) {
+  const rows = history.map(summaryRow).filter(Boolean);
+  if (currentRow) {
+    const index = rows.findIndex((row) => row.event_name === currentRow.event_name);
+    if (index >= 0) rows[index] = { ...rows[index], ...currentRow };
+    else rows.unshift(currentRow);
+  }
+  return rows.sort((left, right) => (finite(right.started_at) ?? 0) - (finite(left.started_at) ?? 0));
+}
+
+function buildPayload(event, summary, readSeries, history, generatedAt, day) {
+  const live = event?.status === 'active';
+  const points = materializedPoints(readSeries);
+  const derived = pointStats(points);
+  let row = null;
+
+  if (event || summary) {
+    const start = finite(readSeries?.started_at)
+      ?? finite(summary?.started_at)
+      ?? finite(event?.first_broadcast_at)
+      ?? finite(event?.scheduled_at);
+    const sampleCount = finite(summary?.sample_count) ?? derived.sampleCount;
+    const listenerAvg = finite(summary?.listener_avg) ?? derived.listenerAvg;
+    const listenerMin = finite(summary?.listener_min) ?? derived.listenerMin;
+    const listenerMax = finite(summary?.listener_max) ?? derived.listenerMax;
+    const distinctTracks = finite(summary?.distinct_tracks);
+    const estimatedStreams = listenerAvg != null && distinctTracks != null
+      ? Math.round(listenerAvg * distinctTracks)
+      : null;
+    const rowEvent = event || { event_name: summary?.event_name, title: summary?.source_title };
+    row = {
+      event_name: rowEvent.event_name || rowEvent.title || '乃木坂46 公式リスパ',
+      started_at: start,
+      ended_at: live ? null : (finite(summary?.ended_at) ?? finite(event?.last_broadcast_at)),
+      sample_count: sampleCount,
+      listener_avg: listenerAvg,
+      listener_min: listenerMin,
+      listener_max: listenerMax,
+      likes_max: finite(summary?.likes_max),
+      distinct_tracks: distinctTracks,
+      estimated_streams: estimatedStreams,
+      host_handle: 'nogizaka46smej',
+      broadcast_content: formatNogizakaBroadcastContent(rowEvent),
+      source_url: event?.news_url || summary?.source_url || null,
+      status: event?.status || 'ended',
     };
   }
 
-  const live = event.status === 'active';
-  const points = materializedPoints(readSeries);
-  const derived = pointStats(points);
-  const start = finite(readSeries?.started_at)
-    ?? finite(summary?.started_at)
-    ?? finite(event.first_broadcast_at)
-    ?? finite(event.scheduled_at);
-  const sampleCount = finite(summary?.sample_count) ?? derived.sampleCount;
-  const listenerAvg = finite(summary?.listener_avg) ?? derived.listenerAvg;
-  const listenerMin = finite(summary?.listener_min) ?? derived.listenerMin;
-  const listenerMax = finite(summary?.listener_max) ?? derived.listenerMax;
-  const distinctTracks = finite(summary?.distinct_tracks);
-  const estimatedStreams = listenerAvg != null && distinctTracks != null
-    ? Math.round(listenerAvg * distinctTracks)
-    : null;
-  const row = {
-    event_name: event.event_name || event.title || '乃木坂46 公式リスパ',
-    started_at: start,
-    ended_at: live ? null : (finite(summary?.ended_at) ?? finite(event.last_broadcast_at)),
-    sample_count: sampleCount,
-    listener_avg: listenerAvg,
-    listener_min: listenerMin,
-    listener_max: listenerMax,
-    likes_max: finite(summary?.likes_max),
-    distinct_tracks: distinctTracks,
-    estimated_streams: estimatedStreams,
-    host_handle: 'nogizaka46smej',
-    broadcast_content: formatNogizakaBroadcastContent(event),
-    source_url: event.news_url || null,
-    status: event.status || null,
-  };
+  const rows = mergeRows(row, history);
   const source = readSeries
     ? 'official_broadcast_series'
     : summary ? 'official_broadcast_summary' : 'official_read_model_pending';
+  const series = row ? [{
+    event_name: `${jstDayKey(row.started_at, day)} ${row.broadcast_content}`,
+    started_at: row.started_at,
+    points,
+    source,
+  }] : [];
+
   return {
     ok: true,
     handle: 'nogizaka46smej',
@@ -153,14 +217,10 @@ function buildPayload(event, summary, readSeries, generatedAt, day) {
     generated_at: generatedAt,
     collection_active: live,
     refresh_hint_ms: NOGIZAKA_LISTENING_PARTY_CADENCE_SECONDS * 1000,
-    event,
+    event: event || null,
     row,
-    series: [{
-      event_name: `${day.replaceAll('-', '')} ${row.broadcast_content}`,
-      started_at: row.started_at,
-      points,
-      source,
-    }],
+    rows,
+    series,
   };
 }
 
@@ -169,13 +229,17 @@ export async function buildNogizakaListeningPartyReadModel(env, now = Date.now()
   if (!db?.prepare) throw new Error('OTHER_DB binding is missing');
   const generatedAt = Number(now) || Date.now();
   const { day, start, end } = jstDayBounds(generatedAt);
-  const event = await loadEvent(db, start, end);
-  if (!event) return buildPayload(null, null, null, generatedAt, day);
-  const [summary, readSeries] = await Promise.all([
-    loadSummary(db, event).catch(() => null),
-    loadSeries(db, event).catch(() => null),
+  const [event, history] = await Promise.all([
+    loadEvent(db, start, end),
+    loadHistory(db),
   ]);
-  return buildPayload(event, summary, readSeries, generatedAt, day);
+  const fallbackSummary = history[0] || null;
+  const focus = event || (fallbackSummary ? { event_name: fallbackSummary.event_name } : null);
+  const [summary, readSeries] = await Promise.all([
+    event ? loadSummary(db, event).catch(() => null) : Promise.resolve(fallbackSummary),
+    focus ? loadSeries(db, focus).catch(() => null) : Promise.resolve(null),
+  ]);
+  return buildPayload(event, summary, readSeries, history, generatedAt, day);
 }
 
 export async function publishNogizakaListeningPartyReadModel(env, now = Date.now()) {
