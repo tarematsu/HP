@@ -1,11 +1,11 @@
 import {
   spotifyArtistChartSql,
-  spotifyPlaycountAllSql,
   spotifyReadModelAll,
   spotifyTrendSql,
 } from '../../site/functions/api/spotify-playcounts.js';
 import { spotifyMonthlyListenersSql } from '../../site/functions/api/spotify-monthly-listeners.js';
 import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
+import { loadSpotifyLatestDetailRows } from './spotify-read-model-detail.js';
 
 export const SPOTIFY_READ_MODEL_KEY = 'spotify-playcounts';
 export const SPOTIFY_READ_MODEL_REFRESH_TYPE = 'spotify-read-model-refresh';
@@ -74,15 +74,15 @@ export async function publishSpotifyPagesReadModel(env, options = {}) {
     throw new Error('PAGES_RESPONSE_R2 binding is required for Spotify read-model refresh');
   }
 
-  const [latestResult, trendResult, artistChartResult, monthlyListenersResult] = await Promise.all([
-    db.prepare(spotifyPlaycountAllSql()).all(),
+  const [latestRows, trendResult, artistChartResult, monthlyListenersResult] = await Promise.all([
+    loadSpotifyLatestDetailRows(db),
     db.prepare(spotifyTrendSql()).all(),
     db.prepare(spotifyArtistChartSql()).all(),
     db.prepare(spotifyMonthlyListenersSql()).all(),
   ]);
   const monthlyListenerRows = rows(monthlyListenersResult);
   const model = {
-    ...spotifyReadModelAll(rows(latestResult), rows(trendResult), rows(artistChartResult)),
+    ...spotifyReadModelAll(latestRows, rows(trendResult), rows(artistChartResult)),
     monthly_listener_rows: monthlyListenerRows,
   };
   const body = JSON.stringify({ ok: true, ...model });
