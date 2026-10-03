@@ -42,8 +42,9 @@ test('Sakamichi Spotify read model keeps each artist latest detail and sorts tra
 
 test('Sakamichi detail SQL selects latest date independently per artist', () => {
   const sql = spotifyPlaycountAllSql();
-  assert.match(sql, /target\.artist_key IN \('sakurazaka46','nogizaka46','hinatazaka46'\)/);
-  assert.match(sql, /GROUP BY target\.artist_key/);
+  assert.match(sql, /artist_key IN \('sakurazaka46','nogizaka46','hinatazaka46'\)/);
+  assert.match(sql, /GROUP BY artist_key/);
+  assert.match(sql, /FROM sh_spotify_artist_daily/);
   assert.match(sql, /d\.snapshot_date=latest\.snapshot_date/);
   assert.match(sql, /d\.delta DESC/);
 });
