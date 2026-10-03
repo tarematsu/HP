@@ -18,6 +18,7 @@ const GROUP_COLORS = Object.freeze({
 const ARTIST_ORDER = ['sakurazaka46','nogizaka46','hinatazaka46'];
 const OUT_OF_CHART_RANK = 101;
 const QQ_CHART_CADENCE = '毎週木曜日18:00';
+const CHART_START_DATE = '2021-01-01';
 
 let readModelPromise = null;
 let requestId = 0;
@@ -186,7 +187,7 @@ function renderRankChart(chart, {
   label,
 }) {
   const history = Array.isArray(chart?.history) ? chart.history : [];
-  const periods = qqStoredPeriods(chart, history);
+  const periods = qqStoredPeriods(chart, history).filter(({ date }) => date >= CHART_START_DATE);
   const series = qqSeries(history, periods);
   const dates = periods.map((item) => item.date);
   renderRankHistoryChart({
