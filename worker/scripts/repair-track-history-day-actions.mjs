@@ -61,6 +61,13 @@ async function loadPlaybackEventRows(db, targetDay, fromTs, toTs) {
   }
 }
 
+function firstEventAt(eventRows, fallback) {
+  const values = (eventRows || [])
+    .map((row) => Number(row?.first_played_at ?? row?.played_at))
+    .filter(Number.isFinite);
+  return values.length ? Math.min(...values) : fallback;
+}
+
 async function repairedRows(sourceDb, db, targetDay, generation) {
   const fromTs = Date.parse(`${targetDay}T00:00:00Z`);
   const toTs = fromTs + DAY_MS;
@@ -75,7 +82,24 @@ async function repairedRows(sourceDb, db, targetDay, generation) {
     loadPlaybackEventRows(sourceDb, targetDay, fromTs, toTs),
   ]);
   const legacyGroupedRows = result.results || [];
-  const groupedRows = eventRows.length ? eventRows : legacyGroupedRows;
+  let groupedRows = legacyGroupedRows;
+  let source = 'legacy-reconstruction';
+  if (eventRows.length) {
+    const eventStart = Math.max(fromTs, Math.min(toTs, firstEventAt(eventRows, fromTs)));
+    let legacyPrefixRows = [];
+    if (eventStart > fromTs) {
+      const prefix = await loadDirectRevisionTrackHistoryData(
+        db,
+        fromTs,
+        eventStart,
+        TRACK_HISTORY_LIMIT,
+        false,
+      );
+      legacyPrefixRows = prefix.result?.results || [];
+    }
+    groupedRows = [...legacyPrefixRows, ...eventRows];
+    source = legacyPrefixRows.length ? 'legacy-prefix+playback-events' : 'playback-events';
+  }
   if (groupedRows.length > TRACK_HISTORY_LIMIT) {
     throw new Error(`track-history repair exceeded ${TRACK_HISTORY_LIMIT} grouped rows`);
   }
@@ -100,7 +124,7 @@ async function repairedRows(sourceDb, db, targetDay, generation) {
     completed,
     rows,
     totalPlays,
-    source: eventRows.length ? 'playback-events' : 'legacy-reconstruction',
+    source,
   };
 }
 
