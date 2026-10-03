@@ -66,6 +66,7 @@ jobs:
           npm test --workspace video
           npm run check --workspace video
           npm run check:unified-bundle --workspace cloud
+          npm run check:scheduler-bundle --workspace cloud
 
       # Cloudflare Queues permits only one active push consumer per Queue. The
       # retired standalone Worker must release its consumer before the unified
@@ -101,6 +102,10 @@ jobs:
             echo "Migration-sensitive files changed; applying pending migrations before deployment."
             run_deploy npm run deploy --workspace cloud
           fi
+
+      - name: Deploy HomePanel scheduler dispatcher
+        working-directory: hp
+        run: npm run deploy:scheduler --workspace cloud
 
       - name: Upload HomePanel deployment failure log
         if: failure()
