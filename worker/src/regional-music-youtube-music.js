@@ -96,6 +96,30 @@ function countFromText(value) {
   return parseCompactCount(match[1].replace(/\s+/g, ''));
 }
 
+function playCountTextValue(value) {
+  const text = textValue(value).replace(/\u00a0/g, ' ').trim();
+  if (!text || /\d+:\d{2}/.test(text)) return null;
+  const labeled = text.match(/([0-9][0-9,.]*\s*[KMB]?)\s*(?:plays?|views?)\b/i);
+  const standalone = text.match(/^([0-9][0-9,.]*\s*[KMB]?)$/i);
+  const raw = labeled?.[1] || standalone?.[1] || '';
+  return raw ? parseCompactCount(raw.replace(/\s+/g, '')) : null;
+}
+
+function playCountFromRenderer(renderer) {
+  const flex = Array.isArray(renderer?.flexColumns) ? renderer.flexColumns : [];
+  for (let index = 2; index < flex.length; index += 1) {
+    const column = flex[index]?.musicResponsiveListItemFlexColumnRenderer;
+    const count = playCountTextValue(column?.text);
+    if (count !== null) return count;
+  }
+  for (const item of renderer?.fixedColumns || []) {
+    const column = item?.musicResponsiveListItemFixedColumnRenderer;
+    const count = playCountTextValue(column?.text);
+    if (count !== null) return count;
+  }
+  return null;
+}
+
 function clientVersion(observedAt) {
   const date = new Date(Number(observedAt) || Date.now()).toISOString().slice(0, 10).replaceAll('-', '');
   return `1.${date}.01.00`;
@@ -356,6 +380,7 @@ function parseTrack(renderer, canonicalArtist) {
     title,
     album_name: albumNameFromRenderer(renderer),
     track_url: `${YTM_ROOT}/watch?v=${encodeURIComponent(videoId)}`,
+    plays: playCountFromRenderer(renderer),
   };
 }
 
