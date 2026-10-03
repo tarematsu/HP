@@ -40,7 +40,10 @@ class FakeNode {
   setAttribute(name, value) { this.attributes.set(name, String(value)); }
   append(...nodes) {
     for (const node of nodes) {
-      if (node && typeof node === 'object') node.parentElement = this;
+      if (node && typeof node === 'object') {
+        node.parentElement = this;
+        if (node.tagName === 'CANVAS') node.clientWidth = this.clientWidth;
+      }
       this.children.push(node);
     }
   }
