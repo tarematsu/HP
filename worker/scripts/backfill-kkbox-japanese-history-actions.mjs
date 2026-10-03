@@ -69,6 +69,12 @@ async function sleep(ms) {
   if (ms > 0) await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function boundedRequestCount(value, total) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return total;
+  return Math.min(total, Math.trunc(number));
+}
+
 export async function collectKkboxJapaneseHistory({
   existing = null,
   start = KKBOX_JAPANESE_HISTORY_START,
@@ -77,6 +83,7 @@ export async function collectKkboxJapaneseHistory({
   periods = ['weekly'],
   types = ['song', 'newrelease'],
   delayMs = DEFAULT_DELAY_MS,
+  maxRequests = Infinity,
   fetchImpl = fetch,
   onCheckpoint = async () => {},
   onProgress = () => {},
@@ -89,9 +96,10 @@ export async function collectKkboxJapaneseHistory({
       if (!done.has(requestKey(chart, requestedDate))) requests.push({ chart, requestedDate });
     }
   }
+  const pendingRequests = requests.slice(0, boundedRequestCount(maxRequests, requests.length));
 
   let completed = 0;
-  for (const request of requests) {
+  for (const request of pendingRequests) {
     let record;
     try {
       const result = await fetchKkboxChart(request.chart, {
@@ -106,9 +114,14 @@ export async function collectKkboxJapaneseHistory({
     }
     view = mergeKkboxJapaneseHistory(view, [record], Date.now());
     completed += 1;
-    onProgress({ completed, total: requests.length, record });
+    onProgress({
+      completed,
+      total: pendingRequests.length,
+      remaining: Math.max(0, requests.length - completed),
+      record,
+    });
     if (record.status === 'ok' || completed % 25 === 0) await onCheckpoint(view, record);
-    if (completed < requests.length) await sleep(delayMs);
+    if (completed < pendingRequests.length) await sleep(delayMs);
   }
   await onCheckpoint(view, null);
   return view;
@@ -134,6 +147,7 @@ async function main() {
   const periods = selected('periods', ['daily', 'weekly'], ['weekly'], argv);
   const types = selected('types', ['song', 'newrelease'], ['song', 'newrelease'], argv);
   const delayMs = Math.max(250, Math.min(10_000, Number(argumentValue('delay-ms', argv)) || DEFAULT_DELAY_MS));
+  const maxRequests = Number(argumentValue('max-requests', argv));
   const output = argumentValue('output', argv) || DEFAULT_OUTPUT;
   const persist = argv.includes('--persist');
   const r2 = persist ? await r2Context() : null;
@@ -149,12 +163,14 @@ async function main() {
     periods,
     types,
     delayMs,
-    onProgress({ completed, total, record }) {
+    maxRequests: Number.isFinite(maxRequests) && maxRequests > 0 ? Math.trunc(maxRequests) : Infinity,
+    onProgress({ completed, total, remaining, record }) {
       if (record.entries?.length || record.status !== 'ok' || completed % 50 === 0 || completed === total) {
         console.log(JSON.stringify({
           event: 'kkbox_history_progress',
           completed,
           total,
+          remaining,
           territory: record.territory,
           period_type: record.period_type,
           chart_type: record.chart_type,
