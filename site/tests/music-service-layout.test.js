@@ -35,7 +35,7 @@ test('QQ metadata order is shared by Spotify Apple Amazon YouTube and regional s
   assert.match(regional, /valueId: 'regionalMusicChartUpdated'/);
   assert.match(regional, /cadenceId: 'regionalMusicChartCadence'/);
   assert.match(commonShell, /qq_music: '毎週木曜日18:00'/);
-  assert.match(commonShell, /netease_cloud_music: '毎日0:00'/);
+  assert.match(commonShell, /netease_cloud_music: '毎週火曜日 16:00'/);
   assert.match(commonShell, /return service \? '毎週月曜日0:00' : '-'/);
 });
 
