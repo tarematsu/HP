@@ -3,55 +3,62 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { onRequestGet as amazonMusicApi } from '../functions/api/amazon-music.js';
-import { onRequestGet as amazonPlaylistApi } from '../functions/api/amazon-music-playlists.js';
+import { onRequestGet as amazonMusicPlaylistsApi } from '../functions/api/amazon-music-playlists.js';
 
+const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../public/amazon-music-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/amazon-music.js', import.meta.url), 'utf8');
-const commonShell = readFileSync(new URL('../public/music-service-shell.js', import.meta.url), 'utf8');
-const musicCss = readFileSync(new URL('../public/music-service-common.css', import.meta.url), 'utf8');
 const rankChart = readFileSync(new URL('../public/dashboard-rank-chart.js', import.meta.url), 'utf8');
-const workerCollector = readFileSync(new URL('../../worker/src/amazon-music-collector.js', import.meta.url), 'utf8');
+const css = readFileSync(new URL('../public/amazon-music.css', import.meta.url), 'utf8');
+const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
+const musicCss = readFileSync(new URL('../public/music-service-common.css', import.meta.url), 'utf8');
+const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
+const commonShell = readFileSync(new URL('../public/music-service-shell.js', import.meta.url), 'utf8');
+const api = readFileSync(new URL('../functions/api/amazon-music.js', import.meta.url), 'utf8');
+const playlistApi = readFileSync(new URL('../functions/api/amazon-music-playlists.js', import.meta.url), 'utf8');
 
-function materializedService(payload, { status = 200 } = {}) {
-  return {
-    fetch: async () => new Response(JSON.stringify(payload), {
-      status,
-      headers: { 'content-type': 'application/json; charset=utf-8' },
-    }),
-  };
-}
-
-test('Amazon Music API returns an empty successful read model when materialization has not run yet', async () => {
-  const response = await amazonMusicApi({ env: {} });
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), {
-    ok: true,
-    source: 'amazon_music_rankings',
-    observed_at: null,
-    snapshot_date: null,
-    tracks: [],
-    history: [],
-  });
+test('Amazon Music is a dashboard route backed only by Worker materialized read models', () => {
+  assert.match(tabs, /'amazon-music':\s*\{/);
+  assert.match(tabs, /import\('\/amazon-music-shell\.js\?v=\d{8}\.\d+'\)/);
+  assert.match(tabs, /import\('\/amazon-music\.js\?v=\d{8}\.\d+'\)/);
+  assert.match(tabs, /async function showLazyView/);
+  assert.match(shell, /mountDashboardShell/);
+  assert.match(shell, /dashboardChartHost/);
+  assert.match(sharedUi, /class="\$\{joinClasses\('shared-svg-chart', className\)\}"/);
+  assert.match(runtime, /fetch\('\/api\/amazon-music'/);
+  assert.match(api, /PAGES_READ_MODEL_SERVICE/);
+  assert.match(api, /_internal\/pages-response\?key=amazon-music/);
+  assert.match(playlistApi, /_internal\/pages-response\?key=amazon-music-playlists/);
+  assert.doesNotMatch(api, /OTHER_DB|MINUTE_DB|\.prepare\(/);
+  assert.doesNotMatch(playlistApi, /OTHER_DB|MINUTE_DB|\.prepare\(/);
+  assert.doesNotMatch(runtime, /\/api\/history|\/api\/dashboard|OTHER_DB|MINUTE_DB/);
 });
 
-test('Amazon Music API serves the materialized worker payload', async () => {
-  const payload = {
-    ok: true,
-    source: 'amazon_music_rankings',
-    observed_at: 1_790_000_000_000,
-    snapshot_date: '2026-09-25',
-    tracks: [{ track_id: 13, title: '承認欲求', group_name: '櫻坂46', amazon_rank: 22 }],
-    history: [{ snapshot_date: '2026-09-24', tracks: [{ track_id: 13, amazon_rank: 28 }] }],
-  };
-  const response = await amazonMusicApi({ env: { PAGES_READ_MODEL_SERVICE: materializedService(payload) } });
+test('Amazon Music API treats an ungenerated read model as an uncached empty successful dataset', async () => {
+  const response = await amazonMusicApi({
+    env: { PAGES_READ_MODEL_SERVICE: { fetch: async () => new Response(null, { status: 404 }) } },
+  });
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), payload);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  const payload = await response.json();
+  assert.equal(payload.ok, true);
+  assert.equal(payload.version, 3);
+  assert.equal(payload.artist_name, '坂道3グループ');
+  assert.deepEqual(payload.artists, ['乃木坂46', '櫻坂46', '日向坂46']);
+  assert.equal(payload.track_count, 0);
+  assert.deepEqual(payload.tracks, []);
+  assert.deepEqual(payload.history, []);
 });
 
 test('Amazon Music playlist API treats an ungenerated read model as an empty successful dataset', async () => {
-  const response = await amazonPlaylistApi({ env: {} });
+  const response = await amazonMusicPlaylistsApi({
+    env: { PAGES_READ_MODEL_SERVICE: { fetch: async () => new Response(null, { status: 404 }) } },
+  });
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { ok: true, provider: 'amazon', generated_at: null, tracks: [], playlists: [] });
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  const payload = await response.json();
+  assert.equal(payload.ok, true);
+  assert.deepEqual(payload.tracks, []);
 });
 
 test('Amazon Music API preserves real materialized-service failures', async () => {
@@ -97,12 +104,11 @@ test('Amazon Music title comparison and artist modes use Worker title-track flag
 test('Amazon Music rank chart keeps first place at the top and fits mobile width', () => {
   assert.match(runtime, /renderRankHistoryChart\(/);
   assert.match(rankChart, /const boundedRank = Math\.min\(ceiling, Math\.max\(1, Number\(rank\)\)\)/);
-  assert.match(rankChart, /const y = margin\.top \+ \(boundedRank - 1\) \/ denominator \* plotHeight/);
-  assert.match(runtime, /containerId: 'amazonAllRankChart'/);
+  assert.match(rankChart, /return margin\.top \+ \(boundedRank - 1\)/);
+  assert.match(runtime, /坂道3グループ全楽曲のAmazon Music総合順位推移。1位が上。/);
   assert.match(shell, /className: 'amazon-rank-chart chart-fit'/);
-});
-
-test('Amazon collector scopes ranking materialization to the three Sakamichi groups', () => {
-  assert.match(workerCollector, /AMAZON_MUSIC_GROUPS/);
-  for (const group of ['乃木坂46', '櫻坂46', '日向坂46']) assert.match(workerCollector, new RegExp(group));
+  assert.match(sharedUi, /joinClasses\('shared-svg-chart', className\)/);
+  assert.match(sharedCss, /\.shared-svg-chart svg[\s\S]*width:\s*100%/);
+  assert.match(css, /\.amazon-table[\s\S]*table-layout:\s*fixed/);
+  assert.match(css, /\.amazon-mode-switch\.mode-tabs[\s\S]*overflow-x:\s*auto/);
 });
