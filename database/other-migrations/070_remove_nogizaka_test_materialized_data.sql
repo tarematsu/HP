@@ -12,7 +12,8 @@ WHERE host_handle='nogizaka46smej'
   AND started_at>=1790703900000 AND started_at<1790708400000;
 
 -- Re-run the bounded raw cleanup for any rows that survived or were recreated
--- before the original smoke-test announcement was deleted.
+-- before the original smoke-test announcement was deleted. The old dedicated
+-- chat table was retired by migration 058, so it is intentionally not touched.
 DELETE FROM sh_nogizaka_official_news_station_probes
 WHERE (observed_at>=1790703900000 AND observed_at<1790708400000
        AND station_id=3328626 AND broadcast_id=3604336)
@@ -20,10 +21,6 @@ WHERE (observed_at>=1790703900000 AND observed_at<1790708400000
      SELECT id FROM sh_nogizaka_official_news_announcements
      WHERE news_id='manual-test-sakuramankai-20260930'
    );
-
-DELETE FROM sh_nogizaka46smej_chat
-WHERE observed_at>=1790703900000 AND observed_at<1790708400000
-  AND station_id=3328626;
 
 DELETE FROM sh_nogizaka46smej_main
 WHERE observed_at>=1790703900000 AND observed_at<1790708400000
