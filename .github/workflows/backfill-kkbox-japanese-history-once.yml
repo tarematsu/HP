@@ -6,6 +6,10 @@ on:
       - main
     paths:
       - '.github/workflows/backfill-kkbox-japanese-history-once.yml'
+      - 'worker/scripts/backfill-kkbox-japanese-history-actions.mjs'
+      - 'worker/src/kkbox-japanese-chart-history.js'
+  schedule:
+    - cron: '30 18 * * *'
   workflow_dispatch:
 
 permissions:
@@ -33,9 +37,38 @@ jobs:
       - name: Install Worker dependencies
         working-directory: worker
         run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Backfill KKBOX Taiwan and Hong Kong Japanese weekly chart history
+      - name: Backfill KKBOX Japanese weekly chart history
         working-directory: worker
-        run: node scripts/backfill-kkbox-japanese-history-actions.mjs --start=2012-01-01 --periods=weekly --types=song,newrelease --delay-ms=900 --persist
+        shell: bash
+        run: |
+          for territory in tw hk; do
+            for type in song newrelease; do
+              node scripts/backfill-kkbox-japanese-history-actions.mjs \
+                --start=2012-01-01 \
+                --territories="$territory" \
+                --periods=weekly \
+                --types="$type" \
+                --delay-ms=900 \
+                --max-requests=300 \
+                --persist
+            done
+          done
+      - name: Backfill KKBOX Japanese daily chart history
+        working-directory: worker
+        shell: bash
+        run: |
+          for territory in tw hk; do
+            for type in song newrelease; do
+              node scripts/backfill-kkbox-japanese-history-actions.mjs \
+                --start=2012-01-01 \
+                --territories="$territory" \
+                --periods=daily \
+                --types="$type" \
+                --delay-ms=900 \
+                --max-requests=300 \
+                --persist
+            done
+          done
       - name: Refresh KKBOX snapshot and publish regional read model
         working-directory: worker
         run: node scripts/collect-regional-r2-actions.mjs --services=kkbox
