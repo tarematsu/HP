@@ -127,6 +127,18 @@ BEGIN
     track_id=excluded.track_id,
     first_seen_at=MIN(music_service_track_refs.first_seen_at,excluded.first_seen_at),
     last_seen_at=MAX(music_service_track_refs.last_seen_at,excluded.last_seen_at);
+  UPDATE regional_music_track_daily
+    SET track_id=NEW.canonical_track_id
+    WHERE service=NEW.service AND service_track_id=NEW.service_track_id
+      AND track_id IS NULL;
+  UPDATE regional_music_playlist_memberships
+    SET track_id=NEW.canonical_track_id
+    WHERE service=NEW.service AND service_track_id=NEW.service_track_id
+      AND track_id IS NULL;
+  UPDATE regional_music_artist_track_order
+    SET track_id=NEW.canonical_track_id
+    WHERE service=NEW.service AND service_track_id=NEW.service_track_id
+      AND track_id IS NULL;
 END;
 
 CREATE TRIGGER trg_regional_music_track_ref_update
@@ -142,4 +154,16 @@ BEGIN
     track_id=excluded.track_id,
     first_seen_at=MIN(music_service_track_refs.first_seen_at,excluded.first_seen_at),
     last_seen_at=MAX(music_service_track_refs.last_seen_at,excluded.last_seen_at);
+  UPDATE regional_music_track_daily
+    SET track_id=NEW.canonical_track_id
+    WHERE service=NEW.service AND service_track_id=NEW.service_track_id
+      AND (track_id IS NULL OR track_id<>NEW.canonical_track_id);
+  UPDATE regional_music_playlist_memberships
+    SET track_id=NEW.canonical_track_id
+    WHERE service=NEW.service AND service_track_id=NEW.service_track_id
+      AND (track_id IS NULL OR track_id<>NEW.canonical_track_id);
+  UPDATE regional_music_artist_track_order
+    SET track_id=NEW.canonical_track_id
+    WHERE service=NEW.service AND service_track_id=NEW.service_track_id
+      AND (track_id IS NULL OR track_id<>NEW.canonical_track_id);
 END;
