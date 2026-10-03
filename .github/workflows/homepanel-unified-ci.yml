@@ -15,8 +15,7 @@ on:
       - 'hp/cloud/package.json'
       - 'hp/cloud/tsconfig.json'
       - 'hp/cloud/vitest.config.ts'
-      - 'hp/cloud/wrangler.jsonc'
-      - 'hp/cloud/wrangler.test.jsonc'
+      - 'hp/cloud/wrangler*.jsonc'
       - 'hp/cloud/.ci-full-trigger'
       - 'hp/video/src/**'
       - 'hp/video/public/**'
@@ -58,8 +57,7 @@ on:
       - 'hp/cloud/package.json'
       - 'hp/cloud/tsconfig.json'
       - 'hp/cloud/vitest.config.ts'
-      - 'hp/cloud/wrangler.jsonc'
-      - 'hp/cloud/wrangler.test.jsonc'
+      - 'hp/cloud/wrangler*.jsonc'
       - 'hp/cloud/.ci-full-trigger'
       - 'hp/video/src/**'
       - 'hp/video/public/**'
@@ -231,6 +229,16 @@ jobs:
             "cloud/unified-bundle.log" \
             npm run check:unified-bundle --workspace cloud
 
+      - name: Build the scheduler dispatcher Worker
+        if: needs.changes.outputs.bundle == 'true'
+        working-directory: hp
+        shell: bash
+        run: |
+          bash "$GITHUB_WORKSPACE/.github/scripts/ci/run-quiet.sh" \
+            "Scheduler dispatcher bundle check" \
+            "cloud/scheduler-bundle.log" \
+            npm run check:scheduler-bundle --workspace cloud
+
       - name: Verify local unified D1 migrations
         if: needs.changes.outputs.migrations == 'true'
         working-directory: hp/cloud
@@ -257,6 +265,7 @@ jobs:
             hp/cloud/source-check.log
             hp/cloud/test.log
             hp/cloud/unified-bundle.log
+            hp/cloud/scheduler-bundle.log
             hp/cloud/d1-validation.log
           if-no-files-found: warn
           retention-days: 7
