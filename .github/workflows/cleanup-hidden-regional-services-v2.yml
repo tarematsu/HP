@@ -1,4 +1,4 @@
-name: Cleanup hidden regional services
+name: Verify hidden regional service removal
 
 on:
   push:
@@ -9,21 +9,27 @@ permissions:
   contents: write
 
 jobs:
-  cleanup:
+  verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
           ref: cleanup/remove-hidden-regional-services-v2-20261003
           fetch-depth: 0
-      - name: Apply cleanup
+      - name: Apply cleanup idempotently
         run: python3 .github/scripts/cleanup_hidden_regional_services.py
-      - name: Commit cleanup
+      - name: Show residual provider references
+        shell: bash
         run: |
-          if git diff --quiet && git diff --cached --quiet; then exit 0; fi
-          git add -A
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git commit -m "Remove hidden regional music services"
-          git push origin HEAD:cleanup/remove-hidden-regional-services-v2-20261003
+          git grep -n -E 'genie|bugs|joox|nhaccuatui|anghami|melon|netease|naver_vibe|yandex_music|boomplay|plern|fungjai|zing_mp3|jiosaavn|gaana|langit_musik' -- worker site .github scripts tests ':!.github/scripts/cleanup_hidden_regional_services.py' ':!.github/workflows/cleanup-hidden-regional-services-v2.yml' || true
+      - name: Install dependencies
+        run: npm ci
+      - name: Worker bundle check
+        run: npm run check:worker-bundle
+      - name: Worker tests
+        run: npm run test:worker
+      - name: Site check
+        run: npm run check:site
+      - name: Site tests
+        run: npm run test:site
