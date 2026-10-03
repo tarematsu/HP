@@ -70,6 +70,15 @@ class FakeMinuteDb {
       async all() {
         database.reads += 1;
         if (sql.includes('FROM sh_tracks WHERE stationhead_track_id IN')) return { results: [] };
+        if (
+          sql.includes('FROM sh_tracks WHERE title IS NOT NULL')
+          || sql.includes('FROM sh_track_dictionary WHERE title IS NOT NULL')
+        ) {
+          const titles = new Set(this.args.map((value) => String(value).trim().toLocaleLowerCase('ja-JP')));
+          return {
+            results: database.rows.filter((row) => titles.has(String(row.title).trim().toLocaleLowerCase('ja-JP'))),
+          };
+        }
         if (sql.includes('FROM sh_track_canonical_metadata WHERE title IS NOT NULL')) {
           const titles = new Set(this.args.map((value) => String(value).trim().toLocaleLowerCase('ja-JP')));
           return {
