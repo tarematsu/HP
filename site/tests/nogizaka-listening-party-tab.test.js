@@ -58,13 +58,18 @@ test('Nogizaka tab keeps the shared official listening-party presentation', () =
   }
   assert.match(runtime, /official-listening-party-ui\.js\?v=20261001\.1/);
   assert.match(runtime, /createOfficialPartyHeaderRow\(\)/);
-  assert.match(runtime, /createOfficialPartyDataRow\(values, row\.source_url\)/);
+  assert.match(runtime, /createOfficialPartyDataRow\(tableValues\(payload, row\), row\?\.source_url\)/);
   assert.match(runtime, /officialPartyNumberText\(row\?\.listener_avg, decimal\)/);
   assert.match(runtime, /splitOfficialEventName\(row\?\.event_name/);
-  assert.match(runtime, /durationLabel\(durationMinutes\(payload\)\)/);
+  assert.match(runtime, /durationLabel\(durationMinutes\(payload, row\)\)/);
   assert.doesNotMatch(runtime, /function numberText|function durationLabel|function splitEvent|createOfficialSourceCell/);
   assert.match(runtime, /nogizakaPartyChart/);
   assert.match(runtime, /nogizakaPartyCsv/);
+});
+
+test('Nogizaka page has no top status or schedule notice', () => {
+  assert.doesNotMatch(shell, /dashboardNotice|nogizakaListeningPartyNotice/);
+  assert.doesNotMatch(runtime, /setNotice|nogizakaListeningPartyNotice|開始予定|開催中/);
 });
 
 test('Nogizaka chart keeps an explicit CSS height so redraws cannot grow the canvas', () => {
@@ -91,17 +96,29 @@ test('Nogizaka public API is read-model-only and the active tab loads after sour
 });
 
 test('Nogizaka producer builds the listening-party model from bounded D1 read models', () => {
+  assert.match(publisher, /HISTORY_LIMIT = 100/);
   assert.match(publisher, /sh_nogizaka_official_news_announcements/);
-  assert.match(publisher, /FROM sh_official_broadcast_summary/);
+  assert.match(publisher, /FROM sh_official_broadcast_summary AS s/);
   assert.match(publisher, /FROM sh_official_broadcast_series/);
+  assert.match(publisher, /WHERE s\.host_handle='nogizaka46smej'/);
+  assert.match(publisher, /ORDER BY s\.started_at DESC/);
+  assert.match(publisher, /LIMIT \?`\)\.bind\(HISTORY_LIMIT\)\.all\(\)/);
   assert.doesNotMatch(publisher, /sh_nogizaka_official_news_station_probes/);
   assert.match(publisher, /pagesActionsR2ResponseKey\(NOGIZAKA_LISTENING_PARTY_MODEL_KEY\)/);
-  assert.match(publisher, /broadcast_content: formatNogizakaBroadcastContent\(event\)/);
-  assert.match(publisher, /event_name: `\$\{day\.replaceAll\('-', ''\)\} \$\{row\.broadcast_content\}`/);
+  assert.match(publisher, /broadcast_content: formatNogizakaBroadcastContent\(/);
+  assert.match(publisher, /rows,/);
+  assert.match(publisher, /jstDayKey\(row\.started_at, day\)/);
   assert.match(publisher, /source = readSeries/);
   assert.match(publisher, /refresh_hint_ms: NOGIZAKA_LISTENING_PARTY_CADENCE_SECONDS \* 1000/);
 });
 
+test('Nogizaka runtime renders all read-model history rows and exports them together', () => {
+  assert.match(runtime, /function payloadRows\(payload\)/);
+  assert.match(runtime, /if \(Array\.isArray\(payload\?\.rows\)\) return payload\.rows/);
+  assert.match(runtime, /for \(const row of rows\) fragment\.append/);
+  assert.match(runtime, /const body = rows\.map/);
+  assert.match(runtime, /'nogizaka-listening-party\.csv'/);
+});
 
 test('Nogizaka empty chart collapses and restores the canvas when points arrive', () => {
   const nodes = new Map([
