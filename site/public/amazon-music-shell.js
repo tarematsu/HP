@@ -1,5 +1,6 @@
 import {
   dashboardChartHost,
+  dashboardModeTabs,
   dashboardNotice,
   dashboardTable,
   mountDashboardShell,
@@ -8,7 +9,7 @@ import {
   musicServiceMeta,
   musicServiceSection,
   musicServiceViewClassName,
-} from './music-service-shell.js?v=20261003.2';
+} from './music-service-shell.js?v=20261004.1';
 import { installAmazonMusicUpdatedAt } from './music-service-updated-at.js?v=20261003.1';
 
 const tracksTable = dashboardTable({
@@ -19,14 +20,17 @@ const tracksTable = dashboardTable({
   bodyId: 'amazonMusicTbody',
 });
 
-const modeButtons = `
-  <div class="mode-tabs amazon-mode-switch regional-chart-filter" role="group" aria-label="Amazon Music表示切替">
-    <button type="button" class="is-active" data-amazon-mode="all" aria-pressed="true">全楽曲順位</button>
-    <button type="button" data-amazon-mode="titles" aria-pressed="false">表題曲比較</button>
-    <button type="button" data-amazon-mode="sakurazaka" aria-pressed="false">櫻坂46</button>
-    <button type="button" data-amazon-mode="nogizaka" aria-pressed="false">乃木坂46</button>
-    <button type="button" data-amazon-mode="hinatazaka" aria-pressed="false">日向坂46</button>
-  </div>`;
+const modeButtons = dashboardModeTabs([
+  { value: 'all', label: '全楽曲順位', active: true },
+  { value: 'titles', label: '表題曲比較' },
+  { value: 'sakurazaka', label: '櫻坂46' },
+  { value: 'nogizaka', label: '乃木坂46' },
+  { value: 'hinatazaka', label: '日向坂46' },
+], {
+  dataAttribute: 'amazon-mode',
+  className: 'amazon-mode-switch regional-chart-filter',
+  ariaLabel: 'Amazon Music表示切替',
+});
 
 const rankSection = musicServiceSection({
   id: 'amazonTrendSection',
