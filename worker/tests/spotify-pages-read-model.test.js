@@ -151,8 +151,9 @@ test('Spotify read model writes all Sakamichi detail groups and skips unchanged 
 
 test('Spotify all-playcount SQL resolves public track_id and selects each Sakamichi latest date', () => {
   const sql = spotifyPlaycountAllSql();
-  assert.match(sql, /target\.artist_key IN \('sakurazaka46','nogizaka46','hinatazaka46'\)/);
-  assert.match(sql, /GROUP BY target\.artist_key/);
+  assert.match(sql, /WHERE artist_key IN \('sakurazaka46','nogizaka46','hinatazaka46'\)/);
+  assert.match(sql, /GROUP BY artist_key/);
+  assert.match(sql, /target\.artist_key=latest\.artist_key/);
   assert.match(sql, /LEFT JOIN music_service_track_refs ref/);
   assert.match(sql, /ref\.service='spotify'/);
   assert.match(sql, /ref\.source_track_id=d\.track_id/);
