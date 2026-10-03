@@ -35,7 +35,7 @@ const listeningPartyPanel = `<div class="stationhead-channel-panel" data-nogizak
   title: '乃木坂 公式リスパ 同接推移',
   kicker: 'TREND',
   trailingHtml: dashboardLegend({ id: 'nogizakaPartyLegend', className: 'chart-legend' }),
-  chartHtml: '<canvas id="nogizakaPartyChart" width="960" height="360" style="height:20em" aria-label="乃木坂46公式リスパの同接推移"></canvas><div class="chart-axis"><span>開始 0分</span><span id="nogizakaPartyChartEnd">-</span></div>',
+  chartHtml: '<div class="chart-fit"><canvas id="nogizakaPartyChart" width="960" height="360" style="height:20em" aria-label="乃木坂46公式リスパの同接推移"></canvas></div><div class="chart-axis"><span>開始 0分</span><span id="nogizakaPartyChartEnd">-</span></div>',
   footerHtml: '<p class="chart-foot">横軸は放送開始からの経過時間です。開催中は自動更新します。</p>',
 })}${dashboardDataCard({
   title: '公式リスパ一覧',
