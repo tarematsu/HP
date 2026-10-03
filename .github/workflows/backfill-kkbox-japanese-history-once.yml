@@ -1,12 +1,6 @@
 name: Backfill KKBOX Japanese chart history
 
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/backfill-kkbox-japanese-history-once.yml'
-      - 'worker/scripts/backfill-kkbox-japanese-history-actions.mjs'
-      - 'worker/src/kkbox-japanese-chart-history.js'
-      - 'worker/src/regional-music-kkbox.js'
   push:
     branches:
       - main
@@ -28,7 +22,6 @@ concurrency:
 
 jobs:
   backfill:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
