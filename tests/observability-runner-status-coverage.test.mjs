@@ -44,7 +44,7 @@ for (const status of ['queued', 'in_progress', 'requested', 'waiting', 'pending'
   });
 }
 
-test('deployment publisher refreshes after operational workflows without contending with refresh dispatch', () => {
+test('deployment publisher refreshes after operational workflows without periodic polling', () => {
   const workflow = readFileSync(
     new URL('../.github/workflows/publish-github-deployment-health.yml', import.meta.url),
     'utf8',
@@ -58,5 +58,6 @@ test('deployment publisher refreshes after operational workflows without contend
   ]) assert.match(workflow, new RegExp(name));
   assert.doesNotMatch(workflow, /Refresh Cloudflare observability/);
   assert.doesNotMatch(workflow, /Publish GitHub Actions runner health/);
-  assert.match(workflow, /cron: '7,22,37,52 \* \* \* \*'/);
+  assert.match(workflow, /workflow_run:/);
+  assert.doesNotMatch(workflow, /^\s*schedule:\s*$/m);
 });
