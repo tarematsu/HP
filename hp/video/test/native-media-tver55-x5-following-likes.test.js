@@ -5,10 +5,6 @@ import { readExpandedNativeSource } from './helpers/read-expanded-native-source.
 
 const mediaBase = readFileSync(
   new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url), 'utf8');
-const hostWindow = readFileSync(
-  new URL('../../native/src/renderer_panels/media_host_window.inc', import.meta.url), 'utf8');
-const tverQueue = readFileSync(
-  new URL('../../native/src/renderer_panels/media_tver_cloud_queue_refresh.inc', import.meta.url), 'utf8');
 const tverRuntime = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
 const host = readFileSync(
@@ -23,31 +19,39 @@ test('media cycle randomly selects zero, one or two X slots once per X-YouTube-X
   assert.match(mediaBase, /const UINT count = NativeMediaXRandomBelow\(3\)/);
   assert.match(mediaBase, /if \(count == 2\)[\s\S]*firstSlot = true[\s\S]*secondSlot = true/);
   assert.match(mediaBase, /else if \(count == 1\)[\s\S]*NativeMediaXRandomBelow\(2\)/);
-  assert.match(mediaBase, /if \(tver\) NativeMediaCurrentXCyclePlan\(\) = NativeMediaDrawXCyclePlan\(\)/);
+  assert.match(mediaBase, /if \(tver\) \{[\s\S]*NativeMediaCurrentXCyclePlan\(\) = NativeMediaDrawXCyclePlan\(\)/);
   assert.match(mediaBase, /NativeMediaXSlotEnabled\(true\)/);
   assert.match(mediaBase, /NativeMediaXSlotEnabled\(false\)/);
 });
 
-test('unused X slots are skipped instead of displaying the current media for an extra two minutes', () => {
+test('unused X slots are skipped and TVer never extends itself for X', () => {
   assert.match(mediaBase, /return startupPrefix \+ youtubeContentDurationMs \+ 1000U/);
-  assert.match(mediaBase, /return tverContentDurationMs \+ 1000U/);
+  assert.match(mediaBase, /return NativeMediaCurrentTverContentDurationMs\(\) \+ 1000U/);
   assert.match(
     mediaBase,
-    /return tverContentDurationMs \+[\s\S]*NativeMediaXSlotEnabled\(true\) \? kNativeMediaXPhaseMs : 0U/,
+    /if \(tver\) \{[\s\S]*NativeMediaStartupYoutubePhaseActive\(\) = false;[\s\S]*return NativeMediaCurrentTverContentDurationMs\(\);/,
   );
   assert.match(mediaBase, /const UINT tailX = NativeMediaXSlotEnabled\(false\)/);
   assert.match(mediaBase, /#define kNativeMediaYoutubeContentPhaseMs NativeMediaYoutubeContentIntervalMs\(\)/);
   assert.match(mediaBase, /#define kNativeMediaTverContentDurationMs NativeMediaTverContentIntervalMs\(\)/);
-  assert.match(mediaBase, /gNativeMediaPowerSaving \|\| !NativeMediaXSlotEnabled\(true\)/);
+  assert.doesNotMatch(
+    mediaBase,
+    /return tverContentDurationMs \+[\s\S]*NativeMediaXSlotEnabled\(true\) \? kNativeMediaXPhaseMs : 0U/,
+  );
   assert.doesNotMatch(mediaBase, /return phaseDuration \+ 1000U/);
   assert.doesNotMatch(mediaBase, /return kNativeMediaTverPhaseMs \+ 1000U/);
 });
 
-test('startup reserves the first X slot only when that slot is selected', () => {
+test('the first X slot is a YouTube prefix at startup and after TVer', () => {
   assert.match(mediaBase, /kNativeMediaStartupXPhaseMs = 2U \* 60U \* 1000U/);
   assert.match(mediaBase, /https:\/\/x\.com\/home\?homepanel=startup/);
   assert.match(mediaBase, /NativeMediaStartupYoutubePhaseActive/);
-  assert.match(mediaBase, /const bool startupXEnabled = NativeMediaXSlotEnabled\(true\)/);
+  assert.match(
+    mediaBase,
+    /const bool prefixXEnabled =[\s\S]*NativeMediaCurrentXCyclePlan\(\)\.firstSlot[\s\S]*NativeMediaXRuntimeAllowed\(\)[\s\S]*!gNativeMediaPowerSaving/,
+  );
+  assert.match(mediaBase, /NativeMediaStartupXDeadlineTick\(\) =[\s\S]*prefixXEnabled \? now \+ kNativeMediaStartupXPhaseMs : 1/);
+  assert.match(mediaBase, /const bool startupXEnabled =[\s\S]*NativeMediaXSlotEnabled\(true\) && NativeMediaXRuntimeAllowed\(\)/);
   assert.match(mediaBase, /NativeMediaStartupYoutubePhaseActive\(\) = startupXEnabled/);
   assert.match(mediaBase, /return startupPrefix \+ youtubeContentDurationMs \+ tailX/);
   assert.match(xRuntime, /homepanel:startup-x-until:v2/);
@@ -71,28 +75,28 @@ test('YouTube draws one stable 45-75 minute content duration and can hand off to
   assert.match(host, /Navigate\(L"https:\/\/x\.com\/home"\)/);
 });
 
-test('TVer draws one stable 45-75 minute content duration before a selected first X slot', () => {
+test('TVer keeps its 45-75 minute playback phase uninterrupted by X', () => {
   assert.match(mediaBase, /kNativeMediaTverMinContentDurationMinutes = 45U/);
   assert.match(mediaBase, /kNativeMediaTverMaxContentDurationMinutes = 75U/);
   assert.match(mediaBase, /const UINT tverMinuteSpan =[\s\S]*TverMaxContentDurationMinutes -[\s\S]*TverMinContentDurationMinutes \+ 1U/);
   assert.match(mediaBase, /NativeMediaXRandomBelow\(tverMinuteSpan\)/);
   assert.match(mediaBase, /plan\.tverContentDurationMs = tverMinutes \* 60U \* 1000U/);
   assert.match(mediaBase, /UINT NativeMediaCurrentTverContentDurationMs\(\) noexcept/);
-  assert.match(mediaBase, /const UINT tverContentDurationMs = NativeMediaCurrentTverContentDurationMs\(\)/);
-  assert.match(tverQueue, /NativeMediaCurrentTverContentDurationMs\(\)/);
-  assert.match(tverQueue, /gNativeMediaPowerSaving \|\| !NativeMediaXSlotEnabled\(true\)/);
-  assert.match(tverQueue, /ULONGLONG phaseStartedAt = 0/);
-  assert.match(tverQueue, /NativeMediaTverXPhaseActive\(\)/);
+  assert.match(mediaBase, /TVer owns this WebView continuously/);
+  assert.match(mediaBase, /return NativeMediaCurrentTverContentDurationMs\(\) \+ 1000U/);
+  assert.match(
+    mediaBase,
+    /if \(tver\) \{[\s\S]*return NativeMediaCurrentTverContentDurationMs\(\);/,
+  );
   assert.doesNotMatch(tverRuntime, /homepanel:tver-x-phase-start/);
   assert.match(host, /phase_ == Phase::Tver[\s\S]*kNativeMediaTverContentDurationMs/);
 });
 
-test('TVer recovery cannot pull the shared WebView back from the X subphase', () => {
-  assert.match(
-    hostWindow,
-    /timerId == kNativeMediaTverWatchdogTimer[\s\S]*timerId == kNativeMediaNavigationRetryTimer[\s\S]*NativeMediaTverXPhaseActive\(\)/,
-  );
-  assert.match(hostWindow, /KillTimer\(hwnd, timerId\)/);
+test('a TVer X timer is placed after the phase boundary so it cannot navigate TVer away', () => {
+  assert.match(mediaBase, /TVer owns this WebView continuously/);
+  assert.match(mediaBase, /return NativeMediaCurrentTverContentDurationMs\(\) \+ 1000U/);
+  assert.match(host, /if \(!phaseStarted_ \|\| GetTickCount64\(\) - phaseStartedAt_ < contentMs\) return true/);
+  assert.match(mediaBase, /Entering YouTube is the safe boundary for the first X slot/);
 });
 
 test('X waits without interaction until the authenticated Following tab exists', () => {
