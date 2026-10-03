@@ -66,20 +66,6 @@ async function safeRows(db, sql, bindings) {
   }
 }
 
-async function canonicalCandidateRows(db, titles) {
-  const rows = [];
-  for (let offset = 0; offset < titles.length; offset += QUERY_BINDING_CHUNK_SIZE) {
-    const part = titles.slice(offset, offset + QUERY_BINDING_CHUNK_SIZE);
-    const marks = placeholders(part.length);
-    const where = `WHERE title IS NOT NULL AND artist IS NOT NULL
-        AND TRIM(title) COLLATE NOCASE IN (${marks})`;
-    rows.push(...await safeRows(db, `SELECT spotify_id,isrc,title,artist,
-        thumbnail_url,fetched_at
-      FROM sh_track_canonical_metadata ${where}`, part));
-  }
-  return rows;
-}
-
 async function primaryCandidateRows(db, titles) {
   const rows = [];
   for (let offset = 0; offset < titles.length; offset += QUERY_BINDING_CHUNK_SIZE) {
@@ -95,6 +81,15 @@ async function primaryCandidateRows(db, titles) {
       FROM sh_track_dictionary ${where}`, part));
   }
   return rows;
+}
+
+async function canonicalCandidateRows(db, titles) {
+  // sh_track_canonical_metadata is a UNION/COALESCE view. Applying the title
+  // predicate to that view prevents SQLite from seeking the expression indexes
+  // on sh_tracks and sh_track_dictionary, causing a full canonical view scan.
+  // Those two tables are the canonical identity sources for the view, so read
+  // them directly and let resolveRows apply the same title+artist identity rule.
+  return primaryCandidateRows(db, titles);
 }
 
 async function fallbackTitleCandidateRows(db, titles) {
