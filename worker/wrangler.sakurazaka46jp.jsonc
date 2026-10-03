@@ -30,11 +30,6 @@
     "REQUEST_TIMEOUT_MS": 8000
   },
   "triggers": { "crons": ["* * * * *"] },
-  "services": [
-    { "binding": "NOGIZAKA_SCHEDULED", "service": "sh-nogizaka46smej" },
-    { "binding": "OHISAMA_SCHEDULED", "service": "sh-ohisama-collector" },
-    { "binding": "SPOTIFY_PLAYCOUNT_SCHEDULED", "service": "sh-spotify-playcount-collector" }
-  ],
   "d1_databases": [
     { "binding": "MINUTE_DB", "database_name": "stationhead-minute", "database_id": "43c12c1e-886d-4496-9c37-61bc8a15bbd7" },
     { "binding": "OTHER_DB", "database_name": "stationhead-other", "database_id": "21e70e92-6725-4e62-809e-8aadb088cc11" }
@@ -55,8 +50,7 @@
     ],
     "producers": [
       { "binding": "SAKURAZAKA_QUEUE", "queue": "stationhead-sakurazaka46jp" },
-      { "binding": "HOST_MONITOR_QUEUE", "queue": "stationhead-sakurazaka46jp" },
-      { "binding": "REGIONAL_MUSIC_QUEUE", "queue": "regional-music-daily" }
+      { "binding": "HOST_MONITOR_QUEUE", "queue": "stationhead-sakurazaka46jp" }
     ]
   }
 }
