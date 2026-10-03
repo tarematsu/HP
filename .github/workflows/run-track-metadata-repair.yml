@@ -17,6 +17,7 @@ on:
       - 'worker/scripts/repair-legacy-ranking-metadata-actions.mjs'
       - 'worker/scripts/report-unresolved-ranking-metadata-actions.mjs'
       - 'worker/src/isrc-metadata.js'
+      - 'worker/src/track-metadata.js'
   workflow_dispatch:
 
 permissions:

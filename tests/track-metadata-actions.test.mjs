@@ -39,19 +39,25 @@ test('Actions repair reads bounded canonical and latest-state candidate windows 
 });
 
 test('Actions repair treats missing artwork as incomplete metadata', () => {
-  assert.match(script, /const thumbnailUrl = text\(row\?\.thumbnail_url\)/);
-  assert.match(script, /spotifyId && title && artist && thumbnailUrl/);
+  assert.match(script, /function presentationComplete\(row\)/);
+  assert.match(script, /return presentationComplete\(row\) && Boolean\(text\(row\?\.thumbnail_url\)\)/);
 });
 
-test('Actions repair recovers Spotify oEmbed entries missing artist or artwork', () => {
+test('Actions repair uses the shared Spotify resolver before the iTunes fallback', () => {
+  assert.match(script, /import \{ fetchTrackMetadata \} from '\.\.\/src\/track-metadata\.js'/);
+  assert.match(script, /await fetchTrackMetadata\(\{/);
+  assert.match(script, /spotify_page: spotifyPageRaw/);
   assert.match(script, /function appleMetadata\(title, durationMs\)/);
   assert.match(script, /itunes\.apple\.com\/search/);
-  assert.match(script, /trackTimeMillis/);
   assert.match(script, /candidate\.duration_ms/);
-  assert.match(script, /if \(!artist \|\| !thumbnailUrl\)/);
+  assert.match(script, /if \(title && \(!artist \|\| !thumbnailUrl\)\)/);
   assert.match(script, /thumbnailUrl \|\|= text\(apple\?\.artworkUrl100\)/);
-  assert.match(script, /if \(!title \|\| !artist \|\| !thumbnailUrl\) return null/);
-  assert.match(script, /source: apple \? 'spotify_oembed_itunes_actions' : 'spotify_oembed_actions'/);
+});
+
+test('Actions repair retries name-incomplete rows after fifteen minutes without increasing artwork retry frequency', () => {
+  assert.match(script, /PRESENTATION_RETRY_MS = 15 \* 60_000/);
+  assert.match(script, /const retryMs = presentationComplete\(row\) \? refreshMs : PRESENTATION_RETRY_MS/);
+  assert.match(script, /TRACK_METADATA_REFRESH_MS/);
 });
 
 test('Actions repair prefers existing buddies metadata before bounded Spotify fetches', () => {
