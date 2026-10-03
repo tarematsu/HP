@@ -67,8 +67,8 @@ test('Nogizaka tab keeps the shared official listening-party presentation', () =
   assert.match(runtime, /nogizakaPartyCsv/);
 });
 
-test('Nogizaka page has no top status or schedule notice', () => {
-  assert.doesNotMatch(shell, /dashboardNotice|nogizakaListeningPartyNotice/);
+test('Nogizaka top status notice stays hidden and is not populated with schedule text', () => {
+  assert.match(shell, /dashboardNotice\(\{ id: 'nogizakaListeningPartyNotice' \}\)/);
   assert.doesNotMatch(runtime, /setNotice|nogizakaListeningPartyNotice|開始予定|開催中/);
 });
 
