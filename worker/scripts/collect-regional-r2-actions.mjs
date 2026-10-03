@@ -3,23 +3,26 @@ import { join,resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 import { createWranglerRemoteR2 } from './remote-r2-json-adapter.mjs';
-import { enqueueGeniePublication } from './collect-genie-r2-actions.mjs';
 import { REGIONAL_MUSIC_SERVICE_COLLECTORS_BY_ID } from '../src/regional-music-entry.js';
 import { REGIONAL_MUSIC_DAILY_SERVICES,regionalMusicR2DueServices } from '../src/regional-music-dispatch-plan.js';
 import { collectRegionalR2Snapshot,regionalSnapshotKey,regionalDayKey,regionalSnapshotFromPayload } from '../src/regional-music-r2-snapshot.js';
-import { collectGenieSnapshot } from '../src/genie-catalog-snapshot.js';
 import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
 import { regionalMusicSnapshotDate } from '../src/regional-music-store.js';
-import {
-  neteaseJapanHistoryRecordFromSnapshot,
-  upsertNeteaseJapanHistoryArtifacts,
-} from '../src/netease-japan-chart-history.js';
 import {
   kkboxHistoryRecordsFromSnapshot,
   upsertKkboxJapaneseHistoryArtifacts,
 } from '../src/kkbox-japanese-chart-history.js';
 
 const REGIONAL_SERVICE_SET=new Set(REGIONAL_MUSIC_DAILY_SERVICES);
+
+async function enqueueRegionalPublication(config, api, now) {
+  const name=config.queues?.consumers?.[0]?.queue;
+  if(!name) throw new Error('Regional publication queue missing');
+  const queues=await api('/queues');
+  const queue=queues.find(row=>row.queue_name===name);
+  if(!queue?.queue_id) throw new Error('Regional publication queue not found');
+  await api(`/queues/${queue.queue_id}/messages`,{body:{message_type:'regional-music-publish',scheduled_at:now},content_type:'json'});
+}
 
 export function parseRegionalServiceSelection(argv=process.argv.slice(2)) {
   const argument=(argv || []).find(value=>String(value).startsWith('--services='));
@@ -37,9 +40,7 @@ export async function collectRegionalR2Run({load,save,now=Date.now(),all=false,s
   const services=explicit.length ? explicit : all ? [...REGIONAL_MUSIC_DAILY_SERVICES] : regionalMusicR2DueServices(now);
   const force=all || explicit.length>0;
   const results=[];
-  // Small services finish before the large Genie catalog. An interrupted Genie
-  // run does not discard the already persisted snapshots of other providers.
-  for(const service of services.filter(value=>value!=='genie')) {
+  for(const service of services) {
     const controller=new AbortController();
     const timer=setTimeout(()=>controller.abort(),90_000);
     const fetchService=(url,options={})=>fetchImpl(url,{...options,signal:options.signal ? AbortSignal.any([options.signal,controller.signal]) : controller.signal});
@@ -54,14 +55,6 @@ export async function collectRegionalR2Run({load,save,now=Date.now(),all=false,s
       const snapshot=await collectRegionalR2Snapshot({service,collect,previous,now,fetchImpl:fetchService,bindings});
       await save(regionalDayKey(service,snapshot.day),snapshot);
       await save(regionalSnapshotKey(service),snapshot);
-      let neteaseHistoryChanged=false;
-      if(service==='netease_cloud_music' && snapshot.state?.status!=='error') {
-        const record=neteaseJapanHistoryRecordFromSnapshot(snapshot,now);
-        if(record) {
-          const historyResult=await upsertNeteaseJapanHistoryArtifacts({load,save,record,updatedAt:now});
-          neteaseHistoryChanged=historyResult.changed;
-        }
-      }
       let kkboxHistoryChanged=false;
       if(service==='kkbox' && snapshot.state?.status!=='error') {
         const records=kkboxHistoryRecordsFromSnapshot(snapshot);
@@ -73,19 +66,9 @@ export async function collectRegionalR2Run({load,save,now=Date.now(),all=false,s
       results.push({
         service,
         status:snapshot.state.status,
-        ...(service==='netease_cloud_music' ? {japan_chart_history_changed:neteaseHistoryChanged} : {}),
         ...(service==='kkbox' ? {japanese_chart_history_changed:kkboxHistoryChanged} : {}),
       });
     } finally {clearTimeout(timer);}
-  }
-  if(services.includes('genie')) {
-    const fetchHtml=async(url,body)=>{
-      const response=await fetchImpl(url,{...(body ? {method:'POST',body} : {}),headers:{accept:'text/html','accept-language':'ko-KR,ko;q=0.9,en;q=0.6','user-agent':'Mozilla/5.0 compatible; skrzk-pages-collector/1.0',...(body ? {'content-type':'application/x-www-form-urlencoded'} : {})},signal:AbortSignal.timeout(30_000)});
-      if(!response.ok) throw new Error(`Genie HTTP ${response.status}`);
-      return response.text();
-    };
-    const snapshot=await collectGenieSnapshot({load,save,now,fetchHtml});
-    results.push({service:'genie',status:snapshot.state.status});
   }
   return results;
 }
@@ -125,7 +108,7 @@ async function main() {
       if(!response.ok || result.success!==true) throw new Error(`Publication API failed: HTTP ${response.status}`);
       return result.result;
     };
-    await enqueueGeniePublication(config,api,Date.now());
+    await enqueueRegionalPublication(config,api,Date.now());
   }
   console.log(JSON.stringify({event:'regional_r2_complete',results,requested_services:requestedServices,collection_d1_writes:0,canonical_d1_reads:true,publication_messages:1}));
   if(results.some(row=>row.status==='error' || row.status==='degraded')) process.exitCode=1;

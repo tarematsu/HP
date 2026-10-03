@@ -18,6 +18,7 @@ test('the same collaboration keeps separate artist ranks and inference sources',
   assert.equal(orders[1].values[6],9);
   assert.equal(orders[0].values[7],'artist_page_order');
 });
+
 test('a missing rank stays missing while known provider popularity order retains its source', async () => {
   const writes = [];
   const env = { OTHER_DB:{prepare(sql){return {bind(...values){return {async run(){writes.push({sql,values});}};}};}}};
@@ -27,14 +28,8 @@ test('a missing rank stays missing while known provider popularity order retains
   await saveRegionalTrack(env,{...base,popularity_rank:1});
   assert.equal(writes.at(-1).values[7],'provider_popularity_order');
 });
-test('the read model exposes per-artist order and provenance', () => {
-  const orders = [{service:'genie',canonical_artist:'sakurazaka46',service_track_id:'song',position:1,rank_source:'artist_page_order'}];
-  assert.deepEqual(regionalMusicReadModelPayload({artistTrackOrders:orders},1).artist_track_orders,orders);
-});
 
-import { parseGenieTrackTitle } from '../src/regional-music-genie.js';
-test('Genie stores its official song title instead of displaying the service ID', () => {
-  assert.equal(parseGenieTrackTitle(`<meta property="og:title" content="What's &#39;KAZOKU&#39;? / Sakurazaka46 - genie">`), "What's 'KAZOKU'?");
-  assert.equal(parseGenieTrackTitle(`<meta content="Title / Part Two / Nogizaka46 - genie" property="og:title">`), 'Title / Part Two');
-  assert.equal(parseGenieTrackTitle('<title>genie</title>'),null);
+test('the read model exposes per-artist order and provenance', () => {
+  const orders = [{service:'kugou_music',canonical_artist:'sakurazaka46',service_track_id:'song',position:1,rank_source:'artist_page_order'}];
+  assert.deepEqual(regionalMusicReadModelPayload({artistTrackOrders:orders},1).artist_track_orders,orders);
 });

@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 import { createWranglerRemoteR2 } from './remote-r2-json-adapter.mjs';
-import { enqueueGeniePublication } from './collect-genie-r2-actions.mjs';
+import { enqueueRegionalPublication } from './regional-publication-actions.mjs';
 import {
   fetchQqAnimeToplist,
   QQ_ANIME_TOPLIST_PLAYLIST_ID,
@@ -205,7 +205,7 @@ async function main() {
       if (!response.ok || payload.success !== true) throw new Error(`Publication API failed: HTTP ${response.status}`);
       return payload.result;
     };
-    await enqueueGeniePublication(config, api, Date.now());
+    await enqueueRegionalPublication(config, api, Date.now());
     result = await finalizeQqAnimeToplistCycle({ save, result });
   }
 

@@ -54,7 +54,7 @@ function r2Snapshot(service, updatedAt = 1234) {
 }
 
 test('regional publication uses latest R2 snapshot without loading D1', async () => {
-  const service = 'bugs';
+  const service = 'kkbox';
   const latestKey = regionalSnapshotKey(service);
   const snapshot = r2Snapshot(service);
   const writes = [];
@@ -86,7 +86,7 @@ test('regional publication uses latest R2 snapshot without loading D1', async ()
 
   assert.equal(d1Loads, 0);
   assert.equal(writes.length, 1);
-  assert.equal(writes[0].key, 'regional-music:bugs');
+  assert.equal(writes[0].key, 'regional-music:kkbox');
   assert.equal(writes[0].body.source_updated_at, 1234);
   assert.equal(writes[0].body.tracks[0].track_id, 42);
   assert.equal(writes[0].body.services[0].storage, 'r2');
@@ -102,17 +102,17 @@ test('regional publication keeps D1 compatibility fallback when latest R2 snapsh
       async get() { return null; },
       async put() {},
     },
-  }, 'bugs', 2000, {
+  }, 'kkbox', 2000, {
     loadReadModel: async () => {
       d1Loads += 1;
       return {
-        artists: [{ service: 'bugs', canonical_artist: 'sakurazaka46', observed_at: 1000 }],
+        artists: [{ service: 'kkbox', canonical_artist: 'sakurazaka46', observed_at: 1000 }],
         tracks: [],
         releases: [],
         playlists: [],
         memberships: [],
         artistTrackOrders: [],
-        services: [{ service: 'bugs', status: 'ok', updated_at: 1000, entity_counts_json: '{}' }],
+        services: [{ service: 'kkbox', status: 'ok', updated_at: 1000, entity_counts_json: '{}' }],
       };
     },
     saveR2Response: async (_r2, key, body) => {
@@ -128,7 +128,7 @@ test('regional publication keeps D1 compatibility fallback when latest R2 snapsh
 
 test('mixed publication scopes D1 fallback only to the service missing R2', async () => {
   const snapshots = new Map([
-    [regionalSnapshotKey('bugs'), r2Snapshot('bugs', 1500)],
+    [regionalSnapshotKey('kkbox'), r2Snapshot('kkbox', 1500)],
   ]);
   const fallbackCalls = [];
   const writes = [];
@@ -142,7 +142,7 @@ test('mixed publication scopes D1 fallback only to the service missing R2', asyn
       },
       async put() {},
     },
-  }, ['bugs', 'youtube_music'], 2000, {
+  }, ['kkbox', 'youtube_music'], 2000, {
     loadServiceReadModel: async (_db, service) => {
       fallbackCalls.push(service);
       return {
@@ -164,6 +164,6 @@ test('mixed publication scopes D1 fallback only to the service missing R2', asyn
   assert.deepEqual(fallbackCalls, ['youtube_music']);
   assert.equal(result.d1_fallback, true);
   assert.deepEqual(result.d1_fallback_services, ['youtube_music']);
-  assert.equal(writes.find((row) => row.key === 'regional-music:bugs').body.source_updated_at, 1500);
+  assert.equal(writes.find((row) => row.key === 'regional-music:kkbox').body.source_updated_at, 1500);
   assert.equal(writes.find((row) => row.key === 'regional-music:youtube_music').body.tracks[0].plays, 999);
 });

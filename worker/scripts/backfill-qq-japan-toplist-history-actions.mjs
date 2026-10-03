@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createWranglerRemoteR2 } from './remote-r2-json-adapter.mjs';
-import { enqueueGeniePublication } from './collect-genie-r2-actions.mjs';
+import { enqueueRegionalPublication } from './regional-publication-actions.mjs';
 import { parseQqJapanToplist, QQ_JAPAN_TOPLIST_ID, QQ_JAPAN_TOPLIST_LIMIT } from '../src/regional-music-qq.js';
 import {
   compareQqJapanHistoryPeriods,
@@ -275,7 +275,7 @@ async function main() {
     if (!response.ok || payload.success !== true) throw new Error(`Publication queue API failed: HTTP ${response.status}`);
     return payload.result;
   };
-  await enqueueGeniePublication(config, api, result.updated_at);
+  await enqueueRegionalPublication(config, api, result.updated_at);
   console.log(JSON.stringify({ event:'qq_japan_history_complete', publication_messages:1, ...result }));
 }
 

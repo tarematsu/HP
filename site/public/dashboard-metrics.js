@@ -10,7 +10,6 @@ import './dashboard-tab-order.js?v=20261002.1';
 import './hinata-shell.js?v=20261001.2';
 import './followers-shell.js?v=20261001.1';
 import './dashboard-tabs.js?v=20260930.1';
-import './genie-catalog-ui.js?v=20261003.1';
 
 const IMAGE_RETRY_DELAYS = [5_000, 30_000, 120_000];
 const imageRetryTimers = new WeakMap();
