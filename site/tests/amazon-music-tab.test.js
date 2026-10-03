@@ -13,6 +13,7 @@ const css = readFileSync(new URL('../public/amazon-music.css', import.meta.url),
 const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 const musicCss = readFileSync(new URL('../public/music-service-common.css', import.meta.url), 'utf8');
 const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
+const commonShell = readFileSync(new URL('../public/music-service-shell.js', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/amazon-music.js', import.meta.url), 'utf8');
 const playlistApi = readFileSync(new URL('../functions/api/amazon-music-playlists.js', import.meta.url), 'utf8');
 
@@ -68,12 +69,16 @@ test('Amazon Music API preserves real materialized-service failures', async () =
   assert.equal((await response.json()).ok, false);
 });
 
-test('Amazon Music view keeps metadata first and exposes Sakamichi switches', () => {
-  assert.match(shell, /musicServiceMeta\(\{ label: '更新日時', valueId: 'amazonUpdatedAt', cadence: '毎日朝ごろ' \}\)/);
-  assert.match(shell, /className: 'amazon-music-view music-service-view'/);
-  assert.match(shell, /title: '推移'/);
-  assert.match(shell, /title: '楽曲'/);
-  assert.match(shell, /title: 'プレイリスト'/);
+test('Amazon Music uses the QQ metadata and section layout while keeping Sakamichi switches', () => {
+  assert.match(shell, /musicServiceMeta\(\{ valueId: 'amazonUpdatedAt', cadence: '毎日朝ごろ' \}\)/);
+  assert.match(shell, /className: musicServiceViewClassName\('amazon-music-view'\)/);
+  assert.match(shell, /musicServiceSection/);
+  assert.match(commonShell, /'regional-music-view', 'is-chart-compact', 'music-service-view'/);
+  assert.match(commonShell, /'regional-chart-meta', 'music-service-meta'/);
+  assert.match(commonShell, /'music-service-section', 'regional-chart-section'/);
+  assert.match(shell, /title: 'Amazon Music総合順位推移'/);
+  assert.match(shell, /title: '全楽曲順位'/);
+  assert.match(shell, /title: 'Amazon Music プレイリスト掲載一覧'/);
   for (const mode of ['all', 'titles', 'nogizaka', 'sakurazaka', 'hinatazaka']) {
     assert.match(shell, new RegExp(`data-amazon-mode="${mode}"`));
   }
@@ -84,6 +89,7 @@ test('Amazon Music view keeps metadata first and exposes Sakamichi switches', ()
   assert.match(shell, /日向坂46/);
   assert.match(shell, /headers: \['Amazon Music総合順位', '前日比', 'アーティスト', '曲名'\]/);
   assert.match(musicCss, /\.music-service-section/);
+  assert.doesNotMatch(shell, /dashboardSummary|dashboardSummaryItem|dashboardDataCard|dashboardChartCard/);
 });
 
 test('Amazon Music title comparison and artist modes use Worker title-track flags', () => {
