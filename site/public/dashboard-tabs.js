@@ -1,9 +1,9 @@
 const HISTORY_MODES = new Set(['daily', 'weekly', 'monthly', 'ranking', 'broadcasts']);
-const REGIONAL_MUSIC_MODES = new Set('genie bugs joox nhaccuatui anghami melon kkbox qq_music netease_cloud_music kugou_music naver_vibe flo yandex_music boomplay plern fungjai zing_mp3 jiosaavn gaana langit_musik'.split(' '));
+const REGIONAL_MUSIC_MODES = new Set(['kkbox', 'qq_music', 'kugou_music']);
 const REGIONAL_MUSIC_VIEW = Object.freeze({
   viewId: 'regionalMusicView',
-  shell: () => import('/regional-music-shell.js?v=20261003.2'),
-  runtime: () => import('/regional-music.js?v=20261003.3'),
+  shell: () => import('/regional-music-shell.js?v=20261004.1'),
+  runtime: () => import('/regional-music.js?v=20261004.1'),
   noticeId: 'regionalMusicNotice',
 });
 
@@ -43,8 +43,8 @@ const LAZY_VIEWS = Object.freeze({
   },
   'amazon-music': {
     viewId: 'amazonMusicView',
-    shell: () => import('/amazon-music-shell.js?v=20261002.3'),
-    runtime: () => import('/amazon-music.js?v=20261002.3'),
+    shell: () => import('/amazon-music-shell.js?v=20261004.1'),
+    runtime: () => import('/amazon-music.js?v=20261004.1'),
     loadExport: 'loadAmazonMusicView',
     noticeId: 'amazonMusicNotice',
     errorLabel: 'amazon music',
@@ -62,7 +62,7 @@ const LAZY_VIEWS = Object.freeze({
   'youtube-music': {
     viewId: 'youtubeMusicView',
     shell: () => import('/youtube-music-shell.js?v=20261003.4'),
-    runtime: () => import('/youtube-music.js?v=20261003.4'),
+    runtime: () => import('/youtube-music.js?v=20261004.1'),
     loadExport: 'loadYoutubeMusicView',
     noticeId: 'youtubeMusicNotice',
     errorLabel: 'youtube music',
@@ -111,6 +111,9 @@ const NAVIGATION = Object.freeze([
       Object.freeze({ id: 'apple-music', label: 'Apple Music', defaultMode: 'apple-music', modes: Object.freeze(['apple-music']) }),
       Object.freeze({ id: 'amazon-music', label: 'Amazon Music', defaultMode: 'amazon-music', modes: Object.freeze(['amazon-music']) }),
       Object.freeze({ id: 'youtube-music', label: 'YouTube Music', defaultMode: 'youtube-music', modes: Object.freeze(['youtube-music']) }),
+      Object.freeze({ id: 'kkbox', label: '🇹🇼KKBOX', defaultMode: 'kkbox', modes: Object.freeze(['kkbox']) }),
+      Object.freeze({ id: 'qq_music', label: '🇨🇳QQ音乐', defaultMode: 'qq_music', modes: Object.freeze(['qq_music']) }),
+      Object.freeze({ id: 'kugou_music', label: '🇨🇳酷狗音乐', defaultMode: 'kugou_music', modes: Object.freeze(['kugou_music']) }),
     ]),
   }),
 ]);
@@ -120,7 +123,6 @@ for (const section of NAVIGATION) {
     for (const mode of source.modes) MODE_NAVIGATION.set(mode, { section, source });
   }
 }
-const SUBSCRIPTIONS = NAVIGATION.find(({ id }) => id === 'subscriptions');
 const BUDDIES_VISIBLE_MODES = new Set(['current', 'daily', 'played-tracks', 'likes', 'broadcasts']);
 
 const currentView = document.getElementById('currentView');
@@ -160,12 +162,7 @@ function visibleTabMode(mode) {
   return mode === 'weekly' || mode === 'monthly' ? 'daily' : mode;
 }
 
-function regionalSource(mode) {
-  return { id: mode, defaultMode: mode, modes: [mode] };
-}
-
 function navigationForMode(mode) {
-  if (REGIONAL_MUSIC_MODES.has(mode)) return { section: SUBSCRIPTIONS, source: regionalSource(mode) };
   return MODE_NAVIGATION.get(mode) || MODE_NAVIGATION.get('current');
 }
 
@@ -412,7 +409,6 @@ function activateMode(mode) {
 }
 
 function sourceById(section, sourceId) {
-  if (section?.id === 'subscriptions' && REGIONAL_MUSIC_MODES.has(sourceId)) return regionalSource(sourceId);
   return section?.sources.find((source) => source.id === sourceId) || section?.sources[0] || null;
 }
 
