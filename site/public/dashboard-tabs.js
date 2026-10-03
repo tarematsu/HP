@@ -61,8 +61,8 @@ const LAZY_VIEWS = Object.freeze({
   },
   'youtube-music': {
     viewId: 'youtubeMusicView',
-    shell: () => import('/youtube-music-shell.js?v=20261002.3'),
-    runtime: () => import('/youtube-music.js?v=20261003.1'),
+    shell: () => import('/youtube-music-shell.js?v=20261003.4'),
+    runtime: () => import('/youtube-music.js?v=20261003.4'),
     loadExport: 'loadYoutubeMusicView',
     noticeId: 'youtubeMusicNotice',
     errorLabel: 'youtube music',
@@ -128,352 +128,160 @@ const historyView = document.getElementById('historyView');
 const tabs = document.getElementById('modeTabs');
 const sectionTabs = document.getElementById('sectionTabs');
 const sourceTabs = document.getElementById('sourceTabs');
-const subscriptionSourceTabsTemplate = document.getElementById('subscriptionSourceTabsTemplate');
-const skipLink = document.querySelector('.skip-link');
-const modulePromises = new Map();
-const lastSourceBySection = new Map(NAVIGATION.map((section) => [section.id, section.sources[0]?.id || '']));
-const lastModeBySource = new Map();
-let historyRuntimeMode = null;
-let activeMode = 'current';
-let initialRouteReady = false;
+const historyPrev = document.getElementById('historyPrev');
+const historyNext = document.getElementById('historyNext');
+const historyWindow = document.getElementById('historyWindow');
+const historyRange = document.getElementById('historyRange');
+const historySummary = document.getElementById('historySummary');
 
-for (const section of NAVIGATION) {
-  for (const source of section.sources) lastModeBySource.set(source.id, source.defaultMode);
-}
-
-function releaseUnexpectedSkipLinkFocus() {
-  if (document.activeElement === skipLink) skipLink?.blur();
-  document.documentElement.classList.remove('keyboard-navigation');
-}
-
-function markRouteReady() {
-  if (initialRouteReady) return;
-  initialRouteReady = true;
-  window.dispatchEvent(new Event('dashboard:route-ready'));
-}
-
-function routeModeForButton(button) {
-  return button?.dataset.mode || button?.dataset.view || '';
-}
-
-function visibleTabMode(mode) {
-  return mode === 'weekly' || mode === 'monthly' ? 'daily' : mode;
-}
-
-function regionalSource(mode) {
-  return { id: mode, defaultMode: mode, modes: [mode] };
-}
-
-function navigationForMode(mode) {
-  if (REGIONAL_MUSIC_MODES.has(mode)) return { section: SUBSCRIPTIONS, source: regionalSource(mode) };
+function currentNavigation(mode) {
   return MODE_NAVIGATION.get(mode) || MODE_NAVIGATION.get('current');
 }
 
-function renderSourceTabs(section, activeSource) {
-  if (!sourceTabs) return;
-  if (section.id === 'subscriptions' && subscriptionSourceTabsTemplate) {
-    const content = subscriptionSourceTabsTemplate.content.cloneNode(true);
-    content.querySelectorAll('button[data-source]').forEach((button) => {
-      const selected = button.dataset.source === activeSource.id;
-      button.classList.toggle('active', selected);
-      button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+function syncNavigation(mode) {
+  const { section, source } = currentNavigation(mode);
+  for (const button of sectionTabs?.querySelectorAll('button[data-section]') || []) {
+    button.classList.toggle('active', button.dataset.section === section.id);
+  }
+  for (const button of sourceTabs?.querySelectorAll('button[data-source]') || []) {
+    button.classList.toggle('active', button.dataset.source === source.id);
+    button.hidden = !section.sources.some((item) => item.id === button.dataset.source);
+  }
+}
+
+function viewForMode(mode) {
+  if (HISTORY_MODES.has(mode)) return historyView;
+  const lazy = LAZY_VIEWS[mode];
+  if (lazy) return document.getElementById(lazy.viewId);
+  if (REGIONAL_MUSIC_MODES.has(mode)) return document.getElementById(REGIONAL_MUSIC_VIEW.viewId);
+  return currentView;
+}
+
+async function ensureView(mode) {
+  const lazy = LAZY_VIEWS[mode];
+  if (lazy?.shell && !document.getElementById(lazy.viewId)) await lazy.shell();
+  if (REGIONAL_MUSIC_MODES.has(mode) && !document.getElementById(REGIONAL_MUSIC_VIEW.viewId)) await REGIONAL_MUSIC_VIEW.shell();
+}
+
+async function loadView(mode) {
+  const lazy = LAZY_VIEWS[mode];
+  if (lazy) {
+    const runtime = await lazy.runtime();
+    const load = lazy.loadExport ? runtime[lazy.loadExport] : runtime.default;
+    if (typeof load === 'function') await load();
+    return;
+  }
+  if (REGIONAL_MUSIC_MODES.has(mode)) {
+    const runtime = await REGIONAL_MUSIC_VIEW.runtime();
+    if (typeof runtime.loadRegionalMusicView === 'function') await runtime.loadRegionalMusicView(mode);
+  }
+}
+
+function setHistoryControlsVisible(mode) {
+  const visible = HISTORY_MODES.has(mode);
+  if (historyPrev) historyPrev.hidden = !visible;
+  if (historyNext) historyNext.hidden = !visible;
+  if (historyWindow) historyWindow.hidden = !visible;
+  if (historyRange) historyRange.hidden = !visible;
+  if (historySummary) historySummary.hidden = !visible;
+}
+
+async function setMode(mode, options = {}) {
+  if (!VIEW_MODES.has(mode)) mode = 'current';
+  await ensureView(mode);
+  syncNavigation(mode);
+  setHistoryControlsVisible(mode);
+
+  for (const id of VIEW_IDS) {
+    const view = document.getElementById(id);
+    if (view) view.hidden = view !== viewForMode(mode);
+  }
+  for (const button of tabs?.querySelectorAll('button[data-mode]') || []) {
+    button.classList.toggle('active', button.dataset.mode === mode);
+  }
+
+  try {
+    await loadView(mode);
+  } catch (error) {
+    const definition = LAZY_VIEWS[mode];
+    console.error(`${definition?.errorLabel || mode} view failed`, error);
+    const notice = document.getElementById(definition?.noticeId || REGIONAL_MUSIC_VIEW.noticeId);
+    if (notice) {
+      notice.textContent = definition?.errorMessage || 'データの初期化に失敗しました。再読み込みしてください。';
+      notice.classList.add('error');
+    }
+  }
+
+  if (options.push !== false) {
+    const url = new URL(location.href);
+    url.searchParams.set('view', mode);
+    history.pushState({ mode }, '', url);
+  }
+}
+
+function modeForSource(sourceId) {
+  for (const section of NAVIGATION) {
+    const source = section.sources.find((item) => item.id === sourceId);
+    if (source) return source.defaultMode;
+  }
+  return null;
+}
+
+function renderSectionTabs() {
+  if (!sectionTabs) return;
+  sectionTabs.replaceChildren();
+  for (const section of NAVIGATION) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.section = section.id;
+    button.textContent = section.id === 'stationhead' ? 'Stationhead' : '音楽サブスク';
+    button.addEventListener('click', () => {
+      const current = currentNavigation(new URL(location.href).searchParams.get('view'));
+      const source = section.sources.find((item) => item.id === current.source.id) || section.sources[0];
+      setMode(source.defaultMode);
     });
-    sourceTabs.classList.add('is-multiline');
-    sourceTabs.replaceChildren(content);
-  } else {
-    const fragment = document.createDocumentFragment();
-    sourceTabs.classList.remove('is-multiline');
+    sectionTabs.append(button);
+  }
+}
+
+function renderSourceTabs() {
+  if (!sourceTabs) return;
+  sourceTabs.replaceChildren();
+  for (const source of SUBSCRIPTIONS.sources) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.source = source.id;
+    button.textContent = source.label;
+    button.addEventListener('click', () => setMode(source.defaultMode));
+    sourceTabs.append(button);
+  }
+  for (const section of NAVIGATION) {
+    if (section.id === 'subscriptions') continue;
     for (const source of section.sources) {
       const button = document.createElement('button');
       button.type = 'button';
       button.dataset.source = source.id;
       button.textContent = source.label;
-      const selected = source.id === activeSource.id;
-      button.classList.toggle('active', selected);
-      button.setAttribute('aria-pressed', selected ? 'true' : 'false');
-      fragment.append(button);
+      button.addEventListener('click', () => setMode(source.defaultMode));
+      sourceTabs.append(button);
     }
-    sourceTabs.replaceChildren(fragment);
-  }
-  sourceTabs.hidden = false;
-}
-
-function syncModeTabs(source) {
-  if (!tabs) return;
-  if (!sectionTabs || !sourceTabs) {
-    tabs.hidden = false;
-    return;
-  }
-
-  const showBuddiesModes = source.id === 'buddies';
-  tabs.hidden = !showBuddiesModes;
-  tabs.querySelectorAll('button').forEach((button) => {
-    const visible = showBuddiesModes && BUDDIES_VISIBLE_MODES.has(routeModeForButton(button));
-    button.hidden = !visible;
-    if (!visible) button.removeAttribute('aria-current');
-  });
-}
-
-function syncNavigation(mode) {
-  if (!sectionTabs || !sourceTabs) return;
-  const navigation = navigationForMode(mode);
-  if (!navigation) return;
-  const { section, source } = navigation;
-  lastSourceBySection.set(section.id, source.id);
-  lastModeBySource.set(source.id, mode);
-
-  sectionTabs.querySelectorAll('button[data-section]').forEach((button) => {
-    const selected = button.dataset.section === section.id;
-    button.classList.toggle('active', selected);
-    button.setAttribute('aria-pressed', selected ? 'true' : 'false');
-  });
-  renderSourceTabs(section, source);
-  syncModeTabs(source);
-}
-
-function updateTabs(mode) {
-  const selectedMode = visibleTabMode(mode);
-  tabs?.querySelectorAll('button').forEach((button) => {
-    const selected = routeModeForButton(button) === selectedMode;
-    button.classList.toggle('active', selected);
-    if (selected) button.setAttribute('aria-current', 'page');
-    else button.removeAttribute('aria-current');
-  });
-  syncNavigation(mode);
-}
-
-function updateLocation(mode, { replace = false } = {}) {
-  const target = mode === 'current' ? '/' : `/#${mode}`;
-  const current = `${location.pathname}${location.search}${location.hash}`;
-  if (current === target) return;
-  const oldURL = location.href;
-  history[replace ? 'replaceState' : 'pushState'](null, '', target);
-  const newURL = location.href;
-  if (oldURL !== newURL) {
-    window.dispatchEvent(new HashChangeEvent('hashchange', { oldURL, newURL }));
   }
 }
 
-function showOnly(view) {
-  for (const id of VIEW_IDS) {
-    const node = document.getElementById(id);
-    if (node) node.hidden = node !== view;
+function bindModeTabs() {
+  for (const button of tabs?.querySelectorAll('button[data-mode]') || []) {
+    button.addEventListener('click', () => setMode(button.dataset.mode));
   }
 }
 
-function loadOnce(key, importer) {
-  if (!modulePromises.has(key)) {
-    const promise = importer().catch((error) => {
-      modulePromises.delete(key);
-      throw error;
-    });
-    modulePromises.set(key, promise);
-  }
-  return modulePromises.get(key);
-}
-
-function setRoute(mode, view, { updateUrl = true, replaceUrl = false } = {}) {
-  activeMode = mode;
-  showOnly(view);
-  updateTabs(mode);
-  if (updateUrl) updateLocation(mode, { replace: replaceUrl });
-}
-
-function showCurrent(options = {}) {
-  setRoute('current', currentView, options);
-  markRouteReady();
-}
-
-function showRuntimeError(config, error) {
-  console.error(`${config.errorLabel} runtime failed to start`, error);
-  const notice = document.getElementById(config.noticeId);
-  if (!notice) return;
-  notice.textContent = config.errorMessage;
-  notice.classList.add('error');
-  notice.hidden = false;
-}
-
-async function ensureLazyShell(mode) {
-  const config = LAZY_VIEWS[mode];
-  if (!config?.shell) return;
-  await loadOnce(`${mode}:shell`, config.shell);
-}
-
-async function showLazyView(mode, options = {}) {
-  const config = LAZY_VIEWS[mode];
-  if (!config) return;
-  setRoute(mode, config.shell ? null : document.getElementById(config.viewId), options);
-  if (!config.shell) markRouteReady();
-
-  try {
-    await ensureLazyShell(mode);
-    if (activeMode !== mode) return;
-    if (config.shell) {
-      showOnly(document.getElementById(config.viewId));
-      markRouteReady();
-    }
-    const runtime = await loadOnce(`${mode}:runtime`, config.runtime);
-    if (activeMode !== mode) return;
-    if (config.loadExport) await runtime[config.loadExport]?.();
-  } catch (error) {
-    if (activeMode !== mode) return;
-    markRouteReady();
-    showRuntimeError(config, error);
-  } finally {
-    releaseUnexpectedSkipLinkFocus();
-  }
-}
-
-async function showRegionalMusicView(mode, options = {}) {
-  setRoute(mode, null, options);
-  try {
-    await loadOnce('regional-music:shell', REGIONAL_MUSIC_VIEW.shell);
-    if (activeMode !== mode) return;
-    showOnly(document.getElementById(REGIONAL_MUSIC_VIEW.viewId));
-    markRouteReady();
-    const runtime = await loadOnce('regional-music:runtime', REGIONAL_MUSIC_VIEW.runtime);
-    if (activeMode !== mode) return;
-    await runtime.loadRegionalMusicView?.(mode);
-  } catch (error) {
-    if (activeMode !== mode) return;
-    markRouteReady();
-    showRuntimeError({
-      ...REGIONAL_MUSIC_VIEW,
-      errorLabel: `regional music ${mode}`,
-      errorMessage: '地域音楽サービスの初期化に失敗しました。再読み込みしてください。',
-    }, error);
-  } finally {
-    releaseUnexpectedSkipLinkFocus();
-  }
-}
-
-async function showHistory(mode, { updateUrl = true, replaceUrl = false, syncRuntime = true } = {}) {
-  if (!HISTORY_MODES.has(mode)) {
-    showCurrent({ updateUrl, replaceUrl });
-    return;
-  }
-
-  const runtimeReady = historyRuntimeMode !== null;
-  setRoute(mode, runtimeReady ? historyView : null, { updateUrl, replaceUrl });
-  if (runtimeReady) markRouteReady();
-
-  try {
-    if (mode === 'ranking') {
-      await loadOnce('ranking-status', () => import('/history/history-ranking-table-status.js?v=20260923.2'));
-      if (activeMode !== mode) return;
-    }
-    await loadOnce('history-runtime', () => import('/history/history-main.js?v=20261002.4'));
-    if (activeMode !== mode) return;
-    if (syncRuntime && historyRuntimeMode !== mode) {
-      tabs?.querySelector(`button[data-mode="${mode}"]`)?.dispatchEvent(new Event('click'));
-    }
-    if (activeMode !== mode) return;
-    historyRuntimeMode = mode;
-    showOnly(historyView);
-    markRouteReady();
-  } catch (error) {
-    if (activeMode !== mode) return;
-    historyRuntimeMode = null;
-    showOnly(historyView);
-    markRouteReady();
-    showRuntimeError({
-      noticeId: 'notice',
-      errorLabel: 'history',
-      errorMessage: '過去データの初期化に失敗しました。再読み込みしてください。',
-    }, error);
-  } finally {
-    releaseUnexpectedSkipLinkFocus();
-  }
-}
-
-function modeFromLocation() {
-  const mode = location.hash.slice(1);
-  if (mode === 'first-week') {
-    history.replaceState(null, '', `${location.pathname}${location.search}#broadcasts`);
-    return 'broadcasts';
-  }
-  return VIEW_MODES.has(mode) ? mode : 'current';
-}
-
-function showMode(mode, options = {}) {
-  if (mode === 'current') showCurrent(options);
-  else if (HISTORY_MODES.has(mode)) void showHistory(mode, options);
-  else if (REGIONAL_MUSIC_MODES.has(mode)) void showRegionalMusicView(mode, options);
-  else void showLazyView(mode, options);
-}
-
-function activateMode(mode) {
-  const targetMode = String(mode || '');
-  if (!VIEW_MODES.has(targetMode)) return;
-  const buttonMode = visibleTabMode(targetMode);
-  const button = [...(tabs?.querySelectorAll('button') || [])].find((candidate) => routeModeForButton(candidate) === buttonMode);
-  if (button && targetMode === buttonMode) button.click();
-  else showMode(targetMode);
-}
-
-function sourceById(section, sourceId) {
-  if (section?.id === 'subscriptions' && REGIONAL_MUSIC_MODES.has(sourceId)) return regionalSource(sourceId);
-  return section?.sources.find((source) => source.id === sourceId) || section?.sources[0] || null;
-}
-
-function syncFromLocation() {
-  const mode = modeFromLocation();
-  if (mode !== activeMode) showMode(mode, { updateUrl: false });
-}
-
-sectionTabs?.addEventListener('click', (event) => {
-  const button = event.target.closest('button[data-section]');
-  if (!button || !sectionTabs.contains(button)) return;
-  const section = NAVIGATION.find((item) => item.id === button.dataset.section);
-  if (!section) return;
-  const source = sourceById(section, lastSourceBySection.get(section.id));
-  if (!source) return;
-  activateMode(lastModeBySource.get(source.id) || source.defaultMode);
+window.addEventListener('popstate', () => {
+  const mode = new URL(location.href).searchParams.get('view') || 'current';
+  setMode(mode, { push: false });
 });
 
-sourceTabs?.addEventListener('click', (event) => {
-  const button = event.target.closest('button[data-source]');
-  if (!button || !sourceTabs.contains(button)) return;
-  const currentNavigation = navigationForMode(activeMode);
-  const source = sourceById(currentNavigation?.section, button.dataset.source);
-  if (!source) return;
-  activateMode(lastModeBySource.get(source.id) || source.defaultMode);
-});
+renderSectionTabs();
+renderSourceTabs();
+bindModeTabs();
 
-tabs?.addEventListener('click', (event) => {
-  const button = event.target.closest('button');
-  if (!button || !tabs.contains(button)) return;
-  const mode = routeModeForButton(button);
-  if (!mode || !VIEW_MODES.has(mode)) return;
-  event.preventDefault();
-  if (HISTORY_MODES.has(mode)) {
-    void showHistory(mode, { syncRuntime: false });
-  } else {
-    showMode(mode);
-  }
-}, { capture: true });
-
-if (tabs && sectionTabs && sourceTabs) {
-  new MutationObserver(() => {
-    const navigation = navigationForMode(activeMode);
-    if (navigation) syncModeTabs(navigation.source);
-  }).observe(tabs, { childList: true });
-}
-
-window.addEventListener('popstate', syncFromLocation);
-window.addEventListener('hashchange', syncFromLocation);
-
-void Promise.all([
-  ensureLazyShell('amazon-music'),
-  ensureLazyShell('apple-music'),
-  ensureLazyShell('nogizaka'),
-]).catch((error) => {
-  console.error('dashboard tab shell failed to start', error);
-});
-
-const initialMode = modeFromLocation();
-showMode(initialMode, {
-  updateUrl: initialMode === 'current' && Boolean(location.hash),
-  replaceUrl: true,
-  syncRuntime: false,
-});
+const initialMode = new URL(location.href).searchParams.get('view') || 'current';
+setMode(initialMode, { push: false });
