@@ -1,9 +1,12 @@
 import app from './spotify-playcount-entry.js';
 import { runSpotifyArtistChartScheduled } from './spotify-artist-chart-collector.js';
-import { handleInternalScheduled } from './internal-scheduled-dispatch.js';
+import {
+  enqueueSpotifyScheduledDispatch,
+  SPOTIFY_ARTIST_CHART_CRON,
+  SPOTIFY_PLAYCOUNT_CRON,
+} from './spotify-scheduled-queue.js';
 
-export const SPOTIFY_PLAYCOUNT_CRON = '0 * * * *';
-export const SPOTIFY_ARTIST_CHART_CRON = '20 22 * * *';
+export { SPOTIFY_ARTIST_CHART_CRON, SPOTIFY_PLAYCOUNT_CRON };
 
 async function runScheduled(controller, env, ctx) {
   if (controller?.cron === SPOTIFY_ARTIST_CHART_CRON) {
@@ -17,13 +20,7 @@ export default {
   scheduled: runScheduled,
   queue: app.queue,
   async fetch(request, env) {
-    const internal = await handleInternalScheduled(
-      request,
-      env,
-      runScheduled,
-      SPOTIFY_PLAYCOUNT_CRON,
-      [SPOTIFY_PLAYCOUNT_CRON, SPOTIFY_ARTIST_CHART_CRON],
-    );
+    const internal = await enqueueSpotifyScheduledDispatch(request, env);
     if (internal) return internal;
     return app.fetch(request, env);
   },
