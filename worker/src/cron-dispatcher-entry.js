@@ -10,7 +10,15 @@ export const OHISAMA_CRON = '*/5 * * * *';
 export const SPOTIFY_PLAYCOUNT_CRON = '0 * * * *';
 export const SPOTIFY_ARTIST_CHART_CRON = '20 22 * * *';
 export const AMAZON_MUSIC_CRON = '0,10,15,20,30,40,50 * * * *';
+export const MUSIC_PLAYLIST_REFRESH_CRON = '0 5,17 * * *';
 export const YOUTUBE_MUSIC_DAILY_CRON = '0 15 * * *';
+export const KKBOX_WEEKLY_CRON = '0 15 * * 0';
+export const QQ_WEEKLY_CRON = '0 9 * * 4';
+export const KUGOU_WEEKDAY_CRON = '30 2 * * 1-5';
+export const KUGOU_ACG_WEEKLY_CRON = '40 2 * * 3';
+export const QQ_TOPLIST_POLL_CRON = '0 9-21 * * 4';
+export const STATIONHEAD_FOLLOWERS_CRON = '0 15 * * *';
+export const STATIONHEAD_LEADERBOARD_CRON = '17 12 * * 1';
 
 function scheduledTimestamp(controller) {
   const value = Number(controller?.scheduledTime);
@@ -19,7 +27,7 @@ function scheduledTimestamp(controller) {
 
 function utcParts(timestamp) {
   const date = new Date(timestamp);
-  return { hour: date.getUTCHours(), minute: date.getUTCMinutes() };
+  return { day: date.getUTCDay(), hour: date.getUTCHours(), minute: date.getUTCMinutes() };
 }
 
 export function amazonMusicDue(timestamp) {
@@ -43,45 +51,55 @@ async function dispatchHomePanel(env) {
   }));
 }
 
+function addServiceTask(tasks, name, binding, cron, scheduledAt) {
+  tasks.push([name, dispatchScheduledService(binding, cron, scheduledAt)]);
+}
+
 export async function runCronDispatcher(controller, env) {
   const scheduledAt = scheduledTimestamp(controller);
-  const { hour, minute } = utcParts(scheduledAt);
-  const tasks = [
-    ['nogizaka46smej', dispatchScheduledService(env?.NOGIZAKA_SCHEDULED, NOGIZAKA_CRON, scheduledAt)],
-  ];
+  const { day, hour, minute } = utcParts(scheduledAt);
+  const tasks = [];
+  addServiceTask(tasks, 'nogizaka46smej', env?.NOGIZAKA_SCHEDULED, NOGIZAKA_CRON, scheduledAt);
 
   // Buddies owns :00/:05/... independently. Keep Ohisama one minute later.
-  if (minute % 5 === 1) {
-    tasks.push(['ohisama', dispatchScheduledService(env?.OHISAMA_SCHEDULED, OHISAMA_CRON, scheduledAt)]);
-  }
+  if (minute % 5 === 1) addServiceTask(tasks, 'ohisama', env?.OHISAMA_SCHEDULED, OHISAMA_CRON, scheduledAt);
+
   if (shouldDispatchSpotifyPlaycount(scheduledAt)) {
-    tasks.push(['spotify-playcount', dispatchScheduledService(
-      env?.SPOTIFY_PLAYCOUNT_SCHEDULED,
-      SPOTIFY_PLAYCOUNT_CRON,
-      scheduledAt,
-    )]);
+    addServiceTask(tasks, 'spotify-playcount', env?.SPOTIFY_PLAYCOUNT_SCHEDULED, SPOTIFY_PLAYCOUNT_CRON, scheduledAt);
   }
   if (shouldDispatchSpotifyArtistChart(scheduledAt)) {
-    tasks.push(['spotify-artist-chart', dispatchScheduledService(
-      env?.SPOTIFY_PLAYCOUNT_SCHEDULED,
-      SPOTIFY_ARTIST_CHART_CRON,
-      scheduledAt,
-    )]);
+    addServiceTask(tasks, 'spotify-artist-chart', env?.SPOTIFY_PLAYCOUNT_SCHEDULED, SPOTIFY_ARTIST_CHART_CRON, scheduledAt);
   }
   if (amazonMusicDue(scheduledAt)) {
-    tasks.push(['amazon-apple-music', dispatchScheduledService(
-      env?.AMAZON_MUSIC_SCHEDULED,
-      AMAZON_MUSIC_CRON,
-      scheduledAt,
-    )]);
+    addServiceTask(tasks, 'amazon-apple-music', env?.AMAZON_MUSIC_SCHEDULED, AMAZON_MUSIC_CRON, scheduledAt);
   }
+  if (minute === 0 && [5, 17].includes(hour)) {
+    addServiceTask(tasks, 'music-playlist-refresh', env?.AMAZON_MUSIC_SCHEDULED, MUSIC_PLAYLIST_REFRESH_CRON, scheduledAt);
+  }
+
   if (hour === 15 && minute === 0) {
-    tasks.push(['youtube-music', dispatchScheduledService(
-      env?.REGIONAL_MUSIC_SCHEDULED,
-      YOUTUBE_MUSIC_DAILY_CRON,
-      scheduledAt,
-    )]);
+    addServiceTask(tasks, 'youtube-music', env?.REGIONAL_MUSIC_SCHEDULED, YOUTUBE_MUSIC_DAILY_CRON, scheduledAt);
+    addServiceTask(tasks, 'stationhead-followers', env?.SCHEDULED_COLLECTION_JOBS, STATIONHEAD_FOLLOWERS_CRON, scheduledAt);
   }
+  if (day === 0 && hour === 15 && minute === 0) {
+    addServiceTask(tasks, 'kkbox', env?.REGIONAL_MUSIC_SCHEDULED, KKBOX_WEEKLY_CRON, scheduledAt);
+  }
+  if (day === 4 && hour === 9 && minute === 0) {
+    addServiceTask(tasks, 'qq-music', env?.REGIONAL_MUSIC_SCHEDULED, QQ_WEEKLY_CRON, scheduledAt);
+  }
+  if (day >= 1 && day <= 5 && hour === 2 && minute === 30) {
+    addServiceTask(tasks, 'kugou-music', env?.REGIONAL_MUSIC_SCHEDULED, KUGOU_WEEKDAY_CRON, scheduledAt);
+  }
+  if (day === 3 && hour === 2 && minute === 40) {
+    addServiceTask(tasks, 'kugou-acg', env?.REGIONAL_MUSIC_SCHEDULED, KUGOU_ACG_WEEKLY_CRON, scheduledAt);
+  }
+  if (day === 4 && hour >= 9 && hour <= 21 && minute === 0) {
+    addServiceTask(tasks, 'qq-toplists', env?.REGIONAL_MUSIC_SCHEDULED, QQ_TOPLIST_POLL_CRON, scheduledAt);
+  }
+  if (day === 1 && hour === 12 && minute === 17) {
+    addServiceTask(tasks, 'stationhead-leaderboard', env?.SCHEDULED_COLLECTION_JOBS, STATIONHEAD_LEADERBOARD_CRON, scheduledAt);
+  }
+
   if (minute === 0) tasks.push(['homepanel', dispatchHomePanel(env)]);
 
   const settled = await Promise.allSettled(tasks.map(([, promise]) => promise));
