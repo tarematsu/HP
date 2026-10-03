@@ -36,11 +36,12 @@ LR"JS(
 
   if (entered && state) state.fullscreenCornerTapAt = 0;
 
-  // The normal runtime first performs a trusted click near TVer's native
-  // fullscreen control. If CSS/layout changes make that control unusable,
-  // escalate through the native bridge. The native side evaluates the real
-  // Fullscreen API with userGesture=true and falls back to a trusted F key.
-  if (!entered) {
+  // Only escalate a click that the TVer runtime explicitly issued as its
+  // fullscreen corner tap. Questionnaire, Play, quality and ad-skip trusted
+  // clicks also pass through this verifier and must not trigger fullscreen.
+  const fullscreenTapPending = !entered && state?.fullscreenCornerTapAt &&
+      Date.now() - state.fullscreenCornerTapAt <= 3000;
+  if (fullscreenTapPending) {
     try { window.chrome?.webview?.postMessage('homepanel:tver-fullscreen-key'); }
     catch (_) {}
   }
