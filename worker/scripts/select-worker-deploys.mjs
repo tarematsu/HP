@@ -13,6 +13,7 @@ const workerDefinitions = [
   { name: 'sh-spotify-playcount-collector', config: 'worker/wrangler.spotify-playcount.jsonc', command: 'deploy:spotify-playcount' },
   { name: 'sh-amazon-music-collector', config: 'worker/wrangler.amazon-music.jsonc', command: 'deploy:amazon-music' },
   { name: 'sh-regional-music-collector', config: 'worker/wrangler.regional-music.jsonc', command: 'deploy:regional-music' },
+  { name: 'sh-cron-dispatcher', config: 'worker/wrangler.cron-dispatcher.jsonc', command: 'deploy:cron-dispatcher' },
   { name: 'sh-runtime-orchestrator', config: 'worker/wrangler.runtime.jsonc', command: 'deploy:runtime' },
 ];
 
@@ -23,6 +24,7 @@ const ohisamaCollectorWorker = 'sh-ohisama-collector';
 const spotifyPlaycountWorker = 'sh-spotify-playcount-collector';
 const amazonMusicWorker = 'sh-amazon-music-collector';
 const regionalMusicWorker = 'sh-regional-music-collector';
+const cronDispatcherWorker = 'sh-cron-dispatcher';
 const runtimeWorker = 'sh-runtime-orchestrator';
 
 const deployScriptWorkers = new Map([
@@ -33,6 +35,7 @@ const deployScriptWorkers = new Map([
   ['worker/scripts/bootstrap-spotify-read-model.mjs', spotifyPlaycountWorker],
   ['worker/scripts/deploy-amazon-music.mjs', amazonMusicWorker],
   ['worker/scripts/deploy-regional-music.mjs', regionalMusicWorker],
+  ['worker/scripts/deploy-cron-dispatcher.mjs', cronDispatcherWorker],
   ['worker/scripts/deploy-runtime.mjs', runtimeWorker],
   ['worker/scripts/pages-response-kv-namespace.mjs', runtimeWorker],
   ['worker/scripts/verify-runtime-deployment.mjs', runtimeWorker],
