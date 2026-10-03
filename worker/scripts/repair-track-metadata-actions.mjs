@@ -2,6 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
+import { fetchTrackMetadata } from '../src/track-metadata.js';
+
 const workerRoot = resolve(import.meta.dirname, '..');
 const wranglerScript = resolve(workerRoot, 'node_modules/wrangler/bin/wrangler.js');
 const buddiesDatabase = process.env.BUDDIES_DATABASE_NAME || 'stationhead-buddies';
@@ -11,6 +13,7 @@ const candidateScanLimit = Math.min(2_000, Math.max(candidateLimit, candidateLim
 const lookbackMs = bounded(process.env.TRACK_METADATA_LOOKBACK_MS, 7 * 24 * 60 * 60_000, 60_000, 30 * 24 * 60 * 60_000);
 const refreshMs = bounded(process.env.TRACK_METADATA_REFRESH_MS, 24 * 60 * 60_000, 60_000, 30 * 24 * 60 * 60_000);
 const fetchConcurrency = bounded(process.env.TRACK_METADATA_FETCH_CONCURRENCY, 4, 1, 8);
+const PRESENTATION_RETRY_MS = 15 * 60_000;
 const now = Date.now();
 
 function bounded(value, fallback, minimum, maximum) {
@@ -66,17 +69,20 @@ function normalizedTitle(value) {
   return String(value ?? '').normalize('NFKC').trim().toLocaleLowerCase('ja-JP');
 }
 
-function complete(row) {
+function presentationComplete(row) {
   const spotifyId = text(row?.spotify_id);
   const title = text(row?.title);
   const artist = text(row?.artist);
-  const thumbnailUrl = text(row?.thumbnail_url);
   return Boolean(
-    spotifyId && title && artist && thumbnailUrl
+    spotifyId && title && artist
     && title !== spotifyId
     && artist !== spotifyId
     && !/^JP[A-Z0-9]{8,}$/i.test(artist)
   );
+}
+
+function complete(row) {
+  return presentationComplete(row) && Boolean(text(row?.thumbnail_url));
 }
 
 function activeQueueRows() {
@@ -171,8 +177,7 @@ async function appleMetadata(title, durationMs) {
   }
 }
 
-async function spotifyMetadata(candidate) {
-  const spotifyId = text(candidate.spotify_id);
+async function fallbackOembedMetadata(spotifyId) {
   const spotifyUrl = `https://open.spotify.com/track/${encodeURIComponent(spotifyId)}`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
@@ -182,49 +187,86 @@ async function spotifyMetadata(candidate) {
       signal: controller.signal,
     });
     if (!response.ok) return null;
-    const payload = await response.json();
-    const rawTitle = text(payload.title);
-    if (!rawTitle) return null;
-    const separator = rawTitle.lastIndexOf(' by ');
-    const title = separator > 0 ? text(rawTitle.slice(0, separator)) : rawTitle;
-    let artist = text(payload.author_name) || (separator > 0 ? text(rawTitle.slice(separator + 4)) : null);
-    let thumbnailUrl = text(payload.thumbnail_url);
-    let apple = null;
-    if (!artist || !thumbnailUrl) {
-      apple = await appleMetadata(title, candidate.duration_ms);
-      artist ||= text(apple?.artistName);
-      thumbnailUrl ||= text(apple?.artworkUrl100);
-    }
-    if (!title || !artist || !thumbnailUrl) return null;
-    return {
-      spotify_id: spotifyId,
-      isrc: normalizeIsrc(candidate.isrc),
-      title,
-      artist,
-      display_title: `${title} — ${artist}`,
-      thumbnail_url: thumbnailUrl,
-      spotify_url: spotifyUrl,
-      source: apple ? 'spotify_oembed_itunes_actions' : 'spotify_oembed_actions',
-      fetched_at: now,
-      raw_json: JSON.stringify({
-        spotify: payload,
-        ...(apple ? {
-          apple: {
-            trackName: apple.trackName,
-            artistName: apple.artistName,
-            collectionName: apple.collectionName,
-            trackTimeMillis: apple.trackTimeMillis,
-            artworkUrl100: apple.artworkUrl100,
-            trackViewUrl: apple.trackViewUrl,
-          },
-        } : {}),
-      }),
-    };
+    return await response.json();
   } catch {
     return null;
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function spotifyMetadata(candidate) {
+  const spotifyId = text(candidate.spotify_id);
+  if (!spotifyId) return null;
+  const spotifyUrl = `https://open.spotify.com/track/${encodeURIComponent(spotifyId)}`;
+
+  const resolved = await fetchTrackMetadata({
+    spotify_id: spotifyId,
+    isrc: normalizeIsrc(candidate.isrc),
+  }, {
+    requestTimeoutMs: 8_000,
+    collectionSignal: null,
+  }).catch(() => null);
+
+  let title = text(resolved?.title);
+  let artist = text(resolved?.artist);
+  let thumbnailUrl = text(resolved?.thumbnail_url);
+  let spotifyRaw = resolved?.raw?.spotify || null;
+  const spotifyPageRaw = resolved?.raw?.spotify_page || null;
+
+  // Keep the previous iTunes fallback available when Spotify's public page is
+  // temporarily incomplete. This second oEmbed request only occurs after the
+  // shared resolver failed, so normal successful lookups remain bounded.
+  if (!title || !artist || !thumbnailUrl) {
+    const oembed = await fallbackOembedMetadata(spotifyId);
+    spotifyRaw ||= oembed;
+    const rawTitle = text(oembed?.title);
+    if (rawTitle) {
+      const separator = rawTitle.lastIndexOf(' by ');
+      title ||= separator > 0 ? text(rawTitle.slice(0, separator)) : rawTitle;
+      artist ||= text(oembed?.author_name || oembed?.author)
+        || (separator > 0 ? text(rawTitle.slice(separator + 4)) : null);
+    }
+    thumbnailUrl ||= text(oembed?.thumbnail_url);
+  }
+
+  let apple = null;
+  if (title && (!artist || !thumbnailUrl)) {
+    apple = await appleMetadata(title, candidate.duration_ms);
+    artist ||= text(apple?.artistName);
+    thumbnailUrl ||= text(apple?.artworkUrl100);
+  }
+
+  const row = {
+    spotify_id: spotifyId,
+    isrc: normalizeIsrc(candidate.isrc),
+    title,
+    artist,
+    display_title: title && artist ? `${title} — ${artist}` : title,
+    thumbnail_url: thumbnailUrl,
+    spotify_url: spotifyUrl,
+    source: apple
+      ? 'spotify_resolver_itunes_actions'
+      : spotifyPageRaw
+        ? 'spotify_page_actions'
+        : 'spotify_oembed_actions',
+    fetched_at: now,
+    raw_json: JSON.stringify({
+      spotify: spotifyRaw,
+      spotify_page: spotifyPageRaw,
+      ...(apple ? {
+        apple: {
+          trackName: apple.trackName,
+          artistName: apple.artistName,
+          collectionName: apple.collectionName,
+          trackTimeMillis: apple.trackTimeMillis,
+          artworkUrl100: apple.artworkUrl100,
+          trackViewUrl: apple.trackViewUrl,
+        },
+      } : {}),
+    }),
+  };
+  return complete(row) ? row : null;
 }
 
 async function mapConcurrent(values, concurrency, mapper) {
@@ -300,7 +342,9 @@ const source = existingRows(ids, buddiesDatabase);
 const sourceById = new Map(source.map((row) => [text(row.spotify_id), row]));
 const unresolved = candidates.filter((candidate) => {
   const row = currentById.get(text(candidate.spotify_id));
-  return !complete(row) && now - Number(row?.fetched_at || 0) >= refreshMs;
+  if (complete(row)) return false;
+  const retryMs = presentationComplete(row) ? refreshMs : PRESENTATION_RETRY_MS;
+  return now - Number(row?.fetched_at || 0) >= retryMs;
 });
 const reused = [];
 const remoteCandidates = [];
