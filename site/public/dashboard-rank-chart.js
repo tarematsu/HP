@@ -16,6 +16,39 @@ function textAnchor(index, length) {
   return 'center';
 }
 
+function measuredTextWidth(context, value) {
+  const text = String(value ?? '');
+  const measured = typeof context.measureText === 'function'
+    ? Number(context.measureText(text)?.width)
+    : NaN;
+  return Number.isFinite(measured) ? measured : text.length * 6.5;
+}
+
+function visibleDateTicks(context, dates, indexes, xFor, dateLabel, minimumGap = 8) {
+  const candidates = indexes.map((index) => {
+    const label = String(dateLabel(dates[index]));
+    const x = xFor(dates[index]);
+    const width = measuredTextWidth(context, label);
+    const anchor = textAnchor(index, dates.length);
+    const left = anchor === 'left' ? x : anchor === 'right' ? x - width : x - width / 2;
+    const right = anchor === 'left' ? x + width : anchor === 'right' ? x : x + width / 2;
+    return { index, label, x, anchor, left, right };
+  });
+  if (candidates.length <= 1) return candidates;
+
+  const first = candidates[0];
+  const last = candidates.at(-1);
+  const visible = [first];
+  for (const candidate of candidates.slice(1, -1)) {
+    const previous = visible.at(-1);
+    if (candidate.left < previous.right + minimumGap) continue;
+    if (candidate.right > last.left - minimumGap) continue;
+    visible.push(candidate);
+  }
+  if (last.left >= visible.at(-1).right + minimumGap) visible.push(last);
+  return visible;
+}
+
 function seriesColor(lineClass, seriesIndex, hueStep, alpha = 1) {
   const hue = (seriesIndex * hueStep) % 360;
   const saturation = String(lineClass || '').includes('apple') ? 68 : 55;
@@ -108,10 +141,16 @@ function paint(options) {
   });
 
   context.textBaseline = 'alphabetic';
-  const dateTicks = dashboardTickIndexes(dates.length, dateTickCount);
-  for (const index of dateTicks) {
-    context.textAlign = textAnchor(index, dates.length);
-    context.fillText(dateLabel(dates[index]), xFor(dates[index]), canvasHeight - 10);
+  const dateTicks = visibleDateTicks(
+    context,
+    dates,
+    dashboardTickIndexes(dates.length, dateTickCount),
+    xFor,
+    dateLabel,
+  );
+  for (const tick of dateTicks) {
+    context.textAlign = tick.anchor;
+    context.fillText(tick.label, tick.x, canvasHeight - 10);
   }
 
   series.forEach((item, seriesIndex) => {

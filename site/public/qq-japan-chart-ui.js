@@ -3,7 +3,7 @@ import {
   byId,
   integerFormat,
 } from './dashboard-ui-common.js?v=20261001.1';
-import { renderRankHistoryChart } from './dashboard-rank-chart.js?v=20261002.1';
+import { renderRankHistoryChart } from './dashboard-rank-chart.js?v=20261003.1';
 
 const ARTIST_LABELS = Object.freeze({
   sakurazaka46: '櫻坂46',
@@ -18,6 +18,7 @@ const GROUP_COLORS = Object.freeze({
 const ARTIST_ORDER = ['sakurazaka46','nogizaka46','hinatazaka46'];
 const OUT_OF_CHART_RANK = 101;
 const QQ_CHART_CADENCE = '毎週木曜日18:00';
+const CHART_START_DATE = '2021-01-01';
 
 let readModelPromise = null;
 let requestId = 0;
@@ -186,7 +187,7 @@ function renderRankChart(chart, {
   label,
 }) {
   const history = Array.isArray(chart?.history) ? chart.history : [];
-  const periods = qqStoredPeriods(chart, history);
+  const periods = qqStoredPeriods(chart, history).filter(({ date }) => date >= CHART_START_DATE);
   const series = qqSeries(history, periods);
   const dates = periods.map((item) => item.date);
   renderRankHistoryChart({
@@ -196,7 +197,7 @@ function renderRankChart(chart, {
     height:320,
     margin:{ left:58, right:18, top:12, bottom:34 },
     yMax:OUT_OF_CHART_RANK,
-    rankTicks:[1, 25, 50, 75, 100, OUT_OF_CHART_RANK],
+    rankTicks:[1, 25, 50, 75, OUT_OF_CHART_RANK],
     dateTickCount:5,
     ariaLabel:`QQ Music ${label}における選択グループの更新日別最高順位推移。保存済み更新日の圏外も含み、1位が上。`,
     lineClass:'kugou-rank-line',
