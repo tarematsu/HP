@@ -2,7 +2,6 @@ import {
   dashboardChartCard,
   dashboardDataCard,
   dashboardLegend,
-  dashboardNotice,
   dashboardSummary,
   dashboardSummaryItem,
   dashboardTable,
@@ -56,6 +55,6 @@ mountDashboardShell({
     className: 'history-view nogizaka-listening-party-view',
     anchorId: 'likesView',
     position: 'beforebegin',
-    html: `${dashboardNotice({ id: 'nogizakaListeningPartyNotice' })}${subtabs}${listeningPartyPanel}`,
+    html: `${subtabs}${listeningPartyPanel}`,
   },
 });
