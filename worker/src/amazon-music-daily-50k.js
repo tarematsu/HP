@@ -14,7 +14,7 @@ import { isAmazonMusicTitleTrack } from './amazon-music-title-tracks.js';
 import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
 
 export const AMAZON_MUSIC_DAILY_SCAN_TARGET_RANK = 50_000;
-export const AMAZON_MUSIC_DAILY_SCAN_PAGES_PER_RUN = 600;
+export const AMAZON_MUSIC_DAILY_SCAN_PAGES_PER_RUN = 1_000;
 export const AMAZON_MUSIC_DAILY_SCAN_PACING_WINDOW_MS = 570_000;
 export const AMAZON_MUSIC_DAILY_SCAN_STATE_KEY = 'amazon-music/rank-monitor/daily-50k.json';
 export const AMAZON_MUSIC_DAILY_SCAN_HISTORY_KEY = 'amazon-music/rank-monitor/daily-50k-history.json';
@@ -344,13 +344,13 @@ export async function startAmazonDaily50kScan(env, observedAt = Date.now(), fetc
   if (!r2?.put) throw new Error('PAGES_RESPONSE_R2 binding is required');
   const previous = await getJson(r2, AMAZON_MUSIC_DAILY_SCAN_STATE_KEY);
   const top = await observeTop500(env, observedAt, fetchImpl);
-  const state = freshState({ observedAt, topHash: top.hash, previous, reason: 'daily-02-jst' });
+  const state = freshState({ observedAt, topHash: top.hash, previous, reason: 'daily-05-jst' });
   await putJson(r2, AMAZON_MUSIC_DAILY_SCAN_STATE_KEY, state);
   await recordScanEvent(r2, {
     event: 'started',
     observed_at: observedAt,
     scan_id: state.scan_id,
-    reason: 'daily-02-jst',
+    reason: 'daily-05-jst',
     target_rank: AMAZON_MUSIC_DAILY_SCAN_TARGET_RANK,
     pages_per_run: AMAZON_MUSIC_DAILY_SCAN_PAGES_PER_RUN,
     replaced_scan_id: previous?.status === 'active' ? text(previous?.scan_id) : null,

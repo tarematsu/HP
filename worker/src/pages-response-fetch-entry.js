@@ -2,6 +2,7 @@ import {
   MATERIALIZED_API_VARIANTS,
   materializedResponseMaximumAge,
 } from '../../site/functions/lib/api-contract.js';
+import { loadMaterializedR2Response } from './pages-response-r2.js';
 import { loadTrackHistoryR2ApiResponse } from './pages-track-history-r2-api.js';
 
 const EMPTY_DEPENDENCIES = Object.freeze({});
@@ -28,13 +29,7 @@ const R2_ONLY_MODEL_KEYS = new Set([
   ...PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS,
 ]);
 
-let responseR2ModulePromise;
 let responseStoreModulePromise;
-
-function loadResponseR2Module() {
-  responseR2ModulePromise ||= import('./pages-response-r2.js');
-  return responseR2ModulePromise;
-}
 
 function loadResponseStoreModule() {
   responseStoreModulePromise ||= import('./pages-response-store.js');
@@ -174,16 +169,14 @@ export async function runPagesResponseFetch(
         dependencies.trackHistory || EMPTY_DEPENDENCIES,
       );
     } else if (R2_ONLY_MODEL_KEYS.has(modelKey)) {
-      const loadR2 = dependencies.loadR2Response
-        || (await loadResponseR2Module()).loadMaterializedR2Response;
+      const loadR2 = dependencies.loadR2Response || loadMaterializedR2Response;
       const staleMaximumAge = materializedStaleMaximumAge(env, maximumAge);
       response = await loadR2(env?.PAGES_RESPONSE_R2, modelKey, now, staleMaximumAge);
       if (responseIsStale(response, now, maximumAge)) {
         response = staleMaterializedResponse(response);
       }
     } else if (modelKey === TRACK_HISTORY_MODEL_KEY) {
-      const loadR2 = dependencies.loadR2Response
-        || (await loadResponseR2Module()).loadMaterializedR2Response;
+      const loadR2 = dependencies.loadR2Response || loadMaterializedR2Response;
       response = await loadR2(
         env?.PAGES_RESPONSE_R2,
         modelKey,
@@ -194,8 +187,7 @@ export async function runPagesResponseFetch(
       // Live minute-fact publication writes the dashboard Actions-R2 object
       // immediately. Prefer it to any rollout-era KV copy so KV propagation or
       // an old KV entry cannot hide the latest five-minute fact.
-      const loadR2 = dependencies.loadR2Response
-        || (await loadResponseR2Module()).loadMaterializedR2Response;
+      const loadR2 = dependencies.loadR2Response || loadMaterializedR2Response;
       response = await loadR2(env?.PAGES_RESPONSE_R2, modelKey, now, maximumAge);
       if (!response) {
         const loadKv = dependencies.loadResponse
@@ -207,8 +199,7 @@ export async function runPagesResponseFetch(
         || (await loadResponseStoreModule()).loadMaterializedResponse;
       response = await loadKv(env?.PAGES_RESPONSE_KV, modelKey, now, maximumAge);
       if (!response) {
-        const loadR2 = dependencies.loadR2Response
-          || (await loadResponseR2Module()).loadMaterializedR2Response;
+        const loadR2 = dependencies.loadR2Response || loadMaterializedR2Response;
         response = await loadR2(env?.PAGES_RESPONSE_R2, modelKey, now, maximumAge);
       }
     }

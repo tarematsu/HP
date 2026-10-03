@@ -5,6 +5,7 @@ import { canonicalizeTrackRows } from '../../site/functions/lib/canonical-track-
 import { mergeTrackRows } from '../../site/functions/lib/track-history-merge.js';
 import { applyTrackPeriodCompleteness } from '../../site/functions/lib/period-completeness.js';
 import { attachCompactTrackLikes } from '../../site/functions/lib/track-likes.js';
+import { PLAYBACK_EVENT_HISTORY_SQL } from '../src/pages-track-history-r2-shards.js';
 import { loadDirectRevisionTrackHistoryData } from '../src/track-history-direct-revision-sql.js';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 import { publishTrackHistoryR2DayRows } from './sync-track-history-r2-days-actions.mjs';
@@ -14,6 +15,7 @@ const TRACK_HISTORY_LIMIT = 40_000;
 const workerRoot = resolve(import.meta.dirname, '..');
 const wranglerScript = resolve(workerRoot, 'node_modules/wrangler/bin/wrangler.js');
 const factsDatabase = process.env.FACTS_DATABASE_NAME || 'stationhead-minute';
+const buddiesDatabase = process.env.BUDDIES_DATABASE_NAME || 'stationhead-buddies';
 
 function validDay(value) {
   const text = String(value || '');
@@ -29,26 +31,75 @@ export function defaultRepairDay(now = Date.now()) {
   return new Date(currentDayStart - DAY_MS).toISOString().slice(0, 10);
 }
 
-function remoteMinuteDatabase() {
+function remoteDatabase(database, tempPrefix) {
   return createWranglerRemoteD1({
-    database: factsDatabase,
+    database,
     cwd: workerRoot,
     wranglerScript,
-    tempPrefix: '.track-history-day-repair-',
+    tempPrefix,
   });
 }
 
-async function repairedRows(db, targetDay, generation) {
+function remoteMinuteDatabase() {
+  return remoteDatabase(factsDatabase, '.track-history-day-repair-minute-');
+}
+
+function remoteBuddiesDatabase() {
+  return remoteDatabase(buddiesDatabase, '.track-history-day-repair-buddies-');
+}
+
+async function loadPlaybackEventRows(db, targetDay, fromTs, toTs) {
+  if (!db?.prepare) return [];
+  try {
+    const result = await db.prepare(PLAYBACK_EVENT_HISTORY_SQL)
+      .bind(targetDay, fromTs, toTs, TRACK_HISTORY_LIMIT)
+      .all();
+    return Array.isArray(result?.results) ? result.results : [];
+  } catch (error) {
+    if (/no such table|no such column/i.test(String(error?.message || error))) return [];
+    throw error;
+  }
+}
+
+function firstEventAt(eventRows, fallback) {
+  const values = (eventRows || [])
+    .map((row) => Number(row?.first_played_at ?? row?.played_at))
+    .filter(Number.isFinite);
+  return values.length ? Math.min(...values) : fallback;
+}
+
+async function repairedRows(sourceDb, db, targetDay, generation) {
   const fromTs = Date.parse(`${targetDay}T00:00:00Z`);
   const toTs = fromTs + DAY_MS;
-  const { result, likeRows } = await loadDirectRevisionTrackHistoryData(
-    db,
-    fromTs,
-    toTs,
-    TRACK_HISTORY_LIMIT,
-    true,
-  );
-  const groupedRows = result.results || [];
+  const [{ result, likeRows }, eventRows] = await Promise.all([
+    loadDirectRevisionTrackHistoryData(
+      db,
+      fromTs,
+      toTs,
+      TRACK_HISTORY_LIMIT,
+      true,
+    ),
+    loadPlaybackEventRows(sourceDb, targetDay, fromTs, toTs),
+  ]);
+  const legacyGroupedRows = result.results || [];
+  let groupedRows = legacyGroupedRows;
+  let source = 'legacy-reconstruction';
+  if (eventRows.length) {
+    const eventStart = Math.max(fromTs, Math.min(toTs, firstEventAt(eventRows, fromTs)));
+    let legacyPrefixRows = [];
+    if (eventStart > fromTs) {
+      const prefix = await loadDirectRevisionTrackHistoryData(
+        db,
+        fromTs,
+        eventStart,
+        TRACK_HISTORY_LIMIT,
+        false,
+      );
+      legacyPrefixRows = prefix.result?.results || [];
+    }
+    groupedRows = [...legacyPrefixRows, ...eventRows];
+    source = legacyPrefixRows.length ? 'legacy-prefix+playback-events' : 'playback-events';
+  }
   if (groupedRows.length > TRACK_HISTORY_LIMIT) {
     throw new Error(`track-history repair exceeded ${TRACK_HISTORY_LIMIT} grouped rows`);
   }
@@ -58,16 +109,27 @@ async function repairedRows(db, targetDay, generation) {
   const canonicalLikeRows = canonicalRows.slice(groupedRows.length);
   const mergedRows = mergeTrackRows(canonicalGroupedRows);
   const likedRows = attachCompactTrackLikes(mergedRows, canonicalLikeRows);
-  const completed = applyTrackPeriodCompleteness(likedRows, canonicalGroupedRows, generation);
+  const completed = applyTrackPeriodCompleteness(
+    likedRows,
+    eventRows.length ? legacyGroupedRows : canonicalGroupedRows,
+    generation,
+  );
   const rows = completed.rows.filter((row) => String(row?.play_date || '') === targetDay);
   const totalPlays = rows.reduce((sum, row) => sum + Math.max(0, Number(row?.play_count || 0)), 0);
   if (!rows.length || totalPlays <= 0) {
     throw new Error(`track-history repair produced no playable rows for ${targetDay}`);
   }
-  return { groupedRows: canonicalGroupedRows, completed, rows, totalPlays };
+  return {
+    groupedRows: canonicalGroupedRows,
+    completed,
+    rows,
+    totalPlays,
+    source,
+  };
 }
 
 export async function repairTrackHistoryDay({
+  sourceDb = null,
   db,
   day,
   now = Date.now(),
@@ -79,12 +141,13 @@ export async function repairTrackHistoryDay({
   const generation = Number(now);
   if (!Number.isFinite(generation) || generation <= 0) throw new Error('invalid repair generation');
 
-  const repaired = await repairedRows(db, targetDay, generation);
+  const repaired = await repairedRows(sourceDb, db, targetDay, generation);
   const r2 = await publish({ day: targetDay, rows: repaired.rows, now: generation });
   return {
     ok: true,
     day: targetDay,
     generation,
+    source: repaired.source,
     grouped_rows: repaired.groupedRows.length,
     rows: repaired.rows.length,
     total_plays: repaired.totalPlays,
@@ -97,13 +160,20 @@ export async function repairTrackHistoryDay({
 }
 
 export async function refreshTrackHistoryDay({
+  sourceDb = remoteBuddiesDatabase(),
   db = remoteMinuteDatabase(),
   day,
   now = Date.now(),
   publish = publishTrackHistoryR2DayRows,
 } = {}) {
   const targetDay = day || defaultRepairDay(now);
-  const repaired = await repairTrackHistoryDay({ db, day: targetDay, now, publish });
+  const repaired = await repairTrackHistoryDay({
+    sourceDb,
+    db,
+    day: targetDay,
+    now,
+    publish,
+  });
   return {
     ok: true,
     day: targetDay,

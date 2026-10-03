@@ -8,8 +8,10 @@ import {
 } from '../../site/functions/api/spotify-playcounts.js';
 import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
 import {
+  processSpotifyReadModelRefreshBatch,
   publishSpotifyPagesReadModel,
   requestSpotifyReadModelRefresh,
+  spotifyReadModelRefreshMarker,
   SPOTIFY_READ_MODEL_REFRESH_TYPE,
 } from '../src/spotify-pages-read-model.js';
 import {
@@ -147,6 +149,7 @@ test('Spotify read model writes all Sakamichi detail groups and skips unchanged 
   assert.equal(envelope.cadence_seconds, 0);
   assert.equal(envelope.updated_at, 1000);
   assert.equal(envelope.renderer_revision, 'spotify-event-v3');
+  assert.deepEqual(envelope.refresh_markers, []);
   const body = JSON.parse(envelope.body);
   assert.deepEqual(Object.keys(body.groups), ['sakurazaka46', 'nogizaka46', 'hinatazaka46']);
   assert.equal(body.groups.sakurazaka46.total_delta, 25);
@@ -168,7 +171,79 @@ test('Spotify read model writes all Sakamichi detail groups and skips unchanged 
   const second = await publishSpotifyPagesReadModel(env, { now: 2000 });
   assert.equal(second.published, false);
   assert.equal(second.changed, false);
+  assert.equal(second.skipped_d1, false);
   assert.equal(writes.length, 1);
+});
+
+test('duplicate Spotify refresh is satisfied from R2 without any D1 read', async () => {
+  const event = {
+    message_type: SPOTIFY_READ_MODEL_REFRESH_TYPE,
+    reason: 'playcount-complete',
+    source_revision: '2026-09-29:321:1000:1100',
+  };
+  const marker = spotifyReadModelRefreshMarker(event);
+  assert.equal(marker, 'playcount-complete:2026-09-29:321:1000:1100');
+
+  let stored = null;
+  let r2Reads = 0;
+  let r2Writes = 0;
+  const r2 = {
+    async get() {
+      r2Reads += 1;
+      return stored == null ? null : { async text() { return stored; } };
+    },
+    async put(_key, body) {
+      r2Writes += 1;
+      stored = body;
+    },
+  };
+
+  const first = await publishSpotifyPagesReadModel(
+    { OTHER_DB: db(), PAGES_RESPONSE_R2: r2 },
+    { now: 1000, refreshMessages: [event] },
+  );
+  assert.equal(first.published, true);
+  assert.equal(first.skipped_d1, false);
+  assert.equal(r2Writes, 1);
+  assert.deepEqual(JSON.parse(stored).refresh_markers, [marker]);
+
+  let d1Reads = 0;
+  let acknowledged = 0;
+  const duplicate = {
+    body: event,
+    ack() { acknowledged += 1; },
+  };
+  const result = await processSpotifyReadModelRefreshBatch({ messages: [duplicate] }, {
+    OTHER_DB: {
+      prepare() {
+        d1Reads += 1;
+        throw new Error('D1 must not be touched for a covered refresh');
+      },
+    },
+    PAGES_RESPONSE_R2: r2,
+  });
+
+  assert.deepEqual(result, { processed: 1, failed: 0, ignored: 0 });
+  assert.equal(acknowledged, 1);
+  assert.equal(d1Reads, 0);
+  assert.equal(r2Reads, 2, 'one R2 read per refresh attempt');
+  assert.equal(r2Writes, 1, 'duplicate refresh must not rewrite R2');
+});
+
+test('Spotify refresh markers cover monthly-listener and immutable chart events', () => {
+  assert.equal(
+    spotifyReadModelRefreshMarker({
+      reason: 'monthly-listeners-complete',
+      snapshot_date: '2026-09-29',
+      source_revision: 'rev-1',
+    }),
+    'monthly-listeners-complete:2026-09-29:rev-1',
+  );
+  assert.equal(
+    spotifyReadModelRefreshMarker({ reason: 'artist-chart', chart_date: '2026-09-29' }),
+    'artist-chart:2026-09-29',
+  );
+  assert.equal(spotifyReadModelRefreshMarker({ reason: 'playcount-carry-forward' }), null);
 });
 
 test('Spotify detail lookup resolves dates first and then seeks indexed artist/date rows', () => {

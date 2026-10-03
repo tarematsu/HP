@@ -6,6 +6,7 @@ import {
 
 const BACKFILL_LIMIT = 500;
 const UPDATE_BATCH_SIZE = 20;
+const TITLE_FALLBACK_VARIANT_LIMIT = 32;
 const EXTRA_ARTIST_ALIASES = Object.freeze({
   sakurazaka46: Object.freeze(['사쿠라자카46']),
   nogizaka46: Object.freeze(['노기자카46']),
@@ -30,8 +31,14 @@ const CJK_FOLD = Object.freeze({
   '學': '学', '萬': '万', '與': '与', '無': '无', '見': '见', '覺': '觉',
   '發': '发', '點': '点', '對': '对', '顷': '顷', '頃': '顷', '翅': '翅',
 });
+const CJK_UNFOLD = Object.freeze(Object.entries(CJK_FOLD).reduce((result, [source, folded]) => {
+  if (!result[folded]) result[folded] = [];
+  result[folded].push(source);
+  return result;
+}, {}));
 
 const catalogCache = new WeakMap();
+const titleFallbackCache = new WeakMap();
 const backfillCache = new WeakMap();
 
 function positiveInteger(value) {
@@ -74,6 +81,35 @@ function titleParts(value) {
 
   for (const part of source.split(/\s+(?:[|｜/／·•]|[-–—])\s+/u)) {
     if (text(part)) variants.add(part.trim());
+  }
+  return [...variants];
+}
+
+function unfoldCjkVariants(value) {
+  let variants = [''];
+  for (const character of [...String(value || '')]) {
+    const options = [...new Set([character, ...(CJK_UNFOLD[character] || [])])];
+    const next = [];
+    for (const prefix of variants) {
+      for (const option of options) {
+        next.push(`${prefix}${option}`);
+        if (next.length >= TITLE_FALLBACK_VARIANT_LIMIT) break;
+      }
+      if (next.length >= TITLE_FALLBACK_VARIANT_LIMIT) break;
+    }
+    variants = next;
+  }
+  return variants;
+}
+
+function titleLookupVariants(value) {
+  const variants = new Set();
+  for (const part of titleParts(value)) {
+    for (const unfolded of unfoldCjkVariants(part)) {
+      const normalized = text(unfolded)?.normalize('NFKC');
+      if (normalized) variants.add(normalized);
+      if (variants.size >= TITLE_FALLBACK_VARIANT_LIMIT) return [...variants];
+    }
   }
   return [...variants];
 }
@@ -150,26 +186,62 @@ function artistDefinitions(service) {
   return service === 'youtube_music' ? YOUTUBE_MUSIC_ARTISTS : REGIONAL_MUSIC_ARTISTS;
 }
 
-async function loadCatalog(env, service, canonicalArtist) {
-  if (!env?.MINUTE_DB?.prepare) return [];
+function artistAliases(service, canonicalArtist) {
   const definition = artistDefinitions(service)[canonicalArtist];
   if (!definition) return [];
-  const cache = cacheFor(catalogCache, env);
-  const cacheKey = `${service}:${canonicalArtist}`;
-  if (cache.has(cacheKey)) return cache.get(cacheKey);
-
-  const aliases=[...new Set([
+  return [...new Set([
     definition.displayName,
     ...(definition.aliases || []),
     ...(EXTRA_ARTIST_ALIASES[canonicalArtist] || []),
-  ].filter(Boolean))];
-  const predicates=aliases.map(()=>`artist COLLATE NOCASE LIKE ?`).join(' OR ');
-  const bindings=aliases.map(alias=>`%${alias}%`);
+  ].map(text).filter(Boolean))];
+}
+
+function normalizedIdentity(value) {
+  return text(value)?.normalize('NFKC').toLocaleLowerCase('ja-JP') || '';
+}
+
+function artistContainsAlias(artist, aliases) {
+  const normalizedArtist = normalizedIdentity(artist);
+  return normalizedArtist && aliases.some((alias) => normalizedArtist.includes(normalizedIdentity(alias)));
+}
+
+async function loadExactCatalog(env, service, canonicalArtist) {
+  if (!env?.MINUTE_DB?.prepare) return [];
+  const aliases = artistAliases(service, canonicalArtist);
+  if (!aliases.length) return [];
+  const cache = cacheFor(catalogCache, env);
+  const cacheKey = canonicalArtist;
+  if (cache.has(cacheKey)) return cache.get(cacheKey);
+
+  const placeholders = aliases.map(() => '?').join(',');
   const result = await rows(env.MINUTE_DB, `SELECT id,title,artist,isrc,spotify_id
     FROM sh_tracks
     WHERE title IS NOT NULL AND artist IS NOT NULL
-      AND (${predicates})
-    ORDER BY id ASC`, bindings);
+      AND TRIM(artist) COLLATE NOCASE IN (${placeholders})
+    ORDER BY id ASC`, aliases);
+  cache.set(cacheKey, result);
+  return result;
+}
+
+async function loadTitleFallbackCatalog(env, service, canonicalArtist, providerTitle) {
+  if (!env?.MINUTE_DB?.prepare) return [];
+  const aliases = artistAliases(service, canonicalArtist);
+  const titleVariants = titleLookupVariants(providerTitle);
+  if (!aliases.length || !titleVariants.length) return [];
+  const cache = cacheFor(titleFallbackCache, env);
+  const cacheKey = `${service}:${canonicalArtist}:${titleVariants.join('|')}`;
+  if (cache.has(cacheKey)) return cache.get(cacheKey);
+
+  // Collaboration artist strings are not exact artist identities. Seek by the
+  // already-indexed title expression, then do the contains check only on the
+  // handful of returned rows in JS. This keeps `%artist%` scans out of D1.
+  const placeholders = titleVariants.map(() => '?').join(',');
+  const candidates = await rows(env.MINUTE_DB, `SELECT id,title,artist,isrc,spotify_id
+    FROM sh_tracks
+    WHERE title IS NOT NULL AND artist IS NOT NULL
+      AND TRIM(title) COLLATE NOCASE IN (${placeholders})
+    ORDER BY id ASC`, titleVariants);
+  const result = candidates.filter((candidate) => artistContainsAlias(candidate?.artist, aliases));
   cache.set(cacheKey, result);
   return result;
 }
@@ -218,10 +290,17 @@ export async function resolveRegionalMusicCanonicalTrack(env, value = {}) {
   const canonicalArtist = String(value?.canonical_artist || '');
   if (!artistDefinitions(service)[canonicalArtist] || !text(value?.title)) return value;
 
-  const candidates = await loadCatalog(env, service, canonicalArtist);
+  let candidates = await loadExactCatalog(env, service, canonicalArtist);
+  let match = matchRegionalMusicCanonicalTrack(value.title, candidates);
+  if (!match) {
+    const titleCandidates = await loadTitleFallbackCatalog(env, service, canonicalArtist, value.title);
+    if (titleCandidates.length) {
+      candidates = [...candidates, ...titleCandidates];
+      match = matchRegionalMusicCanonicalTrack(value.title, titleCandidates);
+    }
+  }
   if (!candidates.length) return value;
   await backfillKnownRegionalRows(env, service, canonicalArtist, candidates);
-  const match = matchRegionalMusicCanonicalTrack(value.title, candidates);
   const canonicalTrackId = positiveInteger(match?.id);
   return canonicalTrackId == null
     ? value

@@ -120,6 +120,9 @@ test('serving-only Pages module does not import generation or publication graphs
   assert.match(pagesResponseFetch, /runPagesResponseFetch/);
   assert.match(pagesResponseFetch, /loadMaterializedR2Response/);
   assert.match(pagesResponseFetch, /loadMaterializedResponse/);
+  assert.match(pagesResponseFetch, /from '\.\/pages-response-r2\.js'/);
+  assert.doesNotMatch(pagesResponseFetch, /import\('\.\/pages-response-r2\.js'\)/);
+  assert.match(pagesResponseFetch, /import\('\.\/pages-response-store\.js'\)/);
   assert.doesNotMatch(pagesResponseFetch, /pages-read-model-dispatch|track-history-publication|dashboard\.js|PAGES_READ_MODEL_QUEUE/);
 });
 

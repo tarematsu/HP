@@ -70,7 +70,7 @@ test('Amazon Music API preserves real materialized-service failures', async () =
 });
 
 test('Amazon Music uses the QQ metadata and section layout while keeping Sakamichi switches', () => {
-  assert.match(shell, /musicServiceMeta\(\{ valueId: 'amazonUpdatedAt', cadence: '毎日朝ごろ' \}\)/);
+  assert.match(shell, /musicServiceMeta\(\{ valueId: 'amazonUpdatedAt', cadence: '毎日6:00' \}\)/);
   assert.match(shell, /className: musicServiceViewClassName\('amazon-music-view'\)/);
   assert.match(shell, /musicServiceSection/);
   assert.match(commonShell, /'regional-music-view', 'is-chart-compact', 'music-service-view'/);

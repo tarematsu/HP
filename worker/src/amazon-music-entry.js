@@ -12,7 +12,7 @@ import {
   persistAppleMusicModelToOther,
 } from './music-service-other-store.js';
 
-export const AMAZON_MUSIC_CRON = '0,12,15,22,32,42,52 * * * *';
+export const AMAZON_MUSIC_CRON = '0,10,15,20,30,40,50 * * * *';
 
 function loggedRun(label, operation, { fatal = false } = {}) {
   return operation()
@@ -70,8 +70,8 @@ export function amazonMusicDueTasks(scheduledTime) {
   const minute = date.getUTCMinutes();
   return {
     apple: minute === 15,
-    daily50kStart: hour === 17 && minute === 0,
-    daily50kContinue: hour >= 17 && hour <= 20 && [12, 22, 32, 42, 52].includes(minute),
+    daily50kStart: hour === 20 && minute === 0,
+    daily50kContinue: hour >= 20 && hour <= 23 && [10, 20, 30, 40, 50].includes(minute),
   };
 }
 

@@ -69,6 +69,12 @@ async function sleep(ms) {
   if (ms > 0) await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function boundedRequestCount(value, total) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return total;
+  return Math.min(total, Math.trunc(number));
+}
+
 export async function collectKkboxJapaneseHistory({
   existing = null,
   start = KKBOX_JAPANESE_HISTORY_START,
@@ -77,6 +83,7 @@ export async function collectKkboxJapaneseHistory({
   periods = ['weekly'],
   types = ['song', 'newrelease'],
   delayMs = DEFAULT_DELAY_MS,
+  maxRequests = Infinity,
   fetchImpl = fetch,
   onCheckpoint = async () => {},
   onProgress = () => {},
@@ -85,13 +92,15 @@ export async function collectKkboxJapaneseHistory({
   const done = completedKeys(view);
   const requests = [];
   for (const chart of chartsFor({ territories, periods, types })) {
-    for (const requestedDate of kkboxBackfillRequestDates(start, end, chart.period)) {
+    const dates = kkboxBackfillRequestDates(start, end, chart.period).reverse();
+    for (const requestedDate of dates) {
       if (!done.has(requestKey(chart, requestedDate))) requests.push({ chart, requestedDate });
     }
   }
+  const pendingRequests = requests.slice(0, boundedRequestCount(maxRequests, requests.length));
 
   let completed = 0;
-  for (const request of requests) {
+  for (const request of pendingRequests) {
     let record;
     try {
       const result = await fetchKkboxChart(request.chart, {
@@ -106,9 +115,14 @@ export async function collectKkboxJapaneseHistory({
     }
     view = mergeKkboxJapaneseHistory(view, [record], Date.now());
     completed += 1;
-    onProgress({ completed, total: requests.length, record });
+    onProgress({
+      completed,
+      total: pendingRequests.length,
+      remaining: Math.max(0, requests.length - completed),
+      record,
+    });
     if (record.status === 'ok' || completed % 25 === 0) await onCheckpoint(view, record);
-    if (completed < requests.length) await sleep(delayMs);
+    if (completed < pendingRequests.length) await sleep(delayMs);
   }
   await onCheckpoint(view, null);
   return view;
@@ -134,12 +148,14 @@ async function main() {
   const periods = selected('periods', ['daily', 'weekly'], ['weekly'], argv);
   const types = selected('types', ['song', 'newrelease'], ['song', 'newrelease'], argv);
   const delayMs = Math.max(250, Math.min(10_000, Number(argumentValue('delay-ms', argv)) || DEFAULT_DELAY_MS));
+  const maxRequests = Number(argumentValue('max-requests', argv));
   const output = argumentValue('output', argv) || DEFAULT_OUTPUT;
   const persist = argv.includes('--persist');
   const r2 = persist ? await r2Context() : null;
   const existingObject = r2 ? await r2.get(KKBOX_JAPANESE_HISTORY_VIEW_KEY) : null;
   const existing = existingObject ? await existingObject.json() : null;
   let lastSavedAt = 0;
+  let processedAny = false;
 
   const view = await collectKkboxJapaneseHistory({
     existing,
@@ -149,12 +165,15 @@ async function main() {
     periods,
     types,
     delayMs,
-    onProgress({ completed, total, record }) {
+    maxRequests: Number.isFinite(maxRequests) && maxRequests > 0 ? Math.trunc(maxRequests) : Infinity,
+    onProgress({ completed, total, remaining, record }) {
+      processedAny = true;
       if (record.entries?.length || record.status !== 'ok' || completed % 50 === 0 || completed === total) {
         console.log(JSON.stringify({
           event: 'kkbox_history_progress',
           completed,
           total,
+          remaining,
           territory: record.territory,
           period_type: record.period_type,
           chart_type: record.chart_type,
@@ -165,24 +184,25 @@ async function main() {
         }));
       }
     },
-    async onCheckpoint(nextView) {
+    async onCheckpoint(nextView, record) {
       if (!r2) return;
-      const now = Date.now();
-      if (now - lastSavedAt < 15_000) return;
+      if (record === null) {
+        if (!processedAny) return;
+      } else {
+        const now = Date.now();
+        if (now - lastSavedAt < 15_000) return;
+      }
       await r2.put(KKBOX_JAPANESE_HISTORY_VIEW_KEY, JSON.stringify(nextView));
-      lastSavedAt = now;
+      lastSavedAt = Date.now();
       console.log(JSON.stringify({
-        event: 'kkbox_history_checkpoint',
+        event: record === null ? 'kkbox_history_saved' : 'kkbox_history_checkpoint',
+        key: record === null ? KKBOX_JAPANESE_HISTORY_VIEW_KEY : undefined,
         checked_requests: nextView.coverage?.checked_requests,
         entries: nextView.coverage?.entries,
       }));
     },
   });
 
-  if (r2) {
-    await r2.put(KKBOX_JAPANESE_HISTORY_VIEW_KEY, JSON.stringify(view));
-    console.log(JSON.stringify({ event: 'kkbox_history_saved', key: KKBOX_JAPANESE_HISTORY_VIEW_KEY }));
-  }
   await mkdir(dirname(output), { recursive: true });
   await writeFile(output, `${JSON.stringify(view, null, 2)}\n`, 'utf8');
   console.log(JSON.stringify({ event: 'kkbox_history_complete', output, coverage: view.coverage }));

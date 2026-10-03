@@ -30,13 +30,15 @@ test('played-tracks refresh is bounded to one UTC day and publishes only after n
   assert.match(repair, /fromTs = Date\.parse\(`\$\{targetDay\}T00:00:00Z`\)/);
   assert.match(repair, /toTs = fromTs \+ DAY_MS/);
   assert.match(repair, /loadDirectRevisionTrackHistoryData\(/);
+  assert.match(repair, /PLAYBACK_EVENT_HISTORY_SQL/);
+  assert.match(repair, /groupedRows = \[\.\.\.legacyPrefixRows, \.\.\.eventRows\]/);
   assert.match(repair, /track-history repair produced no playable rows/);
   assert.match(repair, /publishTrackHistoryR2DayRows/);
   assert.doesNotMatch(repair, /materializedTrackHistorySql\(|loadTrackHistoryData\(/);
   assert.doesNotMatch(repair, /INSERT INTO sh_pages_track_history_read_model|DELETE FROM sh_pages_track_history_read_model/);
 });
 
-test('played-tracks daily query reads only materialized latest revision items', () => {
+test('played-tracks daily query keeps only the legacy prefix before exact playback events', () => {
   const sql = directRevisionTrackHistorySql();
   assert.match(sql, /starts\.latest_revision_id/);
   assert.match(sql, /JOIN sh_queue_revisions revisions ON revisions\.id=starts\.latest_revision_id/);
@@ -44,6 +46,11 @@ test('played-tracks daily query reads only materialized latest revision items', 
   assert.match(sql, /FROM sh_track_history_queue_starts starts/);
   assert.doesNotMatch(sql, /sh_queue_items/);
   assert.equal((sql.match(/\?/g) || []).length, (TRACK_HISTORY_SQL.match(/\?/g) || []).length);
+  assert.match(repair, /const eventStart = Math\.max\(fromTs, Math\.min\(toTs, firstEventAt\(eventRows, fromTs\)\)\)/);
+  assert.match(repair, /fromTs,\s*eventStart,\s*TRACK_HISTORY_LIMIT,\s*false/);
+  assert.match(repair, /'legacy-prefix\+playback-events'/);
+  assert.match(repair, /'playback-events'/);
+  assert.match(repair, /'legacy-reconstruction'/);
 });
 
 test('played-tracks repair canonicalizes grouped and like rows in one pass', () => {
@@ -67,6 +74,13 @@ test('played-tracks refresh publishes only the changed day and updates the R2 da
 test('played-tracks repair no longer stages duplicate D1 row-model writes', () => {
   assert.doesNotMatch(repair, /typeof db\.script === 'function'|await db\.script\(statements\)|await db\.batch\(statements\)/);
   assert.match(repair, /storage: 'r2-day'/);
+});
+
+test('played-tracks refresh reads Buddies playback events with the same bounded daily job', () => {
+  assert.match(workflow, /BUDDIES_DATABASE_NAME: stationhead-buddies/);
+  assert.match(repair, /process\.env\.BUDDIES_DATABASE_NAME \|\| 'stationhead-buddies'/);
+  assert.match(repair, /remoteBuddiesDatabase\(\)/);
+  assert.match(repair, /\.bind\(targetDay, fromTs, toTs, TRACK_HISTORY_LIMIT\)/);
 });
 
 test('played-tracks refresh runs once daily or by explicit manual dispatch, never on main pushes', () => {
