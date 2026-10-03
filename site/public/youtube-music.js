@@ -124,13 +124,14 @@ function renderTracks(items) {
   const body = replaceBody('youtubeMusicTrackBody');
   if (!body) return;
   if (!items.length) {
-    appendEmptyTableRow(body, '楽曲データがありません。', 4);
+    appendEmptyTableRow(body, '楽曲データがありません。', 5);
     return;
   }
   for (const item of items) {
     body.append(row([
       ARTIST_LABELS[item.canonical_artist] || item.canonical_artist || '-',
       item.title || item.service_track_id || '-',
+      valueText(item.plays),
       item.album_name || '-',
       item.service_track_id || '-',
     ]));
@@ -217,7 +218,7 @@ export async function loadYoutubeMusicView() {
     render(payload);
   } catch {
     setNotice('youtubeMusicNotice', 'データを取得できませんでした。時間をおいて再度お試しください。', true);
-    for (const [id, columns] of [['youtubeMusicArtistBody', 5], ['youtubeMusicReleaseBody', 4], ['youtubeMusicTrackBody', 4], ['youtubeMusicPlaylistBody', 3]]) {
+    for (const [id, columns] of [['youtubeMusicArtistBody', 5], ['youtubeMusicReleaseBody', 4], ['youtubeMusicTrackBody', 5], ['youtubeMusicPlaylistBody', 3]]) {
       appendEmptyTableRow(byId(id), 'データ未取得', columns, { replace: true });
     }
   }
