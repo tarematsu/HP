@@ -76,6 +76,14 @@ export function liveTailContainsTelemetryViolations({
   });
 }
 
+function telemetrySummaryAllowsContainment(summary) {
+  const text = String(summary || '');
+  const coverageOk = /CPU coverage:\s*`?OK\b/i.test(text);
+  const errorMatch = text.match(/Error invocations:\s*`?([0-9,]+)/i);
+  const errorInvocations = errorMatch ? Number(errorMatch[1].replaceAll(',', '')) : null;
+  return coverageOk && errorInvocations === 0;
+}
+
 export function issueBodyMatchesPublishedRun(body, { targetSha, runUrl }) {
   const text = String(body || '');
   const target = String(targetSha || '').trim();
@@ -158,10 +166,11 @@ export async function resolveFromEnvironment() {
   let effectiveTelemetry = telemetry;
   if (
     String(outcomes.telemetry || '').toLowerCase() !== 'success'
+    && telemetrySummaryAllowsContainment(telemetry)
     && liveTailContainsTelemetryViolations({ telemetryLog, liveTailLog })
   ) {
     effectiveOutcomes.telemetry = 'success';
-    effectiveTelemetry = `${telemetry}\n\n- Persisted CPU violations are contained: the same Worker(s) had at least three current Live Tail samples, no error-like events, and max CPU at or below the recorded budget.`;
+    effectiveTelemetry = `${telemetry}\n\n- Persisted CPU violations are contained: CPU coverage is complete, error invocations are zero, and the same Worker(s) had at least three current Live Tail samples with max CPU at or below the recorded budget.`;
     console.log('TELEMETRY_LIVE_TAIL_CONTAINED=true');
   }
 
