@@ -25,16 +25,6 @@ function canonicalTrackId(value) {
   return positive(value?.track_id ?? value?.canonical_track_id);
 }
 
-async function storedCanonicalTrackId(db, service, serviceTrackId) {
-  if (!db?.prepare || !service || serviceTrackId == null) return null;
-  const result = await db.prepare(`SELECT canonical_track_id AS track_id
-    FROM regional_music_tracks
-    WHERE service=? AND service_track_id=? AND canonical_track_id IS NOT NULL
-    LIMIT 1`)
-    .bind(service, serviceTrackId).all();
-  return positive(result?.results?.[0]?.track_id);
-}
-
 export async function saveRegionalArtist(env, value) {
   if (env.REGIONAL_MUSIC_SNAPSHOT_STORE) return env.REGIONAL_MUSIC_SNAPSHOT_STORE('artists',value);
   const observedAt = Number(value.observed_at) || Date.now();
@@ -163,16 +153,19 @@ export async function saveRegionalPlaylistMembership(env, value) {
   const observedAt = Number(value.observed_at) || Date.now();
   const snapshotDate = value.snapshot_date || regionalMusicSnapshotDate(observedAt);
   const db = dbOf(env);
-  const trackId = canonicalTrackId(value)
-    ?? await storedCanonicalTrackId(db, value.service, value.service_track_id);
+  const trackId = canonicalTrackId(value);
   return db.prepare(`INSERT INTO regional_music_playlist_memberships(
     snapshot_date,service,service_playlist_id,service_track_id,track_id,observed_at,position
-  ) VALUES(?,?,?,?,?,?,?) ON CONFLICT(snapshot_date,service,service_playlist_id,service_track_id) DO UPDATE SET
+  ) VALUES(?,?,?,?,COALESCE(?,(
+    SELECT canonical_track_id FROM regional_music_tracks
+    WHERE service=? AND service_track_id=?
+    LIMIT 1
+  )),?,?) ON CONFLICT(snapshot_date,service,service_playlist_id,service_track_id) DO UPDATE SET
     track_id=COALESCE(excluded.track_id,track_id),
     observed_at=excluded.observed_at,
     position=COALESCE(excluded.position,position)`)
     .bind(snapshotDate, value.service, value.service_playlist_id, value.service_track_id,
-      trackId, observedAt, positive(value.position)).run();
+      trackId, value.service, value.service_track_id, observedAt, positive(value.position)).run();
 }
 
 export async function saveRegionalCollectorState(env, value) {
