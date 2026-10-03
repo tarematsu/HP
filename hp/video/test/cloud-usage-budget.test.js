@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const cloudConfig = JSON.parse(readFileSync(new URL('../../cloud/wrangler.jsonc', import.meta.url), 'utf8'));
+const schedulerConfig = JSON.parse(readFileSync(new URL('../../cloud/wrangler.scheduler.jsonc', import.meta.url), 'utf8'));
 const nativeConfig = readFileSync(new URL('../../native/src/config.h', import.meta.url), 'utf8');
 const nativeCloudConfig = readFileSync(new URL('../../native/src/cloud_config.cpp', import.meta.url), 'utf8');
 const updateCadenceMigration = readFileSync(
@@ -133,8 +134,9 @@ test('device exchange isolates HTTP CPU while preserving telemetry-before-sync o
   assert.match(deviceSyncCoordinator, /DEVICE_SYNC_MANIFEST_KEY/);
 });
 
-test('video liveness is hourly, bounded, and owned by the unified Worker', () => {
-  assert.deepEqual(cloudConfig.triggers.crons, ['0 * * * *']);
+test('video liveness is hourly, bounded, and owned by the lightweight dispatcher', () => {
+  assert.equal(cloudConfig.triggers, undefined);
+  assert.deepEqual(schedulerConfig.triggers?.crons, ['0 * * * *']);
   assert.match(livenessSchedule, /LIVENESS_INTERVAL_SECONDS = 60 \* 60/);
   assert.match(livenessMonitor, /LIVENESS_BATCH_SIZE = 5/);
   assert.match(livenessMonitor, /PROBE_CONCURRENCY = 5/);
