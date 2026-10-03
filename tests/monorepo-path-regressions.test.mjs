@@ -11,7 +11,7 @@ test('HomePanel production observability uses monorepo paths', () => {
 
   assert.match(
     observability,
-    /D1_CONFIG_GLOBS: worker\/wrangler\*\.jsonc,site\/wrangler\.jsonc,hp\/cloud\/wrangler\.jsonc/,
+    /D1_CONFIG_GLOBS: worker\/wrangler\*\.jsonc,site\/wrangler\.jsonc,hp\/cloud\/wrangler\*\.jsonc/,
   );
   assert.match(observability, /python3 \.github\/scripts\/query-cloudflare-d1-costs\.py/);
   assert.doesNotMatch(observability, /npm ci --prefix (?:hp\/)?cloud/);
