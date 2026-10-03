@@ -5,7 +5,7 @@ import {
   setNotice,
   setText,
 } from './dashboard-ui-common.js?v=20261001.1';
-import { renderRankHistoryChart } from './dashboard-rank-chart.js?v=20261002.1';
+import { renderRankHistoryChart } from './dashboard-rank-chart.js?v=20261003.1';
 
 const SERVICE_LABELS = Object.freeze({
   genie: 'Genie',
@@ -405,7 +405,7 @@ function renderKugouRankChart({ containerId, legendId, history, coveredDates, ar
     height:320,
     margin:{ left:58, right:18, top:12, bottom:34 },
     yMax:OUT_OF_CHART_RANK,
-    rankTicks:[1, 25, 50, 75, 100, OUT_OF_CHART_RANK],
+    rankTicks:[1, 25, 50, 75, OUT_OF_CHART_RANK],
     dateTickCount:5,
     ariaLabel,
     lineClass:'kugou-rank-line',
