@@ -16,23 +16,15 @@ const migration = readFileSync(
   'utf8',
 );
 
-test('Sakurazaka minute cron is shared, Buddies stays independent, and followers belong to Actions', () => {
+test('Sakurazaka and Buddies each keep an independent collection cron', () => {
   assert.equal(sakurazakaConfig.main, 'src/sakurazaka-followers-entry.js');
   assert.deepEqual(sakurazakaConfig.triggers?.crons, ['* * * * *']);
-  assert.deepEqual(sakurazakaConfig.services, [
-    { binding: 'NOGIZAKA_SCHEDULED', service: 'sh-nogizaka46smej' },
-    { binding: 'OHISAMA_SCHEDULED', service: 'sh-ohisama-collector' },
-    { binding: 'SPOTIFY_PLAYCOUNT_SCHEDULED', service: 'sh-spotify-playcount-collector' },
-  ]);
-  assert.ok(sakurazakaConfig.queues?.producers?.some((item) => (
-    item.binding === 'REGIONAL_MUSIC_QUEUE' && item.queue === 'regional-music-daily'
-  )));
-  assert.match(sakurazakaEntry, /dispatchScheduledService/);
-  assert.match(sakurazakaEntry, /enqueueRegionalMusicDispatch/);
-  assert.match(sakurazakaEntry, /minute % 5 === 1/);
-  assert.match(sakurazakaEntry, /Buddies owns the 00\/05\/10/);
-  assert.match(sakurazakaEntry, /shouldDispatchSpotifyPlaycount/);
-  assert.doesNotMatch(sakurazakaEntry, /SAKURAZAKA_QUEUE\.send/);
+  assert.equal(sakurazakaConfig.services, undefined);
+  assert.equal(sakurazakaConfig.queues?.producers?.some((item) => item.binding === 'REGIONAL_MUSIC_QUEUE'), false);
+  assert.match(sakurazakaEntry, /SAKURAZAKA_CRON = '\* \* \* \* \*'/);
+  assert.doesNotMatch(sakurazakaEntry, /dispatchScheduledService/);
+  assert.doesNotMatch(sakurazakaEntry, /enqueueRegionalMusicDispatch/);
+  assert.doesNotMatch(sakurazakaEntry, /shouldDispatchSpotify/);
   assert.match(sakurazakaEntry, /stationhead_daily_followers_legacy_queue_drained/);
 
   assert.equal(buddiesConfig.main, 'src/buddies-collector-entry.js');
