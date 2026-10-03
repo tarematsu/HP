@@ -124,6 +124,38 @@ function unresolvedRows(rows, indexes) {
   return rows.filter((row) => !preferredCanonical(row, indexes));
 }
 
+async function spotifyIdentityMappings(db, spotifyIds, chunkSize) {
+  const direct = await queryChunked(
+    db,
+    spotifyIds,
+    (chunk) => `SELECT id AS track_id,spotify_id AS alias_value
+      FROM sh_tracks WHERE spotify_id IN (${placeholders(chunk.length)})`,
+    chunkSize,
+  );
+  const directValues = new Set(direct.map((row) => text(row?.alias_value)).filter(Boolean));
+  const unresolvedAliases = spotifyIds.filter((spotifyId) => !directValues.has(spotifyId));
+  if (!unresolvedAliases.length) return direct;
+  const aliases = await queryChunked(
+    db,
+    unresolvedAliases,
+    (chunk) => `SELECT track_id,alias_value
+      FROM sh_track_aliases
+      WHERE alias_type='spotify_id' AND alias_value IN (${placeholders(chunk.length)})`,
+    chunkSize,
+  );
+  return [...direct, ...aliases];
+}
+
+function applySpotifyIdentityMappings(indexes, mappings) {
+  for (const mapping of mappings) {
+    const aliasValue = text(mapping?.alias_value);
+    const trackId = positiveInteger(mapping?.track_id);
+    if (!aliasValue || trackId == null) continue;
+    const canonical = indexes.byTrackId.get(trackId);
+    if (canonical) indexes.bySpotify.set(aliasValue, canonical);
+  }
+}
+
 /**
  * Resolve Pages/read-model song rows to the single canonical identity:
  * sh_tracks.id. Provider IDs remain aliases only and are used as a bounded
@@ -198,9 +230,21 @@ export async function canonicalizeTrackRows(
       .map((row) => text(row?.spotify_id))
       .filter(Boolean))];
     if (spotifyIds.length) {
-      canonicalRows.push(...await queryChunked(db, spotifyIds, (chunk) => `SELECT track_id,NULL AS stationhead_track_id,isrc,spotify_id,title,artist,thumbnail_url
-        FROM sh_track_canonical_metadata WHERE track_id IS NOT NULL AND spotify_id IN (${placeholders(chunk.length)})`, boundedChunkSize));
-      indexes = canonicalIndexes(canonicalRows);
+      // The canonical metadata view derives spotify_id through joins/COALESCE,
+      // so filtering the view by spotify_id forces large scans in D1. Resolve
+      // identity through indexed sh_tracks / sh_track_aliases first, then read
+      // the canonical view only by its track_id key.
+      const spotifyMappings = await spotifyIdentityMappings(db, spotifyIds, boundedChunkSize);
+      const mappedTrackIds = [...new Set(spotifyMappings
+        .map((row) => positiveInteger(row?.track_id))
+        .filter(Boolean))]
+        .filter((trackId) => !indexes.byTrackId.has(trackId));
+      if (mappedTrackIds.length) {
+        canonicalRows.push(...await queryChunked(db, mappedTrackIds, (chunk) => `SELECT track_id,NULL AS stationhead_track_id,isrc,spotify_id,title,artist,thumbnail_url
+          FROM sh_track_canonical_metadata WHERE track_id IN (${placeholders(chunk.length)})`, boundedChunkSize));
+        indexes = canonicalIndexes(canonicalRows);
+      }
+      applySpotifyIdentityMappings(indexes, spotifyMappings);
     }
 
     return applyCanonicalIndexes(rows, indexes);

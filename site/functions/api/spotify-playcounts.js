@@ -27,10 +27,9 @@ export function spotifyArtist(value) {
 
 export function spotifyPlaycountSql() {
   return `WITH latest AS (
-    SELECT MAX(d.snapshot_date) AS snapshot_date
-    FROM sh_spotify_playcount_daily d
-    INNER JOIN sh_spotify_track_targets target ON target.track_id=d.track_id
-    WHERE target.artist_key='sakurazaka46'
+    SELECT MAX(snapshot_date) AS snapshot_date
+    FROM sh_spotify_artist_daily
+    WHERE artist_key='sakurazaka46'
   )
   SELECT
     'sakurazaka46' AS artist_key,
@@ -59,11 +58,10 @@ export function spotifyPlaycountSql() {
 
 export function spotifyPlaycountAllSql() {
   return `WITH latest AS (
-    SELECT target.artist_key,MAX(d.snapshot_date) AS snapshot_date
-    FROM sh_spotify_playcount_daily d
-    INNER JOIN sh_spotify_track_targets target ON target.track_id=d.track_id
-    WHERE target.artist_key IN ('sakurazaka46','nogizaka46','hinatazaka46')
-    GROUP BY target.artist_key
+    SELECT artist_key,MAX(snapshot_date) AS snapshot_date
+    FROM sh_spotify_artist_daily
+    WHERE artist_key IN ('sakurazaka46','nogizaka46','hinatazaka46')
+    GROUP BY artist_key
   )
   SELECT
     target.artist_key,
