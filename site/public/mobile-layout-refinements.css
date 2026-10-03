@@ -11,19 +11,4 @@
     display: none !important;
   }
 
-  #modeTabs.mode-tabs.dashboard-tabs {
-    display: flex;
-    flex-wrap: nowrap;
-    align-items: stretch;
-    overflow-x: auto;
-    overflow-y: hidden;
-  }
-
-  #modeTabs.mode-tabs.dashboard-tabs > button {
-    flex: 0 0 auto;
-    width: auto;
-    min-height: 44px;
-    padding: 6px 9px;
-    white-space: nowrap;
-  }
 }

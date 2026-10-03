@@ -11,3 +11,5 @@ const BASE_TABS = Object.freeze([
 ]);
 
 for (const tab of BASE_TABS) mountDashboardTab(tab);
+
+document.getElementById('modeTabs')?.classList.add('stationhead-subtabs');

@@ -19,7 +19,7 @@ function assetVersion(source, asset) {
   return match[1];
 }
 
-test('dashboard ships one CSS and one JavaScript browser asset', () => {
+test('dashboard HTML references one CSS and one JavaScript entry', () => {
   const styles = [...html.matchAll(/<link\s+rel="stylesheet"\s+href="([^"]+)"/g)].map((match) => match[1]);
   const modules = [...html.matchAll(/<script\s+type="module"\s+src="([^"]+)"/g)].map((match) => match[1]);
   assert.equal(styles.length, 1);
@@ -34,10 +34,10 @@ test('dashboard ships one CSS and one JavaScript browser asset', () => {
 });
 
 test('build only bundles and minifies the source-owned module and style graph', () => {
-  assert.match(buildScript, /entryPoints:\s*\[resolve\(publicRoot, 'dashboard-metrics\.js'\)\]/);
-  assert.match(buildScript, /outfile:\s*resolve\(assetsDir, 'dashboard\.min\.js'\)/);
+  assert.match(buildScript, /entryPoints:\s*\{ 'dashboard\.min': resolve\(publicRoot, 'dashboard-metrics\.js'\) \}/);
+  assert.match(buildScript, /outdir:\s*assetsDir/);
   assert.match(buildScript, /bundle:\s*true/);
-  assert.match(buildScript, /splitting:\s*false/);
+  assert.match(buildScript, /splitting:\s*true/);
   assert.match(buildScript, /minify:\s*true/);
   assert.match(buildScript, /outfile:\s*resolve\(assetsDir, 'dashboard\.min\.css'\)/);
   for (const css of [

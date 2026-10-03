@@ -7,7 +7,7 @@ const currentShell = readFileSync(new URL('../public/current-shell.js', import.m
 const playbackShell = readFileSync(new URL('../public/stationhead-playback-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/hinata-channel-tabs.js', import.meta.url), 'utf8');
 const stationheadTabs = readFileSync(new URL('../public/stationhead-channel-tabs.js', import.meta.url), 'utf8');
-const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
+const sharedCss = readFileSync(new URL('../public/dashboard-navigation.css', import.meta.url), 'utf8') + readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 
 test('Ohisama exposes the shared five Stationhead subtabs', () => {
   assert.match(shell, /\/hinata-channel-tabs\.js\?v=/);
@@ -28,7 +28,7 @@ test('Ohisama exposes the shared five Stationhead subtabs', () => {
 
 test('Stationhead subtabs share one layout and panel spacing contract', () => {
   assert.match(sharedCss, /\.stationhead-subtabs\s*\{[^}]*grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\)/s);
-  assert.match(sharedCss, /\.stationhead-subtabs\s*>\s*button\s*\{[^}]*min-height:\s*40px/s);
+  assert.match(sharedCss, /\.stationhead-subtabs\s*>\s*button\s*\{[^}]*min-height:\s*44px/s);
   assert.match(sharedCss, /\.stationhead-channel-panel\s*\{[^}]*gap:\s*var\(--pages-view-gap, 12px\)/s);
   assert.match(sharedCss, /@media \(max-width: 760px\)[\s\S]*\.stationhead-channel-panel\s*\{[^}]*--pages-view-gap-mobile/s);
 });

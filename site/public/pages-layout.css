@@ -62,29 +62,6 @@
   line-height: 1.35 !important;
 }
 
-/* One row at every width; smaller screens scroll the navigation itself. */
-#modeTabs.mode-tabs.dashboard-tabs {
-  display: flex;
-  gap: 2px;
-  width: 100%;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  overflow-x: auto;
-  scrollbar-width: thin;
-  overscroll-behavior-inline: contain;
-}
-
-#modeTabs.mode-tabs.dashboard-tabs > button {
-  flex: 1 0 auto;
-  width: auto;
-  min-height: 40px;
-  padding: 8px 10px;
-  font-size: .875rem;
-  white-space: nowrap;
-  overflow-wrap: normal;
-}
-
 .metrics,
 .summary-cards {
   gap: 8px !important;
@@ -416,12 +393,6 @@
   #updated {
     font-size: 12px !important;
     white-space: nowrap !important;
-  }
-
-  #modeTabs.mode-tabs.dashboard-tabs > button {
-    flex: 0 0 auto;
-    min-height: 44px;
-    font-size: 12px;
   }
 
   .dashboard-view {

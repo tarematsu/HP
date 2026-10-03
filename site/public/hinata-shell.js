@@ -12,7 +12,7 @@ import {
 const liveLegend = dashboardLegend({
   items: [
     '<span class="online-key">オンライン</span>',
-    '<span class="stream-key">再生数増加</span>',
+    '<span class="stream-growth-key">再生数増加</span>',
   ],
 });
 
@@ -37,7 +37,7 @@ mountDashboardShell({
     html: `
       ${dashboardNotice({ id: 'hinataNotice' })}
       ${dashboardMetrics([
-        dashboardMetric({ label: 'オンライン', valueId: 'hinataOnline', value: '—', className: 'featured' }),
+        dashboardMetric({ label: 'オンライン数', valueId: 'hinataOnline', value: '—', className: 'featured' }),
         dashboardMetric({ label: '総再生数', valueId: 'hinataStreams', value: '—' }),
         dashboardMetric({ label: '総メンバー数', valueId: 'hinataMembers', value: '—' }),
       ], { ariaLabel: '日向坂 Stationhead 最新値' })}
@@ -73,7 +73,5 @@ mountDashboardShell({
   },
 });
 
-const extension = document.createElement('script');
-extension.type = 'module';
-extension.src = '/hinata-channel-tabs.js?v=20261001.2';
-document.head.append(extension);
+// Mount after the base shell exists; share helpers through the bundled module graph.
+void import('./hinata-channel-tabs.js?v=20261003.4');
