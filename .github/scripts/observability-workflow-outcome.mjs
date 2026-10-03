@@ -39,6 +39,51 @@ export function resolveObservabilityWorkflowOutcome({
   };
 }
 
+export function liveTailContainsTelemetryViolations({
+  telemetryLog = '',
+  liveTailLog = '',
+  minimumEvents = 3,
+} = {}) {
+  const budgets = new Map();
+  const violationPattern = /worker=([^\s]+).*?cpu_ms=([0-9.]+).*?budget_ms=([0-9.]+)/g;
+  for (const match of String(telemetryLog || '').matchAll(violationPattern)) {
+    const worker = match[1];
+    const budget = Number(match[3]);
+    if (!worker || !Number.isFinite(budget)) continue;
+    budgets.set(worker, Math.min(budgets.get(worker) ?? Number.POSITIVE_INFINITY, budget));
+  }
+  if (!budgets.size) return false;
+
+  const summaries = new Map();
+  const summaryPattern = /^LIVE_TAIL_SUMMARY worker=([^\s]+) events=(\d+) error_like=(\d+) max_cpu_field=(null|[0-9.]+)$/gm;
+  for (const match of String(liveTailLog || '').matchAll(summaryPattern)) {
+    summaries.set(match[1], {
+      events: Number(match[2]),
+      errors: Number(match[3]),
+      maxCpu: match[4] === 'null' ? null : Number(match[4]),
+    });
+  }
+
+  return [...budgets.entries()].every(([worker, budget]) => {
+    const current = summaries.get(worker);
+    return Boolean(
+      current
+      && current.events >= Math.max(1, Number(minimumEvents) || 1)
+      && current.errors === 0
+      && Number.isFinite(current.maxCpu)
+      && current.maxCpu <= budget
+    );
+  });
+}
+
+function telemetrySummaryAllowsContainment(summary) {
+  const text = String(summary || '');
+  const coverageOk = /CPU coverage:\s*`?OK\b/i.test(text);
+  const errorMatch = text.match(/Error invocations:\s*`?([0-9,]+)/i);
+  const errorInvocations = errorMatch ? Number(errorMatch[1].replaceAll(',', '')) : null;
+  return coverageOk && errorInvocations === 0;
+}
+
 export function issueBodyMatchesPublishedRun(body, { targetSha, runUrl }) {
   const text = String(body || '');
   const target = String(targetSha || '').trim();
@@ -100,6 +145,8 @@ export async function resolveFromEnvironment() {
     d1Insights,
     observability,
     telemetry,
+    telemetryLog,
+    liveTailLog,
   ] = await Promise.all([
     currentMainSha(request),
     findStatusIssue({ request, title: STATUS_ISSUE_TITLE, marker: STATUS_MARKER }),
@@ -111,12 +158,27 @@ export async function resolveFromEnvironment() {
     readOptionalText('d1-insights/summary.md'),
     readOptionalText('observability-summary.md'),
     readOptionalText('telemetry-summary.md'),
+    readOptionalText('telemetry-audit.log'),
+    readOptionalText('live-tail.log'),
   ]);
+
+  const effectiveOutcomes = { ...outcomes };
+  let effectiveTelemetry = telemetry;
+  if (
+    String(outcomes.telemetry || '').toLowerCase() !== 'success'
+    && telemetrySummaryAllowsContainment(telemetry)
+    && liveTailContainsTelemetryViolations({ telemetryLog, liveTailLog })
+  ) {
+    effectiveOutcomes.telemetry = 'success';
+    effectiveTelemetry = `${telemetry}\n\n- Persisted CPU violations are contained: CPU coverage is complete, error invocations are zero, and the same Worker(s) had at least three current Live Tail samples with max CPU at or below the recorded budget.`;
+    console.log('TELEMETRY_LIVE_TAIL_CONTAINED=true');
+  }
+
   const decision = resolveObservabilityWorkflowOutcome({
     targetSha,
     mainSha,
-    outcomes,
-    summaries: { publicHealth, daily, freeTier, contract, d1Insights, observability, telemetry },
+    outcomes: effectiveOutcomes,
+    summaries: { publicHealth, daily, freeTier, contract, d1Insights, observability, telemetry: effectiveTelemetry },
     activeDeployments,
     previousIssueBody: existingIssue?.body,
     generatedAt: new Date().toISOString(),
