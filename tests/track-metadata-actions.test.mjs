@@ -54,10 +54,10 @@ test('Actions repair uses the shared Spotify resolver before the iTunes fallback
   assert.match(script, /thumbnailUrl \|\|= text\(apple\?\.artworkUrl100\)/);
 });
 
-test('Actions repair retries name-incomplete rows after fifteen minutes without increasing artwork retry frequency', () => {
+test('Actions repair retries every incomplete presentation, including missing artwork, after fifteen minutes', () => {
   assert.match(script, /PRESENTATION_RETRY_MS = 15 \* 60_000/);
   assert.match(script, /const retryMs = presentationComplete\(row\) \? refreshMs : PRESENTATION_RETRY_MS/);
-  assert.match(script, /TRACK_METADATA_REFRESH_MS/);
+  assert.match(workflow, /TRACK_METADATA_REFRESH_MS: '900000'/);
 });
 
 test('Actions repair prefers existing buddies metadata before bounded Spotify fetches', () => {
