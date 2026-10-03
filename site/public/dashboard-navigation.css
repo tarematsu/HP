@@ -71,11 +71,18 @@
 
 .dashboard-source-tabs > button,
 .dashboard-source-row > button {
-  flex: 1 1 0;
   min-height: 36px;
   padding: 6px 10px;
   border-bottom: 2px solid transparent;
   font-size: .875rem;
+}
+
+.dashboard-source-tabs > button {
+  flex: 1 1 0;
+}
+
+.dashboard-source-row > button {
+  flex: 0 0 auto;
 }
 
 .dashboard-source-tabs > button.active,

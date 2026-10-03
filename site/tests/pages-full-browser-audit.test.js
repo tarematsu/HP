@@ -39,6 +39,7 @@ test('production browser audit captures desktop tablet and mobile layouts', () =
   assert.match(audit, /name: 'tablet', width: 820, height: 1180/);
   assert.match(audit, /name: 'mobile', width: 390, height: 844/);
   assert.match(audit, /name: 'mobile-compact', width: 320, height: 720/);
+  assert.equal((audit.match(/modes: MODES\.map\(\(\{ name \}\) => name\)/g) || []).length, 4);
   assert.match(audit, /horizontalOverflow/);
   assert.match(audit, /clippedTabs/);
   assert.match(audit, /clippedWithoutScroll/);
@@ -51,7 +52,8 @@ test('production browser audit captures desktop tablet and mobile layouts', () =
 });
 
 test('production browser audit checks rendered data quality without brittle service headings', () => {
-  assert.match(audit, /requiredText: '総週数'/);
+  assert.match(audit, /requiredText: '更新周期'/);
+  assert.doesNotMatch(audit, /requiredText: '総週数'/);
   assert.match(audit, /malformedTokens/);
   assert.match(audit, /'NaN'/);
   assert.match(audit, /'undefined'/);
@@ -74,7 +76,7 @@ test('compact production audit follows the current routes and scrollable navigat
   assert.doesNotMatch(compactAudit, /name: 'monthly'/);
   assert.doesNotMatch(compactAudit, /path: '\/#weekly'/);
   assert.doesNotMatch(compactAudit, /path: '\/#monthly'/);
-  assert.match(compactAudit, /requiredText: '総週数'/);
+  assert.match(compactAudit, /requiredText: '更新周期'/);
   assert.match(compactAudit, /additionalRequiredText: '比較対象'/);
   assert.match(compactAudit, /navigationScrollable/);
   assert.match(compactAudit, /selectedTabClipped/);
