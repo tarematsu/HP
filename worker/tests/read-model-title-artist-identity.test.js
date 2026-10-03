@@ -9,7 +9,7 @@ function db() {
       return {
         bind() { return this; },
         async all() {
-          if (sql.includes('FROM sh_track_canonical_metadata')) {
+          if (sql.includes('FROM sh_tracks') || sql.includes('FROM sh_track_dictionary')) {
             return { results: [{
               track_id: 1,
               spotify_id: 'spotify-known',
