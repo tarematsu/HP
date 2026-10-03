@@ -92,7 +92,8 @@ export async function collectKkboxJapaneseHistory({
   const done = completedKeys(view);
   const requests = [];
   for (const chart of chartsFor({ territories, periods, types })) {
-    for (const requestedDate of kkboxBackfillRequestDates(start, end, chart.period)) {
+    const dates = kkboxBackfillRequestDates(start, end, chart.period).reverse();
+    for (const requestedDate of dates) {
       if (!done.has(requestKey(chart, requestedDate))) requests.push({ chart, requestedDate });
     }
   }
