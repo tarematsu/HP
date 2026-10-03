@@ -3,7 +3,7 @@ import {
   dashboardNotice,
   dashboardTable,
   mountDashboardShell,
-} from './dashboard-ui-common.js?v=20261001.1';
+} from './dashboard-ui-common.js?v=20261004.1';
 import {
   musicServiceMeta,
   musicServiceSection,
@@ -76,6 +76,8 @@ function artistFilterButtons(prefix, label) {
     dataAttribute: `${prefix}-artist-filter`,
     className: 'regional-chart-filter',
     ariaLabel: label,
+    role: 'group',
+    selection: 'pressed',
   });
 }
 
