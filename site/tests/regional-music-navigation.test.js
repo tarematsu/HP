@@ -65,6 +65,7 @@ test('music subscriptions render all visible services directly without category 
   assert.match(tabs, /subscriptionSourceTabsTemplate/);
   assert.match(css, /\.dashboard-source-tabs\.is-multiline/);
   assert.match(css, /\.dashboard-source-row/);
+  assert.match(css, /\.dashboard-source-row > button \{[^}]*flex:\s*0 0 auto/s);
   assert.doesNotMatch(css, /dashboard-subscription-groups|data-subscription-group-content|dashboard-source-group/);
 });
 
@@ -152,6 +153,8 @@ test('YouTube Music uses its service-scoped R2 read model and renders public met
   assert.match(youtubeShell, /月間視聴者/);
   assert.match(youtubeShell, /総視聴回数/);
   assert.match(youtubeShell, /youtubeMusicReleaseBody/);
+  assert.match(youtubeRuntime, /text\.toLowerCase\(\) === 'unknown' \? '-' : text/);
+  assert.match(youtubeRuntime, /optionalText\(item\.release_type\)/);
   assert.doesNotMatch(youtubeRuntime, /タブのみ先行追加|専用収集\/read model接続後/);
 });
 
