@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 import { formatNogizakaBroadcastContent } from '../functions/api/nogizaka-listening-party.js';
 
 const shell = readFileSync(new URL('../public/nogizaka-listening-party-shell.js', import.meta.url), 'utf8');
@@ -98,4 +99,31 @@ test('Nogizaka producer builds the listening-party model from bounded D1 read mo
   assert.match(publisher, /event_name: `\$\{day\.replaceAll\('-', ''\)\} \$\{row\.broadcast_content\}`/);
   assert.match(publisher, /source = readSeries/);
   assert.match(publisher, /refresh_hint_ms: NOGIZAKA_LISTENING_PARTY_CADENCE_SECONDS \* 1000/);
+});
+
+
+test('Nogizaka empty chart collapses and restores the canvas when points arrive', () => {
+  const nodes = new Map([
+    ['nogizakaPartyChart', { hidden: false, clientWidth: 320, clientHeight: 280, getBoundingClientRect: () => ({ width: 320 }) }],
+    ['nogizakaPartyLegend', { replaceChildren() {} }],
+    ['nogizakaPartyChartEnd', { textContent: '' }],
+    ['nogizakaPartyChartEmpty', { hidden: true }],
+    ['nogizakaPartyChartAxis', { hidden: false }],
+  ]);
+  let preparations = 0;
+  const context = {
+    byId: (id) => nodes.get(id),
+    prepareDashboardCanvas() { preparations += 1; return null; },
+  };
+  const draw = runtime.slice(runtime.indexOf('function drawChart('), runtime.indexOf('function exportCsv('));
+  runInNewContext(`${draw}; drawChart({});`, context);
+  assert.equal(nodes.get('nogizakaPartyChart').hidden, true);
+  assert.equal(nodes.get('nogizakaPartyChartEmpty').hidden, false);
+  assert.equal(nodes.get('nogizakaPartyChartAxis').hidden, true);
+  assert.equal(preparations, 0);
+  runInNewContext(`${draw}; drawChart({ series: [{ points: [[0, 10]] }] });`, context);
+  assert.equal(nodes.get('nogizakaPartyChart').hidden, false);
+  assert.equal(nodes.get('nogizakaPartyChartEmpty').hidden, true);
+  assert.equal(nodes.get('nogizakaPartyChartAxis').hidden, false);
+  assert.equal(preparations, 1);
 });

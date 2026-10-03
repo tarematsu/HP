@@ -156,6 +156,19 @@ function drawChart(payload) {
   const legend = byId('nogizakaPartyLegend');
   const endLabel = byId('nogizakaPartyChartEnd');
   if (!canvas || !legend || !endLabel) return;
+  const series = payload?.series?.[0];
+  const points = Array.isArray(series?.points) ? series.points : [];
+  const empty = byId('nogizakaPartyChartEmpty');
+  const axis = byId('nogizakaPartyChartAxis');
+  canvas.hidden = !points.length;
+  if (empty) empty.hidden = Boolean(points.length);
+  if (axis) axis.hidden = !points.length;
+  legend.replaceChildren();
+  if (!points.length) {
+    endLabel.textContent = '-';
+    return;
+  }
+
   const measuredWidth = Math.max(320, Math.round(canvas.getBoundingClientRect().width || canvas.clientWidth || 960));
   const targetHeight = Math.max(260, Math.round(canvas.clientHeight || 360));
   const prepared = prepareDashboardCanvas(canvas, {
@@ -166,18 +179,6 @@ function drawChart(payload) {
   });
   if (!prepared) return;
   const { context, width, height } = prepared;
-  const series = payload?.series?.[0];
-  const points = Array.isArray(series?.points) ? series.points : [];
-  legend.replaceChildren();
-
-  if (!points.length) {
-    context.fillStyle = '#667287';
-    context.font = '14px system-ui';
-    context.textAlign = 'center';
-    context.fillText('公式リスパ開始後に同接推移を表示します', width / 2, height / 2);
-    endLabel.textContent = '-';
-    return;
-  }
 
   const maxMinute = Math.max(1, ...points.map((point) => finite(point?.[0]) || 0));
   const maxListenerValue = Math.max(1, ...points.map((point) => finite(point?.[1]) || 0));
