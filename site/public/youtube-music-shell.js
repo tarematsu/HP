@@ -23,7 +23,7 @@ const releaseTable = dashboardTable({
 
 const trackTable = dashboardTable({
   className: 'regional-music-table music-service-track-table',
-  headers: ['アーティスト', '曲名', 'アルバム', 'videoId'],
+  headers: ['アーティスト', '曲名', '再生数', 'アルバム', 'videoId'],
   bodyId: 'youtubeMusicTrackBody',
 });
 
