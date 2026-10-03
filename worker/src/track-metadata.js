@@ -83,7 +83,7 @@ async function fetchSpotifyPage(spotifyUrl, config) {
 }
 
 export async function fetchTrackMetadata(track, config) {
-  const spotifyId = track?.spotify_id;
+  const spotifyId = String(track?.spotify_id || '').trim();
   if (!spotifyId) return null;
 
   const spotifyUrl = `https://open.spotify.com/track/${encodeURIComponent(spotifyId)}`;
@@ -101,18 +101,20 @@ export async function fetchTrackMetadata(track, config) {
     const artist = String(spotify.author_name || spotify.author || '').trim()
       || parsed.artist
       || null;
-    return {
-      spotify_id: spotifyId,
-      isrc: normalizedIsrc(track?.isrc),
-      spotify_url: spotifyUrl,
-      title,
-      artist,
-      display_title: title && artist ? `${title} — ${artist}` : parsed.displayTitle,
-      thumbnail_url: spotify.thumbnail_url || null,
-      source: 'spotify_oembed',
-      fetched_at: Date.now(),
-      raw: { spotify },
-    };
+    if (title && artist) {
+      return {
+        spotify_id: spotifyId,
+        isrc: normalizedIsrc(track?.isrc),
+        spotify_url: spotifyUrl,
+        title,
+        artist,
+        display_title: `${title} — ${artist}`,
+        thumbnail_url: spotify.thumbnail_url || null,
+        source: 'spotify_oembed',
+        fetched_at: Date.now(),
+        raw: { spotify },
+      };
+    }
   }
 
   const page = await fetchSpotifyPage(spotifyUrl, config);
@@ -124,36 +126,40 @@ export async function fetchTrackMetadata(track, config) {
     title: page.title,
     artist: page.artist,
     display_title: page.displayTitle || `${page.title} — ${page.artist}`,
-    thumbnail_url: page.thumbnail_url || null,
+    thumbnail_url: spotify?.thumbnail_url || page.thumbnail_url || null,
     // Keep the existing authoritative source class. raw.spotify_page records
-    // that the public track page, rather than oEmbed, supplied the metadata.
+    // that the public track page, rather than oEmbed, supplied the presentation.
     source: 'spotify_oembed',
     fetched_at: Date.now(),
     raw: {
-      spotify: null,
+      spotify: spotify || null,
       spotify_page: { title: page.rawTitle, thumbnail_url: page.thumbnail_url || null },
     },
   };
 }
 
-function completeMetadata(value, spotifyId = '') {
+function presentationComplete(value, spotifyId = '') {
   const title = String(value?.title || '').trim();
   const artist = String(value?.artist || '').trim();
-  const thumbnailUrl = String(value?.thumbnail_url || '').trim();
   return Boolean(
-    title && artist && thumbnailUrl
+    title && artist
     && title !== spotifyId
     && artist !== spotifyId
     && !/^JP[A-Z0-9]{8,}$/i.test(artist),
   );
 }
 
+function completeMetadata(value, spotifyId = '') {
+  const thumbnailUrl = String(value?.thumbnail_url || '').trim();
+  return presentationComplete(value, spotifyId) && Boolean(thumbnailUrl);
+}
+
 export function metadataNeedsRefresh(value, spotifyId = '', now = Date.now()) {
   if (completeMetadata(value, spotifyId)) return false;
   const fetchedAt = Number(value?.fetched_at || 0);
-  return !Number.isFinite(fetchedAt)
-    || fetchedAt <= 0
-    || now - fetchedAt >= RETRY_MS;
+  if (!Number.isFinite(fetchedAt) || fetchedAt <= 0) return true;
+  const retryMs = presentationComplete(value, spotifyId) ? RETRY_MS : FAILURE_RETRY_MS;
+  return now - fetchedAt >= retryMs;
 }
 
 export function isrcMetadataRepairRows(rows, now = Date.now()) {
@@ -328,7 +334,8 @@ export async function enrichTracks(env, ingestFn, queue, observedAt, config) {
     const storedItem = storedById.get(spotifyId);
     if (!metadataNeedsRefresh(storedItem, spotifyId, now)) {
       const fetchedAt = Number(storedItem?.fetched_at || now);
-      cacheMetadataState(spotifyId, Math.max(now + 60_000, fetchedAt + RETRY_MS), storedItem);
+      const retryMs = presentationComplete(storedItem, spotifyId) ? RETRY_MS : FAILURE_RETRY_MS;
+      cacheMetadataState(spotifyId, Math.max(now + 60_000, fetchedAt + retryMs), storedItem);
       return false;
     }
     return true;
@@ -355,7 +362,11 @@ export async function enrichTracks(env, ingestFn, queue, observedAt, config) {
       const spotifyId = String(item.spotify_id);
       cacheMetadataState(
         spotifyId,
-        completeMetadata(item, spotifyId) ? now + COMPLETE_CACHE_MS : now + RETRY_MS,
+        completeMetadata(item, spotifyId)
+          ? now + COMPLETE_CACHE_MS
+          : presentationComplete(item, spotifyId)
+            ? now + RETRY_MS
+            : now + FAILURE_RETRY_MS,
         item,
       );
       detailRows.set(spotifyId, item);

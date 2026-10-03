@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 
 import { isrcMetadataRepairRows, metadataNeedsRefresh } from '../src/shared.js';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
+const DAY_MS = 24 * 60 * MINUTE_MS;
 const source = readFileSync(new URL('../src/track-metadata.js', import.meta.url), 'utf8');
 
 test('complete metadata never needs a refresh', () => {
@@ -25,20 +26,41 @@ test('metadata without artwork is incomplete', () => {
   }, 'spotify-track', DAY_MS * 10), true);
 });
 
-test('recent incomplete metadata is not fetched every minute', () => {
+test('recent name-incomplete metadata is not fetched every minute', () => {
   const now = DAY_MS * 10;
   assert.equal(metadataNeedsRefresh({
     title: 'Interlude #1',
     artist: null,
-    fetched_at: now - 60_000,
+    fetched_at: now - MINUTE_MS,
   }, 'spotify-track', now), false);
 });
 
-test('incomplete metadata is retried after one day', () => {
+test('name-incomplete metadata is retried after fifteen minutes', () => {
   const now = DAY_MS * 10;
   assert.equal(metadataNeedsRefresh({
     title: 'Interlude #1',
     artist: null,
+    fetched_at: now - 14 * MINUTE_MS,
+  }, 'spotify-track', now), false);
+  assert.equal(metadataNeedsRefresh({
+    title: 'Interlude #1',
+    artist: null,
+    fetched_at: now - 15 * MINUTE_MS,
+  }, 'spotify-track', now), true);
+});
+
+test('artwork-only incompleteness keeps the low-frequency daily retry', () => {
+  const now = DAY_MS * 10;
+  assert.equal(metadataNeedsRefresh({
+    title: 'Interlude #1',
+    artist: '櫻坂46',
+    thumbnail_url: null,
+    fetched_at: now - 15 * MINUTE_MS,
+  }, 'spotify-track', now), false);
+  assert.equal(metadataNeedsRefresh({
+    title: 'Interlude #1',
+    artist: '櫻坂46',
+    thumbnail_url: null,
     fetched_at: now - DAY_MS,
   }, 'spotify-track', now), true);
 });
