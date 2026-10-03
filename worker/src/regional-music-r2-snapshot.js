@@ -16,6 +16,27 @@ function regionalTrackKey(row) {
   return `${row?.service || ''}/${row?.service_track_id || ''}`;
 }
 
+function canonicalizePayloadTrackIds(payload) {
+  if (!payload || typeof payload !== 'object') return payload;
+  const result={...payload};
+  const trackIds=new Map();
+  if (Array.isArray(payload.tracks)) {
+    result.tracks=payload.tracks.map(row=>{
+      const trackId=positiveTrackId(row?.track_id ?? row?.canonical_track_id);
+      if (trackId!=null) trackIds.set(regionalTrackKey(row),trackId);
+      return trackId==null ? row : {...row,track_id:trackId,canonical_track_id:trackId};
+    });
+  }
+  const attachTrackId=rows=>rows.map(row=>{
+    const trackId=positiveTrackId(row?.track_id ?? row?.canonical_track_id)
+      ?? trackIds.get(regionalTrackKey(row));
+    return trackId==null ? row : {...row,track_id:trackId};
+  });
+  if (Array.isArray(payload.playlist_memberships)) result.playlist_memberships=attachTrackId(payload.playlist_memberships);
+  if (Array.isArray(payload.artist_track_orders)) result.artist_track_orders=attachTrackId(payload.artist_track_orders);
+  return result;
+}
+
 async function canonicalizeSnapshotTracks(env,data) {
   if (!data?.tracks?.size) return;
   for (const [key,row] of data.tracks) {
@@ -94,18 +115,19 @@ export function regionalSnapshotFromPayload(payload,service) {
 }
 
 export function mergeRegionalR2Snapshot(payload,snapshot) {
-  if(snapshot?.version!==1 || !regionalMusicService(snapshot.service) || !Array.isArray(snapshot.tracks) || snapshot.state?.service!==snapshot.service || !Number.isFinite(snapshot.updated_at)) return payload;
+  const canonicalPayload=canonicalizePayloadTrackIds(payload);
+  if(snapshot?.version!==1 || !regionalMusicService(snapshot.service) || !Array.isArray(snapshot.tracks) || snapshot.state?.service!==snapshot.service || !Number.isFinite(snapshot.updated_at)) return canonicalPayload;
   const service=snapshot.service;
   const replace=(rows,next)=>[...(rows || []).filter(row=>row.service!==service),...(next || [])];
-  const existing=(payload.services || []).find(row=>row.service===service);
-  if(existing?.storage==='r2' && existing.updated_at>snapshot.updated_at) return payload;
+  const existing=(canonicalPayload.services || []).find(row=>row.service===service);
+  if(existing?.storage==='r2' && existing.updated_at>snapshot.updated_at) return canonicalPayload;
   const definition=regionalMusicService(service);
-  const result={...payload,updated_at:Math.max(payload.updated_at || 0,snapshot.updated_at),services:replace(payload.services,[{...snapshot.state,storage:'r2',region:definition.region,phase:definition.phase,metrics:[...definition.metrics]}])};
+  const result={...canonicalPayload,updated_at:Math.max(canonicalPayload.updated_at || 0,snapshot.updated_at),services:replace(canonicalPayload.services,[{...snapshot.state,storage:'r2',region:definition.region,phase:definition.phase,metrics:[...definition.metrics]}])};
   for(const field of fields) {
     if(Array.isArray(snapshot.authoritative_fields) && !snapshot.authoritative_fields.includes(field)) continue;
     // An initial discovery outage reports health without erasing legacy observations.
     if(!snapshot.authoritative_fields && snapshot.state.status==='error' && !snapshot[field]?.length) continue;
-    result[field]=replace(payload[field],snapshot[field]);
+    result[field]=replace(canonicalPayload[field],snapshot[field]);
   }
-  return result;
+  return canonicalizePayloadTrackIds(result);
 }
