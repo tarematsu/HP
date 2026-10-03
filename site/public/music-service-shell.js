@@ -1,5 +1,11 @@
-export function musicServiceMeta({ label = '集計日', valueId } = {}) {
-  return `<div class="music-service-meta">${label} <time${valueId ? ` id="${valueId}"` : ''}>-</time></div>`;
+export function musicServiceMeta({ label = '集計日', valueId, cadence = '' } = {}) {
+  if (!cadence) {
+    return `<div class="music-service-meta">${label} <time${valueId ? ` id="${valueId}"` : ''}>-</time></div>`;
+  }
+  return `<div class="regional-chart-meta music-service-meta">
+    <span>${label} <strong${valueId ? ` id="${valueId}"` : ''}>-</strong></span>
+    <span>更新周期 <strong>${cadence}</strong></span>
+  </div>`;
 }
 
 export function musicServiceSection({ id = '', kicker = '', title = '', bodyHtml = '' } = {}) {
