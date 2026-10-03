@@ -6,11 +6,16 @@ const cloud = JSON.parse(readFileSync(
   new URL('../hp/cloud/wrangler.jsonc', import.meta.url),
   'utf8',
 ));
+const dispatcher = JSON.parse(readFileSync(
+  new URL('../worker/wrangler.cron-dispatcher.jsonc', import.meta.url),
+  'utf8',
+));
 
-test('hourly video Cron persists every integrated Worker invocation for CPU coverage', () => {
-  assert.deepEqual(cloud.triggers?.crons, ['0 * * * *']);
-  assert.equal(cloud.observability?.enabled, true);
-  assert.equal(cloud.observability?.logs?.enabled, true);
-  assert.equal(cloud.observability?.logs?.persist, true);
-  assert.equal(cloud.observability?.logs?.invocation_logs, true);
+test('generic Cron dispatcher persists invocations for CPU coverage', () => {
+  assert.equal(cloud.triggers, undefined);
+  assert.deepEqual(dispatcher.triggers?.crons, ['* * * * *']);
+  assert.equal(dispatcher.observability?.enabled, true);
+  assert.equal(dispatcher.observability?.logs?.enabled, true);
+  assert.equal(dispatcher.observability?.logs?.persist, true);
+  assert.equal(dispatcher.observability?.logs?.invocation_logs, true);
 });
