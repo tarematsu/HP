@@ -26,11 +26,14 @@ function musicServicePlaylistWorkflow() {
   return readFileSync(new URL('../../.github/workflows/refresh-music-service-playlists.yml', import.meta.url), 'utf8');
 }
 
-test('music collector keeps one cron while routing daily 50k and Apple work internally', () => {
+test('music collector receives schedules from the generic dispatcher', () => {
   const value = config();
+  const source = readFileSync(new URL('../src/amazon-music-entry.js', import.meta.url), 'utf8');
   assert.equal(value.name, 'sh-amazon-music-collector');
   assert.equal(value.main, 'src/amazon-music-entry.js');
-  assert.deepEqual(value.triggers.crons, ['0,10,15,20,30,40,50 * * * *']);
+  assert.equal(value.triggers, undefined);
+  assert.match(source, /handleInternalScheduled/);
+  assert.match(source, /AMAZON_MUSIC_CRON/);
   assert.deepEqual(value.d1_databases.map(({ binding }) => binding), ['MINUTE_DB', 'OTHER_DB']);
   assert.equal(value.d1_databases.find(({ binding }) => binding === 'MINUTE_DB')?.database_name, 'stationhead-minute');
   assert.equal(value.d1_databases.find(({ binding }) => binding === 'OTHER_DB')?.database_name, 'stationhead-other');
