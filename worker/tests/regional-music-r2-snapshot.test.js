@@ -69,6 +69,18 @@ test('all regional R2 facts resolve provider aliases to sh_tracks ids',async()=>
   assert.equal(minuteDb.reads,1);
 });
 
+test('D1 fallback payloads expose sh_tracks ids on all track facts without an R2 snapshot',()=>{
+  const payload=mergeRegionalR2Snapshot({
+    tracks:[{service:'melon',service_track_id:'provider-91',canonical_track_id:91,title:'Song'}],
+    playlist_memberships:[{service:'melon',service_playlist_id:'chart',service_track_id:'provider-91',position:3}],
+    artist_track_orders:[{service:'melon',canonical_artist:'sakurazaka46',service_track_id:'provider-91',position:4}],
+    services:[],
+  },null);
+  assert.equal(payload.tracks[0].track_id,91);
+  assert.equal(payload.playlist_memberships[0].track_id,91);
+  assert.equal(payload.artist_track_orders[0].track_id,91);
+});
+
 test('provider failure retains previous records and an empty playlist clears memberships',async()=>{
   const previous={tracks:[{service:'qq_music',service_track_id:'old',plays:5,observed_at:1}],playlist_memberships:[{service:'qq_music',service_playlist_id:'list',service_track_id:'old'}],state:{last_success_at:1}};
   const result=await collectRegionalR2Snapshot({service:'qq_music',now,previous,collect:async env=>{
