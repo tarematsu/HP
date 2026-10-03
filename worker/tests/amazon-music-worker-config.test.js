@@ -13,6 +13,10 @@ function config() {
   return JSON.parse(readFileSync(new URL('../wrangler.amazon-music.jsonc', import.meta.url), 'utf8'));
 }
 
+function daily50kSource() {
+  return readFileSync(new URL('../src/amazon-music-daily-50k.js', import.meta.url), 'utf8');
+}
+
 function trackPlaylistWorkflow() {
   return readFileSync(new URL('../../.github/workflows/refresh-amazon-music-track-playlists.yml', import.meta.url), 'utf8');
 }
@@ -36,12 +40,13 @@ test('music collector keeps one cron while routing daily 50k and Apple work inte
   assert.equal(value.queues, undefined);
 });
 
-test('Amazon ranking scan is limited to 50k with 600 pages per run', () => {
+test('Amazon ranking scan is limited to and includes rank 50,000 with 600 pages per run', () => {
   assert.equal(AMAZON_MUSIC_DAILY_SCAN_TARGET_RANK, 50_000);
   assert.equal(AMAZON_MUSIC_DAILY_SCAN_PAGES_PER_RUN, 600);
+  assert.match(daily50kSource(), /stopRank:\s*AMAZON_MUSIC_DAILY_SCAN_TARGET_RANK/);
 });
 
-test('Amazon schedule has no independent hourly Top500 monitor', () => {
+test('Amazon daily 50k scan starts at 05:00 JST and has no independent hourly Top500 monitor', () => {
   const at = (hour, minute) => Date.UTC(2026, 8, 30, hour, minute, 0);
   const expected = ({ apple = false, daily50kStart = false, daily50kContinue = false } = {}) => ({
     apple,
@@ -49,13 +54,13 @@ test('Amazon schedule has no independent hourly Top500 monitor', () => {
     daily50kContinue,
   });
 
-  assert.deepEqual(amazonMusicDueTasks(at(17, 0)), expected({ daily50kStart: true }));
-  assert.deepEqual(amazonMusicDueTasks(at(17, 12)), expected({ daily50kContinue: true }));
-  assert.deepEqual(amazonMusicDueTasks(at(20, 52)), expected({ daily50kContinue: true }));
-  assert.deepEqual(amazonMusicDueTasks(at(17, 5)), expected());
+  assert.deepEqual(amazonMusicDueTasks(at(20, 0)), expected({ daily50kStart: true }));
+  assert.deepEqual(amazonMusicDueTasks(at(20, 12)), expected({ daily50kContinue: true }));
+  assert.deepEqual(amazonMusicDueTasks(at(23, 52)), expected({ daily50kContinue: true }));
+  assert.deepEqual(amazonMusicDueTasks(at(17, 0)), expected());
   assert.deepEqual(amazonMusicDueTasks(at(3, 5)), expected());
   assert.deepEqual(amazonMusicDueTasks(at(3, 15)), expected({ apple: true }));
-  assert.deepEqual(amazonMusicDueTasks(at(21, 12)), expected());
+  assert.deepEqual(amazonMusicDueTasks(at(0, 12)), expected());
 });
 
 test('active 50k scan restarts only when its Top500 baseline changes', () => {
