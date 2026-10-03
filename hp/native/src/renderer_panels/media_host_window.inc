@@ -55,11 +55,14 @@ LRESULT CALLBACK NativeMediaPanelWndProc(
           KillTimer(hwnd, timerId);
           return 0;
         }
-        if ((timerId == kNativeMediaYoutubeWatchdogTimer ||
-             timerId == kNativeMediaTverWatchdogTimer) &&
-            NativeMediaWatchdogExecutionTimedOut(hwnd, timerId)) {
-          PostMessageW(hwnd, kNativeMediaRecreateMessage, 0, 0);
-          return 0;
+        // A slow ExecuteScript is not a WebView process failure. Expire the
+        // global execution token so a late callback cannot act on old state,
+        // then let NativeMediaPanelHost's phase-local watchdog retry. Recreating
+        // the whole host here resets every timeout to the startup YouTube phase
+        // and can make YouTube/TVer visibly bounce on slower devices.
+        if (timerId == kNativeMediaYoutubeWatchdogTimer ||
+            timerId == kNativeMediaTverWatchdogTimer) {
+          NativeMediaWatchdogExecutionTimedOut(hwnd, timerId);
         }
         if (host->OnTimer(timerId)) return 0;
         break;
