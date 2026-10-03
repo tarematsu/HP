@@ -44,11 +44,12 @@ test('ambiguous titles stay unresolved unless one duplicate has a uniquely stron
   assert.equal(matchRegionalMusicCanonicalTrack('翅膀的记忆', candidates), null);
 });
 
-test('QQ and Kugou resolver uses contained and Korean artist aliases without allocating a parallel identity', async () => {
+test('every regional music service resolves provider aliases to sh_tracks.id', async () => {
   const rows = [
     { id: 13, title: '承認欲求', artist: '櫻坂46', isrc: 'JPU900000013' },
     { id: 1070, title: 'Audition', artist: '坂道選抜, 乃木坂46, 櫻坂46, 日向坂46', isrc: 'JPU902603797' },
     { id: 1218, title: '制服のマネキン', artist: '노기자카46', isrc: 'JPSR01204101' },
+    { id: 1300, title: '青葉のうた', artist: '青葉坂46', isrc: 'JPAOB2600001' },
   ];
   const minuteDb = {
     prepare(sql) {
@@ -67,21 +68,42 @@ test('QQ and Kugou resolver uses contained and Korean artist aliases without all
     service: 'qq_music', service_track_id: 'qq-mid-1', canonical_artist: 'sakurazaka46', title: '承认欲求',
   });
   assert.equal(resolved.canonical_track_id, 13);
+  assert.equal(resolved.track_id, 13);
 
   const audition = await resolveRegionalMusicCanonicalTrack(env, {
     service: 'kugou_music', service_track_id: 'kg-audition', canonical_artist: 'nogizaka46', title: 'Audition',
   });
   assert.equal(audition.canonical_track_id, 1070);
+  assert.equal(audition.track_id, 1070);
 
   const mannequin = await resolveRegionalMusicCanonicalTrack(env, {
     service: 'qq_music', service_track_id: 'qq-mannequin', canonical_artist: 'nogizaka46', title: '制服のマネキン',
   });
   assert.equal(mannequin.canonical_track_id, 1218);
 
-  const untouched = await resolveRegionalMusicCanonicalTrack(env, {
-    service: 'netease_cloud_music', service_track_id: 'netease-1', canonical_artist: 'sakurazaka46', title: '承認欲求',
+  for (const service of [
+    'genie','bugs','joox','nhaccuatui','anghami','netease_cloud_music','melon','kkbox',
+    'naver_vibe','flo','yandex_music','boomplay','plern','fungjai','zing_mp3','jiosaavn',
+    'gaana','langit_musik',
+  ]) {
+    const result = await resolveRegionalMusicCanonicalTrack(env, {
+      service, service_track_id: `${service}-1`, canonical_artist: 'sakurazaka46', title: '承認欲求',
+    });
+    assert.equal(result.track_id, 13, service);
+    assert.equal(result.canonical_track_id, 13, service);
+  }
+
+  const youtube = await resolveRegionalMusicCanonicalTrack(env, {
+    service: 'youtube_music', service_track_id: 'youtube-1', canonical_artist: 'aobazaka46', title: '青葉のうた',
   });
-  assert.equal(untouched.canonical_track_id, undefined);
+  assert.equal(youtube.track_id, 1300);
+  assert.equal(youtube.canonical_track_id, 1300);
+
+  const preResolved = await resolveRegionalMusicCanonicalTrack({}, {
+    service: 'melon', canonical_track_id: 99, service_track_id: 'melon-99',
+  });
+  assert.equal(preResolved.track_id, 99);
+  assert.equal(preResolved.canonical_track_id, 99);
 });
 
 test('regional collector binds MINUTE_DB and canonicalizes before every track store', () => {
@@ -91,4 +113,6 @@ test('regional collector binds MINUTE_DB and canonicalizes before every track st
   assert.match(config, /"database_name": "stationhead-minute"/);
   assert.match(store, /value = await resolveRegionalMusicCanonicalTrack\(env, value\)/);
   assert.match(store, /canonical_track_id=COALESCE\(excluded\.canonical_track_id,canonical_track_id\)/);
+  assert.match(store, /regional_music_track_daily\([\s\S]*track_id/);
+  assert.match(store, /regional_music_playlist_memberships\([\s\S]*track_id/);
 });
