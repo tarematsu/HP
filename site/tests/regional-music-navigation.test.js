@@ -23,7 +23,6 @@ const visibleSubscriptionServices = [
   'kkbox',
   'qq_music',
   'kugou_music',
-  'netease_cloud_music',
 ];
 
 const removedLocalServices = [
@@ -32,6 +31,7 @@ const removedLocalServices = [
   'nhaccuatui',
   'anghami',
   'melon',
+  'netease_cloud_music',
   'naver_vibe',
   'flo',
   'yandex_music',
