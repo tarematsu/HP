@@ -115,12 +115,20 @@ export function summarizeCurrentHomePanelDeployment({ run, jobs = [], jobError =
 
   const job = jobs.find((entry) => /^deploy$/i.test(String(entry?.name || '').trim())) || jobs[0] || null;
   const cloudStep = findStep(job, /^Deploy HomePanel Cloud$/i);
+  const schedulerStep = findStep(job, /^Deploy HomePanel scheduler dispatcher$/i);
   const retiredDeletionStep = findStep(job, /Delete retired homepanel-video Worker$/i);
   const components = [
     component({
       workflow: target.name,
       target: 'homepanel-cloud',
       step: cloudStep,
+      error: jobError,
+      run,
+    }),
+    component({
+      workflow: target.name,
+      target: 'homepanel-cloud-scheduler',
+      step: schedulerStep,
       error: jobError,
       run,
     }),
