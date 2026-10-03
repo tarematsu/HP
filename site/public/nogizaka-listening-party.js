@@ -29,9 +29,6 @@ const jstDate = new Intl.DateTimeFormat('ja-JP', {
 const jstTime = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
 });
-const jstDateTime = new Intl.DateTimeFormat('ja-JP', {
-  timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-});
 
 let latestPayload = null;
 let refreshTimer = 0;
@@ -52,14 +49,24 @@ function clock(value) {
   return timestamp == null ? null : jstTime.format(new Date(timestamp)).replace(/\s+/g, '');
 }
 
-function durationMinutes(payload) {
-  const row = payload?.row;
+function payloadRows(payload) {
+  if (Array.isArray(payload?.rows)) return payload.rows;
+  return payload?.row ? [payload.row] : [];
+}
+
+function durationMinutes(payload, row = payload?.row) {
   const start = epoch(row?.started_at);
   const end = epoch(row?.ended_at);
   if (start != null && end != null && end >= start) return (end - start) / 60_000;
+  if (row !== payload?.row) return null;
   const points = payload?.series?.[0]?.points || [];
   const last = finite(points.at(-1)?.[0]);
   return last == null ? null : last;
+}
+
+function mean(values) {
+  const numbers = values.map(finite).filter((value) => value != null);
+  return numbers.length ? numbers.reduce((sum, value) => sum + value, 0) / numbers.length : null;
 }
 
 function clearRefresh() {
@@ -78,38 +85,15 @@ function scheduleRefresh(payload) {
   }, delay);
 }
 
-function setNotice(payload) {
-  const notice = byId('nogizakaListeningPartyNotice');
-  if (!notice) return;
-  const event = payload?.event;
-  if (!event) {
-    notice.textContent = '本日の乃木坂46公式リスパはまだ検出されていません。';
-    notice.hidden = false;
-    notice.classList.remove('error');
-    return;
-  }
-  const status = String(event.status || '');
-  const generatedAt = epoch(payload?.generated_at);
-  if (status === 'active') {
-    notice.textContent = `開催中 · 最終更新 ${generatedAt == null ? '—' : jstDateTime.format(new Date(generatedAt))}`;
-  } else if (status === 'scheduled') {
-    const scheduledAt = epoch(event.scheduled_at);
-    notice.textContent = scheduledAt == null
-      ? '本日の公式リスパを待機中です。'
-      : `開始予定 ${jstDateTime.format(new Date(scheduledAt))}`;
-  } else {
-    notice.textContent = `本日の公式リスパ ${status === 'ended' ? '終了' : '収集済み'}`;
-  }
-  notice.hidden = false;
-  notice.classList.remove('error');
-}
-
 function renderSummary(payload) {
-  const row = payload?.row;
-  byId('nogizakaPartyPeriods').textContent = row ? '1' : '0';
-  byId('nogizakaPartyAverage').textContent = officialPartyNumberText(row?.listener_avg, decimal);
-  byId('nogizakaPartyMaximum').textContent = officialPartyNumberText(row?.listener_max, integer);
-  byId('nogizakaPartyDuration').textContent = durationLabel(durationMinutes(payload));
+  const rows = payloadRows(payload);
+  const listenerAverage = mean(rows.map((row) => row?.listener_avg));
+  const maximums = rows.map((row) => finite(row?.listener_max)).filter((value) => value != null);
+  const durationAverage = mean(rows.map((row) => durationMinutes(payload, row)));
+  byId('nogizakaPartyPeriods').textContent = integer.format(rows.length);
+  byId('nogizakaPartyAverage').textContent = officialPartyNumberText(listenerAverage, decimal);
+  byId('nogizakaPartyMaximum').textContent = officialPartyNumberText(maximums.length ? Math.max(...maximums) : null, integer);
+  byId('nogizakaPartyDuration').textContent = durationLabel(durationAverage);
 }
 
 function eventIdentity(row) {
@@ -120,35 +104,40 @@ function eventIdentity(row) {
   });
 }
 
+function tableValues(payload, row) {
+  const identity = eventIdentity(row);
+  const start = clock(row?.started_at);
+  const end = clock(row?.ended_at);
+  const isLive = row === payload?.row && payload?.collection_active;
+  return [
+    identity.date,
+    start ? `${start}-${end || (isLive ? '現在' : '—')}` : '—',
+    durationLabel(durationMinutes(payload, row)),
+    officialPartyNumberText(row?.listener_avg, decimal),
+    officialPartyNumberText(row?.listener_min, decimal),
+    officialPartyNumberText(row?.listener_max, decimal),
+    officialPartyNumberText(row?.distinct_tracks, integer),
+    officialPartyNumberText(row?.estimated_streams, integer),
+    String(row?.broadcast_content || '—'),
+    identity.name,
+  ];
+}
+
 function renderTable(payload) {
   const head = byId('nogizakaPartyThead');
   const body = byId('nogizakaPartyTbody');
   if (!head || !body) return;
   head.replaceChildren(createOfficialPartyHeaderRow());
 
-  const row = payload?.row;
-  if (!row) {
+  const rows = payloadRows(payload);
+  if (!rows.length) {
     appendEmptyTableRow(body, 'データがありません。', OFFICIAL_PARTY_HEADERS.length, { replace: true });
     return;
   }
 
-  const identity = eventIdentity(row);
-  const start = clock(row.started_at);
-  const end = clock(row.ended_at);
-  const timeRange = start ? `${start}-${end || (payload.collection_active ? '現在' : '—')}` : '—';
-  const values = [
-    identity.date,
-    timeRange,
-    durationLabel(durationMinutes(payload)),
-    officialPartyNumberText(row.listener_avg, decimal),
-    officialPartyNumberText(row.listener_min, decimal),
-    officialPartyNumberText(row.listener_max, decimal),
-    officialPartyNumberText(row.distinct_tracks, integer),
-    officialPartyNumberText(row.estimated_streams, integer),
-    String(row.broadcast_content || '—'),
-    identity.name,
-  ];
-  body.replaceChildren(createOfficialPartyDataRow(values, row.source_url));
+  const fragment = document.createDocumentFragment();
+  for (const row of rows) fragment.append(createOfficialPartyDataRow(tableValues(payload, row), row?.source_url));
+  body.replaceChildren(fragment);
 }
 
 function drawChart(payload) {
@@ -239,29 +228,18 @@ function drawChart(payload) {
 }
 
 function exportCsv() {
-  const row = latestPayload?.row;
-  if (!row) return;
-  const identity = eventIdentity(row);
-  const start = clock(row.started_at);
-  const end = clock(row.ended_at);
-  const values = [
-    identity.date,
-    start ? `${start}-${end || (latestPayload.collection_active ? '現在' : '—')}` : '—',
-    durationLabel(durationMinutes(latestPayload)),
-    row.listener_avg ?? '', row.listener_min ?? '', row.listener_max ?? '',
-    row.distinct_tracks ?? '', row.estimated_streams ?? '', row.broadcast_content ?? '',
-    identity.name, row.source_url ?? '',
-  ];
+  const rows = payloadRows(latestPayload);
+  if (!rows.length) return;
+  const body = rows.map((row) => [...tableValues(latestPayload, row), row?.source_url ?? '']);
   downloadCsv(
-    `nogizaka-listening-party-${latestPayload.date || 'today'}.csv`,
-    [OFFICIAL_PARTY_HEADERS, values],
+    'nogizaka-listening-party.csv',
+    [OFFICIAL_PARTY_HEADERS, ...body],
     { quoteAll: false, trailingNewline: true },
   );
 }
 
 function render(payload) {
   latestPayload = payload;
-  setNotice(payload);
   renderSummary(payload);
   renderTable(payload);
   drawChart(payload);
@@ -284,11 +262,9 @@ export async function loadNogizakaListeningPartyView({ force = false } = {}) {
     render(payload);
   } catch (error) {
     if (error?.name === 'AbortError' || !active()) return;
-    const notice = byId('nogizakaListeningPartyNotice');
-    if (notice) {
-      notice.textContent = `データの取得に失敗しました：${error.message}`;
-      notice.hidden = false;
-      notice.classList.add('error');
+    const body = byId('nogizakaPartyTbody');
+    if (body && !body.childElementCount) {
+      appendEmptyTableRow(body, `データの取得に失敗しました：${error.message}`, OFFICIAL_PARTY_HEADERS.length, { replace: true });
     }
     scheduleRefresh({ refresh_hint_ms: MAX_REFRESH_MS });
   } finally {
