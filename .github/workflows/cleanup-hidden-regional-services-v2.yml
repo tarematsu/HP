@@ -6,7 +6,7 @@ on:
       - cleanup/remove-hidden-regional-services-v2-20261003
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify:
@@ -17,12 +17,11 @@ jobs:
         with:
           ref: cleanup/remove-hidden-regional-services-v2-20261003
           fetch-depth: 0
-      - name: Apply cleanup idempotently
-        run: python3 .github/scripts/cleanup_hidden_regional_services.py
       - name: Show residual provider references
         shell: bash
         run: |
           git grep -n -E 'genie|bugs|joox|nhaccuatui|anghami|melon|netease|naver_vibe|yandex_music|boomplay|plern|fungjai|zing_mp3|jiosaavn|gaana|langit_musik' -- worker site .github scripts tests ':!.github/scripts/cleanup_hidden_regional_services.py' ':!.github/workflows/cleanup-hidden-regional-services-v2.yml' || true
+          git grep -n -E "['\"]flo['\"]|regional-music-flo|collect-flo" -- worker site .github scripts tests ':!.github/scripts/cleanup_hidden_regional_services.py' ':!.github/workflows/cleanup-hidden-regional-services-v2.yml' || true
       - name: Install dependencies
         run: npm ci
       - name: Worker bundle check
