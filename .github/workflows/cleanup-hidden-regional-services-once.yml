@@ -1,0 +1,189 @@
+name: Cleanup hidden regional music services once
+
+on:
+  push:
+    branches:
+      - cleanup/remove-hidden-regional-services-20261003
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.event.head_commit.message == 'ops: remove hidden regional music services'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cleanup/remove-hidden-regional-services-20261003
+          fetch-depth: 0
+      - name: Remove hidden regional services
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re, subprocess
+
+          removed = [
+            'genie','bugs','joox','nhaccuatui','anghami','melon','netease_cloud_music',
+            'naver_vibe','flo','yandex_music','boomplay','plern','fungjai','zing_mp3',
+            'jiosaavn','gaana','langit_musik',
+          ]
+          file_tokens = [
+            'genie','bugs','joox','nhaccuatui','anghami','melon','netease','vibe','flo',
+            'yandex','boomplay','plern','fungjai','zing','jiosaavn','gaana','langit',
+          ]
+
+          def read(path):
+            return Path(path).read_text()
+          def write(path, text):
+            Path(path).write_text(text)
+          def remove_js_function(text, name):
+            marker = f'function {name}('
+            while marker in text:
+              start = text.index(marker)
+              line_start = text.rfind('\n', 0, start) + 1
+              brace = text.index('{', start)
+              depth = 0
+              i = brace
+              quote = None
+              escape = False
+              while i < len(text):
+                c = text[i]
+                if quote:
+                  if escape:
+                    escape = False
+                  elif c == '\\':
+                    escape = True
+                  elif c == quote:
+                    quote = None
+                else:
+                  if c in "'\"`": quote = c
+                  elif c == '{': depth += 1
+                  elif c == '}':
+                    depth -= 1
+                    if depth == 0:
+                      end = i + 1
+                      if end < len(text) and text[end] == '\n': end += 1
+                      text = text[:line_start] + text[end:]
+                      break
+                i += 1
+              else:
+                raise RuntimeError(f'unclosed function {name}')
+            return text
+          def remove_const_call(text, name):
+            marker = f'const {name} = '
+            if marker not in text: return text
+            start = text.index(marker)
+            line_start = text.rfind('\n', 0, start) + 1
+            end = text.find('\n});', start)
+            if end < 0: raise RuntimeError(f'cannot remove const {name}')
+            end += len('\n});')
+            if end < len(text) and text[end] == '\n': end += 1
+            return text[:line_start] + text[end:]
+
+          # Registry: only visible regional services plus major YouTube Music survive.
+          p = 'worker/src/regional-music-service-registry.js'
+          text = read(p)
+          for service in removed:
+            text = re.sub(rf"^  {re.escape(service)}: Object\.freeze\([^\n]+\),\n", '', text, flags=re.M)
+          write(p, text)
+
+          # Collector entry: remove hidden provider imports and dispatch entries.
+          p = 'worker/src/regional-music-entry.js'
+          text = read(p)
+          hidden_modules = ['anghami','boomplay','bugs','flo','fungjai','gaana','genie','jiosaavn','joox','langit','melon','vibe','netease','nhaccuatui','plern','yandex','zing']
+          for token in hidden_modules:
+            text = re.sub(rf"^import .* from './regional-music-{re.escape(token)}\.js';\n", '', text, flags=re.M)
+          for service in removed:
+            text = re.sub(rf"^  {re.escape(service)}: [^,]+,\n", '', text, flags=re.M)
+          write(p, text)
+
+          # Scheduling: keep only services that still exist in the visible regional UI.
+          write('worker/src/regional-music-dispatch-plan.js', """export const REGIONAL_MUSIC_DAILY_SERVICES = Object.freeze([\n  'kkbox',\n  'qq_music',\n  'kugou_music',\n]);\n\nexport const REGIONAL_MUSIC_DISPATCH_UTC_HOUR = 15; // 00:00 JST; Actions owns the Monday standard collection run.\nexport const REGIONAL_MUSIC_EVERY_DAY = Object.freeze([]);\nexport const REGIONAL_MUSIC_WEEKLY_SERVICES = Object.freeze(['kkbox']);\nexport const QQ_MUSIC_WEEKLY_JST_DAY = 4;\nexport const QQ_MUSIC_WEEKLY_JST_HOUR = 18;\nexport const KUGOU_MUSIC_WEEKDAY_JST_HOUR = 11;\n\nexport function regionalMusicR2DueServices(timestamp) {\n  const date = new Date(Number(timestamp) + 9 * 60 * 60 * 1000);\n  if (!Number.isFinite(date.getTime())) throw new Error('Invalid regional collection timestamp');\n  const jstDay = date.getUTCDay();\n  const jstHour = date.getUTCHours();\n  if (jstDay === QQ_MUSIC_WEEKLY_JST_DAY && jstHour === QQ_MUSIC_WEEKLY_JST_HOUR) return ['qq_music'];\n  if (jstDay >= 1 && jstDay <= 5 && jstHour === KUGOU_MUSIC_WEEKDAY_JST_HOUR) return ['kugou_music'];\n  if (jstHour !== 0) return [];\n  return jstDay === 1 ? [...REGIONAL_MUSIC_WEEKLY_SERVICES] : [...REGIONAL_MUSIC_EVERY_DAY];\n}\n\nexport function regionalMusicDispatchForTimestamp(timestamp) {\n  return null;\n}\n\nexport async function enqueueRegionalMusicDispatch(env, timestamp) {\n  const message = regionalMusicDispatchForTimestamp(timestamp);\n  if (!message) return null;\n  if (!env?.REGIONAL_MUSIC_QUEUE?.send) throw new Error('REGIONAL_MUSIC_QUEUE binding is missing');\n  await env.REGIONAL_MUSIC_QUEUE.send(message);\n  return message;\n}\n""")
+
+          # Read model: delete NetEase/Melon special data paths but retain generic history mapper for KKBOX.
+          p = 'worker/src/regional-music-read-model.js'
+          text = read(p)
+          text = re.sub(r"^import \{ NETEASE_JAPAN_HISTORY_VIEW_KEY \} from './netease-japan-chart-history\.js';\n", '', text, flags=re.M)
+          text = re.sub(r"^import \{ MELON_JPOP_HISTORY_VIEW_KEY \} from './melon-jpop-history\.js';\n", '', text, flags=re.M)
+          text = text.replace('neteaseJapanChartReadModel', 'regionalChartHistoryReadModel')
+          text = remove_js_function(text, 'melonJpopChartReadModel')
+          text = re.sub(r"^  if \(serviceId === 'netease_cloud_music'\).*\n", '', text, flags=re.M)
+          text = re.sub(r"^  if \(serviceId === 'melon'\).*\n", '', text, flags=re.M)
+          text = re.sub(r"^    netease_japan_chart:.*\n", '', text, flags=re.M)
+          text = re.sub(r"^    melon_jpop_chart:.*\n", '', text, flags=re.M)
+          text = re.sub(r"  } else if \(serviceId === 'netease_cloud_music'\) \{\n(?:    .*\n){1,5}?  } else if \(serviceId === 'melon'\) \{\n(?:    .*\n){1,5}?  } else if \(serviceId === 'kkbox'\) \{", "  } else if (serviceId === 'kkbox') {", text)
+          # Fallback in case the combined branch did not match.
+          text = re.sub(r"  } else if \(serviceId === 'netease_cloud_music'\) \{\n(?:    .*\n)*?  } else if", '  } else if', text)
+          text = re.sub(r"  } else if \(serviceId === 'melon'\) \{\n(?:    .*\n)*?  } else if", '  } else if', text)
+          write(p, text)
+
+          # API allow-list: hidden services must no longer be requestable.
+          p = 'site/functions/lib/api-contract.js'
+          text = read(p)
+          for service in removed:
+            text = re.sub(rf"^\s*'{re.escape(service)}',\n", '', text, flags=re.M)
+          write(p, text)
+
+          # Navigation + Genie runtime.
+          p = 'site/public/index.html'
+          text = re.sub(r'^\s*<button[^\n]+data-source="genie"[^\n]*\n', '', read(p), flags=re.M)
+          write(p, text)
+          p = 'site/public/dashboard-metrics.js'
+          text = re.sub(r"^import './genie-catalog-ui\.js[^\n]*\n", '', read(p), flags=re.M)
+          write(p, text)
+
+          # Regional generic UI: remove Melon-only compact UI and NetEase lazy UI.
+          p = 'site/public/regional-music.js'
+          text = read(p)
+          text = text.replace("return service === 'melon' || service === 'qq_music' || service === 'kugou_music';", "return service === 'qq_music' || service === 'kugou_music';")
+          for name in ['melonArtistVisible','syncMelonFilterButtons','bindMelonFilters','renderMelonPopularity','resetMelonSection']:
+            text = remove_js_function(text, name)
+          text = re.sub(r'^let melonArtistFilter.*\n', '', text, flags=re.M)
+          text = re.sub(r'^let lastMelonPayload.*\n', '', text, flags=re.M)
+          text = re.sub(r'^\s*renderMelonPopularity\([^\n]*\);\n', '', text, flags=re.M)
+          text = re.sub(r'^\s*resetMelonSection\(\);\n', '', text, flags=re.M)
+          write(p, text)
+
+          p = 'site/public/regional-music-shell.js'
+          text = read(p)
+          for name in ['melonPopularityTable','melonPopularitySection']:
+            text = remove_const_call(text, name)
+          text = text.replace('      ${melonPopularitySection}\n', '')
+          text = re.sub(r"^void import\('./netease-japan-chart-ui\.js[^\n]*\n", '', text, flags=re.M)
+          write(p, text)
+
+          p = 'site/public/music-service-shell.js'
+          text = read(p)
+          text = text.replace("const REGIONAL_SPECIAL_SERVICES = new Set(['melon', 'qq_music', 'kugou_music', 'netease_cloud_music']);", "const REGIONAL_SPECIAL_SERVICES = new Set(['qq_music', 'kugou_music']);")
+          text = re.sub(r"^  netease_cloud_music: '[^']+',\n", '', text, flags=re.M)
+          write(p, text)
+
+          # Delete provider-specific implementation/test files by filename segment in scoped code roots.
+          roots = ('worker/src/','worker/scripts/','worker/tests/','site/public/','site/tests/','tests/','.github/scripts/','.github/workflows/')
+          segment = re.compile(r'(?:^|[-_.])(' + '|'.join(map(re.escape, file_tokens)) + r')(?:[-_.]|$)', re.I)
+          tracked = subprocess.check_output(['git','ls-files'], text=True).splitlines()
+          for path in tracked:
+            if path == '.github/workflows/cleanup-hidden-regional-services-once.yml':
+              continue
+            if path.startswith(roots) and segment.search(Path(path).name):
+              Path(path).unlink(missing_ok=True)
+
+          # Remove this one-shot workflow from the resulting branch.
+          Path('.github/workflows/cleanup-hidden-regional-services-once.yml').unlink(missing_ok=True)
+
+          # Record remaining code references for follow-up; migrations are historical schema and excluded here.
+          pattern = '|'.join(map(re.escape, removed))
+          proc = subprocess.run(['git','grep','-n','-E',pattern,'--',':!database/other-migrations/**'], text=True, capture_output=True)
+          Path('/tmp/hidden-regional-residual.txt').write_text(proc.stdout)
+          print('--- residual hidden-service references ---')
+          print(proc.stdout or '(none)')
+          PY
+
+          git status --short
+          git add -A
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "Remove hidden regional music services"
+          git push origin HEAD:cleanup/remove-hidden-regional-services-20261003
