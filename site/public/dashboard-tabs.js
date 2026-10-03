@@ -61,8 +61,8 @@ const LAZY_VIEWS = Object.freeze({
   },
   'youtube-music': {
     viewId: 'youtubeMusicView',
-    shell: () => import('/youtube-music-shell.js?v=20261002.3'),
-    runtime: () => import('/youtube-music.js?v=20261003.1'),
+    shell: () => import('/youtube-music-shell.js?v=20261003.4'),
+    runtime: () => import('/youtube-music.js?v=20261003.4'),
     loadExport: 'loadYoutubeMusicView',
     noticeId: 'youtubeMusicNotice',
     errorLabel: 'youtube music',

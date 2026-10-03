@@ -86,7 +86,7 @@ test('Aobazaka46 falls back to its public official YouTube channel metadata with
   });
 });
 
-test('artist page parses public monthly audience, total views, songs, releases and artist playlist', () => {
+test('artist page parses public monthly audience, total views, songs, per-song plays, releases and artist playlist', () => {
   const payload = {
     header: {
       musicImmersiveHeaderRenderer: {
@@ -126,6 +126,8 @@ test('artist page parses public monthly audience, total views, songs, releases a
                   }],
                 },
               },
+            }, {
+              musicResponsiveListItemFlexColumnRenderer: { text: { runs: [{ text: '12.3M plays' }] } },
             }],
             overlay: {
               musicItemThumbnailOverlayRenderer: {
@@ -165,6 +167,7 @@ test('artist page parses public monthly audience, total views, songs, releases a
     title: 'Song One',
     album_name: 'Album One',
     track_url: 'https://music.youtube.com/watch?v=video-1',
+    plays: 12300000,
   }]);
   assert.equal(parsed.releases[0].service_release_id, 'MPRE-album-1');
   assert.equal(parsed.releases[0].release_type, 'album');

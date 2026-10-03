@@ -17,6 +17,7 @@ const YTM_ROOT = 'https://music.youtube.com';
 const YTM_API = `${YTM_ROOT}/youtubei/v1`;
 const YOUTUBE_ROOT = 'https://www.youtube.com';
 const YTM_USER_AGENT = 'Mozilla/5.0 compatible; skrzk-pages-collector/1.0';
+const YOUTUBE_MUSIC_MAX_CONTINUATION_PAGES = 100;
 const YOUTUBE_CHANNEL_FALLBACKS = Object.freeze({
   aobazaka46: Object.freeze({
     handle: '@aobazaka46SMEJ',
@@ -94,6 +95,30 @@ function countFromText(value) {
   const match = String(value || '').replace(/\u00a0/g, ' ').match(/([0-9][0-9,.]*\s*[KMB]?)/i);
   if (!match) return null;
   return parseCompactCount(match[1].replace(/\s+/g, ''));
+}
+
+function playCountTextValue(value) {
+  const text = textValue(value).replace(/\u00a0/g, ' ').trim();
+  if (!text || /\d+:\d{2}/.test(text)) return null;
+  const labeled = text.match(/([0-9][0-9,.]*\s*[KMB]?)\s*(?:plays?|views?)\b/i);
+  const standalone = text.match(/^([0-9][0-9,.]*\s*[KMB]?)$/i);
+  const raw = labeled?.[1] || standalone?.[1] || '';
+  return raw ? parseCompactCount(raw.replace(/\s+/g, '')) : null;
+}
+
+function playCountFromRenderer(renderer) {
+  const flex = Array.isArray(renderer?.flexColumns) ? renderer.flexColumns : [];
+  for (let index = 2; index < flex.length; index += 1) {
+    const column = flex[index]?.musicResponsiveListItemFlexColumnRenderer;
+    const count = playCountTextValue(column?.text);
+    if (count !== null) return count;
+  }
+  for (const item of renderer?.fixedColumns || []) {
+    const column = item?.musicResponsiveListItemFixedColumnRenderer;
+    const count = playCountTextValue(column?.text);
+    if (count !== null) return count;
+  }
+  return null;
 }
 
 function clientVersion(observedAt) {
@@ -356,7 +381,102 @@ function parseTrack(renderer, canonicalArtist) {
     title,
     album_name: albumNameFromRenderer(renderer),
     track_url: `${YTM_ROOT}/watch?v=${encodeURIComponent(videoId)}`,
+    plays: playCountFromRenderer(renderer),
   };
+}
+
+function trackRowsFromPayload(payload, canonicalArtist) {
+  const tracks = [];
+  const seen = new Set();
+  walk(payload, (node) => {
+    const renderer = node?.musicResponsiveListItemRenderer;
+    if (!renderer) return;
+    const track = parseTrack(renderer, canonicalArtist);
+    if (!track || seen.has(track.service_track_id)) return;
+    seen.add(track.service_track_id);
+    tracks.push(track);
+  });
+  return tracks;
+}
+
+function continuationTokenFromPayload(payload) {
+  let token = null;
+  walk(payload, (node) => {
+    if (token || Array.isArray(node)) return;
+    const renderer = node?.continuationItemRenderer;
+    const command = renderer?.continuationEndpoint?.continuationCommand;
+    if (command?.token && (!command.request || command.request === 'CONTINUATION_REQUEST_TYPE_BROWSE')) {
+      token = String(command.token);
+      return;
+    }
+    const next = node?.nextContinuationData?.continuation;
+    if (next) token = String(next);
+  });
+  return token;
+}
+
+export function parseYouTubeMusicTrackPage(payload, canonicalArtist) {
+  return {
+    tracks: trackRowsFromPayload(payload, canonicalArtist),
+    continuationToken: continuationTokenFromPayload(payload),
+  };
+}
+
+function songsBrowseIdFromShelf(renderer) {
+  const title = runsText(renderer?.title).toLocaleLowerCase('en-US');
+  const browseId = renderer?.title?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId
+    || browseIdFrom(renderer?.title);
+  if (!browseId?.startsWith('VL')) return null;
+  return /\bsongs?\b/.test(title) ? browseId : null;
+}
+
+function mergeFullTrackList(fullTracks, artistPageTracks) {
+  const artistPageById = new Map(artistPageTracks.map((track) => [track.service_track_id, track]));
+  const merged = [];
+  const seen = new Set();
+  for (const track of fullTracks) {
+    const fallback = artistPageById.get(track.service_track_id) || {};
+    merged.push({
+      ...fallback,
+      ...track,
+      album_name: track.album_name ?? fallback.album_name ?? null,
+      plays: track.plays ?? fallback.plays ?? null,
+    });
+    seen.add(track.service_track_id);
+  }
+  for (const track of artistPageTracks) {
+    if (!seen.has(track.service_track_id)) merged.push(track);
+  }
+  return merged;
+}
+
+async function fetchAllArtistTracks(fetchImpl, songsBrowseId, canonicalArtist, observedAt, visitorData) {
+  let payload = await requestYtm(fetchImpl, 'browse', { browseId: songsBrowseId }, observedAt, visitorData);
+  const byId = new Map();
+  const order = [];
+  const seenTokens = new Set();
+
+  for (let pageIndex = 0; pageIndex < YOUTUBE_MUSIC_MAX_CONTINUATION_PAGES; pageIndex += 1) {
+    const parsed = parseYouTubeMusicTrackPage(payload, canonicalArtist);
+    for (const track of parsed.tracks) {
+      const previous = byId.get(track.service_track_id);
+      if (!previous) order.push(track.service_track_id);
+      byId.set(track.service_track_id, {
+        ...previous,
+        ...track,
+        album_name: track.album_name ?? previous?.album_name ?? null,
+        plays: track.plays ?? previous?.plays ?? null,
+      });
+    }
+
+    const token = parsed.continuationToken;
+    if (!token) return order.map((id) => byId.get(id));
+    if (seenTokens.has(token)) throw new Error('YouTube Music songs continuation repeated');
+    seenTokens.add(token);
+    payload = await requestYtm(fetchImpl, 'browse', { continuation: token }, observedAt, visitorData);
+  }
+
+  throw new Error(`YouTube Music songs exceeded ${YOUTUBE_MUSIC_MAX_CONTINUATION_PAGES} continuation pages`);
 }
 
 function parsePlaylistShelf(renderer) {
@@ -399,6 +519,7 @@ export function parseYouTubeMusicArtistPage(payload, canonicalArtist) {
   const seenReleases = new Set();
   const playlists = [];
   const seenPlaylists = new Set();
+  let songsBrowseId = null;
 
   walk(payload, (node) => {
     const list = node?.musicResponsiveListItemRenderer;
@@ -419,6 +540,7 @@ export function parseYouTubeMusicArtistPage(payload, canonicalArtist) {
     }
     const shelf = node?.musicShelfRenderer;
     if (shelf) {
+      songsBrowseId ||= songsBrowseIdFromShelf(shelf);
       const playlist = parsePlaylistShelf(shelf);
       if (playlist && !seenPlaylists.has(playlist.service_playlist_id)) {
         seenPlaylists.add(playlist.service_playlist_id);
@@ -433,6 +555,7 @@ export function parseYouTubeMusicArtistPage(payload, canonicalArtist) {
     subscribers,
     monthlyAudience,
     totalViews,
+    songsBrowseId,
     tracks,
     releases,
     playlists,
@@ -501,15 +624,56 @@ export async function collectYouTubeMusic(env, observedAt = Date.now(), fetchImp
       });
       artists += 1;
 
-      for (const [index, track] of parsed.tracks.entries()) {
+      const artistPageRanks = new Map(
+        parsed.tracks.map((track, index) => [track.service_track_id, index + 1]),
+      );
+      let artistTracks = parsed.tracks;
+      if (parsed.songsBrowseId) {
+        try {
+          const fullTracks = await fetchAllArtistTracks(
+            fetchImpl,
+            parsed.songsBrowseId,
+            canonicalArtist,
+            observedAt,
+            visitorData,
+          );
+          if (!fullTracks.length) throw new Error('YouTube Music full songs playlist returned no tracks');
+          artistTracks = mergeFullTrackList(fullTracks, parsed.tracks);
+
+          const songsPlaylistId = parsed.songsBrowseId.slice(2);
+          const songsPlaylist = parsed.playlists.find((item) => item.service_playlist_id === songsPlaylistId);
+          const fullTrackIds = artistTracks.map((track) => track.service_track_id);
+          if (songsPlaylist) {
+            songsPlaylist.trackIds = fullTrackIds;
+          } else {
+            parsed.playlists.push({
+              service_playlist_id: songsPlaylistId,
+              playlist_name: 'Songs',
+              playlist_url: `${YTM_ROOT}/playlist?list=${encodeURIComponent(songsPlaylistId)}`,
+              playlist_type: 'official',
+              owner_name: 'YouTube Music',
+              trackIds: fullTrackIds,
+            });
+          }
+        } catch (error) {
+          failures.push({
+            canonical_artist: canonicalArtist,
+            stage: 'full_songs',
+            error: String(error?.message || error),
+          });
+        }
+      }
+
+      for (const track of artistTracks) {
+        const popularityRank = artistPageRanks.get(track.service_track_id) || null;
         await saveRegionalTrack(env, {
           service: YOUTUBE_MUSIC_SERVICE,
           service_artist_id: identity.browseId,
           canonical_artist: canonicalArtist,
           observed_at: observedAt,
           ...track,
-          popularity_rank: index + 1,
-          popularity_rank_source: 'artist_page_order',
+          popularity_rank: popularityRank,
+          popularity_rank_source: popularityRank ? 'artist_page_order' : undefined,
         });
         tracks += 1;
       }
