@@ -224,7 +224,8 @@ test('lightweight workflow refreshes after operational workflows and synchronize
   assert.doesNotMatch(workflow, /Refresh Cloudflare observability/);
   assert.match(workflow, /github-actions-runner-health-current\.mjs/);
   assert.match(workflow, /observability-system-status\.mjs/);
-  assert.match(workflow, /cron: '2,17,32,47 \* \* \* \*'/);
+  assert.match(workflow, /workflow_run:/);
+  assert.doesNotMatch(workflow, /^\s*schedule:\s*$/m);
   assert.match(workflow, /actions: read/);
   assert.match(workflow, /issues: write/);
   assert.match(workflow, /timeout-minutes: 5/);
