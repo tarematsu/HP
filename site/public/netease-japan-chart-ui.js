@@ -128,7 +128,7 @@ function assertCompact() {
     if (genericTables && !genericTables.hidden) genericTables.hidden = true;
     if (compactMeta && compactMeta.hidden) compactMeta.hidden = false;
     setText('regionalMusicTitle','网易云音乐');
-    setText('regionalMusicChartCadence','毎週火曜（网易云日语榜更新）');
+    setText('regionalMusicChartCadence','毎週火曜日16:00');
   } finally {
     enforcing = false;
   }
