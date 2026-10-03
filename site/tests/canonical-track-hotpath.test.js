@@ -18,6 +18,35 @@ function fakeDb() {
                   results: [{ track_id: 42, stationhead_track_id: 9001 }],
                 };
               }
+              if (/FROM sh_tracks WHERE spotify_id IN/.test(sql)) {
+                return {
+                  results: bindings.includes('spotify-42')
+                    ? [{ track_id: 42, alias_value: 'spotify-42' }]
+                    : [],
+                };
+              }
+              if (/FROM sh_track_aliases/.test(sql) && /alias_type='spotify_id'/.test(sql)) {
+                return {
+                  results: bindings.includes('spotify-legacy')
+                    ? [{ track_id: 42, alias_value: 'spotify-legacy' }]
+                    : [],
+                };
+              }
+              if (/FROM sh_track_dictionary WHERE spotify_id IN/.test(sql)) {
+                return {
+                  results: bindings.includes('spotify-dictionary')
+                    ? [{ isrc: 'JPAAA0000042', alias_value: 'spotify-dictionary' }]
+                    : [],
+                };
+              }
+              if (/FROM sh_track_aliases/.test(sql) && /alias_type='isrc'/.test(sql)) {
+                return {
+                  results: bindings.includes('JPAAA0000042')
+                    ? [{ track_id: 42, isrc: 'JPAAA0000042' }]
+                    : [],
+                };
+              }
+              if (/FROM sh_tracks WHERE isrc IN/.test(sql)) return { results: [] };
               if (/FROM sh_track_canonical_metadata WHERE track_id IN/.test(sql)) {
                 return {
                   results: [{
@@ -117,4 +146,76 @@ test('trusted canonical seed suppresses all redundant D1 lookups', async () => {
   assert.equal(rows[0].artist, '櫻坂46');
   assert.equal(rows[0].thumbnail_url, 'https://example.test/42.jpg');
   assert.equal(queries.length, 0);
+});
+
+test('Spotify IDs resolve through indexed sh_tracks before canonical metadata', async () => {
+  const { db, queries } = fakeDb();
+  const rows = await canonicalizeTrackRows(db, [{
+    spotify_id: 'spotify-42',
+    title: null,
+    artist: null,
+  }]);
+
+  assert.equal(rows[0].track_id, 42);
+  assert.equal(rows[0].spotify_id, 'spotify-42');
+  assert.equal(rows[0].title, 'Canonical Song');
+  assert.equal(queries.length, 2);
+  assert.match(queries[0].sql, /FROM sh_tracks WHERE spotify_id IN/);
+  assert.deepEqual(queries[0].bindings, ['spotify-42']);
+  assert.match(queries[1].sql, /FROM sh_track_canonical_metadata WHERE track_id IN/);
+  assert.deepEqual(queries[1].bindings, [42]);
+  assert.ok(
+    queries.every(({ sql }) => !/sh_track_canonical_metadata WHERE track_id IS NOT NULL AND spotify_id IN/.test(sql)),
+    'Spotify lookup must not filter the canonical metadata view by spotify_id',
+  );
+});
+
+test('legacy Spotify aliases use indexed sh_track_aliases then canonical track_id', async () => {
+  const { db, queries } = fakeDb();
+  const rows = await canonicalizeTrackRows(db, [{
+    spotify_id: 'spotify-legacy',
+    title: null,
+    artist: null,
+  }]);
+
+  assert.equal(rows[0].track_id, 42);
+  assert.equal(rows[0].spotify_id, 'spotify-42');
+  assert.equal(rows[0].title, 'Canonical Song');
+  assert.equal(queries.length, 3);
+  assert.match(queries[0].sql, /FROM sh_tracks WHERE spotify_id IN/);
+  assert.match(queries[1].sql, /FROM sh_track_aliases/);
+  assert.match(queries[1].sql, /alias_type='spotify_id'/);
+  assert.deepEqual(queries[1].bindings, ['spotify-legacy']);
+  assert.match(queries[2].sql, /FROM sh_track_canonical_metadata WHERE track_id IN/);
+  assert.deepEqual(queries[2].bindings, [42]);
+  assert.ok(
+    queries.every(({ sql }) => !/sh_track_canonical_metadata WHERE track_id IS NOT NULL AND spotify_id IN/.test(sql)),
+    'legacy Spotify aliases must not scan canonical metadata by spotify_id',
+  );
+});
+
+test('dictionary-only Spotify IDs resolve through indexed dictionary and ISRC alias lookups', async () => {
+  const { db, queries } = fakeDb();
+  const rows = await canonicalizeTrackRows(db, [{
+    spotify_id: 'spotify-dictionary',
+    title: null,
+    artist: null,
+  }]);
+
+  assert.equal(rows[0].track_id, 42);
+  assert.equal(rows[0].spotify_id, 'spotify-42');
+  assert.equal(rows[0].title, 'Canonical Song');
+  assert.equal(queries.length, 5);
+  assert.match(queries[0].sql, /FROM sh_tracks WHERE spotify_id IN/);
+  assert.match(queries[1].sql, /alias_type='spotify_id'/);
+  assert.match(queries[2].sql, /FROM sh_track_dictionary WHERE spotify_id IN/);
+  assert.deepEqual(queries[2].bindings, ['spotify-dictionary']);
+  assert.match(queries[3].sql, /alias_type='isrc'/);
+  assert.deepEqual(queries[3].bindings, ['JPAAA0000042']);
+  assert.match(queries[4].sql, /FROM sh_track_canonical_metadata WHERE track_id IN/);
+  assert.deepEqual(queries[4].bindings, [42]);
+  assert.ok(
+    queries.every(({ sql }) => !/sh_track_canonical_metadata WHERE track_id IS NOT NULL AND spotify_id IN/.test(sql)),
+    'dictionary fallback must stay on indexed identity tables instead of scanning canonical metadata by Spotify ID',
+  );
 });

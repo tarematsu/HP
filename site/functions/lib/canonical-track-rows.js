@@ -124,6 +124,95 @@ function unresolvedRows(rows, indexes) {
   return rows.filter((row) => !preferredCanonical(row, indexes));
 }
 
+async function dictionarySpotifyIdentityMappings(db, spotifyIds, chunkSize) {
+  const dictionaryRows = await queryChunked(
+    db,
+    spotifyIds,
+    (chunk) => `SELECT isrc,spotify_id AS alias_value
+      FROM sh_track_dictionary WHERE spotify_id IN (${placeholders(chunk.length)})`,
+    chunkSize,
+  );
+  const isrcs = [...new Set(dictionaryRows
+    .map((row) => normalizedIsrc(row?.isrc))
+    .filter(Boolean))];
+  if (!isrcs.length) return [];
+
+  const aliasRows = await queryChunked(
+    db,
+    isrcs,
+    (chunk) => `SELECT track_id,alias_value AS isrc
+      FROM sh_track_aliases
+      WHERE alias_type='isrc' AND alias_value IN (${placeholders(chunk.length)})`,
+    chunkSize,
+  );
+  const trackByIsrc = new Map(aliasRows
+    .map((row) => [normalizedIsrc(row?.isrc), positiveInteger(row?.track_id)])
+    .filter(([isrc, trackId]) => isrc && trackId != null));
+
+  const unresolvedIsrcs = isrcs.filter((isrc) => !trackByIsrc.has(isrc));
+  if (unresolvedIsrcs.length) {
+    const directRows = await queryChunked(
+      db,
+      unresolvedIsrcs,
+      (chunk) => `SELECT id AS track_id,isrc
+        FROM sh_tracks WHERE isrc IN (${placeholders(chunk.length)})`,
+      chunkSize,
+    );
+    for (const row of directRows) {
+      const isrc = normalizedIsrc(row?.isrc);
+      const trackId = positiveInteger(row?.track_id);
+      if (isrc && trackId != null) trackByIsrc.set(isrc, trackId);
+    }
+  }
+
+  return dictionaryRows.flatMap((row) => {
+    const aliasValue = text(row?.alias_value);
+    const trackId = trackByIsrc.get(normalizedIsrc(row?.isrc));
+    return aliasValue && trackId != null ? [{ track_id: trackId, alias_value: aliasValue }] : [];
+  });
+}
+
+async function spotifyIdentityMappings(db, spotifyIds, chunkSize) {
+  const direct = await queryChunked(
+    db,
+    spotifyIds,
+    (chunk) => `SELECT id AS track_id,spotify_id AS alias_value
+      FROM sh_tracks WHERE spotify_id IN (${placeholders(chunk.length)})`,
+    chunkSize,
+  );
+  const directValues = new Set(direct.map((row) => text(row?.alias_value)).filter(Boolean));
+  const unresolvedAliases = spotifyIds.filter((spotifyId) => !directValues.has(spotifyId));
+  if (!unresolvedAliases.length) return direct;
+
+  const aliases = await queryChunked(
+    db,
+    unresolvedAliases,
+    (chunk) => `SELECT track_id,alias_value
+      FROM sh_track_aliases
+      WHERE alias_type='spotify_id' AND alias_value IN (${placeholders(chunk.length)})`,
+    chunkSize,
+  );
+  const resolvedValues = new Set([
+    ...directValues,
+    ...aliases.map((row) => text(row?.alias_value)).filter(Boolean),
+  ]);
+  const unresolvedDictionary = spotifyIds.filter((spotifyId) => !resolvedValues.has(spotifyId));
+  if (!unresolvedDictionary.length) return [...direct, ...aliases];
+
+  const dictionary = await dictionarySpotifyIdentityMappings(db, unresolvedDictionary, chunkSize);
+  return [...direct, ...aliases, ...dictionary];
+}
+
+function applySpotifyIdentityMappings(indexes, mappings) {
+  for (const mapping of mappings) {
+    const aliasValue = text(mapping?.alias_value);
+    const trackId = positiveInteger(mapping?.track_id);
+    if (!aliasValue || trackId == null) continue;
+    const canonical = indexes.byTrackId.get(trackId);
+    if (canonical) indexes.bySpotify.set(aliasValue, canonical);
+  }
+}
+
 /**
  * Resolve Pages/read-model song rows to the single canonical identity:
  * sh_tracks.id. Provider IDs remain aliases only and are used as a bounded
@@ -198,9 +287,21 @@ export async function canonicalizeTrackRows(
       .map((row) => text(row?.spotify_id))
       .filter(Boolean))];
     if (spotifyIds.length) {
-      canonicalRows.push(...await queryChunked(db, spotifyIds, (chunk) => `SELECT track_id,NULL AS stationhead_track_id,isrc,spotify_id,title,artist,thumbnail_url
-        FROM sh_track_canonical_metadata WHERE track_id IS NOT NULL AND spotify_id IN (${placeholders(chunk.length)})`, boundedChunkSize));
-      indexes = canonicalIndexes(canonicalRows);
+      // The canonical metadata view derives spotify_id through joins/COALESCE,
+      // so filtering the view by spotify_id forces large scans in D1. Resolve
+      // identity through indexed identity/dictionary tables first, then read
+      // the canonical view only by its track_id key.
+      const spotifyMappings = await spotifyIdentityMappings(db, spotifyIds, boundedChunkSize);
+      const mappedTrackIds = [...new Set(spotifyMappings
+        .map((row) => positiveInteger(row?.track_id))
+        .filter(Boolean))]
+        .filter((trackId) => !indexes.byTrackId.has(trackId));
+      if (mappedTrackIds.length) {
+        canonicalRows.push(...await queryChunked(db, mappedTrackIds, (chunk) => `SELECT track_id,NULL AS stationhead_track_id,isrc,spotify_id,title,artist,thumbnail_url
+          FROM sh_track_canonical_metadata WHERE track_id IN (${placeholders(chunk.length)})`, boundedChunkSize));
+        indexes = canonicalIndexes(canonicalRows);
+      }
+      applySpotifyIdentityMappings(indexes, spotifyMappings);
     }
 
     return applyCanonicalIndexes(rows, indexes);

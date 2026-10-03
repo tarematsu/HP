@@ -20,6 +20,15 @@ class FakeCanonicalDb {
       async all() {
         database.reads += 1;
         if (sql.includes('FROM sh_tracks WHERE stationhead_track_id IN')) return { results: [] };
+        if (sql.includes('FROM sh_tracks WHERE spotify_id IN')) {
+          const values = new Set(this.args.map(String));
+          return {
+            results: database.rows
+              .filter((row) => values.has(String(row.spotify_id)))
+              .map((row) => ({ track_id: row.track_id, alias_value: row.spotify_id })),
+          };
+        }
+        if (sql.includes('FROM sh_track_aliases')) return { results: [] };
         if (sql.includes('FROM sh_track_canonical_metadata WHERE track_id IN')) {
           const ids = new Set(this.args.map(Number));
           return { results: database.rows.filter((row) => ids.has(Number(row.track_id))) };
