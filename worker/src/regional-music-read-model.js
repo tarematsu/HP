@@ -49,6 +49,11 @@ async function all(db, sql) {
   return rows(result);
 }
 
+async function boundAll(db, sql, ...args) {
+  const result = await db.prepare(sql).bind(...args).all();
+  return rows(result);
+}
+
 function positiveTime(value) {
   const time = Number(value);
   return Number.isFinite(time) && time > 0 ? time : 0;
@@ -143,6 +148,87 @@ export async function loadRegionalMusicReadModel(db) {
       WHERE o.observed_at=(SELECT MAX(x.observed_at) FROM regional_music_artist_track_order AS x
         WHERE x.service=o.service AND x.canonical_artist=o.canonical_artist)
       ORDER BY o.service,o.canonical_artist,o.position LIMIT 10000`),
+  ]);
+
+  return { artists, tracks, releases, playlists, memberships, services, artistTrackOrders };
+}
+
+export async function loadRegionalMusicServiceReadModel(db, service) {
+  if (typeof db?.prepare !== 'function') throw new Error('OTHER_DB binding is unavailable');
+  const serviceId = String(service || '').trim();
+  if (!regionalMusicService(serviceId)) throw new Error(`unknown regional music service: ${serviceId || '(empty)'}`);
+
+  const [artists, tracks, releases, playlists, memberships, services, artistTrackOrders] = await Promise.all([
+    boundAll(db, `SELECT
+        p.service,p.canonical_artist,p.service_artist_id,p.display_name,p.profile_url,
+        d.snapshot_date,d.observed_at,d.followers,d.likes,d.monthly_audience,d.total_views
+      FROM regional_music_artist_profiles AS p
+      LEFT JOIN regional_music_artist_daily AS d
+        ON d.service=p.service
+       AND d.canonical_artist=p.canonical_artist
+       AND d.snapshot_date=(
+         SELECT MAX(x.snapshot_date)
+         FROM regional_music_artist_daily AS x
+         WHERE x.service=p.service AND x.canonical_artist=p.canonical_artist
+       )
+      WHERE p.service=?
+      ORDER BY p.canonical_artist`, serviceId),
+    boundAll(db, `SELECT
+        t.service,t.service_track_id,t.service_artist_id,t.canonical_artist,t.canonical_track_id,
+        t.title,t.album_name,t.track_url,
+        d.snapshot_date,d.observed_at,d.plays,d.listeners,d.likes,d.comments,d.popularity_rank
+      FROM regional_music_tracks AS t
+      LEFT JOIN regional_music_track_daily AS d
+        ON d.service=t.service
+       AND d.service_track_id=t.service_track_id
+       AND d.snapshot_date=(
+         SELECT MAX(x.snapshot_date)
+         FROM regional_music_track_daily AS x
+         WHERE x.service=t.service AND x.service_track_id=t.service_track_id
+       )
+      WHERE t.service=?
+      ORDER BY t.canonical_artist,t.title,t.service_track_id
+      LIMIT 5000`, serviceId),
+    boundAll(db, `SELECT
+        service,service_release_id,canonical_artist,title,release_type,release_year,release_url,last_seen_at
+      FROM regional_music_releases
+      WHERE service=?
+      ORDER BY canonical_artist,release_year DESC,title,service_release_id
+      LIMIT 3000`, serviceId),
+    boundAll(db, `SELECT
+        service,service_playlist_id,playlist_name,playlist_url,playlist_type,owner_name,last_seen_at
+      FROM regional_music_playlists
+      WHERE service=?
+      ORDER BY playlist_name,service_playlist_id
+      LIMIT 2000`, serviceId),
+    boundAll(db, `SELECT
+        m.service,m.service_playlist_id,m.service_track_id,m.snapshot_date,m.observed_at,m.position
+      FROM regional_music_playlist_memberships AS m
+      INNER JOIN regional_music_playlist_snapshots AS s
+        ON s.service=m.service
+       AND s.service_playlist_id=m.service_playlist_id
+       AND s.snapshot_date=m.snapshot_date
+      WHERE m.service=?
+        AND s.snapshot_date=(
+          SELECT MAX(x.snapshot_date)
+          FROM regional_music_playlist_snapshots AS x
+          WHERE x.service=s.service
+            AND x.service_playlist_id=s.service_playlist_id
+        )
+      ORDER BY m.service_playlist_id,m.position,m.service_track_id
+      LIMIT 10000`, serviceId),
+    boundAll(db, `SELECT
+        service,status,last_attempt_at,last_success_at,last_error_class,last_error_message,
+        entity_counts_json,updated_at
+      FROM regional_music_collector_state
+      WHERE service=?`, serviceId),
+    boundAll(db, `SELECT o.snapshot_date,o.service,o.canonical_artist,o.service_artist_id,
+        o.service_track_id,o.observed_at,o.position,o.rank_source
+      FROM regional_music_artist_track_order AS o
+      WHERE o.service=?
+        AND o.observed_at=(SELECT MAX(x.observed_at) FROM regional_music_artist_track_order AS x
+          WHERE x.service=o.service AND x.canonical_artist=o.canonical_artist)
+      ORDER BY o.canonical_artist,o.position LIMIT 10000`, serviceId),
   ]);
 
   return { artists, tracks, releases, playlists, memberships, services, artistTrackOrders };
@@ -353,7 +439,7 @@ async function existingMaterializedPayload(r2, modelKey) {
 function usableRegionalSnapshot(snapshot, service) {
   return Number(snapshot?.version) === 1
     && snapshot?.service === service
-    && Number.isFinite(Number(snapshot?.updated_at))
+    && positiveTime(snapshot?.updated_at) > 0
     && snapshot?.state?.service === service
     && Array.isArray(snapshot?.tracks);
 }
@@ -428,27 +514,40 @@ export async function publishRegionalMusicReadModels(
   for (const service of selected) regionalMusicReadModelKey(service);
   if (!selected.length) return { storage:'r2-split', models:0, written:0, skipped:0, results:[] };
 
-  const load = dependencies.loadReadModel || loadRegionalMusicReadModel;
   const save = dependencies.saveR2Response || saveMaterializedActionsR2Response;
   const regionalSnapshots = new Map();
-
   if (typeof r2.get === 'function') {
     await Promise.all(selected.map(async (service) => {
       regionalSnapshots.set(service, await r2Json(r2, regionalSnapshotKey(service)));
     }));
   }
 
-  // Normal production publication is now R2-only. D1 remains a compatibility
-  // fallback only for services whose latest R2 snapshot is missing or invalid.
-  const needsLegacyFallback = selected.some((service) => !usableRegionalSnapshot(regionalSnapshots.get(service), service));
-  const snapshot = needsLegacyFallback ? await load(env?.OTHER_DB) : null;
-  const results = [];
+  const missingServices = selected.filter((service) => !usableRegionalSnapshot(regionalSnapshots.get(service), service));
+  const fallbackSnapshots = new Map();
+  let legacySnapshot = null;
 
+  if (missingServices.length) {
+    if (typeof dependencies.loadServiceReadModel === 'function') {
+      await Promise.all(missingServices.map(async (service) => {
+        fallbackSnapshots.set(service, await dependencies.loadServiceReadModel(env?.OTHER_DB, service));
+      }));
+    } else if (typeof dependencies.loadReadModel === 'function') {
+      // Unit/legacy dependency compatibility. Production does not take this path.
+      legacySnapshot = await dependencies.loadReadModel(env?.OTHER_DB);
+    } else {
+      await Promise.all(missingServices.map(async (service) => {
+        fallbackSnapshots.set(service, await loadRegionalMusicServiceReadModel(env?.OTHER_DB, service));
+      }));
+    }
+  }
+
+  const results = [];
   for (const service of selected) {
     const modelKey = regionalMusicReadModelKey(service);
+    const baseSnapshot = fallbackSnapshots.get(service) || legacySnapshot;
     const payload = await hydrateServicePayload(
       env,
-      snapshot,
+      baseSnapshot,
       service,
       updatedAt,
       regionalSnapshots.get(service),
@@ -505,7 +604,8 @@ export async function publishRegionalMusicReadModels(
     models:results.length,
     written,
     skipped:results.length - written,
-    d1_fallback:needsLegacyFallback,
+    d1_fallback:missingServices.length > 0,
+    d1_fallback_services:missingServices,
     results,
   };
 }
