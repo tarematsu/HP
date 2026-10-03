@@ -23,7 +23,8 @@
     { "binding": "OHISAMA_SCHEDULED", "service": "sh-ohisama-collector" },
     { "binding": "SPOTIFY_PLAYCOUNT_SCHEDULED", "service": "sh-spotify-playcount-collector" },
     { "binding": "AMAZON_MUSIC_SCHEDULED", "service": "sh-amazon-music-collector" },
-    { "binding": "REGIONAL_MUSIC_SCHEDULED", "service": "sh-regional-music-collector" }
+    { "binding": "REGIONAL_MUSIC_SCHEDULED", "service": "sh-regional-music-collector" },
+    { "binding": "SCHEDULED_COLLECTION_JOBS", "service": "sh-scheduled-collection-jobs" }
   ],
   "durable_objects": {
     "bindings": [
