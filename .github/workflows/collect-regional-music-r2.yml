@@ -1,8 +1,7 @@
 name: Collect regional music to R2
 on:
   schedule:
-    - cron: '0 15 * * 0' # Monday 00:00 JST; standard regional services
-    - cron: '0 7 * * 2' # Tuesday 16:00 JST; NetEase Cloud Music Japanese chart
+    - cron: '0 15 * * 0' # Monday 00:00 JST; KKBOX standard regional collection
     - cron: '0 9 * * 4' # Thursday 18:00 JST; QQ Music weekly collection
     - cron: '30 2 * * 1-5' # Weekdays 11:30 JST; Kugou Music Japan chart collection
   workflow_dispatch:
@@ -34,8 +33,6 @@ jobs:
         run: |
           if [ "${{ github.event.schedule }}" = "30 2 * * 1-5" ]; then
             node scripts/collect-regional-r2-actions.mjs --services=kugou_music
-          elif [ "${{ github.event.schedule }}" = "0 7 * * 2" ]; then
-            node scripts/collect-regional-r2-actions.mjs --services=netease_cloud_music
           else
             node scripts/collect-regional-r2-actions.mjs
           fi
