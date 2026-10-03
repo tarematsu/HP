@@ -12,9 +12,10 @@ const OHISAMA = 'sh-ohisama-collector';
 const SPOTIFY = 'sh-spotify-playcount-collector';
 const AMAZON = 'sh-amazon-music-collector';
 const REGIONAL = 'sh-regional-music-collector';
+const SCHEDULED = 'sh-scheduled-collection-jobs';
 const CRON_DISPATCHER = 'sh-cron-dispatcher';
 const RUNTIME = 'sh-runtime-orchestrator';
-const ALL_WORKERS = [SAKURAZAKA, NOGIZAKA, RECOVERY, COLLECTOR, OHISAMA, SPOTIFY, AMAZON, REGIONAL, CRON_DISPATCHER, RUNTIME];
+const ALL_WORKERS = [SAKURAZAKA, NOGIZAKA, RECOVERY, COLLECTOR, OHISAMA, SPOTIFY, AMAZON, REGIONAL, SCHEDULED, CRON_DISPATCHER, RUNTIME];
 const BUDDIES_RUNTIME_WORKERS = [RECOVERY, COLLECTOR, RUNTIME];
 
 function select(paths = [], args = []) {
@@ -51,8 +52,13 @@ test('domain modules select every Worker whose bundle imports them', () => {
   assert.deepEqual(select(['worker/src/spotify-playcount-entry.js']).workers, [SPOTIFY]);
   assert.deepEqual(select(['worker/src/amazon-music-pipeline.js']).workers, [AMAZON]);
   assert.deepEqual(select(['worker/src/amazon-music-entry.js']).workers, [AMAZON]);
+  assert.deepEqual(select(['worker/src/music-playlist-refresh-queue.js']).workers, [AMAZON]);
   assert.deepEqual(select(['worker/src/regional-music-entry.js']).workers, [REGIONAL]);
   assert.deepEqual(select(['worker/src/regional-music-store.js']).workers, [REGIONAL]);
+  assert.deepEqual(select(['worker/src/regional-music-scheduled-jobs.js']).workers, [REGIONAL]);
+  assert.deepEqual(select(['worker/src/scheduled-collection-jobs-entry.js']).workers, [SCHEDULED]);
+  assert.deepEqual(select(['worker/src/stationhead-followers-worker.js']).workers, [SCHEDULED]);
+  assert.deepEqual(select(['worker/src/stationhead-leaderboard-worker.js']).workers, [SCHEDULED]);
   assert.deepEqual(select(['worker/src/cron-dispatcher-entry.js']).workers, [CRON_DISPATCHER]);
 });
 
@@ -95,6 +101,9 @@ test('deployment support changes select the owning Worker', () => {
   assert.deepEqual(select(['worker/scripts/deploy-regional-music.mjs']), {
     changed_paths: ['worker/scripts/deploy-regional-music.mjs'], workers: [REGIONAL], commands: ['deploy:regional-music'], diagnostics: [],
   });
+  assert.deepEqual(select(['worker/scripts/deploy-scheduled-collection-jobs.mjs']), {
+    changed_paths: ['worker/scripts/deploy-scheduled-collection-jobs.mjs'], workers: [SCHEDULED], commands: ['deploy:scheduled-collection-jobs'], diagnostics: [],
+  });
   assert.deepEqual(select(['worker/scripts/deploy-cron-dispatcher.mjs']), {
     changed_paths: ['worker/scripts/deploy-cron-dispatcher.mjs'], workers: [CRON_DISPATCHER], commands: ['deploy:cron-dispatcher'], diagnostics: [],
   });
@@ -131,7 +140,7 @@ test('shared deployment infrastructure selects all active Workers', () => {
     'worker/scripts/select-worker-deploys.mjs',
     'worker/scripts/wrangler-command.mjs',
   ]) {
-    assert.equal(select([path]).workers.length, 10, path);
+    assert.equal(select([path]).workers.length, 11, path);
   }
 });
 
@@ -144,6 +153,7 @@ test('Wrangler config changes map directly to their Worker', () => {
   assert.deepEqual(select(['worker/wrangler.spotify-playcount.jsonc']).workers, [SPOTIFY]);
   assert.deepEqual(select(['worker/wrangler.amazon-music.jsonc']).workers, [AMAZON]);
   assert.deepEqual(select(['worker/wrangler.regional-music.jsonc']).workers, [REGIONAL]);
+  assert.deepEqual(select(['worker/wrangler.scheduled-collection-jobs.jsonc']).workers, [SCHEDULED]);
   assert.deepEqual(select(['worker/wrangler.cron-dispatcher.jsonc']).workers, [CRON_DISPATCHER]);
   assert.deepEqual(select(['worker/wrangler.runtime.jsonc']).workers, [RUNTIME]);
 });
@@ -156,7 +166,7 @@ test('tests and unrelated verification scripts do not deploy Workers', () => {
 
 test('shared package only redeploys importers while unresolved Worker source remains fail-safe', () => {
   assert.equal(select(['packages/sh-shared/index.mjs']).workers.length, 6);
-  assert.equal(select(['worker/src/deleted-runtime-module.js']).workers.length, 10);
+  assert.equal(select(['worker/src/deleted-runtime-module.js']).workers.length, 11);
 });
 
 test('manual selection preserves dependency order', () => {
@@ -171,6 +181,7 @@ test('manual selection preserves dependency order', () => {
     'deploy:spotify-playcount',
     'deploy:amazon-music',
     'deploy:regional-music',
+    'deploy:scheduled-collection-jobs',
     'deploy:cron-dispatcher',
     'deploy:runtime',
   ]);
