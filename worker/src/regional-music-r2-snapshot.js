@@ -83,7 +83,7 @@ export async function collectRegionalR2Snapshot({service,collect,previous,now,fe
   }
   if(!state) state={service,status:'error',last_attempt_at:now,last_error_class:'collector_state_missing',last_error_message:'Collector did not report terminal state',entity_counts:{}};
   state={...state,updated_at:now,last_success_at:state.last_success_at ?? previous?.state?.last_success_at ?? null};
-  return {version:1,service,day:regionalMusicSnapshotDate(now),updated_at:now,authoritative_fields:[...authoritative],...Object.fromEntries(fields.map(field=>[field,[...data[field].values()])),state};
+  return {version:1,service,day:regionalMusicSnapshotDate(now),updated_at:now,authoritative_fields:[...authoritative],...Object.fromEntries(fields.map(field=>[field,[...data[field].values()]])),state};
 }
 
 export function regionalSnapshotFromPayload(payload,service) {
