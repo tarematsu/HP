@@ -32,5 +32,23 @@
       "binding": "PAGES_RESPONSE_R2",
       "bucket_name": "sh-pages-responses"
     }
-  ]
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "MUSIC_PLAYLIST_QUEUE",
+        "queue": "music-playlist-refresh"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "music-playlist-refresh",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 2,
+        "dead_letter_queue": "music-playlist-refresh-dlq",
+        "max_concurrency": 1
+      }
+    ]
+  }
 }
