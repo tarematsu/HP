@@ -57,6 +57,12 @@ test('unified observability issue body includes HP and Stationhead deployment co
         version_ids: ['version-hp'],
         created_on: '2026-07-25T00:56:00Z',
       },
+      'homepanel-cloud-scheduler': {
+        status: 'active',
+        deployment_id: 'deployment-hp-scheduler',
+        version_ids: ['version-hp-scheduler'],
+        created_on: '2026-07-25T00:56:30Z',
+      },
     },
     recentMerges: [{
       number: 261,
@@ -77,8 +83,9 @@ test('unified observability issue body includes HP and Stationhead deployment co
   assert.match(body, /version-recovery/);
   assert.match(body, /deployment-sh/);
   assert.match(body, /deployment-hp/);
-  assert.match(body, /version-sh/);
   assert.match(body, /version-hp/);
+  assert.match(body, /deployment-hp-scheduler/);
+  assert.match(body, /version-hp-scheduler/);
   assert.doesNotMatch(body, /deployment-video|version-video|homepanel-video/);
   assert.match(body, /#261 Fix observability diagnostics/);
   assert.match(body, /Top D1 queries by rows read/);
@@ -95,9 +102,9 @@ test('unified workflow publishes one retrievable account-wide status', async () 
   const publisher = await readFile(new URL('.github/scripts/publish-cloudflare-observability-status.mjs', root), 'utf8');
 
   assert.match(workflow, /workflows: \["Deploy production", "Deploy HomePanel Cloud services", "Run runtime offline maintenance"\]/);
-  assert.match(workflow, /CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,sh-spotify-playcount-collector,homepanel-cloud/);
+  assert.match(workflow, /CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,sh-spotify-playcount-collector,homepanel-cloud,homepanel-cloud-scheduler/);
   assert.doesNotMatch(workflow, /homepanel-cloud,homepanel-video/);
-  assert.match(workflow, /D1_CONFIG_GLOBS: worker\/wrangler\*\.jsonc,site\/wrangler\.jsonc,hp\/cloud\/wrangler\.jsonc/);
+  assert.match(workflow, /D1_CONFIG_GLOBS: worker\/wrangler\*\.jsonc,site\/wrangler\.jsonc,hp\/cloud\/wrangler\*\.jsonc/);
   assert.doesNotMatch(workflow, /hp\/video\/wrangler\.jsonc/);
   assert.match(workflow, /CLOUDFLARE_DO_BINDINGS: BUDDIES_COLLECTOR_COORDINATOR,SCHEDULER_COORDINATOR,DEVICE_SYNC_COORDINATOR,RADAR_BUNDLE_COORDINATOR,VIDEO_FEED_COORDINATOR/);
   assert.match(workflow, /^\s+- '\.github\/scripts\/github-actions-runner-health\.mjs'$/m);
