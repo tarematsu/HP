@@ -127,9 +127,9 @@ test('regional collector binds MINUTE_DB and canonicalizes before every track st
   assert.match(store, /regional_music_playlist_memberships\([\s\S]*track_id/);
 });
 
-test('regional canonical artist lookup has a matching partial expression index migration', () => {
+test('regional canonical artist lookup is covered by the identity hotpath migration', () => {
   const migration = readFileSync(
-    new URL('../../database/facts-migrations/072_regional_music_artist_identity_index.sql', import.meta.url),
+    new URL('../../database/facts-migrations/069_title_identity_lookup_indexes.sql', import.meta.url),
     'utf8',
   );
   assert.match(migration, /idx_sh_tracks_artist_identity/);
