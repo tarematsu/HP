@@ -1,7 +1,3 @@
-import { VideoFeedCoordinator as BaseVideoFeedCoordinator } from '../../video/src/video-feed-coordinator.js';
-import { refreshTverFeed } from './tver_feed.js';
-import { enrichTverFeedEpisodeTitles } from './tver_feed_titles.js';
-
 const COORDINATOR_NAME = 'tver-feed-refresh';
 const REFRESH_PATH = '/tver-feed-refresh-run';
 const REFRESH_URL = `https://homepanel.internal${REFRESH_PATH}`;
@@ -20,10 +16,25 @@ export async function dispatchTverFeedRefresh(env) {
   return response.json();
 }
 
-export class VideoFeedCoordinator extends BaseVideoFeedCoordinator {
+export class VideoFeedCoordinator {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+    this.base = null;
+  }
+
+  async baseCoordinator() {
+    if (this.base) return this.base;
+    const { VideoFeedCoordinator: BaseVideoFeedCoordinator } = await import('../../video/src/video-feed-coordinator.js');
+    this.base = new BaseVideoFeedCoordinator(this.state, this.env);
+    return this.base;
+  }
+
   async fetch(request) {
     const path = new URL(request.url).pathname;
-    if (path !== REFRESH_PATH) return super.fetch(request);
+    if (path !== REFRESH_PATH) {
+      return (await this.baseCoordinator()).fetch(request);
+    }
     if (request.method !== 'POST') {
       return Response.json({ error: 'method_not_allowed' }, {
         status: 405,
@@ -31,6 +42,10 @@ export class VideoFeedCoordinator extends BaseVideoFeedCoordinator {
       });
     }
 
+    const [{ refreshTverFeed }, { enrichTverFeedEpisodeTitles }] = await Promise.all([
+      import('./tver_feed.js'),
+      import('./tver_feed_titles.js'),
+    ]);
     const collectedFeed = await refreshTverFeed(this.env);
     const feed = await enrichTverFeedEpisodeTitles(this.env, collectedFeed);
     return Response.json({
