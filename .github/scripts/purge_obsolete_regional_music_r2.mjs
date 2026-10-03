@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
 
 const REMOVED = Object.freeze([
-  'bugs','joox','nhaccuatui','anghami','melon','netease_cloud_music','naver_vibe','flo',
+  'genie','bugs','joox','nhaccuatui','anghami','melon','netease_cloud_music','naver_vibe','flo',
   'yandex_music','boomplay','plern','fungjai','zing_mp3','jiosaavn','gaana','langit_musik',
 ]);
-const ACTIVE = Object.freeze(['youtube_music','genie','kkbox','qq_music','kugou_music']);
+const ACTIVE = Object.freeze(['youtube_music','kkbox','qq_music','kugou_music']);
 if (REMOVED.some((service) => ACTIVE.includes(service))) throw new Error('active service present in removal list');
 
 const config = JSON.parse(readFileSync(new URL('../../worker/wrangler.regional-music.jsonc', import.meta.url), 'utf8'));
