@@ -191,51 +191,46 @@ async function tverFeedHealthResponse(env) {
   });
 }
 
-async function homePanelCloudHealthResponse(request, env, ctx) {
-  const tverPromise = tverFeedObservability(env);
-  const radarPromise = radarFrameObservability(env);
+async function videoDatabaseHealth(env) {
+  const checkedAt = new Date().toISOString();
   try {
-    const [videoResponse, tverFeed, radar] = await Promise.all([
-      integratedVideoFetch(request, undefined, env, ctx),
-      tverPromise,
-      radarPromise,
-    ]);
-    let videoHealth = {};
-    try {
-      videoHealth = await videoResponse.json();
-    } catch {
-    }
-    const videoOk = videoResponse.ok && videoHealth?.ok !== false;
-    const ok = videoOk;
-    return Response.json({
-      ...videoHealth,
+    const row = await env?.DB?.prepare?.('SELECT 1 AS ok')?.first?.();
+    const ok = Number(row?.ok) === 1;
+    return {
       ok,
-      tverFeed,
-      radar,
-    }, {
-      status: ok ? videoResponse.status : 503,
-      headers: {
-        'Cache-Control': 'no-store',
-        'X-Content-Type-Options': 'nosniff'
-      }
-    });
+      service: 'homepanel-video',
+      checkedAt,
+      ...(ok ? {} : { error: 'DB health check failed' }),
+    };
   } catch (error) {
-    const [tverFeed, radar] = await Promise.all([tverPromise, radarPromise]);
-    return Response.json({
+    return {
       ok: false,
       service: 'homepanel-video',
+      checkedAt,
       error: error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200),
-      checkedAt: new Date().toISOString(),
-      tverFeed,
-      radar,
-    }, {
-      status: 503,
-      headers: {
-        'Cache-Control': 'no-store',
-        'X-Content-Type-Options': 'nosniff'
-      }
-    });
+    };
   }
+}
+
+async function homePanelCloudHealthResponse(env) {
+  const [videoHealth, tverFeed, radar] = await Promise.all([
+    videoDatabaseHealth(env),
+    tverFeedObservability(env),
+    radarFrameObservability(env),
+  ]);
+  const ok = videoHealth.ok === true;
+  return Response.json({
+    ...videoHealth,
+    ok,
+    tverFeed,
+    radar,
+  }, {
+    status: ok ? 200 : 503,
+    headers: {
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff'
+    }
+  });
 }
 
 export default {
@@ -296,7 +291,7 @@ export default {
     }
 
     if (pathname === '/api/health') {
-      return homePanelCloudHealthResponse(request, env, ctx);
+      return homePanelCloudHealthResponse(env);
     }
 
     if (pathname.startsWith('/api/') && !videoApiAuthorized(request, env)) {
