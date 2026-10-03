@@ -22,13 +22,20 @@ jobs:
         run: |
           git grep -n -E 'genie|bugs|joox|nhaccuatui|anghami|melon|netease|naver_vibe|yandex_music|boomplay|plern|fungjai|zing_mp3|jiosaavn|gaana|langit_musik' -- worker site .github scripts tests ':!.github/scripts/cleanup_hidden_regional_services.py' ':!.github/workflows/cleanup-hidden-regional-services-v2.yml' || true
           git grep -n -E "['\"]flo['\"]|regional-music-flo|collect-flo" -- worker site .github scripts tests ':!.github/scripts/cleanup_hidden_regional_services.py' ':!.github/workflows/cleanup-hidden-regional-services-v2.yml' || true
-      - name: Install dependencies
-        run: npm ci
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci --prefer-offline --no-audit --no-fund
       - name: Worker bundle check
         run: npm run check:worker-bundle
       - name: Worker tests
-        run: npm run test:worker
+        working-directory: worker
+        run: npm test
+      - name: Install Site dependencies
+        working-directory: site
+        run: npm ci --prefer-offline --no-audit --no-fund
       - name: Site check
-        run: npm run check:site
+        working-directory: site
+        run: npm run check
       - name: Site tests
-        run: npm run test:site
+        working-directory: site
+        run: npm test
