@@ -190,6 +190,9 @@
   .stationhead-subtabs > button {
     padding: 6px 3px;
     font-size: 12px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-wrap: balance;
   }
 
   .dashboard-source-row {
