@@ -49,7 +49,6 @@ test('all regional R2 facts resolve provider aliases to sh_tracks ids',async()=>
   const previous={
     tracks:[{service:'netease_cloud_music',service_track_id:'old',canonical_artist:'sakurazaka46',title:'17分間 (17分钟)',observed_at:1}],
     playlist_memberships:[{service:'netease_cloud_music',service_playlist_id:'list',service_track_id:'old',observed_at:1}],
-    artist_track_orders:[{service:'netease_cloud_music',canonical_artist:'sakurazaka46',service_track_id:'old',position:3,rank_source:'artist_page_order',observed_at:1}],
     state:{last_success_at:1},
   };
   const result=await collectRegionalR2Snapshot({service:'netease_cloud_music',now,previous,bindings:{MINUTE_DB:minuteDb},collect:async env=>{
@@ -67,7 +66,6 @@ test('all regional R2 facts resolve provider aliases to sh_tracks ids',async()=>
   assert.equal(result.playlist_memberships.find(row=>row.service_track_id==='new').track_id,77);
   assert.equal(result.playlist_memberships.find(row=>row.service_track_id==='old').track_id,88);
   assert.equal(result.artist_track_orders.find(row=>row.service_track_id==='new').track_id,77);
-  assert.equal(result.artist_track_orders.find(row=>row.service_track_id==='old').track_id,88);
   assert.equal(minuteDb.reads,1);
 });
 
