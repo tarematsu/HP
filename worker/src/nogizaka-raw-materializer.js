@@ -6,6 +6,7 @@ import {
   normalizeQueue,
   queueHash,
 } from './cloud-host-monitor-normalize.js';
+import { resolveMissingSpotifyPresentation } from './playback-track-metadata.js';
 
 const SOURCE_SCOPE = 'nogizaka46smej_solo';
 const DEFAULT_HANDLE = 'nogizaka46smej';
@@ -278,7 +279,13 @@ export async function materializeNogizakaRawMinute(env, now = Date.now()) {
     };
   }
 
-  const queue = normalizeQueue(station, observedAt);
+  let queue = normalizeQueue(station, observedAt);
+  if (active && queue?.tracks?.length && env?.MINUTE_DB?.prepare) {
+    const tracks = await resolveMissingSpotifyPresentation(env.MINUTE_DB, queue.tracks, {
+      requestTimeoutMs: positive(env.REQUEST_TIMEOUT_MS, 8_000),
+    });
+    if (tracks !== queue.tracks) queue = { ...queue, tracks };
+  }
   await saveStationMinute(env, Number(session.id), handle, station, main, queue, observedAt);
 
   let queueSaved = false;

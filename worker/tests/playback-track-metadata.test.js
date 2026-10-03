@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { hydratePlaybackAggregates, hydratePlaybackTrackMetadata } from '../src/playback-track-metadata.js';
+import {
+  hydratePlaybackAggregates,
+  hydratePlaybackTrackMetadata,
+  resolveMissingSpotifyPresentation,
+} from '../src/playback-track-metadata.js';
 
 const canonical = { track_id: 898, title: 'タイトル', artist: '櫻坂46', thumbnail_url: 'https://example.test/art.jpg', spotify_id: 'spotify898' };
 
@@ -60,4 +64,68 @@ test('aggregate repair preserves totals, likes and timestamps and is reused with
   delete repaired.likes[898].thumbnail_url;
   await hydratePlaybackAggregates(db, repaired.daily, repaired.likes);
   assert.equal(db.queries.length, 1);
+});
+
+test('complete Stationhead title and artist skip central D1 lookup entirely', async () => {
+  const db = {
+    prepare() { throw new Error('D1 should not be read'); },
+  };
+  const source = [{ spotify_id: 'complete1', title: 'Song', artist: 'Artist' }];
+  const result = await resolveMissingSpotifyPresentation(db, source);
+  assert.equal(result[0].title, 'Song');
+  assert.equal(result[0].artist, 'Artist');
+});
+
+test('shared Spotify repair reads at most six ids and writes at most two new metadata rows per run', async () => {
+  const originalFetch = globalThis.fetch;
+  const reads = [];
+  const writes = [];
+  let batches = 0;
+  globalThis.fetch = async () => ({
+    ok: true,
+    async json() {
+      return { title: 'Resolved Song', author_name: 'Resolved Artist', thumbnail_url: 'https://example.test/x.jpg' };
+    },
+  });
+  const db = {
+    prepare(sql) {
+      if (/^SELECT spotify_id/is.test(sql.trim())) {
+        return {
+          bind(...ids) {
+            reads.push(ids);
+            return { async all() { return { results: [] }; } };
+          },
+        };
+      }
+      if (/^INSERT INTO sh_track_metadata/is.test(sql.trim())) {
+        return {
+          bind(...values) {
+            const statement = { values };
+            writes.push(statement);
+            return statement;
+          },
+        };
+      }
+      throw new Error(`unexpected SQL: ${sql}`);
+    },
+    async batch(statements) {
+      batches += 1;
+      assert.equal(statements.length, 2);
+      return [];
+    },
+  };
+
+  try {
+    const tracks = Array.from({ length: 8 }, (_, index) => ({ spotify_id: `bounded${index}` }));
+    const repaired = await resolveMissingSpotifyPresentation(db, tracks);
+    assert.equal(reads.length, 1);
+    assert.equal(reads[0].length, 6);
+    assert.equal(writes.length, 2);
+    assert.equal(batches, 1);
+    assert.equal(repaired[0].title, 'Resolved Song');
+    assert.equal(repaired[1].artist, 'Resolved Artist');
+    assert.equal(repaired[2].title, null);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
