@@ -56,6 +56,7 @@ const COMPACT_CHART_CADENCE = Object.freeze({
 });
 
 const OUT_OF_CHART_RANK = 101;
+const CHART_START_DATE = '2021-01-01';
 
 const readModelPromises = new Map();
 let activeRequest = 0;
@@ -325,7 +326,7 @@ function renderMelonPopularity(payload, service) {
     .filter((item) => Number.isFinite(Number(item?.position)) && Number(item.position) > 0)
     .sort((a, b) => artistPosition(a.canonical_artist) - artistPosition(b.canonical_artist)
       || Number(a.position) - Number(b.position)
-      || String(trackById.get(String(a.service_track_id || ''))?.title || '').localeCompare(String(trackById.get(String(b.service_track_id || ''))?.title || '')));
+      || String(trackById.get(String(b.service_track_id || ''))?.title || '').localeCompare(String(trackById.get(String(b.service_track_id || ''))?.title || '')));
   const body = replaceBody('melonArtistPopularityBody');
   if (!body) return;
   if (!rows.length) {
@@ -391,9 +392,11 @@ function kugouSeries(history, coveredDates = []) {
 }
 
 function renderKugouRankChart({ containerId, legendId, history, coveredDates, ariaLabel, emptyText }) {
-  const series = kugouSeries(history, coveredDates);
-  const dates = coveredDates.length
-    ? coveredDates
+  const chartHistory = history.filter((item) => providerDate(item?.published_at) >= CHART_START_DATE);
+  const chartCoveredDates = coveredDates.filter((date) => date >= CHART_START_DATE);
+  const series = kugouSeries(chartHistory, chartCoveredDates);
+  const dates = chartCoveredDates.length
+    ? chartCoveredDates
     : [...new Set(series.flatMap((item) => item.points.map((point) => point.date)))].sort();
   renderRankHistoryChart({
     container:byId(containerId),
