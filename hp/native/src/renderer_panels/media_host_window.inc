@@ -55,11 +55,13 @@ LRESULT CALLBACK NativeMediaPanelWndProc(
           KillTimer(hwnd, timerId);
           return 0;
         }
-        if ((timerId == kNativeMediaYoutubeWatchdogTimer ||
-             timerId == kNativeMediaTverWatchdogTimer) &&
-            NativeMediaWatchdogExecutionTimedOut(hwnd, timerId)) {
-          PostMessageW(hwnd, kNativeMediaRecreateMessage, 0, 0);
-          return 0;
+        // Invalidate a policy execution that exceeded its deadline, but let the
+        // phase-local watchdog recover it. Recreating the whole host here resets
+        // the media phase to YouTube, so a late timer from the previous phase can
+        // otherwise produce visible YouTube/TVer jumps.
+        if (timerId == kNativeMediaYoutubeWatchdogTimer ||
+            timerId == kNativeMediaTverWatchdogTimer) {
+          NativeMediaWatchdogExecutionTimedOut(hwnd, timerId);
         }
         if (host->OnTimer(timerId)) return 0;
         break;
