@@ -80,7 +80,7 @@ jobs:
           set -euo pipefail
           mkdir -p .pages-visual-audit
           node --input-type=module <<'NODE'
-          import { writeFile } from 'node:fs/promises';
+          import { appendFile, writeFile } from 'node:fs/promises';
           import { chromium } from 'playwright';
           const browser = await chromium.launch({ headless: true });
           const page = await browser.newPage();
@@ -102,9 +102,9 @@ jobs:
           const accessProtected = /cloudflare|access|sign in/i.test(`${title} ${body} ${finalUrl}`);
           const report = { requestedUrl: process.env.PREVIEW_URL, finalUrl, status, title, accessProtected, error };
           await writeFile('.pages-visual-audit/preview-access.json', `${JSON.stringify(report, null, 2)}\n`);
+          await appendFile(process.env.GITHUB_OUTPUT, `access_protected=${accessProtected ? 'true' : 'false'}\n`);
           await browser.close();
           console.log(JSON.stringify(report));
-          process.stdout.write(`::set-output name=access_protected::${accessProtected ? 'true' : 'false'}\n`);
           NODE
 
       - name: Capture Pages at every tab and viewport size
