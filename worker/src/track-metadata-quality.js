@@ -108,11 +108,12 @@ export function sanitizeQueueTrackMetadata(queue) {
     const displayChanged = displayTitle !== (normalizedText(track.display_title) || null);
     if (!titleChanged && !artistChanged && !displayChanged) return track;
     changed = true;
+    const hasDisplayTitle = Object.prototype.hasOwnProperty.call(track, 'display_title');
     return {
       ...track,
       title,
       artist,
-      display_title: displayTitle,
+      ...(displayTitle || hasDisplayTitle ? { display_title: displayTitle } : {}),
     };
   });
   return changed ? { ...queue, tracks } : queue;
@@ -121,10 +122,11 @@ export function sanitizeQueueTrackMetadata(queue) {
 export function sanitizeMetadataRow(row) {
   if (!row || typeof row !== 'object') return row;
   const resolved = resolvedTrackMetadata(row);
+  const hasDisplayTitle = Object.prototype.hasOwnProperty.call(row, 'display_title');
   return {
     ...row,
     title: resolved.title,
     artist: resolved.artist,
-    display_title: resolved.displayTitle || null,
+    ...(resolved.displayTitle || hasDisplayTitle ? { display_title: resolved.displayTitle || null } : {}),
   };
 }
