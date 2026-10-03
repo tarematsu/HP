@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "sh-regional-music-collector",
-  "main": "src/regional-music-entry.js",
+  "main": "src/regional-music-service-entry.js",
   "compatibility_date": "2026-06-24",
   "workers_dev": false,
   "preview_urls": false,
@@ -14,9 +14,6 @@
       "persist": true,
       "invocation_logs": true
     }
-  },
-  "triggers": {
-    "crons": ["0 15 * * *"]
   },
   "d1_databases": [
     {
