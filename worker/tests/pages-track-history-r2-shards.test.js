@@ -150,10 +150,10 @@ test('grouped history rows and like rows share one canonical lookup pass', async
     },
   );
 
-  const canonicalSelects = db.selects.filter(({ sql }) => /FROM sh_track_canonical_metadata/.test(sql));
-  assert.equal(canonicalSelects.length, 1);
-  assert.match(canonicalSelects[0].sql, /WHERE track_id IS NOT NULL AND spotify_id IN/);
-  assert.deepEqual(canonicalSelects[0].args, ['shared-track']);
+  const spotifyIdentitySelects = db.selects.filter(({ sql }) => /FROM sh_tracks WHERE spotify_id IN/.test(sql));
+  assert.equal(spotifyIdentitySelects.length, 1);
+  assert.match(spotifyIdentitySelects[0].sql, /SELECT id AS track_id,spotify_id AS alias_value/);
+  assert.deepEqual(spotifyIdentitySelects[0].args, ['shared-track']);
 });
 
 test('explicit maintenance keeps seven staging shards in R2 and writes a stable R2 day model', async () => {

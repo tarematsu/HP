@@ -41,23 +41,44 @@ test('every store entity saves to an R2 snapshot without any D1 binding',async()
   assert.equal(result.day,'2026-10-06');
 });
 
-test('QQ R2 snapshot resolves new and previous Chinese-title rows to sh_tracks ids',async()=>{
+test('all regional R2 facts resolve provider aliases to sh_tracks ids',async()=>{
   const minuteDb=minuteDbWithTracks([
     {id:77,title:'承認欲求',artist:'櫻坂46',isrc:'JP-SAK-77',spotify_id:'spotify77'},
     {id:88,title:'17分間',artist:'櫻坂46',isrc:'JP-SAK-88',spotify_id:'spotify88'},
   ]);
   const previous={
-    tracks:[{service:'qq_music',service_track_id:'old',canonical_artist:'sakurazaka46',title:'17分間 (17分钟)',observed_at:1}],
+    tracks:[{service:'netease_cloud_music',service_track_id:'old',canonical_artist:'sakurazaka46',title:'17分間 (17分钟)',observed_at:1}],
+    playlist_memberships:[{service:'netease_cloud_music',service_playlist_id:'list',service_track_id:'old',observed_at:1}],
     state:{last_success_at:1},
   };
-  const result=await collectRegionalR2Snapshot({service:'qq_music',now,previous,bindings:{MINUTE_DB:minuteDb},collect:async env=>{
+  const result=await collectRegionalR2Snapshot({service:'netease_cloud_music',now,previous,bindings:{MINUTE_DB:minuteDb},collect:async env=>{
     assert.equal(env.MINUTE_DB,minuteDb);
-    await saveRegionalTrack(env,{service:'qq_music',service_track_id:'new',canonical_artist:'sakurazaka46',title:'承认欲求',observed_at:now});
-    await saveRegionalCollectorState(env,{service:'qq_music',status:'ok',last_success_at:now});
+    await saveRegionalTrack(env,{service:'netease_cloud_music',service_track_id:'new',canonical_artist:'sakurazaka46',title:'承认欲求',popularity_rank:2,observed_at:now});
+    await saveRegionalPlaylistMembership(env,{service:'netease_cloud_music',service_playlist_id:'list',service_track_id:'new',position:1,observed_at:now});
+    await saveRegionalCollectorState(env,{service:'netease_cloud_music',status:'ok',last_success_at:now});
   }});
-  assert.equal(result.tracks.find(row=>row.service_track_id==='new').canonical_track_id,77);
-  assert.equal(result.tracks.find(row=>row.service_track_id==='old').canonical_track_id,88);
+  const newTrack=result.tracks.find(row=>row.service_track_id==='new');
+  const oldTrack=result.tracks.find(row=>row.service_track_id==='old');
+  assert.equal(newTrack.canonical_track_id,77);
+  assert.equal(newTrack.track_id,77);
+  assert.equal(oldTrack.canonical_track_id,88);
+  assert.equal(oldTrack.track_id,88);
+  assert.equal(result.playlist_memberships.find(row=>row.service_track_id==='new').track_id,77);
+  assert.equal(result.playlist_memberships.find(row=>row.service_track_id==='old').track_id,88);
+  assert.equal(result.artist_track_orders.find(row=>row.service_track_id==='new').track_id,77);
   assert.equal(minuteDb.reads,1);
+});
+
+test('D1 fallback payloads expose sh_tracks ids on all track facts without an R2 snapshot',()=>{
+  const payload=mergeRegionalR2Snapshot({
+    tracks:[{service:'melon',service_track_id:'provider-91',canonical_track_id:91,title:'Song'}],
+    playlist_memberships:[{service:'melon',service_playlist_id:'chart',service_track_id:'provider-91',position:3}],
+    artist_track_orders:[{service:'melon',canonical_artist:'sakurazaka46',service_track_id:'provider-91',position:4}],
+    services:[],
+  },null);
+  assert.equal(payload.tracks[0].track_id,91);
+  assert.equal(payload.playlist_memberships[0].track_id,91);
+  assert.equal(payload.artist_track_orders[0].track_id,91);
 });
 
 test('provider failure retains previous records and an empty playlist clears memberships',async()=>{

@@ -21,6 +21,10 @@ function positive(value) {
   return n && n > 0 ? n : null;
 }
 
+function canonicalTrackId(value) {
+  return positive(value?.track_id ?? value?.canonical_track_id);
+}
+
 export async function saveRegionalArtist(env, value) {
   if (env.REGIONAL_MUSIC_SNAPSHOT_STORE) return env.REGIONAL_MUSIC_SNAPSHOT_STORE('artists',value);
   const observedAt = Number(value.observed_at) || Date.now();
@@ -50,6 +54,8 @@ export async function saveRegionalArtist(env, value) {
 
 export async function saveRegionalTrack(env, value) {
   value = await resolveRegionalMusicCanonicalTrack(env, value);
+  const trackId = canonicalTrackId(value);
+  value = trackId == null ? value : { ...value, track_id: trackId, canonical_track_id: trackId };
   if (env.REGIONAL_MUSIC_SNAPSHOT_STORE) return env.REGIONAL_MUSIC_SNAPSHOT_STORE('tracks',value);
   const observedAt = Number(value.observed_at) || Date.now();
   const db = dbOf(env);
@@ -65,13 +71,14 @@ export async function saveRegionalTrack(env, value) {
     track_url=COALESCE(excluded.track_url,track_url),
     last_seen_at=excluded.last_seen_at`)
     .bind(value.service, value.service_track_id, value.service_artist_id ?? null,
-      value.canonical_artist ?? null, positive(value.canonical_track_id), value.title ?? null,
+      value.canonical_artist ?? null, trackId, value.title ?? null,
       value.album_name ?? null, value.track_url ?? null, observedAt, observedAt).run();
 
   const snapshotDate = value.snapshot_date || regionalMusicSnapshotDate(observedAt);
   await db.prepare(`INSERT INTO regional_music_track_daily(
-    snapshot_date,service,service_track_id,observed_at,plays,listeners,likes,comments,popularity_rank
-  ) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(snapshot_date,service,service_track_id) DO UPDATE SET
+    snapshot_date,service,service_track_id,observed_at,plays,listeners,likes,comments,popularity_rank,track_id
+  ) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(snapshot_date,service,service_track_id) DO UPDATE SET
+    track_id=COALESCE(excluded.track_id,track_id),
     observed_at=excluded.observed_at,
     plays=COALESCE(excluded.plays,plays),
     listeners=COALESCE(excluded.listeners,listeners),
@@ -80,17 +87,18 @@ export async function saveRegionalTrack(env, value) {
     popularity_rank=COALESCE(excluded.popularity_rank,popularity_rank)`)
     .bind(snapshotDate, value.service, value.service_track_id, observedAt,
       count(value.plays), count(value.listeners), count(value.likes), count(value.comments),
-      positive(value.popularity_rank)).run();
+      positive(value.popularity_rank), trackId).run();
   if (positive(value.popularity_rank) && value.canonical_artist) {
     const source = value.popularity_rank_source || 'provider_popularity_order';
     if (!['provider_rank','provider_popularity_order','artist_page_order'].includes(source)) throw new Error('Unknown popularity rank source');
     await db.prepare(`INSERT INTO regional_music_artist_track_order(
-      snapshot_date,service,canonical_artist,service_artist_id,service_track_id,observed_at,position,rank_source
-    ) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(snapshot_date,service,canonical_artist,service_track_id) DO UPDATE SET
+      snapshot_date,service,canonical_artist,service_artist_id,service_track_id,observed_at,position,rank_source,track_id
+    ) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(snapshot_date,service,canonical_artist,service_track_id) DO UPDATE SET
       service_artist_id=COALESCE(excluded.service_artist_id,service_artist_id),
+      track_id=COALESCE(excluded.track_id,track_id),
       observed_at=excluded.observed_at,position=excluded.position,rank_source=excluded.rank_source`)
       .bind(snapshotDate,value.service,value.canonical_artist,value.service_artist_id ?? null,
-        value.service_track_id,observedAt,positive(value.popularity_rank),source).run();
+        value.service_track_id,observedAt,positive(value.popularity_rank),source,trackId).run();
   }
 }
 
@@ -144,13 +152,20 @@ export async function saveRegionalPlaylistMembership(env, value) {
   if (env.REGIONAL_MUSIC_SNAPSHOT_STORE) return env.REGIONAL_MUSIC_SNAPSHOT_STORE('playlist_memberships',value);
   const observedAt = Number(value.observed_at) || Date.now();
   const snapshotDate = value.snapshot_date || regionalMusicSnapshotDate(observedAt);
-  return dbOf(env).prepare(`INSERT INTO regional_music_playlist_memberships(
-    snapshot_date,service,service_playlist_id,service_track_id,observed_at,position
-  ) VALUES(?,?,?,?,?,?) ON CONFLICT(snapshot_date,service,service_playlist_id,service_track_id) DO UPDATE SET
+  const db = dbOf(env);
+  const trackId = canonicalTrackId(value);
+  return db.prepare(`INSERT INTO regional_music_playlist_memberships(
+    snapshot_date,service,service_playlist_id,service_track_id,observed_at,position,track_id
+  ) VALUES(?,?,?,?,?,?,COALESCE(?,(
+    SELECT canonical_track_id FROM regional_music_tracks
+    WHERE service=? AND service_track_id=?
+    LIMIT 1
+  ))) ON CONFLICT(snapshot_date,service,service_playlist_id,service_track_id) DO UPDATE SET
+    track_id=COALESCE(excluded.track_id,track_id),
     observed_at=excluded.observed_at,
     position=COALESCE(excluded.position,position)`)
     .bind(snapshotDate, value.service, value.service_playlist_id, value.service_track_id,
-      observedAt, positive(value.position)).run();
+      observedAt, positive(value.position), trackId, value.service, value.service_track_id).run();
 }
 
 export async function saveRegionalCollectorState(env, value) {
