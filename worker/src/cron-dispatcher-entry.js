@@ -16,7 +16,7 @@ export const KKBOX_WEEKLY_CRON = '0 15 * * 0';
 export const QQ_WEEKLY_CRON = '0 9 * * 4';
 export const KUGOU_WEEKDAY_CRON = '30 2 * * 1-5';
 export const KUGOU_ACG_WEEKLY_CRON = '40 2 * * 3';
-export const QQ_TOPLIST_POLL_CRON = '0 9-21 * * 4';
+export const QQ_TOPLIST_POLL_CRON = '30 9-21 * * 4';
 export const STATIONHEAD_FOLLOWERS_CRON = '0 15 * * *';
 export const STATIONHEAD_LEADERBOARD_CRON = '17 12 * * 1';
 
@@ -93,7 +93,7 @@ export async function runCronDispatcher(controller, env) {
   if (day === 3 && hour === 2 && minute === 40) {
     addServiceTask(tasks, 'kugou-acg', env?.REGIONAL_MUSIC_SCHEDULED, KUGOU_ACG_WEEKLY_CRON, scheduledAt);
   }
-  if (day === 4 && hour >= 9 && hour <= 21 && minute === 0) {
+  if (day === 4 && hour >= 9 && hour <= 21 && minute === 30) {
     addServiceTask(tasks, 'qq-toplists', env?.REGIONAL_MUSIC_SCHEDULED, QQ_TOPLIST_POLL_CRON, scheduledAt);
   }
   if (day === 1 && hour === 12 && minute === 17) {
