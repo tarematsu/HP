@@ -31,8 +31,7 @@ constexpr UINT kNativeMediaTverMinContentDurationMinutes = 45U;
 constexpr UINT kNativeMediaTverMaxContentDurationMinutes = 75U;
 constexpr UINT kNativeMediaYoutubePhaseMs =
     kNativeMediaYoutubeContentPhaseMs + kNativeMediaXPhaseMs;
-constexpr UINT kNativeMediaTverPhaseMs =
-    kNativeMediaTverContentDurationMs + kNativeMediaXPhaseMs;
+constexpr UINT kNativeMediaTverPhaseMs = kNativeMediaTverContentDurationMs;
 constexpr UINT kNativeMediaNavigationRetryMs = 3U * 1000U;
 constexpr UINT kNativeMediaYoutubeWatchdogHealthyMs = 30U * 1000U;
 constexpr UINT kNativeMediaYoutubeWatchdogRecoveryMs = 2U * 1000U;
@@ -134,6 +133,9 @@ bool& NativeMediaXCycleLastPhaseTver() noexcept {
   return tver;
 }
 
+ULONGLONG& NativeMediaStartupXDeadlineTick() noexcept;
+bool& NativeMediaStartupYoutubePhaseActive() noexcept;
+
 void NativeMediaObserveXCyclePhase(bool tver) noexcept {
   auto& initialized = NativeMediaXCyclePlanInitialized();
   auto& lastTver = NativeMediaXCycleLastPhaseTver();
@@ -144,10 +146,23 @@ void NativeMediaObserveXCyclePhase(bool tver) noexcept {
     return;
   }
   if (tver == lastTver) return;
-  // Entering TVer means the current cycle's second X slot has finished. Draw
-  // exactly once for the next cycle: both media durations and the first X slot
-  // are followed by YouTube and the cycle's second X slot.
-  if (tver) NativeMediaCurrentXCyclePlan() = NativeMediaDrawXCyclePlan();
+  if (tver) {
+    // TVer starts a new cycle but never yields its WebView to X. The first X
+    // slot, when selected, is moved to the next YouTube prefix instead.
+    NativeMediaCurrentXCyclePlan() = NativeMediaDrawXCyclePlan();
+    NativeMediaStartupYoutubePhaseActive() = false;
+  } else {
+    // Entering YouTube is the safe boundary for the first X slot. Run it as a
+    // two-minute prefix so TVer's browser fullscreen is never destroyed by an
+    // in-phase navigation to x.com.
+    const bool prefixXEnabled =
+        NativeMediaCurrentXCyclePlan().firstSlot &&
+        NativeMediaXRuntimeAllowed() && !gNativeMediaPowerSaving;
+    const ULONGLONG now = std::max<ULONGLONG>(1, GetTickCount64());
+    NativeMediaStartupXDeadlineTick() =
+        prefixXEnabled ? now + kNativeMediaStartupXPhaseMs : 1;
+    NativeMediaStartupYoutubePhaseActive() = prefixXEnabled;
+  }
   lastTver = tver;
 }
 
@@ -189,10 +204,10 @@ UINT NativeMediaYoutubeContentIntervalMs() noexcept {
 
 UINT NativeMediaTverContentIntervalMs() noexcept {
   NativeMediaObserveXCyclePhase(true);
-  const UINT tverContentDurationMs = NativeMediaCurrentTverContentDurationMs();
-  if (NativeMediaXSlotEnabled(true)) return tverContentDurationMs;
-  // An unselected first X slot is skipped entirely instead of extending TVer.
-  return tverContentDurationMs + 1000U;
+  // TVer owns this WebView continuously. Put the X timer just after the TVer
+  // phase boundary so the phase switch wins and a stale timer cannot navigate
+  // the live TVer document away from fullscreen.
+  return NativeMediaCurrentTverContentDurationMs() + 1000U;
 }
 
 UINT NativeMediaPhaseIntervalMs(bool tver) noexcept {
@@ -209,15 +224,14 @@ UINT NativeMediaPhaseIntervalMs(bool tver) noexcept {
   }
   if (tver) {
     NativeMediaStartupYoutubePhaseActive() = false;
-    const UINT tverContentDurationMs = NativeMediaCurrentTverContentDurationMs();
-    return tverContentDurationMs +
-        (NativeMediaXSlotEnabled(true) ? kNativeMediaXPhaseMs : 0U);
+    return NativeMediaCurrentTverContentDurationMs();
   }
 
   auto& deadline = NativeMediaStartupXDeadlineTick();
   if (deadline == 0) {
     const ULONGLONG now = std::max<ULONGLONG>(1, GetTickCount64());
-    const bool startupXEnabled = NativeMediaXSlotEnabled(true);
+    const bool startupXEnabled =
+        NativeMediaXSlotEnabled(true) && NativeMediaXRuntimeAllowed();
     deadline = startupXEnabled ? now + kNativeMediaStartupXPhaseMs : 1;
     NativeMediaStartupYoutubePhaseActive() = startupXEnabled;
   }
