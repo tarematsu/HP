@@ -84,7 +84,7 @@ mountDashboardShell({
 installAmazonMusicUpdatedAt();
 
 function playlistModuleUrl() {
-  return ['/music-service-playlists.js', 'v=20261003.2'].join('?');
+  return ['/music-service-playlists.js', 'v=20261004.1'].join('?');
 }
 
 void import(playlistModuleUrl())
