@@ -9,6 +9,7 @@ import {
   mountDashboardShell,
 } from './dashboard-ui-common.js?v=20261001.1';
 import { musicServiceMeta, musicServiceSection } from './music-service-shell.js?v=20261001.1';
+import { installAmazonMusicUpdatedAt } from './music-service-updated-at.js?v=20261003.1';
 
 const summary = dashboardSummary([
   dashboardSummaryItem({ label: '対象グループ', value: '3組' }),
@@ -68,7 +69,7 @@ mountDashboardShell({
     anchorId: 'likesView',
     position: 'beforebegin',
     html: `
-      ${musicServiceMeta({ valueId: 'amazonSnapshotDate' })}
+      ${musicServiceMeta({ label: '更新日時', valueId: 'amazonUpdatedAt', cadence: '毎日朝ごろ' })}
       ${dashboardNotice({ id: 'amazonMusicNotice' })}
       ${summary}
       ${musicServiceSection({ id: 'amazonTrendSection', kicker: 'TRENDS', title: '推移', bodyHtml: rankPanel })}
@@ -76,6 +77,8 @@ mountDashboardShell({
       ${musicServiceSection({ id: 'amazonPlaylistSection', kicker: 'PLAYLISTS', title: 'プレイリスト', bodyHtml: '<div id="amazonPlaylistMount"></div>' })}`,
   },
 });
+
+installAmazonMusicUpdatedAt();
 
 function playlistModuleUrl() {
   return ['/music-service-playlists.js', 'v=20261001.1'].join('?');

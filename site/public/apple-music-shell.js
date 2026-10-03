@@ -14,6 +14,7 @@ import {
   musicServiceMeta,
   musicServiceSection,
 } from './music-service-shell.js?v=20261001.1';
+import { installAppleMusicUpdatedAt } from './music-service-updated-at.js?v=20261003.1';
 
 const summary = dashboardSummary([
   dashboardSummaryItem({ label: '取得地域数', valueId: 'appleRegionCount' }),
@@ -73,7 +74,7 @@ mountDashboardShell({
     anchorId: 'likesView',
     position: 'beforebegin',
     html: `
-      ${musicServiceMeta({ valueId: 'appleSnapshotDate' })}
+      ${musicServiceMeta({ label: '更新日時', valueId: 'appleUpdatedAt', cadence: '毎時15分' })}
       ${dashboardNotice({ id: 'appleMusicNotice' })}
       ${summary}
       ${musicServiceSection({ id: 'appleTrendSection', kicker: 'TRENDS', title: '推移', bodyHtml: rankPanel })}
@@ -86,3 +87,5 @@ mountDashboardShell({
       })}`,
   },
 });
+
+installAppleMusicUpdatedAt();

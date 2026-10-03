@@ -68,7 +68,7 @@ mountDashboardShell({
     html: `
       <div class="regional-chart-meta spotify-chart-meta">
         <span>更新日時 <strong id="spotifyUpdatedAt">-</strong></span>
-        <span>更新周期 <strong>毎日5:00</strong></span>
+        <span>更新周期 <strong>毎日朝ごろ</strong></span>
       </div>
       ${dashboardNotice({ id: 'spotifyNotice' })}
       ${trendPanels}
