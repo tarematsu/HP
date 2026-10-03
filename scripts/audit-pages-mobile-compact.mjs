@@ -5,7 +5,7 @@ import { chromium } from 'playwright';
 const MODES = [
   { name: 'current', path: '/', panel: '#currentView', tab: '#modeTabs button[data-view="current"]', requiredText: '再生中の曲' },
   { name: 'daily', path: '/#daily', panel: '#historyView', tab: '#modeTabs button[data-mode="daily"]', requiredText: '期間数' },
-  { name: 'ranking', path: '/#ranking', panel: '#historyView', tab: '#sourceTabs button[data-source="ranking"]', requiredText: '総週数' },
+  { name: 'ranking', path: '/#ranking', panel: '#historyView', tab: '#sourceTabs button[data-source="ranking"]', requiredText: '更新周期' },
   { name: 'played-tracks', path: '/#played-tracks', panel: '#playedTracksView', tab: '#modeTabs button[data-view="played-tracks"]', requiredText: '楽曲別再生一覧' },
   { name: 'likes', path: '/#likes', panel: '#likesView', tab: '#modeTabs button[data-mode="likes"]', requiredText: '最新いいねランキング' },
   { name: 'broadcasts', path: '/#broadcasts', panel: '#historyView', tab: '#modeTabs button[data-mode="broadcasts"]', requiredText: '非公式リスパ一覧', additionalRequiredText: '比較対象' },
