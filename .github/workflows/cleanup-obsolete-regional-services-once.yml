@@ -6,7 +6,7 @@ on:
       - cleanup/remove-obsolete-regional-services-20261003
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: cleanup-obsolete-regional-services-once
@@ -23,45 +23,35 @@ jobs:
         with:
           ref: cleanup/remove-obsolete-regional-services-20261003
           fetch-depth: 0
-          token: ${{ github.token }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      - name: Generate permanent cleanup changes
-        run: python .github/scripts/cleanup_obsolete_regional_services.py
-
-      - name: Commit generated cleanup changes
-        shell: bash
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          if ! git diff --cached --quiet; then
-            git commit -m 'Remove obsolete regional music services'
-            git push origin HEAD:cleanup/remove-obsolete-regional-services-20261003
-          fi
-
       - uses: ./.github/actions/cloudflare-context
         with:
           api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
-
-      - name: Purge obsolete R2 objects
-        run: node .github/scripts/purge_obsolete_regional_music_r2.mjs
 
       - name: Install Worker dependencies
         working-directory: worker
         run: npm ci --prefer-offline --no-audit --no-fund
 
+      - name: Purge obsolete R2 objects
+        run: node .github/scripts/purge_obsolete_regional_music_r2.mjs
+
       - name: Purge obsolete D1 rows
         working-directory: worker
         run: node node_modules/wrangler/bin/wrangler.js d1 execute stationhead-other --remote --file ../database/other-migrations/069_remove_obsolete_regional_music_services.sql --config wrangler.regional-music.jsonc
 
+      - name: Verify obsolete D1 collector state is empty
+        working-directory: worker
+        run: |
+          node node_modules/wrangler/bin/wrangler.js d1 execute stationhead-other --remote --config wrangler.regional-music.jsonc --command "SELECT service FROM regional_music_collector_state WHERE service IN ('genie','bugs','joox','nhaccuatui','anghami','melon','netease_cloud_music','naver_vibe','flo','yandex_music','boomplay','plern','fungjai','zing_mp3','jiosaavn','gaana','langit_musik') LIMIT 1"
+
       - name: Show residual obsolete provider references
         shell: bash
         run: |
-          git grep -n -E 'netease_cloud_music|regional-music-netease|collectNetease|naver_vibe|regional-music-vibe|yandex_music|regional-music-yandex|boomplay|plern|fungjai|zing_mp3|regional-music-zing|jiosaavn|gaana|langit_musik|nhaccuatui|anghami|regional-music-bugs|regional-music-joox|regional-music-melon' -- worker site .github scripts tests ':!.github/scripts/cleanup_obsolete_regional_services.py' ':!.github/scripts/purge_obsolete_regional_music_r2.mjs' ':!.github/workflows/cleanup-obsolete-regional-services-once.yml' || true
+          git grep -n -E 'genie|netease_cloud_music|regional-music-netease|collectNetease|naver_vibe|regional-music-vibe|yandex_music|regional-music-yandex|boomplay|plern|fungjai|zing_mp3|regional-music-zing|jiosaavn|gaana|langit_musik|nhaccuatui|anghami|regional-music-bugs|regional-music-joox|regional-music-melon' -- worker site .github scripts tests ':!.github/scripts/cleanup_obsolete_regional_services.py' ':!.github/scripts/purge_obsolete_regional_music_r2.mjs' ':!.github/workflows/cleanup-obsolete-regional-services-once.yml' || true
           git grep -n -E "['\"]flo['\"]|regional-music-flo|collectFlo" -- worker site .github scripts tests ':!.github/scripts/cleanup_obsolete_regional_services.py' ':!.github/scripts/purge_obsolete_regional_music_r2.mjs' ':!.github/workflows/cleanup-obsolete-regional-services-once.yml' || true
 
       - name: Worker bundle check
