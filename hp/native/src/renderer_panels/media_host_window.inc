@@ -55,13 +55,22 @@ LRESULT CALLBACK NativeMediaPanelWndProc(
           KillTimer(hwnd, timerId);
           return 0;
         }
-        // Invalidate a policy execution that exceeded its deadline, but let the
-        // phase-local watchdog recover it. Recreating the whole host here resets
-        // the media phase to YouTube, so a late timer from the previous phase can
-        // otherwise produce visible YouTube/TVer jumps.
         if (timerId == kNativeMediaYoutubeWatchdogTimer ||
             timerId == kNativeMediaTverWatchdogTimer) {
-          NativeMediaWatchdogExecutionTimedOut(hwnd, timerId);
+          // KillTimer cannot remove a WM_TIMER already queued for the previous
+          // media phase. Invalidate an expired execution in either case, but
+          // only recreate the WebView host when the timed-out watchdog still
+          // belongs to the current YouTube/TVer phase. Otherwise a stale TVer
+          // timer can reset a fresh YouTube phase (or vice versa).
+          const bool watchdogMatchesCurrentPhase =
+              timerId == kNativeMediaTverWatchdogTimer
+                  ? NativeMediaXCycleLastPhaseTver()
+                  : !NativeMediaXCycleLastPhaseTver();
+          if (NativeMediaWatchdogExecutionTimedOut(hwnd, timerId) &&
+              watchdogMatchesCurrentPhase) {
+            PostMessageW(hwnd, kNativeMediaRecreateMessage, 0, 0);
+            return 0;
+          }
         }
         if (host->OnTimer(timerId)) return 0;
         break;
