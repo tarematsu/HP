@@ -66,7 +66,7 @@ test('Nogizaka tab keeps the shared official listening-party presentation', () =
 });
 
 test('Nogizaka chart keeps an explicit CSS height so redraws cannot grow the canvas', () => {
-  assert.match(shell, /id="nogizakaPartyChart"[^>]*style="height:20em"/);
+  assert.match(shell, /class="chart-fit"><canvas id="nogizakaPartyChart"[^>]*style="height:20em"/);
 });
 
 test('Nogizaka listening-party labels are reusable for future Under Live events', () => {
