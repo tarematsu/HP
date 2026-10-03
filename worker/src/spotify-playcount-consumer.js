@@ -185,6 +185,17 @@ async function finalizeAttempt(db, message) {
   if (!['catalog', 'queued'].includes(String(run.status))) return { staleMessage: true };
   if (Number(run.albums_completed || 0) < Number(run.albums_queued || 0)) return { pending: true };
 
+  // Claim finalization before reading the candidate/previous-day sets. Multiple
+  // queue consumers can observe albums_completed>=albums_queued concurrently;
+  // only the winner should pay for the heavy validation reads.
+  const claimTime = Date.now();
+  const claim = await db.prepare(`UPDATE sh_spotify_collection_runs
+    SET status='finalizing',updated_at=?
+    WHERE snapshot_date=? AND run_token=? AND status IN ('catalog','queued')
+      AND albums_completed>=albums_queued`)
+    .bind(claimTime, message.snapshot_date, message.run_token).run();
+  if (Number(claim?.meta?.changes || 0) !== 1) return { finalizing: true };
+
   const candidateResult = await db.prepare(`SELECT track_id,playcount,collected_at
     FROM sh_spotify_playcount_candidates WHERE snapshot_date=? AND run_token=? ORDER BY track_id`)
     .bind(message.snapshot_date, message.run_token).all();
@@ -233,14 +244,6 @@ async function finalizeAttempt(db, message) {
       return { stale: true };
     }
   }
-
-  const claimTime = Date.now();
-  const claim = await db.prepare(`UPDATE sh_spotify_collection_runs
-    SET status='finalizing',updated_at=?
-    WHERE snapshot_date=? AND run_token=? AND status IN ('catalog','queued')
-      AND albums_completed>=albums_queued`)
-    .bind(claimTime, message.snapshot_date, message.run_token).run();
-  if (Number(claim?.meta?.changes || 0) !== 1) return { finalizing: true };
 
   const now = Date.now();
   await db.batch([
