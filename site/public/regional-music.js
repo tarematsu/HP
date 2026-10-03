@@ -326,7 +326,7 @@ function renderMelonPopularity(payload, service) {
     .filter((item) => Number.isFinite(Number(item?.position)) && Number(item.position) > 0)
     .sort((a, b) => artistPosition(a.canonical_artist) - artistPosition(b.canonical_artist)
       || Number(a.position) - Number(b.position)
-      || String(trackById.get(String(b.service_track_id || ''))?.title || '').localeCompare(String(trackById.get(String(b.service_track_id || ''))?.title || '')));
+      || String(trackById.get(String(a.service_track_id || ''))?.title || '').localeCompare(String(trackById.get(String(b.service_track_id || ''))?.title || '')));
   const body = replaceBody('melonArtistPopularityBody');
   if (!body) return;
   if (!rows.length) {
