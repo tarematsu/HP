@@ -1,4 +1,5 @@
 import {
+  dashboardModeTabs,
   dashboardNotice,
   dashboardTable,
   mountDashboardShell,
@@ -7,7 +8,7 @@ import {
   musicServiceMeta,
   musicServiceSection,
   musicServiceViewClassName,
-} from './music-service-shell.js?v=20261003.2';
+} from './music-service-shell.js?v=20261004.1';
 
 const artistTable = dashboardTable({
   className: 'regional-music-table regional-music-artist-table music-service-track-table',
@@ -29,7 +30,6 @@ const playlistTable = dashboardTable({
   bodyId: 'regionalMusicPlaylistBody',
   wrapClassName: 'regional-music-table-wrap',
 });
-
 
 const kugouHistoryTable = dashboardTable({
   className: 'regional-music-table regional-music-kugou-history-table music-service-track-table',
@@ -67,15 +67,17 @@ const qqPopularityTable = dashboardTable({
 });
 
 function artistFilterButtons(prefix, label) {
-  return `
-    <div class="mode-tabs regional-chart-filter" role="group" aria-label="${label}">
-      <button type="button" class="active" data-${prefix}-artist-filter="all" aria-pressed="true">すべて</button>
-      <button type="button" data-${prefix}-artist-filter="sakurazaka46" aria-pressed="false">櫻坂</button>
-      <button type="button" data-${prefix}-artist-filter="nogizaka46" aria-pressed="false">乃木坂</button>
-      <button type="button" data-${prefix}-artist-filter="hinatazaka46" aria-pressed="false">日向坂</button>
-    </div>`;
+  return dashboardModeTabs([
+    { value: 'all', label: 'すべて', active: true },
+    { value: 'sakurazaka46', label: '櫻坂' },
+    { value: 'nogizaka46', label: '乃木坂' },
+    { value: 'hinatazaka46', label: '日向坂' },
+  ], {
+    dataAttribute: `${prefix}-artist-filter`,
+    className: 'regional-chart-filter',
+    ariaLabel: label,
+  });
 }
-
 
 const qqChartSection = musicServiceSection({
   id: 'qqJapanChartSection',
@@ -156,6 +158,7 @@ mountDashboardShell({
         valueId: 'regionalMusicChartUpdated',
         cadenceId: 'regionalMusicChartCadence',
       })}
+      ${dashboardNotice({ id: 'regionalMusicNotice' })}
       <div id="regionalMusicCompactNotice">${dashboardNotice({ id: 'regionalMusicCompactNoticeText' })}</div>
       ${qqChartSection}
       ${qqHistorySection}
@@ -174,4 +177,4 @@ mountDashboardShell({
   },
 });
 
-void import('./qq-japan-chart-ui.js?v=20261003.1').then(({ initQqJapanHistoryUi }) => initQqJapanHistoryUi());
+void import('./qq-japan-chart-ui.js?v=20261004.1').then(({ initQqJapanHistoryUi }) => initQqJapanHistoryUi());
