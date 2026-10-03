@@ -38,3 +38,7 @@ test('Nogizaka publishes a producer-owned Pages read model to the shared R2 buck
   const servingConfig = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
   assert.deepEqual(config.r2_buckets, servingConfig.r2_buckets);
 });
+
+test('Nogizaka Pages read model excludes announcements already marked invalid', () => {
+  assert.match(pagesModel, /WHERE status<>'invalid' AND \(/);
+});
