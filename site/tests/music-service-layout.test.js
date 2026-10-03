@@ -29,7 +29,7 @@ test('all music subscription views use the QQ compact shell contract', () => {
 test('QQ metadata order is shared by Spotify Apple Amazon YouTube and regional services', () => {
   assert.match(spotify, /musicServiceMeta\(\{ valueId: 'spotifyUpdatedAt', cadence: '毎日朝ごろ' \}\)/);
   assert.match(apple, /musicServiceMeta\(\{ valueId: 'appleUpdatedAt', cadence: '毎時15分' \}\)/);
-  assert.match(amazon, /musicServiceMeta\(\{ valueId: 'amazonUpdatedAt', cadence: '毎日朝ごろ' \}\)/);
+  assert.match(amazon, /musicServiceMeta\(\{ valueId: 'amazonUpdatedAt', cadence: '毎日6:00' \}\)/);
   assert.match(youtube, /musicServiceMeta\(\{ valueId: 'youtubeMusicUpdated', cadence: '毎日0:00' \}\)/);
   assert.match(regional, /id: 'regionalMusicCompactMeta'/);
   assert.match(regional, /valueId: 'regionalMusicChartUpdated'/);

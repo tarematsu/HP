@@ -70,8 +70,8 @@ export function amazonMusicDueTasks(scheduledTime) {
   const minute = date.getUTCMinutes();
   return {
     apple: minute === 15,
-    daily50kStart: hour === 17 && minute === 0,
-    daily50kContinue: hour >= 17 && hour <= 20 && [12, 22, 32, 42, 52].includes(minute),
+    daily50kStart: hour === 20 && minute === 0,
+    daily50kContinue: hour >= 20 && hour <= 23 && [12, 22, 32, 42, 52].includes(minute),
   };
 }
 
