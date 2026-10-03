@@ -5,19 +5,25 @@ import {
   dashboardNotice,
   dashboardTable,
   mountDashboardShell,
-} from './dashboard-ui-common.js?v=20261001.1';
+} from './dashboard-ui-common.js?v=20261004.1';
 import {
   musicServiceMeta,
   musicServiceSection,
   musicServiceViewClassName,
-} from './music-service-shell.js?v=20261003.2';
-import { installAppleMusicUpdatedAt } from './music-service-updated-at.js?v=20261003.1';
+} from './music-service-shell.js?v=20261004.1';
+import { installAppleMusicUpdatedAt } from './music-service-updated-at.js?v=20261004.1';
 
 const artistTabs = dashboardModeTabs([
   { value: 'sakurazaka46', label: '櫻坂46', active: true },
   { value: 'nogizaka46', label: '乃木坂46' },
   { value: 'hinatazaka46', label: '日向坂46' },
-], { dataAttribute: 'apple-artist', className: 'regional-chart-filter', ariaLabel: 'Apple Musicアーティスト切替' });
+], {
+  dataAttribute: 'apple-artist',
+  className: 'regional-chart-filter',
+  ariaLabel: 'Apple Musicアーティスト切替',
+  role: 'group',
+  selection: 'pressed',
+});
 
 const regionTable = dashboardTable({
   id: 'appleRegionCompareTable',
