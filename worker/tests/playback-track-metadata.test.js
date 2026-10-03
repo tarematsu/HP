@@ -76,6 +76,41 @@ test('complete Stationhead title and artist skip central D1 lookup entirely', as
   assert.equal(result[0].artist, 'Artist');
 });
 
+test('shared Spotify repair recovers an ID carried only in the title before metadata lookup', async () => {
+  const spotifyId = '6abcdefghijklmnopqrstu';
+  const reads = [];
+  const db = {
+    prepare(sql) {
+      assert.match(sql.trim(), /^SELECT spotify_id/is);
+      return {
+        bind(...ids) {
+          reads.push(ids);
+          return {
+            async all() {
+              return { results: [{
+                spotify_id: spotifyId,
+                title: 'Resolved Song',
+                artist: 'Resolved Artist',
+                thumbnail_url: 'https://example.test/recovered.jpg',
+              }] };
+            },
+          };
+        },
+      };
+    },
+  };
+
+  const [repaired] = await resolveMissingSpotifyPresentation(db, [{
+    title: spotifyId,
+    artist: null,
+    thumbnail_url: 'https://example.test/stale.jpg',
+  }]);
+  assert.deepEqual(reads, [[spotifyId]]);
+  assert.equal(repaired.spotify_id, spotifyId);
+  assert.equal(repaired.title, 'Resolved Song');
+  assert.equal(repaired.artist, 'Resolved Artist');
+});
+
 test('shared Spotify repair reads at most six ids and writes at most two new metadata rows per run', async () => {
   const originalFetch = globalThis.fetch;
   const reads = [];
