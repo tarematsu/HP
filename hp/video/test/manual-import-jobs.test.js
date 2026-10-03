@@ -172,7 +172,7 @@ test('large imports use unified Queue chaining while preserving D1 finalization 
   assert.match(queue, /publishManualImportJob/);
   assert.match(queue, /publish\(env, jobId/);
   assert.match(entryCore, /ADMIN_IMPORT_JOB_PATH_PREFIX/);
-  assert.deepEqual(cloudWrangler.triggers?.crons, ['0 * * * *']);
+  assert.equal(cloudWrangler.triggers, undefined);
   assert.equal(cloudWrangler.queues.producers[0].binding, 'MANUAL_IMPORT_QUEUE');
   assert.equal(cloudWrangler.queues.consumers[0].max_batch_size, 1);
   assert.equal(cloudWrangler.queues.consumers[0].max_concurrency, 1);
