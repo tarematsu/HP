@@ -6,17 +6,19 @@ import { expectAll, expectNone, readSource } from './helpers/source-contract.mjs
 
 test('HomePanel Cloud owns the video runtime and keeps isolated coordinators', async () => {
   const unifiedWorker = readSource('hp/cloud/src/unified_worker.js');
-  const workerCore = readSource('hp/cloud/src/worker_core.ts');
   const scheduler = readSource('hp/cloud/src/scheduler.ts');
   const schedulerRuntime = readSource('hp/cloud/src/scheduler_runtime.ts');
   const schedulerCoordinator = readSource('hp/cloud/src/scheduler_coordinator.ts');
+  const schedulerDispatcher = readSource('hp/cloud/src/scheduler_dispatch_worker.js');
   const deviceExchange = readSource('hp/cloud/src/device_exchange.ts');
   const deviceExchangeCoordinator = readSource('hp/cloud/src/device_exchange_coordinator.ts');
   const deviceSyncCoordinator = readSource('hp/cloud/src/device_sync_coordinator.ts');
   const deviceSyncClient = readSource('hp/cloud/src/device_sync_coordinator_client.ts');
   const radarCoordinator = readSource('hp/cloud/src/radar_bundle_coordinator.ts');
   const cloudConfig = readSource('hp/cloud/wrangler.jsonc');
+  const schedulerConfig = readSource('hp/cloud/wrangler.scheduler.jsonc');
   const videoEntry = readSource('hp/video/src/entry.js');
+  const workerCore = readSource('hp/cloud/src/worker_core.ts');
 
   expectAll(unifiedWorker, [
     "import videoWorker from '../../video/src/entry.js'",
@@ -66,6 +68,13 @@ test('HomePanel Cloud owns the video runtime and keeps isolated coordinators', a
 
   expectAll(schedulerCoordinator, ['/ensure', '/wake', 'async alarm()']);
   expectNone(schedulerCoordinator, ['video-feed-', 'radar-bundle-shard', 'device-sync-invalidate']);
+  expectAll(schedulerDispatcher, [
+    "const HOURLY_CRON = '0 * * * *'",
+    "objectName: 'global'",
+    "objectName: 'video-liveness'",
+    "objectName: 'tver-feed-refresh'",
+    'Promise.all(DISPATCHES.map',
+  ]);
   expectAll(deviceExchange, [
     'requestCoordinatedDeviceExchange',
     'buildDeviceExchangeResponse',
@@ -102,9 +111,17 @@ test('HomePanel Cloud owns the video runtime and keeps isolated coordinators', a
     '"class_name": "DeviceSyncCoordinator"',
     '"class_name": "DeviceExchangeCoordinator"',
     '"class_name": "RadarBundleCoordinator"',
+  ]);
+  expectNone(cloudConfig, [
+    '"binding": "VIDEO_SERVICE"',
+    '"service": "homepanel-video"',
+    '"crons"',
+  ]);
+  expectAll(schedulerConfig, [
+    '"name": "homepanel-cloud-scheduler"',
+    '"script_name": "homepanel-cloud"',
     '"0 * * * *"',
   ]);
-  expectNone(cloudConfig, ['"binding": "VIDEO_SERVICE"', '"service": "homepanel-video"']);
   expectAll(videoEntry, ['X-HomePanel-Internal-Service', "pathname === '/api/health'"]);
   await assert.rejects(access(new URL('../hp/video/wrangler.jsonc', import.meta.url)));
   await assert.rejects(access(new URL('../hp/video/src/retired-entry.js', import.meta.url)));
@@ -120,6 +137,8 @@ test('HomePanel deployment releases the retired Queue consumer before unified de
   expectAll(packageJson, [
     '"deploy": "node scripts/deploy-existing.mjs"',
     '"deploy:worker": "node scripts/deploy-existing.mjs --without-migrations"',
+    '"deploy:scheduler": "wrangler deploy --config wrangler.scheduler.jsonc"',
+    '"check:scheduler-bundle": "wrangler deploy --dry-run --config wrangler.scheduler.jsonc',
   ]);
   expectNone(packageJson, ['guarded-deploy', 'video_runtime_activation']);
   expectAll(deployExisting, [
@@ -135,10 +154,13 @@ test('HomePanel deployment releases the retired Queue consumer before unified de
   ]);
   expectAll(deployWorkflow, [
     'Validate integrated HomePanel runtime',
+    'npm run check:scheduler-bundle --workspace cloud',
     'Release manual import Queue consumer — Delete retired homepanel-video Worker',
     'node .github/scripts/delete-cloudflare-worker.mjs homepanel-video videoscraper-manual-imports',
     'legacy consumer records may omit script_name',
     'Deploy HomePanel Cloud',
+    'Deploy HomePanel scheduler dispatcher',
+    'npm run deploy:scheduler --workspace cloud',
     'Cloudflare Queues permits only one active push consumer per Queue',
     'Verify deployed readiness',
   ]);
@@ -151,5 +173,9 @@ test('HomePanel deployment releases the retired Queue consumer before unified de
   assert.ok(
     deployWorkflow.indexOf('- name: Release manual import Queue consumer — Delete retired homepanel-video Worker')
       < deployWorkflow.indexOf('- name: Deploy HomePanel Cloud'),
+  );
+  assert.ok(
+    deployWorkflow.indexOf('- name: Deploy HomePanel Cloud')
+      < deployWorkflow.indexOf('- name: Deploy HomePanel scheduler dispatcher'),
   );
 });
