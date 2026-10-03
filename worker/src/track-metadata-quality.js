@@ -28,7 +28,7 @@ function looksLikeSpotifyTrackId(value) {
   return SPOTIFY_TRACK_ID_PATTERN.test(normalizedText(value));
 }
 
-function playbackSpotifyId(track) {
+export function trackSpotifyIdValue(track) {
   const explicit = normalizedText(track?.spotify_id);
   if (explicit) return explicit;
 
@@ -89,7 +89,7 @@ export function trackDisplayTitleParts(value, knownTitle = null) {
 }
 
 function resolvedTrackMetadata(track) {
-  const spotifyId = playbackSpotifyId(track);
+  const spotifyId = trackSpotifyIdValue(track);
   const rawTitle = trackTitleValue(track?.title);
   const rawArtist = trackArtistValue(track?.artist);
   const directTitle = isSpotifyIdPlaceholder(rawTitle, spotifyId) ? null : rawTitle;
