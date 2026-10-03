@@ -86,6 +86,31 @@ test('shared rank chart renders grid, dates, lines and latest points on the dash
   assert.ok(calls.some(([name, , , radius]) => name === 'arc' && radius === 3));
 });
 
+test('shared rank chart thins date labels when the canvas is narrow', () => {
+  const container = new FakeNode('div');
+  container.clientWidth = 300;
+  const dates = ['2021-01-01','2022-01-01','2023-01-01','2024-01-01','2025-01-01'];
+  const canvas = renderRankHistoryChart({
+    container,
+    series: [{
+      title: '曲A',
+      points: dates.map((date, index) => ({ date, rank:index + 1 })),
+    }],
+    dates,
+    yMax: 5,
+    rankTicks: [1, 3, 5],
+    dateTickCount: 5,
+    dateLabel: (date) => date.replaceAll('-', '/'),
+  });
+
+  const labels = canvas.context.calls
+    .filter(([name, text]) => name === 'fillText' && /^202\d\//.test(String(text)))
+    .map(([, text]) => text);
+  assert.ok(labels.length < 5);
+  assert.equal(labels[0], '2021/01/01');
+  assert.equal(labels.at(-1), '2025/01/01');
+});
+
 test('shared rank chart renders the configured empty state', () => {
   const container = new FakeNode('div');
   const result = renderRankHistoryChart({
