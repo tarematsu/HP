@@ -14,7 +14,7 @@ const AMAZON = 'sh-amazon-music-collector';
 const REGIONAL = 'sh-regional-music-collector';
 const RUNTIME = 'sh-runtime-orchestrator';
 const ALL_WORKERS = [SAKURAZAKA, NOGIZAKA, RECOVERY, COLLECTOR, OHISAMA, SPOTIFY, AMAZON, REGIONAL, RUNTIME];
-const SHARED_INGEST_WORKERS = [RECOVERY, COLLECTOR, OHISAMA, RUNTIME];
+const BUDDIES_RUNTIME_WORKERS = [RECOVERY, COLLECTOR, RUNTIME];
 
 function select(paths = [], args = []) {
   return JSON.parse(execFileSync(process.execPath, [selector, ...args], {
@@ -29,7 +29,7 @@ test('domain modules select every Worker whose bundle imports them', () => {
     'site/functions/lib/d1-lean-ingest.js',
     'site/functions/lib/d1-optimized-ingest.js',
   ]) {
-    assert.deepEqual(select([path]).workers, SHARED_INGEST_WORKERS, path);
+    assert.deepEqual(select([path]).workers, BUDDIES_RUNTIME_WORKERS, path);
   }
   assert.deepEqual(select(['worker/src/persist-structure-stages.js']).workers, [RECOVERY, COLLECTOR]);
   for (const path of [

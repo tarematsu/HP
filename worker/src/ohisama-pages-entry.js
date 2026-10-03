@@ -4,7 +4,6 @@ import { collectInitialStationheadFollowers } from './stationhead-initial-follow
 import { cachedOhisamaFollowerTargetRegistrar } from './ohisama-follower-target-cache.js';
 import { withOhisamaFollowerMembership } from './ohisama-follower-membership.js';
 import { captureOhisamaPlayback } from './ohisama-playback.js';
-import { enrichOhisamaPlaybackMetadata } from './ohisama-runtime-metadata.js';
 import {
   loadOhisamaPublicationSnapshot,
   mergeOhisamaPlaybackReadModelWithCadence,
@@ -78,39 +77,7 @@ export async function runOhisamaPagesScheduled(controller, env, ctx, dependencie
     .catch(() => null);
 
   let playback = null;
-  let metadataEnrichment = null;
   if (channelPayload) {
-    try {
-      const enrichPlaybackMetadata = dependencies.enrichPlaybackMetadata
-        || enrichOhisamaPlaybackMetadata;
-      metadataEnrichment = await enrichPlaybackMetadata(
-        env,
-        channelPayload,
-        result,
-        result.observed_at,
-        {
-          enrichTracks: dependencies.enrichTracks,
-          ingest: dependencies.ingest,
-          metadataLimit: dependencies.metadataLimit,
-        },
-      );
-      if (!metadataEnrichment?.skipped) {
-        console.log(JSON.stringify({
-          event: 'ohisama_playback_metadata_enriched',
-          observed_at: result.observed_at,
-          candidates: metadataEnrichment?.candidates || 0,
-          attempted: metadataEnrichment?.attempted || 0,
-          saved: metadataEnrichment?.saved || 0,
-        }));
-      }
-    } catch (error) {
-      console.warn(JSON.stringify({
-        event: 'ohisama_playback_metadata_enrichment_failed',
-        observed_at: result.observed_at,
-        error: String(error?.message || error).slice(0, 500),
-      }));
-    }
-
     try {
       playback = await captureOhisamaPlayback(env, channelPayload, result, result.observed_at);
       console.log(JSON.stringify({
@@ -154,7 +121,6 @@ export async function runOhisamaPagesScheduled(controller, env, ctx, dependencie
         daily_total_plays: playback.daily?.total_plays || 0,
         daily_unique_tracks: playback.daily?.unique_tracks || 0,
       } : null,
-      metadata_enrichment: metadataEnrichment,
       read_model: {
         ...readModel,
         playback_published: playbackPublished,
@@ -171,7 +137,6 @@ export async function runOhisamaPagesScheduled(controller, env, ctx, dependencie
     }));
     return {
       ...result,
-      metadata_enrichment: metadataEnrichment,
       read_model: { published: false, error: detail },
     };
   }
