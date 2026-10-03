@@ -28,6 +28,11 @@ function valueText(value) {
   return Number.isFinite(number) ? integerFormat.format(number) : String(value);
 }
 
+function optionalText(value) {
+  const text = String(value ?? '').trim();
+  return !text || text.toLowerCase() === 'unknown' ? '-' : text;
+}
+
 function dateTimeText(value) {
   const timestamp = Number(value);
   if (!Number.isFinite(timestamp) || timestamp <= 0) return '-';
@@ -109,7 +114,7 @@ function renderReleases(items) {
     body.append(row([
       ARTIST_LABELS[item.canonical_artist] || item.canonical_artist || '-',
       item.title || item.service_release_id || '-',
-      item.release_type || '-',
+      optionalText(item.release_type),
       valueText(item.release_year),
     ]));
   }
