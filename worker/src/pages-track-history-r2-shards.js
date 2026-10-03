@@ -114,6 +114,13 @@ async function loadPlaybackEventRows(db, fromTs, toTs, limit) {
   }
 }
 
+function firstPlaybackEventAt(rows, fallback) {
+  const values = (rows || [])
+    .map((row) => Number(row?.first_played_at ?? row?.played_at))
+    .filter(Number.isFinite);
+  return values.length ? Math.min(...values) : fallback;
+}
+
 export function materializedTrackHistorySql() {
   return MATERIALIZED_TRACK_HISTORY_SQL;
 }
@@ -292,8 +299,9 @@ export async function materializeTrackHistoryRangeThroughR2(
   const merge = options.mergeRows || mergeTrackRows;
   const attachLikes = options.attachLikes || attachCompactTrackLikes;
   const complete = options.applyCompleteness || applyTrackPeriodCompleteness;
+  const boundedDb = boundedTrackHistoryDatabase(targetDb);
   const { result, likeRows } = await load(
-    boundedTrackHistoryDatabase(targetDb),
+    boundedDb,
     range.fromTs,
     range.toTs,
     TRACK_HISTORY_LIMIT,
@@ -306,7 +314,25 @@ export async function materializeTrackHistoryRangeThroughR2(
     range.toTs,
     TRACK_HISTORY_LIMIT,
   );
-  const groupedRows = eventRows.length ? eventRows : legacyGroupedRows;
+  let groupedRows = legacyGroupedRows;
+  if (eventRows.length) {
+    const eventStart = Math.max(
+      range.fromTs,
+      Math.min(range.toTs, firstPlaybackEventAt(eventRows, range.fromTs)),
+    );
+    let legacyPrefixRows = [];
+    if (eventStart > range.fromTs) {
+      const prefix = await load(
+        boundedDb,
+        range.fromTs,
+        eventStart,
+        TRACK_HISTORY_LIMIT,
+        false,
+      );
+      legacyPrefixRows = prefix.result?.results || [];
+    }
+    groupedRows = [...legacyPrefixRows, ...eventRows];
+  }
   if (groupedRows.length > TRACK_HISTORY_LIMIT) {
     throw new Error(`track history read-model shard exceeded ${TRACK_HISTORY_LIMIT} grouped rows`);
   }

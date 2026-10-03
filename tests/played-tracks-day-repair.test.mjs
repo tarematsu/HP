@@ -31,14 +31,14 @@ test('played-tracks refresh is bounded to one UTC day and publishes only after n
   assert.match(repair, /toTs = fromTs \+ DAY_MS/);
   assert.match(repair, /loadDirectRevisionTrackHistoryData\(/);
   assert.match(repair, /PLAYBACK_EVENT_HISTORY_SQL/);
-  assert.match(repair, /eventRows\.length \? eventRows : legacyGroupedRows/);
+  assert.match(repair, /groupedRows = \[\.\.\.legacyPrefixRows, \.\.\.eventRows\]/);
   assert.match(repair, /track-history repair produced no playable rows/);
   assert.match(repair, /publishTrackHistoryR2DayRows/);
   assert.doesNotMatch(repair, /materializedTrackHistorySql\(|loadTrackHistoryData\(/);
   assert.doesNotMatch(repair, /INSERT INTO sh_pages_track_history_read_model|DELETE FROM sh_pages_track_history_read_model/);
 });
 
-test('played-tracks daily query reads materialized legacy rows only as fallback and coverage', () => {
+test('played-tracks daily query keeps only the legacy prefix before exact playback events', () => {
   const sql = directRevisionTrackHistorySql();
   assert.match(sql, /starts\.latest_revision_id/);
   assert.match(sql, /JOIN sh_queue_revisions revisions ON revisions\.id=starts\.latest_revision_id/);
@@ -46,7 +46,11 @@ test('played-tracks daily query reads materialized legacy rows only as fallback 
   assert.match(sql, /FROM sh_track_history_queue_starts starts/);
   assert.doesNotMatch(sql, /sh_queue_items/);
   assert.equal((sql.match(/\?/g) || []).length, (TRACK_HISTORY_SQL.match(/\?/g) || []).length);
-  assert.match(repair, /source: eventRows\.length \? 'playback-events' : 'legacy-reconstruction'/);
+  assert.match(repair, /const eventStart = Math\.max\(fromTs, Math\.min\(toTs, firstEventAt\(eventRows, fromTs\)\)\)/);
+  assert.match(repair, /fromTs,\s*eventStart,\s*TRACK_HISTORY_LIMIT,\s*false/);
+  assert.match(repair, /'legacy-prefix\+playback-events'/);
+  assert.match(repair, /'playback-events'/);
+  assert.match(repair, /'legacy-reconstruction'/);
 });
 
 test('played-tracks repair canonicalizes grouped and like rows in one pass', () => {
