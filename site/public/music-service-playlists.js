@@ -1,6 +1,5 @@
 import {
   byId as element,
-  dashboardDataCard,
   dashboardTable,
   integerFormat,
 } from './dashboard-ui-common.js?v=20261001.1';
@@ -12,7 +11,6 @@ const CONFIGS = Object.freeze({
     tableId: 'spotifyPlaylistTable',
     playlistCountId: 'spotifyPlaylistCount',
     trackCountId: 'spotifyPlaylistTrackCount',
-    className: 'spotify-data-panel',
     note: 'Spotify公開ページ上で検出できた、櫻坂46楽曲を含むプレイリストを表示します。',
     hosts: new Set(['open.spotify.com']),
   }),
@@ -22,7 +20,6 @@ const CONFIGS = Object.freeze({
     tableId: 'applePlaylistTable',
     playlistCountId: 'applePlaylistCount',
     trackCountId: 'applePlaylistTrackCount',
-    className: 'apple-data-panel',
     note: 'Apple Music公式サイト上で検出できた公開プレイリストを表示します。',
     hosts: new Set(['music.apple.com']),
   }),
@@ -32,7 +29,6 @@ const CONFIGS = Object.freeze({
     tableId: 'amazonPlaylistTable',
     playlistCountId: 'amazonPlaylistCount',
     trackCountId: 'amazonPlaylistTrackCount',
-    className: 'amazon-data-panel',
     note: 'Amazon Musicの曲詳細から検出した関連プレイリストを表示します。',
     hosts: new Set(['music.amazon.co.jp']),
   }),
@@ -53,16 +49,10 @@ function ensureTable(config) {
   if (!mount) return null;
   const table = dashboardTable({
     id: config.tableId,
-    className: 'music-service-playlist-table',
+    className: 'regional-music-table music-service-playlist-table',
     wrapClassName: 'table-fit-mobile',
   });
-  const holder = document.createElement('div');
-  holder.innerHTML = dashboardDataCard({
-    title: '楽曲別プレイリスト掲載一覧',
-    className: `music-service-panel ${config.className}`,
-    bodyHtml: `<p class="music-service-playlist-note">${config.note}</p>${table}`,
-  });
-  if (holder.firstElementChild) mount.append(holder.firstElementChild);
+  mount.insertAdjacentHTML('beforeend', `<p class="music-service-playlist-note">${config.note}</p>${table}`);
   return element(config.tableId);
 }
 
