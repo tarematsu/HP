@@ -8,6 +8,19 @@ const MODES = [
   { name: 'ranking', path: '/#ranking', panel: '#historyView', tab: '#sourceTabs button[data-source="ranking"]', requiredText: '総週数' },
   { name: 'played-tracks', path: '/#played-tracks', panel: '#playedTracksView', tab: '#modeTabs button[data-view="played-tracks"]', requiredText: '楽曲別再生一覧' },
   { name: 'likes', path: '/#likes', panel: '#likesView', tab: '#modeTabs button[data-mode="likes"]', requiredText: '最新いいねランキング' },
+  ...[
+    ['current', '今後の再生予定'],
+    ['history', '日次データ'],
+    ['played-tracks', '楽曲別再生一覧'],
+    ['likes', '最新いいねランキング'],
+    ['broadcasts', 'リスパデータはまだありません。'],
+  ].map(([section, requiredText]) => ({
+    name: `ohisama-${section}`, path: '/#hinata',
+    tab: `[data-hinata-section="${section}"]`,
+    panel: `[data-hinata-panel="${section}"]`,
+    selectTab: true, requiredText,
+  })),
+  { name: 'nogizaka-broadcasts', path: '/#nogizaka', panel: '#nogizakaListeningPartyView', tab: '[data-nogizaka-section="broadcasts"]', requiredText: '公式リスパ一覧' },
   { name: 'broadcasts', path: '/#broadcasts', panel: '#historyView', tab: '#modeTabs button[data-mode="broadcasts"]', requiredText: '非公式リスパ一覧', additionalRequiredText: '比較対象' },
 ];
 
@@ -63,6 +76,7 @@ async function auditMode(browser, baseUrl, route, outDir) {
   try {
     response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 35_000 });
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+    if (route.selectTab) await page.locator(route.tab).click({ timeout: 15_000 });
     await page.locator(route.panel).waitFor({ state: 'visible', timeout: 15_000 });
     if (route.tab) await page.locator(route.tab).waitFor({ state: 'visible', timeout: 15_000 });
     if (route.expectedHash) {
@@ -130,6 +144,15 @@ async function auditMode(browser, baseUrl, route, outDir) {
       navigationScrollable,
       selectedTabClipped,
       expectedPanelVisible: visible(document.querySelector(expectedPanel)),
+      channelTabs: [...document.querySelectorAll('.stationhead-subtabs')].filter(visible).map((list) => {
+        const buttons = [...list.querySelectorAll('button')].filter(visible);
+        return {
+          count: buttons.length,
+          heights: buttons.map((button) => button.getBoundingClientRect().height),
+          widths: buttons.map((button) => button.getBoundingClientRect().width),
+          overflow: Math.max(0, list.scrollWidth - list.clientWidth),
+        };
+      }),
       playedTracksChartHeight: chart?.getBoundingClientRect().height ?? null,
     };
   }, { expectedPanel: route.panel, mode: route.name, selectedTabSelector: route.tab });
@@ -151,6 +174,12 @@ async function auditMode(browser, baseUrl, route, outDir) {
   }
   if (route.name === 'played-tracks' && Number(layout.playedTracksChartHeight) < 360) {
     failures.push(`played-tracks chart is too short for compact mobile labels: ${layout.playedTracksChartHeight}px`);
+  }
+  for (const tabs of layout.channelTabs || []) {
+    if (tabs.count !== 5) failures.push(`channel navigation has ${tabs.count} visible tabs instead of five`);
+    if (tabs.heights.some((height) => height < 44)) failures.push('channel tab touch target is shorter than 44px');
+    if (Math.max(...tabs.widths) - Math.min(...tabs.widths) > 1) failures.push('channel tab widths are inconsistent');
+    if (tabs.overflow > 1) failures.push('channel tab navigation overflows');
   }
   failures.push(...[...consoleErrors].map((value) => `console error: ${value}`));
   failures.push(...[...pageErrors].map((value) => `page error: ${value}`));

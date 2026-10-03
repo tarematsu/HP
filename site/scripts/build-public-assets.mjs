@@ -1,4 +1,4 @@
-import { mkdir, stat } from 'node:fs/promises';
+import { mkdir, stat, rm } from 'node:fs/promises';
 import { dirname, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
@@ -71,13 +71,16 @@ function inputContributions(metafile, limit = 20) {
     .slice(0, limit);
 }
 
+// Discard chunks from previous builds; deploy only the current module graph.
+await rm(resolve(assetsDir, 'chunks'), { recursive: true, force: true });
 await mkdir(assetsDir, { recursive: true });
 
 const jsBuild = await build({
-  entryPoints: [resolve(publicRoot, 'dashboard-metrics.js')],
-  outfile: resolve(assetsDir, 'dashboard.min.js'),
+  entryPoints: { 'dashboard.min': resolve(publicRoot, 'dashboard-metrics.js') },
+  outdir: assetsDir,
+  chunkNames: 'chunks/[name]-[hash]',
   bundle: true,
-  splitting: false,
+  splitting: true,
   format: 'esm',
   platform: 'browser',
   target: ['es2022'],
@@ -105,6 +108,19 @@ const cssBuild = await build({
   plugins: [publicCssResolver],
 });
 
+const jsOutputs = Object.entries(jsBuild.metafile.outputs);
+const initialOutputs = new Set();
+function collectInitial(path) {
+  if (initialOutputs.has(path)) return;
+  initialOutputs.add(path);
+  for (const dependency of jsBuild.metafile.outputs[path]?.imports || []) {
+    if (dependency.kind === 'import-statement' && !dependency.external) collectInitial(dependency.path);
+  }
+}
+collectInitial(jsOutputs.find(([path]) => path.endsWith('/dashboard.min.js'))[0]);
+const initialJsBytes = [...initialOutputs].reduce((total, path) => total + jsBuild.metafile.outputs[path].bytes, 0);
+const totalJsBytes = jsOutputs.reduce((total, [, output]) => total + output.bytes, 0);
+
 const [js, css] = await Promise.all([
   stat(resolve(assetsDir, 'dashboard.min.js')),
   stat(resolve(assetsDir, 'dashboard.min.css')),
@@ -114,8 +130,11 @@ console.log(JSON.stringify({
   event: 'pages_assets_built',
   js_bytes: js.size,
   css_bytes: css.size,
-  total_bytes: js.size + css.size,
-  browser_files: 2,
+  initial_js_bytes: initialJsBytes,
+  total_js_bytes: totalJsBytes,
+  initial_total_bytes: initialJsBytes + css.size,
+  total_bytes: totalJsBytes + css.size,
+  browser_files: jsOutputs.length + 1,
   largest_js_inputs: inputContributions(jsBuild.metafile),
   largest_css_inputs: inputContributions(cssBuild.metafile),
 }));

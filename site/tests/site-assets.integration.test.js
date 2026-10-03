@@ -44,7 +44,7 @@ test('dashboard skeleton and shell modules keep accessibility, privacy and all p
     'streamsYesterdayDelta', 'streamsDayBeforeDelta', 'nowPlayingLink', 'queue', 'metricGoalCompact', 'streamGoal',
     'goalEta', 'audienceChart', 'historyView', 'likesView', 'likesRankingList', 'likesTbody',
   ]) assert.match(shellSource, new RegExp(`(?:id=\\"${id}\\"|[A-Za-z]+: '${id}')`));
-  for (const id of ['channelName', 'channelFallback', 'updated']) assert.match(html, new RegExp(`id="${id}"`));
+  for (const id of ['channelName', 'updated']) assert.match(html, new RegExp(`id="${id}"`));
   assert.doesNotMatch(shellSource, /id="streamCount"|id="goalMilestones"|goal-card/);
   assert.match(registry, /view: 'current', label: '現在', active: true/);
   assert.match(registry, /view: 'history', mode: 'daily', label: '過去'/);

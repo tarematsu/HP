@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 import { formatNogizakaBroadcastContent } from '../functions/api/nogizaka-listening-party.js';
 
 const shell = readFileSync(new URL('../public/nogizaka-listening-party-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/nogizaka-listening-party.js', import.meta.url), 'utf8');
 const partyUi = readFileSync(new URL('../public/official-listening-party-ui.js', import.meta.url), 'utf8');
 const stationheadTabs = readFileSync(new URL('../public/stationhead-channel-tabs.js', import.meta.url), 'utf8');
-const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
+const sharedCss = readFileSync(new URL('../public/dashboard-navigation.css', import.meta.url), 'utf8') + readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/nogizaka-listening-party.js', import.meta.url), 'utf8');
 const publisher = readFileSync(new URL('../../worker/src/nogizaka-pages-read-model.js', import.meta.url), 'utf8');
@@ -43,7 +44,7 @@ test('Nogizaka uses the shared five Stationhead subtabs with only listening part
 
 test('Unavailable Nogizaka tabs are visibly struck through by the shared Stationhead style', () => {
   assert.match(sharedCss, /\.stationhead-subtabs\s*>\s*button:disabled\s*\{[^}]*opacity:\s*\.42/s);
-  assert.match(sharedCss, /\.stationhead-subtabs\s*>\s*button:disabled\s*\{[^}]*text-decoration-line:\s*line-through/s);
+  assert.match(sharedCss, /\.stationhead-subtabs\s*>\s*button:disabled\s*\{[^}]*text-decoration:\s*line-through/s);
   assert.match(sharedCss, /\.stationhead-subtabs\s*\{[^}]*grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\)/s);
 });
 
@@ -98,4 +99,31 @@ test('Nogizaka producer builds the listening-party model from bounded D1 read mo
   assert.match(publisher, /event_name: `\$\{day\.replaceAll\('-', ''\)\} \$\{row\.broadcast_content\}`/);
   assert.match(publisher, /source = readSeries/);
   assert.match(publisher, /refresh_hint_ms: NOGIZAKA_LISTENING_PARTY_CADENCE_SECONDS \* 1000/);
+});
+
+
+test('Nogizaka empty chart collapses and restores the canvas when points arrive', () => {
+  const nodes = new Map([
+    ['nogizakaPartyChart', { hidden: false, clientWidth: 320, clientHeight: 280, getBoundingClientRect: () => ({ width: 320 }) }],
+    ['nogizakaPartyLegend', { replaceChildren() {} }],
+    ['nogizakaPartyChartEnd', { textContent: '' }],
+    ['nogizakaPartyChartEmpty', { hidden: true }],
+    ['nogizakaPartyChartAxis', { hidden: false }],
+  ]);
+  let preparations = 0;
+  const context = {
+    byId: (id) => nodes.get(id),
+    prepareDashboardCanvas() { preparations += 1; return null; },
+  };
+  const draw = runtime.slice(runtime.indexOf('function drawChart('), runtime.indexOf('function exportCsv('));
+  runInNewContext(`${draw}; drawChart({});`, context);
+  assert.equal(nodes.get('nogizakaPartyChart').hidden, true);
+  assert.equal(nodes.get('nogizakaPartyChartEmpty').hidden, false);
+  assert.equal(nodes.get('nogizakaPartyChartAxis').hidden, true);
+  assert.equal(preparations, 0);
+  runInNewContext(`${draw}; drawChart({ series: [{ points: [[0, 10]] }] });`, context);
+  assert.equal(nodes.get('nogizakaPartyChart').hidden, false);
+  assert.equal(nodes.get('nogizakaPartyChartEmpty').hidden, true);
+  assert.equal(nodes.get('nogizakaPartyChartAxis').hidden, false);
+  assert.equal(preparations, 1);
 });

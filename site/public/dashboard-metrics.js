@@ -112,7 +112,6 @@ function startCurrentRuntimeFromLocation() {
   if (locationIsCurrent()) void ensureCurrentRuntime();
 }
 
-installImageState('channelImage');
 installImageState('trackImage');
 startCurrentRuntimeFromLocation();
 

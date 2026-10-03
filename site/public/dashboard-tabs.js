@@ -2,15 +2,15 @@ const HISTORY_MODES = new Set(['daily', 'weekly', 'monthly', 'ranking', 'broadca
 const REGIONAL_MUSIC_MODES = new Set('genie bugs joox nhaccuatui anghami melon kkbox qq_music netease_cloud_music kugou_music naver_vibe flo yandex_music boomplay plern fungjai zing_mp3 jiosaavn gaana langit_musik'.split(' '));
 const REGIONAL_MUSIC_VIEW = Object.freeze({
   viewId: 'regionalMusicView',
-  shell: () => import(location.origin + '/regional-music-shell.js?v=20261003.2'),
-  runtime: () => import(location.origin + '/regional-music.js?v=20261003.3'),
+  shell: () => import('/regional-music-shell.js?v=20261003.2'),
+  runtime: () => import('/regional-music.js?v=20261003.3'),
   noticeId: 'regionalMusicNotice',
 });
 
 const LAZY_VIEWS = Object.freeze({
   hinata: {
     viewId: 'hinataView',
-    runtime: () => import(location.origin + '/hinata.js?v=20260930.5'),
+    runtime: () => import('/hinata.js?v=20260930.5'),
     loadExport: 'loadHinataView',
     noticeId: 'hinataNotice',
     errorLabel: 'hinata',
@@ -18,7 +18,7 @@ const LAZY_VIEWS = Object.freeze({
   },
   followers: {
     viewId: 'followersView',
-    runtime: () => import(location.origin + '/followers.js?v=20260930.3'),
+    runtime: () => import('/followers.js?v=20260930.3'),
     loadExport: 'loadFollowersView',
     noticeId: 'followersNotice',
     errorLabel: 'followers',
@@ -53,7 +53,7 @@ const LAZY_VIEWS = Object.freeze({
   'apple-music': {
     viewId: 'appleMusicView',
     shell: () => import('/apple-music-shell.js?v=20261001.1'),
-    runtime: () => import(location.origin + '/apple-music.js?v=20261001.1'),
+    runtime: () => import('/apple-music.js?v=20261001.1'),
     loadExport: 'loadAppleMusicView',
     noticeId: 'appleMusicNotice',
     errorLabel: 'apple music',
@@ -61,8 +61,8 @@ const LAZY_VIEWS = Object.freeze({
   },
   'youtube-music': {
     viewId: 'youtubeMusicView',
-    shell: () => import(location.origin + '/youtube-music-shell.js?v=20261002.3'),
-    runtime: () => import(location.origin + '/youtube-music.js?v=20261002.3'),
+    shell: () => import('/youtube-music-shell.js?v=20261002.3'),
+    runtime: () => import('/youtube-music.js?v=20261002.3'),
     loadExport: 'loadYoutubeMusicView',
     noticeId: 'youtubeMusicNotice',
     errorLabel: 'youtube music',
