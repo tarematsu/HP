@@ -67,7 +67,7 @@ mountDashboardShell({
     anchorId: 'likesView',
     position: 'beforebegin',
     html: `
-      ${musicServiceMeta({ valueId: 'amazonUpdatedAt', cadence: '毎日朝ごろ' })}
+      ${musicServiceMeta({ valueId: 'amazonUpdatedAt', cadence: '毎日6:00' })}
       ${dashboardNotice({ id: 'amazonMusicNotice' })}
       ${rankSection}
       ${tracksSection}
