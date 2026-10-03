@@ -1,0 +1,42 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sh-cron-dispatcher",
+  "main": "src/cron-dispatcher-entry.js",
+  "compatibility_date": "2026-06-24",
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1.0,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1.0,
+      "persist": true,
+      "invocation_logs": true
+    }
+  },
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
+  "services": [
+    { "binding": "NOGIZAKA_SCHEDULED", "service": "sh-nogizaka46smej" },
+    { "binding": "OHISAMA_SCHEDULED", "service": "sh-ohisama-collector" },
+    { "binding": "SPOTIFY_PLAYCOUNT_SCHEDULED", "service": "sh-spotify-playcount-collector" },
+    { "binding": "AMAZON_MUSIC_SCHEDULED", "service": "sh-amazon-music-collector" },
+    { "binding": "REGIONAL_MUSIC_SCHEDULED", "service": "sh-regional-music-collector" }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "HOMEPANEL_SCHEDULER_COORDINATOR",
+        "class_name": "SchedulerCoordinator",
+        "script_name": "homepanel-cloud"
+      },
+      {
+        "name": "HOMEPANEL_VIDEO_FEED_COORDINATOR",
+        "class_name": "VideoFeedCoordinator",
+        "script_name": "homepanel-cloud"
+      }
+    ]
+  }
+}
