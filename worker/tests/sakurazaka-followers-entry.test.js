@@ -7,10 +7,8 @@ const sakurazakaConfig = JSON.parse(readFileSync(new URL('../wrangler.sakurazaka
 const sakurazakaEntry = readFileSync(new URL('../src/sakurazaka-followers-entry.js', import.meta.url), 'utf8');
 const buddiesConfig = JSON.parse(readFileSync(new URL('../wrangler.buddies-collector.jsonc', import.meta.url), 'utf8'));
 const buddiesEntry = readFileSync(new URL('../src/buddies-collector-entry.js', import.meta.url), 'utf8');
-const followerWorkflow = readFileSync(
-  new URL('../../.github/workflows/stationhead-daily-followers.yml', import.meta.url),
-  'utf8',
-);
+const collectionJobs = readFileSync(new URL('../src/scheduled-collection-jobs-entry.js', import.meta.url), 'utf8');
+const dispatcher = readFileSync(new URL('../src/cron-dispatcher-entry.js', import.meta.url), 'utf8');
 const migration = readFileSync(
   new URL('../../database/other-migrations/055_stationhead_daily_followers.sql', import.meta.url),
   'utf8',
@@ -33,18 +31,20 @@ test('Sakurazaka and Buddies each keep an independent collection cron', () => {
   assert.ok(buddiesConfig.d1_databases.some((item) => item.binding === 'OTHER_DB'));
   assert.doesNotMatch(buddiesEntry, /isJstFollowerCollectionMinute/);
   assert.doesNotMatch(buddiesEntry, /collectStationheadDailyFollowersResilient/);
-  assert.match(followerWorkflow, /cron: '0 15 \* \* \*'/);
-  assert.match(followerWorkflow, /collect-stationhead-followers-actions\.mjs/);
+
+  assert.match(collectionJobs, /STATIONHEAD_FOLLOWERS_CRON = '0 15 \* \* \*'/);
+  assert.match(collectionJobs, /collectStationheadFollowers/);
+  assert.match(dispatcher, /stationhead-followers/);
 });
 
 test('Spotify checks every ten minutes from 00:00 through 04:50 JST and hourly otherwise', () => {
-  assert.equal(shouldDispatchSpotifyPlaycount(Date.parse('2026-10-02T14:50:00Z')), false); // 23:50 JST
-  assert.equal(shouldDispatchSpotifyPlaycount(Date.parse('2026-10-02T15:00:00Z')), true);  // 00:00 JST
-  assert.equal(shouldDispatchSpotifyPlaycount(Date.parse('2026-10-02T15:10:00Z')), true);  // 00:10 JST
-  assert.equal(shouldDispatchSpotifyPlaycount(Date.parse('2026-10-02T19:50:00Z')), true);  // 04:50 JST
-  assert.equal(shouldDispatchSpotifyPlaycount(Date.parse('2026-10-02T20:00:00Z')), true);  // 05:00 JST
-  assert.equal(shouldDispatchSpotifyPlaycount(Date.parse('2026-10-02T20:10:00Z')), false); // 05:10 JST
-  assert.equal(shouldDispatchSpotifyPlaycount(Date.parse('2026-10-03T03:00:00Z')), true);  // 12:00 JST
+  assert.equal(shouldDispatchSpotifyPlaycount(Date.parse('2026-10-02T14:50:00Z')), false);
+  assert.equal(shouldDispatchSpotifyPlaycount(Date.parse('2026-10-02T15:00:00Z')), true);
+  assert.equal(shouldDispatchSpotifyPlaycount(Date.parse('2026-10-02T15:10:00Z')), true);
+  assert.equal(shouldDispatchSpotifyPlaycount(Date.parse('2026-10-02T19:50:00Z')), true);
+  assert.equal(shouldDispatchSpotifyPlaycount(Date.parse('2026-10-02T20:00:00Z')), true);
+  assert.equal(shouldDispatchSpotifyPlaycount(Date.parse('2026-10-02T20:10:00Z')), false);
+  assert.equal(shouldDispatchSpotifyPlaycount(Date.parse('2026-10-03T03:00:00Z')), true);
 });
 
 test('daily follower history uses one compact row per JST date', () => {
