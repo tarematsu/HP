@@ -19,7 +19,7 @@ test('HomePanel Cloud owns the video runtime and keeps isolated coordinators', a
   const videoEntry = readSource('hp/video/src/entry.js');
 
   expectAll(unifiedWorker, [
-    "import videoWorker from '../../video/src/entry.js'",
+    "import('../../video/src/entry.js')",
     'videoWorker.fetch(',
     "export { VideoFeedCoordinator }",
     'VIDEO_FEED_COORDINATOR',
@@ -28,8 +28,11 @@ test('HomePanel Cloud owns the video runtime and keeps isolated coordinators', a
     "export { RadarBundleCoordinator }",
     'queue(batch, env, ctx)',
     'scheduled(controller, env, ctx)',
+    'dispatchVideoLiveness(env)',
   ]);
   expectNone(unifiedWorker, [
+    "import videoWorker from '../../video/src/entry.js'",
+    "from './tver_feed.js'",
     'env?.VIDEO_SERVICE',
     'videoService.fetch',
     'videoRuntimeActive',
