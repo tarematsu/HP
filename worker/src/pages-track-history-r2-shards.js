@@ -42,6 +42,18 @@ const MATERIALIZED_TRACK_HISTORY_SQL = TRACK_HISTORY_SQL.replace(
   RAW_QUEUE_STARTS_SQL,
   MATERIALIZED_QUEUE_STARTS_SQL,
 );
+export const PLAYBACK_EVENT_HISTORY_SQL = `SELECT
+    period_key AS play_date,
+    track_id,
+    MIN(played_at) AS played_at,
+    MIN(played_at) AS first_played_at,
+    MAX(played_at) AS last_played_at,
+    COUNT(*) AS play_count
+  FROM sh_track_plays
+  WHERE period_key=? AND played_at>=? AND played_at<?
+  GROUP BY period_key,track_id
+  ORDER BY first_played_at ASC
+  LIMIT ?`;
 
 if (MATERIALIZED_TRACK_HISTORY_SQL === TRACK_HISTORY_SQL) {
   throw new Error('track-history materialized queue-start rewrite did not match');
@@ -87,6 +99,19 @@ function boundedTrackHistoryDatabase(db) {
       return typeof value === 'function' ? value.bind(target) : value;
     },
   });
+}
+
+async function loadPlaybackEventRows(db, fromTs, toTs, limit) {
+  if (!db?.prepare) return [];
+  try {
+    const result = await db.prepare(PLAYBACK_EVENT_HISTORY_SQL)
+      .bind(dayText(fromTs), fromTs, toTs, limit)
+      .all();
+    return Array.isArray(result?.results) ? result.results : [];
+  } catch (error) {
+    if (/no such table|no such column/i.test(String(error?.message || error))) return [];
+    throw error;
+  }
 }
 
 export function materializedTrackHistorySql() {
@@ -254,7 +279,7 @@ export async function publishTrackHistoryResponseFromR2Days(
 }
 
 export async function materializeTrackHistoryRangeThroughR2(
-  _sourceDb,
+  sourceDb,
   targetDb,
   range,
   now,
@@ -274,7 +299,14 @@ export async function materializeTrackHistoryRangeThroughR2(
     TRACK_HISTORY_LIMIT,
     true,
   );
-  const groupedRows = result.results || [];
+  const legacyGroupedRows = result.results || [];
+  const eventRows = await loadPlaybackEventRows(
+    sourceDb,
+    range.fromTs,
+    range.toTs,
+    TRACK_HISTORY_LIMIT,
+  );
+  const groupedRows = eventRows.length ? eventRows : legacyGroupedRows;
   if (groupedRows.length > TRACK_HISTORY_LIMIT) {
     throw new Error(`track history read-model shard exceeded ${TRACK_HISTORY_LIMIT} grouped rows`);
   }
@@ -284,7 +316,7 @@ export async function materializeTrackHistoryRangeThroughR2(
   const canonicalLikeRows = canonicalRows.slice(groupedRows.length);
   const completed = complete(
     attachLikes(merge(canonicalGroupedRows), canonicalLikeRows),
-    canonicalGroupedRows,
+    eventRows.length ? legacyGroupedRows : canonicalGroupedRows,
   );
   const sourceRowCount = canonicalGroupedRows.reduce(
     (sum, row) => sum + (Number(row.play_count) || 0),
