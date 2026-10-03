@@ -6,8 +6,8 @@ const index = readFileSync(new URL('../public/index.html', import.meta.url), 'ut
 const shell = readFileSync(new URL('../public/regional-music-shell.js', import.meta.url), 'utf8');
 const ui = readFileSync(new URL('../public/netease-japan-chart-ui.js', import.meta.url), 'utf8');
 
-test('网易云音乐 tab and chart UI use official names', () => {
-  assert.match(index, /data-source="netease_cloud_music">🇨🇳网易云音乐<\/button>/);
+test('网易云音乐 is hidden from subscription tabs while chart UI remains available internally', () => {
+  assert.doesNotMatch(index, /data-source="netease_cloud_music"/);
   assert.doesNotMatch(index, /netease-japan-chart-ui\.js/);
   assert.match(shell, /import\('\.\/netease-japan-chart-ui\.js\?v=20261003\.1'\)/);
   assert.match(ui, /网易云日语榜 グループ別最高順位推移/);
