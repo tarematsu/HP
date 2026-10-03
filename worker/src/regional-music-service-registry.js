@@ -28,26 +28,9 @@ export const YOUTUBE_MUSIC_ARTISTS = Object.freeze({
 // discovery/expansion targets remain documented separately in the implementation plan.
 export const REGIONAL_MUSIC_SERVICES = Object.freeze({
   youtube_music: Object.freeze({ region: 'JP/Global', phase: 1, metrics: ['artist_followers', 'monthly_audience', 'total_views', 'catalog', 'releases', 'playlists'] }),
-  genie: Object.freeze({ region: 'KR', phase: 1, metrics: ['artist_likes', 'track_plays', 'track_listeners', 'track_likes', 'catalog'] }),
-  bugs: Object.freeze({ region: 'KR', phase: 1, metrics: ['artist_likes'] }),
-  joox: Object.freeze({ region: 'HK/TH/SEA', phase: 1, metrics: ['artist_followers'] }),
-  nhaccuatui: Object.freeze({ region: 'VN', phase: 1, metrics: ['artist_followers', 'track_plays'] }),
-  anghami: Object.freeze({ region: 'MENA', phase: 1, metrics: ['artist_followers', 'track_plays', 'track_likes'] }),
   qq_music: Object.freeze({ region: 'CN', phase: 2, metrics: ['catalog', 'rankings'] }),
-  netease_cloud_music: Object.freeze({ region: 'CN', phase: 2, metrics: ['catalog', 'comments', 'rankings'] }),
   kugou_music: Object.freeze({ region: 'CN', phase: 2, metrics: ['catalog', 'rankings'] }),
-  melon: Object.freeze({ region: 'KR', phase: 2, metrics: ['artist_followers', 'catalog', 'rankings', 'playlists'] }),
   kkbox: Object.freeze({ region: 'TW/HK', phase: 2, metrics: ['catalog', 'rankings'] }),
-  naver_vibe: Object.freeze({ region: 'KR', phase: 2, metrics: ['artist_likes', 'track_likes', 'catalog'] }),
-  flo: Object.freeze({ region: 'KR', phase: 2, metrics: ['catalog'] }),
-  yandex_music: Object.freeze({ region: 'RU/CIS', phase: 3, metrics: ['catalog'] }),
-  boomplay: Object.freeze({ region: 'Africa', phase: 3, metrics: ['catalog'] }),
-  plern: Object.freeze({ region: 'TH', phase: 3, metrics: ['catalog'] }),
-  fungjai: Object.freeze({ region: 'TH', phase: 3, metrics: ['catalog'] }),
-  zing_mp3: Object.freeze({ region: 'VN', phase: 3, metrics: ['catalog'] }),
-  jiosaavn: Object.freeze({ region: 'IN', phase: 3, metrics: ['catalog'] }),
-  gaana: Object.freeze({ region: 'IN', phase: 3, metrics: ['catalog', 'rankings'] }),
-  langit_musik: Object.freeze({ region: 'ID', phase: 3, metrics: ['catalog'] }),
 });
 
 const aliasLookup = new Map();

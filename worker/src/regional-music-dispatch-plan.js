@@ -1,33 +1,12 @@
 export const REGIONAL_MUSIC_DAILY_SERVICES = Object.freeze([
-  'genie',
-  'bugs',
-  'joox',
-  'nhaccuatui',
-  'anghami',
-  'melon',
   'kkbox',
   'qq_music',
-  'netease_cloud_music',
   'kugou_music',
-  'naver_vibe',
-  'flo',
-  'yandex_music',
-  'boomplay',
-  'plern',
-  'fungjai',
-  'zing_mp3',
-  'jiosaavn',
-  'gaana',
-  'langit_musik',
 ]);
 
-export const REGIONAL_MUSIC_DISPATCH_UTC_HOUR = 15; // 00:00 JST; Actions owns the Monday standard collection run.
+export const REGIONAL_MUSIC_DISPATCH_UTC_HOUR = 15; // 00:00 JST
 export const REGIONAL_MUSIC_EVERY_DAY = Object.freeze([]);
-export const REGIONAL_MUSIC_WEEKLY_SERVICES = Object.freeze(
-  REGIONAL_MUSIC_DAILY_SERVICES.filter((service) => !['qq_music', 'netease_cloud_music', 'kugou_music'].includes(service)),
-);
-export const NETEASE_MUSIC_WEEKLY_JST_DAY = 2;
-export const NETEASE_MUSIC_WEEKLY_JST_HOUR = 16;
+export const REGIONAL_MUSIC_WEEKLY_SERVICES = Object.freeze(['kkbox']);
 export const QQ_MUSIC_WEEKLY_JST_DAY = 4;
 export const QQ_MUSIC_WEEKLY_JST_HOUR = 18;
 export const KUGOU_MUSIC_WEEKDAY_JST_HOUR = 11;
@@ -37,8 +16,6 @@ export function regionalMusicR2DueServices(timestamp) {
   if (!Number.isFinite(date.getTime())) throw new Error('Invalid regional collection timestamp');
   const jstDay = date.getUTCDay();
   const jstHour = date.getUTCHours();
-
-  if (jstDay === NETEASE_MUSIC_WEEKLY_JST_DAY && jstHour === NETEASE_MUSIC_WEEKLY_JST_HOUR) return ['netease_cloud_music'];
   if (jstDay === QQ_MUSIC_WEEKLY_JST_DAY && jstHour === QQ_MUSIC_WEEKLY_JST_HOUR) return ['qq_music'];
   if (jstDay >= 1 && jstDay <= 5 && jstHour === KUGOU_MUSIC_WEEKDAY_JST_HOUR) return ['kugou_music'];
   if (jstHour !== 0) return [];
@@ -46,8 +23,6 @@ export function regionalMusicR2DueServices(timestamp) {
 }
 
 export function regionalMusicDispatchForTimestamp(timestamp) {
-  // Removed: per-minute Worker/Queue collection. Scheduled Actions runs collect
-  // only the services due for that JST cadence into R2.
   return null;
 }
 

@@ -15,8 +15,6 @@ import {
   QQ_ANIME_HISTORY_INDEX_KEY,
   QQ_ANIME_HISTORY_VIEW_KEY,
 } from './qq-anime-chart-history-view.js';
-import { NETEASE_JAPAN_HISTORY_VIEW_KEY } from './netease-japan-chart-history.js';
-import { MELON_JPOP_HISTORY_VIEW_KEY } from './melon-jpop-history.js';
 import { KKBOX_JAPANESE_HISTORY_VIEW_KEY } from './kkbox-japanese-chart-history.js';
 import {
   KUGOU_JAPAN_CHART_COVERAGE,
@@ -219,7 +217,7 @@ export function qqAnimeChartReadModel(view, index = null) {
   return qqJapanChartReadModel(view, index);
 }
 
-export function neteaseJapanChartReadModel(view) {
+export function regionalChartHistoryReadModel(view) {
   return {
     coverage:view?.coverage && typeof view.coverage === 'object' ? view.coverage : {},
     periods:Array.isArray(view?.periods) ? view.periods : [],
@@ -227,13 +225,6 @@ export function neteaseJapanChartReadModel(view) {
   };
 }
 
-export function melonJpopChartReadModel(view) {
-  return {
-    coverage:view?.coverage && typeof view.coverage === 'object' ? view.coverage : {},
-    periods:Array.isArray(view?.periods) ? view.periods : [],
-    history:Array.isArray(view?.history) ? view.history : [],
-  };
-}
 
 function serviceRows(value, service) {
   return (Array.isArray(value) ? value : []).filter((row) => row?.service === service);
@@ -286,9 +277,7 @@ export function regionalMusicServiceReadModelPayload(snapshot, service, updatedA
     payload.qq_japan_chart = qqJapanChartReadModel(snapshot?.qqJapanChart, snapshot?.qqJapanChartIndex);
     payload.qq_anime_chart = qqAnimeChartReadModel(snapshot?.qqAnimeChart, snapshot?.qqAnimeChartIndex);
   }
-  if (serviceId === 'netease_cloud_music') payload.netease_japan_chart = neteaseJapanChartReadModel(snapshot?.neteaseJapanChart);
-  if (serviceId === 'melon') payload.melon_jpop_chart = melonJpopChartReadModel(snapshot?.melonJpopChart);
-  if (serviceId === 'kkbox') payload.kkbox_japanese_chart = neteaseJapanChartReadModel(snapshot?.kkboxJapaneseChart);
+  if (serviceId === 'kkbox') payload.kkbox_japanese_chart = regionalChartHistoryReadModel(snapshot?.kkboxJapaneseChart);
   if (serviceId === 'kugou_music') {
     payload.kugou_japan_chart = {
       coverage:KUGOU_JAPAN_CHART_COVERAGE,
@@ -313,9 +302,7 @@ export function regionalMusicReadModelPayload(snapshot, updatedAt = Date.now()) 
     artist_track_orders: Array.isArray(snapshot?.artistTrackOrders) ? snapshot.artistTrackOrders : [],
     qq_japan_chart: qqJapanChartReadModel(snapshot?.qqJapanChart, snapshot?.qqJapanChartIndex),
     qq_anime_chart: qqAnimeChartReadModel(snapshot?.qqAnimeChart, snapshot?.qqAnimeChartIndex),
-    netease_japan_chart: neteaseJapanChartReadModel(snapshot?.neteaseJapanChart),
-    melon_jpop_chart: melonJpopChartReadModel(snapshot?.melonJpopChart),
-    kkbox_japanese_chart: neteaseJapanChartReadModel(snapshot?.kkboxJapaneseChart),
+    kkbox_japanese_chart: regionalChartHistoryReadModel(snapshot?.kkboxJapaneseChart),
     kugou_japan_chart: {
       coverage: KUGOU_JAPAN_CHART_COVERAGE,
       history: KUGOU_JAPAN_CHART_HISTORY,
@@ -365,17 +352,9 @@ async function hydrateServicePayload(env, baseSnapshot, service, generatedAt) {
     payload.qq_japan_chart = qqJapanChartReadModel(japanView, japanIndex);
     payload.qq_anime_chart = qqAnimeChartReadModel(animeView, animeIndex);
     extraTimes.push(japanView?.updated_at, japanIndex?.updated_at, animeView?.updated_at, animeIndex?.updated_at);
-  } else if (serviceId === 'netease_cloud_music') {
-    const view = await r2Json(r2, NETEASE_JAPAN_HISTORY_VIEW_KEY);
-    payload.netease_japan_chart = neteaseJapanChartReadModel(view);
-    extraTimes.push(view?.updated_at);
-  } else if (serviceId === 'melon') {
-    const view = await r2Json(r2, MELON_JPOP_HISTORY_VIEW_KEY);
-    payload.melon_jpop_chart = melonJpopChartReadModel(view);
-    extraTimes.push(view?.updated_at);
   } else if (serviceId === 'kkbox') {
     const view = await r2Json(r2, KKBOX_JAPANESE_HISTORY_VIEW_KEY);
-    payload.kkbox_japanese_chart = neteaseJapanChartReadModel(view);
+    payload.kkbox_japanese_chart = regionalChartHistoryReadModel(view);
     extraTimes.push(view?.updated_at);
   } else if (serviceId === 'kugou_music') {
     const [acgView, acgIndex] = await Promise.all([
