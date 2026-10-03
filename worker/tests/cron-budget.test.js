@@ -6,8 +6,8 @@ function config(name) {
   return JSON.parse(readFileSync(new URL(`../${name}`, import.meta.url), 'utf8'));
 }
 
-function homepanelConfig() {
-  return JSON.parse(readFileSync(new URL('../../hp/cloud/wrangler.jsonc', import.meta.url), 'utf8'));
+function homepanelConfig(name = 'wrangler.jsonc') {
+  return JSON.parse(readFileSync(new URL(`../../hp/cloud/${name}`, import.meta.url), 'utf8'));
 }
 
 test('active production Workers stay within the account-wide Free cron limit', () => {
@@ -20,11 +20,13 @@ test('active production Workers stay within the account-wide Free cron limit', (
     config('wrangler.amazon-music.jsonc'),
     config('wrangler.runtime.jsonc'),
     homepanelConfig(),
+    homepanelConfig('wrangler.scheduler.jsonc'),
   ];
   const counts = configs.map((value) => value.triggers?.crons?.length || 0);
 
-  // Independent Cron owners: shared Sakurazaka scheduler, Buddies, Amazon, Homepanel.
-  assert.deepEqual(counts, [1, 0, 1, 0, 0, 1, 0, 1]);
+  // Independent Cron owners: shared Sakurazaka scheduler, Buddies, Amazon,
+  // and the lightweight HomePanel dispatcher. The heavy HomePanel Worker owns none.
+  assert.deepEqual(counts, [1, 0, 1, 0, 0, 1, 0, 0, 1]);
   assert.equal(counts.reduce((sum, count) => sum + count, 0), 4);
   assert.equal(counts.reduce((sum, count) => sum + count, 0) <= 5, true);
 });
