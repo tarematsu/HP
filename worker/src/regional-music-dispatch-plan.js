@@ -21,11 +21,13 @@ export const REGIONAL_MUSIC_DAILY_SERVICES = Object.freeze([
   'langit_musik',
 ]);
 
-export const REGIONAL_MUSIC_DISPATCH_UTC_HOUR = 15; // 00:00 JST; Actions owns the standard collection run.
-export const REGIONAL_MUSIC_EVERY_DAY = Object.freeze(['netease_cloud_music']);
+export const REGIONAL_MUSIC_DISPATCH_UTC_HOUR = 15; // 00:00 JST; Actions owns the Monday standard collection run.
+export const REGIONAL_MUSIC_EVERY_DAY = Object.freeze([]);
 export const REGIONAL_MUSIC_WEEKLY_SERVICES = Object.freeze(
-  REGIONAL_MUSIC_DAILY_SERVICES.filter((service) => service !== 'qq_music' && service !== 'kugou_music'),
+  REGIONAL_MUSIC_DAILY_SERVICES.filter((service) => !['qq_music', 'netease_cloud_music', 'kugou_music'].includes(service)),
 );
+export const NETEASE_MUSIC_WEEKLY_JST_DAY = 2;
+export const NETEASE_MUSIC_WEEKLY_JST_HOUR = 16;
 export const QQ_MUSIC_WEEKLY_JST_DAY = 4;
 export const QQ_MUSIC_WEEKLY_JST_HOUR = 18;
 export const KUGOU_MUSIC_WEEKDAY_JST_HOUR = 11;
@@ -36,6 +38,7 @@ export function regionalMusicR2DueServices(timestamp) {
   const jstDay = date.getUTCDay();
   const jstHour = date.getUTCHours();
 
+  if (jstDay === NETEASE_MUSIC_WEEKLY_JST_DAY && jstHour === NETEASE_MUSIC_WEEKLY_JST_HOUR) return ['netease_cloud_music'];
   if (jstDay === QQ_MUSIC_WEEKLY_JST_DAY && jstHour === QQ_MUSIC_WEEKLY_JST_HOUR) return ['qq_music'];
   if (jstDay >= 1 && jstDay <= 5 && jstHour === KUGOU_MUSIC_WEEKDAY_JST_HOUR) return ['kugou_music'];
   if (jstHour !== 0) return [];

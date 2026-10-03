@@ -4,6 +4,7 @@ import {collectRegionalR2Snapshot,mergeRegionalR2Snapshot,regionalSnapshotFromPa
 import {saveRegionalArtist,saveRegionalTrack,saveRegionalRelease,saveRegionalPlaylist,saveRegionalPlaylistSnapshot,saveRegionalPlaylistMembership,saveRegionalCollectorState} from '../src/regional-music-store.js';
 import {collectRegionalR2Run,parseRegionalServiceSelection} from '../scripts/collect-regional-r2-actions.mjs';
 const now=Date.parse('2026-10-05T15:00:00Z');
+const neteaseNow=Date.parse('2026-10-06T07:00:00Z');
 
 function minuteDbWithTracks(tracks) {
   let reads=0;
@@ -82,10 +83,10 @@ test('first R2 migration seeds published observations without changing their tim
   assert.equal(snapshot.tracks[0].observed_at,100);
   assert.equal(regionalSnapshotFromPayload(payload,'missing'),null);
 });
-test('daily runner invokes only NetEase with zero SQL and writes daily/latest objects',async()=>{
+test('Tuesday 16:00 runner invokes only NetEase with zero SQL and writes daily/latest objects',async()=>{
   const writes=[];const called=[];
-  const collectors={netease_cloud_music:async env=>{called.push('netease_cloud_music');assert.equal(env.OTHER_DB,undefined);await saveRegionalCollectorState(env,{service:'netease_cloud_music',status:'ok',last_success_at:now});}};
-  const result=await collectRegionalR2Run({now,collectors,load:async()=>null,save:async(key)=>writes.push(key)});
+  const collectors={netease_cloud_music:async env=>{called.push('netease_cloud_music');assert.equal(env.OTHER_DB,undefined);await saveRegionalCollectorState(env,{service:'netease_cloud_music',status:'ok',last_success_at:neteaseNow});}};
+  const result=await collectRegionalR2Run({now:neteaseNow,collectors,load:async()=>null,save:async(key)=>writes.push(key)});
   assert.deepEqual(called,['netease_cloud_music']);
   assert.equal(result.length,1);assert.equal(writes.length,2);
 });
@@ -116,8 +117,8 @@ test('service selection parser deduplicates and rejects unknown services',()=>{
   assert.deepEqual(parseRegionalServiceSelection(['--services=qq_music,kugou_music,qq_music']),['qq_music','kugou_music']);
   assert.throws(()=>parseRegionalServiceSelection(['--services=qq_music,missing']),/Unknown regional services: missing/);
 });
-test('scheduled retry reuses complete same-day services without provider requests or writes',async()=>{
-  const result=await collectRegionalR2Run({now,collectors:{},load:async()=>({day:'2026-10-06',state:{status:'ok'}}),save:async()=>{throw new Error('must not write');}});
+test('scheduled retry reuses complete same-day NetEase service without provider requests or writes',async()=>{
+  const result=await collectRegionalR2Run({now:neteaseNow,collectors:{},load:async()=>({day:'2026-10-06',state:{status:'ok'}}),save:async()=>{throw new Error('must not write');}});
   assert.equal(result.length,1);
   assert.ok(result.every(row=>row.reused));
 });
