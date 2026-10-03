@@ -4,7 +4,7 @@ import {
   dashboardNotice,
   dashboardTable,
   mountDashboardShell,
-} from './dashboard-ui-common.js?v=20261004.1';
+} from './dashboard-ui-common.js?v=20261001.1';
 import {
   musicServiceMeta,
   musicServiceSection,
