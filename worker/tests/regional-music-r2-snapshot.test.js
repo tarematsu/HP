@@ -4,7 +4,7 @@ import {collectRegionalR2Snapshot,mergeRegionalR2Snapshot,regionalSnapshotFromPa
 import {saveRegionalArtist,saveRegionalTrack,saveRegionalRelease,saveRegionalPlaylist,saveRegionalPlaylistSnapshot,saveRegionalPlaylistMembership,saveRegionalCollectorState} from '../src/regional-music-store.js';
 import {collectRegionalR2Run,parseRegionalServiceSelection} from '../scripts/collect-regional-r2-actions.mjs';
 const now=Date.parse('2026-10-05T15:00:00Z');
-const neteaseNow=Date.parse('2026-10-06T07:00:00Z');
+const kkboxNow=Date.parse('2026-10-04T15:00:00Z');
 
 function minuteDbWithTracks(tracks) {
   let reads=0;
@@ -47,15 +47,15 @@ test('all regional R2 facts resolve provider aliases to sh_tracks ids',async()=>
     {id:88,title:'17分間',artist:'櫻坂46',isrc:'JP-SAK-88',spotify_id:'spotify88'},
   ]);
   const previous={
-    tracks:[{service:'netease_cloud_music',service_track_id:'old',canonical_artist:'sakurazaka46',title:'17分間 (17分钟)',observed_at:1}],
-    playlist_memberships:[{service:'netease_cloud_music',service_playlist_id:'list',service_track_id:'old',observed_at:1}],
+    tracks:[{service:'kkbox',service_track_id:'old',canonical_artist:'sakurazaka46',title:'17分間 (17分钟)',observed_at:1}],
+    playlist_memberships:[{service:'kkbox',service_playlist_id:'list',service_track_id:'old',observed_at:1}],
     state:{last_success_at:1},
   };
-  const result=await collectRegionalR2Snapshot({service:'netease_cloud_music',now,previous,bindings:{MINUTE_DB:minuteDb},collect:async env=>{
+  const result=await collectRegionalR2Snapshot({service:'kkbox',now,previous,bindings:{MINUTE_DB:minuteDb},collect:async env=>{
     assert.equal(env.MINUTE_DB,minuteDb);
-    await saveRegionalTrack(env,{service:'netease_cloud_music',service_track_id:'new',canonical_artist:'sakurazaka46',title:'承认欲求',popularity_rank:2,observed_at:now});
-    await saveRegionalPlaylistMembership(env,{service:'netease_cloud_music',service_playlist_id:'list',service_track_id:'new',position:1,observed_at:now});
-    await saveRegionalCollectorState(env,{service:'netease_cloud_music',status:'ok',last_success_at:now});
+    await saveRegionalTrack(env,{service:'kkbox',service_track_id:'new',canonical_artist:'sakurazaka46',title:'承认欲求',popularity_rank:2,observed_at:now});
+    await saveRegionalPlaylistMembership(env,{service:'kkbox',service_playlist_id:'list',service_track_id:'new',position:1,observed_at:now});
+    await saveRegionalCollectorState(env,{service:'kkbox',status:'ok',last_success_at:now});
   }});
   const newTrack=result.tracks.find(row=>row.service_track_id==='new');
   const oldTrack=result.tracks.find(row=>row.service_track_id==='old');
@@ -71,9 +71,9 @@ test('all regional R2 facts resolve provider aliases to sh_tracks ids',async()=>
 
 test('D1 fallback payloads expose sh_tracks ids on all track facts without an R2 snapshot',()=>{
   const payload=mergeRegionalR2Snapshot({
-    tracks:[{service:'melon',service_track_id:'provider-91',canonical_track_id:91,title:'Song'}],
-    playlist_memberships:[{service:'melon',service_playlist_id:'chart',service_track_id:'provider-91',position:3}],
-    artist_track_orders:[{service:'melon',canonical_artist:'sakurazaka46',service_track_id:'provider-91',position:4}],
+    tracks:[{service:'kkbox',service_track_id:'provider-91',canonical_track_id:91,title:'Song'}],
+    playlist_memberships:[{service:'kkbox',service_playlist_id:'chart',service_track_id:'provider-91',position:3}],
+    artist_track_orders:[{service:'kkbox',canonical_artist:'sakurazaka46',service_track_id:'provider-91',position:4}],
     services:[],
   },null);
   assert.equal(payload.tracks[0].track_id,91);
@@ -91,26 +91,29 @@ test('provider failure retains previous records and an empty playlist clears mem
   assert.equal(result.state.last_success_at,1);
   assert.equal(result.tracks[0].observed_at,1);
   assert.equal(result.playlist_memberships.length,0);
-  const payload=mergeRegionalR2Snapshot({tracks:[{service:'genie'}],services:[],playlist_memberships:previous.playlist_memberships},result);
+  const payload=mergeRegionalR2Snapshot({tracks:[{service:'kkbox'}],services:[],playlist_memberships:previous.playlist_memberships},result);
   assert.equal(payload.tracks.length,2);
   assert.equal(payload.playlist_memberships.length,0);
   assert.equal(payload.services[0].status,'error');
 });
+
 test('first R2 migration seeds published observations without changing their timestamps',()=>{
-  const payload={updated_at:now,services:[{service:'qq_music',updated_at:123,status:'ok'}],tracks:[{service:'qq_music',service_track_id:'old',observed_at:100},{service:'genie'}]};
+  const payload={updated_at:now,services:[{service:'qq_music',updated_at:123,status:'ok'}],tracks:[{service:'qq_music',service_track_id:'old',observed_at:100},{service:'kkbox'}]};
   const snapshot=regionalSnapshotFromPayload(payload,'qq_music');
   assert.equal(snapshot.updated_at,123);
   assert.equal(snapshot.tracks.length,1);
   assert.equal(snapshot.tracks[0].observed_at,100);
   assert.equal(regionalSnapshotFromPayload(payload,'missing'),null);
 });
-test('Tuesday 16:00 runner invokes only NetEase with zero SQL and writes daily/latest objects',async()=>{
+
+test('Monday 00:00 runner invokes only KKBOX with zero SQL and writes daily/latest objects',async()=>{
   const writes=[];const called=[];
-  const collectors={netease_cloud_music:async env=>{called.push('netease_cloud_music');assert.equal(env.OTHER_DB,undefined);await saveRegionalCollectorState(env,{service:'netease_cloud_music',status:'ok',last_success_at:neteaseNow});}};
-  const result=await collectRegionalR2Run({now:neteaseNow,collectors,load:async()=>null,save:async(key)=>writes.push(key)});
-  assert.deepEqual(called,['netease_cloud_music']);
+  const collectors={kkbox:async env=>{called.push('kkbox');assert.equal(env.OTHER_DB,undefined);await saveRegionalCollectorState(env,{service:'kkbox',status:'ok',last_success_at:kkboxNow});}};
+  const result=await collectRegionalR2Run({now:kkboxNow,collectors,load:async()=>null,save:async(key)=>writes.push(key)});
+  assert.deepEqual(called,['kkbox']);
   assert.equal(result.length,1);assert.equal(writes.length,2);
 });
+
 test('Thursday 18:00 runner invokes only QQ Music and forwards canonical bindings',async()=>{
   const qqNow=Date.parse('2026-10-08T09:00:00Z');
   const writes=[];const called=[];const minuteDb={prepare(){throw new Error('no tracks should query in this test');}};
@@ -119,6 +122,7 @@ test('Thursday 18:00 runner invokes only QQ Music and forwards canonical binding
   assert.deepEqual(called,['qq_music']);
   assert.equal(result.length,1);assert.equal(writes.length,2);
 });
+
 test('explicit service selection forces only requested services even when same-day snapshots exist',async()=>{
   const writes=[];const called=[];
   const makeCollector=service=>async env=>{called.push(service);await saveRegionalCollectorState(env,{service,status:'ok',last_success_at:now});};
@@ -134,12 +138,14 @@ test('explicit service selection forces only requested services even when same-d
   assert.deepEqual(result.map(row=>row.service),['qq_music','kugou_music']);
   assert.equal(writes.length,4);
 });
+
 test('service selection parser deduplicates and rejects unknown services',()=>{
   assert.deepEqual(parseRegionalServiceSelection(['--services=qq_music,kugou_music,qq_music']),['qq_music','kugou_music']);
   assert.throws(()=>parseRegionalServiceSelection(['--services=qq_music,missing']),/Unknown regional services: missing/);
 });
-test('scheduled retry reuses complete same-day NetEase service without provider requests or writes',async()=>{
-  const result=await collectRegionalR2Run({now:neteaseNow,collectors:{},load:async()=>({day:'2026-10-06',state:{status:'ok'}}),save:async()=>{throw new Error('must not write');}});
+
+test('scheduled retry reuses complete same-day KKBOX service without provider requests or writes',async()=>{
+  const result=await collectRegionalR2Run({now:kkboxNow,collectors:{},load:async()=>({day:'2026-10-05',state:{status:'ok'}}),save:async()=>{throw new Error('must not write');}});
   assert.equal(result.length,1);
   assert.ok(result.every(row=>row.reused));
 });
