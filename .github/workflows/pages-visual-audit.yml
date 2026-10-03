@@ -14,15 +14,55 @@ concurrency:
 jobs:
   capture:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets['CLOUDFLARE_API_TOKEN'] || secrets['CF_API_TOKEN'] || secrets['CLOUDFLARE_BUILDS_API_TOKEN'] }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: Resolve Cloudflare account context
+        if: github.event_name == 'pull_request'
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+
+      - name: Install Pages deployment dependencies
+        if: github.event_name == 'pull_request'
+        run: npm ci --prefer-offline --no-audit --no-fund
+        working-directory: site
+
+      - name: Build optimized Pages assets
+        if: github.event_name == 'pull_request'
+        run: npm run assets:build
+        working-directory: site
+
+      - name: Deploy pull request Pages preview
+        if: github.event_name == 'pull_request'
+        id: preview
+        shell: bash
+        working-directory: site
+        env:
+          PREVIEW_BRANCH: visual-pr-${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          npx wrangler pages deploy public \
+            --project-name skrzk \
+            --branch "$PREVIEW_BRANCH" \
+            2>&1 | tee pages-visual-preview-deploy.log
+          preview_url="$(grep -Eo 'https://[[:alnum:]-]+\.skrzk\.pages\.dev' pages-visual-preview-deploy.log | head -n 1 || true)"
+          if [[ -z "$preview_url" ]]; then
+            echo 'Could not find the deployed Pages preview URL in Wrangler output.' >&2
+            exit 1
+          fi
+          echo "url=$preview_url" >> "$GITHUB_OUTPUT"
 
       - name: Install Playwright
         run: npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.54.0
@@ -30,11 +70,61 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Capture production Pages at every tab and viewport size
-        run: >-
-          node scripts/capture-pages-visual-audit.mjs
-          --url=https://skrzk.pages.dev
-          --out=.pages-visual-audit
+      - name: Check pull request preview access
+        if: github.event_name == 'pull_request'
+        id: preview_access
+        shell: bash
+        env:
+          PREVIEW_URL: ${{ steps.preview.outputs.url }}
+        run: |
+          set -euo pipefail
+          mkdir -p .pages-visual-audit
+          node --input-type=module <<'NODE'
+          import { appendFile, writeFile } from 'node:fs/promises';
+          import { chromium } from 'playwright';
+          const browser = await chromium.launch({ headless: true });
+          const page = await browser.newPage();
+          let status = null;
+          let error = null;
+          try {
+            const response = await page.goto(process.env.PREVIEW_URL, {
+              waitUntil: 'domcontentloaded',
+              timeout: 35000,
+            });
+            status = response?.status() ?? null;
+            await page.waitForTimeout(750);
+          } catch (caught) {
+            error = caught instanceof Error ? caught.message : String(caught);
+          }
+          const title = await page.title().catch(() => '');
+          const finalUrl = page.url();
+          const body = await page.locator('body').innerText().catch(() => '');
+          const accessProtected = /cloudflare|access|sign in/i.test(`${title} ${body} ${finalUrl}`);
+          const report = { requestedUrl: process.env.PREVIEW_URL, finalUrl, status, title, accessProtected, error };
+          await writeFile('.pages-visual-audit/preview-access.json', `${JSON.stringify(report, null, 2)}\n`);
+          await appendFile(process.env.GITHUB_OUTPUT, `access_protected=${accessProtected ? 'true' : 'false'}\n`);
+          await browser.close();
+          console.log(JSON.stringify(report));
+          NODE
+
+      - name: Capture Pages at every tab and viewport size
+        if: github.event_name != 'pull_request' || steps.preview_access.outputs.access_protected != 'true'
+        shell: bash
+        env:
+          PREVIEW_URL: ${{ steps.preview.outputs.url }}
+        run: |
+          set -euo pipefail
+          target_url="https://skrzk.pages.dev"
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            target_url="${PREVIEW_URL}"
+          fi
+          node scripts/capture-pages-visual-audit.mjs \
+            --url="$target_url" \
+            --out=.pages-visual-audit
+
+      - name: Explain protected preview skip
+        if: github.event_name == 'pull_request' && steps.preview_access.outputs.access_protected == 'true'
+        run: echo 'Preview is protected by Cloudflare Access; visual capture is not actionable. Layout regressions remain covered by Pages tests and the live browser audit.'
 
       - name: Upload visual audit screenshots
         if: always()

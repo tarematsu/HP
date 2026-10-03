@@ -1,6 +1,6 @@
 import test from 'node:test';
 
-import { expectAll, readSource } from './helpers/source-contract.mjs';
+import { expectAll, expectNone, readSource } from './helpers/source-contract.mjs';
 
 test('unified Cloudflare Cron keeps the HomePanel scheduler alarm alive', () => {
   const unifiedWorker = readSource('hp/cloud/src/unified_worker.js');
@@ -10,6 +10,10 @@ test('unified Cloudflare Cron keeps the HomePanel scheduler alarm alive', () => 
     "import { queueSchedulerWatchdog } from './scheduler_coordinator.ts'",
     'scheduled(controller, env, ctx)',
     'queueSchedulerWatchdog(env, ctx, controller?.scheduledTime)',
+    'dispatchVideoLiveness(env)',
+    'dispatchTverFeedRefresh(env)',
+  ]);
+  expectNone(unifiedWorker, [
     'videoWorker.scheduled(controller, videoRuntimeEnv(env), ctx)',
   ]);
   expectAll(schedulerCoordinator, [

@@ -26,12 +26,7 @@ export function spotifyArtist(value) {
 }
 
 export function spotifyPlaycountSql() {
-  return `WITH latest AS (
-    SELECT MAX(snapshot_date) AS snapshot_date
-    FROM sh_spotify_artist_daily
-    WHERE artist_key='sakurazaka46'
-  )
-  SELECT
+  return `SELECT
     'sakurazaka46' AS artist_key,
     d.snapshot_date,
     ref.track_id,
@@ -41,13 +36,18 @@ export function spotifyPlaycountSql() {
     d.delta,
     d.collected_at,
     COALESCE(d.is_carried_forward,0) AS is_carried_forward
-  FROM latest
-  INNER JOIN sh_spotify_track_targets target ON target.artist_key='sakurazaka46'
-  INNER JOIN sh_spotify_playcount_daily d
-    ON d.snapshot_date=latest.snapshot_date AND d.track_id=target.track_id
-  INNER JOIN sh_spotify_tracks track ON track.track_id=d.track_id
-  LEFT JOIN music_service_track_refs ref
+  FROM sh_spotify_track_targets AS target INDEXED BY idx_sh_spotify_track_targets_artist
+  INNER JOIN sh_spotify_playcount_daily AS d
+    ON d.track_id=target.track_id
+    AND d.snapshot_date=(
+      SELECT MAX(snapshot_date)
+      FROM sh_spotify_artist_daily
+      WHERE artist_key='sakurazaka46'
+    )
+  INNER JOIN sh_spotify_tracks AS track ON track.track_id=d.track_id
+  LEFT JOIN music_service_track_refs AS ref
     ON ref.service='spotify' AND ref.source_track_id=d.track_id
+  WHERE target.artist_key='sakurazaka46'
   ORDER BY
     CASE WHEN d.delta IS NULL THEN 1 ELSE 0 END,
     d.delta DESC,
@@ -56,14 +56,15 @@ export function spotifyPlaycountSql() {
     d.track_id ASC`;
 }
 
-export function spotifyPlaycountAllSql() {
-  return `WITH latest AS (
-    SELECT artist_key,MAX(snapshot_date) AS snapshot_date
-    FROM sh_spotify_artist_daily
-    WHERE artist_key IN ('sakurazaka46','nogizaka46','hinatazaka46')
-    GROUP BY artist_key
-  )
-  SELECT
+export function spotifyLatestSnapshotDatesSql() {
+  return `SELECT artist_key,MAX(snapshot_date) AS snapshot_date
+  FROM sh_spotify_artist_daily
+  WHERE artist_key IN (?,?,?)
+  GROUP BY artist_key`;
+}
+
+export function spotifyLatestDetailSql() {
+  return `SELECT
     target.artist_key,
     d.snapshot_date,
     ref.track_id,
@@ -73,20 +74,74 @@ export function spotifyPlaycountAllSql() {
     d.delta,
     d.collected_at,
     COALESCE(d.is_carried_forward,0) AS is_carried_forward
-  FROM latest
-  INNER JOIN sh_spotify_track_targets target ON target.artist_key=latest.artist_key
-  INNER JOIN sh_spotify_playcount_daily d
-    ON d.snapshot_date=latest.snapshot_date AND d.track_id=target.track_id
-  INNER JOIN sh_spotify_tracks track ON track.track_id=d.track_id
-  LEFT JOIN music_service_track_refs ref
+  FROM sh_spotify_track_targets AS target INDEXED BY idx_sh_spotify_track_targets_artist
+  INNER JOIN sh_spotify_playcount_daily AS d
+    ON d.track_id=target.track_id AND d.snapshot_date=?
+  INNER JOIN sh_spotify_tracks AS track ON track.track_id=d.track_id
+  LEFT JOIN music_service_track_refs AS ref
     ON ref.service='spotify' AND ref.source_track_id=d.track_id
+  WHERE target.artist_key=?
   ORDER BY
-    target.artist_key ASC,
     CASE WHEN d.delta IS NULL THEN 1 ELSE 0 END,
     d.delta DESC,
     d.playcount DESC,
     track.name COLLATE NOCASE ASC,
     d.track_id ASC`;
+}
+
+export function spotifyPlaycountAllSql() {
+  const detail = (artistKey) => `SELECT
+    target.artist_key,
+    d.snapshot_date,
+    ref.track_id,
+    d.track_id AS spotify_track_id,
+    track.name,
+    d.playcount,
+    d.delta,
+    d.collected_at,
+    COALESCE(d.is_carried_forward,0) AS is_carried_forward
+  FROM sh_spotify_track_targets AS target INDEXED BY idx_sh_spotify_track_targets_artist
+  INNER JOIN sh_spotify_playcount_daily AS d
+    ON d.track_id=target.track_id
+    AND d.snapshot_date=(
+      SELECT MAX(snapshot_date)
+      FROM sh_spotify_artist_daily
+      WHERE artist_key='${artistKey}'
+    )
+  INNER JOIN sh_spotify_tracks AS track ON track.track_id=d.track_id
+  LEFT JOIN music_service_track_refs AS ref
+    ON ref.service='spotify' AND ref.source_track_id=d.track_id
+  WHERE target.artist_key='${artistKey}'`;
+  return `${SPOTIFY_DETAIL_ARTISTS.map(({ key }) => detail(key)).join('\nUNION ALL\n')}
+  ORDER BY
+    artist_key ASC,
+    CASE WHEN delta IS NULL THEN 1 ELSE 0 END,
+    delta DESC,
+    playcount DESC,
+    name COLLATE NOCASE ASC,
+    spotify_track_id ASC`;
+}
+
+export async function loadSpotifyLatestRows(db) {
+  const artistKeys = SPOTIFY_DETAIL_ARTISTS.map(({ key }) => key);
+  const datesResult = await db
+    .prepare(spotifyLatestSnapshotDatesSql())
+    .bind(...artistKeys)
+    .all();
+  const dates = new Map(
+    (Array.isArray(datesResult?.results) ? datesResult.results : [])
+      .map((row) => [String(row?.artist_key || ''), String(row?.snapshot_date || '')]),
+  );
+  const batches = await Promise.all(artistKeys.map(async (artistKey) => {
+    const snapshotDate = dates.get(artistKey);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(snapshotDate || '')) return [];
+    const result = await db
+      .prepare(spotifyLatestDetailSql())
+      .bind(snapshotDate, artistKey)
+      .all();
+    return Array.isArray(result?.results) ? result.results : [];
+  }));
+  return batches.flat();
 }
 
 export function spotifyTrendSql() {
@@ -354,12 +409,15 @@ export async function onRequestGet({ env, request }) {
     const includeSakamichi = request?.url
       ? new URL(request.url).searchParams.get('artists') === 'sakamichi'
       : false;
-    const [latestResult, trendResult, artistChartResult] = await Promise.all([
-      env.OTHER_DB.prepare(includeSakamichi ? spotifyPlaycountAllSql() : spotifyPlaycountSql()).all(),
+    const latestRowsPromise = includeSakamichi
+      ? loadSpotifyLatestRows(env.OTHER_DB)
+      : env.OTHER_DB.prepare(spotifyPlaycountSql()).all()
+        .then((result) => (Array.isArray(result?.results) ? result.results : []));
+    const [sourceLatestRows, trendResult, artistChartResult] = await Promise.all([
+      latestRowsPromise,
       env.OTHER_DB.prepare(spotifyTrendSql()).all(),
       env.OTHER_DB.prepare(spotifyArtistChartSql()).all(),
     ]);
-    const sourceLatestRows = Array.isArray(latestResult?.results) ? latestResult.results : [];
     const latestRows = await canonicalizeSpotifyPlaycountRows(env?.MINUTE_DB, sourceLatestRows);
     const trendRows = Array.isArray(trendResult?.results) ? trendResult.results : [];
     const artistChartRows = Array.isArray(artistChartResult?.results) ? artistChartResult.results : [];
