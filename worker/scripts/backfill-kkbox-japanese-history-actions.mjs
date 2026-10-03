@@ -155,6 +155,7 @@ async function main() {
   const existingObject = r2 ? await r2.get(KKBOX_JAPANESE_HISTORY_VIEW_KEY) : null;
   const existing = existingObject ? await existingObject.json() : null;
   let lastSavedAt = 0;
+  let processedAny = false;
 
   const view = await collectKkboxJapaneseHistory({
     existing,
@@ -166,6 +167,7 @@ async function main() {
     delayMs,
     maxRequests: Number.isFinite(maxRequests) && maxRequests > 0 ? Math.trunc(maxRequests) : Infinity,
     onProgress({ completed, total, remaining, record }) {
+      processedAny = true;
       if (record.entries?.length || record.status !== 'ok' || completed % 50 === 0 || completed === total) {
         console.log(JSON.stringify({
           event: 'kkbox_history_progress',
@@ -182,24 +184,25 @@ async function main() {
         }));
       }
     },
-    async onCheckpoint(nextView) {
+    async onCheckpoint(nextView, record) {
       if (!r2) return;
-      const now = Date.now();
-      if (now - lastSavedAt < 15_000) return;
+      if (record === null) {
+        if (!processedAny) return;
+      } else {
+        const now = Date.now();
+        if (now - lastSavedAt < 15_000) return;
+      }
       await r2.put(KKBOX_JAPANESE_HISTORY_VIEW_KEY, JSON.stringify(nextView));
-      lastSavedAt = now;
+      lastSavedAt = Date.now();
       console.log(JSON.stringify({
-        event: 'kkbox_history_checkpoint',
+        event: record === null ? 'kkbox_history_saved' : 'kkbox_history_checkpoint',
+        key: record === null ? KKBOX_JAPANESE_HISTORY_VIEW_KEY : undefined,
         checked_requests: nextView.coverage?.checked_requests,
         entries: nextView.coverage?.entries,
       }));
     },
   });
 
-  if (r2) {
-    await r2.put(KKBOX_JAPANESE_HISTORY_VIEW_KEY, JSON.stringify(view));
-    console.log(JSON.stringify({ event: 'kkbox_history_saved', key: KKBOX_JAPANESE_HISTORY_VIEW_KEY }));
-  }
   await mkdir(dirname(output), { recursive: true });
   await writeFile(output, `${JSON.stringify(view, null, 2)}\n`, 'utf8');
   console.log(JSON.stringify({ event: 'kkbox_history_complete', output, coverage: view.coverage }));
