@@ -7,10 +7,10 @@ const route = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.ur
 const css = readFileSync(new URL('../public/dashboard-navigation.css', import.meta.url), 'utf8');
 const build = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 
-test('dashboard exposes Stationhead and music subscription top-level categories', () => {
+test('dashboard exposes Stationhead and music streaming service top-level categories', () => {
   assert.match(index, /id="sectionTabs"/);
   assert.match(index, /data-section="stationhead"[^>]*>Stationhead</);
-  assert.match(index, /data-section="subscriptions"[^>]*>音楽サブスク</);
+  assert.match(index, /data-section="subscriptions"[^>]*>音楽ストリーミングサービス</);
   assert.doesNotMatch(index, /data-section="analysis"/);
   assert.doesNotMatch(index, />比較・分析</);
   assert.match(index, /id="sourceTabs"/);
