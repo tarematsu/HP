@@ -24,7 +24,7 @@ test('shared diagnostics action owns persisted-query, required public health, an
   assert.match(action, /wait "\$\{tail_pids\[\$index\]\}" \|\| worker_status=\$\?/);
   assert.match(collectionAudit, /LIVE_TAIL_SUMMARY worker=/);
   assert.match(collectionAudit, /HomePanel Cloud health/);
-  assert.match(publicHealth, /DEFAULT_PUBLIC_HEALTH_WORKERS/);
+  assert.match(publicHealth, /DEFAULT_CLOUDFLARE_PUBLIC_HEALTH_WORKERS/);
   assert.match(publicHealth, /resolveCloudflareWorkerPublicUrl/);
   assert.match(workerPublicUrl, /workers\/scripts\/\$\{encodedWorker\}\/subdomain/);
   assert.match(action, /^outputs:\n[\s\S]*query-outcome:/m);
