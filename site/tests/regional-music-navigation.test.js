@@ -19,13 +19,13 @@ const visibleSubscriptionServices = [
   'apple-music',
   'amazon-music',
   'youtube-music',
-  'genie',
   'kkbox',
   'qq_music',
   'kugou_music',
 ];
 
 const removedLocalServices = [
+  'genie',
   'bugs',
   'joox',
   'nhaccuatui',
