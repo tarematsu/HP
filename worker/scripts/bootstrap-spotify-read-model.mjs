@@ -6,11 +6,11 @@ import { fileURLToPath } from 'node:url';
 import { spotifyMonthlyListenersSql } from '../../site/functions/api/spotify-monthly-listeners.js';
 import {
   spotifyArtistChartSql,
-  spotifyPlaycountAllSql,
   spotifyReadModelAll,
   spotifyTrendSql,
 } from '../../site/functions/api/spotify-playcounts.js';
 import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+import { loadSpotifyLatestDetailRows } from '../src/spotify-read-model-detail.js';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 
 const workerRoot = resolve(import.meta.dirname, '..');
@@ -70,14 +70,14 @@ function monthlyListenerRevision(monthlyListenerRows) {
 }
 
 export async function loadSpotifyReadModelFromD1(db) {
-  const [latestResult, trendResult, artistChartResult, monthlyListenersResult] = await Promise.all([
-    db.prepare(spotifyPlaycountAllSql()).all(),
+  const [latestRows, trendResult, artistChartResult, monthlyListenersResult] = await Promise.all([
+    loadSpotifyLatestDetailRows(db),
     db.prepare(spotifyTrendSql()).all(),
     db.prepare(spotifyArtistChartSql()).all(),
     db.prepare(spotifyMonthlyListenersSql()).all(),
   ]);
   return {
-    ...spotifyReadModelAll(rows(latestResult), rows(trendResult), rows(artistChartResult)),
+    ...spotifyReadModelAll(latestRows, rows(trendResult), rows(artistChartResult)),
     monthly_listener_rows: rows(monthlyListenersResult),
   };
 }
