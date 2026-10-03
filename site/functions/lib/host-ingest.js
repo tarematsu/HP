@@ -47,6 +47,7 @@ function queueClaimPayload(data) {
       deezer_id: text(track.deezer_id),
       isrc: text(track.isrc),
       duration_ms: num(track.duration_ms),
+      bite_count: data?.claim_bite_count_changes === true ? num(track.bite_count) : null,
     })),
   };
 }

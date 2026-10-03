@@ -297,8 +297,8 @@ function playStatement(db, queue, track, observedAt) {
   const trackId = integer(track?.track_id);
   if (trackId == null) throw new Error('Buddies playback track_id is unresolved');
   return db.prepare(`INSERT OR IGNORE INTO sh_track_plays(
-      event_key,played_at,period_key,station_id,track_id,track_key,spotify_id,isrc,title,artist,duration_ms,thumbnail_url
-    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`)
+      event_key,played_at,period_key,station_id,track_id,track_key
+    ) VALUES(?,?,?,?,?,?)`)
     .bind(
       track.event_key,
       playedAt,
@@ -306,12 +306,6 @@ function playStatement(db, queue, track, observedAt) {
       integer(queue?.station_id),
       trackId,
       track.track_key,
-      text(track?.spotify_id),
-      text(track?.isrc)?.toUpperCase() || null,
-      text(track?.title),
-      text(track?.artist),
-      integer(track?.duration_ms),
-      text(track?.thumbnail_url, 2_048),
     );
 }
 

@@ -12,7 +12,9 @@ const SOURCE_SCOPE = 'nogizaka46smej_solo';
 const DEFAULT_HANDLE = 'nogizaka46smej';
 const COLLECTOR_ID = 'sh-nogizaka46smej-raw';
 const MAIN = 'sh_nogizaka46smej_main';
-const TRACK_METADATA = 'sh_nogizaka46smej_track_metadata';
+const RAW_RETENTION_MS = 7 * 24 * 60 * 60_000;
+const RAW_PRUNE_INTERVAL_MINUTES = 60;
+const RAW_PRUNE_BATCH = 500;
 
 function positive(value, fallback) {
   const parsed = Number(value);
@@ -21,6 +23,18 @@ function positive(value, fallback) {
 
 function observedMinute(now) {
   return Math.floor(Number(now) / 60_000);
+}
+
+async function pruneRawHistory(env, minute, observedAt) {
+  if (minute % RAW_PRUNE_INTERVAL_MINUTES !== 0) return 0;
+  const cutoff = observedAt - RAW_RETENTION_MS;
+  const result = await env.OTHER_DB.prepare(`DELETE FROM ${MAIN} WHERE id IN (
+      SELECT id FROM ${MAIN}
+      WHERE observed_at<?
+      ORDER BY observed_at ASC
+      LIMIT ?
+    )`).bind(cutoff, RAW_PRUNE_BATCH).run();
+  return Number(result?.meta?.changes || 0);
 }
 
 function handleFromEnv(env) {
@@ -194,58 +208,16 @@ async function saveStationMinute(env, sessionId, handle, station, main, queue, o
   }, observedAt);
 }
 
-async function saveTrackMetadataMinute(env, sessionId, queue, observedAt) {
-  if (!queue?.tracks?.length) return 0;
-  const statements = queue.tracks.map((track) => env.OTHER_DB.prepare(`INSERT INTO ${TRACK_METADATA} (
-      session_id,observed_at,station_id,queue_id,queue_start_time,position,
-      queue_track_id,stationhead_track_id,spotify_id,apple_music_id,deezer_id,isrc,
-      duration_ms,preview_url,bite_count,title,artist,album_name,thumbnail_url
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-    ON CONFLICT(session_id,observed_at,position) DO UPDATE SET
-      station_id=excluded.station_id,queue_id=excluded.queue_id,
-      queue_start_time=excluded.queue_start_time,queue_track_id=excluded.queue_track_id,
-      stationhead_track_id=excluded.stationhead_track_id,spotify_id=excluded.spotify_id,
-      apple_music_id=excluded.apple_music_id,deezer_id=excluded.deezer_id,isrc=excluded.isrc,
-      duration_ms=excluded.duration_ms,preview_url=excluded.preview_url,
-      bite_count=excluded.bite_count,title=excluded.title,artist=excluded.artist,
-      album_name=excluded.album_name,thumbnail_url=excluded.thumbnail_url`)
-    .bind(
-      sessionId,
-      observedAt,
-      queue.station_id,
-      queue.queue_id,
-      queue.start_time,
-      track.position,
-      track.queue_track_id,
-      track.stationhead_track_id,
-      track.spotify_id,
-      track.apple_music_id,
-      track.deezer_id,
-      track.isrc,
-      track.duration_ms,
-      track.preview_url,
-      track.bite_count,
-      track.title,
-      track.artist,
-      track.album_name,
-      track.thumbnail_url,
-    ));
-  await env.OTHER_DB.batch(statements);
-  return statements.length;
-}
-
 async function saveQueueMinute(env, sessionId, queue, observedAt) {
-  if (!queue) return { saved: false, metadata: 0 };
+  if (!queue) return false;
   const hash = await queueHash(queue);
-  await writeEvent(env, 'solo_queue', {
+  const result = await writeEvent(env, 'solo_queue', {
     session_id: sessionId,
     queue_hash: hash,
+    claim_bite_count_changes: true,
     ...queue,
   }, observedAt);
-  return {
-    saved: true,
-    metadata: await saveTrackMetadataMinute(env, sessionId, queue, observedAt),
-  };
+  return result?.accepted !== false;
 }
 
 export async function materializeNogizakaRawMinute(env, now = Date.now()) {
@@ -255,6 +227,7 @@ export async function materializeNogizakaRawMinute(env, now = Date.now()) {
   if (!main?.raw_json) return { skipped: true, reason: 'main-raw-missing', observed_minute: minute };
 
   const observedAt = finite(main.observed_at) || Number(now);
+  const rawRowsPruned = await pruneRawHistory(env, minute, observedAt);
   const station = parseRawJson(main.raw_json, 'Nogizaka main');
   const active = activeMainRow(main);
   let session = await openSession(env, handle);
@@ -276,6 +249,7 @@ export async function materializeNogizakaRawMinute(env, now = Date.now()) {
       reason: 'station-inactive',
       observed_minute: minute,
       active: false,
+      raw_rows_pruned: rawRowsPruned,
     };
   }
 
@@ -289,12 +263,9 @@ export async function materializeNogizakaRawMinute(env, now = Date.now()) {
   await saveStationMinute(env, Number(session.id), handle, station, main, queue, observedAt);
 
   let queueSaved = false;
-  let trackMetadataWritten = 0;
   let profileSaved = false;
   if (active) {
-    const queueResult = await saveQueueMinute(env, Number(session.id), queue, observedAt);
-    queueSaved = queueResult.saved;
-    trackMetadataWritten = queueResult.metadata;
+    queueSaved = await saveQueueMinute(env, Number(session.id), queue, observedAt);
     profileSaved = await saveProfile(env, Number(session.id), station, handle, observedAt);
 
     if (!opened && session.status === 'provisional') {
@@ -319,7 +290,8 @@ export async function materializeNogizakaRawMinute(env, now = Date.now()) {
     active,
     session_status: session.status,
     queue_saved: queueSaved,
-    track_metadata_written: trackMetadataWritten,
+    track_metadata_written: 0,
+    raw_rows_pruned: rawRowsPruned,
     profile_saved: profileSaved,
   }));
 
@@ -331,7 +303,8 @@ export async function materializeNogizakaRawMinute(env, now = Date.now()) {
     active,
     session_status: session.status,
     queue_saved: queueSaved,
-    track_metadata_written: trackMetadataWritten,
+    track_metadata_written: 0,
+    raw_rows_pruned: rawRowsPruned,
     profile_saved: profileSaved,
   };
 }

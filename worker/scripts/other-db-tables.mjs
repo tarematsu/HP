@@ -14,7 +14,6 @@ export const OTHER_REQUIRED_TABLES = Object.freeze([
   'sh_nogizaka_official_news_announcements',
   'sh_nogizaka_official_news_station_probes',
   'sh_nogizaka46smej_main',
-  'sh_nogizaka46smej_track_metadata',
   'sh_host_broadcast_sessions',
   'sh_host_station_snapshots',
   'sh_host_queue_snapshots',
@@ -78,4 +77,5 @@ export const OTHER_RETIRED_OBJECTS = Object.freeze([
   'sh_comment_velocity_samples',
   'sh_sakurazaka46jp_chat',
   'sh_nogizaka46smej_chat',
+  'sh_nogizaka46smej_track_metadata',
 ]);
