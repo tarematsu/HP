@@ -1,6 +1,9 @@
-import { REGIONAL_MUSIC_ARTISTS } from './regional-music-service-registry.js';
+import {
+  REGIONAL_MUSIC_ARTISTS,
+  YOUTUBE_MUSIC_ARTISTS,
+  regionalMusicService,
+} from './regional-music-service-registry.js';
 
-const TARGET_SERVICES = new Set(['qq_music', 'kugou_music', 'kkbox']);
 const BACKFILL_LIMIT = 500;
 const UPDATE_BATCH_SIZE = 20;
 const EXTRA_ARTIST_ALIASES = Object.freeze({
@@ -143,12 +146,17 @@ function cacheFor(cache, env) {
   return value;
 }
 
-async function loadCatalog(env, canonicalArtist) {
+function artistDefinitions(service) {
+  return service === 'youtube_music' ? YOUTUBE_MUSIC_ARTISTS : REGIONAL_MUSIC_ARTISTS;
+}
+
+async function loadCatalog(env, service, canonicalArtist) {
   if (!env?.MINUTE_DB?.prepare) return [];
-  const definition = REGIONAL_MUSIC_ARTISTS[canonicalArtist];
+  const definition = artistDefinitions(service)[canonicalArtist];
   if (!definition) return [];
   const cache = cacheFor(catalogCache, env);
-  if (cache.has(canonicalArtist)) return cache.get(canonicalArtist);
+  const cacheKey = `${service}:${canonicalArtist}`;
+  if (cache.has(cacheKey)) return cache.get(cacheKey);
 
   const aliases=[...new Set([
     definition.displayName,
@@ -162,7 +170,7 @@ async function loadCatalog(env, canonicalArtist) {
     WHERE title IS NOT NULL AND artist IS NOT NULL
       AND (${predicates})
     ORDER BY id ASC`, bindings);
-  cache.set(canonicalArtist, result);
+  cache.set(cacheKey, result);
   return result;
 }
 
@@ -201,16 +209,21 @@ async function backfillKnownRegionalRows(env, service, canonicalArtist, candidat
 }
 
 export async function resolveRegionalMusicCanonicalTrack(env, value = {}) {
-  if (positiveInteger(value?.canonical_track_id)) return value;
+  const existingTrackId = positiveInteger(value?.track_id ?? value?.canonical_track_id);
+  if (existingTrackId != null) {
+    return { ...value, track_id: existingTrackId, canonical_track_id: existingTrackId };
+  }
   const service = String(value?.service || '');
-  if (!TARGET_SERVICES.has(service)) return value;
+  if (!regionalMusicService(service)) return value;
   const canonicalArtist = String(value?.canonical_artist || '');
-  if (!REGIONAL_MUSIC_ARTISTS[canonicalArtist] || !text(value?.title)) return value;
+  if (!artistDefinitions(service)[canonicalArtist] || !text(value?.title)) return value;
 
-  const candidates = await loadCatalog(env, canonicalArtist);
+  const candidates = await loadCatalog(env, service, canonicalArtist);
   if (!candidates.length) return value;
   await backfillKnownRegionalRows(env, service, canonicalArtist, candidates);
   const match = matchRegionalMusicCanonicalTrack(value.title, candidates);
   const canonicalTrackId = positiveInteger(match?.id);
-  return canonicalTrackId == null ? value : { ...value, canonical_track_id: canonicalTrackId };
+  return canonicalTrackId == null
+    ? value
+    : { ...value, track_id: canonicalTrackId, canonical_track_id: canonicalTrackId };
 }
