@@ -3,7 +3,7 @@ import {
   byId,
   integerFormat,
 } from './dashboard-ui-common.js?v=20261001.1';
-import { renderRankHistoryChart } from './dashboard-rank-chart.js?v=20261002.1';
+import { renderRankHistoryChart } from './dashboard-rank-chart.js?v=20261003.1';
 
 const ARTIST_LABELS = Object.freeze({
   sakurazaka46: '櫻坂46',
@@ -197,7 +197,7 @@ function renderRankChart(chart, {
     height:320,
     margin:{ left:58, right:18, top:12, bottom:34 },
     yMax:OUT_OF_CHART_RANK,
-    rankTicks:[1, 25, 50, 75, 100, OUT_OF_CHART_RANK],
+    rankTicks:[1, 25, 50, 75, OUT_OF_CHART_RANK],
     dateTickCount:5,
     ariaLabel:`QQ Music ${label}における選択グループの更新日別最高順位推移。保存済み更新日の圏外も含み、1位が上。`,
     lineClass:'kugou-rank-line',
