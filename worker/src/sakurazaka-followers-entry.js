@@ -1,98 +1,20 @@
 import app from './sakurazaka-entry.js';
-import { dispatchScheduledService } from './internal-scheduled-dispatch.js';
-import { enqueueRegionalMusicDispatch } from './regional-music-dispatch-plan.js';
-import {
-  shouldDispatchSpotifyArtistChart,
-  shouldDispatchSpotifyPlaycount,
-} from './spotify-playcount-timing.js';
 
 export const STATIONHEAD_DAILY_FOLLOWERS_MESSAGE = 'stationhead-daily-followers';
-export const SHARED_STATIONHEAD_CRON = '* * * * *';
-const NOGIZAKA_CRON = '* * * * *';
-const OHISAMA_CRON = '*/5 * * * *';
-const SPOTIFY_PLAYCOUNT_CRON = '0 * * * *';
-const SPOTIFY_ARTIST_CHART_CRON = '20 22 * * *';
+export const SAKURAZAKA_CRON = '* * * * *';
 
 function scheduledTimestamp(controller) {
   const value = Number(controller?.scheduledTime);
   return Number.isFinite(value) && value >= 0 ? value : Date.now();
 }
 
-function utcMinute(timestamp) {
-  return new Date(timestamp).getUTCMinutes();
-}
-
-async function runSharedTargets(env, scheduledAt) {
-  const minute = utcMinute(scheduledAt);
-  const tasks = [
-    ['nogizaka46smej', dispatchScheduledService(env?.NOGIZAKA_SCHEDULED, NOGIZAKA_CRON, scheduledAt)],
-  ];
-  // Buddies owns the 00/05/10/... slots. Run Ohisama one minute later so
-  // Stationhead auth/channel requests cannot contend with the primary collector.
-  if (minute % 5 === 1) {
-    tasks.push(['ohisama', dispatchScheduledService(env?.OHISAMA_SCHEDULED, OHISAMA_CRON, scheduledAt)]);
-  }
-  // Keep the normal hourly check, but from 00:00 through 04:50 JST dispatch a
-  // lightweight stale-source probe every ten minutes. The Spotify worker only
-  // starts the full collection after that probe observes a source change.
-  if (shouldDispatchSpotifyPlaycount(scheduledAt)) {
-    tasks.push(['spotify-playcount', dispatchScheduledService(env?.SPOTIFY_PLAYCOUNT_SCHEDULED, SPOTIFY_PLAYCOUNT_CRON, scheduledAt)]);
-  }
-  // Spotify publishes the daily chart around 07:00 JST. Retry at :20 from
-  // 07:20 through 11:20; after the first successful date is stored the Worker
-  // exits after one cheap D1 state lookup.
-  if (shouldDispatchSpotifyArtistChart(scheduledAt)) {
-    tasks.push(['spotify-artist-chart', dispatchScheduledService(
-      env?.SPOTIFY_PLAYCOUNT_SCHEDULED,
-      SPOTIFY_ARTIST_CHART_CRON,
-      scheduledAt,
-    )]);
-  }
-
-  const regionalMusic = enqueueRegionalMusicDispatch(env, scheduledAt);
-  tasks.push(['regional-music', regionalMusic]);
-
-  const settled = await Promise.allSettled(tasks.map(([, promise]) => promise));
-  const failures = [];
-  const results = {};
-  settled.forEach((result, index) => {
-    const name = tasks[index][0];
-    if (result.status === 'fulfilled') {
-      results[name] = result.value;
-      return;
-    }
-    failures.push({ name, error: String(result.reason?.message || result.reason).slice(0, 800) });
-  });
-
-  if (failures.length) {
-    console.error(JSON.stringify({
-      event: 'shared_stationhead_schedule_failed',
-      scheduled_at: scheduledAt,
-      failures,
-    }));
-    throw new AggregateError(
-      failures.map(({ error }) => new Error(error)),
-      `shared Stationhead schedule failed: ${failures.map(({ name }) => name).join(', ')}`,
-    );
-  }
-  return results;
-}
-
 export async function runSakurazakaFollowersScheduled(controller, env) {
-  // Daily follower collection now runs in GitHub Actions at 00:00 JST.
-  // This minute cron is also the shared scheduler for lightweight collectors
-  // and for the one-per-minute regional-music queue dispatch.
   const scheduledAt = scheduledTimestamp(controller);
-  const ownController = {
+  return app.scheduled({
     ...controller,
-    cron: SHARED_STATIONHEAD_CRON,
+    cron: SAKURAZAKA_CRON,
     scheduledTime: scheduledAt,
-  };
-  const [sakurazaka, shared] = await Promise.all([
-    app.scheduled(ownController, env),
-    runSharedTargets(env, scheduledAt),
-  ]);
-  return { sakurazaka, shared, scheduled_at: scheduledAt };
+  }, env);
 }
 
 export async function runSakurazakaFollowersQueue(batch, env) {

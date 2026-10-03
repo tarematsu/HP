@@ -15,9 +15,6 @@
       "invocation_logs": true
     }
   },
-  "triggers": {
-    "crons": ["0,10,15,20,30,40,50 * * * *"]
-  },
   "d1_databases": [
     {
       "binding": "MINUTE_DB",

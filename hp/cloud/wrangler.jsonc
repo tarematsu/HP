@@ -126,11 +126,6 @@
       }
     ]
   },
-  "triggers": {
-    "crons": [
-      "0 * * * *"
-    ]
-  },
   "observability": {
     "enabled": true,
     "head_sampling_rate": 0.5,

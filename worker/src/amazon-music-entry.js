@@ -6,6 +6,7 @@ import { canonicalizeAppleMusicPresentation } from './apple-music-canonical-pres
 import { collectAppleMusicSnapshot } from './apple-music-collector.js';
 import { collectAdditionalAppleMusicArtists } from './apple-music-sakamichi-collector.js';
 import { appleMusicFetch } from './apple-music-fetch.js';
+import { handleInternalScheduled } from './internal-scheduled-dispatch.js';
 import {
   amazonMusicServiceEnv,
   persistAmazonMusicModelToOther,
@@ -98,11 +99,25 @@ function scheduledRuns(env, scheduledTime) {
   return runs;
 }
 
+async function runScheduled(controller, env, ctx) {
+  const scheduledTime = Number(controller?.scheduledTime) || Date.now();
+  const run = Promise.all(scheduledRuns(env, scheduledTime));
+  if (ctx?.waitUntil) ctx.waitUntil(run);
+  else await run;
+  return { scheduled_time: scheduledTime };
+}
+
 export default {
-  async scheduled(controller, env, ctx) {
-    const scheduledTime = Number(controller?.scheduledTime) || Date.now();
-    const run = Promise.all(scheduledRuns(env, scheduledTime));
-    if (ctx?.waitUntil) ctx.waitUntil(run);
-    else await run;
+  scheduled: runScheduled,
+  async fetch(request, env) {
+    const internal = await handleInternalScheduled(
+      request,
+      env,
+      runScheduled,
+      AMAZON_MUSIC_CRON,
+      [AMAZON_MUSIC_CRON],
+    );
+    if (internal) return internal;
+    return new Response('Not found', { status: 404 });
   },
 };

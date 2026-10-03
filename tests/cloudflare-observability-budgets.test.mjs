@@ -54,7 +54,7 @@ test('unified observability runs account-wide post-deploy, collection, and daily
     '.github/scripts/publish-cloudflare-observability-status.mjs',
     '.github/scripts/observability-workflow-outcome.mjs',
     'cron: "0 1 * * *"',
-    'CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,sh-spotify-playcount-collector,homepanel-cloud',
+    'CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,sh-spotify-playcount-collector,sh-cron-dispatcher,homepanel-cloud',
     'D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc',
     'D1_HISTORY_DAYS: "7"',
     'DAILY_REQUEST_BUDGET: "100000"',

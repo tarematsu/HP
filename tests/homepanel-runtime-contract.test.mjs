@@ -16,6 +16,7 @@ test('HomePanel Cloud owns the video runtime and keeps isolated coordinators', a
   const deviceSyncClient = readSource('hp/cloud/src/device_sync_coordinator_client.ts');
   const radarCoordinator = readSource('hp/cloud/src/radar_bundle_coordinator.ts');
   const cloudConfig = readSource('hp/cloud/wrangler.jsonc');
+  const dispatcherConfig = readSource('worker/wrangler.cron-dispatcher.jsonc');
   const videoEntry = readSource('hp/video/src/entry.js');
 
   expectAll(unifiedWorker, [
@@ -105,9 +106,14 @@ test('HomePanel Cloud owns the video runtime and keeps isolated coordinators', a
     '"class_name": "DeviceSyncCoordinator"',
     '"class_name": "DeviceExchangeCoordinator"',
     '"class_name": "RadarBundleCoordinator"',
-    '"0 * * * *"',
   ]);
-  expectNone(cloudConfig, ['"binding": "VIDEO_SERVICE"', '"service": "homepanel-video"']);
+  expectNone(cloudConfig, ['"binding": "VIDEO_SERVICE"', '"service": "homepanel-video"', '"crons"']);
+  expectAll(dispatcherConfig, [
+    '"name": "sh-cron-dispatcher"',
+    '"crons": ["* * * * *"]',
+    '"name": "HOMEPANEL_SCHEDULER_COORDINATOR"',
+    '"script_name": "homepanel-cloud"',
+  ]);
   expectAll(videoEntry, ['X-HomePanel-Internal-Service', "pathname === '/api/health'"]);
   await assert.rejects(access(new URL('../hp/video/wrangler.jsonc', import.meta.url)));
   await assert.rejects(access(new URL('../hp/video/src/retired-entry.js', import.meta.url)));

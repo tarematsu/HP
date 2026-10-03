@@ -60,12 +60,13 @@ test('YouTube Music alone targets Aobazaka46 in addition to the three existing g
   assert.equal(Object.hasOwn(REGIONAL_MUSIC_ARTISTS, 'aobazaka46'), false);
 });
 
-test('production cron keeps YouTube Music standalone while regional services move to the shared minute queue', () => {
+test('generic dispatcher owns YouTube Music cron while regional services remain Actions/queue driven', () => {
   assert.equal(YOUTUBE_MUSIC_DAILY_CRON, '0 15 * * *');
   assert.equal(REGIONAL_MUSIC_DAILY_CRON, '0 21 * * *');
   assert.equal(scheduledCollectorForCron(YOUTUBE_MUSIC_DAILY_CRON), collectYouTubeMusicDaily);
   assert.equal(scheduledCollectorForCron(REGIONAL_MUSIC_DAILY_CRON), collectRegionalServicesDaily);
-  assert.deepEqual(regionalConfig.triggers?.crons, [YOUTUBE_MUSIC_DAILY_CRON]);
+  assert.equal(regionalConfig.triggers, undefined);
+  assert.equal(regionalConfig.main, 'src/regional-music-service-entry.js');
   assert.deepEqual(regionalConfig.queues?.consumers, [{
     queue: 'regional-music-daily',
     max_batch_size: 1,

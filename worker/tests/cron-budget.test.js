@@ -10,7 +10,7 @@ function homepanelConfig() {
   return JSON.parse(readFileSync(new URL('../../hp/cloud/wrangler.jsonc', import.meta.url), 'utf8'));
 }
 
-test('active production Workers stay within the account-wide Free cron limit', () => {
+test('active production Workers keep only Sakurazaka, Buddies, and generic dispatcher crons', () => {
   const configs = [
     config('wrangler.sakurazaka46jp.jsonc'),
     config('wrangler.nogizaka46smej.jsonc'),
@@ -18,24 +18,30 @@ test('active production Workers stay within the account-wide Free cron limit', (
     config('wrangler.ohisama-collector.jsonc'),
     config('wrangler.spotify-playcount.jsonc'),
     config('wrangler.amazon-music.jsonc'),
+    config('wrangler.regional-music.jsonc'),
+    config('wrangler.cron-dispatcher.jsonc'),
     config('wrangler.runtime.jsonc'),
     homepanelConfig(),
   ];
   const counts = configs.map((value) => value.triggers?.crons?.length || 0);
 
-  // Independent Cron owners: shared Sakurazaka scheduler, Buddies, Amazon, Homepanel.
-  assert.deepEqual(counts, [1, 0, 1, 0, 0, 1, 0, 1]);
-  assert.equal(counts.reduce((sum, count) => sum + count, 0), 4);
+  assert.deepEqual(counts, [1, 0, 1, 0, 0, 0, 0, 1, 0, 0]);
+  assert.equal(counts.reduce((sum, count) => sum + count, 0), 3);
   assert.equal(counts.reduce((sum, count) => sum + count, 0) <= 5, true);
 });
 
-test('shared Stationhead scheduler owns service bindings for former standalone crons', () => {
-  const shared = config('wrangler.sakurazaka46jp.jsonc');
+test('generic dispatcher owns shared service bindings while Sakurazaka stays isolated', () => {
+  const sakurazaka = config('wrangler.sakurazaka46jp.jsonc');
+  const shared = config('wrangler.cron-dispatcher.jsonc');
+  assert.deepEqual(sakurazaka.triggers?.crons, ['* * * * *']);
+  assert.equal(sakurazaka.services, undefined);
   assert.deepEqual(shared.triggers?.crons, ['* * * * *']);
   assert.deepEqual(shared.services, [
     { binding: 'NOGIZAKA_SCHEDULED', service: 'sh-nogizaka46smej' },
     { binding: 'OHISAMA_SCHEDULED', service: 'sh-ohisama-collector' },
     { binding: 'SPOTIFY_PLAYCOUNT_SCHEDULED', service: 'sh-spotify-playcount-collector' },
+    { binding: 'AMAZON_MUSIC_SCHEDULED', service: 'sh-amazon-music-collector' },
+    { binding: 'REGIONAL_MUSIC_SCHEDULED', service: 'sh-regional-music-collector' },
   ]);
 });
 

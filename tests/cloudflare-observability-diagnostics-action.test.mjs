@@ -12,7 +12,7 @@ const collectionAudit = read('.github/scripts/audit-observability-collection.mjs
 const publicHealth = read('.github/scripts/capture-public-health-endpoints.mjs');
 const workerPublicUrl = read('.github/scripts/cloudflare-worker-public-url.mjs');
 
-const workerList = 'sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,sh-spotify-playcount-collector,homepanel-cloud';
+const workerList = 'sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,sh-spotify-playcount-collector,sh-cron-dispatcher,homepanel-cloud';
 
 test('shared diagnostics action owns persisted-query, required public health, and fail-closed multi-Worker Live Tail orchestration', () => {
   assert.match(action, /python3 \.github\/scripts\/query-cloudflare-observability\.py/);
