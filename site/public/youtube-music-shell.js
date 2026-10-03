@@ -56,7 +56,7 @@ mountDashboardShell({
     anchorId: 'likesView',
     position: 'beforebegin',
     html: `
-      ${musicServiceMeta({ label: '更新', valueId: 'youtubeMusicUpdated' })}
+      ${musicServiceMeta({ label: '更新日時', valueId: 'youtubeMusicUpdated', cadence: '毎日0:00' })}
       ${dashboardNotice({ id: 'youtubeMusicNotice' })}
       <div class="regional-music-title-row">
         <div><p class="kicker">YOUTUBE MUSIC</p><h2>YouTube Music</h2></div>
