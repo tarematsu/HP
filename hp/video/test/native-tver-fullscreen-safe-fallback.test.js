@@ -17,13 +17,12 @@ test('TVer has no viewport-fill pseudo fullscreen', () => {
   assert.match(runtime, /document\.fullscreenElement/);
 });
 
-test('TVer fullscreen deliberately taps the video bottom-right corner', () => {
+test('TVer fullscreen keeps the normal trusted bottom-right tap as its first attempt', () => {
   assert.match(runtime, /const requestFullscreen = \(\) =>/);
   assert.match(runtime, /video\.getBoundingClientRect/);
   assert.match(runtime, /rect\.right - 12/);
   assert.match(runtime, /rect\.bottom - 12/);
   assert.match(runtime, /return \[x, y\]/);
-  assert.doesNotMatch(runtime, /fullscreenControl|homepanel:tver-fullscreen-key/);
 });
 
 test('TVer corner tap retries until real browser fullscreen is observed', () => {
@@ -31,12 +30,21 @@ test('TVer corner tap retries until real browser fullscreen is observed', () => 
   assert.match(runtime, /now - state\.fullscreenCornerTapAt < 1400/);
   assert.match(runtime, /wake\(1500\)/);
   assert.match(runtime, /document\.fullscreenElement/);
-  assert.doesNotMatch(runtime, /fullscreenKeyRequestedAt|fullscreenAttemptCount/);
 });
 
-test('TVer post-click fullscreen helper only verifies state and wakes recovery', () => {
+test('TVer post-click fallback preserves real fullscreen controls and escalates natively', () => {
   assert.match(fullscreen, /document\.fullscreenElement/);
   assert.match(fullscreen, /state\.fullscreenCornerTapAt = 0/);
+  assert.match(fullscreen, /__homePanelTverFullscreenControlGuard/);
+  assert.match(fullscreen, /aria-label\*="全画面"/);
+  assert.match(fullscreen, /data-testid\*="fullscreen" i/);
+  assert.match(fullscreen, /display:flex!important/);
+  assert.match(fullscreen, /visibility:visible!important/);
+  assert.match(fullscreen, /pointer-events:auto!important/);
+  assert.match(fullscreen, /const fullscreenTapPending/);
+  assert.match(fullscreen, /Date\.now\(\) - state\.fullscreenCornerTapAt <= 3000/);
+  assert.match(fullscreen, /if \(fullscreenTapPending\)/);
+  assert.match(fullscreen, /homepanel:tver-fullscreen-key/);
   assert.match(fullscreen, /homepanel:tver-wake/);
   assert.doesNotMatch(fullscreen, /requestFullscreen|webkitRequestFullscreen|request\.call/);
 });

@@ -36,7 +36,7 @@ test('YouTube requests F before falling back to fullscreen button click', () => 
   assert.doesNotMatch(youtube, /const videoFullscreenPoint = media =>/);
 });
 
-test('TVer fullscreen uses only a trusted tap near the video bottom-right corner', () => {
+test('TVer fullscreen keeps the trusted bottom-right tap as the first attempt', () => {
   const request = tver.slice(
     tver.indexOf('const requestFullscreen = () =>'),
     tver.indexOf('const bindVideo = () =>'),
@@ -57,11 +57,15 @@ test('TVer ads prioritize Skip and only use fullscreen recovery when Skip is una
   assert.ok(ad >= 0 && skip > ad && fullscreen > skip);
 });
 
-test('fullscreen key messages remain YouTube-only in the active TVer runtime', () => {
+test('TVer post-click verification escalates through the native fullscreen bridge', () => {
   assert.match(wrapper, /homepanel:youtube-fullscreen-key/);
   assert.match(wrapper, /sourceContains\(L"youtube\.com\/watch"\)/);
+  assert.match(wrapper, /homepanel:tver-fullscreen-key/);
+  assert.match(wrapper, /sourceContains\(L"tver\.jp\/episodes\/"\)/);
   assert.doesNotMatch(tver, /homepanel:tver-fullscreen-key/);
+  assert.match(tverVerify, /homepanel:tver-fullscreen-key/);
   assert.match(tverVerify, /homepanel:tver-wake/);
   assert.match(tverVerify, /fullscreenCornerTapAt = 0/);
+  assert.match(tverVerify, /__homePanelTverFullscreenControlGuard/);
   assert.doesNotMatch(tverVerify, /requestFullscreen|webkitRequestFullscreen/);
 });
