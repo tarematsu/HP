@@ -1,4 +1,4 @@
-name: Cleanup hidden regional services v2
+name: Cleanup hidden regional services
 
 on:
   push:
@@ -10,23 +10,18 @@ permissions:
 
 jobs:
   cleanup:
-    if: github.event.head_commit.message == 'chore: run hidden regional service cleanup'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
           ref: cleanup/remove-hidden-regional-services-v2-20261003
           fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
       - name: Apply cleanup
         run: python3 .github/scripts/cleanup_hidden_regional_services.py
       - name: Commit cleanup
-        shell: bash
         run: |
-          git status --short
+          if git diff --quiet && git diff --cached --quiet; then exit 0; fi
           git add -A
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
