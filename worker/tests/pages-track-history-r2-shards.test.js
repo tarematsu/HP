@@ -191,8 +191,8 @@ test('Buddies playback events replace legacy reconstructed play counts when avai
   const sourceDb = new FakePlaybackDb([{
     play_date: '2026-07-23',
     track_id: 42,
-    played_at: range.fromTs + 60_000,
-    first_played_at: range.fromTs + 60_000,
+    played_at: range.fromTs,
+    first_played_at: range.fromTs,
     last_played_at: range.fromTs + 7 * 60_000,
     play_count: 3,
   }]);
