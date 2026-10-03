@@ -34,8 +34,63 @@ test('Spotify collector is isolated behind the shared scheduler and owns its eve
   assert.deepEqual(value.vars, { SPOTIFY_PLAYCOUNT_ENABLED: true });
 
   const serviceEntry = readFileSync(new URL('../src/spotify-playcount-service-entry.js', import.meta.url), 'utf8');
-  assert.match(serviceEntry, /SPOTIFY_PLAYCOUNT_CRON = '0 \* \* \* \*'/);
-  assert.match(serviceEntry, /handleInternalScheduled/);
+  const scheduledQueue = readFileSync(new URL('../src/spotify-scheduled-queue.js', import.meta.url), 'utf8');
+  assert.match(scheduledQueue, /SPOTIFY_PLAYCOUNT_CRON = '0 \* \* \* \*'/);
+  assert.match(serviceEntry, /enqueueSpotifyScheduledDispatch/);
+  assert.doesNotMatch(serviceEntry, /handleInternalScheduled/);
+});
+
+test('shared scheduler delegates Spotify work to the Queue CPU budget', async () => {
+  const {
+    enqueueSpotifyScheduledDispatch,
+    processSpotifyScheduledDispatchEntry,
+    SPOTIFY_PLAYCOUNT_CRON,
+  } = await import('../src/spotify-scheduled-queue.js');
+  const queued = [];
+  const response = await enqueueSpotifyScheduledDispatch(new Request(
+    'https://scheduler.internal/__internal/scheduled',
+    {
+      method: 'POST',
+      body: JSON.stringify({ cron: SPOTIFY_PLAYCOUNT_CRON, scheduled_time: 1234 }),
+    },
+  ), { SPOTIFY_PLAYCOUNT_QUEUE: { send: async (body) => queued.push(body) } });
+  assert.equal(response.status, 200);
+  assert.equal(queued.length, 1);
+  assert.equal(queued[0].message_type, 'spotify-scheduled-dispatch');
+
+  let acknowledged = 0;
+  let received;
+  const result = await processSpotifyScheduledDispatchEntry({
+    body: queued[0],
+    ack: () => { acknowledged += 1; },
+  }, {}, {
+    runSpotifyPlaycountScheduled: async (controller) => { received = controller; },
+  });
+  assert.deepEqual(received, { cron: SPOTIFY_PLAYCOUNT_CRON, scheduledTime: 1234 });
+  assert.equal(acknowledged, 1);
+  assert.equal(result.failed, 0);
+});
+
+test('failed Spotify Queue scheduling remains retryable', async () => {
+  const {
+    processSpotifyScheduledDispatchEntry,
+    SPOTIFY_PLAYCOUNT_CRON,
+    SPOTIFY_SCHEDULED_DISPATCH_TYPE,
+  } = await import('../src/spotify-scheduled-queue.js');
+  let retried = 0;
+  const result = await processSpotifyScheduledDispatchEntry({
+    body: {
+      message_type: SPOTIFY_SCHEDULED_DISPATCH_TYPE,
+      message_version: 1,
+      cron: SPOTIFY_PLAYCOUNT_CRON,
+      scheduled_time: 1234,
+    },
+    retry: () => { retried += 1; },
+  }, {}, {
+    runSpotifyPlaycountScheduled: async () => { throw new Error('temporary'); },
+  });
+  assert.equal(retried, 1);
+  assert.equal(result.failed, 1);
 });
 
 test('a stale day is carried forward at the next 05:00 and requests one read-model refresh', () => {

@@ -6,6 +6,10 @@ import {
   requestSpotifyReadModelRefresh,
   SPOTIFY_READ_MODEL_REFRESH_TYPE,
 } from './spotify-pages-read-model.js';
+import {
+  processSpotifyScheduledDispatchEntry,
+  SPOTIFY_SCHEDULED_DISPATCH_TYPE,
+} from './spotify-scheduled-queue.js';
 
 export const SPOTIFY_MONTHLY_LISTENERS_TYPE = 'spotify-monthly-listeners';
 
@@ -155,6 +159,7 @@ export async function processSpotifyPlaycountBatch(batch, env, dependencies = {}
   const albums = [];
   const monthlyListeners = [];
   const readModelRefresh = [];
+  const scheduledDispatches = [];
   let ignored = 0;
 
   for (const entry of batch?.messages || []) {
@@ -163,6 +168,7 @@ export async function processSpotifyPlaycountBatch(batch, env, dependencies = {}
     else if (type === 'spotify-playcount-album') albums.push(entry);
     else if (type === SPOTIFY_MONTHLY_LISTENERS_TYPE) monthlyListeners.push(entry);
     else if (type === SPOTIFY_READ_MODEL_REFRESH_TYPE) readModelRefresh.push(entry);
+    else if (type === SPOTIFY_SCHEDULED_DISPATCH_TYPE) scheduledDispatches.push(entry);
     else {
       entry.ack?.();
       ignored += 1;
@@ -170,6 +176,9 @@ export async function processSpotifyPlaycountBatch(batch, env, dependencies = {}
   }
 
   const results = [];
+  for (const entry of scheduledDispatches) {
+    results.push(await processSpotifyScheduledDispatchEntry(entry, env, dependencies));
+  }
   if (catalog.length) {
     results.push(await processSpotifyCatalogBatch(batchWith(catalog), env, dependencies));
   }
