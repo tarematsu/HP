@@ -51,7 +51,8 @@ const tracksSection = musicServiceSection({
 
 const playlistSection = musicServiceSection({
   id: 'applePlaylistSection',
-  title: 'Apple Music プレイリスト掲載一覧',
+  title: '櫻坂46 楽曲別プレイリスト掲載一覧',
+  titleId: 'applePlaylistTitle',
   bodyHtml: '<div id="applePlaylistMount"></div>',
 });
 
