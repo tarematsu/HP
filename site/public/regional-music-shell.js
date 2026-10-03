@@ -1,22 +1,13 @@
 import {
-  dashboardDataCard,
   dashboardNotice,
-  dashboardSummary,
-  dashboardSummaryItem,
   dashboardTable,
   mountDashboardShell,
 } from './dashboard-ui-common.js?v=20261001.1';
 import {
   musicServiceMeta,
   musicServiceSection,
-} from './music-service-shell.js?v=20261001.1';
-
-const summary = dashboardSummary([
-  dashboardSummaryItem({ label: '状態', valueId: 'regionalMusicStatus' }),
-  dashboardSummaryItem({ label: 'アーティスト', valueId: 'regionalMusicArtistCount' }),
-  dashboardSummaryItem({ label: '楽曲', valueId: 'regionalMusicTrackCount' }),
-  dashboardSummaryItem({ label: 'プレイリスト', valueId: 'regionalMusicPlaylistCount' }),
-], { className: 'music-service-summary regional-music-summary', ariaLabel: '地域音楽サービス概要' });
+  musicServiceViewClassName,
+} from './music-service-shell.js?v=20261003.2';
 
 const artistTable = dashboardTable({
   className: 'regional-music-table regional-music-artist-table music-service-track-table',
@@ -81,13 +72,6 @@ const qqPopularityTable = dashboardTable({
   wrapClassName: 'regional-music-table-wrap',
 });
 
-const healthPanel = dashboardDataCard({
-  title: '収集状態',
-  kicker: 'COLLECTOR',
-  className: 'regional-music-health music-service-panel',
-  bodyHtml: '<dl id="regionalMusicHealth" class="regional-music-health-list"></dl>',
-});
-
 function artistFilterButtons(prefix, label) {
   return `
     <div class="mode-tabs regional-chart-filter" role="group" aria-label="${label}">
@@ -98,107 +82,94 @@ function artistFilterButtons(prefix, label) {
     </div>`;
 }
 
-const melonPopularitySection = `
-  <section id="melonArtistPopularitySection" class="music-service-section regional-chart-section" hidden>
-    <div class="regional-chart-section-head">
-      <h2>Melon アーティスト別人気曲順位</h2>
-      ${artistFilterButtons('melon', 'Melon 人気曲 表示グループ')}
-    </div>
-    ${melonPopularityTable}
-  </section>`;
+const melonPopularitySection = musicServiceSection({
+  id: 'melonArtistPopularitySection',
+  title: 'Melon アーティスト別人気曲順位',
+  trailingHtml: artistFilterButtons('melon', 'Melon 人気曲 表示グループ'),
+  bodyHtml: melonPopularityTable,
+  hidden: true,
+});
 
-const qqChartSection = `
-  <section id="qqJapanChartSection" class="music-service-section regional-chart-section" hidden>
-    <div class="regional-chart-section-head"><h2>QQ音乐 日本榜 グループ別最高順位推移</h2></div>
-    <div id="qqJapanRankLegend" class="regional-music-rank-legend" aria-label="グループ凡例"></div>
-    <div id="qqJapanRankChart" class="regional-music-rank-chart"></div>
-  </section>`;
+const qqChartSection = musicServiceSection({
+  id: 'qqJapanChartSection',
+  title: 'QQ音乐 日本榜 グループ別最高順位推移',
+  bodyHtml: '<div id="qqJapanRankLegend" class="regional-music-rank-legend" aria-label="グループ凡例"></div><div id="qqJapanRankChart" class="regional-music-rank-chart"></div>',
+  hidden: true,
+});
 
-const qqHistorySection = `
-  <section id="qqJapanHistorySection" class="music-service-section regional-chart-section" hidden>
-    <div class="regional-chart-section-head">
-      <h2>QQ音乐 日本榜 ランクイン履歴</h2>
-      ${artistFilterButtons('qq', 'QQ音乐 日本榜 表示グループ')}
-    </div>
-    ${qqHistoryTable}
-  </section>`;
+const qqHistorySection = musicServiceSection({
+  id: 'qqJapanHistorySection',
+  title: 'QQ音乐 日本榜 ランクイン履歴',
+  trailingHtml: artistFilterButtons('qq', 'QQ音乐 日本榜 表示グループ'),
+  bodyHtml: qqHistoryTable,
+  hidden: true,
+});
 
-const qqAnimeChartSection = `
-  <section id="qqAnimeChartSection" class="music-service-section regional-chart-section" hidden>
-    <div class="regional-chart-section-head"><h2>QQ音乐 动漫音乐榜 グループ別最高順位推移</h2></div>
-    <div id="qqAnimeRankLegend" class="regional-music-rank-legend" aria-label="グループ凡例"></div>
-    <div id="qqAnimeRankChart" class="regional-music-rank-chart"></div>
-  </section>`;
+const qqAnimeChartSection = musicServiceSection({
+  id: 'qqAnimeChartSection',
+  title: 'QQ音乐 动漫音乐榜 グループ別最高順位推移',
+  bodyHtml: '<div id="qqAnimeRankLegend" class="regional-music-rank-legend" aria-label="グループ凡例"></div><div id="qqAnimeRankChart" class="regional-music-rank-chart"></div>',
+  hidden: true,
+});
 
-const qqAnimeHistorySection = `
-  <section id="qqAnimeHistorySection" class="music-service-section regional-chart-section" hidden>
-    <div class="regional-chart-section-head">
-      <h2>QQ音乐 动漫音乐榜 ランクイン履歴</h2>
-      ${artistFilterButtons('qq', 'QQ音乐 动漫音乐榜 表示グループ')}
-    </div>
-    ${qqAnimeHistoryTable}
-  </section>`;
+const qqAnimeHistorySection = musicServiceSection({
+  id: 'qqAnimeHistorySection',
+  title: 'QQ音乐 动漫音乐榜 ランクイン履歴',
+  trailingHtml: artistFilterButtons('qq', 'QQ音乐 动漫音乐榜 表示グループ'),
+  bodyHtml: qqAnimeHistoryTable,
+  hidden: true,
+});
 
-const qqPopularitySection = `
-  <section id="qqArtistPopularitySection" class="music-service-section regional-chart-section" hidden>
-    <div class="regional-chart-section-head"><h2>QQ音乐 アーティスト別人気曲順位</h2></div>
-    ${qqPopularityTable}
-  </section>`;
+const qqPopularitySection = musicServiceSection({
+  id: 'qqArtistPopularitySection',
+  title: 'QQ音乐 アーティスト別人気曲順位',
+  bodyHtml: qqPopularityTable,
+  hidden: true,
+});
 
-const kugouChartSection = `
-  <section id="kugouJapanChartSection" class="music-service-section regional-chart-section" hidden>
-    <div class="regional-chart-section-head"><h2>酷狗音乐 日本榜 グループ別最高順位推移</h2></div>
-    <div id="kugouJapanRankLegend" class="regional-music-rank-legend" aria-label="グループ凡例"></div>
-    <div id="kugouJapanRankChart" class="regional-music-rank-chart"></div>
-  </section>`;
+const kugouChartSection = musicServiceSection({
+  id: 'kugouJapanChartSection',
+  title: '酷狗音乐 日本榜 グループ別最高順位推移',
+  bodyHtml: '<div id="kugouJapanRankLegend" class="regional-music-rank-legend" aria-label="グループ凡例"></div><div id="kugouJapanRankChart" class="regional-music-rank-chart"></div>',
+  hidden: true,
+});
 
-const kugouHistorySection = `
-  <section id="kugouJapanHistorySection" class="music-service-section regional-chart-section" hidden>
-    <div class="regional-chart-section-head">
-      <h2>酷狗音乐 日本榜 ランクイン履歴</h2>
-      ${artistFilterButtons('kugou', '酷狗音乐 日本榜 表示グループ')}
-    </div>
-    ${kugouHistoryTable}
-  </section>`;
+const kugouHistorySection = musicServiceSection({
+  id: 'kugouJapanHistorySection',
+  title: '酷狗音乐 日本榜 ランクイン履歴',
+  trailingHtml: artistFilterButtons('kugou', '酷狗音乐 日本榜 表示グループ'),
+  bodyHtml: kugouHistoryTable,
+  hidden: true,
+});
 
-const kugouAcgChartSection = `
-  <section id="kugouAcgChartSection" class="music-service-section regional-chart-section" hidden>
-    <div class="regional-chart-section-head"><h2>酷狗音乐 ACG新歌榜 グループ別最高順位推移</h2></div>
-    <div id="kugouAcgRankLegend" class="regional-music-rank-legend" aria-label="グループ凡例"></div>
-    <div id="kugouAcgRankChart" class="regional-music-rank-chart"></div>
-  </section>`;
+const kugouAcgChartSection = musicServiceSection({
+  id: 'kugouAcgChartSection',
+  title: '酷狗音乐 ACG新歌榜 グループ別最高順位推移',
+  bodyHtml: '<div id="kugouAcgRankLegend" class="regional-music-rank-legend" aria-label="グループ凡例"></div><div id="kugouAcgRankChart" class="regional-music-rank-chart"></div>',
+  hidden: true,
+});
 
-const kugouAcgHistorySection = `
-  <section id="kugouAcgHistorySection" class="music-service-section regional-chart-section" hidden>
-    <div class="regional-chart-section-head">
-      <h2>酷狗音乐 ACG新歌榜 ランクイン履歴</h2>
-      ${artistFilterButtons('kugou', '酷狗音乐 ACG新歌榜 表示グループ')}
-    </div>
-    ${kugouAcgHistoryTable}
-  </section>`;
+const kugouAcgHistorySection = musicServiceSection({
+  id: 'kugouAcgHistorySection',
+  title: '酷狗音乐 ACG新歌榜 ランクイン履歴',
+  trailingHtml: artistFilterButtons('kugou', '酷狗音乐 ACG新歌榜 表示グループ'),
+  bodyHtml: kugouAcgHistoryTable,
+  hidden: true,
+});
 
 mountDashboardShell({
   view: {
     id: 'regionalMusicView',
-    className: 'regional-music-view music-service-view',
+    className: musicServiceViewClassName(),
     anchorId: 'likesView',
     position: 'beforebegin',
     html: `
-      <div id="regionalMusicGenericHeader">
-        ${musicServiceMeta({ label: '更新', valueId: 'regionalMusicUpdated' })}
-        ${dashboardNotice({ id: 'regionalMusicNotice' })}
-        <div class="regional-music-title-row">
-          <div><p class="kicker">REGIONAL MUSIC</p><h2 id="regionalMusicTitle">-</h2></div>
-          <span id="regionalMusicRegion" class="regional-music-region"></span>
-        </div>
-        ${summary}
-        <section id="regionalMusicHealthSection" class="music-service-section">${healthPanel}</section>
-      </div>
-      <div id="regionalMusicCompactMeta" class="regional-chart-meta" hidden>
-        <span>更新日時 <strong id="regionalMusicChartUpdated">-</strong></span>
-        <span>更新周期 <strong id="regionalMusicChartCadence">-</strong></span>
-      </div>
-      <div id="regionalMusicCompactNotice" hidden>${dashboardNotice({ id: 'regionalMusicCompactNoticeText' })}</div>
+      ${musicServiceMeta({
+        id: 'regionalMusicCompactMeta',
+        valueId: 'regionalMusicChartUpdated',
+        cadenceId: 'regionalMusicChartCadence',
+      })}
+      <div id="regionalMusicCompactNotice">${dashboardNotice({ id: 'regionalMusicCompactNoticeText' })}</div>
       ${melonPopularitySection}
       ${qqChartSection}
       ${qqHistorySection}
@@ -210,9 +181,9 @@ mountDashboardShell({
       ${kugouAcgChartSection}
       ${kugouAcgHistorySection}
       <div id="regionalMusicGenericTables">
-        ${musicServiceSection({ id: 'regionalMusicArtistSection', kicker: 'ARTISTS', title: 'アーティスト', bodyHtml: artistTable })}
-        ${musicServiceSection({ id: 'regionalMusicTrackSection', kicker: 'TRACKS', title: '楽曲', bodyHtml: trackTable })}
-        ${musicServiceSection({ id: 'regionalMusicPlaylistSection', kicker: 'PLAYLISTS', title: 'プレイリスト', bodyHtml: playlistTable })}
+        ${musicServiceSection({ id: 'regionalMusicArtistSection', title: 'アーティスト', bodyHtml: artistTable })}
+        ${musicServiceSection({ id: 'regionalMusicTrackSection', title: '楽曲', bodyHtml: trackTable })}
+        ${musicServiceSection({ id: 'regionalMusicPlaylistSection', title: 'プレイリスト', bodyHtml: playlistTable })}
       </div>`,
   },
 });
