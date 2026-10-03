@@ -70,7 +70,7 @@ const LAZY_VIEWS = Object.freeze({
   },
   nogizaka: {
     viewId: 'nogizakaListeningPartyView',
-    shell: () => import('/nogizaka-listening-party-shell.js?v=20260930.1'),
+    shell: () => import('/nogizaka-listening-party-shell.js?v=20261003.1'),
     runtime: () => import('/nogizaka-listening-party.js?v=20260930.1'),
     loadExport: 'loadNogizakaListeningPartyView',
     noticeId: 'nogizakaListeningPartyNotice',
