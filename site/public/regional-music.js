@@ -5,7 +5,7 @@ import {
   setNotice,
   setText,
 } from './dashboard-ui-common.js?v=20261001.1';
-import { renderRankHistoryChart } from './dashboard-rank-chart.js?v=20261002.1';
+import { renderRankHistoryChart } from './dashboard-rank-chart.js?v=20261003.1';
 
 const SERVICE_LABELS = Object.freeze({
   kkbox: 'KKBOX',
@@ -38,6 +38,7 @@ const COMPACT_CHART_CADENCE = Object.freeze({
 });
 
 const OUT_OF_CHART_RANK = 101;
+const CHART_START_DATE = '2021-01-01';
 
 const readModelPromises = new Map();
 let activeRequest = 0;
@@ -259,10 +260,6 @@ function setCompactNotice(message = '', error = false) {
   setNotice('regionalMusicCompactNoticeText', message || undefined, error);
 }
 
-
-
-
-
 function kugouArtistVisible(canonicalArtist) {
   return kugouArtistFilter === 'all' || canonicalArtist === kugouArtistFilter;
 }
@@ -312,9 +309,11 @@ function kugouSeries(history, coveredDates = []) {
 }
 
 function renderKugouRankChart({ containerId, legendId, history, coveredDates, ariaLabel, emptyText }) {
-  const series = kugouSeries(history, coveredDates);
-  const dates = coveredDates.length
-    ? coveredDates
+  const chartHistory = history.filter((item) => providerDate(item?.published_at) >= CHART_START_DATE);
+  const chartCoveredDates = coveredDates.filter((date) => date >= CHART_START_DATE);
+  const series = kugouSeries(chartHistory, chartCoveredDates);
+  const dates = chartCoveredDates.length
+    ? chartCoveredDates
     : [...new Set(series.flatMap((item) => item.points.map((point) => point.date)))].sort();
   renderRankHistoryChart({
     container:byId(containerId),
@@ -323,7 +322,7 @@ function renderKugouRankChart({ containerId, legendId, history, coveredDates, ar
     height:320,
     margin:{ left:58, right:18, top:12, bottom:34 },
     yMax:OUT_OF_CHART_RANK,
-    rankTicks:[1, 25, 50, 75, 100, OUT_OF_CHART_RANK],
+    rankTicks:[1, 25, 50, 75, OUT_OF_CHART_RANK],
     dateTickCount:5,
     ariaLabel,
     lineClass:'kugou-rank-line',
@@ -458,7 +457,6 @@ function renderService(payload, service) {
   renderTracks(tracks, payload.artist_track_orders);
   renderPlaylists(playlists, memberships);
 }
-
 
 function resetKugouSections() {
   for (const id of ['kugouJapanChartSection','kugouJapanHistorySection','kugouAcgChartSection','kugouAcgHistorySection']) {
