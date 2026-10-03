@@ -211,11 +211,12 @@ test('maintenance workflows expose bounded four-hour repair and isolated daily d
   assert.match(pagesWorkflow, /cron: '26 0 \* \* \*'/);
 });
 
-test('recovery watchdog remains offset and budget-safe', () => {
+test('recovery watchdog is event-driven and budget-safe', () => {
   const workflow = read('.github/workflows/recover-maintenance-workflows.yml');
   const script = read('.github/scripts/recover-maintenance-workflows.mjs');
 
-  assert.match(workflow, /cron: '10,25,40,55 \* \* \* \*'/);
+  assert.match(workflow, /workflow_run:/);
+  assert.doesNotMatch(workflow, /^\s*schedule:\s*$/m);
   assert.match(workflow, /actions: write/);
   assert.doesNotMatch(workflow, /CLOUDFLARE_(?:API_TOKEN|ACCOUNT_ID)|wrangler|d1 execute/i);
   assert.match(script, /RECOVERY_WORKFLOWS/);
