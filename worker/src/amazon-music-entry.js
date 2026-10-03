@@ -8,12 +8,21 @@ import { collectAdditionalAppleMusicArtists } from './apple-music-sakamichi-coll
 import { appleMusicFetch } from './apple-music-fetch.js';
 import { handleInternalScheduled } from './internal-scheduled-dispatch.js';
 import {
+  MUSIC_PLAYLIST_REFRESH_CRON,
+  runMusicPlaylistQueue,
+  startMusicPlaylistRefresh,
+} from './music-playlist-refresh-queue.js';
+import {
   amazonMusicServiceEnv,
   persistAmazonMusicModelToOther,
   persistAppleMusicModelToOther,
 } from './music-service-other-store.js';
 
 export const AMAZON_MUSIC_CRON = '0,10,15,20,30,40,50 * * * *';
+export const AMAZON_MUSIC_ALLOWED_CRONS = Object.freeze([
+  AMAZON_MUSIC_CRON,
+  MUSIC_PLAYLIST_REFRESH_CRON,
+]);
 
 function loggedRun(label, operation, { fatal = false } = {}) {
   return operation()
@@ -80,27 +89,24 @@ function scheduledRuns(env, scheduledTime) {
   const due = amazonMusicDueTasks(scheduledTime);
   const runs = [];
   if (due.daily50kStart) {
-    runs.push(loggedRun(
-      'amazon-music-daily-50k-start',
-      () => runAmazon50k(env, scheduledTime, { start: true }),
-    ));
+    runs.push(loggedRun('amazon-music-daily-50k-start', () => runAmazon50k(env, scheduledTime, { start: true })));
   } else if (due.daily50kContinue) {
-    runs.push(loggedRun(
-      'amazon-music-daily-50k-continue',
-      () => runAmazon50k(env, scheduledTime),
-    ));
+    runs.push(loggedRun('amazon-music-daily-50k-continue', () => runAmazon50k(env, scheduledTime)));
   }
   if (due.apple) {
-    runs.push(loggedRun(
-      'apple-music-collection',
-      () => collectAppleMusic(env, scheduledTime),
-    ));
+    runs.push(loggedRun('apple-music-collection', () => collectAppleMusic(env, scheduledTime)));
   }
   return runs;
 }
 
 async function runScheduled(controller, env, ctx) {
   const scheduledTime = Number(controller?.scheduledTime) || Date.now();
+  if (controller?.cron === MUSIC_PLAYLIST_REFRESH_CRON) {
+    const run = startMusicPlaylistRefresh(env, scheduledTime);
+    if (ctx?.waitUntil) ctx.waitUntil(run);
+    else await run;
+    return { scheduled_time: scheduledTime, playlist_refresh: true };
+  }
   const run = Promise.all(scheduledRuns(env, scheduledTime));
   if (ctx?.waitUntil) ctx.waitUntil(run);
   else await run;
@@ -109,13 +115,14 @@ async function runScheduled(controller, env, ctx) {
 
 export default {
   scheduled: runScheduled,
+  queue: runMusicPlaylistQueue,
   async fetch(request, env) {
     const internal = await handleInternalScheduled(
       request,
       env,
       runScheduled,
       AMAZON_MUSIC_CRON,
-      [AMAZON_MUSIC_CRON],
+      AMAZON_MUSIC_ALLOWED_CRONS,
     );
     if (internal) return internal;
     return new Response('Not found', { status: 404 });
