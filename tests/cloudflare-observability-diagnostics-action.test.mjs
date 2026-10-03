@@ -12,7 +12,7 @@ const collectionAudit = read('.github/scripts/audit-observability-collection.mjs
 const publicHealth = read('.github/scripts/capture-public-health-endpoints.mjs');
 const workerPublicUrl = read('.github/scripts/cloudflare-worker-public-url.mjs');
 
-const workerList = 'sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,sh-spotify-playcount-collector,homepanel-cloud';
+const workerList = 'sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,sh-spotify-playcount-collector,sh-cron-dispatcher,homepanel-cloud';
 
 test('shared diagnostics action owns persisted-query, required public health, and fail-closed multi-Worker Live Tail orchestration', () => {
   assert.match(action, /python3 \.github\/scripts\/query-cloudflare-observability\.py/);
@@ -24,7 +24,7 @@ test('shared diagnostics action owns persisted-query, required public health, an
   assert.match(action, /wait "\$\{tail_pids\[\$index\]\}" \|\| worker_status=\$\?/);
   assert.match(collectionAudit, /LIVE_TAIL_SUMMARY worker=/);
   assert.match(collectionAudit, /HomePanel Cloud health/);
-  assert.match(publicHealth, /DEFAULT_CLOUDFLARE_PUBLIC_HEALTH_WORKERS/);
+  assert.match(publicHealth, /DEFAULT_PUBLIC_HEALTH_WORKERS/);
   assert.match(publicHealth, /resolveCloudflareWorkerPublicUrl/);
   assert.match(workerPublicUrl, /workers\/scripts\/\$\{encodedWorker\}\/subdomain/);
   assert.match(action, /^outputs:\n[\s\S]*query-outcome:/m);
