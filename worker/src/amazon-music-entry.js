@@ -69,7 +69,7 @@ export function amazonMusicDueTasks(scheduledTime) {
   const hour = date.getUTCHours();
   const minute = date.getUTCMinutes();
   return {
-    apple: minute === 15,
+    apple: hour === 21 && minute === 0,
     daily50kStart: hour === 20 && minute === 0,
     daily50kContinue: hour >= 20 && hour <= 23 && [10, 20, 30, 40, 50].includes(minute),
   };
