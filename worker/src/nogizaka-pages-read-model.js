@@ -27,9 +27,11 @@ async function loadEvent(db, start, end) {
   return db.prepare(`SELECT
       id,news_url,title,event_name,scheduled_at,first_broadcast_at,last_broadcast_at,status
     FROM sh_nogizaka_official_news_announcements
-    WHERE (scheduled_at>=?1 AND scheduled_at<?2)
+    WHERE status<>'invalid' AND (
+      (scheduled_at>=?1 AND scheduled_at<?2)
        OR (first_broadcast_at>=?1 AND first_broadcast_at<?2)
        OR (last_broadcast_at>=?1 AND last_broadcast_at<?2)
+    )
     ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'scheduled' THEN 1 WHEN 'ended' THEN 2 ELSE 3 END,
       COALESCE(first_broadcast_at,scheduled_at,last_broadcast_at) DESC,id DESC
     LIMIT 1`).bind(start, end).first();
