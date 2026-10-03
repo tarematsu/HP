@@ -4,13 +4,13 @@ import {
   dashboardNotice,
   dashboardTable,
   mountDashboardShell,
-} from './dashboard-ui-common.js?v=20261001.1';
+} from './dashboard-ui-common.js?v=20261004.1';
 import {
   musicServiceMeta,
   musicServiceSection,
   musicServiceViewClassName,
 } from './music-service-shell.js?v=20261004.1';
-import { installAmazonMusicUpdatedAt } from './music-service-updated-at.js?v=20261003.1';
+import { installAmazonMusicUpdatedAt } from './music-service-updated-at.js?v=20261004.1';
 
 const tracksTable = dashboardTable({
   className: 'amazon-table regional-music-table music-service-track-table',
@@ -30,6 +30,8 @@ const modeButtons = dashboardModeTabs([
   dataAttribute: 'amazon-mode',
   className: 'amazon-mode-switch regional-chart-filter',
   ariaLabel: 'Amazon Music表示切替',
+  role: 'group',
+  selection: 'pressed',
 });
 
 const rankSection = musicServiceSection({
