@@ -44,7 +44,7 @@ test('ambiguous titles stay unresolved unless one duplicate has a uniquely stron
   assert.equal(matchRegionalMusicCanonicalTrack('翅膀的记忆', candidates), null);
 });
 
-test('every regional music service resolves provider aliases to sh_tracks.id', async () => {
+test('every regional music service resolves provider aliases to sh_tracks.id without artist LIKE scans', async () => {
   const sourceRows = [
     { id: 13, title: '承認欲求', artist: '櫻坂46', isrc: 'JPU900000013' },
     { id: 1070, title: 'Audition', artist: '坂道選抜, 乃木坂46, 櫻坂46, 日向坂46', isrc: 'JPU902603797' },
@@ -56,15 +56,16 @@ test('every regional music service resolves provider aliases to sh_tracks.id', a
     prepare(sql) {
       sqlLog.push(sql);
       assert.match(sql, /FROM sh_tracks/);
+      assert.doesNotMatch(sql, /LIKE/);
       return {
         bind(...bindings) {
-          let selected;
+          let selected = [];
           if (/TRIM\(artist\) COLLATE NOCASE IN/.test(sql)) {
-            assert.match(sql, /INDEXED BY idx_sh_tracks_artist_identity/);
             selected = sourceRows.filter(row => bindings.some(value => row.artist.trim().toLocaleLowerCase('en-US') === String(value).trim().toLocaleLowerCase('en-US')));
+          } else if (/TRIM\(title\) COLLATE NOCASE IN/.test(sql)) {
+            selected = sourceRows.filter(row => bindings.some(value => row.title.trim().toLocaleLowerCase('en-US') === String(value).trim().toLocaleLowerCase('en-US')));
           } else {
-            assert.match(sql, /LIKE/);
-            selected = sourceRows.filter(row => bindings.some(value => row.artist.includes(String(value).replaceAll('%',''))));
+            assert.fail(`unexpected SQL: ${sql}`);
           }
           return { all: async () => ({ results: selected }) };
         },
@@ -77,14 +78,13 @@ test('every regional music service resolves provider aliases to sh_tracks.id', a
   });
   assert.equal(resolved.canonical_track_id, 13);
   assert.equal(resolved.track_id, 13);
-  assert.equal(sqlLog.filter(sql => /LIKE/.test(sql)).length, 0, 'ordinary artist match must not scan with LIKE');
 
   const audition = await resolveRegionalMusicCanonicalTrack(env, {
     service: 'kugou_music', service_track_id: 'kg-audition', canonical_artist: 'nogizaka46', title: 'Audition',
   });
   assert.equal(audition.canonical_track_id, 1070);
   assert.equal(audition.track_id, 1070);
-  assert.equal(sqlLog.filter(sql => /LIKE/.test(sql)).length, 1, 'collaboration title may use one compatibility fallback');
+  assert.ok(sqlLog.some(sql => /TRIM\(title\) COLLATE NOCASE IN/.test(sql)), 'collaboration fallback must seek by title identity');
 
   const mannequin = await resolveRegionalMusicCanonicalTrack(env, {
     service: 'qq_music', service_track_id: 'qq-mannequin', canonical_artist: 'nogizaka46', title: '制服のマネキン',
