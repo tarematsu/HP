@@ -24,6 +24,7 @@ test('deployment workflow changes redeploy all active Workers in dependency orde
     'sh-spotify-playcount-collector',
     'sh-amazon-music-collector',
     'sh-regional-music-collector',
+    'sh-scheduled-collection-jobs',
     'sh-cron-dispatcher',
     'sh-runtime-orchestrator',
   ]);
@@ -36,6 +37,7 @@ test('deployment workflow changes redeploy all active Workers in dependency orde
     'deploy:spotify-playcount',
     'deploy:amazon-music',
     'deploy:regional-music',
+    'deploy:scheduled-collection-jobs',
     'deploy:cron-dispatcher',
     'deploy:runtime',
   ]);

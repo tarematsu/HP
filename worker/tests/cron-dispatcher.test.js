@@ -19,6 +19,19 @@ function scheduledService(name, calls) {
   };
 }
 
+function doNamespace(name, calls) {
+  return {
+    getByName(instance) {
+      return {
+        async fetch(url) {
+          calls.push({ name, instance, url });
+          return new Response('ok');
+        },
+      };
+    },
+  };
+}
+
 function env(calls) {
   return {
     NOGIZAKA_SCHEDULED: scheduledService('nogizaka', calls),
@@ -26,6 +39,9 @@ function env(calls) {
     SPOTIFY_PLAYCOUNT_SCHEDULED: scheduledService('spotify', calls),
     AMAZON_MUSIC_SCHEDULED: scheduledService('amazon', calls),
     REGIONAL_MUSIC_SCHEDULED: scheduledService('regional', calls),
+    SCHEDULED_COLLECTION_JOBS: scheduledService('collection-jobs', calls),
+    HOMEPANEL_SCHEDULER_COORDINATOR: doNamespace('homepanel-scheduler', calls),
+    HOMEPANEL_VIDEO_FEED_COORDINATOR: doNamespace('homepanel-video', calls),
   };
 }
 
@@ -42,6 +58,7 @@ test('generic dispatcher is the only shared Cron owner and has no data bindings'
     { binding: 'SPOTIFY_PLAYCOUNT_SCHEDULED', service: 'sh-spotify-playcount-collector' },
     { binding: 'AMAZON_MUSIC_SCHEDULED', service: 'sh-amazon-music-collector' },
     { binding: 'REGIONAL_MUSIC_SCHEDULED', service: 'sh-regional-music-collector' },
+    { binding: 'SCHEDULED_COLLECTION_JOBS', service: 'sh-scheduled-collection-jobs' },
   ]);
   assert.deepEqual(config.durable_objects.bindings.map(({ name, script_name }) => ({ name, script_name })), [
     { name: 'HOMEPANEL_SCHEDULER_COORDINATOR', script_name: 'homepanel-cloud' },
@@ -67,4 +84,28 @@ test('Amazon and Apple dispatcher window preserves 05:00 and 06:00 JST schedules
   assert.equal(amazonMusicDue(at(21, 15)), false);
   assert.equal(amazonMusicDue(at(23, 50)), true);
   assert.equal(amazonMusicDue(at(0, 0)), false);
+});
+
+test('regional and Stationhead collection schedules are dispatched to target Workers', async () => {
+  const calls = [];
+  // Thursday 18:30 JST: QQ toplist poll, staggered after the 18:00 base collection.
+  await runCronDispatcher({ scheduledTime: Date.UTC(2026, 9, 8, 9, 30) }, env(calls));
+  assert.deepEqual(calls.map(({ name }) => name), ['nogizaka', 'regional']);
+  assert.equal(calls.at(-1).body.cron, '30 9-21 * * 4');
+
+  calls.length = 0;
+  // Monday 21:17 JST: weekly Stationhead leaderboard import.
+  await runCronDispatcher({ scheduledTime: Date.UTC(2026, 9, 5, 12, 17) }, env(calls));
+  assert.deepEqual(calls.map(({ name }) => name), ['nogizaka', 'collection-jobs']);
+  assert.equal(calls.at(-1).body.cron, '17 12 * * 1');
+});
+
+test('daily midnight JST dispatches followers and YouTube Music from the shared Worker', async () => {
+  const calls = [];
+  await runCronDispatcher({ scheduledTime: Date.UTC(2026, 9, 6, 15, 0) }, env(calls));
+  const serviceCalls = calls.filter((call) => ['nogizaka', 'regional', 'collection-jobs'].includes(call.name));
+  assert.deepEqual(serviceCalls.map(({ name }) => name), ['nogizaka', 'regional', 'collection-jobs']);
+  assert.equal(serviceCalls[1].body.cron, '0 15 * * *');
+  assert.equal(serviceCalls[2].body.cron, '0 15 * * *');
+  assert.equal(calls.filter((call) => call.name.startsWith('homepanel')).length, 3);
 });

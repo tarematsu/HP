@@ -115,7 +115,9 @@ test('deployment diagnostics refresh on every main merge and operational workflo
 
   assert.match(workflow, /workflows: \["Deploy production", "Deploy HomePanel Cloud services", "Native Windows Build", "Unified Cloudflare Observability", "Rebuild pages read models", "Run runtime offline maintenance", "Repair track metadata", "Run local minute facts rebuild"\]/);
   assert.doesNotMatch(workflow, /Refresh Cloudflare observability/);
-  assert.match(workflow, /push:\s*\n\s*branches: \[main\]\s*\n\s*schedule:/);
+  assert.match(workflow, /push:\s*\n\s*branches: \[main\]/);
+  assert.match(workflow, /workflow_run:/);
+  assert.doesNotMatch(workflow, /^\s*schedule:\s*$/m);
   assert.match(publisher, /collectNativeReleaseStatus/);
   assert.match(publisher, /renderNativeReleaseSummary/);
 });

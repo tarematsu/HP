@@ -1,16 +1,6 @@
 name: Backfill KKBOX Japanese chart history
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/backfill-kkbox-japanese-history-once.yml'
-      - 'worker/scripts/backfill-kkbox-japanese-history-actions.mjs'
-      - 'worker/src/kkbox-japanese-chart-history.js'
-      - 'worker/src/regional-music-kkbox.js'
-  schedule:
-    - cron: '30 18 * * *'
   workflow_dispatch:
 
 permissions:

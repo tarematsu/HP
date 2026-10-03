@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "sh-amazon-music-collector",
-  "main": "src/amazon-music-entry.js",
+  "name": "sh-scheduled-collection-jobs",
+  "main": "src/scheduled-collection-jobs-entry.js",
   "compatibility_date": "2026-06-24",
   "workers_dev": false,
   "preview_urls": false,
@@ -17,11 +17,6 @@
   },
   "d1_databases": [
     {
-      "binding": "MINUTE_DB",
-      "database_name": "stationhead-minute",
-      "database_id": "43c12c1e-886d-4496-9c37-61bc8a15bbd7"
-    },
-    {
       "binding": "OTHER_DB",
       "database_name": "stationhead-other",
       "database_id": "21e70e92-6725-4e62-809e-8aadb088cc11"
@@ -32,23 +27,5 @@
       "binding": "PAGES_RESPONSE_R2",
       "bucket_name": "sh-pages-responses"
     }
-  ],
-  "queues": {
-    "producers": [
-      {
-        "binding": "MUSIC_PLAYLIST_QUEUE",
-        "queue": "music-playlist-refresh"
-      }
-    ],
-    "consumers": [
-      {
-        "queue": "music-playlist-refresh",
-        "max_batch_size": 1,
-        "max_batch_timeout": 1,
-        "max_retries": 2,
-        "dead_letter_queue": "music-playlist-refresh-dlq",
-        "max_concurrency": 1
-      }
-    ]
-  }
+  ]
 }

@@ -11,8 +11,6 @@ on:
       - "Run daily deep repair"
       - "Repair track metadata"
     types: [completed]
-  schedule:
-    - cron: '10,25,40,55 * * * *'
   push:
     branches: [main]
     paths:
