@@ -20,15 +20,16 @@ test('HomePanel health exposes TVer and radar diagnostics without coupling deplo
   );
   assert.match(
     unifiedWorker,
-    /pathname === '\/api\/health'[\s\S]*homePanelCloudHealthResponse\(request, env, ctx\)/,
+    /pathname === '\/api\/health'[\s\S]*homePanelCloudHealthResponse\(env\)/,
   );
+  assert.match(unifiedWorker, /async function videoDatabaseHealth\(env\)/);
+  assert.match(unifiedWorker, /prepare\?\.\('SELECT 1 AS ok'\)/);
   assert.match(unifiedWorker, /tverFeedObservability\(env\)/);
   assert.match(unifiedWorker, /radarFrameObservability\(env\)/);
-  assert.match(unifiedWorker, /tverFeed,/);
-  assert.match(unifiedWorker, /radar,/);
-  assert.match(unifiedWorker, /status: health\.ok \? 200 : 503/);
-  assert.match(unifiedWorker, /const ok = videoOk;/);
-  assert.match(unifiedWorker, /status: ok \? videoResponse\.status : 503/);
+  assert.match(unifiedWorker, /const ok = videoHealth\.ok === true;/);
+  assert.match(unifiedWorker, /status: ok \? 200 : 503/);
+  const healthFunction = unifiedWorker.match(/async function homePanelCloudHealthResponse\(env\) \{([\s\S]*?)\n\}/)?.[1] || '';
+  assert.doesNotMatch(healthFunction, /integratedVideoFetch|loadVideoWorker/);
   assert.doesNotMatch(unifiedWorker, /const ok = videoOk && radar\.ok/);
   assert.doesNotMatch(unifiedWorker, /const ok = videoOk && tverFeed\.ok/);
 });
