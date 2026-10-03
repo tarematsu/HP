@@ -19,13 +19,14 @@ test('active production Workers keep only Sakurazaka, Buddies, and generic dispa
     config('wrangler.spotify-playcount.jsonc'),
     config('wrangler.amazon-music.jsonc'),
     config('wrangler.regional-music.jsonc'),
+    config('wrangler.scheduled-collection-jobs.jsonc'),
     config('wrangler.cron-dispatcher.jsonc'),
     config('wrangler.runtime.jsonc'),
     homepanelConfig(),
   ];
   const counts = configs.map((value) => value.triggers?.crons?.length || 0);
 
-  assert.deepEqual(counts, [1, 0, 1, 0, 0, 0, 0, 1, 0, 0]);
+  assert.deepEqual(counts, [1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0]);
   assert.equal(counts.reduce((sum, count) => sum + count, 0), 3);
   assert.equal(counts.reduce((sum, count) => sum + count, 0) <= 5, true);
 });
@@ -33,6 +34,7 @@ test('active production Workers keep only Sakurazaka, Buddies, and generic dispa
 test('generic dispatcher owns shared service bindings while Sakurazaka stays isolated', () => {
   const sakurazaka = config('wrangler.sakurazaka46jp.jsonc');
   const shared = config('wrangler.cron-dispatcher.jsonc');
+  const collectionJobs = config('wrangler.scheduled-collection-jobs.jsonc');
   assert.deepEqual(sakurazaka.triggers?.crons, ['* * * * *']);
   assert.equal(sakurazaka.services, undefined);
   assert.deepEqual(shared.triggers?.crons, ['* * * * *']);
@@ -42,7 +44,11 @@ test('generic dispatcher owns shared service bindings while Sakurazaka stays iso
     { binding: 'SPOTIFY_PLAYCOUNT_SCHEDULED', service: 'sh-spotify-playcount-collector' },
     { binding: 'AMAZON_MUSIC_SCHEDULED', service: 'sh-amazon-music-collector' },
     { binding: 'REGIONAL_MUSIC_SCHEDULED', service: 'sh-regional-music-collector' },
+    { binding: 'SCHEDULED_COLLECTION_JOBS', service: 'sh-scheduled-collection-jobs' },
   ]);
+  assert.equal(collectionJobs.triggers, undefined);
+  assert.deepEqual(collectionJobs.d1_databases.map(({ binding }) => binding), ['OTHER_DB']);
+  assert.deepEqual(collectionJobs.r2_buckets.map(({ binding }) => binding), ['PAGES_RESPONSE_R2']);
 });
 
 test('runtime has no cron or offline health threshold after the Actions cutover', () => {
