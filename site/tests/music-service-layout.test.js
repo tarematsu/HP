@@ -72,7 +72,7 @@ test('Amazon and regional filters use the shared mode-tab primitive', () => {
 
 test('playlist detail stays lazy and renders directly inside the shared QQ section', () => {
   assert.match(amazon, /function playlistModuleUrl\(\)/);
-  assert.match(amazon, /\['\/music-service-playlists\.js', 'v=20261003\.2'\]\.join\('\?'\)/);
+  assert.match(amazon, /\['\/music-service-playlists\.js', 'v=20261004\.1'\]\.join\('\?'\)/);
   assert.match(amazon, /import\(playlistModuleUrl\(\)\)/);
   assert.match(amazon, /loadMusicServicePlaylists\?\.\('amazon'\)/);
   assert.match(amazon, /id=\"amazonPlaylistMount\"/);
@@ -83,5 +83,8 @@ test('playlist detail stays lazy and renders directly inside the shared QQ secti
   assert.match(playlistRuntime, /'\/api\/apple-music-playlists'/);
   assert.match(playlistRuntime, /normalizedTracks/);
   assert.match(playlistRuntime, /dashboardTable/);
+  assert.match(playlistRuntime, /appendTableRow/);
+  assert.match(playlistRuntime, /replaceTableHeader/);
+  assert.match(playlistRuntime, /appendEmptyTableRow/);
   assert.doesNotMatch(playlistRuntime, /dashboardDataCard/);
 });
