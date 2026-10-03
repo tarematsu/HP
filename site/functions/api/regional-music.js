@@ -1,25 +1,8 @@
 const REGIONAL_MUSIC_SERVICES = new Set([
   'youtube_music',
-  'genie',
-  'bugs',
-  'joox',
-  'nhaccuatui',
-  'anghami',
-  'melon',
   'kkbox',
   'qq_music',
-  'netease_cloud_music',
   'kugou_music',
-  'naver_vibe',
-  'flo',
-  'yandex_music',
-  'boomplay',
-  'plern',
-  'fungjai',
-  'zing_mp3',
-  'jiosaavn',
-  'gaana',
-  'langit_musik',
 ]);
 
 function invalidService(service) {

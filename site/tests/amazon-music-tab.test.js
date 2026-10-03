@@ -73,19 +73,20 @@ test('Amazon Music uses the QQ metadata and section layout while keeping Sakamic
   assert.match(shell, /musicServiceMeta\(\{ valueId: 'amazonUpdatedAt', cadence: '毎日6:00' \}\)/);
   assert.match(shell, /className: musicServiceViewClassName\('amazon-music-view'\)/);
   assert.match(shell, /musicServiceSection/);
+  assert.match(shell, /dashboardModeTabs/);
   assert.match(commonShell, /'regional-music-view', 'is-chart-compact', 'music-service-view'/);
   assert.match(commonShell, /'regional-chart-meta', 'music-service-meta'/);
   assert.match(commonShell, /'music-service-section', 'regional-chart-section'/);
   assert.match(shell, /title: 'Amazon Music総合順位推移'/);
   assert.match(shell, /title: '全楽曲順位'/);
   assert.match(shell, /title: 'Amazon Music プレイリスト掲載一覧'/);
-  for (const mode of ['all', 'titles', 'nogizaka', 'sakurazaka', 'hinatazaka']) {
-    assert.match(shell, new RegExp(`data-amazon-mode="${mode}"`));
+  for (const mode of ['all', 'titles', 'sakurazaka', 'nogizaka', 'hinatazaka']) {
+    assert.match(shell, new RegExp(`value: '${mode}'`));
   }
   assert.match(shell, /全楽曲順位/);
   assert.match(shell, /表題曲比較/);
-  assert.match(shell, /乃木坂46/);
   assert.match(shell, /櫻坂46/);
+  assert.match(shell, /乃木坂46/);
   assert.match(shell, /日向坂46/);
   assert.match(shell, /headers: \['Amazon Music総合順位', '前日比', 'アーティスト', '曲名'\]/);
   assert.match(musicCss, /\.music-service-section/);

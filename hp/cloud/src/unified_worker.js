@@ -3,11 +3,10 @@ import { queueSchedulerWatchdog } from './scheduler_coordinator.ts';
 import { spotifyArtistChartHistoryResponse } from './spotify_artist_chart_read.ts';
 import { stationheadLeaderboardProbeStatusResponse } from './stationhead_leaderboard_probe_status.ts';
 import { requestFamily } from './unified_routes.js';
-import { shouldRefreshTverFeed, tverFeedResponse } from './tver_feed.js';
+import { shouldRefreshTverFeed, tverFeedResponse } from './tver_feed_runtime.js';
 import { dispatchTverFeedRefresh } from './tver_feed_refresh_coordinator.js';
 import { tverFeedObservability } from './tver_feed_observability.js';
 import { youtubePlaylistStartResponse } from './youtube_playlist_start.js';
-import videoWorker from '../../video/src/entry.js';
 
 export { SchedulerCoordinator } from './scheduler_coordinator.ts';
 export { DeviceSyncCoordinator } from './device_sync_coordinator.ts';
@@ -26,6 +25,17 @@ const STATIONHEAD_LEADERBOARD_PROBE_HEALTH_PATH = '/api/health/stationhead-leade
 const SPOTIFY_ARTIST_CHART_PATH = '/api/spotify-artist-chart';
 const RADAR_FRAME_KEY = 'radar/frames/representative/latest.png';
 const RADAR_STALE_AFTER_MS = 90 * 60 * 1000;
+const VIDEO_LIVENESS_COORDINATOR_NAME = 'video-liveness';
+const VIDEO_LIVENESS_COORDINATOR_URL = 'https://homepanel.internal/video-liveness-run';
+
+let videoWorkerPromise;
+
+function loadVideoWorker() {
+  if (!videoWorkerPromise) {
+    videoWorkerPromise = import('../../video/src/entry.js').then((module) => module.default);
+  }
+  return videoWorkerPromise;
+}
 
 function cookieValue(request, name) {
   const header = request.headers.get('cookie');
@@ -88,10 +98,11 @@ function videoRuntimeEnv(env) {
   };
 }
 
-function integratedVideoFetch(input, init, env, ctx) {
+async function integratedVideoFetch(input, init, env, ctx) {
   const request = input instanceof Request && init === undefined
     ? input
     : new Request(input, init);
+  const videoWorker = await loadVideoWorker();
   return videoWorker.fetch(
     internalVideoRequest(request),
     videoRuntimeEnv(env),
@@ -108,6 +119,20 @@ function homePanelRuntimeEnv(env, ctx) {
       }
     }
   };
+}
+
+async function dispatchVideoLiveness(env) {
+  const namespace = env?.VIDEO_FEED_COORDINATOR;
+  if (!namespace?.getByName) {
+    throw new Error('VIDEO_FEED_COORDINATOR binding unavailable');
+  }
+  const response = await namespace
+    .getByName(VIDEO_LIVENESS_COORDINATOR_NAME)
+    .fetch(VIDEO_LIVENESS_COORDINATOR_URL, { method: 'POST' });
+  if (!response.ok) {
+    throw new Error(`video liveness coordinator returned ${response.status}`);
+  }
+  return response.json();
 }
 
 async function radarFrameObservability(env) {
@@ -289,13 +314,19 @@ export default {
     }
   },
 
-  queue(batch, env, ctx) {
+  async queue(batch, env, ctx) {
+    const videoWorker = await loadVideoWorker();
     return videoWorker.queue(batch, videoRuntimeEnv(env), ctx);
   },
 
   scheduled(controller, env, ctx) {
     queueSchedulerWatchdog(env, ctx, controller?.scheduledTime);
-    const result = videoWorker.scheduled(controller, videoRuntimeEnv(env), ctx);
+    ctx.waitUntil(dispatchVideoLiveness(env).catch((error) => {
+      console.error('scheduled-video-liveness-dispatch-failed', {
+        cron: controller?.cron,
+        error: String(error?.message || error)
+      });
+    }));
     if (shouldRefreshTverFeed(controller?.scheduledTime)) {
       ctx.waitUntil(dispatchTverFeedRefresh(env).catch((error) => {
         console.error('tver-feed-refresh-dispatch-failed', {
@@ -303,6 +334,5 @@ export default {
         });
       }));
     }
-    return result;
   }
 };

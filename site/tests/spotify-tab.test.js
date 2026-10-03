@@ -155,7 +155,7 @@ test('Spotify read-model SQL resolves source ids through the shared sh_tracks.id
 
   const detailSql = spotifyPlaycountSql();
   assert.match(detailSql, /target\.artist_key='sakurazaka46'/);
-  assert.match(detailSql, /LEFT JOIN music_service_track_refs ref/);
+  assert.match(detailSql, /LEFT JOIN music_service_track_refs AS ref/);
   assert.match(detailSql, /ref\.service='spotify'/);
   assert.match(detailSql, /ref\.source_track_id=d\.track_id/);
   assert.match(detailSql, /d\.track_id AS spotify_track_id/);

@@ -2,12 +2,12 @@ import {
   dashboardNotice,
   dashboardTable,
   mountDashboardShell,
-} from './dashboard-ui-common.js?v=20261001.1';
+} from './dashboard-ui-common.js?v=20261004.1';
 import {
   musicServiceMeta,
   musicServiceSection,
   musicServiceViewClassName,
-} from './music-service-shell.js?v=20261003.2';
+} from './music-service-shell.js?v=20261004.1';
 
 const artistTable = dashboardTable({
   className: 'regional-music-table music-service-track-table',

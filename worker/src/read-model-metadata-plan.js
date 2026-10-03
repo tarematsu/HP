@@ -1,4 +1,4 @@
-import { trackNeedsHydration } from './track-metadata-quality.js';
+import { trackNeedsHydration, trackSpotifyIdValue } from './track-metadata-quality.js';
 import { trackTitleArtistKey } from './track-title-artist-identity.js';
 
 function normalizedIdentity(value) {
@@ -12,7 +12,7 @@ function canonicalIdentity(track) {
 
 function providerIdentity(track) {
   return Boolean(
-    String(track?.spotify_id || '').trim()
+    trackSpotifyIdValue(track)
       || normalizedIdentity(track?.isrc),
   );
 }

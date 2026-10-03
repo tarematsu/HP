@@ -89,6 +89,24 @@ test('Spotify ID values are treated as unresolved presentation metadata', () => 
   });
 });
 
+test('Spotify ID hidden in the title is recovered when spotify_id is absent', () => {
+  const spotifyId = '6abcdefghijklmnopqrstu';
+  const queue = { tracks: [{
+    title: spotifyId,
+    artist: null,
+    thumbnail_url: 'https://img.example/stale.jpg',
+  }] };
+
+  assert.equal(trackNeedsHydration(queue.tracks[0]), true);
+  assert.equal(queueNeedsHydration(queue), true);
+  assert.deepEqual(sanitizeQueueTrackMetadata(queue).tracks[0], {
+    spotify_id: spotifyId,
+    title: null,
+    artist: null,
+    thumbnail_url: 'https://img.example/stale.jpg',
+  });
+});
+
 test('playback repair replaces persisted placeholders with canonical metadata', async () => {
   const updates = [];
   const result = await repairPlaybackReadModels({ MINUTE_DB: database(updates) });

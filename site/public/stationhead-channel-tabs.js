@@ -1,3 +1,5 @@
+import { dashboardModeTabs } from './dashboard-ui-common.js?v=20261004.1';
+
 const STATIONHEAD_CHANNEL_TABS = Object.freeze([
   Object.freeze({ value: 'current', label: '現在' }),
   Object.freeze({ value: 'history', label: '過去' }),
@@ -21,14 +23,19 @@ export function stationheadChannelTabs({
   enabled = STATIONHEAD_CHANNEL_TABS.map(({ value }) => value),
   unavailableTitle = '未提供',
 } = {}) {
-  const attribute = dataAttributeName(dataAttribute);
   const enabledSet = new Set(enabled);
-  const buttons = STATIONHEAD_CHANNEL_TABS.map(({ value, label }) => {
-    const isActive = value === active;
-    const isEnabled = enabledSet.has(value);
-    return `<button type="button" data-${attribute}="${value}"${isActive ? ' class="active" aria-current="page"' : ''}${isEnabled ? '' : ` disabled aria-disabled="true" title="${unavailableTitle}"`}>${label}</button>`;
-  }).join('');
-  return `<div class="mode-tabs stationhead-subtabs" aria-label="${ariaLabel}">${buttons}</div>`;
+  return dashboardModeTabs(STATIONHEAD_CHANNEL_TABS.map(({ value, label }) => ({
+    value,
+    label,
+    active: value === active,
+    disabled: !enabledSet.has(value),
+    title: enabledSet.has(value) ? '' : unavailableTitle,
+  })), {
+    dataAttribute,
+    className: 'stationhead-subtabs',
+    ariaLabel,
+    selection: 'current',
+  });
 }
 
 export function bindStationheadChannelTabs(root, {

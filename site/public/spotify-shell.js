@@ -8,9 +8,9 @@ import {
   musicServiceMeta,
   musicServiceSection,
   musicServiceViewClassName,
-} from './music-service-shell.js?v=20261003.2';
-import { installSpotifyAllTracksFilter } from './spotify-all-tracks.js?v=20261002.1';
-import { installSpotifyUpdatedAt } from './spotify-updated-at.js?v=20261003.1';
+} from './music-service-shell.js?v=20261004.1';
+import { installSpotifyAllTracksFilter } from './spotify-all-tracks.js?v=20261004.1';
+import { installSpotifyUpdatedAt } from './spotify-updated-at.js?v=20261004.1';
 
 const artistTabs = dashboardModeTabs([
   { value: 'all', label: 'すべて' },
@@ -21,6 +21,8 @@ const artistTabs = dashboardModeTabs([
   dataAttribute: 'spotify-artist',
   className: 'regional-chart-filter',
   ariaLabel: 'Spotify 再生数一覧 表示グループ',
+  role: 'group',
+  selection: 'pressed',
 });
 
 const tracksTable = dashboardTable({

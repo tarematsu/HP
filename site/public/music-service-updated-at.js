@@ -1,19 +1,4 @@
-const dateTimeFormat = new Intl.DateTimeFormat('ja-JP', {
-  timeZone: 'Asia/Tokyo',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  hourCycle: 'h23',
-});
-
-function formatDateTime(value) {
-  const timestamp = Number(value);
-  if (!Number.isFinite(timestamp) || timestamp <= 0) return '-';
-  const date = new Date(timestamp);
-  return Number.isNaN(date.getTime()) ? '-' : dateTimeFormat.format(date);
-}
+import { musicDateTimeText } from './music-service-runtime-common.js?v=20261004.1';
 
 async function loadJson(url) {
   const response = await fetch(url, { headers: { accept: 'application/json' }, cache: 'default' });
@@ -36,7 +21,7 @@ async function installUpdatedAt({ elementId, url, resolve }) {
   if (!element) return;
   try {
     const payload = await loadJson(url);
-    element.textContent = formatDateTime(resolve(payload));
+    element.textContent = musicDateTimeText(resolve(payload));
   } catch {
     element.textContent = '-';
   }

@@ -8,6 +8,7 @@ const amazon = readFileSync(new URL('../public/amazon-music-shell.js', import.me
 const youtube = readFileSync(new URL('../public/youtube-music-shell.js', import.meta.url), 'utf8');
 const regional = readFileSync(new URL('../public/regional-music-shell.js', import.meta.url), 'utf8');
 const commonShell = readFileSync(new URL('../public/music-service-shell.js', import.meta.url), 'utf8');
+const commonRuntime = readFileSync(new URL('../public/music-service-runtime-common.js', import.meta.url), 'utf8');
 const commonCss = readFileSync(new URL('../public/music-service-common.css', import.meta.url), 'utf8');
 const playlistRuntime = readFileSync(new URL('../public/music-service-playlists.js', import.meta.url), 'utf8');
 
@@ -22,11 +23,12 @@ test('all music subscription views use the QQ compact shell contract', () => {
   assert.match(commonShell, /export function musicServiceMeta/);
   assert.match(commonShell, /'regional-chart-meta', 'music-service-meta'/);
   assert.match(commonShell, /export function musicServiceSection/);
+  assert.match(commonShell, /dashboardSectionHead/);
   assert.match(commonShell, /'music-service-section', 'regional-chart-section'/);
-  assert.match(commonShell, /regional-chart-section-head/);
+  assert.doesNotMatch(commonShell, /MutationObserver|ensureRegionalNotice|REGIONAL_SPECIAL_SERVICES/);
 });
 
-test('QQ metadata order is shared by Spotify Apple Amazon YouTube and regional services', () => {
+test('metadata and regional cadence share one compact contract', () => {
   assert.match(spotify, /musicServiceMeta\(\{ valueId: 'spotifyUpdatedAt', cadence: '毎日朝ごろ' \}\)/);
   assert.match(apple, /musicServiceMeta\(\{ valueId: 'appleUpdatedAt', cadence: '毎日6:00' \}\)/);
   assert.match(amazon, /musicServiceMeta\(\{ valueId: 'amazonUpdatedAt', cadence: '毎日6:00' \}\)/);
@@ -34,10 +36,9 @@ test('QQ metadata order is shared by Spotify Apple Amazon YouTube and regional s
   assert.match(regional, /id: 'regionalMusicCompactMeta'/);
   assert.match(regional, /valueId: 'regionalMusicChartUpdated'/);
   assert.match(regional, /cadenceId: 'regionalMusicChartCadence'/);
-  assert.match(commonShell, /qq_music: '毎週木曜日18:00'/);
-  assert.match(commonShell, /kugou_music: '平日11:30 \/ ACG新歌榜: 水曜11:40'/);
-  assert.match(commonShell, /return service \? '毎週月曜日0:00' : '-'/);
-  assert.doesNotMatch(commonShell, /netease_cloud_music/);
+  assert.match(commonRuntime, /qq_music: '毎週木曜日18:00'/);
+  assert.match(commonRuntime, /kugou_music: '平日11:30 \/ ACG新歌榜: 水曜11:40'/);
+  assert.doesNotMatch(commonShell, /qq_music|kugou_music|netease_cloud_music/);
 });
 
 test('service shells keep data-specific sections but no longer own overview-card layout', () => {
@@ -62,9 +63,16 @@ test('music subscription presentation reuses one small responsive contract', () 
   assert.match(commonCss, /@media \(max-width: 760px\)/);
 });
 
+test('Amazon and regional filters use the shared mode-tab primitive', () => {
+  assert.match(amazon, /dashboardModeTabs/);
+  assert.match(regional, /dashboardModeTabs/);
+  assert.doesNotMatch(amazon, /<div class="mode-tabs amazon-mode-switch/);
+  assert.doesNotMatch(regional, /<div class="mode-tabs regional-chart-filter/);
+});
+
 test('playlist detail stays lazy and renders directly inside the shared QQ section', () => {
   assert.match(amazon, /function playlistModuleUrl\(\)/);
-  assert.match(amazon, /\['\/music-service-playlists\.js', 'v=20261003\.2'\]\.join\('\?'\)/);
+  assert.match(amazon, /\['\/music-service-playlists\.js', 'v=20261004\.1'\]\.join\('\?'\)/);
   assert.match(amazon, /import\(playlistModuleUrl\(\)\)/);
   assert.match(amazon, /loadMusicServicePlaylists\?\.\('amazon'\)/);
   assert.match(amazon, /id=\"amazonPlaylistMount\"/);
@@ -75,5 +83,8 @@ test('playlist detail stays lazy and renders directly inside the shared QQ secti
   assert.match(playlistRuntime, /'\/api\/apple-music-playlists'/);
   assert.match(playlistRuntime, /normalizedTracks/);
   assert.match(playlistRuntime, /dashboardTable/);
+  assert.match(playlistRuntime, /appendTableRow/);
+  assert.match(playlistRuntime, /replaceTableHeader/);
+  assert.match(playlistRuntime, /appendEmptyTableRow/);
   assert.doesNotMatch(playlistRuntime, /dashboardDataCard/);
 });
