@@ -129,7 +129,9 @@ async function dictionarySpotifyIdentityMappings(db, spotifyIds, chunkSize) {
     db,
     spotifyIds,
     (chunk) => `SELECT isrc,spotify_id AS alias_value
-      FROM sh_track_dictionary WHERE spotify_id IN (${placeholders(chunk.length)})`,
+      FROM sh_track_dictionary
+      WHERE spotify_id IN (${placeholders(chunk.length)})
+        AND spotify_id IS NOT NULL AND TRIM(spotify_id)<>''`,
     chunkSize,
   );
   const isrcs = [...new Set(dictionaryRows

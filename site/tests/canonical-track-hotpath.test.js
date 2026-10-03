@@ -32,7 +32,7 @@ function fakeDb() {
                     : [],
                 };
               }
-              if (/FROM sh_track_dictionary WHERE spotify_id IN/.test(sql)) {
+              if (/FROM sh_track_dictionary[\s\S]*WHERE spotify_id IN/.test(sql)) {
                 return {
                   results: bindings.includes('spotify-dictionary')
                     ? [{ isrc: 'JPAAA0000042', alias_value: 'spotify-dictionary' }]
@@ -194,7 +194,7 @@ test('legacy Spotify aliases use indexed sh_track_aliases then canonical track_i
   );
 });
 
-test('dictionary-only Spotify IDs resolve through indexed dictionary and ISRC alias lookups', async () => {
+test('dictionary-only Spotify IDs resolve through the existing partial dictionary index predicate', async () => {
   const { db, queries } = fakeDb();
   const rows = await canonicalizeTrackRows(db, [{
     spotify_id: 'spotify-dictionary',
@@ -208,7 +208,9 @@ test('dictionary-only Spotify IDs resolve through indexed dictionary and ISRC al
   assert.equal(queries.length, 5);
   assert.match(queries[0].sql, /FROM sh_tracks WHERE spotify_id IN/);
   assert.match(queries[1].sql, /alias_type='spotify_id'/);
-  assert.match(queries[2].sql, /FROM sh_track_dictionary WHERE spotify_id IN/);
+  assert.match(queries[2].sql, /FROM sh_track_dictionary[\s\S]*WHERE spotify_id IN/);
+  assert.match(queries[2].sql, /spotify_id IS NOT NULL/);
+  assert.match(queries[2].sql, /TRIM\(spotify_id\)<>''/);
   assert.deepEqual(queries[2].bindings, ['spotify-dictionary']);
   assert.match(queries[3].sql, /alias_type='isrc'/);
   assert.deepEqual(queries[3].bindings, ['JPAAA0000042']);
