@@ -13,10 +13,15 @@ const cloudWrangler = JSON.parse(await readFile(
   new URL('../../cloud/wrangler.jsonc', import.meta.url),
   'utf8'
 ));
+const schedulerWrangler = JSON.parse(await readFile(
+  new URL('../../cloud/wrangler.scheduler.jsonc', import.meta.url),
+  'utf8'
+));
 const entryCore = await readFile(new URL('../src/entry-core.js', import.meta.url), 'utf8');
 
-test('unified cloud deployment owns hourly liveness and event queue producers', () => {
-  assert.deepEqual(cloudWrangler.triggers?.crons, [LIVENESS_CRON]);
+test('lightweight dispatcher owns hourly liveness while unified cloud owns event queue producers', () => {
+  assert.equal(cloudWrangler.triggers, undefined);
+  assert.deepEqual(schedulerWrangler.triggers?.crons, [LIVENESS_CRON]);
   assert.equal(LIVENESS_JOB_NAME, 'video_liveness');
   assert.equal(LIVENESS_INTERVAL_SECONDS, 60 * 60);
   assert.equal(LIVENESS_CRON, '0 * * * *');
