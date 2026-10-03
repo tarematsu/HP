@@ -32,6 +32,7 @@ const CJK_FOLD = Object.freeze({
 });
 
 const catalogCache = new WeakMap();
+const broadCatalogCache = new WeakMap();
 const backfillCache = new WeakMap();
 
 function positiveInteger(value) {
@@ -150,19 +151,44 @@ function artistDefinitions(service) {
   return service === 'youtube_music' ? YOUTUBE_MUSIC_ARTISTS : REGIONAL_MUSIC_ARTISTS;
 }
 
-async function loadCatalog(env, service, canonicalArtist) {
-  if (!env?.MINUTE_DB?.prepare) return [];
+function artistAliases(service, canonicalArtist) {
   const definition = artistDefinitions(service)[canonicalArtist];
   if (!definition) return [];
-  const cache = cacheFor(catalogCache, env);
-  const cacheKey = `${service}:${canonicalArtist}`;
-  if (cache.has(cacheKey)) return cache.get(cacheKey);
-
-  const aliases=[...new Set([
+  return [...new Set([
     definition.displayName,
     ...(definition.aliases || []),
     ...(EXTRA_ARTIST_ALIASES[canonicalArtist] || []),
-  ].filter(Boolean))];
+  ].map(text).filter(Boolean))];
+}
+
+async function loadExactCatalog(env, service, canonicalArtist) {
+  if (!env?.MINUTE_DB?.prepare) return [];
+  const aliases = artistAliases(service, canonicalArtist);
+  if (!aliases.length) return [];
+  const cache = cacheFor(catalogCache, env);
+  const cacheKey = canonicalArtist;
+  if (cache.has(cacheKey)) return cache.get(cacheKey);
+
+  const placeholders = aliases.map(() => '?').join(',');
+  const result = await rows(env.MINUTE_DB, `SELECT id,title,artist,isrc,spotify_id
+    FROM sh_tracks INDEXED BY idx_sh_tracks_artist_identity
+    WHERE title IS NOT NULL AND artist IS NOT NULL
+      AND TRIM(artist) COLLATE NOCASE IN (${placeholders})
+    ORDER BY id ASC`, aliases);
+  cache.set(cacheKey, result);
+  return result;
+}
+
+async function loadBroadCatalog(env, service, canonicalArtist) {
+  if (!env?.MINUTE_DB?.prepare) return [];
+  const aliases = artistAliases(service, canonicalArtist);
+  if (!aliases.length) return [];
+  const cache = cacheFor(broadCatalogCache, env);
+  const cacheKey = canonicalArtist;
+  if (cache.has(cacheKey)) return cache.get(cacheKey);
+
+  // Rare compatibility fallback for collaboration/combined artist strings such
+  // as `坂道選抜, 乃木坂46, 櫻坂46, 日向坂46`. Keep the scan off the normal path.
   const predicates=aliases.map(()=>`artist COLLATE NOCASE LIKE ?`).join(' OR ');
   const bindings=aliases.map(alias=>`%${alias}%`);
   const result = await rows(env.MINUTE_DB, `SELECT id,title,artist,isrc,spotify_id
@@ -218,10 +244,17 @@ export async function resolveRegionalMusicCanonicalTrack(env, value = {}) {
   const canonicalArtist = String(value?.canonical_artist || '');
   if (!artistDefinitions(service)[canonicalArtist] || !text(value?.title)) return value;
 
-  const candidates = await loadCatalog(env, service, canonicalArtist);
+  let candidates = await loadExactCatalog(env, service, canonicalArtist);
+  let match = matchRegionalMusicCanonicalTrack(value.title, candidates);
+  if (!match) {
+    const broadCandidates = await loadBroadCatalog(env, service, canonicalArtist);
+    if (broadCandidates.length) {
+      candidates = broadCandidates;
+      match = matchRegionalMusicCanonicalTrack(value.title, candidates);
+    }
+  }
   if (!candidates.length) return value;
   await backfillKnownRegionalRows(env, service, canonicalArtist, candidates);
-  const match = matchRegionalMusicCanonicalTrack(value.title, candidates);
   const canonicalTrackId = positiveInteger(match?.id);
   return canonicalTrackId == null
     ? value
