@@ -5,6 +5,7 @@ import test from 'node:test';
 const buildScript = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/pages-layout.css', import.meta.url), 'utf8');
 const spotifyShell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
+const musicServiceShell = readFileSync(new URL('../public/music-service-shell.js', import.meta.url), 'utf8');
 const firstWeekShell = readFileSync(new URL('../public/first-week-comparison-shell.js', import.meta.url), 'utf8');
 const playedTracksShell = readFileSync(new URL('../public/played-tracks-shell.js', import.meta.url), 'utf8');
 const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
@@ -34,7 +35,7 @@ test('summary cards derive columns from their item count rather than tab identit
   assert.doesNotMatch(css, /played-tracks-summary\s*\{/);
 });
 
-test('toolbars, controls, fitting tables and fitting charts use shared semantic utilities', () => {
+test('toolbars controls fitting tables charts and music sections use shared semantic utilities', () => {
   assert.match(css, /\.view-toolbar\s*\{/);
   assert.match(css, /\.controls\s*\{/);
   assert.match(css, /\.table-wrap\.table-fit-mobile/);
@@ -46,8 +47,10 @@ test('toolbars, controls, fitting tables and fitting charts use shared semantic 
   assert.doesNotMatch(playedTracksShell, /view-toolbar played-tracks-toolbar/);
   assert.match(spotifyShell, /dashboardTable/);
   assert.match(spotifyShell, /wrapClassName: 'table-fit-mobile'/);
-  assert.match(spotifyShell, /regional-chart-section/);
-  assert.match(spotifyShell, /regional-chart-meta/);
+  assert.match(spotifyShell, /musicServiceSection/);
+  assert.match(spotifyShell, /musicServiceMeta/);
+  assert.match(musicServiceShell, /regional-chart-section/);
+  assert.match(musicServiceShell, /regional-chart-meta/);
 });
 
 test('history renderer assigns table meaning classes without injecting layout CSS', () => {
