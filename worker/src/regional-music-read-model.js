@@ -49,6 +49,11 @@ async function all(db, sql) {
   return rows(result);
 }
 
+async function boundAll(db, sql, ...args) {
+  const result = await db.prepare(sql).bind(...args).all();
+  return rows(result);
+}
+
 function positiveTime(value) {
   const time = Number(value);
   return Number.isFinite(time) && time > 0 ? time : 0;
@@ -143,6 +148,87 @@ export async function loadRegionalMusicReadModel(db) {
       WHERE o.observed_at=(SELECT MAX(x.observed_at) FROM regional_music_artist_track_order AS x
         WHERE x.service=o.service AND x.canonical_artist=o.canonical_artist)
       ORDER BY o.service,o.canonical_artist,o.position LIMIT 10000`),
+  ]);
+
+  return { artists, tracks, releases, playlists, memberships, services, artistTrackOrders };
+}
+
+export async function loadRegionalMusicServiceReadModel(db, service) {
+  if (typeof db?.prepare !== 'function') throw new Error('OTHER_DB binding is unavailable');
+  const serviceId = String(service || '').trim();
+  if (!regionalMusicService(serviceId)) throw new Error(`unknown regional music service: ${serviceId || '(empty)'}`);
+
+  const [artists, tracks, releases, playlists, memberships, services, artistTrackOrders] = await Promise.all([
+    boundAll(db, `SELECT
+        p.service,p.canonical_artist,p.service_artist_id,p.display_name,p.profile_url,
+        d.snapshot_date,d.observed_at,d.followers,d.likes,d.monthly_audience,d.total_views
+      FROM regional_music_artist_profiles AS p
+      LEFT JOIN regional_music_artist_daily AS d
+        ON d.service=p.service
+       AND d.canonical_artist=p.canonical_artist
+       AND d.snapshot_date=(
+         SELECT MAX(x.snapshot_date)
+         FROM regional_music_artist_daily AS x
+         WHERE x.service=p.service AND x.canonical_artist=p.canonical_artist
+       )
+      WHERE p.service=?
+      ORDER BY p.canonical_artist`, serviceId),
+    boundAll(db, `SELECT
+        t.service,t.service_track_id,t.service_artist_id,t.canonical_artist,t.canonical_track_id,
+        t.title,t.album_name,t.track_url,
+        d.snapshot_date,d.observed_at,d.plays,d.listeners,d.likes,d.comments,d.popularity_rank
+      FROM regional_music_tracks AS t
+      LEFT JOIN regional_music_track_daily AS d
+        ON d.service=t.service
+       AND d.service_track_id=t.service_track_id
+       AND d.snapshot_date=(
+         SELECT MAX(x.snapshot_date)
+         FROM regional_music_track_daily AS x
+         WHERE x.service=t.service AND x.service_track_id=t.service_track_id
+       )
+      WHERE t.service=?
+      ORDER BY t.canonical_artist,t.title,t.service_track_id
+      LIMIT 5000`, serviceId),
+    boundAll(db, `SELECT
+        service,service_release_id,canonical_artist,title,release_type,release_year,release_url,last_seen_at
+      FROM regional_music_releases
+      WHERE service=?
+      ORDER BY canonical_artist,release_year DESC,title,service_release_id
+      LIMIT 3000`, serviceId),
+    boundAll(db, `SELECT
+        service,service_playlist_id,playlist_name,playlist_url,playlist_type,owner_name,last_seen_at
+      FROM regional_music_playlists
+      WHERE service=?
+      ORDER BY playlist_name,service_playlist_id
+      LIMIT 2000`, serviceId),
+    boundAll(db, `SELECT
+        m.service,m.service_playlist_id,m.service_track_id,m.snapshot_date,m.observed_at,m.position
+      FROM regional_music_playlist_memberships AS m
+      INNER JOIN regional_music_playlist_snapshots AS s
+        ON s.service=m.service
+       AND s.service_playlist_id=m.service_playlist_id
+       AND s.snapshot_date=m.snapshot_date
+      WHERE m.service=?
+        AND s.snapshot_date=(
+          SELECT MAX(x.snapshot_date)
+          FROM regional_music_playlist_snapshots AS x
+          WHERE x.service=s.service
+            AND x.service_playlist_id=s.service_playlist_id
+        )
+      ORDER BY m.service_playlist_id,m.position,m.service_track_id
+      LIMIT 10000`, serviceId),
+    boundAll(db, `SELECT
+        service,status,last_attempt_at,last_success_at,last_error_class,last_error_message,
+        entity_counts_json,updated_at
+      FROM regional_music_collector_state
+      WHERE service=?`, serviceId),
+    boundAll(db, `SELECT o.snapshot_date,o.service,o.canonical_artist,o.service_artist_id,
+        o.service_track_id,o.observed_at,o.position,o.rank_source
+      FROM regional_music_artist_track_order AS o
+      WHERE o.service=?
+        AND o.observed_at=(SELECT MAX(x.observed_at) FROM regional_music_artist_track_order AS x
+          WHERE x.service=o.service AND x.canonical_artist=o.canonical_artist)
+      ORDER BY o.canonical_artist,o.position LIMIT 10000`, serviceId),
   ]);
 
   return { artists, tracks, releases, playlists, memberships, services, artistTrackOrders };
@@ -328,7 +414,14 @@ export function regionalMusicReadModelPayload(snapshot, updatedAt = Date.now()) 
 async function r2Json(r2, key) {
   if (typeof r2?.get !== 'function') return null;
   const object = await r2.get(key);
-  return object ? object.json() : null;
+  if (!object) return null;
+  try {
+    if (typeof object.json === 'function') return await object.json();
+    if (typeof object.text === 'function') return JSON.parse(await object.text());
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 async function existingMaterializedPayload(r2, modelKey) {
@@ -343,47 +436,59 @@ async function existingMaterializedPayload(r2, modelKey) {
   }
 }
 
-async function hydrateServicePayload(env, baseSnapshot, service, generatedAt) {
-  const serviceId = String(service || '').trim();
-  let payload = regionalMusicServiceReadModelPayload(baseSnapshot, serviceId, generatedAt);
-  const r2 = env?.PAGES_RESPONSE_R2;
-  if (typeof r2?.get !== 'function') return payload;
+function usableRegionalSnapshot(snapshot, service) {
+  return Number(snapshot?.version) === 1
+    && snapshot?.service === service
+    && positiveTime(snapshot?.updated_at) > 0
+    && snapshot?.state?.service === service
+    && Array.isArray(snapshot?.tracks);
+}
 
-  const regionalSnapshot = await r2Json(r2, regionalSnapshotKey(serviceId));
-  payload = mergeRegionalR2Snapshot(payload, regionalSnapshot);
+async function hydrateServicePayload(env, baseSnapshot, service, generatedAt, providedRegionalSnapshot = undefined) {
+  const serviceId = String(service || '').trim();
+  const r2 = env?.PAGES_RESPONSE_R2;
+  const regionalSnapshot = providedRegionalSnapshot === undefined && typeof r2?.get === 'function'
+    ? await r2Json(r2, regionalSnapshotKey(serviceId))
+    : providedRegionalSnapshot;
+  const hasRegionalSnapshot = usableRegionalSnapshot(regionalSnapshot, serviceId);
+  let payload = regionalMusicServiceReadModelPayload(hasRegionalSnapshot ? {} : (baseSnapshot || {}), serviceId, generatedAt);
+
+  if (hasRegionalSnapshot) payload = mergeRegionalR2Snapshot(payload, regionalSnapshot);
   payload.read_model_version = REGIONAL_MUSIC_READ_MODEL_VERSION;
   payload.service = serviceId;
-  const extraTimes = [regionalSnapshot?.updated_at];
+  const extraTimes = [hasRegionalSnapshot ? regionalSnapshot.updated_at : null];
 
-  if (serviceId === 'qq_music') {
-    const [japanView, japanIndex, animeView, animeIndex] = await Promise.all([
-      r2Json(r2, QQ_JAPAN_HISTORY_VIEW_KEY),
-      r2Json(r2, QQ_JAPAN_HISTORY_INDEX_KEY),
-      r2Json(r2, QQ_ANIME_HISTORY_VIEW_KEY),
-      r2Json(r2, QQ_ANIME_HISTORY_INDEX_KEY),
-    ]);
-    payload.qq_japan_chart = qqJapanChartReadModel(japanView, japanIndex);
-    payload.qq_anime_chart = qqAnimeChartReadModel(animeView, animeIndex);
-    extraTimes.push(japanView?.updated_at, japanIndex?.updated_at, animeView?.updated_at, animeIndex?.updated_at);
-  } else if (serviceId === 'netease_cloud_music') {
-    const view = await r2Json(r2, NETEASE_JAPAN_HISTORY_VIEW_KEY);
-    payload.netease_japan_chart = neteaseJapanChartReadModel(view);
-    extraTimes.push(view?.updated_at);
-  } else if (serviceId === 'melon') {
-    const view = await r2Json(r2, MELON_JPOP_HISTORY_VIEW_KEY);
-    payload.melon_jpop_chart = melonJpopChartReadModel(view);
-    extraTimes.push(view?.updated_at);
-  } else if (serviceId === 'kkbox') {
-    const view = await r2Json(r2, KKBOX_JAPANESE_HISTORY_VIEW_KEY);
-    payload.kkbox_japanese_chart = neteaseJapanChartReadModel(view);
-    extraTimes.push(view?.updated_at);
-  } else if (serviceId === 'kugou_music') {
-    const [acgView, acgIndex] = await Promise.all([
-      r2Json(r2, KUGOU_ACG_HISTORY_VIEW_KEY),
-      r2Json(r2, KUGOU_ACG_HISTORY_INDEX_KEY),
-    ]);
-    payload.kugou_acg_chart = qqJapanChartReadModel(acgView, acgIndex);
-    extraTimes.push(acgView?.updated_at, acgIndex?.updated_at);
+  if (typeof r2?.get === 'function') {
+    if (serviceId === 'qq_music') {
+      const [japanView, japanIndex, animeView, animeIndex] = await Promise.all([
+        r2Json(r2, QQ_JAPAN_HISTORY_VIEW_KEY),
+        r2Json(r2, QQ_JAPAN_HISTORY_INDEX_KEY),
+        r2Json(r2, QQ_ANIME_HISTORY_VIEW_KEY),
+        r2Json(r2, QQ_ANIME_HISTORY_INDEX_KEY),
+      ]);
+      payload.qq_japan_chart = qqJapanChartReadModel(japanView, japanIndex);
+      payload.qq_anime_chart = qqAnimeChartReadModel(animeView, animeIndex);
+      extraTimes.push(japanView?.updated_at, japanIndex?.updated_at, animeView?.updated_at, animeIndex?.updated_at);
+    } else if (serviceId === 'netease_cloud_music') {
+      const view = await r2Json(r2, NETEASE_JAPAN_HISTORY_VIEW_KEY);
+      payload.netease_japan_chart = neteaseJapanChartReadModel(view);
+      extraTimes.push(view?.updated_at);
+    } else if (serviceId === 'melon') {
+      const view = await r2Json(r2, MELON_JPOP_HISTORY_VIEW_KEY);
+      payload.melon_jpop_chart = melonJpopChartReadModel(view);
+      extraTimes.push(view?.updated_at);
+    } else if (serviceId === 'kkbox') {
+      const view = await r2Json(r2, KKBOX_JAPANESE_HISTORY_VIEW_KEY);
+      payload.kkbox_japanese_chart = neteaseJapanChartReadModel(view);
+      extraTimes.push(view?.updated_at);
+    } else if (serviceId === 'kugou_music') {
+      const [acgView, acgIndex] = await Promise.all([
+        r2Json(r2, KUGOU_ACG_HISTORY_VIEW_KEY),
+        r2Json(r2, KUGOU_ACG_HISTORY_INDEX_KEY),
+      ]);
+      payload.kugou_acg_chart = qqJapanChartReadModel(acgView, acgIndex);
+      extraTimes.push(acgView?.updated_at, acgIndex?.updated_at);
+    }
   }
 
   payload.source_updated_at = maximumTime([payload.source_updated_at, ...extraTimes]);
@@ -402,23 +507,55 @@ export async function publishRegionalMusicReadModels(
   updatedAt = Date.now(),
   dependencies = {},
 ) {
-  if (typeof env?.PAGES_RESPONSE_R2?.put !== 'function') {
-    throw new Error('PAGES_RESPONSE_R2 binding is unavailable');
-  }
+  const r2 = env?.PAGES_RESPONSE_R2;
+  if (typeof r2?.put !== 'function') throw new Error('PAGES_RESPONSE_R2 binding is unavailable');
+
   const selected = [...new Set((services || []).map((value) => String(value || '').trim()).filter(Boolean))];
   for (const service of selected) regionalMusicReadModelKey(service);
   if (!selected.length) return { storage:'r2-split', models:0, written:0, skipped:0, results:[] };
 
-  const load = dependencies.loadReadModel || loadRegionalMusicReadModel;
   const save = dependencies.saveR2Response || saveMaterializedActionsR2Response;
-  const snapshot = await load(env?.OTHER_DB);
+  const regionalSnapshots = new Map();
+  if (typeof r2.get === 'function') {
+    await Promise.all(selected.map(async (service) => {
+      regionalSnapshots.set(service, await r2Json(r2, regionalSnapshotKey(service)));
+    }));
+  }
+
+  const missingServices = selected.filter((service) => !usableRegionalSnapshot(regionalSnapshots.get(service), service));
+  const fallbackSnapshots = new Map();
+  let legacySnapshot = null;
+
+  if (missingServices.length) {
+    if (typeof dependencies.loadServiceReadModel === 'function') {
+      await Promise.all(missingServices.map(async (service) => {
+        fallbackSnapshots.set(service, await dependencies.loadServiceReadModel(env?.OTHER_DB, service));
+      }));
+    } else if (typeof dependencies.loadReadModel === 'function') {
+      // Unit/legacy dependency compatibility. Production does not take this path.
+      legacySnapshot = await dependencies.loadReadModel(env?.OTHER_DB);
+    } else {
+      await Promise.all(missingServices.map(async (service) => {
+        fallbackSnapshots.set(service, await loadRegionalMusicServiceReadModel(env?.OTHER_DB, service));
+      }));
+    }
+  }
+
   const results = [];
   for (const service of selected) {
     const modelKey = regionalMusicReadModelKey(service);
-    const payload = await hydrateServicePayload(env, snapshot, service, updatedAt);
-    const existing = typeof env.PAGES_RESPONSE_R2?.get === 'function'
-      ? await existingMaterializedPayload(env.PAGES_RESPONSE_R2, modelKey)
+    const baseSnapshot = fallbackSnapshots.get(service) || legacySnapshot;
+    const payload = await hydrateServicePayload(
+      env,
+      baseSnapshot,
+      service,
+      updatedAt,
+      regionalSnapshots.get(service),
+    );
+    const existing = typeof r2.get === 'function'
+      ? await existingMaterializedPayload(r2, modelKey)
       : null;
+
     if (unchangedReadModel(existing, payload)) {
       results.push({
         service,
@@ -437,7 +574,7 @@ export async function publishRegionalMusicReadModels(
 
     const body = JSON.stringify(payload);
     const saved = await save(
-      env.PAGES_RESPONSE_R2,
+      r2,
       modelKey,
       body,
       200,
@@ -460,8 +597,17 @@ export async function publishRegionalMusicReadModels(
       playlist_memberships:payload.playlist_memberships.length,
     });
   }
+
   const written = results.filter((row) => !row.skipped).length;
-  return { storage:'r2-split', models:results.length, written, skipped:results.length - written, results };
+  return {
+    storage:'r2-split',
+    models:results.length,
+    written,
+    skipped:results.length - written,
+    d1_fallback:missingServices.length > 0,
+    d1_fallback_services:missingServices,
+    results,
+  };
 }
 
 export async function publishRegionalMusicServiceReadModel(env, service, updatedAt = Date.now(), dependencies = {}) {

@@ -102,7 +102,7 @@ test('deployment bootstrap publishes the full Genie R2 catalog only in the Genie
   await bootstrapProducerReadModel('wrangler.regional-music.jsonc',{
     now,
     config:{d1_databases:[{binding:'OTHER_DB',database_name:'test'}],r2_buckets:[{binding:'PAGES_RESPONSE_R2',bucket_name:'test'}]},
-    db:{prepare:()=>({all:async()=>({results:[]})})},
+    db:{prepare:()=>({bind(){return this;},all:async()=>({results:[]})})},
     r2:{
       get:async key=>key===GENIE_SNAPSHOT_KEY ? {json:async()=>snapshot} : null,
       put:async(_key,body)=>{published.push(JSON.parse(JSON.parse(body).body));},
