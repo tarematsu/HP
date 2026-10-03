@@ -41,6 +41,9 @@ test('TVer post-click fallback preserves real fullscreen controls and escalates 
   assert.match(fullscreen, /display:flex!important/);
   assert.match(fullscreen, /visibility:visible!important/);
   assert.match(fullscreen, /pointer-events:auto!important/);
+  assert.match(fullscreen, /const fullscreenTapPending/);
+  assert.match(fullscreen, /Date\.now\(\) - state\.fullscreenCornerTapAt <= 3000/);
+  assert.match(fullscreen, /if \(fullscreenTapPending\)/);
   assert.match(fullscreen, /homepanel:tver-fullscreen-key/);
   assert.match(fullscreen, /homepanel:tver-wake/);
   assert.doesNotMatch(fullscreen, /requestFullscreen|webkitRequestFullscreen|request\.call/);
