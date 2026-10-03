@@ -1,10 +1,6 @@
-.amazon-summary { display: flex; justify-content: flex-end; margin: 0 0 10px; }
-.amazon-summary .positive { color: #18794e; }
-.amazon-summary .negative { color: #b42318; }
 .amazon-mode-switch.mode-tabs { display: flex; grid-template-columns: none; overflow-x: auto; margin: 0 0 10px; }
 .amazon-mode-switch button { flex: 0 0 auto; width: auto; }
-.amazon-mode-switch button.is-active { border-bottom-color: var(--text); background: transparent; color: var(--text); }
-.amazon-rank-panel { overflow: hidden; }
+.amazon-mode-switch button.active { border-bottom-color: var(--text); background: transparent; color: var(--text); }
 .amazon-rank-chart { --shared-chart-min-height: 280px; }
 .amazon-rank-svg { overflow: visible; }
 .amazon-rank-line { stroke: hsl(var(--amazon-rank-hue) 55% 48%); opacity: .42; }
@@ -21,7 +17,6 @@
 .amazon-table th:last-child { overflow-wrap: anywhere; }
 
 @media (max-width: 640px) {
-  .amazon-summary { justify-content: flex-start; }
   .amazon-rank-chart { --shared-chart-min-height: 220px; }
   .amazon-rank-col { width: 84px; }
   .amazon-artist-col { width: 82px; }
