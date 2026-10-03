@@ -6,7 +6,7 @@ import { expectAll, expectNone, readSource } from './helpers/source-contract.mjs
 
 const root = new URL('../', import.meta.url);
 
-const workerList = 'sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,sh-spotify-playcount-collector,homepanel-cloud';
+const workerList = 'sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,sh-spotify-playcount-collector,sh-cron-dispatcher,homepanel-cloud';
 
 test('HomePanel observability is covered by the canonical unified workflow and issue', async () => {
   const workflow = readSource('.github/workflows/sh-observability.yml');
