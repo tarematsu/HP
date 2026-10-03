@@ -69,7 +69,7 @@ mountDashboardShell({
     anchorId: 'likesView',
     position: 'beforebegin',
     html: `
-      ${musicServiceMeta({ valueId: 'appleUpdatedAt', cadence: '毎時15分' })}
+      ${musicServiceMeta({ valueId: 'appleUpdatedAt', cadence: '毎日6:00' })}
       ${dashboardNotice({ id: 'appleMusicNotice' })}
       ${rankSection}
       ${tracksSection}

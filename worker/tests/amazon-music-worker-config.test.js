@@ -48,7 +48,7 @@ test('Amazon ranking scan is limited to rank 50,000 at up to 1,000 pages per 10-
   assert.match(daily50kSource(), /stopRank:\s*AMAZON_MUSIC_DAILY_SCAN_TARGET_RANK/);
 });
 
-test('Amazon daily 50k scan starts at 05:00 JST and continues every 10 minutes', () => {
+test('Amazon daily 50k scan starts at 05:00 JST and Apple Music runs daily at 06:00 JST', () => {
   const at = (hour, minute) => Date.UTC(2026, 8, 30, hour, minute, 0);
   const expected = ({ apple = false, daily50kStart = false, daily50kContinue = false } = {}) => ({
     apple,
@@ -59,11 +59,13 @@ test('Amazon daily 50k scan starts at 05:00 JST and continues every 10 minutes',
   assert.deepEqual(amazonMusicDueTasks(at(20, 0)), expected({ daily50kStart: true }));
   assert.deepEqual(amazonMusicDueTasks(at(20, 10)), expected({ daily50kContinue: true }));
   assert.deepEqual(amazonMusicDueTasks(at(20, 20)), expected({ daily50kContinue: true }));
+  assert.deepEqual(amazonMusicDueTasks(at(21, 0)), expected({ apple: true }));
+  assert.deepEqual(amazonMusicDueTasks(at(21, 15)), expected());
   assert.deepEqual(amazonMusicDueTasks(at(23, 50)), expected({ daily50kContinue: true }));
   assert.deepEqual(amazonMusicDueTasks(at(20, 12)), expected());
   assert.deepEqual(amazonMusicDueTasks(at(17, 0)), expected());
   assert.deepEqual(amazonMusicDueTasks(at(3, 5)), expected());
-  assert.deepEqual(amazonMusicDueTasks(at(3, 15)), expected({ apple: true }));
+  assert.deepEqual(amazonMusicDueTasks(at(3, 15)), expected());
   assert.deepEqual(amazonMusicDueTasks(at(0, 10)), expected());
 });
 
