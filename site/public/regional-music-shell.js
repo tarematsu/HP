@@ -30,12 +30,6 @@ const playlistTable = dashboardTable({
   wrapClassName: 'regional-music-table-wrap',
 });
 
-const melonPopularityTable = dashboardTable({
-  className: 'regional-music-table regional-music-melon-popularity-table music-service-track-table',
-  headers: ['グループ', '順位', '曲名'],
-  bodyId: 'melonArtistPopularityBody',
-  wrapClassName: 'regional-music-table-wrap',
-});
 
 const kugouHistoryTable = dashboardTable({
   className: 'regional-music-table regional-music-kugou-history-table music-service-track-table',
@@ -82,13 +76,6 @@ function artistFilterButtons(prefix, label) {
     </div>`;
 }
 
-const melonPopularitySection = musicServiceSection({
-  id: 'melonArtistPopularitySection',
-  title: 'Melon アーティスト別人気曲順位',
-  trailingHtml: artistFilterButtons('melon', 'Melon 人気曲 表示グループ'),
-  bodyHtml: melonPopularityTable,
-  hidden: true,
-});
 
 const qqChartSection = musicServiceSection({
   id: 'qqJapanChartSection',
@@ -170,7 +157,6 @@ mountDashboardShell({
         cadenceId: 'regionalMusicChartCadence',
       })}
       <div id="regionalMusicCompactNotice">${dashboardNotice({ id: 'regionalMusicCompactNoticeText' })}</div>
-      ${melonPopularitySection}
       ${qqChartSection}
       ${qqHistorySection}
       ${qqAnimeChartSection}
@@ -189,4 +175,3 @@ mountDashboardShell({
 });
 
 void import('./qq-japan-chart-ui.js?v=20261003.1').then(({ initQqJapanHistoryUi }) => initQqJapanHistoryUi());
-void import('./netease-japan-chart-ui.js?v=20261003.1');

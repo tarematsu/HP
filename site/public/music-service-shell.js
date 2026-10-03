@@ -39,11 +39,10 @@ export function musicServiceSection({
   </section>`;
 }
 
-const REGIONAL_SPECIAL_SERVICES = new Set(['melon', 'qq_music', 'kugou_music', 'netease_cloud_music']);
+const REGIONAL_SPECIAL_SERVICES = new Set(['qq_music', 'kugou_music']);
 const REGIONAL_CADENCE = Object.freeze({
   qq_music: '毎週木曜日18:00',
   kugou_music: '平日11:30 / ACG新歌榜: 水曜11:40',
-  netease_cloud_music: '毎週火曜日 16:00',
 });
 
 function regionalCadence(service) {

@@ -1,27 +1,10 @@
-import { collectAnghami } from './regional-music-anghami.js';
-import { collectBoomplay } from './regional-music-boomplay.js';
-import { collectBugsArtists } from './regional-music-bugs.js';
 import { REGIONAL_MUSIC_DAILY_SERVICES } from './regional-music-dispatch-plan.js';
-import { collectFlo } from './regional-music-flo.js';
-import { collectFungjai } from './regional-music-fungjai.js';
-import { collectGaana } from './regional-music-gaana.js';
-import { collectGenie } from './regional-music-genie.js';
-import { collectJioSaavn } from './regional-music-jiosaavn.js';
-import { collectJooxArtists } from './regional-music-joox.js';
 import { collectKkbox } from './regional-music-kkbox.js';
 import { collectKugouMusic } from './regional-music-kugou.js';
-import { collectLangitMusik } from './regional-music-langit.js';
-import { collectMelon } from './regional-music-melon.js';
-import { collectNaverVibe } from './regional-music-vibe.js';
-import { collectNeteaseCloudMusic } from './regional-music-netease.js';
-import { collectNhacCuaTui } from './regional-music-nhaccuatui.js';
-import { collectPlern } from './regional-music-plern.js';
 import { collectQqMusic } from './regional-music-qq.js';
 import { publishRegionalMusicReadModel } from './regional-music-read-model.js';
 import { regionalMusicSnapshotDate, saveRegionalCollectorState } from './regional-music-store.js';
-import { collectYandexMusic } from './regional-music-yandex.js';
 import { collectYouTubeMusic } from './regional-music-youtube-music.js';
-import { collectZingMp3 } from './regional-music-zing.js';
 
 export const YOUTUBE_MUSIC_DAILY_CRON = '0 15 * * *';
 export const REGIONAL_MUSIC_DAILY_CRON = '0 21 * * *';
@@ -29,26 +12,9 @@ export const REGIONAL_MUSIC_COLLECTOR_CONCURRENCY = 4;
 export const REGIONAL_MUSIC_COLLECTOR_TIMEOUT_MS = 90_000;
 
 export const REGIONAL_MUSIC_SERVICE_COLLECTORS_BY_ID = Object.freeze({
-  genie: collectGenie,
-  bugs: collectBugsArtists,
-  joox: collectJooxArtists,
-  nhaccuatui: collectNhacCuaTui,
-  anghami: collectAnghami,
-  melon: collectMelon,
   kkbox: collectKkbox,
   qq_music: collectQqMusic,
-  netease_cloud_music: collectNeteaseCloudMusic,
   kugou_music: collectKugouMusic,
-  naver_vibe: collectNaverVibe,
-  flo: collectFlo,
-  yandex_music: collectYandexMusic,
-  boomplay: collectBoomplay,
-  plern: collectPlern,
-  fungjai: collectFungjai,
-  zing_mp3: collectZingMp3,
-  jiosaavn: collectJioSaavn,
-  gaana: collectGaana,
-  langit_musik: collectLangitMusik,
 });
 
 export const REGIONAL_MUSIC_SERVICE_COLLECTORS = Object.freeze(
