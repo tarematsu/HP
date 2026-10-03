@@ -62,7 +62,7 @@ const LAZY_VIEWS = Object.freeze({
   'youtube-music': {
     viewId: 'youtubeMusicView',
     shell: () => import('/youtube-music-shell.js?v=20261002.3'),
-    runtime: () => import('/youtube-music.js?v=20261002.3'),
+    runtime: () => import('/youtube-music.js?v=20261003.1'),
     loadExport: 'loadYoutubeMusicView',
     noticeId: 'youtubeMusicNotice',
     errorLabel: 'youtube music',
@@ -70,7 +70,7 @@ const LAZY_VIEWS = Object.freeze({
   },
   nogizaka: {
     viewId: 'nogizakaListeningPartyView',
-    shell: () => import('/nogizaka-listening-party-shell.js?v=20260930.1'),
+    shell: () => import('/nogizaka-listening-party-shell.js?v=20261003.1'),
     runtime: () => import('/nogizaka-listening-party.js?v=20260930.1'),
     loadExport: 'loadNogizakaListeningPartyView',
     noticeId: 'nogizakaListeningPartyNotice',
