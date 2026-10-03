@@ -70,7 +70,45 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
+      - name: Check pull request preview access
+        if: github.event_name == 'pull_request'
+        id: preview_access
+        shell: bash
+        env:
+          PREVIEW_URL: ${{ steps.preview.outputs.url }}
+        run: |
+          set -euo pipefail
+          mkdir -p .pages-visual-audit
+          node --input-type=module <<'NODE'
+          import { writeFile } from 'node:fs/promises';
+          import { chromium } from 'playwright';
+          const browser = await chromium.launch({ headless: true });
+          const page = await browser.newPage();
+          let status = null;
+          let error = null;
+          try {
+            const response = await page.goto(process.env.PREVIEW_URL, {
+              waitUntil: 'domcontentloaded',
+              timeout: 35000,
+            });
+            status = response?.status() ?? null;
+            await page.waitForTimeout(750);
+          } catch (caught) {
+            error = caught instanceof Error ? caught.message : String(caught);
+          }
+          const title = await page.title().catch(() => '');
+          const finalUrl = page.url();
+          const body = await page.locator('body').innerText().catch(() => '');
+          const accessProtected = /cloudflare|access|sign in/i.test(`${title} ${body} ${finalUrl}`);
+          const report = { requestedUrl: process.env.PREVIEW_URL, finalUrl, status, title, accessProtected, error };
+          await writeFile('.pages-visual-audit/preview-access.json', `${JSON.stringify(report, null, 2)}\n`);
+          await browser.close();
+          console.log(JSON.stringify(report));
+          process.stdout.write(`::set-output name=access_protected::${accessProtected ? 'true' : 'false'}\n`);
+          NODE
+
       - name: Capture Pages at every tab and viewport size
+        if: github.event_name != 'pull_request' || steps.preview_access.outputs.access_protected != 'true'
         shell: bash
         env:
           PREVIEW_URL: ${{ steps.preview.outputs.url }}
@@ -83,6 +121,10 @@ jobs:
           node scripts/capture-pages-visual-audit.mjs \
             --url="$target_url" \
             --out=.pages-visual-audit
+
+      - name: Explain protected preview skip
+        if: github.event_name == 'pull_request' && steps.preview_access.outputs.access_protected == 'true'
+        run: echo 'Preview is protected by Cloudflare Access; visual capture is not actionable. Layout regressions remain covered by Pages tests and the live browser audit.'
 
       - name: Upload visual audit screenshots
         if: always()
