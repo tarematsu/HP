@@ -44,7 +44,7 @@ test('ambiguous titles stay unresolved unless one duplicate has a uniquely stron
   assert.equal(matchRegionalMusicCanonicalTrack('翅膀的记忆', candidates), null);
 });
 
-test('every regional music service resolves provider aliases to sh_tracks.id', async () => {
+test('every retained regional music service resolves provider aliases to sh_tracks.id', async () => {
   const rows = [
     { id: 13, title: '承認欲求', artist: '櫻坂46', isrc: 'JPU900000013' },
     { id: 1070, title: 'Audition', artist: '坂道選抜, 乃木坂46, 櫻坂46, 日向坂46', isrc: 'JPU902603797' },
@@ -81,11 +81,7 @@ test('every regional music service resolves provider aliases to sh_tracks.id', a
   });
   assert.equal(mannequin.canonical_track_id, 1218);
 
-  for (const service of [
-    'genie','bugs','joox','nhaccuatui','anghami','netease_cloud_music','melon','kkbox',
-    'naver_vibe','flo','yandex_music','boomplay','plern','fungjai','zing_mp3','jiosaavn',
-    'gaana','langit_musik',
-  ]) {
+  for (const service of ['kkbox','qq_music','kugou_music']) {
     const result = await resolveRegionalMusicCanonicalTrack(env, {
       service, service_track_id: `${service}-1`, canonical_artist: 'sakurazaka46', title: '承認欲求',
     });
@@ -100,7 +96,7 @@ test('every regional music service resolves provider aliases to sh_tracks.id', a
   assert.equal(youtube.canonical_track_id, 1300);
 
   const preResolved = await resolveRegionalMusicCanonicalTrack({}, {
-    service: 'melon', canonical_track_id: 99, service_track_id: 'melon-99',
+    service: 'kkbox', canonical_track_id: 99, service_track_id: 'kkbox-99',
   });
   assert.equal(preResolved.track_id, 99);
   assert.equal(preResolved.canonical_track_id, 99);
