@@ -36,6 +36,36 @@ test('track metadata falls back to the public Spotify track page when oEmbed fai
   });
 });
 
+test('track metadata falls back when oEmbed has a title but no artist', async () => {
+  const urls = [];
+  await withFetch(async (input) => {
+    const url = String(input);
+    urls.push(url);
+    if (url.includes('/oembed?')) {
+      return Response.json({
+        title: '自称バレエダンサー',
+        thumbnail_url: 'https://i.scdn.co/image/oembed-cover',
+      });
+    }
+    assert.equal(url, 'https://open.spotify.com/track/spotify-new-release');
+    return new Response(`<!doctype html><html><head>
+      <title>自称バレエダンサー - song and lyrics by 櫻坂46 | Spotify</title>
+      <meta property="og:image" content="https://i.scdn.co/image/page-cover">
+    </head></html>`, { status: 200 });
+  }, async () => {
+    const value = await fetchTrackMetadata({ spotify_id: 'spotify-new-release' }, {
+      requestTimeoutMs: 1000,
+      collectionSignal: null,
+    });
+    assert.equal(value.title, '自称バレエダンサー');
+    assert.equal(value.artist, '櫻坂46');
+    assert.equal(value.thumbnail_url, 'https://i.scdn.co/image/oembed-cover');
+    assert.equal(value.raw.spotify.title, '自称バレエダンサー');
+    assert.match(value.raw.spotify_page.title, /櫻坂46/);
+    assert.equal(urls.length, 2);
+  });
+});
+
 test('Spotify page fallback decodes HTML entities in title and artist', async () => {
   await withFetch(async (input) => {
     const url = String(input);
