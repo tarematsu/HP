@@ -328,7 +328,14 @@ export function regionalMusicReadModelPayload(snapshot, updatedAt = Date.now()) 
 async function r2Json(r2, key) {
   if (typeof r2?.get !== 'function') return null;
   const object = await r2.get(key);
-  return object ? object.json() : null;
+  if (!object) return null;
+  try {
+    if (typeof object.json === 'function') return await object.json();
+    if (typeof object.text === 'function') return JSON.parse(await object.text());
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 async function existingMaterializedPayload(r2, modelKey) {
@@ -343,47 +350,59 @@ async function existingMaterializedPayload(r2, modelKey) {
   }
 }
 
-async function hydrateServicePayload(env, baseSnapshot, service, generatedAt) {
-  const serviceId = String(service || '').trim();
-  let payload = regionalMusicServiceReadModelPayload(baseSnapshot, serviceId, generatedAt);
-  const r2 = env?.PAGES_RESPONSE_R2;
-  if (typeof r2?.get !== 'function') return payload;
+function usableRegionalSnapshot(snapshot, service) {
+  return Number(snapshot?.version) === 1
+    && snapshot?.service === service
+    && Number.isFinite(Number(snapshot?.updated_at))
+    && snapshot?.state?.service === service
+    && Array.isArray(snapshot?.tracks);
+}
 
-  const regionalSnapshot = await r2Json(r2, regionalSnapshotKey(serviceId));
-  payload = mergeRegionalR2Snapshot(payload, regionalSnapshot);
+async function hydrateServicePayload(env, baseSnapshot, service, generatedAt, providedRegionalSnapshot = undefined) {
+  const serviceId = String(service || '').trim();
+  const r2 = env?.PAGES_RESPONSE_R2;
+  const regionalSnapshot = providedRegionalSnapshot === undefined && typeof r2?.get === 'function'
+    ? await r2Json(r2, regionalSnapshotKey(serviceId))
+    : providedRegionalSnapshot;
+  const hasRegionalSnapshot = usableRegionalSnapshot(regionalSnapshot, serviceId);
+  let payload = regionalMusicServiceReadModelPayload(hasRegionalSnapshot ? {} : (baseSnapshot || {}), serviceId, generatedAt);
+
+  if (hasRegionalSnapshot) payload = mergeRegionalR2Snapshot(payload, regionalSnapshot);
   payload.read_model_version = REGIONAL_MUSIC_READ_MODEL_VERSION;
   payload.service = serviceId;
-  const extraTimes = [regionalSnapshot?.updated_at];
+  const extraTimes = [hasRegionalSnapshot ? regionalSnapshot.updated_at : null];
 
-  if (serviceId === 'qq_music') {
-    const [japanView, japanIndex, animeView, animeIndex] = await Promise.all([
-      r2Json(r2, QQ_JAPAN_HISTORY_VIEW_KEY),
-      r2Json(r2, QQ_JAPAN_HISTORY_INDEX_KEY),
-      r2Json(r2, QQ_ANIME_HISTORY_VIEW_KEY),
-      r2Json(r2, QQ_ANIME_HISTORY_INDEX_KEY),
-    ]);
-    payload.qq_japan_chart = qqJapanChartReadModel(japanView, japanIndex);
-    payload.qq_anime_chart = qqAnimeChartReadModel(animeView, animeIndex);
-    extraTimes.push(japanView?.updated_at, japanIndex?.updated_at, animeView?.updated_at, animeIndex?.updated_at);
-  } else if (serviceId === 'netease_cloud_music') {
-    const view = await r2Json(r2, NETEASE_JAPAN_HISTORY_VIEW_KEY);
-    payload.netease_japan_chart = neteaseJapanChartReadModel(view);
-    extraTimes.push(view?.updated_at);
-  } else if (serviceId === 'melon') {
-    const view = await r2Json(r2, MELON_JPOP_HISTORY_VIEW_KEY);
-    payload.melon_jpop_chart = melonJpopChartReadModel(view);
-    extraTimes.push(view?.updated_at);
-  } else if (serviceId === 'kkbox') {
-    const view = await r2Json(r2, KKBOX_JAPANESE_HISTORY_VIEW_KEY);
-    payload.kkbox_japanese_chart = neteaseJapanChartReadModel(view);
-    extraTimes.push(view?.updated_at);
-  } else if (serviceId === 'kugou_music') {
-    const [acgView, acgIndex] = await Promise.all([
-      r2Json(r2, KUGOU_ACG_HISTORY_VIEW_KEY),
-      r2Json(r2, KUGOU_ACG_HISTORY_INDEX_KEY),
-    ]);
-    payload.kugou_acg_chart = qqJapanChartReadModel(acgView, acgIndex);
-    extraTimes.push(acgView?.updated_at, acgIndex?.updated_at);
+  if (typeof r2?.get === 'function') {
+    if (serviceId === 'qq_music') {
+      const [japanView, japanIndex, animeView, animeIndex] = await Promise.all([
+        r2Json(r2, QQ_JAPAN_HISTORY_VIEW_KEY),
+        r2Json(r2, QQ_JAPAN_HISTORY_INDEX_KEY),
+        r2Json(r2, QQ_ANIME_HISTORY_VIEW_KEY),
+        r2Json(r2, QQ_ANIME_HISTORY_INDEX_KEY),
+      ]);
+      payload.qq_japan_chart = qqJapanChartReadModel(japanView, japanIndex);
+      payload.qq_anime_chart = qqAnimeChartReadModel(animeView, animeIndex);
+      extraTimes.push(japanView?.updated_at, japanIndex?.updated_at, animeView?.updated_at, animeIndex?.updated_at);
+    } else if (serviceId === 'netease_cloud_music') {
+      const view = await r2Json(r2, NETEASE_JAPAN_HISTORY_VIEW_KEY);
+      payload.netease_japan_chart = neteaseJapanChartReadModel(view);
+      extraTimes.push(view?.updated_at);
+    } else if (serviceId === 'melon') {
+      const view = await r2Json(r2, MELON_JPOP_HISTORY_VIEW_KEY);
+      payload.melon_jpop_chart = melonJpopChartReadModel(view);
+      extraTimes.push(view?.updated_at);
+    } else if (serviceId === 'kkbox') {
+      const view = await r2Json(r2, KKBOX_JAPANESE_HISTORY_VIEW_KEY);
+      payload.kkbox_japanese_chart = neteaseJapanChartReadModel(view);
+      extraTimes.push(view?.updated_at);
+    } else if (serviceId === 'kugou_music') {
+      const [acgView, acgIndex] = await Promise.all([
+        r2Json(r2, KUGOU_ACG_HISTORY_VIEW_KEY),
+        r2Json(r2, KUGOU_ACG_HISTORY_INDEX_KEY),
+      ]);
+      payload.kugou_acg_chart = qqJapanChartReadModel(acgView, acgIndex);
+      extraTimes.push(acgView?.updated_at, acgIndex?.updated_at);
+    }
   }
 
   payload.source_updated_at = maximumTime([payload.source_updated_at, ...extraTimes]);
@@ -402,23 +421,42 @@ export async function publishRegionalMusicReadModels(
   updatedAt = Date.now(),
   dependencies = {},
 ) {
-  if (typeof env?.PAGES_RESPONSE_R2?.put !== 'function') {
-    throw new Error('PAGES_RESPONSE_R2 binding is unavailable');
-  }
+  const r2 = env?.PAGES_RESPONSE_R2;
+  if (typeof r2?.put !== 'function') throw new Error('PAGES_RESPONSE_R2 binding is unavailable');
+
   const selected = [...new Set((services || []).map((value) => String(value || '').trim()).filter(Boolean))];
   for (const service of selected) regionalMusicReadModelKey(service);
   if (!selected.length) return { storage:'r2-split', models:0, written:0, skipped:0, results:[] };
 
   const load = dependencies.loadReadModel || loadRegionalMusicReadModel;
   const save = dependencies.saveR2Response || saveMaterializedActionsR2Response;
-  const snapshot = await load(env?.OTHER_DB);
+  const regionalSnapshots = new Map();
+
+  if (typeof r2.get === 'function') {
+    await Promise.all(selected.map(async (service) => {
+      regionalSnapshots.set(service, await r2Json(r2, regionalSnapshotKey(service)));
+    }));
+  }
+
+  // Normal production publication is now R2-only. D1 remains a compatibility
+  // fallback only for services whose latest R2 snapshot is missing or invalid.
+  const needsLegacyFallback = selected.some((service) => !usableRegionalSnapshot(regionalSnapshots.get(service), service));
+  const snapshot = needsLegacyFallback ? await load(env?.OTHER_DB) : null;
   const results = [];
+
   for (const service of selected) {
     const modelKey = regionalMusicReadModelKey(service);
-    const payload = await hydrateServicePayload(env, snapshot, service, updatedAt);
-    const existing = typeof env.PAGES_RESPONSE_R2?.get === 'function'
-      ? await existingMaterializedPayload(env.PAGES_RESPONSE_R2, modelKey)
+    const payload = await hydrateServicePayload(
+      env,
+      snapshot,
+      service,
+      updatedAt,
+      regionalSnapshots.get(service),
+    );
+    const existing = typeof r2.get === 'function'
+      ? await existingMaterializedPayload(r2, modelKey)
       : null;
+
     if (unchangedReadModel(existing, payload)) {
       results.push({
         service,
@@ -437,7 +475,7 @@ export async function publishRegionalMusicReadModels(
 
     const body = JSON.stringify(payload);
     const saved = await save(
-      env.PAGES_RESPONSE_R2,
+      r2,
       modelKey,
       body,
       200,
@@ -460,8 +498,16 @@ export async function publishRegionalMusicReadModels(
       playlist_memberships:payload.playlist_memberships.length,
     });
   }
+
   const written = results.filter((row) => !row.skipped).length;
-  return { storage:'r2-split', models:results.length, written, skipped:results.length - written, results };
+  return {
+    storage:'r2-split',
+    models:results.length,
+    written,
+    skipped:results.length - written,
+    d1_fallback:needsLegacyFallback,
+    results,
+  };
 }
 
 export async function publishRegionalMusicServiceReadModel(env, service, updatedAt = Date.now(), dependencies = {}) {
