@@ -10,6 +10,10 @@ const section = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url),
   'utf8',
 );
+const host = readFileSync(
+  new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url),
+  'utf8',
+);
 const hostWindow = readFileSync(
   new URL('../../native/src/renderer_panels/media_host_window.inc', import.meta.url),
   'utf8',
@@ -33,13 +37,28 @@ test('media WebView recreates only for browser and renderer process failures', (
   assert.match(base, /kNativeMediaRecreateMessage = WM_USER \+ 0x4D/);
 });
 
-test('a watchdog ExecuteScript that stays unresolved for five seconds recreates the host', () => {
+test('a slow watchdog expires without resetting the current media phase', () => {
   assert.match(base, /kNativeMediaWatchdogExecutionTimeoutMs = 5ULL \* 1000ULL/);
   assert.match(section, /NativeMediaBeginWatchdogExecution/);
   assert.match(section, /NativeMediaWatchdogExecutionTimedOut/);
   assert.match(section, /FAILED\(result\)[\s\S]*kNativeMediaRecreateMessage/);
-  assert.match(hostWindow, /NativeMediaWatchdogExecutionTimedOut\(hwnd, timerId\)/);
-  assert.match(hostWindow, /PostMessageW\(hwnd, kNativeMediaRecreateMessage, 0, 0\)/);
+
+  const timerCase = hostWindow.slice(
+    hostWindow.indexOf('case WM_TIMER:'),
+    hostWindow.indexOf('case WM_ERASEBKGND:'),
+  );
+  assert.match(timerCase, /NativeMediaWatchdogExecutionTimedOut\(hwnd, timerId\)/);
+  assert.match(timerCase, /host->OnTimer\(timerId\)/);
+  assert.doesNotMatch(timerCase, /PostMessageW\(hwnd,\s*kNativeMediaRecreateMessage/);
+
+  assert.match(
+    host,
+    /youtubeWatchdogInFlight_[\s\S]*kYoutubeWatchdogTimeoutMs[\s\S]*InvalidateYoutubeWatchdog\(\)/,
+  );
+  assert.match(
+    host,
+    /tverWatchdogInFlight_[\s\S]*kTverWatchdogTimeoutMs[\s\S]*InvalidateTverWatchdog\(\)/,
+  );
   assert.match(hostWindow, /DestroyWindow\(hwnd\)[\s\S]*EnsureNativeMvPanel\(/);
 });
 
