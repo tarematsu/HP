@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { collectKkboxJapaneseHistory } from '../scripts/backfill-kkbox-japanese-history-actions.mjs';
 import {
   kkboxHistoryRecord,
   mergeKkboxJapaneseHistory,
@@ -50,4 +51,42 @@ test('KKBOX history upsert is idempotent and replaces the same requested period'
   assert.equal(three.changed, true);
   assert.equal(three.view.history[0].rank, 11);
   assert.equal(three.view.periods.length, 1);
+});
+
+test('KKBOX history backfill caps each run and leaves remaining requests for the next run', async () => {
+  const urls = [];
+  const progress = [];
+  const fetchImpl = async (url) => {
+    urls.push(String(url));
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => ({
+        code: 0,
+        data: {
+          date: '2024-10-03',
+          charts: { song: [] },
+        },
+      }),
+    };
+  };
+
+  const view = await collectKkboxJapaneseHistory({
+    start: '2024-10-03',
+    end: '2024-10-03',
+    territories: ['tw'],
+    periods: ['daily'],
+    types: ['song', 'newrelease'],
+    delayMs: 0,
+    maxRequests: 1,
+    fetchImpl,
+    onProgress: (event) => progress.push(event),
+  });
+
+  assert.equal(urls.length, 1);
+  assert.equal(view.coverage.checked_requests, 1);
+  assert.equal(progress.length, 1);
+  assert.equal(progress[0].total, 1);
+  assert.equal(progress[0].remaining, 1);
 });
