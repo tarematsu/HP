@@ -44,6 +44,7 @@ class App {
   void HandleStartupUpdateWake();
   void StopServices();
   void Tick();
+  void UpdateMemoryPressure(int64_t now);
   void Draw();
   void ShowToast(std::wstring message, int64_t durationMs, bool invalidate = true);
   void ScheduleNextTick(uint32_t milliseconds);
@@ -101,6 +102,8 @@ class App {
   int64_t lastAirHistorySavedAt_ = 0;
   int64_t toastUntil_ = 0;
   int64_t nextAppTickAt_ = 0;
+  int64_t nextMemoryPressureCheckAt_ = 0;
+  bool memoryPressureActive_ = false;
   bool airHistoryDirty_ = false;
   bool stationheadPlacementDirty_ = true;
   RECT placedBounds_{};
