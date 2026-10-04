@@ -1,5 +1,5 @@
 import { runSpotifyArtistChartScheduled } from './spotify-artist-chart-collector.js';
-import { runSpotifyPlaycountScheduled } from './spotify-playcount-schedule.js';
+import { runSpotifyScheduledWork } from './spotify-playcount-scheduled-run.js';
 
 export const SPOTIFY_SCHEDULED_DISPATCH_TYPE = 'spotify-scheduled-dispatch';
 export const SPOTIFY_PLAYCOUNT_CRON = '0 * * * *';
@@ -51,11 +51,11 @@ export async function processSpotifyScheduledDispatchEntry(entry, env, dependenc
     return { processed: 0, failed: 0, ignored: 1 };
   }
   const scheduledTime = normalizedScheduledTime(message.scheduled_time);
-  const runPlaycount = dependencies.runSpotifyPlaycountScheduled || runSpotifyPlaycountScheduled;
+  const runPlaycount = dependencies.runSpotifyScheduledWork || runSpotifyScheduledWork;
   const runArtistChart = dependencies.runSpotifyArtistChartScheduled || runSpotifyArtistChartScheduled;
   try {
     if (cron === SPOTIFY_ARTIST_CHART_CRON) await runArtistChart(env, scheduledTime);
-    else await runPlaycount({ cron, scheduledTime }, env);
+    else await runPlaycount({ cron, scheduledTime }, env, dependencies);
     entry.ack?.();
     return { processed: 1, failed: 0, ignored: 0 };
   } catch (error) {
