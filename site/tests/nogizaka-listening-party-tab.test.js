@@ -35,8 +35,8 @@ test('Nogizaka uses the shared five Stationhead subtabs with current through lik
   }
   assert.match(shell, /stationheadChannelTabs/);
   assert.match(shell, /active: 'broadcasts'/);
-  assert.match(shell, /enabled: \['broadcasts'\]/);
-  assert.match(stationheadTabs, /nogizaka:[\s\S]*enabled: Object\.freeze\(\['broadcasts'\]\)[\s\S]*paused: Object\.freeze\(\['current', 'history', 'played-tracks', 'likes'\]\)/);
+  assert.doesNotMatch(shell, /enabled: \['broadcasts'\]|unavailableTitle/);
+  assert.match(stationheadTabs, /nogizaka:[\s\S]*enabled: \['broadcasts'\][\s\S]*paused: \['current', 'history', 'played-tracks', 'likes'\]/);
   assert.match(stationheadTabs, /pausedTitle = '一時停止中'/);
   assert.match(shell, /class="stationhead-channel-panel" data-nogizaka-panel="broadcasts"/);
   assert.match(stationheadTabs, /dashboardModeTabs/);
