@@ -64,6 +64,7 @@ function basePayload(previousAt) {
       member_end: 2000,
       member_growth: 0,
     }],
+    weekly: [],
   };
 }
 

@@ -97,6 +97,10 @@ function normalizedDaily(rows = []) {
     .sort((a, b) => a.period_key.localeCompare(b.period_key));
 }
 
+function historyMode(value) {
+  return value === 'weekly' ? 'weekly' : 'daily';
+}
+
 function normalizePlayedRows(rows = []) {
   return (Array.isArray(rows) ? rows : []).map((row) => ({
     track_id: finite(row?.track_id),
@@ -148,15 +152,22 @@ function buddiesModel() {
   const current = cached(async ({ signal, force }) => normalizeCurrent(
     await fetchJson('/api/dashboard?history=0', { signal, force }),
   ));
+  let selectedHistoryMode = 'daily';
+  const historyCache = new Map();
   return {
     source: 'buddies',
     meta: { station_url: 'https://stationhead.com/c/buddies', artist_filter: '櫻坂46' },
     capabilities: ['current', 'history', 'played-tracks', 'likes', 'broadcasts'],
     loadCurrent: current,
-    loadHistory: cached(async ({ signal, force }) => {
-      const payload = await fetchJson(`/api/history?mode=daily&from=2024-06-01&to=${todayUtc()}`, { signal, force });
-      return { daily: normalizedDaily(payload.rows) };
-    }),
+    setHistoryMode(mode) { selectedHistoryMode = historyMode(mode); },
+    async loadHistory({ signal = null, force = false } = {}) {
+      const mode = selectedHistoryMode;
+      if (!force && historyCache.has(mode)) return historyCache.get(mode);
+      const payload = await fetchJson(`/api/history?mode=${mode}&from=2024-06-01&to=${todayUtc()}`, { signal, force });
+      const normalized = { daily: normalizedDaily(payload.rows), mode };
+      historyCache.set(mode, normalized);
+      return normalized;
+    },
     loadPlayedIndex: cached(async ({ signal, force }) => {
       const payload = await fetchJson('/api/track-history?dates_only=1', { signal, force });
       return (Array.isArray(payload?.dates) ? payload.dates : []).filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value))).sort();
@@ -178,12 +189,18 @@ function buddiesModel() {
 
 function ohisamaModel() {
   const all = cached(({ signal, force }) => fetchJson('/api/hinata', { signal, force }));
+  let selectedHistoryMode = 'daily';
   return {
     source: 'ohisama',
     meta: { station_url: 'https://stationhead.com/c/ohisama', artist_filter: '日向坂46' },
     capabilities: ['current', 'history', 'played-tracks', 'likes'],
     async loadCurrent(options) { return normalizeCurrent(await all(options)); },
-    async loadHistory(options) { return { daily: normalizedDaily((await all(options)).daily) }; },
+    setHistoryMode(mode) { selectedHistoryMode = historyMode(mode); },
+    async loadHistory(options) {
+      const payload = await all(options);
+      const mode = selectedHistoryMode;
+      return { daily: normalizedDaily(payload?.[mode]), mode };
+    },
     async loadPlayedIndex(options) {
       const payload = await all(options);
       return (Array.isArray(payload?.played_history) ? payload.played_history : [])
@@ -208,12 +225,14 @@ function ohisamaModel() {
 
 function nogizakaModel() {
   const broadcasts = cached(({ signal, force }) => fetchJson('/api/nogizaka-listening-party', { signal, force }));
+  let selectedHistoryMode = 'daily';
   return {
     source: 'nogizaka',
     meta: { station_url: 'https://stationhead.com/c/nogizaka46smej', artist_filter: '乃木坂46' },
     capabilities: ['broadcasts'],
     async loadCurrent() { return { latest: {}, history_24h: [], queue: [], queue_status: null }; },
-    async loadHistory() { return { daily: [] }; },
+    setHistoryMode(mode) { selectedHistoryMode = historyMode(mode); },
+    async loadHistory() { return { daily: [], mode: selectedHistoryMode }; },
     async loadPlayedIndex() { return []; },
     async loadPlayedPeriod() { return []; },
     async loadLikes() { return []; },

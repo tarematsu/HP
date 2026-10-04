@@ -62,6 +62,26 @@ CREATE TABLE IF NOT EXISTS sh_daily_summary (
 CREATE INDEX IF NOT EXISTS idx_sh_daily_summary_period
   ON sh_daily_summary(period_start DESC);
 
+CREATE TABLE IF NOT EXISTS sh_weekly_summary (
+  period_key TEXT PRIMARY KEY,
+  period_start INTEGER NOT NULL,
+  period_end INTEGER NOT NULL,
+  sample_count INTEGER NOT NULL,
+  listener_avg REAL,
+  listener_min INTEGER,
+  listener_max INTEGER,
+  stream_start INTEGER,
+  stream_end INTEGER,
+  stream_growth INTEGER,
+  member_start INTEGER,
+  member_end INTEGER,
+  member_growth INTEGER,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sh_weekly_summary_period
+  ON sh_weekly_summary(period_start DESC);
+
 CREATE TABLE IF NOT EXISTS sh_track_plays (
   event_key TEXT PRIMARY KEY,
   played_at INTEGER NOT NULL,

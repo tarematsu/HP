@@ -71,6 +71,76 @@
   display: none !important;
 }
 
+.history-table-head {
+  align-items: center;
+  gap: 12px;
+}
+
+.history-granularity-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 1px solid var(--line, #d9e1eb);
+  border-radius: 999px;
+  background: var(--panel-2, #f1f4f8);
+}
+
+.history-granularity-toggle > button {
+  min-width: 54px;
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--muted, #667287);
+  font: inherit;
+  font-size: var(--dashboard-copy-size);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.history-granularity-toggle > button + button {
+  border-left: 1px solid var(--line, #d9e1eb);
+}
+
+.history-granularity-toggle > button.is-selected {
+  background: var(--panel, #fff);
+  color: var(--text, #172033);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text, #172033) 10%, transparent);
+}
+
+.history-granularity-toggle > button:focus-visible {
+  outline: 2px solid var(--accent, #d93f79);
+  outline-offset: -2px;
+}
+
+.stationhead-history-chart-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.stationhead-history-chart-wrap > .shared-dashboard-canvas {
+  position: relative;
+  z-index: 0;
+}
+
+.stationhead-history-gap-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.stationhead-history-gap-band {
+  position: absolute;
+  display: block;
+  background: rgba(100, 107, 116, .18);
+}
+
+.history-missing-legend {
+  color: var(--muted, #667287);
+}
+
 /* SVG-only feature renderers retain semantic classes; Canvas charts use dashboard-chart-canvas.js. */
 :is(
   .shared-rank-grid,
@@ -246,6 +316,16 @@
 
   .stationhead-channel-panel {
     gap: var(--pages-view-gap-mobile, 8px);
+  }
+
+  .history-table-head {
+    align-items: flex-end;
+  }
+
+  .history-granularity-toggle > button {
+    min-width: 50px;
+    min-height: 32px;
+    padding: 5px 9px;
   }
 }
 
