@@ -67,20 +67,36 @@ export function filterCurrentRunnerPublisherRuns(runs, {
   });
 }
 
+function withoutBranchFilter(path) {
+  const url = new URL(String(path || ''), 'https://github-actions.local');
+  url.searchParams.delete('branch');
+  return `${url.pathname}${url.search}`;
+}
+
+function mainBranchRuns(runs) {
+  return (Array.isArray(runs) ? runs : []).filter((run) => {
+    const branch = String(run?.head_branch || '').trim();
+    return !branch || branch === 'main';
+  });
+}
+
 export function collectActionsRunnerHealth(request, {
   now = Date.now(),
   targets = ACTIONS_RUNNER_TARGETS,
   currentRunId = process.env.GITHUB_RUN_ID,
 } = {}) {
   const requestWithPublisherFiltering = async (method, path, ...args) => {
-    const response = await request(method, path, ...args);
     const target = targets.find((candidate) => (
       String(path || '').includes(`/actions/workflows/${candidate.workflow}/runs?`)
     ));
+    const requestPath = target?.ignoreSupersededCancellations
+      ? withoutBranchFilter(path)
+      : path;
+    const response = await request(method, requestPath, ...args);
     if (!target?.ignoreSupersededCancellations) return response;
     return {
       ...response,
-      workflow_runs: filterCurrentRunnerPublisherRuns(response?.workflow_runs, {
+      workflow_runs: filterCurrentRunnerPublisherRuns(mainBranchRuns(response?.workflow_runs), {
         currentRunId,
         ignoreReplacementTiming: true,
       }),
