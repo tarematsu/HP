@@ -3,14 +3,16 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const registry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
+const stationheadTabs = readFileSync(new URL('../public/stationhead-channel-tabs.js', import.meta.url), 'utf8');
 const followersShell = readFileSync(new URL('../public/followers-shell.js', import.meta.url), 'utf8');
 const appleMusicShell = readFileSync(new URL('../public/apple-music-shell.js', import.meta.url), 'utf8');
 
-test('leaderboard tab is immediately to the right of likes in static navigation', () => {
-  const likes = registry.indexOf("view: 'likes', mode: 'likes'");
-  const ranking = registry.indexOf("view: 'history', mode: 'ranking'");
-  const broadcasts = registry.indexOf("view: 'history', mode: 'broadcasts'");
-  assert.ok(likes >= 0 && ranking > likes && broadcasts > ranking);
+test('Buddies visible subtabs follow the shared Stationhead order', () => {
+  const likes = stationheadTabs.indexOf("value: 'likes', label: 'いいね'");
+  const broadcasts = stationheadTabs.indexOf("value: 'broadcasts', label: 'リスパ'");
+  assert.ok(likes >= 0 && broadcasts > likes);
+  assert.match(registry, /STATIONHEAD_CHANNEL_TABS\.map/);
+  assert.match(registry, /view: 'history', mode: 'ranking', label: 'リーダーボード'/);
 });
 
 test('followers tab is inserted immediately after first-week comparison', () => {
