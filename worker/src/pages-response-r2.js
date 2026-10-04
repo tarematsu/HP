@@ -1,8 +1,10 @@
 const R2_RESPONSE_KEY_PREFIX = 'pages-response/v1/';
 const ACTIONS_RESPONSE_KEY_PREFIX = 'pages-response/actions-v2/';
+const ACTIONS_RAW_RESPONSE_KEY_PREFIX = 'pages-response/actions-raw-v1/';
 const TRACK_HISTORY_MODEL_KEY = 'track-history';
 const TRACK_HISTORY_STATUS_MODEL_KEY = 'track-history-status';
 const FOLLOWERS_MODEL_KEY = 'followers';
+const STREAMED_ACTIONS_MODEL_KEY = 'history:daily';
 const FOLLOWER_HANDLES = Object.freeze([
   'sakuramankai',
   'sakuramankai2',
@@ -34,6 +36,11 @@ export function pagesR2ResponseKey(modelKey) {
 export function pagesActionsR2ResponseKey(modelKey) {
   const key = normalizedModelKey(modelKey);
   return key ? `${ACTIONS_RESPONSE_KEY_PREFIX}${hexModelKey(key)}.json` : null;
+}
+
+export function pagesActionsRawR2ResponseKey(modelKey) {
+  const key = normalizedModelKey(modelKey);
+  return key ? `${ACTIONS_RAW_RESPONSE_KEY_PREFIX}${hexModelKey(key)}.json` : null;
 }
 
 function objectOrNull(value) {
@@ -154,14 +161,7 @@ export async function saveMaterializedActionsR2Response(r2, modelKey, body, stat
   return { bytes: body.length, chunks: 1, storage: 'r2', object_key: key };
 }
 
-async function responseFromActionsObject(object, now, maximumAgeMs) {
-  if (!object?.body) return null;
-  let envelope;
-  try {
-    envelope = await object.json();
-  } catch {
-    return null;
-  }
+function responseFromActionsEnvelope(envelope, now, maximumAgeMs) {
   if (Number(envelope?.version) !== 1) return null;
   const updatedAt = Number(envelope?.updated_at);
   if (!freshEnough(updatedAt, now, maximumAgeMs)) return null;
@@ -176,6 +176,95 @@ async function responseFromActionsObject(object, now, maximumAgeMs) {
     status: Number(envelope?.status) || 200,
     headers,
   });
+}
+
+async function actionsEnvelopeFromObject(object) {
+  if (!object?.body) return null;
+  try {
+    const envelope = await object.json();
+    return Number(envelope?.version) === 1 ? envelope : null;
+  } catch {
+    return null;
+  }
+}
+
+async function responseFromActionsObject(object, now, maximumAgeMs) {
+  const envelope = await actionsEnvelopeFromObject(object);
+  return envelope ? responseFromActionsEnvelope(envelope, now, maximumAgeMs) : null;
+}
+
+function responseFromRawActionsObject(object, sourceEtag, now, maximumAgeMs) {
+  if (!object?.body) return null;
+  const metadata = objectOrNull(object.customMetadata) || {};
+  if (Number(metadata.version) !== 1 || String(metadata.source_etag || '') !== String(sourceEtag || '')) {
+    return null;
+  }
+  const updatedAt = Number(metadata.updated_at);
+  if (!freshEnough(updatedAt, now, maximumAgeMs)) return null;
+  let persistedHeaders = {};
+  try {
+    persistedHeaders = JSON.parse(metadata.headers_json || '{}');
+  } catch {
+    persistedHeaders = {};
+  }
+  const headers = new Headers(objectOrNull(persistedHeaders) || {});
+  if (typeof object.writeHttpMetadata === 'function') object.writeHttpMetadata(headers);
+  headers.set('x-api-source', 'actions-r2-raw');
+  headers.set('x-materialized-at', String(updatedAt));
+  const cadence = Number(metadata.cadence_seconds);
+  if (Number.isFinite(cadence) && cadence > 0) {
+    headers.set('x-materialized-cadence-seconds', String(Math.trunc(cadence)));
+  }
+  return new Response(object.body, {
+    status: Number(metadata.status) || 200,
+    headers,
+  });
+}
+
+async function seedRawActionsResponse(r2, rawKey, sourceEtag, envelope) {
+  if (Number(envelope?.status || 200) !== 200 || typeof envelope?.body !== 'string') return;
+  try {
+    await r2.put(rawKey, envelope.body, {
+      httpMetadata: {
+        contentType: objectOrNull(envelope?.headers)?.['content-type'] || 'application/json; charset=utf-8',
+      },
+      customMetadata: {
+        version: '1',
+        source_etag: String(sourceEtag || ''),
+        status: '200',
+        headers_json: JSON.stringify(objectOrNull(envelope?.headers) || {}),
+        updated_at: String(Number(envelope?.updated_at) || Date.now()),
+        cadence_seconds: String(Math.max(0, Number(envelope?.cadence_seconds) || 0)),
+      },
+    });
+  } catch {
+    // Serving the canonical envelope is still correct if the optional raw cache cannot be seeded.
+  }
+}
+
+async function loadStreamedActionsResponse(r2, modelKey, now, maximumAgeMs) {
+  if (typeof r2?.head !== 'function' || typeof r2?.get !== 'function' || typeof r2?.put !== 'function') {
+    return null;
+  }
+  const sourceKey = pagesActionsR2ResponseKey(modelKey);
+  const rawKey = pagesActionsRawR2ResponseKey(modelKey);
+  if (!sourceKey || !rawKey) return null;
+
+  const [sourceHead, rawObject] = await Promise.all([
+    r2.head(sourceKey),
+    r2.get(rawKey),
+  ]);
+  if (!sourceHead?.etag) return null;
+  const rawResponse = responseFromRawActionsObject(rawObject, sourceHead.etag, now, maximumAgeMs);
+  if (rawResponse) return rawResponse;
+
+  const sourceObject = await r2.get(sourceKey);
+  const envelope = await actionsEnvelopeFromObject(sourceObject);
+  if (!envelope) return null;
+  const response = responseFromActionsEnvelope(envelope, now, maximumAgeMs);
+  if (!response) return null;
+  await seedRawActionsResponse(r2, rawKey, sourceObject?.etag || sourceHead.etag, envelope);
+  return response;
 }
 
 async function loadActionsEnvelope(r2, modelKey, now, maximumAgeMs) {
@@ -220,6 +309,13 @@ export async function loadMaterializedR2Response(
   now = Date.now(),
   maximumAgeMs = Number.MAX_SAFE_INTEGER,
 ) {
+  // The large daily history model keeps its canonical Actions envelope for
+  // revision management, but serves a raw companion after validating the
+  // envelope ETag so normal cache misses do not parse ~500 KB of nested JSON.
+  if (modelKey === STREAMED_ACTIONS_MODEL_KEY) {
+    const streamed = await loadStreamedActionsResponse(r2, modelKey, now, maximumAgeMs);
+    if (streamed) return streamed;
+  }
   // Actions owns the general materialized API variants. Track history stays
   // Worker-owned; followers prefer Actions because Stationhead blocks Worker egress.
   if (modelKey === TRACK_HISTORY_STATUS_MODEL_KEY) {
