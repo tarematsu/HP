@@ -256,7 +256,7 @@ const wchar_t* NativeMediaYoutubeNavigationUrl() noexcept {
 }
 
 bool NativeMediaHostSuppressX(
-    bool tver, bool phaseStarted, ULONGLONG phaseStartedAt,
+    HWND hostWindow, bool tver, bool phaseStarted, ULONGLONG phaseStartedAt,
     bool xPhaseActive) noexcept {
   if (gNativeMediaPowerSaving) return true;
   if (xPhaseActive) return !NativeMediaXRuntimeAllowed();
@@ -265,7 +265,17 @@ bool NativeMediaHostSuppressX(
   const UINT xStartMs = tver
       ? NativeMediaTverContentIntervalMs()
       : NativeMediaYoutubeContentIntervalMs();
-  return now - phaseStartedAt >= xStartMs && !NativeMediaXRuntimeAllowed();
+  if (now - phaseStartedAt < xStartMs) return false;
+  if (NativeMediaXRuntimeAllowed()) return false;
+
+  // A selected YouTube tail slot reserves two minutes in the phase duration.
+  // If the slot becomes ineligible by the time it is actually due, collapse
+  // that reservation immediately instead of idling on YouTube for two minutes.
+  // Unselected slots already have no reservation, and TVer never owns an X slot.
+  if (!tver && NativeMediaXSlotEnabled(false) && hostWindow && IsWindow(hostWindow)) {
+    ::SetTimer(hostWindow, kNativeMediaPhaseTimer, 1U, nullptr);
+  }
+  return true;
 }
 
 constexpr const wchar_t* kNativeMediaPlayAllScript = kNativeMediaYoutubeReliablePlayAllScript;
@@ -285,10 +295,10 @@ LRESULT CALLBACK NativeMediaPanelWndProc(HWND, UINT, WPARAM, LPARAM);
 #define kNativeMediaTverForceFullscreenAdSafeScript \
   kNativeMediaTverForceFullscreenAnyMediaScript
 // Keep the random draw stable regardless of the wall clock. Quiet hours only
-// suppress X once its selected slot is actually due (or already active), while
-// ordinary media timers remain armed so a slot that starts after 06:00 can run.
+// suppress X once its selected slot is actually due (or already active). If a
+// selected tail slot cannot run then, its reserved two minutes are collapsed.
 #define gNativeMediaPowerSaving NativeMediaHostSuppressX( \
-    phase_ == Phase::Tver, phaseStarted_, phaseStartedAt_, xPhaseActive_)
+    hostWindow_, phase_ == Phase::Tver, phaseStarted_, phaseStartedAt_, xPhaseActive_)
 #include "media_host.inc"
 #undef gNativeMediaPowerSaving
 #undef kNativeMediaTverForceFullscreenAdSafeScript
