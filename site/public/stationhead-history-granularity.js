@@ -1,4 +1,4 @@
-import { stationheadChannelReadModel } from './stationhead-channel-read-model.js?v=20261005.1';
+import { stationheadChannelReadModel } from './stationhead-channel-read-model.js?v=20261004.2';
 
 function normalizedMode(value) {
   return value === 'weekly' ? 'weekly' : 'daily';
