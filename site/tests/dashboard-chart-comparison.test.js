@@ -7,12 +7,13 @@ import { fileURLToPath } from 'node:url';
 const siteRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const text = (relativePath) => readFile(path.join(siteRoot, relativePath), 'utf8');
 
-test('dashboard entry installs the sole previous-day comparison chart renderer lazily', async () => {
+test('dashboard entry installs the shared Stationhead current renderer lazily', async () => {
   const entry = await text('public/dashboard-metrics.js');
-  assert.match(entry, /dashboard-chart-comparison\.js\?v=20260930\.2/);
-  assert.match(entry, /dashboard-chart-detail\.js\?v=20260930\.2/);
-  assert.doesNotMatch(entry, /dashboard-current-enhancements\.js/);
-  assert.doesNotMatch(entry, /dashboard-details-client\.js/);
+  const runtime = await text('public/stationhead-channel.js');
+  assert.match(entry, /stationhead-channel\.js\?v=/);
+  assert.doesNotMatch(entry, /dashboard-chart-comparison\.js|dashboard-chart-detail\.js|dashboard-current-enhancements\.js|dashboard-details-client\.js/);
+  assert.match(runtime, /function renderCurrentChart\(/);
+  assert.match(runtime, /function renderPlayback\(/);
 });
 
 test('online chart overlays the previous 24-hour series in gray on the current time axis', async () => {
