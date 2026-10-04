@@ -16,17 +16,11 @@ const SERVICE = 'kkbox';
 const SECTION_IDS = ['kkboxJapaneseChartSection', 'kkboxJapaneseHistorySection'];
 const BODY_ID = 'kkboxJapaneseHistoryBody';
 const OUT_OF_CHART_RANK = 101;
-const ARTIST_LABELS = Object.freeze({
-  ...MUSIC_ARTIST_LABELS,
-  keyakizaka46: '欅坂46',
-  hiragana_keyakizaka46: 'けやき坂46',
-});
+const CHART_START_DATE = '2020-10-01';
 const ARTIST_ORDER = Object.freeze([
   'sakurazaka46',
-  'keyakizaka46',
   'nogizaka46',
   'hinatazaka46',
-  'hiragana_keyakizaka46',
 ]);
 
 let activeRequest = 0;
@@ -47,13 +41,14 @@ function dateText(value) {
 }
 
 function itemArtists(item) {
-  return Array.isArray(item?.canonical_artists) ? item.canonical_artists.filter(Boolean) : [];
+  return Array.isArray(item?.canonical_artists)
+    ? item.canonical_artists.filter((artist) => ARTIST_ORDER.includes(artist))
+    : [];
 }
 
 function artistText(item) {
   const artists = itemArtists(item);
-  if (artists.length) return artists.map((artist) => ARTIST_LABELS[artist] || artist).join(' / ');
-  return item?.artist_name || '-';
+  return artists.length ? artists.map((artist) => MUSIC_ARTIST_LABELS[artist] || artist).join(' / ') : '-';
 }
 
 function seriesSelected(item) {
@@ -63,7 +58,9 @@ function seriesSelected(item) {
 }
 
 function artistVisible(item) {
-  return activeArtistFilter === 'all' || itemArtists(item).includes(activeArtistFilter);
+  const artists = itemArtists(item);
+  if (!artists.length) return false;
+  return activeArtistFilter === 'all' || artists.includes(activeArtistFilter);
 }
 
 function selectedPeriods(chart, history) {
@@ -71,12 +68,12 @@ function selectedPeriods(chart, history) {
     .filter(seriesSelected)
     .filter((item) => !item?.status || item.status === 'ok')
     .map((item) => dateOnly(item?.period))
-    .filter(Boolean));
+    .filter((date) => date && date >= CHART_START_DATE));
   if (!dates.size) {
     for (const item of history) {
       if (!seriesSelected(item)) continue;
       const date = dateOnly(item?.period);
-      if (date) dates.add(date);
+      if (date && date >= CHART_START_DATE) dates.add(date);
     }
   }
   return [...dates].sort();
@@ -92,13 +89,13 @@ function rankSeries(history, dates) {
       if (!seriesSelected(item) || !itemArtists(item).includes(canonicalArtist)) continue;
       const date = dateOnly(item?.period);
       const rank = Number(item?.rank);
-      if (!date || !Number.isFinite(rank) || rank < 1) continue;
+      if (!date || date < CHART_START_DATE || !Number.isFinite(rank) || rank < 1) continue;
       const previous = byDate.get(date);
       if (previous == null || rank < previous) byDate.set(date, rank);
     }
     return {
       id: canonicalArtist,
-      title: ARTIST_LABELS[canonicalArtist] || canonicalArtist,
+      title: MUSIC_ARTIST_LABELS[canonicalArtist] || canonicalArtist,
       color: SAKAMICHI_GROUP_COLORS[canonicalArtist],
       points: dates.map((date) => ({ date, rank: byDate.get(date) ?? OUT_OF_CHART_RANK })),
     };
@@ -118,7 +115,7 @@ function renderChart(chart) {
     yMax: OUT_OF_CHART_RANK,
     rankTicks: [1, 25, 50, 75, OUT_OF_CHART_RANK],
     dateTickCount: 5,
-    ariaLabel: 'KKBOX 日語チャートにおける選択条件・選択グループの最高順位推移。取得済み更新日の圏外も含み、1位が上。',
+    ariaLabel: 'KKBOX 日語チャートにおける選択条件・選択グループの最高順位推移。2020年10月以降の取得済み更新日の圏外も含み、1位が上。',
     lineClass: 'kugou-rank-line',
     emptyClass: 'regional-music-rank-empty',
     emptyText: 'KKBOX 日語チャートの順位履歴はまだありません。',

@@ -22,20 +22,8 @@ function normalize(value) {
     .replace(/[\s,、，/／・･._-]+/g, '');
 }
 
-const KKBOX_HISTORY_ARTISTS = Object.freeze({
-  ...REGIONAL_MUSIC_ARTISTS,
-  keyakizaka46: Object.freeze({
-    displayName: '欅坂46',
-    aliases: Object.freeze(['欅坂46', 'Keyakizaka46', 'KEYAKIZAKA46']),
-  }),
-  hiragana_keyakizaka46: Object.freeze({
-    displayName: 'けやき坂46',
-    aliases: Object.freeze(['けやき坂46', 'Hiragana Keyakizaka46', 'HIRAGANA KEYAKIZAKA46', 'Hiragana Keyaki']),
-  }),
-});
-
 const artistMatchers = Object.freeze(
-  Object.entries(KKBOX_HISTORY_ARTISTS).flatMap(([canonicalArtist, definition]) =>
+  Object.entries(REGIONAL_MUSIC_ARTISTS).flatMap(([canonicalArtist, definition]) =>
     definition.aliases.map((alias) => Object.freeze({
       canonical_artist: canonicalArtist,
       alias: normalize(alias),
