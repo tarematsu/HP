@@ -3,9 +3,14 @@
 namespace {
 bool NativeMediaTverXPhaseActive() noexcept;
 
-constexpr wchar_t kNativeMediaTverControlRecoveryScript[] =
+// Keep the redesigned-player reconciliation separate from the legacy recovery
+// literal. MSVC limits the size of one concatenated string literal, while the
+// WebView still needs both pieces to execute as one ordered policy.
+constexpr wchar_t kNativeMediaTverCurrentPlayerSettingsScript[] =
 #include "media_tver_current_player_settings.inc"
-L";"
+;
+
+constexpr wchar_t kNativeMediaTverControlRecoveryScript[] =
 #include "media_tver_control_recovery.inc"
 ;
 }  // namespace
