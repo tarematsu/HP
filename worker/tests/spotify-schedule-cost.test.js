@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
-import { queueActiveReleases, syncCollectionRoster } from '../src/spotify-playcount-schedule.js';
+import {
+  packSpotifyQueueBodies,
+  queueActiveReleases,
+  syncCollectionRoster,
+} from '../src/spotify-playcount-schedule.js';
 
 function database() {
   const sqlite = new DatabaseSync(':memory:');
@@ -90,6 +94,21 @@ test('album batching preserves shared artist targets and skips unknown targets',
     && body.run_token === 'run'
     && body.message_type === 'spotify-playcount-album'
     && body.message_version === 3));
+});
+
+test('album queue envelopes hold fifteen albums to stay within the daily Queue budget', () => {
+  const bodies = Array.from({ length: 16 }, (_, index) => ({
+    message_type: 'spotify-playcount-album',
+    message_version: 3,
+    snapshot_date: '2026-10-04',
+    run_token: 'run',
+    album_id: `album-${index}`,
+    targets: [{ artist_key: 'a', spotify_artist_id: 'artist-a' }],
+  }));
+  const packed = packSpotifyQueueBodies(bodies);
+  assert.equal(packed.length, 2);
+  assert.equal(packed[0].albums.length, 15);
+  assert.equal(packed[1].albums.length, 1);
 });
 
 test('manual collection targets today in JST without consuming an older incomplete run', async () => {

@@ -17,7 +17,7 @@ import {
 } from './spotify-playcount-common.js';
 
 const SPOTIFY_ALBUM_BATCH_TYPE = 'spotify-playcount-album-batch';
-const SPOTIFY_ALBUM_ENVELOPE_SIZE = 5;
+const SPOTIFY_ALBUM_ENVELOPE_SIZE = 15;
 
 function isConfirmationRunToken(value) {
   return String(value || '').endsWith(':confirm');

@@ -97,9 +97,9 @@ test('failed Spotify Queue scheduling remains retryable', async () => {
   assert.equal(result.failed, 1);
 });
 
-test('Spotify album collection packs five albums into one billable Queue envelope', async () => {
+test('Spotify album collection packs fifteen albums into one billable Queue envelope', async () => {
   const { packSpotifyQueueBodies } = await import('../src/spotify-playcount-schedule.js');
-  const albums = Array.from({ length: 12 }, (_, index) => ({
+  const albums = Array.from({ length: 32 }, (_, index) => ({
     message_type: 'spotify-playcount-album',
     message_version: 3,
     album_id: `album-${index}`,
@@ -111,7 +111,7 @@ test('Spotify album collection packs five albums into one billable Queue envelop
     'spotify-playcount-album-batch',
     'spotify-playcount-album-batch',
   ]);
-  assert.deepEqual(packed.map((body) => body.albums.length), [5, 5, 2]);
+  assert.deepEqual(packed.map((body) => body.albums.length), [15, 15, 2]);
   assert.deepEqual(packed.flatMap((body) => body.albums.map((album) => album.album_id)),
     albums.map((album) => album.album_id));
 });
@@ -145,7 +145,7 @@ test('catalog discovery is split into one artist per chained queue step before a
 
   assert.match(schedule, /message_type: 'spotify-playcount-catalog'/);
   assert.match(schedule, /catalog_queued: 1/);
-  assert.match(schedule, /SPOTIFY_ALBUM_ENVELOPE_SIZE = 5/);
+  assert.match(schedule, /SPOTIFY_ALBUM_ENVELOPE_SIZE = 15/);
   assert.doesNotMatch(schedule, /for \(const artist of collectionArtists\) \{\s*const releases = await discoverArtistReleases/);
   assert.match(catalog, /SELECT run_token,status,catalog_total,catalog_completed/);
   assert.match(catalog, /catalog_completed=catalog_completed\+1/);
