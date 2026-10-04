@@ -32,8 +32,8 @@ function fakeDb({ event = null, samples = [], statements = [] } = {}) {
 test('Nogizaka realtime page uses the shared official-account shell', () => {
   assert.match(html, /data-handle="nogizaka46smej"/);
   assert.match(html, /data-api="\/api\/nogizaka46smej-status"/);
-  assert.match(html, /\/official-account-live\.css/);
-  assert.match(html, /\/official-account-live\.js/);
+  assert.match(html, /\/assets\/official\.min\.css/);
+  assert.match(html, /\/assets\/official-account-live\.min\.js/);
   assert.match(client, /collection_active \? 15_000 : 60_000/);
   assert.match(client, /visibilitychange/);
 });

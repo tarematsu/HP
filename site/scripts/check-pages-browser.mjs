@@ -65,6 +65,11 @@ try {
       await page.waitForTimeout(800);
       await page.waitForLoadState('networkidle', { timeout: 45000 });
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2);
+      if (overflow) {
+        await page.screenshot({ path: `${output}/overflow-${mode}-${width}.png`, fullPage: true });
+        const elements = await page.evaluate(() => [...document.querySelectorAll('body *')].map(node => ({ tag: node.tagName, id: node.id, className: String(node.className), right: node.getBoundingClientRect().right })).filter(node => node.right > innerWidth + 2));
+        await writeFile(`${output}/overflow-${mode}-${width}.json`, JSON.stringify(elements, null, 2));
+      }
       assert.equal(overflow, false, `${mode} at ${width}px overflows the document`);
       assert.equal(await page.locator('main').count(), 1);
       assert.equal(await page.locator('#sourceTabs').isVisible(), width > 760, `${mode}: selector breakpoint`);

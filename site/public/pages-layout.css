@@ -549,3 +549,8 @@
   .table-wrap > table.leaderboard-table { min-width: 720px; }
   .table-wrap > table.shared-numeric-table:has(th:nth-child(5)) { min-width: 640px; }
 }
+
+/* Long broadcast titles and source links must stay inside their panel. */
+.dashboard-view { overflow-wrap: anywhere; }
+.chart-head > *, .chart-legend, .legend { min-width: 0; max-width: 100%; }
+.chart-legend > span, .legend > span { white-space: normal; overflow-wrap: anywhere; }
