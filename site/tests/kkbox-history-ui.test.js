@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const shell = readFileSync(new URL('../public/regional-music-shell.js', import.meta.url), 'utf8');
-const runtime = readFileSync(new URL('../public/kkbox-history-ui.js', import.meta.url), 'utf8');
+const shell = readFileSync(new URL('../public/kkbox-shell.js', import.meta.url), 'utf8');
+const runtime = readFileSync(new URL('../public/kkbox.js', import.meta.url), 'utf8');
 
-test('KKBOX historical chart entries use the QQ-style chart and history layout', () => {
+test('KKBOX owns its chart history layout as a first-class music service', () => {
+  assert.match(shell, /viewId: 'kkboxView'/);
   assert.match(shell, /KKBOX 日語チャート グループ別最高順位推移/);
   assert.match(shell, /kkboxJapaneseRankChart/);
   assert.match(shell, /kkboxJapaneseRankLegend/);
@@ -15,8 +16,8 @@ test('KKBOX historical chart entries use the QQ-style chart and history layout',
   assert.match(shell, /KKBOX 日語チャート ランクイン履歴/);
   assert.match(shell, /kkboxJapaneseHistoryBody/);
   assert.match(shell, /headers: \['更新日', 'グループ', '順位', '曲名'\]/);
-  assert.match(shell, /artistFilterButtons\('kkbox'/);
-  assert.match(shell, /kkbox-history-ui\.js/);
+  assert.match(shell, /dataAttribute: 'kkbox-artist-filter'/);
+  assert.doesNotMatch(shell, /regional/i);
 
   assert.match(runtime, /renderRankHistoryChart/);
   assert.match(runtime, /payload\?\.kkbox_japanese_chart/);
@@ -29,9 +30,7 @@ test('KKBOX historical chart entries use the QQ-style chart and history layout',
   assert.match(runtime, /const ordered = history\s+\.filter\(seriesSelected\)\s+\.filter\(artistVisible\)/);
   assert.doesNotMatch(runtime, /keyakizaka46/);
   assert.doesNotMatch(runtime, /hiragana_keyakizaka46/);
-  assert.match(runtime, /loadRegionalMusicReadModel\(SERVICE\)/);
-  assert.match(runtime, /location\.hash\.slice\(1\) === SERVICE/);
-  assert.match(runtime, /genericTables\.hidden = true/);
-  assert.match(runtime, /compactMeta\.hidden = false/);
-  assert.match(runtime, /classList\.add\('is-chart-compact'\)/);
+  assert.match(runtime, /loadMusicServiceReadModel\(SERVICE\)/);
+  assert.match(runtime, /export async function loadKkboxView/);
+  assert.doesNotMatch(runtime, /location\.hash|hashchange|popstate|regional/i);
 });
