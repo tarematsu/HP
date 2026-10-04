@@ -6,7 +6,7 @@ const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf
 const theme = readFileSync(new URL('../public/monochrome.css', import.meta.url), 'utf8');
 const assetBuild = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
-const dashboardChart = readFileSync(new URL('../public/dashboard-chart-comparison.js', import.meta.url), 'utf8');
+const dashboardChart = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
 const rankingChart = readFileSync(new URL('../public/history/history-ranking-chart.js', import.meta.url), 'utf8');
 const broadcastChart = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
@@ -33,7 +33,7 @@ test('images are not desaturated by the monochrome theme', () => {
 
 test('canvas graph palette remains independent from monochrome UI overrides', () => {
   assert.doesNotMatch(theme, /:root\s*\{/);
-  assert.match(dashboardChart, /drawSeries\(context, current, xFor, yOnline, '#111', 2\)/);
+  assert.match(dashboardChart, /drawOnlineSeries\(context, rows, x, y, '#111', 2\)/);
   assert.match(periodChart, /cssColor/);
   assert.match(rankingChart, /cssColor/);
   assert.doesNotMatch(periodChart, /getComputedStyle\(document\.documentElement\)/);
