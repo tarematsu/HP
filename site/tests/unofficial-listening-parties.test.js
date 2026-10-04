@@ -3,17 +3,16 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const viewSource = await readFile(new URL('../public/unofficial-listening-parties.js', import.meta.url), 'utf8');
-const registrySource = await readFile(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
+const stationheadModelSource = await readFile(new URL('../public/stationhead-channel-model.js', import.meta.url), 'utf8');
 const metricsSource = await readFile(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const tabsSource = await readFile(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const historyEntry = await readFile(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 
 const eventRows = [...viewSource.matchAll(/^  \['\d{4}\/\d{2}\/\d{2}'.+?\],$/gm)].map(([row]) => row);
 
-test('official and unofficial listening parties share one top-level リスパ tab', () => {
-  assert.match(registrySource, /view: 'history', mode: 'broadcasts', label: 'リスパ'/);
-  assert.doesNotMatch(registrySource, /label: '(?:Listening Party|リスニングパーティ)'/);
-  assert.doesNotMatch(registrySource, /view: 'unofficial'/);
+test('official and unofficial listening parties share one top-level リスパ label', () => {
+  assert.match(stationheadModelSource, /value: 'broadcasts', label: 'リスパ'/);
+  assert.doesNotMatch(stationheadModelSource, /label: '(?:Listening Party|リスニングパーティ)'/);
   assert.doesNotMatch(viewSource, /button\.dataset\.view = 'unofficial'|button\.textContent = '非公式リスパ'/);
 });
 
@@ -68,7 +67,7 @@ test('all remaining rows build X announcement URLs from compact account and stat
   assert.match(viewSource, /sourceLink\.rel = 'noopener noreferrer'/);
 });
 
-test('unofficial list is visible only while リスパ is active and legacy route is normalized centrally', () => {
+test('legacy unofficial list remains visible only while the legacy broadcasts route is active', () => {
   assert.match(viewSource, /querySelector\('#modeTabs \[data-mode="broadcasts"\]'\)/);
   assert.match(viewSource, /TAB_LABEL = 'リスパ'/);
   assert.match(viewSource, /panel\.hidden = !tab\.classList\.contains\('active'\)/);
