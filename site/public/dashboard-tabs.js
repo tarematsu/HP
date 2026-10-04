@@ -1,5 +1,5 @@
-const ASSET_VERSION = '20261004.1';
-const HISTORY_MODES = new Set(['daily', 'weekly', 'monthly', 'ranking', 'broadcasts']);
+const ASSET_VERSION = '20261005.1';
+const HISTORY_MODES = new Set(['daily', 'weekly', 'monthly', 'broadcasts']);
 const HISTORY_VIEW = {
   viewId: 'historyView',
   shell: () => import('/history-shell.js?v=20260930.1'),
@@ -14,11 +14,22 @@ const LAZY_VIEWS = {
     errorLabel: 'hinata',
     errorMessage: '日向坂データの初期化に失敗しました。再読み込みしてください。',
   },
+  ranking: {
+    viewId: 'leaderboardView',
+    shell: () => import('/leaderboard-shell.js?v=20261005.1'),
+    runtime: () => import('/leaderboard.js?v=20261005.1'),
+    loadExport: 'loadLeaderboardView',
+    loadArgs: { source: 'stationhead' },
+    noticeId: 'leaderboardNotice',
+    errorLabel: 'stationhead leaderboard',
+    errorMessage: 'リーダーボードデータの初期化に失敗しました。再読み込みしてください。',
+  },
   followers: {
     viewId: 'followersView',
-    shell: () => import('/followers-shell.js?v=20261001.1'),
-    runtime: () => import('/followers.js?v=20260930.3'),
+    shell: () => import('/followers-shell.js?v=20261005.1'),
+    runtime: () => import('/followers.js?v=20261005.1'),
     loadExport: 'loadFollowersView',
+    loadArgs: { source: 'stationhead' },
     noticeId: 'followersNotice',
     errorLabel: 'followers',
     errorMessage: 'フォロワーデータの初期化に失敗しました。再読み込みしてください。',
@@ -94,6 +105,26 @@ const LAZY_VIEWS = {
     errorLabel: 'kugou music',
     errorMessage: '酷狗音乐データの初期化に失敗しました。再読み込みしてください。',
   },
+  'music-ranking': {
+    viewId: 'leaderboardView',
+    shell: () => import('/leaderboard-shell.js?v=20261005.1'),
+    runtime: () => import('/leaderboard.js?v=20261005.1'),
+    loadExport: 'loadLeaderboardView',
+    loadArgs: { source: 'music-streaming' },
+    noticeId: 'leaderboardNotice',
+    errorLabel: 'music streaming leaderboard',
+    errorMessage: '音楽ストリーミングサービスのリーダーボード初期化に失敗しました。再読み込みしてください。',
+  },
+  'music-followers': {
+    viewId: 'followersView',
+    shell: () => import('/followers-shell.js?v=20261005.1'),
+    runtime: () => import('/followers.js?v=20261005.1'),
+    loadExport: 'loadFollowersView',
+    loadArgs: { source: 'music-streaming' },
+    noticeId: 'followersNotice',
+    errorLabel: 'music streaming followers',
+    errorMessage: '音楽ストリーミングサービスのフォローデータ初期化に失敗しました。再読み込みしてください。',
+  },
   nogizaka: {
     viewId: 'nogizakaListeningPartyView',
     shell: () => import('/nogizaka-listening-party-shell.js?v=20261003.1'),
@@ -134,6 +165,8 @@ const NAVIGATION = [
       { id: 'kkbox', label: '🇹🇼KKBOX', defaultMode: 'kkbox', modes: ['kkbox'] },
       { id: 'qq_music', label: '🇨🇳QQ音乐', defaultMode: 'qq_music', modes: ['qq_music'] },
       { id: 'kugou_music', label: '🇨🇳酷狗音乐', defaultMode: 'kugou_music', modes: ['kugou_music'] },
+      { id: 'music-ranking', label: 'リーダーボード', defaultMode: 'music-ranking', modes: ['music-ranking'] },
+      { id: 'music-followers', label: 'フォロー', defaultMode: 'music-followers', modes: ['music-followers'] },
     ],
   },
 ];
@@ -329,7 +362,7 @@ async function showLazyView(mode, options = {}) {
     markRouteReady();
     const runtime = await loadOnce(`${mode}:runtime`, config.runtime);
     if (activeMode !== mode) return;
-    if (config.loadExport) await runtime[config.loadExport]?.();
+    if (config.loadExport) await runtime[config.loadExport]?.(config.loadArgs || undefined);
   } catch (error) {
     if (activeMode !== mode) return;
     markRouteReady();
@@ -351,10 +384,6 @@ async function showHistory(mode, { updateUrl = true, replaceUrl = false, syncRun
       loadOnce('history:shell', HISTORY_VIEW.shell),
     ]);
     if (activeMode !== mode) return;
-    if (mode === 'ranking') {
-      await loadOnce('ranking-status', () => import('/history/history-ranking-table-status.js?v=20260923.2'));
-      if (activeMode !== mode) return;
-    }
     if (mode === 'broadcasts') {
       await loadOnce('first-week:shell', () => import('/first-week-comparison-shell.js?v=20261002.2'));
       await loadOnce('first-week:runtime', () => import('/first-week-comparison.js?v=20261002.2'));
