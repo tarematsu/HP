@@ -93,9 +93,7 @@ test('all service filters use the shared filter primitive', () => {
 });
 
 test('playlist detail stays lazy and renders inside shared sections', () => {
-  assert.match(amazon, /function playlistModuleUrl\(\)/);
-  assert.match(amazon, /\['\/music-service-playlists\.js', 'v=20261004\.1'\]\.join\('\?'\)/);
-  assert.match(amazon, /import\(playlistModuleUrl\(\)\)/);
+  assert.match(amazon, /import\('\.\/music-service-playlists\.js\?v=20261005\.2'\)/);
   assert.match(amazon, /loadMusicServicePlaylists\?\.\('amazon'\)/);
   assert.match(amazon, /id=\"amazonPlaylistMount\"/);
   assert.match(apple, /id=\"applePlaylistMount\"/);

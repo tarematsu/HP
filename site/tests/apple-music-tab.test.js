@@ -13,7 +13,7 @@ test('Apple Music stays lazy and uses the shared playlist runtime', () => {
   assert.match(tabs, /'apple-music':\s*\{/);
   assert.match(tabs, /apple-music-shell\.js\?v=/);
   assert.match(tabs, /apple-music\.js\?v=/);
-  assert.match(runtime, /import\(playlistModuleUrl\(\)\)/);
+  assert.match(runtime, /import\('\.\/music-service-playlists\.js\?v=20261005\.2'\)/);
   assert.match(runtime, /music-service-playlists\.js/);
   assert.doesNotMatch(runtime, /apple-music-playlists\.js/);
   assert.match(playlists, /endpoint: '\/api\/apple-music-playlists'/);

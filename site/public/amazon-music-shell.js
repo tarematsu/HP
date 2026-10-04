@@ -53,10 +53,8 @@ mountMusicServiceView({
 
 installAmazonMusicUpdatedAt();
 
-function playlistModuleUrl() {
-  return ['/music-service-playlists.js', 'v=20261004.1'].join('?');
-}
 
-void import(playlistModuleUrl())
+
+void import('./music-service-playlists.js?v=20261005.2')
   .then((module) => module.loadMusicServicePlaylists?.('amazon'))
   .catch((error) => console.warn('Amazon Music playlist view failed to load', error));

@@ -213,6 +213,15 @@ report.gzip_estimate = {
   total_bytes: [...gzipSizes.values()].reduce((sum, value) => sum + value, 0),
 };
 report.html_bytes = (await stat(resolve(publicRoot, 'index.html'))).size;
+report.html_files = {};
+for (const file of ['index.html', 'sakurazaka46jp/index.html', 'nogizaka46smej/index.html']) {
+  report.html_files[file] = (await stat(resolve(publicRoot, file))).size;
+}
+report.standalone_resources = {};
+for (const file of ['official-account-live.js', 'official-account-live.css', 'pages-theme.css']) {
+  report.standalone_resources[file] = (await stat(resolve(publicRoot, file))).size;
+}
+report.bundled_source_modules = Object.keys(jsBuild.metafile.inputs).sort();
 // These are build graph sizes and local gzip estimates, not production network measurements.
 const budgets = { initial_js_bytes: 25_000, css_bytes: 30_000, total_bytes: 310_000 };
 for (const [metric, limit] of Object.entries(budgets)) {

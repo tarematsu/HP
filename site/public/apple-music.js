@@ -17,12 +17,10 @@ let selectedArtistKey = DEFAULT_ARTIST_KEY;
 let loadPromise = null;
 let lastPayload = null;
 
-function playlistModuleUrl() {
-  return ['/music-service-playlists.js', 'v=20261004.1'].join('?');
-}
+
 
 function loadPlaylistMemberships(force = false) {
-  void import(playlistModuleUrl())
+  void import('./music-service-playlists.js?v=20261005.2')
     .then((module) => module.loadMusicServicePlaylists?.('apple', { force }))
     .catch((error) => console.warn('Apple Music playlist view failed to load', error));
 }
