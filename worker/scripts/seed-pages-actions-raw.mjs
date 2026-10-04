@@ -5,7 +5,9 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  ACTIONS_RAW_MODEL_KEYS,
   pagesActionsR2ResponseKey,
+  pagesActionsRawMetadataR2ResponseKey,
   pagesActionsRawR2ResponseKey,
 } from '../src/pages-response-r2.js';
 
@@ -13,11 +15,7 @@ const workerRoot = resolve(import.meta.dirname, '..');
 const wranglerScript = resolve(workerRoot, 'node_modules/wrangler/bin/wrangler.js');
 const responseBucket = process.env.PAGES_RESPONSE_BUCKET || 'sh-pages-responses';
 
-export const RAW_ACTIONS_MODEL_KEYS = Object.freeze([
-  'history:daily',
-  'history:weekly',
-  'track-history-status',
-]);
+export const RAW_ACTIONS_MODEL_KEYS = ACTIONS_RAW_MODEL_KEYS;
 
 function wrangler(args, options = {}) {
   return execFileSync(process.execPath, [wranglerScript, ...args], {
@@ -28,25 +26,18 @@ function wrangler(args, options = {}) {
   });
 }
 
-function sourceToken(envelopeText) {
-  return `sha256:${createHash('sha256').update(envelopeText).digest('hex')}`;
+function sourceEtag(envelopeText) {
+  return createHash('md5').update(envelopeText).digest('hex');
 }
 
-function metadataHeaders(metadata) {
-  return Object.entries(metadata).flatMap(([key, value]) => [
-    '--header',
-    `x-amz-meta-${key}:${String(value)}`,
-  ]);
-}
-
-export function rawMetadataForEnvelope(envelope, token) {
+export function rawMetadataForEnvelope(envelope, etag) {
   return {
-    version: '1',
-    source_token: token,
-    status: String(Number(envelope?.status) || 200),
-    headers_uri: encodeURIComponent(JSON.stringify(envelope?.headers || {})),
-    updated_at: String(Number(envelope?.updated_at) || Date.now()),
-    cadence_seconds: String(Math.max(0, Number(envelope?.cadence_seconds) || 0)),
+    version: 1,
+    source_etag: String(etag || ''),
+    status: Number(envelope?.status) || 200,
+    headers: envelope?.headers && typeof envelope.headers === 'object' ? envelope.headers : {},
+    updated_at: Number(envelope?.updated_at) || Date.now(),
+    cadence_seconds: Math.max(0, Number(envelope?.cadence_seconds) || 0),
   };
 }
 
@@ -55,21 +46,22 @@ export function seedRawActionsModel(modelKey, dependencies = {}) {
     'r2', 'object', 'get', `${responseBucket}/${key}`,
     '--remote', '--file', path,
   ]));
-  const putObject = dependencies.putObject || ((key, path, metadata) => wrangler([
+  const putObject = dependencies.putObject || ((key, path, contentType = 'application/json; charset=utf-8') => wrangler([
     'r2', 'object', 'put', `${responseBucket}/${key}`,
     '--remote', '--file', path,
-    '--content-type', 'application/json; charset=utf-8',
-    ...metadataHeaders(metadata),
+    '--content-type', contentType,
   ], { capture: false }));
 
   const sourceKey = pagesActionsR2ResponseKey(modelKey);
   const rawKey = pagesActionsRawR2ResponseKey(modelKey);
-  if (!sourceKey || !rawKey) throw new Error(`invalid pages read-model key: ${modelKey}`);
+  const metadataKey = pagesActionsRawMetadataR2ResponseKey(modelKey);
+  if (!sourceKey || !rawKey || !metadataKey) throw new Error(`invalid pages read-model key: ${modelKey}`);
 
   const directory = mkdtempSync(join(workerRoot, '.pages-actions-raw-'));
   try {
     const sourcePath = join(directory, 'source.json');
     const rawPath = join(directory, 'raw.json');
+    const metadataPath = join(directory, 'metadata.json');
     getObject(sourceKey, sourcePath);
     const envelopeText = readFileSync(sourcePath, 'utf8');
     const envelope = JSON.parse(envelopeText);
@@ -77,10 +69,19 @@ export function seedRawActionsModel(modelKey, dependencies = {}) {
       throw new Error(`unsupported pages Actions envelope for ${modelKey}`);
     }
     JSON.parse(envelope.body);
-    const token = sourceToken(envelopeText);
+    const etag = sourceEtag(envelopeText);
     writeFileSync(rawPath, envelope.body, 'utf8');
-    putObject(rawKey, rawPath, rawMetadataForEnvelope(envelope, token));
-    return { key: modelKey, source_key: sourceKey, raw_key: rawKey, bytes: envelope.body.length, source_token: token };
+    writeFileSync(metadataPath, JSON.stringify(rawMetadataForEnvelope(envelope, etag)), 'utf8');
+    putObject(rawKey, rawPath, envelope?.headers?.['content-type'] || 'application/json; charset=utf-8');
+    putObject(metadataKey, metadataPath, 'application/json; charset=utf-8');
+    return {
+      key: modelKey,
+      source_key: sourceKey,
+      raw_key: rawKey,
+      metadata_key: metadataKey,
+      bytes: envelope.body.length,
+      source_etag: etag,
+    };
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
