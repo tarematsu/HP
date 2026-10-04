@@ -73,6 +73,17 @@ test('trusted controls revalidate their CSS point when input actually arrives', 
   assert.match(runtime, /const accepted = valid\(element\) && hitOwnControl\(point\)/);
 });
 
+test('paused startup bypasses fullscreen gating until playback starts', () => {
+  assert.match(
+    runtime,
+    /if \(!adActive && !state\.fullscreenApplied && !video\?\.paused\) \{\s*return requestFullscreen\(\);\s*\}/,
+  );
+  assert.doesNotMatch(
+    runtime,
+    /if \(!adActive && !state\.fullscreenApplied\) return requestFullscreen\(\)/,
+  );
+});
+
 test('paused playback tries direct play before any toggle click', () => {
   const paused = runtime.indexOf('if (video?.paused && !video.ended)');
   const directPlay = runtime.indexOf('video.play()?.catch', paused);
