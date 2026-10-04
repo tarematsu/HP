@@ -81,6 +81,28 @@ test('unchanged older models are cached from the time R2 was checked', async () 
   assert.equal(reads, 2);
 });
 
+test('dashboard keeps its fifteen-second L1 freshness cap', async () => {
+  const now = Date.UTC(2026, 9, 2);
+  let reads = 0;
+  const result = await runPagesResponseFetch(
+    new Request('https://internal.test/_internal/pages-response?key=dashboard'),
+    {},
+    {
+      now: () => now,
+      cache: {
+        match: async () => materialized({ source: 'edge' }, now - 16_000),
+        put: async () => {},
+      },
+      loadR2Response: async () => {
+        reads += 1;
+        return materialized({ source: 'fresh-dashboard' }, now);
+      },
+    },
+  );
+  assert.equal(reads, 1);
+  assert.deepEqual(await result.json(), { source: 'fresh-dashboard' });
+});
+
 test('a recent cache insertion cannot make an expired source fresh', async () => {
   const now = Date.UTC(2026, 9, 2);
   const expired = materialized({ source: 'expired' }, now - 365 * 86400_000);
