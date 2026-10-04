@@ -106,8 +106,10 @@ test('HomePanel Cloud owns the video runtime and keeps isolated coordinators', a
     '"class_name": "DeviceSyncCoordinator"',
     '"class_name": "DeviceExchangeCoordinator"',
     '"class_name": "RadarBundleCoordinator"',
+    '"triggers": {',
+    '"crons": []',
   ]);
-  expectNone(cloudConfig, ['"binding": "VIDEO_SERVICE"', '"service": "homepanel-video"', '"crons"']);
+  expectNone(cloudConfig, ['"binding": "VIDEO_SERVICE"', '"service": "homepanel-video"']);
   expectAll(dispatcherConfig, [
     '"name": "sh-cron-dispatcher"',
     '"crons": ["* * * * *"]',

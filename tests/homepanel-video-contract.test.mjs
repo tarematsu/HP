@@ -48,8 +48,10 @@ test('HomePanel video runtime is integrated and bounded', async () => {
     '"queue": "videoscraper-manual-imports"',
     '"name": "VIDEO_FEED_COORDINATOR"',
     '"class_name": "VideoFeedCoordinator"',
+    '"triggers": {',
+    '"crons": []',
   ]);
-  expectNone(cloudConfig, ['"binding": "VIDEO_SERVICE"', '"service": "homepanel-video"', '"crons"']);
+  expectNone(cloudConfig, ['"binding": "VIDEO_SERVICE"', '"service": "homepanel-video"']);
   expectAll(dispatcherConfig, [
     '"name": "sh-cron-dispatcher"',
     '"crons": ["* * * * *"]',
