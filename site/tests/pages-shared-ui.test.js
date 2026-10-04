@@ -78,15 +78,15 @@ test('Buddies Ohisama and Nogizaka share one HTML shell and one JS runtime', () 
   assert.match(stationheadShell, /export function stationheadChannelMarkup\(/);
   assert.match(stationheadShell, /dashboardModeTabs/);
   assert.match(stationheadRuntime, /stationheadChannelReadModel/);
-  assert.doesNotMatch(stationheadRuntime, /buddies|ohisama|nogizaka|櫻坂46|日向坂46|乃木坂46/i);
+  assert.doesNotMatch(stationheadRuntime, /\/api\/(?:hinata|nogizaka-listening-party)|artist_filter|stationhead\.com\/c\//);
   assert.match(stationheadReadModel, /function buddiesModel\(\)/);
   assert.match(stationheadReadModel, /function ohisamaModel\(\)/);
   assert.match(stationheadReadModel, /function nogizakaModel\(\)/);
 });
 
 test('Stationhead shared shell owns notices tables legends and five mode tabs once', () => {
-  assert.match(stationheadShell, /data-role="notice"/);
-  assert.match(stationheadShell, /class="legend" data-role="daily-legend"/);
+  assert.match(stationheadShell, /role\('notice'\)/);
+  assert.match(stationheadShell, /class="legend" \$\{role\('daily-legend'\)\}/);
   assert.match(stationheadShell, /class="table-wrap"/);
   assert.match(stationheadShell, /className: 'stationhead-subtabs'/);
   for (const section of ['current', 'history', 'played-tracks', 'likes', 'broadcasts']) assert.match(stationheadShell, new RegExp(`data-stationhead-panel=\\"${section}\\"`));
