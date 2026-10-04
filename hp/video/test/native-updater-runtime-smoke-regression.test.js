@@ -12,10 +12,7 @@ const script = readFileSync(
 );
 
 test('Windows runtime smoke builds and executes HomePanelUpdater', () => {
-  assert.match(
-    workflow,
-    /--target HomePanel HomePanelUpdater --parallel/,
-  );
+  assert.match(workflow, /--target HomePanel HomePanelUpdater --parallel/);
   assert.match(
     workflow,
     /ci-updater-runtime-smoke\.ps1[\s\S]*-UpdaterExecutable[\s\S]*HomePanelUpdater\.exe/,
@@ -27,22 +24,23 @@ test('Windows runtime smoke builds and executes HomePanelUpdater', () => {
   assert.match(workflow, /hp\/native\/ci-updater-runtime-smoke/);
 });
 
-test('updater smoke uses the real runner protocol without network or playback', () => {
+test('updater smoke uses the real runner protocol without network or playback logs', () => {
   assert.match(script, /"--pid", \[string\]\$PID/);
   assert.match(script, /"--app-pid", \[string\]\$PID/);
   assert.match(script, /"--root", \$installRoot/);
   assert.match(script, /"--manifest", \$manifestPath/);
   assert.match(script, /"--version", \$Version/);
-  assert.match(script, /Same-version verification succeeded; no repair was required/);
-  assert.match(script, /networkRequired = \$false/);
-  assert.match(script, /playbackRequired = \$false/);
+  assert.match(script, /updaterExitCode = \$updaterProcess\.ExitCode/);
+  assert.match(script, /runtimeFileLoggingDisabled = \$true/);
+  assert.match(script, /unexpectedly created data\/homepanel-updater\.log/);
 });
 
-test('updater smoke verifies manifest cleanup, binary integrity and restart', () => {
+test('updater smoke verifies manifest cleanup, binary integrity and restart directly', () => {
   assert.match(script, /HomePanelUpdater did not remove the verified pending manifest/);
   assert.match(script, /Same-version verification unexpectedly modified/);
   assert.match(script, /HomePanelUpdater did not restart HomePanel\.exe/);
   assert.match(script, /HomePanelNativeWindow/);
-  assert.match(script, /HomePanel exiting code 0/);
+  assert.match(script, /Restarted HomePanel returned exit code/);
+  assert.match(script, /unexpectedly created data\/homepanel\.log/);
   assert.match(script, /Windows Application log contains HomePanel or updater error events/);
 });
