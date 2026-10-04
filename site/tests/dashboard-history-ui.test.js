@@ -6,8 +6,6 @@ const mainPage = readFileSync(new URL('../public/index.html', import.meta.url), 
 const stationheadShell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
 const stationheadRuntime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
 const stationheadReadModel = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
-const likesShell = readFileSync(new URL('../public/likes-shell.js', import.meta.url), 'utf8');
-const tabRegistry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const historyClient = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
@@ -15,7 +13,7 @@ const historyLikes = readFileSync(new URL('../public/history/history-likes.js', 
 const trackEndpoint = readFileSync(new URL('../functions/api/track-history.js', import.meta.url), 'utf8');
 
 test('shared Stationhead current view renders track likes from each read model queue', () => {
-  assert.match(stationheadShell, /data-role="track-bites"/);
+  assert.match(stationheadShell, /role\('track-bites'\)/);
   assert.match(stationheadRuntime, /track\?\.bite_count/);
   assert.match(stationheadRuntime, /`♡ \$\{numberText\(value\)\}`/);
   assert.match(stationheadReadModel, /queue: Array\.isArray\(payload\?\.queue\) \? payload\.queue : \[\]/);
@@ -34,23 +32,21 @@ test('shared Stationhead history table uses the actual daily period key and cumu
   assert.match(stationheadReadModel, /member_end: finite\(row\?\.member_end\)/);
 });
 
-test('like ranking is an integrated view backed by the R2 materialized service', () => {
-  assert.match(likesShell, /id: 'likesView'/);
-  assert.match(likesShell, /className: 'likes-view'/);
-  assert.match(likesShell, /id="likesRankingList"/);
-  assert.match(tabRegistry, /view: 'likes', mode: 'likes', label: 'いいね'/);
+test('shared Stationhead likes panel is backed by the R2 materialized track model', () => {
+  assert.match(stationheadShell, /data-stationhead-panel="likes"/);
+  assert.match(stationheadShell, /role\('likes-ranking'\)/);
+  assert.match(stationheadShell, /role\('likes-tbody'\)/);
+  assert.match(stationheadReadModel, /ranking_only=1&ranking_limit=500/);
   assert.match(trackEndpoint, /PAGES_READ_MODEL_SERVICE/);
   assert.match(trackEndpoint, /url\.searchParams\.set\('key', TRACK_HISTORY_MODEL_KEY\)/);
   assert.match(trackEndpoint, /url\.searchParams\.set\('api', '1'\)/);
   assert.match(trackEndpoint, /url\.searchParams\.append\(name, value\)/);
   assert.doesNotMatch(trackEndpoint, /MINUTE_DB|loadTrackRanking|TRACK_RANKING_SQL|sh_track_ranking_current|\.prepare\(/);
   assert.match(historyLikes, /ranking_only=1/);
-  assert.match(historyLikes, /likesRankingList/);
   assert.doesNotMatch(historyLikes, /likesLoad|week_play_count|今週再生/);
 });
 
 test('archive removes the track playback tab and its aggregation runtime', () => {
-  assert.doesNotMatch(tabRegistry, /mode: 'tracks'|label: '再生曲'/);
   assert.doesNotMatch(historyEntry, /trackDate|trackWeekMode|'tracks'/);
   assert.doesNotMatch(historyClient, /aggregateCompleteTrackRows|再生数ランキング|history:track-rows/);
 });
