@@ -20,7 +20,7 @@ const dispatcherWrangler = JSON.parse(await readFile(
 const entryCore = await readFile(new URL('../src/entry-core.js', import.meta.url), 'utf8');
 
 test('shared dispatcher owns hourly HomePanel wakeup while cloud Worker owns event queues', () => {
-  assert.equal(cloudWrangler.triggers, undefined);
+  assert.deepEqual(cloudWrangler.triggers, { crons: [] });
   assert.deepEqual(dispatcherWrangler.triggers?.crons, ['* * * * *']);
   assert.equal(LIVENESS_JOB_NAME, 'video_liveness');
   assert.equal(LIVENESS_INTERVAL_SECONDS, 60 * 60);
