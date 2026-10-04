@@ -35,7 +35,7 @@ function currentHistory(rows = []) {
       observed_at: finite(row?.observed_at ?? row?.bucket_at),
       online_member_count: finite(row?.online_member_count ?? row?.listener_count),
       stream_count: finite(row?.stream_count ?? row?.current_stream_count ?? row?.reported_current_stream_count),
-      stream_delta_5m: finite(row?.stream_delta_5m),
+      stream_delta_5m: finite(row?.stream_delta_5m ?? row?.stream_delta),
     }))
     .filter((row) => row.observed_at != null)
     .sort((a, b) => a.observed_at - b.observed_at);
@@ -54,14 +54,24 @@ function currentHistory(rows = []) {
   });
 }
 
-function normalizeCurrent(payload, details = null) {
+function normalizeCurrent(payload) {
   const latest = payload?.latest || {};
+  const history = payload?.history_24h || payload?.history || [];
+  const directStreamHistory = new Map(
+    (Array.isArray(payload?.stream_5m_history) ? payload.stream_5m_history : [])
+      .map((row) => [finite(row?.observed_at ?? row?.bucket_at), finite(row?.stream_delta_5m ?? row?.stream_delta)])
+      .filter(([time, delta]) => time != null && delta != null),
+  );
+  const normalizedHistory = currentHistory(history).map((row) => ({
+    ...row,
+    stream_delta_5m: directStreamHistory.get(row.observed_at) ?? row.stream_delta_5m,
+  }));
   return {
     latest: {
       ...latest,
       total_stream_count: finite(latest.total_stream_count ?? latest.current_stream_count ?? latest.reported_current_stream_count),
     },
-    history_24h: currentHistory(details?.history || payload?.history_24h || payload?.history || []),
+    history_24h: normalizedHistory,
     queue: Array.isArray(payload?.queue) ? payload.queue : [],
     queue_status: payload?.queue_status || null,
   };
@@ -135,14 +145,9 @@ function cached(loader) {
 }
 
 function buddiesModel() {
-  const current = cached(async ({ signal, force }) => {
-    const payload = await fetchJson('/api/dashboard?history=0', { signal, force });
-    const channelId = finite(payload?.latest?.channel_id);
-    const details = channelId == null
-      ? null
-      : await fetchJson(`/api/dashboard-details?channel_id=${encodeURIComponent(channelId)}`, { signal, force }).catch(() => null);
-    return normalizeCurrent(payload, details);
-  });
+  const current = cached(async ({ signal, force }) => normalizeCurrent(
+    await fetchJson('/api/dashboard?history=0', { signal, force }),
+  ));
   return {
     source: 'buddies',
     meta: { station_url: 'https://stationhead.com/c/buddies', artist_filter: '櫻坂46' },
