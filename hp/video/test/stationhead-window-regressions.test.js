@@ -7,7 +7,6 @@ const layout = source('sh_layout.cpp');
 const playerHeader = source('sh.h');
 const handles = source('app_stationhead_handles.cpp');
 const webview = source('sh_webview.cpp');
-const logger = source('logger.cpp');
 
 function section(text, start, end) {
   const from = text.indexOf(start);
@@ -120,10 +119,4 @@ test('required WebView events fail closed into recreation', () => {
   for (const result of ['newWindowResult', 'webMessageResult', 'processFailedResult']) {
     assert.match(webview, new RegExp(`if \\(FAILED\\(${result}\\)\\) \\{[\\s\\S]*ScheduleRecreate\\(`));
   }
-});
-
-test('logger redacts URL query and fragment diagnostics', () => {
-  assert.match(logger, /RedactUrlQueryAndFragment/);
-  assert.match(logger, /find_first_of\(L"\?#", urlAt\)/);
-  assert.match(logger, /WideToUtf8\(RedactUrlQueryAndFragment\(message\)\)/);
 });

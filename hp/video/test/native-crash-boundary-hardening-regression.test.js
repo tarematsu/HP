@@ -22,19 +22,13 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('runtime logging cannot throw through callback or worker boundaries', () => {
-  assert.match(loggerHeader, /void Info\([^)]*\) noexcept/);
-  assert.match(loggerHeader, /void Warn\([^)]*\) noexcept/);
-  assert.match(loggerHeader, /void Error\([^)]*\) noexcept/);
-  assert.match(loggerHeader, /void Write\([^)]*\) noexcept/);
-
-  const write = section(
-    loggerSource,
-    'void Logger::Write(',
-    '\n}\n\n}  // namespace hp',
-  );
-  assert.match(write, /try \{/);
-  assert.match(write, /catch \(\.\.\.\)/);
+test('runtime logging is a noexcept zero-I/O compatibility stub', () => {
+  assert.match(loggerHeader, /explicit Logger\([^)]*\) noexcept \{\}/);
+  assert.match(loggerHeader, /void Info\([^)]*\) const noexcept \{\}/);
+  assert.match(loggerHeader, /void Warn\([^)]*\) const noexcept \{\}/);
+  assert.match(loggerHeader, /void Error\([^)]*\) const noexcept \{\}/);
+  assert.doesNotMatch(loggerHeader, /ofstream|mutex_|path_|currentBytes_|pendingBytes_/);
+  assert.doesNotMatch(loggerSource, /ofstream|wofstream|write\(|flush\(|Rotate|create_directories|file_size/);
 });
 
 test('noexcept process wrappers catch allocation failures before fallback', () => {

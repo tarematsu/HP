@@ -209,16 +209,13 @@ test('missing serial sensors use bounded exponential retry backoff', () => {
   assert.doesNotMatch(sensorSerial, /wait_for\(lock, std::chrono::seconds\(10\)/);
 });
 
-test('logger keeps one stream open and avoids filesystem metadata checks per line', () => {
-  assert.match(loggerHeader, /std::ofstream output_;/);
-  assert.match(loggerHeader, /size_t currentBytes_ = 0;/);
-  assert.match(loggerSource, /kLogFlushThresholdBytes = 64 \* 1024;/);
-  assert.match(loggerSource, /output_\.write\(/);
-  assert.doesNotMatch(loggerSource, /RotateIfNeeded/);
-  const writeFunction = loggerSource.match(
-    /void Logger::Write\([\s\S]*?\n\}/,
-  )?.[0] ?? '';
-  assert.doesNotMatch(writeFunction, /fs::exists|fs::file_size|std::ofstream output\(/);
+test('runtime logger performs no file I/O', () => {
+  assert.match(loggerHeader, /explicit Logger\([^)]*\) noexcept \{\}/);
+  assert.match(loggerHeader, /void Info\([^)]*\) const noexcept \{\}/);
+  assert.match(loggerHeader, /void Warn\([^)]*\) const noexcept \{\}/);
+  assert.match(loggerHeader, /void Error\([^)]*\) const noexcept \{\}/);
+  assert.doesNotMatch(loggerHeader, /ofstream|mutex_|path_|currentBytes_|pendingBytes_/);
+  assert.doesNotMatch(loggerSource, /ofstream|wofstream|write\(|flush\(|Rotate|create_directories|file_size/);
 });
 
 test('single radar waits only for cloud update notifications', () => {
