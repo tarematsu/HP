@@ -63,22 +63,24 @@ test('host summary falls back to official broadcast history when session trackin
   assert.equal(summary.recentSessions[0].track_count, 9);
 });
 
-test('history runtime is embedded, lazy, and has one chart owner per mode', () => {
+test('history runtime is embedded and lazy while the shared leaderboard owns ranking', () => {
   const html = readFileSync(new URL('../site/public/index.html', import.meta.url), 'utf8');
   const shell = readFileSync(new URL('../site/public/history-shell.js', import.meta.url), 'utf8');
   const tabs = readFileSync(new URL('../site/public/dashboard-tabs.js', import.meta.url), 'utf8');
   const entry = readFileSync(new URL('../site/public/history/history-main.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../site/public/history/history-lite.js', import.meta.url), 'utf8');
   const period = readFileSync(new URL('../site/public/history/history-period-chart.js', import.meta.url), 'utf8');
-  const ranking = readFileSync(new URL('../site/public/history/history-ranking-chart.js', import.meta.url), 'utf8');
+  const leaderboard = readFileSync(new URL('../site/public/leaderboard.js', import.meta.url), 'utf8');
+  const leaderboardReadModel = readFileSync(new URL('../site/public/leaderboard-read-model.js', import.meta.url), 'utf8');
 
   assert.equal((html.match(/<script /g) || []).length, 1);
   assert.match(shell, /id: 'historyView'/);
   assert.match(tabs, /import\('\/history\/history-main\.js\?v=\d{8}\.\d+'\)/);
+  assert.match(tabs, /ranking:[\s\S]*runtime: \(\) => import\('\/leaderboard\.js\?v=\d{8}\.\d+'\)/);
   assert.doesNotMatch(html, /href="\/history/);
   assert.match(entry, /function ensureHistoryModeRuntime/);
   assert.match(entry, /history-period-chart\.js/);
-  assert.match(entry, /history-ranking-chart\.js/);
+  assert.doesNotMatch(entry, /history-ranking-chart\.js/);
   assert.match(entry, /history-broadcasts\.js/);
   assert.doesNotMatch(entry, /history-ranking-missing-gap/);
 
@@ -87,9 +89,8 @@ test('history runtime is embedded, lazy, and has one chart owner per mode', () =
   assert.match(runtime, /publishHistoryData/);
   assert.doesNotMatch(runtime, /prepareCanvas|drawSummaryChart|chartModel|history-broadcasts\.js/);
   assert.match(period, /history:data-loaded/);
-  assert.match(ranking, /history:data-loaded/);
-  assert.match(ranking, /dashboardMissingIndexBands/);
-  assert.match(ranking, /drawDashboardMissingBands/);
+  assert.match(leaderboard, /leaderboardReadModel/);
+  assert.match(leaderboardReadModel, /normalizeStationheadLeaderboard/);
+  assert.doesNotMatch(leaderboard, /history:data-loaded|history-ranking-chart/);
   assert.doesNotMatch(period, /previousFetch|browser\.fetch|response\.clone\(\)\.json/);
-  assert.doesNotMatch(ranking, /previousFetch|browser\.fetch|response\.clone\(\)\.json/);
 });
