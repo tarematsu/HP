@@ -27,8 +27,6 @@ const subtabs = stationheadChannelTabs({
   dataAttribute: 'nogizaka-section',
   ariaLabel: 'Nogizaka表示切替',
   active: 'broadcasts',
-  enabled: ['broadcasts'],
-  unavailableTitle: 'Nogizakaでは未提供',
 });
 
 const listeningPartyPanel = `<div class="stationhead-channel-panel" data-nogizaka-panel="broadcasts">${summary}${dashboardChartCard({
