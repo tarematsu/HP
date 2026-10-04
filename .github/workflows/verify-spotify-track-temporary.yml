@@ -1,0 +1,30 @@
+name: Verify Spotify track row
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/verify-spotify-track-temporary.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        working-directory: worker
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Verify track in remote D1
+        working-directory: worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB=$(node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync('wrangler.spotify-playcount.jsonc','utf8'));process.stdout.write(c.d1_databases.find(x=>x.binding==='OTHER_DB').database_name)")
+          node_modules/.bin/wrangler d1 execute "$DB" --remote --command "SELECT t.track_id,t.name,c.playcount,c.snapshot_date,GROUP_CONCAT(x.artist_key) AS artist_keys FROM sh_spotify_tracks t LEFT JOIN sh_spotify_playcount_current c ON c.track_id=t.track_id LEFT JOIN sh_spotify_track_targets x ON x.track_id=t.track_id WHERE t.name='自称バレエダンサー' GROUP BY t.track_id,t.name,c.playcount,c.snapshot_date ORDER BY c.snapshot_date DESC;"
