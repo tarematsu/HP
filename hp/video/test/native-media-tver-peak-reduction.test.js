@@ -17,7 +17,7 @@ test('episode pages route to one unified TVer control-recovery policy', () => {
   assert.doesNotMatch(wrapper, /media_tver_series_dom_policy/);
 });
 
-test('TVer ad detection stays inside the player subtree', () => {
+test('TVer legacy ad detection stays inside the player subtree', () => {
   assert.match(runtime, /const player = video\.closest/);
   assert.match(runtime, /player\.querySelectorAll\(selectors\.join\(','\)\)/);
   assert.doesNotMatch(runtime, /document\.querySelectorAll\(selectors\.join\(','\)\)/);
@@ -38,34 +38,38 @@ test('TVer ad classification uses explicit player markers plus bounded short-med
   assert.match(runtime, /return explicitAd\(\) \|\| shortMedia/);
 });
 
-test('TVer playback rate is restored when the player changes it', () => {
+test('TVer playback rate is restored and synchronized with the current UI', () => {
   assert.match(runtime, /video\.defaultPlaybackRate = 1\.75/);
   assert.match(runtime, /video\.playbackRate = 1\.75/);
+  assert.match(runtime, /currentSettingsSpeedConfirmed/);
+  assert.match(runtime, /speed175Option/);
+  assert.match(runtime, /speed-menu/);
   assert.match(runtime, /'ratechange'/);
 });
 
-test('TVer quality discovery retries and is event-driven', () => {
+test('TVer quality discovery retries and recognizes the redesigned current-value control', () => {
   assert.match(runtime, /qualityLastAttemptAt/);
   assert.doesNotMatch(runtime, /qualityAttempts >= 4\) state\.qualityApplied = true/);
-  assert.match(runtime, /arm\(low, 'quality-low', 700\)/);
-  assert.match(runtime, /arm\(menu, 'quality-menu', 700\)/);
+  assert.match(runtime, /qualityIndicator/);
+  assert.match(runtime, /quality-low-v2/);
+  assert.match(runtime, /quality-menu-v2/);
+  assert.match(runtime, /currentSettingsQualityConfirmed/);
   assert.doesNotMatch(runtime, /qualityProbeIntervalMs|qualityProbeLimit|setInterval\(/);
 });
 
-test('TVer fullscreen uses a bounded bottom-right video coordinate', () => {
-  assert.match(runtime, /video\.getBoundingClientRect/);
-  assert.match(runtime, /Math\.min\(innerWidth - 2, rect\.right - 12\)/);
-  assert.match(runtime, /Math\.min\(innerHeight - 2, rect\.bottom - 12\)/);
-  assert.match(runtime, /state\.fullscreenCornerTapAt/);
+test('TVer fullscreen is requested through the native trusted user-gesture bridge', () => {
   assert.match(runtime, /document\.fullscreenElement/);
-  assert.doesNotMatch(runtime, /homepanel:tver-fullscreen-key|fullscreenControl/);
+  assert.match(runtime, /currentSettingsFullscreenRequestAt/);
+  assert.match(runtime, /homepanel:tver-fullscreen-key/);
+  assert.match(runtime, /Runtime\.evaluate\(userGesture=true\)/);
+  assert.match(runtime, /state\.fullscreenCornerTapAt = now/);
   assert.doesNotMatch(runtime, /fullscreenAttemptCount|__homePanelTverFullscreenRecovery/);
+  assert.doesNotMatch(runtime, /data-homepanel-tver-fill|homepanel-tver-viewport-fill/);
 });
 
-test('healthy TVer runtime does not enumerate page-wide controls', () => {
-  assert.match(runtime, /const controls = \(\) => Array\.from\(player\.querySelectorAll/);
-  assert.doesNotMatch(
-    runtime,
-    /Array\.from\(document\.querySelectorAll\(\s*'button/,
-  );
+test('current TVer settings discovery stays bounded to semantic controls without polling', () => {
+  assert.match(runtime, /const controlSelector = \[/);
+  assert.match(runtime, /\[role="menuitemradio"\]/);
+  assert.match(runtime, /document\.querySelectorAll\(controlSelector\)/);
+  assert.doesNotMatch(runtime, /setInterval\(/);
 });
