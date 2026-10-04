@@ -56,6 +56,16 @@ function currentHistory(rows = []) {
   });
 }
 
+function previousDayHistory(rows = []) {
+  return (Array.isArray(rows) ? rows : [])
+    .map((row) => ({
+      observed_at: finite(row?.observed_at ?? row?.bucket_at),
+      online_member_count: finite(row?.online_member_count ?? row?.listener_count),
+    }))
+    .filter((row) => row.observed_at != null && row.online_member_count != null)
+    .sort((a, b) => a.observed_at - b.observed_at);
+}
+
 function normalizeCurrent(payload) {
   const latest = payload?.latest || {};
   const history = payload?.history_24h || payload?.history || [];
@@ -74,6 +84,7 @@ function normalizeCurrent(payload) {
       total_stream_count: finite(latest.total_stream_count ?? latest.current_stream_count ?? latest.reported_current_stream_count),
     },
     history_24h: normalizedHistory,
+    previous_day_history: previousDayHistory(payload?.previous_day_history),
     queue: Array.isArray(payload?.queue) ? payload.queue : [],
     queue_status: payload?.queue_status || null,
   };
@@ -240,7 +251,7 @@ function nogizakaModel() {
     source: 'nogizaka',
     meta: { station_url: 'https://stationhead.com/c/nogizaka46smej', artist_filter: '乃木坂46' },
     capabilities: ['broadcasts'],
-    async loadCurrent() { return { latest: {}, history_24h: [], queue: [], queue_status: null }; },
+    async loadCurrent() { return { latest: {}, history_24h: [], previous_day_history: [], queue: [], queue_status: null }; },
     setHistoryMode(mode) { selectedHistoryMode = historyMode(mode); },
     async loadHistory() { return { daily: [], mode: selectedHistoryMode }; },
     async loadPlayedIndex() { return []; },
