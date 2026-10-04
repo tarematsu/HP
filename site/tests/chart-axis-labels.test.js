@@ -5,7 +5,7 @@ import test from 'node:test';
 const historyMain = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const axisLabels = readFileSync(new URL('../public/history/history-axis-labels.js', import.meta.url), 'utf8');
 const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
-const currentChart = readFileSync(new URL('../public/dashboard-chart-comparison.js', import.meta.url), 'utf8');
+const currentChart = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
 
 test('history runtime installs dedicated axis labels', () => {
   assert.match(historyMain, /history-axis-labels\.js\?v=20260923\.\d+/);
