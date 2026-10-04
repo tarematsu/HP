@@ -62,7 +62,7 @@ test('migration replaces provisional romanization by spotify_id even when Spotif
   db.exec(migration);
   const row = db.prepare(`SELECT title,artist,thumbnail_url,metadata_source,metadata_fetched_at
     FROM sh_track_dictionary WHERE spotify_id=?`).get('7BuovmQKMWGIsxWPcYOWqu');
-  assert.deepEqual(row, {
+  assert.deepEqual({ ...row }, {
     title: '自称バレエダンサー',
     artist: '櫻坂46',
     thumbnail_url: 'spotify-cover',
@@ -116,7 +116,7 @@ test('manual higher-priority presentation is not overwritten by Spotify metadata
   );
   const row = db.prepare(`SELECT title,artist,thumbnail_url,metadata_source
     FROM sh_track_dictionary WHERE spotify_id=?`).get('manual-track');
-  assert.deepEqual(row, {
+  assert.deepEqual({ ...row }, {
     title: '手動タイトル',
     artist: '手動アーティスト',
     thumbnail_url: 'manual-cover',
