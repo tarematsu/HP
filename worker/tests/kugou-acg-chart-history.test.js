@@ -66,6 +66,29 @@ test('Kugou ACG song parser keeps only Sakamichi rows with provider rank', () =>
   ]);
 });
 
+test('Kugou ACG song parser recognizes Sakamichi anime collaborations without group-name credit', () => {
+  const rows = parseKugouAcgSongs({
+    data:{ info:[
+      {
+        authors:[{author_name:'ギガP'},{author_name:'TeddyLoid'},{author_name:'松田里奈'},{author_name:'森田ひかる'}],
+        songname:'ピッカーン！ (皮卡！)', album_audio_id:201,
+      },
+      { singername:'ぼっちぼろまる、正源司陽子', songname:'ロマンティックがほしいなら', album_audio_id:202 },
+      { singername:'Unknown', songname:'What’s “KAZOKU”?', album_audio_id:203 },
+      { singername:'Unknown', songname:'月の大きさ (月亮的大小)', album_audio_id:204 },
+      { singername:'Unknown', songname:'1・2・3 (一二三)', album_audio_id:205 },
+      { singername:'Unknown', songname:'Unrelated anime song', album_audio_id:206 },
+    ] },
+  });
+  assert.deepEqual(rows.map((row) => [row.position,row.canonical_artist,row.track_id,row.title]), [
+    [1,'sakurazaka46','201','ピッカーン！ (皮卡！)'],
+    [2,'hinatazaka46','202','ロマンティックがほしいなら'],
+    [3,'sakurazaka46','203','What’s “KAZOKU”?'],
+    [4,'nogizaka46','204','月の大きさ (月亮的大小)'],
+    [5,'nogizaka46','205','1・2・3 (一二三)'],
+  ]);
+});
+
 test('Kugou ACG history upsert writes week, index and compact view', async () => {
   const store = new Map();
   const load = async (key) => structuredClone(store.get(key) ?? null);
