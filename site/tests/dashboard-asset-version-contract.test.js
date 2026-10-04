@@ -5,6 +5,7 @@ import test from 'node:test';
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const buildScript = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+const styles = readFileSync(new URL('../public/dashboard-styles.js', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const common = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
 const rangeNavigator = readFileSync(new URL('../public/history/history-range-navigator.js', import.meta.url), 'utf8');
@@ -35,12 +36,12 @@ test('dashboard HTML ships one core CSS and one JavaScript entry', () => {
 
 test('route CSS uses the same deployment version and is loaded centrally', () => {
   const version = assetVersion(html, 'assets/dashboard.min.css');
-  assert.match(tabs, new RegExp(`const ASSET_VERSION = '${version.replace('.', '\\.')}'`));
-  assert.match(tabs, /stationhead:\s*`\/assets\/stationhead\.min\.css\?v=\$\{ASSET_VERSION\}`/);
-  assert.match(tabs, /subscriptions:\s*`\/assets\/subscriptions\.min\.css\?v=\$\{ASSET_VERSION\}`/);
+  assert.match(styles, new RegExp(`const ASSET_VERSION = '${version.replace('.', '\\.')}'`));
+  assert.match(styles, /\/assets\/\$\{section\}\.min\.css/);
+  assert.match(tabs, /ensureDashboardSectionStyles/);
   assert.match(tabs, /function ensureModeStyles\(mode\)/);
-  assert.match(tabs, /document\.createElement\('link'\)/);
-  assert.match(tabs, /data-dashboard-section-style|dataset\.dashboardSectionStyle/);
+  assert.match(styles, /document\.createElement\('link'\)/);
+  assert.match(styles, /dataset\.dashboardSectionStyle/);
 });
 
 test('build minifies one JS graph and three CSS route groups', () => {
@@ -70,11 +71,11 @@ test('build minifies one JS graph and three CSS route groups', () => {
   assert.match(buildScript, /stationhead_css_bytes/);
   assert.match(buildScript, /subscriptions_css_bytes/);
   assert.match(buildScript, /total_css_bytes/);
-  assert.doesNotMatch(buildScript, /optimizeBundled|shareCommonUiHelpers|canvasTransforms|onLoad\(|readFile/);
+  assert.doesNotMatch(buildScript, /optimizeBundled|shareCommonUiHelpers|canvasTransforms|onLoad\(/);
 });
 
 test('feature stylesheet loading exists only in the central route client', () => {
-  assert.match(tabs, /createElement\('link'\)/);
+  assert.match(styles, /createElement\('link'\)/);
   assert.doesNotMatch(header, /createElement\('link'\)|stylesheet|\.css\?v=/);
   assert.doesNotMatch(common, /ensureStylesheet|createElement\('link'\)|\.css\?v=/);
   assert.doesNotMatch(rangeNavigator, /ensureStylesheet|createElement\('link'\)|\.css\?v=/);

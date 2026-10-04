@@ -8,7 +8,7 @@ const stationheadShell = readFileSync(new URL('../public/stationhead-channel-she
 const youtubeRuntime = readFileSync(new URL('../public/youtube-music.js', import.meta.url), 'utf8');
 
 test('responsive source tabs keep usable button sizing', () => {
-  assert.match(navigationCss, /\.dashboard-source-tabs > button\s*\{[^}]*min-height:\s*36px[^}]*padding:\s*6px 10px/s);
+  assert.match(navigationCss, /\.dashboard-source-tabs > button\s*\{[^}]*min-height:\s*44px[^}]*padding:\s*6px 10px/s);
   assert.match(navigationCss, /@media \(max-width: 760px\)[\s\S]*\.dashboard-source-tabs:not\(\.is-multiline\)/);
   assert.doesNotMatch(navigationCss, /dashboard-source-row/);
 });

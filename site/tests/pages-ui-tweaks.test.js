@@ -33,9 +33,9 @@ test('likes update control is removed and CSV stays in the song-table shared dat
 });
 
 test('mobile ranking metric layout is shared instead of scoped to the likes tab', () => {
-  assert.match(sharedLayout, /grid-template-columns:\s*28px 38px minmax\(0, 1fr\) minmax\(60px, auto\) !important/);
-  assert.match(sharedLayout, /\.like-rank-metrics\s*\{[\s\S]*grid-column:\s*4 !important/);
-  assert.match(sharedLayout, /\.like-rank-metrics span\s*\{[\s\S]*text-align:\s*right !important/);
+  assert.match(sharedLayout, /grid-template-columns:\s*28px 36px minmax\(0, 1fr\) auto/);
+  assert.match(sharedLayout, /\.like-rank-metrics\s*\{[\s\S]*grid-column:\s*4/);
+  assert.match(sharedLayout, /\.like-rank-metrics span\s*\{[\s\S]*text-align:\s*right/);
   assert.doesNotMatch(sharedLayout, /#likesView \.like-rank/);
 });
 

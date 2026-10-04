@@ -1,11 +1,6 @@
+import { loadDashboardJson } from './dashboard-data-client.js?v=20261005.2';
 import { musicDateTimeText } from './music-service-runtime-common.js?v=20261004.1';
 
-async function loadJson(url) {
-  const response = await fetch(url, { headers: { accept: 'application/json' }, cache: 'default' });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload?.ok) throw new Error(payload?.error || `HTTP ${response.status}`);
-  return payload;
-}
 
 function latestAppleObservedAt(payload) {
   const values = [payload?.observed_at, ...(Array.isArray(payload?.artists)
@@ -20,7 +15,7 @@ async function installUpdatedAt({ elementId, url, resolve }) {
   const element = document.getElementById(elementId);
   if (!element) return;
   try {
-    const payload = await loadJson(url);
+    const payload = await loadDashboardJson(url);
     element.textContent = musicDateTimeText(resolve(payload));
   } catch {
     element.textContent = '-';

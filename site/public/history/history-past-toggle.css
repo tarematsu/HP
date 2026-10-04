@@ -12,7 +12,7 @@
 }
 
 .history-past-data-switch[hidden] {
-  display: none !important;
+  display: none;
 }
 
 .history-past-data-label {

@@ -56,7 +56,7 @@ mountMusicServiceView({
       bodyHtml: `${seriesFilters}<div id="kkboxJapaneseRankLegend" class="music-service-rank-legend" aria-label="グループ凡例"></div><div id="kkboxJapaneseRankChart" class="music-service-rank-chart"></div>`,
     }),
     musicServiceSection({
-      id: 'kkboxJapaneseHistorySection',
+      id: 'kkboxJapaneseHistorySection', group: 'list',
       title: 'KKBOX 日語チャート ランクイン履歴',
       trailingHtml: artistFilter,
       bodyHtml: historyTable,

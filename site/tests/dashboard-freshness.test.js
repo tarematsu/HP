@@ -47,7 +47,7 @@ test('hidden-tab dashboard cache has a bounded lifetime', () => {
 });
 
 test('shared Buddies adapter keeps the persisted dashboard delta cache instead of rereading 24h history', () => {
-  const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+  const entry = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
   const adapter = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
   const source = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
   assert.match(entry, /dashboard-fetch-cache\.js\?v=20260930\.1/);

@@ -48,7 +48,7 @@ mountMusicServiceView({
       bodyHtml: '<div id="qqJapanRankLegend" class="music-service-rank-legend" aria-label="グループ凡例"></div><div id="qqJapanRankChart" class="music-service-rank-chart"></div>',
     }),
     musicServiceSection({
-      id: 'qqJapanHistorySection',
+      id: 'qqJapanHistorySection', group: 'list',
       title: 'QQ音乐 日本榜 ランクイン履歴',
       trailingHtml: artistFilter('QQ音乐 日本榜 表示グループ'),
       bodyHtml: historyTable('qqJapanHistoryBody'),
@@ -59,13 +59,13 @@ mountMusicServiceView({
       bodyHtml: '<div id="qqAnimeRankLegend" class="music-service-rank-legend" aria-label="グループ凡例"></div><div id="qqAnimeRankChart" class="music-service-rank-chart"></div>',
     }),
     musicServiceSection({
-      id: 'qqAnimeHistorySection',
+      id: 'qqAnimeHistorySection', group: 'list',
       title: 'QQ音乐 动漫音乐榜 ランクイン履歴',
       trailingHtml: artistFilter('QQ音乐 动漫音乐榜 表示グループ'),
       bodyHtml: historyTable('qqAnimeHistoryBody'),
     }),
     musicServiceSection({
-      id: 'qqArtistPopularitySection',
+      id: 'qqArtistPopularitySection', group: 'list',
       title: 'QQ音乐 アーティスト別人気曲順位',
       bodyHtml: popularityTable,
     }),

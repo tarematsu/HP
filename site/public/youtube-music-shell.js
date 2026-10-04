@@ -32,8 +32,8 @@ mountMusicServiceView({
   meta: { valueId: 'youtubeMusicUpdated', cadence: '毎日0:00' },
   sections: [
     musicServiceSection({ id: 'youtubeMusicArtistSection', title: 'YouTube Music アーティスト', bodyHtml: artistTable }),
-    musicServiceSection({ id: 'youtubeMusicReleaseSection', title: 'YouTube Music アルバム・シングル', bodyHtml: releaseTable }),
-    musicServiceSection({ id: 'youtubeMusicTrackSection', title: 'YouTube Music 楽曲', bodyHtml: trackTable }),
-    musicServiceSection({ id: 'youtubeMusicPlaylistSection', title: 'YouTube Music 公開プレイリスト', bodyHtml: playlistTable }),
+    musicServiceSection({ id: 'youtubeMusicReleaseSection', group: 'list', title: 'YouTube Music アルバム・シングル', bodyHtml: releaseTable }),
+    musicServiceSection({ id: 'youtubeMusicTrackSection', group: 'list', title: 'YouTube Music 楽曲', bodyHtml: trackTable }),
+    musicServiceSection({ id: 'youtubeMusicPlaylistSection', group: 'playlists', title: 'YouTube Music 公開プレイリスト', bodyHtml: playlistTable }),
   ],
 });

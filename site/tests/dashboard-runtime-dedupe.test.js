@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
@@ -21,11 +22,13 @@ test('dashboard cache is restored and persisted by one owner', () => {
   assert.match(client, /applyPayload\(window\.__dashboardCurrentPayload\)/);
 });
 
-test('dashboard initialization installs delta cache before the shared Stationhead runtime', () => {
-  assert.doesNotMatch(entry, /replayCurrentPayload|runtime-replay/);
-  assert.match(entry, /dashboard-fetch-cache\.js\?v=20260930\.1/);
-  assert.match(entry, /stationhead-channel\.js\?v=/);
-  assert.ok(entry.indexOf('dashboard-fetch-cache.js') < entry.indexOf('stationhead-channel.js'));
+test('Buddies cache is explicitly owned by the lazy read model, without global fetch replacement', () => {
+  const adapter = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
+  const cache = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
+  assert.match(adapter, /import \{ fetchDashboard \}/);
+  assert.match(adapter, /url.startsWith\('\/api\/dashboard\?'\) \? fetchDashboard : fetch/);
+  assert.doesNotMatch(cache, /window\.fetch\s*=/);
+  assert.doesNotMatch(entry, /dashboard-fetch-cache|^import.*current-shell/m);
 });
 
 test('visibility and interval refreshes share a minimum request gap', () => {

@@ -4,11 +4,12 @@ import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 
 const source = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8')
+  .replace(/^import .*;$/gm, '')
   .replace(/\bimport\(/g, 'loadTestModule(');
 const viewIds = ['currentView', 'historyView', 'hinataView', 'followersView', 'spotifyView', 'appleMusicView', 'amazonMusicView', 'firstWeekView', 'playedTracksView', 'nogizakaListeningPartyView', 'likesView'];
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
-function harness(hash = '', load = async () => ({})) {
+function harness(hash = '', load = async () => ({ loadStationheadChannelView() {} })) {
   const nodes = new Map(viewIds.map(id => [id, { id, hidden: id !== 'currentView' }]));
   const buttons = ['current', 'hinata', 'followers', 'spotify', 'apple-music'].map(mode => {
     const classes = new Set();
@@ -55,6 +56,7 @@ function harness(hash = '', load = async () => ({})) {
   }
   runInNewContext(source, {
     document,
+    ensureDashboardSectionStyles: async () => {},
     location,
     history: { pushState: updateLocation, replaceState: updateLocation },
     window: { addEventListener(name, callback) { windowListeners.set(name, callback); }, dispatchEvent() {} },
@@ -106,7 +108,7 @@ test('a late lazy import cannot reopen a tab after the user leaves it', async ()
   let finish;
   let loaded = 0;
   const pending = new Promise(resolve => { finish = resolve; });
-  const page = harness('', path => path.includes('/hinata.js') ? pending : Promise.resolve({}));
+  const page = harness('', path => path.includes('/hinata.js') ? pending : Promise.resolve({ loadStationheadChannelView() {} }));
   page.click('hinata');
   page.click('current');
   finish({ loadHinataView() { loaded++; } });

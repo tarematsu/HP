@@ -12,8 +12,8 @@ const followersModel = readFileSync(new URL('../public/followers-read-model.js',
 const build = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 
 test('leaderboard uses one shell and runtime with source-specific read-model args', () => {
-  assert.equal((tabs.match(/leaderboard-shell\.js\?v=20261005\.1/g) || []).length, 2);
-  assert.equal((tabs.match(/leaderboard\.js\?v=20261005\.1/g) || []).length, 2);
+  assert.equal((tabs.match(/leaderboard-shell\.js\?v=20261005\.2/g) || []).length, 2);
+  assert.equal((tabs.match(/leaderboard\.js\?v=20261005\.2/g) || []).length, 2);
   assert.match(tabs, /ranking:[\s\S]*loadArgs: \{ source: 'stationhead' \}/);
   assert.match(tabs, /'music-ranking':[\s\S]*loadArgs: \{ source: 'music-streaming' \}/);
   assert.match(leaderboardShell, /id: 'leaderboardView'/);
@@ -22,8 +22,8 @@ test('leaderboard uses one shell and runtime with source-specific read-model arg
 });
 
 test('follow uses one shell and runtime with source-specific read-model args', () => {
-  assert.equal((tabs.match(/followers-shell\.js\?v=20261005\.1/g) || []).length, 2);
-  assert.equal((tabs.match(/followers\.js\?v=20261005\.1/g) || []).length, 2);
+  assert.equal((tabs.match(/followers-shell\.js\?v=20261005\.2/g) || []).length, 2);
+  assert.equal((tabs.match(/followers\.js\?v=20261005\.2/g) || []).length, 2);
   assert.match(tabs, /followers:[\s\S]*loadArgs: \{ source: 'stationhead' \}/);
   assert.match(tabs, /'music-followers':[\s\S]*loadArgs: \{ source: 'music-streaming' \}/);
   assert.match(followersShell, /id: 'followersView'/);

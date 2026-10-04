@@ -1,4 +1,5 @@
-import { mkdir, stat, rm } from 'node:fs/promises';
+import { mkdir, stat, rm, readFile, writeFile } from 'node:fs/promises';
+import { gzipSync } from 'node:zlib';
 import { dirname, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
@@ -85,7 +86,11 @@ function inputContributions(metafiles, limit = 20) {
 async function buildCssBundle(name, files) {
   return build({
     stdin: {
-      contents: files.map((file) => `@import "./public/${file}";`).join('\n'),
+      contents: '@layer base, features, layout;\n' + files.map((file) => {
+        const layer = name !== 'dashboard' ? 'features'
+          : ['pages-layout.css', 'dashboard-navigation.css', 'dashboard-ui-common.css', 'mobile-layout-refinements.css', 'dashboard-presentation.css'].includes(file) ? 'layout' : 'base';
+        return `@import "./public/${file}" layer(${layer});`;
+      }).join('\n'),
       resolveDir: siteRoot,
       sourcefile: `${name}-bundle.css`,
       loader: 'css',
@@ -148,7 +153,7 @@ const cssSizes = Object.fromEntries(await Promise.all(Object.keys(cssGroups).map
 const initialCssBytes = cssSizes.dashboard;
 const totalCssBytes = Object.values(cssSizes).reduce((total, size) => total + size, 0);
 
-console.log(JSON.stringify({
+const report = {
   event: 'pages_assets_built',
   js_bytes: js.size,
   css_bytes: initialCssBytes,
@@ -162,4 +167,57 @@ console.log(JSON.stringify({
   browser_files: jsOutputs.length + Object.keys(cssGroups).length,
   largest_js_inputs: inputContributions(jsBuild.metafile),
   largest_css_inputs: inputContributions([...cssBuildMap.values()].map((result) => result.metafile)),
-}));
+};
+
+const routeModules = {
+  current: ['current-shell.js', 'stationhead-channel.js'],
+  hinata: ['hinata-shell.js', 'hinata.js'],
+  nogizaka: ['nogizaka-listening-party-shell.js', 'nogizaka-listening-party.js'],
+  history: ['history-shell.js', 'history/history-main.js'],
+  likes: ['likes-shell.js', 'history/history-likes.js'],
+  'played-tracks': ['played-tracks-shell.js', 'played-tracks.js'],
+  spotify: ['spotify-shell.js', 'spotify.js'],
+  'apple-music': ['apple-music-shell.js', 'apple-music.js'],
+  'amazon-music': ['amazon-music-shell.js', 'amazon-music.js'],
+  'youtube-music': ['youtube-music-shell.js', 'youtube-music.js'],
+  kkbox: ['kkbox-shell.js', 'kkbox.js'],
+  qq_music: ['qq-music-shell.js', 'qq-music.js'],
+  kugou_music: ['kugou-music-shell.js', 'kugou-music.js'],
+  ranking: ['leaderboard-shell.js', 'leaderboard.js'],
+  followers: ['followers-shell.js', 'followers.js'],
+};
+function routeGraph(inputs) {
+  const outputs = new Set(initialOutputs);
+  function visit(path) {
+    if (outputs.has(path)) return;
+    outputs.add(path);
+    for (const dependency of jsBuild.metafile.outputs[path]?.imports || []) {
+      if (!dependency.external) visit(dependency.path);
+    }
+  }
+  for (const input of inputs) {
+    const output = jsOutputs.find(([, details]) => details.entryPoint && resolve(details.entryPoint) === resolve(publicRoot, input));
+    if (!output) throw new Error(`Missing route output: ${input}`);
+    visit(output[0]);
+  }
+  return outputs;
+}
+report.route_js_graph_bytes = Object.fromEntries(Object.entries(routeModules).map(([route, inputs]) => [
+  route, [...routeGraph(inputs)].reduce((total, path) => total + jsBuild.metafile.outputs[path].bytes, 0),
+]));
+const allOutputPaths = [...jsOutputs.map(([path]) => path), ...Object.keys(cssGroups).map((name) => resolve(assetsDir, `${name}.min.css`))];
+const gzipSizes = new Map(await Promise.all(allOutputPaths.map(async (path) => [path, gzipSync(await readFile(path)).length])));
+report.gzip_estimate = {
+  initial_js_bytes: [...initialOutputs].reduce((sum, path) => sum + gzipSizes.get(path), 0),
+  initial_css_bytes: gzipSizes.get(resolve(assetsDir, 'dashboard.min.css')),
+  total_bytes: [...gzipSizes.values()].reduce((sum, value) => sum + value, 0),
+};
+report.html_bytes = (await stat(resolve(publicRoot, 'index.html'))).size;
+// These are build graph sizes and local gzip estimates, not production network measurements.
+const budgets = { initial_js_bytes: 25_000, css_bytes: 30_000, total_bytes: 310_000 };
+for (const [metric, limit] of Object.entries(budgets)) {
+  if (report[metric] > limit) throw new Error(`Pages asset budget exceeded: ${metric} ${report[metric]} > ${limit}`);
+}
+await mkdir(resolve(siteRoot, 'artifacts'), { recursive: true });
+await writeFile(resolve(siteRoot, 'artifacts/pages-assets.json'), JSON.stringify(report, null, 2) + '\n');
+console.log(JSON.stringify(report));

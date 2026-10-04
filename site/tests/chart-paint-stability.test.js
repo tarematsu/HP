@@ -17,8 +17,8 @@ const periodChart = readFileSync(new URL('../public/history/history-period-chart
 const leaderboardRuntime = readFileSync(new URL('../public/leaderboard.js', import.meta.url), 'utf8');
 
 test('current Stationhead dashboard has one shared data adapter and Canvas runtime', () => {
-  assert.match(dashboard, /stationhead-channel\.js\?v=/);
-  assert.match(dashboard, /dashboard-fetch-cache\.js\?v=/);
+  assert.match(readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8'), /stationhead-channel\.js\?v=/);
+  assert.match(channelReadModel, /import \{ fetchDashboard \}/);
   assert.doesNotMatch(dashboard, /dashboard-current-layout\.js|dashboard-chart-comparison\.js|dashboard-chart-detail\.js/);
   assert.match(channelRuntime, /prepareDashboardCanvas/);
   assert.match(channelRuntime, /function renderCurrentChart\(/);

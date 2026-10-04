@@ -19,5 +19,5 @@ test('Spotify uses the shared music-service layout and Canvas runtime', () => {
   assert.match(runtime, /dashboard-chart-canvas\.js\?v=/);
   assert.match(runtime, /drawDashboardLine/);
   assert.match(runtime, /prepareDashboardCanvas/);
-  assert.match(runtime, /fetch\('\/api\/spotify-playcounts'\)/);
+  assert.match(runtime, /loadSpotifyReadModel/);
 });

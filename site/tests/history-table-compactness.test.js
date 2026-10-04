@@ -45,11 +45,11 @@ test('summary and pagination reset without loading copy', () => {
 test('table widths are owned by shared styles instead of runtime table cleanup', () => {
   assert.doesNotMatch(entry, /history-table-cleanup/);
   assert.doesNotMatch(history, /createElement\('style'\)|installMobileTableWidthStyle|MOBILE_TABLE_STYLE_ID/);
-  assert.match(sharedLayout, /table\.compact-columns:not\(\.all-host-ranking-table\)[\s\S]*min-width:\s*760px !important/);
-  assert.match(sharedLayout, /table\.all-host-ranking-table\.compact-columns[\s\S]*min-width:\s*980px !important/);
-  assert.match(sharedLayout, /table\.weekly-ranking-table[\s\S]*min-width:\s*560px !important/);
-  assert.match(sharedLayout, /\.table-wrap\.table-fit-mobile[\s\S]*overflow-x:\s*hidden !important/);
-  assert.match(sharedLayout, /\.table-fit-mobile > table[\s\S]*width:\s*100% !important[\s\S]*min-width:\s*0 !important[\s\S]*table-layout:\s*fixed !important/);
+  assert.match(sharedLayout, /table\.compact-columns:not\(\.all-host-ranking-table\)[\s\S]*min-width:\s*760px/);
+  assert.match(sharedLayout, /table\.all-host-ranking-table\.compact-columns[\s\S]*min-width:\s*980px/);
+  assert.match(sharedLayout, /table\.weekly-ranking-table[\s\S]*min-width:\s*560px/);
+  assert.match(sharedLayout, /\.table-wrap\.table-fit-mobile[\s\S]*overflow-x:\s*auto/);
+  assert.match(sharedLayout, /\.table-fit-mobile > table[\s\S]*width:\s*100%[\s\S]*min-width:\s*0[\s\S]*table-layout:\s*fixed/);
 });
 
 test('legacy component styles remain beneath the canonical shared layout', () => {

@@ -1,3 +1,4 @@
+import { loadSpotifyReadModel } from './dashboard-data-client.js?v=20261005.2';
 import {
   appendEmptyState,
   byId as element,
@@ -384,19 +385,7 @@ function render(payload, trend, artistChart, monthlyListenerRows) {
 }
 
 async function fetchReadModel({ refresh = false } = {}) {
-  if (refresh) readModelPromise = null;
-  if (!readModelPromise) {
-    readModelPromise = fetch('/api/spotify-playcounts')
-      .then(async (response) => {
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`);
-        return payload;
-      })
-      .catch((error) => {
-        readModelPromise = null;
-        throw error;
-      });
-  }
+  readModelPromise = loadSpotifyReadModel({ force: refresh });
   return readModelPromise;
 }
 

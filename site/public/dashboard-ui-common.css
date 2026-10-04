@@ -87,7 +87,7 @@
 
 .history-granularity-toggle > button {
   min-width: 54px;
-  min-height: 34px;
+  min-height: 44px;
   padding: 6px 12px;
   border: 0;
   background: transparent;
@@ -215,7 +215,7 @@
   .history-axis-title-x
 ) {
   color: var(--muted, #667287);
-  font-size: var(--dashboard-copy-size) !important;
+  font-size: var(--dashboard-copy-size);
   line-height: 1.4;
 }
 
@@ -227,7 +227,7 @@
   .apple-rank-legend
 ) {
   color: var(--muted, #667287);
-  font-size: var(--dashboard-label-size) !important;
+  font-size: var(--dashboard-label-size);
   line-height: 1.35;
 }
 
@@ -236,7 +236,7 @@
   .followers-legend-item,
   .apple-rank-legend-item
 ) {
-  font-size: inherit !important;
+  font-size: inherit;
   line-height: inherit;
 }
 
@@ -279,7 +279,7 @@
 }
 
 #historyView .table-wrap table.official-party-table :is(th, td):nth-child(n + 10) {
-  text-align: left !important;
+  text-align: left;
 }
 
 #historyView table.all-host-ranking-table .ranking-host-button {
@@ -308,9 +308,9 @@
 /* Remaining fixed-viewBox SVG charts scale labels and points on narrow screens. */
 @media (max-width: 760px) {
   :root {
-    --dashboard-copy-size: 12px;
+    --dashboard-copy-size: 14px;
     --dashboard-small-size: 12px;
-    --dashboard-label-size: 12px;
+    --dashboard-label-size: 14px;
     --dashboard-svg-visual-scale: 1.45;
   }
 
@@ -324,7 +324,7 @@
 
   .history-granularity-toggle > button {
     min-width: 50px;
-    min-height: 32px;
+    min-height: 44px;
     padding: 5px 9px;
   }
 }

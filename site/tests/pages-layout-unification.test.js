@@ -21,7 +21,7 @@ test('one canonical cross-view stylesheet owns dashboard layout and is bundled a
 
 test('every dashboard view uses one grid rhythm without per-tab margins', () => {
   assert.match(css, /\.dashboard-view\s*\{[\s\S]*display:\s*grid;[\s\S]*gap:\s*var\(--pages-view-gap\)/);
-  assert.match(css, /\.dashboard-view > \*\s*\{[\s\S]*margin-top:\s*0 !important/);
+  assert.match(css, /\.dashboard-view > \*\s*\{[\s\S]*margin-top:\s*0/);
   assert.match(css, /--pages-view-gap:\s*12px/);
   assert.match(css, /--pages-view-gap-mobile:\s*8px/);
   assert.doesNotMatch(css, /#(?:current|history|likes|spotify|firstWeek|playedTracks)View/);
@@ -39,7 +39,7 @@ test('toolbars controls fitting tables charts and music sections use shared sema
   assert.match(css, /\.view-toolbar\s*\{/);
   assert.match(css, /\.controls\s*\{/);
   assert.match(css, /\.table-wrap\.table-fit-mobile/);
-  assert.match(css, /\.table-fit-mobile > table[\s\S]*table-layout:\s*fixed !important/);
+  assert.match(css, /\.table-fit-mobile > table[\s\S]*table-layout:\s*fixed/);
   assert.match(css, /\.chart-fit > :is\(svg, canvas\)/);
   assert.doesNotMatch(firstWeekShell, /view-toolbar first-week-toolbar|data-first-week-metric/);
   assert.match(playedTracksShell, /dashboardControls/);
@@ -61,7 +61,7 @@ test('history renderer assigns table meaning classes without injecting layout CS
 });
 
 test('mobile navigation remains one row and shared layout handles wide-table exceptions by class', () => {
-  assert.match(css, /table\.compact-columns:not\(\.all-host-ranking-table\)[\s\S]*min-width:\s*760px !important/);
-  assert.match(css, /table\.all-host-ranking-table\.compact-columns[\s\S]*min-width:\s*980px !important/);
-  assert.match(css, /table\.weekly-ranking-table[\s\S]*min-width:\s*560px !important/);
+  assert.match(css, /table\.compact-columns:not\(\.all-host-ranking-table\)[\s\S]*min-width:\s*760px/);
+  assert.match(css, /table\.all-host-ranking-table\.compact-columns[\s\S]*min-width:\s*980px/);
+  assert.match(css, /table\.weekly-ranking-table[\s\S]*min-width:\s*560px/);
 });

@@ -14,9 +14,9 @@ const sharedLayout = readFileSync(new URL('../public/pages-layout.css', import.m
 const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 
 test('current Stationhead renderer and markup are shared instead of Buddies-specific', () => {
-  assert.match(metrics, /stationhead-channel\.js\?v=/);
-  assert.match(metrics, /function ensureCurrentRuntime\(\)/);
-  assert.match(metrics, /dashboard-fetch-cache\.js\?v=/);
+  assert.match(readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8'), /stationhead-channel\.js\?v=/);
+  assert.match(readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8'), /async function showCurrent\(/);
+  assert.match(readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8'), /import \{ fetchDashboard \}/);
   assert.match(currentShell, /mountStationheadChannelShell/);
   assert.match(currentShell, /stationheadModel = 'buddies'/);
   assert.match(sharedShell, /metric\('オンライン', 'online', true\)/);
@@ -34,7 +34,7 @@ test('current Stationhead renderer and markup are shared instead of Buddies-spec
 });
 
 test('shared mobile layout owns tab count and current metric columns', () => {
-  assert.match(sharedLayout, /\.metrics\s*\{[\s\S]*repeat\(3, minmax\(0, 1fr\)\) !important/);
+  assert.match(sharedLayout, /\.metrics\s*\{[\s\S]*repeat\(3, minmax\(0, 1fr\)\)/);
   assert.doesNotMatch(sharedLayout, /#currentView/);
 });
 
@@ -53,9 +53,9 @@ test('shared Stationhead current shell contains no Buddies-only goal card', () =
 });
 
 test('dashboard deltas are green and refresh label is not ellipsized', () => {
-  assert.match(css, /\.metrics \.delta,[\s\S]*color:\s*#168b73 !important/);
-  assert.match(css, /#updated[\s\S]*text-overflow:\s*clip !important/);
-  assert.match(css, /#updated[\s\S]*white-space:\s*normal !important/);
+  assert.match(css, /\.metrics \.delta,[\s\S]*color:\s*#168b73/);
+  assert.match(css, /#updated[\s\S]*text-overflow:\s*clip/);
+  assert.match(css, /#updated[\s\S]*white-space:\s*normal/);
 });
 
 test('history summary keeps total sample count and never renders listener-valid sample count', () => {

@@ -1,3 +1,4 @@
+import { loadDashboardJson } from './dashboard-data-client.js?v=20261005.2';
 import {
   byId as element,
   fullDate as formatFullDate,
@@ -265,11 +266,8 @@ function render(payload) {
   renderRegionComparison(selected);
 }
 
-async function fetchPayload() {
-  const response = await fetch('/api/apple-music', { headers: { accept: 'application/json' } });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload?.ok) throw new Error(payload?.error || `Apple Music API HTTP ${response.status}`);
-  return payload;
+function fetchPayload(force = false) {
+  return loadDashboardJson('/api/apple-music', { force });
 }
 
 export async function loadAppleMusicView({ force = false } = {}) {
@@ -279,7 +277,7 @@ export async function loadAppleMusicView({ force = false } = {}) {
     return lastPayload;
   }
   if (!loadPromise || force) {
-    loadPromise = fetchPayload().then((payload) => {
+    loadPromise = fetchPayload(force).then((payload) => {
       lastPayload = payload;
       const selected = activePayload(payload);
       const failed = Array.isArray(selected?.failed_regions) ? selected.failed_regions : [];

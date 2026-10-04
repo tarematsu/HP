@@ -27,8 +27,8 @@ const rankSection = musicServiceSection({
   trailingHtml: artistTabs,
   bodyHtml: `${dashboardLegend({ id: 'appleRankLegend', className: 'apple-rank-legend', ariaLabel: '日本の現在順位' })}${dashboardChartHost({ id: 'appleRankChart', className: 'apple-rank-chart chart-fit', ariaLabel: 'Apple Music日本の人気曲順位推移', role: '' })}`,
 });
-const tracksSection = musicServiceSection({ id: 'appleTrackSection', title: 'Apple Music 地域別人気順位一覧', titleId: 'appleRegionCompareTitle', bodyHtml: regionTable });
-const playlistSection = musicServiceSection({ id: 'applePlaylistSection', title: '櫻坂46 楽曲別プレイリスト掲載一覧', titleId: 'applePlaylistTitle', bodyHtml: '<div id="applePlaylistMount"></div>' });
+const tracksSection = musicServiceSection({ id: 'appleTrackSection', group: 'list', title: 'Apple Music 地域別人気順位一覧', titleId: 'appleRegionCompareTitle', bodyHtml: regionTable });
+const playlistSection = musicServiceSection({ id: 'applePlaylistSection', group: 'playlists', title: '櫻坂46 楽曲別プレイリスト掲載一覧', titleId: 'applePlaylistTitle', bodyHtml: '<div id="applePlaylistMount"></div>' });
 
 mountMusicServiceView({
   viewId: 'appleMusicView',

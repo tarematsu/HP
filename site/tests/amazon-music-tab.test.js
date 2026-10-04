@@ -26,7 +26,7 @@ test('Amazon Music is a dashboard route backed only by Worker materialized read 
   assert.match(commonShell, /mountDashboardShell/);
   assert.match(shell, /dashboardChartHost/);
   assert.match(sharedUi, /class="\$\{joinClasses\('shared-svg-chart', className\)\}"/);
-  assert.match(runtime, /fetch\('\/api\/amazon-music'/);
+  assert.match(runtime, /loadDashboardJson\('\/api\/amazon-music'/);
   assert.match(api, /PAGES_READ_MODEL_SERVICE/);
   assert.match(api, /_internal\/pages-response\?key=amazon-music/);
   assert.match(playlistApi, /_internal\/pages-response\?key=amazon-music-playlists/);

@@ -19,7 +19,7 @@ test('history runtime installs dedicated axis labels', () => {
 });
 
 test('history chart hides duplicate endpoint labels through shared CSS', () => {
-  assert.match(sharedCss, /#chartPanel \.chart-axis \{[\s\S]*display: none !important/);
+  assert.match(sharedCss, /#chartPanel \.chart-axis \{[\s\S]*display: none/);
   assert.match(axisLabels, /endpointAxis\.hidden = true/);
 });
 

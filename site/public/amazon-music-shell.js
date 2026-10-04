@@ -40,8 +40,8 @@ const rankSection = musicServiceSection({
   }),
 });
 
-const tracksSection = musicServiceSection({ id: 'amazonTrackSection', title: '全楽曲順位', titleId: 'amazonTracksTitle', bodyHtml: tracksTable });
-const playlistSection = musicServiceSection({ id: 'amazonPlaylistSection', title: 'Amazon Music プレイリスト掲載一覧', bodyHtml: '<div id="amazonPlaylistMount"></div>' });
+const tracksSection = musicServiceSection({ id: 'amazonTrackSection', group: 'list', title: '全楽曲順位', titleId: 'amazonTracksTitle', bodyHtml: tracksTable });
+const playlistSection = musicServiceSection({ id: 'amazonPlaylistSection', group: 'playlists', title: 'Amazon Music プレイリスト掲載一覧', bodyHtml: '<div id="amazonPlaylistMount"></div>' });
 
 mountMusicServiceView({
   viewId: 'amazonMusicView',

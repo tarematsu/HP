@@ -1,3 +1,4 @@
+import { loadSpotifyReadModel } from './dashboard-data-client.js?v=20261005.2';
 import {
   MUSIC_ARTIST_LABELS,
   MUSIC_ARTIST_ORDER,
@@ -46,18 +47,7 @@ function renderUpdatedAt(model) {
 }
 
 async function fetchReadModel() {
-  if (!readModelPromise) {
-    readModelPromise = fetch('/api/spotify-playcounts?artists=sakamichi')
-      .then(async (response) => {
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`);
-        return payload;
-      })
-      .catch((error) => {
-        readModelPromise = null;
-        throw error;
-      });
-  }
+  readModelPromise = loadSpotifyReadModel();
   return readModelPromise;
 }
 

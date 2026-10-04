@@ -1,5 +1,6 @@
 import { byId, finiteNumber as finite, integerFormat as integer, setText } from './dashboard-ui-common.js?v=20260930.1';
 
+import { fetchDashboard } from './dashboard-fetch-cache.js?v=20260930.1';
 const DASHBOARD_URL = '/api/dashboard?history=0';
 const REFRESH_INTERVAL_MS = 60_000;
 const MIN_REFRESH_GAP_MS = 45_000;
@@ -308,7 +309,7 @@ async function refreshDashboard(force = false) {
   state.abortController?.abort();
   state.abortController = new AbortController();
   try {
-    const response = await fetch(DASHBOARD_URL, {
+    const response = await fetchDashboard(DASHBOARD_URL, {
       signal: state.abortController.signal,
       headers: { accept: 'application/json' },
     });

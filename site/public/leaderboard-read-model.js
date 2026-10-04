@@ -1,3 +1,4 @@
+import { loadDashboardJson } from './dashboard-data-client.js?v=20261005.2';
 import { safeInteger as integer } from './dashboard-ui-common.js?v=20261004.1';
 import {
   MUSIC_ARTIST_LABELS,
@@ -64,15 +65,8 @@ function stationheadRankStatus(period, rank, row) {
   return '—';
 }
 
-async function fetchJson(url, { signal = null, force = false } = {}) {
-  const response = await fetch(url, {
-    signal,
-    headers: { accept: 'application/json' },
-    cache: force ? 'reload' : 'default',
-  });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload?.ok) throw new Error(payload?.error || `${url} HTTP ${response.status}`);
-  return payload;
+function fetchJson(url, options) {
+  return loadDashboardJson(url, options);
 }
 
 function cached(key, loader, { force = false } = {}) {

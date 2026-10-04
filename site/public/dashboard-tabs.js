@@ -1,4 +1,4 @@
-const ASSET_VERSION = '20261005.1';
+import { ensureDashboardSectionStyles } from './dashboard-styles.js?v=20261005.2';
 const HISTORY_MODES = new Set(['daily', 'weekly', 'monthly', 'broadcasts']);
 const HISTORY_VIEW = {
   viewId: 'historyView',
@@ -16,8 +16,8 @@ const LAZY_VIEWS = {
   },
   ranking: {
     viewId: 'leaderboardView',
-    shell: () => import('/leaderboard-shell.js?v=20261005.1'),
-    runtime: () => import('/leaderboard.js?v=20261005.1'),
+    shell: () => import('/leaderboard-shell.js?v=20261005.2'),
+    runtime: () => import('/leaderboard.js?v=20261005.2'),
     loadExport: 'loadLeaderboardView',
     loadArgs: { source: 'stationhead' },
     noticeId: 'leaderboardNotice',
@@ -26,8 +26,8 @@ const LAZY_VIEWS = {
   },
   followers: {
     viewId: 'followersView',
-    shell: () => import('/followers-shell.js?v=20261005.1'),
-    runtime: () => import('/followers.js?v=20261005.1'),
+    shell: () => import('/followers-shell.js?v=20261005.2'),
+    runtime: () => import('/followers.js?v=20261005.2'),
     loadExport: 'loadFollowersView',
     loadArgs: { source: 'stationhead' },
     noticeId: 'followersNotice',
@@ -107,8 +107,8 @@ const LAZY_VIEWS = {
   },
   'music-ranking': {
     viewId: 'leaderboardView',
-    shell: () => import('/leaderboard-shell.js?v=20261005.1'),
-    runtime: () => import('/leaderboard.js?v=20261005.1'),
+    shell: () => import('/leaderboard-shell.js?v=20261005.2'),
+    runtime: () => import('/leaderboard.js?v=20261005.2'),
     loadExport: 'loadLeaderboardView',
     loadArgs: { source: 'music-streaming' },
     noticeId: 'leaderboardNotice',
@@ -117,8 +117,8 @@ const LAZY_VIEWS = {
   },
   'music-followers': {
     viewId: 'followersView',
-    shell: () => import('/followers-shell.js?v=20261005.1'),
-    runtime: () => import('/followers.js?v=20261005.1'),
+    shell: () => import('/followers-shell.js?v=20261005.2'),
+    runtime: () => import('/followers.js?v=20261005.2'),
     loadExport: 'loadFollowersView',
     loadArgs: { source: 'music-streaming' },
     noticeId: 'followersNotice',
@@ -178,17 +178,12 @@ for (const section of NAVIGATION) {
 }
 const VIEW_MODES = new Set(['current', ...HISTORY_MODES, ...Object.keys(LAZY_VIEWS)]);
 const VIEW_IDS = ['currentView', 'historyView', ...Object.values(LAZY_VIEWS).map(({ viewId }) => viewId)];
-const SECTION_STYLES = {
-  stationhead: `/assets/stationhead.min.css?v=${ASSET_VERSION}`,
-  subscriptions: `/assets/subscriptions.min.css?v=${ASSET_VERSION}`,
-};
 
 const tabs = document.getElementById('modeTabs');
 const sectionTabs = document.getElementById('sectionTabs');
 const sourceTabs = document.getElementById('sourceTabs');
 const skipLink = document.querySelector('.skip-link');
 const modulePromises = new Map();
-const stylePromises = new Map();
 const lastSourceBySection = new Map(NAVIGATION.map((section) => [section.id, section.sources[0]?.id || '']));
 const lastModeBySource = new Map();
 let historyRuntimeMode = null;
@@ -205,30 +200,7 @@ function navigationForMode(mode) {
 
 function ensureModeStyles(mode) {
   if (mode === 'current') return Promise.resolve();
-  const sectionId = navigationForMode(mode)?.section.id;
-  const href = SECTION_STYLES[sectionId];
-  if (!href) return Promise.resolve();
-  if (!stylePromises.has(href)) {
-    const promise = new Promise((resolve, reject) => {
-      const existing = document.querySelector(`link[data-dashboard-section-style="${sectionId}"]`);
-      if (existing) {
-        resolve();
-        return;
-      }
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = href;
-      link.dataset.dashboardSectionStyle = sectionId;
-      link.addEventListener('load', resolve, { once: true });
-      link.addEventListener('error', () => reject(new Error(`stylesheet failed: ${sectionId}`)), { once: true });
-      document.head.append(link);
-    }).catch((error) => {
-      stylePromises.delete(href);
-      throw error;
-    });
-    stylePromises.set(href, promise);
-  }
-  return stylePromises.get(href);
+  return ensureDashboardSectionStyles(navigationForMode(mode)?.section.id);
 }
 
 function releaseUnexpectedSkipLinkFocus() {
@@ -266,6 +238,28 @@ function renderSourceTabs(section, activeSource) {
   sourceTabs.classList.toggle('is-multiline', section.id === 'subscriptions');
   sourceTabs.replaceChildren(fragment);
   sourceTabs.hidden = false;
+  let select = document.getElementById('sourceSelect');
+  if (!select) {
+    const label = document.createElement('label');
+    label.className = 'dashboard-source-picker';
+    label.htmlFor = 'sourceSelect';
+    label.append('表示対象');
+    select = document.createElement('select');
+    select.id = 'sourceSelect';
+    label.append(select);
+    sourceTabs.after(label);
+    select.addEventListener('change', () => {
+      const source = sourceById(navigationForMode(activeMode)?.section, select.value);
+      if (source) activateMode(lastModeBySource.get(source.id) || source.defaultMode);
+    });
+  }
+  select.replaceChildren(...section.sources.map((source) => {
+    const option = document.createElement('option');
+    option.value = source.id;
+    option.textContent = source.label;
+    option.selected = source.id === activeSource.id;
+    return option;
+  }));
 }
 
 function syncModeTabs(source) {
@@ -329,20 +323,43 @@ function loadOnce(key, importer) {
 
 function setRoute(mode, view, { updateUrl = true, replaceUrl = false } = {}) {
   activeMode = mode;
+  document.getElementById('routeError')?.remove();
   showOnly(view);
   updateTabs(mode);
   if (updateUrl) updateLocation(mode, { replace: replaceUrl });
 }
 
-function showCurrent(options = {}) {
-  setRoute('current', document.getElementById('currentView'), options);
-  markRouteReady();
+async function showCurrent(options = {}) {
+  setRoute('current', null, options);
+  try {
+    await loadOnce('current:shell', () => import('/current-shell.js?v=20261005.2'));
+    if (activeMode !== 'current') return;
+    showOnly(document.getElementById('currentView'));
+    markRouteReady();
+    const runtime = await loadOnce('current:runtime', () => import('/stationhead-channel.js?v=20261005.2'));
+    if (activeMode === 'current') await runtime.loadStationheadChannelView('currentView');
+  } catch (error) {
+    if (activeMode !== 'current') return;
+    markRouteReady();
+    console.error('Stationhead channel runtime failed to start', error);
+    const notice = document.querySelector('#currentView [data-role="notice"]');
+    if (notice) { notice.textContent = '画面の初期化に失敗しました。再読み込みしてください。'; notice.hidden = false; }
+    else showRuntimeError({ errorLabel: 'current', errorMessage: '画面の初期化に失敗しました。再読み込みしてください。' }, error);
+  }
 }
 
 function showRuntimeError(config, error) {
   console.error(`${config.errorLabel} runtime failed to start`, error);
   const notice = document.getElementById(config.noticeId);
-  if (!notice) return;
+  if (!notice) {
+    const error = document.createElement('p');
+    error.id = 'routeError';
+    error.className = 'notice error';
+    error.setAttribute('role', 'alert');
+    error.textContent = config.errorMessage;
+    document.querySelector('.dashboard-header')?.after(error);
+    return;
+  }
   notice.textContent = config.errorMessage;
   notice.classList.add('error');
   notice.hidden = false;

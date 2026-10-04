@@ -47,7 +47,7 @@ test('official listening party table has no hidden compatibility columns or enri
 
 test('official listening party table left-aligns content columns through shared CSS', () => {
   assert.match(sharedCss, /official-party-table :is\(th, td\):nth-child\(n \+ 10\)/);
-  assert.match(sharedCss, /text-align: left !important/);
+  assert.match(sharedCss, /text-align: left/);
 });
 
 test('official listening party table layout does not rewrite the graph legend', () => {

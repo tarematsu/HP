@@ -1,86 +1,42 @@
-/* Dashboard current-view refinements. Loaded last so mobile layout is deterministic. */
 #updated {
-  max-width: none !important;
-  overflow: visible !important;
-  text-overflow: clip !important;
-  white-space: normal !important;
-  line-height: 1.35;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
 }
-
 .metrics .delta,
 .metrics .online-24h,
 .metric-goal-compact {
-  color: #168b73 !important;
+  color: #168b73;
 }
-
-/* Keep the three current metric cards on the same vertical rhythm. */
-.metrics .metric > span {
-  min-height: 1.25em;
-  line-height: 1.25;
-}
-
-.metrics .metric-value {
-  min-height: 1.75rem;
-  align-items: baseline;
-}
-
-.metrics .delta,
-.metrics .metric-goal-compact {
-  line-height: 1.35;
-}
-
-.legend .online-key {
-  color: #111 !important;
-}
-
-.legend .comment-key {
-  color: #168b73 !important;
-}
-
 .online-24h {
   display: flex;
   flex-wrap: wrap;
   gap: 3px 10px;
   margin-top: 3px;
-  font-size: .58rem;
-  font-weight: 650;
+  font-size: var(--dashboard-small-size);
   font-variant-numeric: tabular-nums;
 }
-
 .online-24h span {
   white-space: nowrap;
 }
-
 .metric-goal-compact {
   display: grid;
-  gap: 0;
   margin-top: 3px;
-  font-size: .58rem;
-  font-weight: 650;
-  font-variant-numeric: tabular-nums;
+  font-size: var(--dashboard-small-size);
 }
-
 .metric-goal-row {
   display: block;
   min-width: 0;
-  overflow: visible;
-  white-space: nowrap;
+  white-space: normal;
 }
-
-.metric-goal-row b,
-.metric-goal-row strong {
-  display: inline !important;
-  margin: 0 !important;
-  color: inherit !important;
-  font: inherit !important;
-  letter-spacing: 0 !important;
-  white-space: nowrap !important;
+.metric-goal-row :is(b, strong) {
+  display: inline;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  letter-spacing: 0;
+  white-space: normal;
 }
-
-.like-rank-item {
-  grid-template-columns: 34px 46px minmax(0, 1fr) auto !important;
-}
-
 .like-rank-thumb {
   display: grid;
   width: 44px;
@@ -88,82 +44,11 @@
   place-items: center;
   overflow: hidden;
   border-radius: 6px;
-  background: #f1f4f8;
-  color: #667287;
-  font-size: 1rem;
+  background: var(--panel-2);
+  color: var(--muted);
 }
-
 .like-rank-thumb img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-}
-
-.like-rank-number {
-  background: transparent !important;
-  color: #111 !important;
-  font-size: 1rem !important;
-}
-
-@media (max-width: 760px) {
-  .metrics {
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-  }
-
-  .metric,
-  .metric.featured {
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: stretch !important;
-  }
-
-  .metric.featured {
-    grid-column: auto !important;
-  }
-
-  .metric-value,
-  .metric.featured .metric-value {
-    min-height: 1.4rem !important;
-    margin-top: 4px !important;
-  }
-
-  .metric strong,
-  .metric.featured strong,
-  #totalStreams {
-    font-size: clamp(1rem, 5vw, 1.4rem) !important;
-    line-height: 1 !important;
-    letter-spacing: -.055em !important;
-  }
-
-  .metric small {
-    line-height: 1 !important;
-  }
-
-  .online-24h,
-  .metrics .delta,
-  .metric-goal-compact {
-    margin-top: 3px !important;
-    font-size: 9px !important;
-    line-height: 1.35 !important;
-  }
-
-  .like-rank-item {
-    grid-template-columns: 32px 42px minmax(0, 1fr) !important;
-  }
-
-  .like-rank-thumb {
-    width: 40px;
-    height: 40px;
-  }
-
-  .like-rank-metrics {
-    grid-column: 3 !important;
-  }
-}
-
-@media (max-width: 360px) {
-  .metric,
-  .metric.featured {
-    padding-inline: 5px !important;
-  }
 }

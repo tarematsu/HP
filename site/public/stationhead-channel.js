@@ -1,3 +1,4 @@
+import { ensureDashboardSectionStyles } from './dashboard-styles.js?v=20261005.2';
 import { appendEmptyTableRow, finiteNumber as finite, integerFormat as integer } from './dashboard-ui-common.js?v=20261004.1';
 import { prepareDashboardCanvas } from './dashboard-chart-canvas.js?v=20261001.2';
 import { appendTableRow } from './dashboard-table-dom.js?v=20261001.1';
@@ -119,10 +120,13 @@ function renderPlayed(runtime, rows) {
 }
 
 async function loadPlayed(runtime, { force = false } = {}) {
+  const sequence = ++runtime.playedSequence;
+  const current = () => sequence === runtime.playedSequence && runtime.section === 'played-tracks' && !runtime.root.hidden;
   if (!runtime.playedDates.length || force) runtime.playedDates = await runtime.model.loadPlayedIndex({ force });
+  if (!current()) return;
   const week = Boolean(role(runtime.root, 'played-week')?.checked); const periods = week ? [...new Set(runtime.playedDates.map(weekStart).filter(Boolean))] : runtime.playedDates; if (!runtime.playedPeriod || !periods.includes(runtime.playedPeriod)) runtime.playedPeriod = periods.at(-1) || '';
   const strip = role(runtime.root, 'played-periods'); if (strip) { strip.replaceChildren(); for (const period of periods) { const button = document.createElement('button'); button.type = 'button'; button.className = `played-tracks-period${period === runtime.playedPeriod ? ' is-selected' : ''}`; button.dataset.period = period; button.textContent = `${shortDate(period)}${week ? ' (週)' : ''}`; button.addEventListener('click', async () => { runtime.playedPeriod = period; await loadPlayed(runtime); }); strip.append(button); } }
-  if (!runtime.playedPeriod) { renderPlayed(runtime, []); return; } const from = runtime.playedPeriod; const to = week ? addDays(from, 6) : from; const rows = await runtime.model.loadPlayedPeriod(from, to, { force }); renderPlayed(runtime, rows);
+  if (!runtime.playedPeriod) { renderPlayed(runtime, []); return; } const from = runtime.playedPeriod; const to = week ? addDays(from, 6) : from; const rows = await runtime.model.loadPlayedPeriod(from, to, { force }); if (current()) renderPlayed(runtime, rows);
 }
 
 function likeThumbnail(row) { const box = document.createElement('span'); box.className = 'like-rank-thumb'; const source = reducedImage(row.thumbnail_url); if (!source) { box.textContent = '♪'; box.classList.add('is-fallback'); return box; } const img = document.createElement('img'); img.src = source; img.alt = ''; img.loading = 'lazy'; img.addEventListener('error', () => { img.remove(); box.textContent = '♪'; box.classList.add('is-fallback'); }, { once: true }); box.append(img); return box; }
@@ -142,36 +146,47 @@ function renderBroadcasts(runtime, payload) {
 
 async function loadSection(runtime, section, { force = false } = {}) {
   if (!runtime.model.capabilities.includes(section)) return;
+  const sequence = ++runtime.requestSequence;
+  const current = () => sequence === runtime.requestSequence && runtime.section === section && !runtime.root.hidden;
   setNotice(runtime.root, '');
   try {
-    if (section === 'current') renderCurrent(runtime, await runtime.model.loadCurrent({ force }));
-    else if (section === 'history') renderDaily(runtime, await runtime.model.loadHistory({ force }));
-    else if (section === 'played-tracks') await loadPlayed(runtime, { force });
-    else if (section === 'likes') renderLikes(runtime, await runtime.model.loadLikes({ force }));
-    else if (section === 'broadcasts') renderBroadcasts(runtime, await runtime.model.loadBroadcasts({ force }));
-  } catch (error) { console.error(error); setNotice(runtime.root, `データの取得に失敗しました：${error.message}`, true); }
+    if (section === 'played-tracks') { await loadPlayed(runtime, { force }); return; }
+    const methods = { current: 'loadCurrent', history: 'loadHistory', likes: 'loadLikes', broadcasts: 'loadBroadcasts' };
+    const payload = await runtime.model[methods[section]]({ force });
+    if (!current()) return;
+    const renderers = { current: renderCurrent, history: renderDaily, likes: renderLikes, broadcasts: renderBroadcasts };
+    renderers[section](runtime, payload);
+  } catch (error) {
+    if (!current()) return;
+    console.error(error);
+    setNotice(runtime.root, `データの取得に失敗しました：${error.message}`, true);
+  }
 }
 
-function selectSection(runtime, section, { force = false } = {}) {
+async function selectSection(runtime, section, { force = false, load = true } = {}) {
   if (!runtime.model.capabilities.includes(section)) return;
+  const sequence = ++runtime.selectionSequence;
   runtime.section = section;
+  if (section !== 'current') {
+    try { await ensureDashboardSectionStyles('stationhead'); }
+    catch (error) { if (sequence === runtime.selectionSequence) setNotice(runtime.root, '表示スタイルの取得に失敗しました。再読み込みしてください。', true); return; }
+    if (sequence !== runtime.selectionSequence) return;
+  }
   runtime.root.querySelectorAll('[data-stationhead-section]').forEach((button) => { const active = button.dataset.stationheadSection === section; button.classList.toggle('active', active); if (active) button.setAttribute('aria-current', 'page'); else button.removeAttribute('aria-current'); });
   runtime.root.querySelectorAll('[data-stationhead-panel]').forEach((panel) => { panel.hidden = panel.dataset.stationheadPanel !== section; });
-  void loadSection(runtime, section, { force }); requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+  if (load) void loadSection(runtime, section, { force }); requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
 }
 
 function initialize(root) {
   if (runtimes.has(root)) return runtimes.get(root);
   const model = stationheadChannelReadModel(root.dataset.stationheadModel || 'buddies');
-  const runtime = { root, model, section: '', current: null, playbackIndex: -1, playedDates: [], playedPeriod: '', likes: [] };
+  const runtime = { root, model, section: '', selectionSequence: 0, requestSequence: 0, playedSequence: 0, current: null, playbackIndex: -1, playedDates: [], playedPeriod: '', likes: [] };
   const capabilities = new Set(model.capabilities);
   root.querySelectorAll('[data-stationhead-section]').forEach((button) => { const enabled = capabilities.has(button.dataset.stationheadSection); button.disabled = !enabled; button.setAttribute('aria-disabled', String(!enabled)); button.title = enabled ? '' : '未提供'; if (enabled) button.addEventListener('click', () => selectSection(runtime, button.dataset.stationheadSection)); });
   role(root, 'played-week')?.addEventListener('change', () => { runtime.playedPeriod = ''; void loadPlayed(runtime); });
   role(root, 'likes-csv')?.addEventListener('click', () => downloadCsv(`${model.source}-like-ranking-${new Date().toISOString().slice(0, 10)}.csv`, [['順位', '曲名', 'アーティスト', '最新いいね数', '最終取得'], ...runtime.likes.map((row, index) => [index + 1, row.title || '曲名不明', row.artist || '', row.like_count ?? '', row.observed_at ? new Date(row.observed_at).toISOString() : ''])]));
   const initial = model.capabilities.includes('current') ? 'current' : model.capabilities[0];
-  runtimes.set(root, runtime); selectSection(runtime, initial);
-  setInterval(() => { if (!document.hidden && !root.hidden && runtime.section === 'current') void loadSection(runtime, 'current', { force: true }); }, 60_000);
-  setInterval(() => { if (!document.hidden && !root.hidden && runtime.section === 'current' && runtime.current) renderPlayback(runtime); }, 1_000);
+  runtimes.set(root, runtime); selectSection(runtime, initial, { load: false });
   return runtime;
 }
 
@@ -187,3 +202,19 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
   document.querySelectorAll('.stationhead-channel-view:not([hidden])').forEach((root) => { const runtime = initialize(root); void loadSection(runtime, runtime.section); });
 });
+
+// One scheduler serves whichever channel is visible; hidden channels create no timers.
+function visibleCurrentRuntime() {
+  if (document.hidden) return null;
+  const root = document.querySelector('.stationhead-channel-view:not([hidden])');
+  const runtime = root && runtimes.get(root);
+  return runtime?.section === 'current' ? runtime : null;
+}
+setInterval(() => {
+  const runtime = visibleCurrentRuntime();
+  if (runtime) void loadSection(runtime, 'current', { force: true });
+}, 60_000);
+setInterval(() => {
+  const runtime = visibleCurrentRuntime();
+  if (runtime?.current) renderPlayback(runtime);
+}, 1_000);

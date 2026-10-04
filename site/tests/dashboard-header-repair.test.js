@@ -35,8 +35,8 @@ test('header and metrics use the canonical layout without obsolete flex bases', 
 });
 
 test('mobile dashboard begins with navigation instead of the channel heading', () => {
-  assert.match(mobileRefinements, /@media \(max-width: 760px\)[\s\S]*\.top-card\.dashboard-header > \.channel\s*\{[\s\S]*display:\s*none !important/);
-  assert.match(mobileRefinements, /@media \(max-width: 760px\)[\s\S]*\.top-card\.dashboard-header\s*\{[\s\S]*padding-top:\s*0 !important/);
+  assert.match(mobileRefinements, /@media \(max-width: 760px\)[\s\S]*\.top-card\.dashboard-header > \.channel\s*\{[\s\S]*display:\s*none/);
+  assert.match(mobileRefinements, /@media \(max-width: 760px\)[\s\S]*\.top-card\.dashboard-header\s*\{[\s\S]*padding-top:\s*0/);
 });
 
 test('navigation and summaries are finalized generically by the shared layout', () => {

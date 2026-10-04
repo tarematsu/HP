@@ -10,7 +10,7 @@ const text = (relativePath) => readFile(path.join(siteRoot, relativePath), 'utf8
 test('dashboard entry installs the shared Stationhead current renderer lazily', async () => {
   const entry = await text('public/dashboard-metrics.js');
   const runtime = await text('public/stationhead-channel.js');
-  assert.match(entry, /stationhead-channel\.js\?v=/);
+  assert.match(await text('public/dashboard-tabs.js'), /stationhead-channel\.js\?v=/);
   assert.doesNotMatch(entry, /dashboard-chart-comparison\.js|dashboard-chart-detail\.js|dashboard-current-enhancements\.js|dashboard-details-client\.js/);
   assert.match(runtime, /function renderCurrentChart\(/);
   assert.match(runtime, /function renderPlayback\(/);

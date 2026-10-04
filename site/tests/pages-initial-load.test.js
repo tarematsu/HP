@@ -24,18 +24,18 @@ test('shared bootstrap keeps every non-current view and first-week comparison la
     'amazon-music-shell.js', 'apple-music-shell.js',
   ]) assert.match(tabs, new RegExp(asset.replaceAll('.', '\\.')));
 
-  assert.match(tabs, /stationhead\.min\.css/);
-  assert.match(tabs, /subscriptions\.min\.css/);
+  assert.match(tabs, /ensureDashboardSectionStyles/);
+  assert.match(readFileSync(new URL('../public/dashboard-styles.js', import.meta.url), 'utf8'), /subscriptions/);
   assert.doesNotMatch(entry, /legacy-listening-party-route|dashboard-tab-order/);
 });
 
-test('Buddies delta cache is installed before the shared Stationhead runtime performs its first read', () => {
-  const cacheIndex = entry.indexOf("import './dashboard-fetch-cache.js");
-  const runtimeIndex = entry.indexOf("import('/stationhead-channel.js");
-  assert.ok(cacheIndex >= 0 && runtimeIndex > cacheIndex);
-  assert.doesNotMatch(entry, /dashboard-details-client\.js|replayCurrentPayload|runtime-replay/);
-  assert.match(readModel, /fetchJson\('\/api\/dashboard\?history=0'/);
-  assert.doesNotMatch(readModel, /dashboard-details/);
+test('Buddies cache is explicitly owned by the lazy read model, without global fetch replacement', () => {
+  const adapter = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
+  const cache = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
+  assert.match(adapter, /import \{ fetchDashboard \}/);
+  assert.match(adapter, /url.startsWith\('\/api\/dashboard\?'\) \? fetchDashboard : fetch/);
+  assert.doesNotMatch(cache, /window\.fetch\s*=/);
+  assert.doesNotMatch(entry, /dashboard-fetch-cache|^import.*current-shell/m);
 });
 
 test('dashboard materializer contains chart details and avoids a secondary browser D1 path', () => {

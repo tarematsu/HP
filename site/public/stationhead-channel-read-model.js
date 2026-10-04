@@ -1,4 +1,5 @@
 const DAY_MS = 86_400_000;
+import { fetchDashboard } from './dashboard-fetch-cache.js?v=20260930.1';
 
 function finite(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -11,7 +12,8 @@ function todayUtc() {
 }
 
 async function fetchJson(url, { signal = null, force = false } = {}) {
-  const response = await fetch(url, {
+  const request = url.startsWith('/api/dashboard?') ? fetchDashboard : fetch;
+  const response = await request(url, {
     signal,
     headers: { accept: 'application/json' },
     cache: force ? 'reload' : 'default',
@@ -139,7 +141,7 @@ function cached(loader) {
   let pending = null;
   return async (options = {}) => {
     if (value && !options.force) return value;
-    if (pending && !options.force) return pending;
+    if (pending) return pending;
     pending = Promise.resolve(loader(options)).then((next) => {
       value = next;
       return next;

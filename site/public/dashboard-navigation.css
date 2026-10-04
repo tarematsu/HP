@@ -4,7 +4,6 @@
   min-width: 0;
   padding-top: 2px;
 }
-
 .dashboard-section-tabs,
 .dashboard-source-tabs {
   display: flex;
@@ -12,14 +11,12 @@
   margin: 0;
   padding: 0;
 }
-
 .dashboard-section-tabs {
   gap: 4px;
   padding: 4px;
   border: 1px solid var(--line);
   background: var(--panel-2);
 }
-
 .dashboard-section-tabs > button,
 .dashboard-source-tabs > button {
   min-width: 0;
@@ -30,46 +27,40 @@
   font-weight: 750;
   white-space: nowrap;
 }
-
 .dashboard-section-tabs > button {
   flex: 1 1 0;
-  min-height: 38px;
+  min-height: 44px;
   padding: 7px 10px;
   font-size: .875rem;
 }
-
 .dashboard-section-tabs > button.active {
   background: var(--panel);
   color: var(--text);
   box-shadow: 0 1px 4px rgba(31, 45, 68, .08);
 }
-
 .dashboard-source-tabs {
   gap: 2px;
   overflow-x: auto;
   scrollbar-width: thin;
   overscroll-behavior-inline: contain;
 }
-
 .dashboard-source-tabs.is-multiline {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
   gap: 2px;
   overflow: visible;
 }
-
 .dashboard-source-tabs > button {
   flex: 1 1 0;
-  min-height: 36px;
+  min-height: 44px;
   padding: 6px 10px;
   border-bottom: 2px solid transparent;
   font-size: .875rem;
 }
-
 .dashboard-source-tabs > button.active {
   border-bottom-color: var(--accent);
   color: var(--text);
 }
-
 .dashboard-section-tabs > button:hover,
 .dashboard-section-tabs > button:focus-visible,
 .dashboard-source-tabs > button:hover,
@@ -77,12 +68,10 @@
   color: var(--text);
   outline: none;
 }
-
 .dashboard-section-tabs > button:focus-visible,
 .dashboard-source-tabs > button:focus-visible {
   box-shadow: inset 0 0 0 2px var(--accent);
 }
-
 .stationhead-subtabs {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -93,7 +82,6 @@
   padding: 0;
   overflow: visible;
 }
-
 .stationhead-subtabs > button {
   min-width: 0;
   min-height: 44px;
@@ -101,62 +89,51 @@
   font-size: .875rem;
   white-space: nowrap;
 }
-
 .stationhead-subtabs > button:disabled {
   opacity: .42;
   cursor: not-allowed;
   text-decoration: line-through;
   text-decoration-thickness: 1.5px;
 }
-
 .stationhead-subtabs[hidden],
 .dashboard-source-tabs[hidden],
 .stationhead-subtabs > button[hidden] {
-  display: none !important;
+  display: none;
 }
-
-.dashboard-header:has(#sourceTabs > button.active:is([data-source="buddies"], [data-source="hinata"], [data-source="nogizaka"])) {
-  border-bottom: 0 !important;
+.dashboard-header:has(#sourceTabs > button.active:is([data-source=buddies], [data-source=hinata], [data-source=nogizaka])) {
+  border-bottom: 0;
 }
-
-.dashboard-header:has(#sourceTabs > button.active:is([data-source="buddies"], [data-source="hinata"], [data-source="nogizaka"])) .dashboard-navigation {
+.dashboard-header:has(#sourceTabs > button.active:is([data-source=buddies], [data-source=hinata], [data-source=nogizaka])) .dashboard-navigation {
   row-gap: 4px;
 }
-
-.dashboard-header:has(#sourceTabs > button.active:is([data-source="buddies"], [data-source="hinata"], [data-source="nogizaka"])) #modeTabs {
-  display: none !important;
+.dashboard-header:has(#sourceTabs > button.active:is([data-source=buddies], [data-source=hinata], [data-source=nogizaka])) #modeTabs {
+  display: none;
 }
-
 .stationhead-channel-view {
-  margin-top: 4px !important;
+  margin-top: 8px;
 }
-
 @media (max-width: 760px) {
   .dashboard-navigation {
     gap: 4px;
   }
-
   .dashboard-section-tabs {
     gap: 2px;
     padding: 3px;
   }
-
   .dashboard-section-tabs > button {
-    min-height: 38px;
+    min-height: 44px;
     padding-inline: 6px;
-    font-size: 12px;
+    font-size: 14px;
     white-space: normal;
     overflow-wrap: anywhere;
     text-wrap: balance;
   }
-
   .dashboard-source-tabs:not(.is-multiline) {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 1px 2px;
     overflow: visible;
   }
-
   .dashboard-source-tabs:not(.is-multiline) > button {
     width: 100%;
     min-width: 0;
@@ -164,18 +141,48 @@
     white-space: normal;
     text-wrap: balance;
   }
-
   .dashboard-source-tabs > button {
-    min-height: 38px;
+    min-height: 44px;
     padding: 7px 10px;
-    font-size: 12px;
+    font-size: 14px;
   }
-
   .stationhead-subtabs > button {
     padding: 6px 3px;
-    font-size: 12px;
+    font-size: 14px;
     white-space: normal;
     overflow-wrap: anywhere;
     text-wrap: balance;
+  }
+}
+.dashboard-source-tabs.is-multiline > button {
+  flex: 0 1 auto;
+}
+.dashboard-source-picker {
+  display: none;
+}
+@media (max-width: 760px) {
+  .dashboard-source-tabs {
+    display: none;
+  }
+  .dashboard-source-tabs:not(.is-multiline) {
+    display: none;
+  }
+  .dashboard-source-picker {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .dashboard-source-picker select {
+    flex: 1;
+    min-width: 0;
+    min-height: 44px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--text);
+    font: inherit;
   }
 }

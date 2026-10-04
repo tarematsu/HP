@@ -24,7 +24,7 @@ test('dashboard payload parsing is owned by the fetch cache instead of the entry
 test('inactive tab shells and runtimes are loaded on demand through one shared loader and never idle-prefetched', () => {
   assert.match(tabs, /const LAZY_VIEWS = \{/);
   assert.match(tabs, /const modulePromises = new Map\(\)/);
-  assert.match(tabs, /const stylePromises = new Map\(\)/);
+  assert.match(readFileSync(new URL('../public/dashboard-styles.js', import.meta.url), 'utf8'), /const stylePromises = new Map\(\)/);
   assert.match(tabs, /function loadOnce\(key, importer\)/);
   assert.match(tabs, /shell: \(\) => import\('\/history-shell\.js\?v=20260930\.1'\)/);
   assert.match(tabs, /import\('\/history\/history-main\.js\?v=\d{8}\.\d+'\)/);

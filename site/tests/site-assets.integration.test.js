@@ -79,7 +79,7 @@ test('dashboard current page renders online history and direct five-minute playb
   assert.doesNotMatch(stationheadRuntime, /comment_velocity|commentVelocity|コメント\/2分/);
   assert.match(stationheadReadModel, /fetchJson\('\/api\/dashboard\?history=0'/);
   assert.match(stationheadReadModel, /queue: Array\.isArray\(payload\?\.queue\) \? payload\.queue : \[\]/);
-  assert.match(entry, /dashboard-fetch-cache\.js\?v=/);
+  assert.match(await text('public/stationhead-channel-read-model.js'), /import \{ fetchDashboard \}/);
   assert.match(cache, /url\.searchParams\.set\('since'/);
   assert.match(cache, /queue_revision/);
   assert.doesNotMatch(entry, /dashboard-details-client\.js/);

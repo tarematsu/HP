@@ -73,7 +73,7 @@ test('archive and likes markup are owned by lazily loaded shared shell modules',
   assert.match(likesShell, /dashboardNotice/);
   assert.match(likesShell, /dashboardTable/);
   assert.doesNotMatch(likesShell, /id="likesLoad"/);
-  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20261005\.1'/);
+  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20261005\.2'/);
   assert.doesNotMatch(dashboardEntry, /history-shell|likes-shell|leaderboard-shell|followers-shell/);
   assert.match(tabsClient, /shell: \(\) => import\('\/history-shell\.js\?v=20260930\.1'\)/);
   assert.match(tabsClient, /shell: \(\) => import\('\/likes-shell\.js\?v=20260930\.1'\)/);
@@ -85,7 +85,7 @@ test('archive and likes markup are owned by lazily loaded shared shell modules',
 test('feature tabs share one lazy route registry stylesheet loader and module cache', () => {
   assert.match(tabsClient, /const LAZY_VIEWS = \{/);
   assert.match(tabsClient, /const modulePromises = new Map\(\)/);
-  assert.match(tabsClient, /const stylePromises = new Map\(\)/);
+  assert.match(readFileSync(new URL('../public/dashboard-styles.js', import.meta.url), 'utf8'), /const stylePromises = new Map\(\)/);
   assert.match(tabsClient, /function ensureModeStyles\(mode\)/);
   assert.match(tabsClient, /async function showLazyView\(mode, options = \{}\)/);
   for (const [mode, shell, runtime] of [
@@ -105,8 +105,8 @@ test('feature tabs share one lazy route registry stylesheet loader and module ca
     assert.match(tabsClient, new RegExp(runtime.replaceAll('.', '\\.')));
   }
   assert.match(tabsClient, /config\.loadExport\) await runtime\[config\.loadExport\]\?\.\(config\.loadArgs \|\| undefined\)/);
-  assert.match(tabsClient, /stationhead\.min\.css/);
-  assert.match(tabsClient, /subscriptions\.min\.css/);
+  assert.match(tabsClient, /ensureDashboardSectionStyles/);
+  
 });
 
 test('legacy listening-party hashes normalize to the shared broadcasts route only', () => {
@@ -162,7 +162,7 @@ test('current Stationhead detail and history detail stay in their owning shells'
   assert.match(stationheadShell, /role\('live-detail'\)/);
   assert.match(historyShell, /id="chartDetail"[^>]*data-history-chart-detail/);
   assert.equal((historyShell.match(/id="chartDetail"/g) || []).length, 1);
-  assert.match(dashboardEntry, /stationhead-channel\.js\?v=/);
+  assert.match(tabsClient, /stationhead-channel\.js\?v=/);
   assert.match(stationheadRuntime, /setText\(root, 'live-detail'/);
 });
 

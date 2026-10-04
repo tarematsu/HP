@@ -1,4 +1,4 @@
-(() => {
+// Explicit Buddies client: importing this module never replaces browser fetch.
   const nativeFetch = window.fetch.bind(window);
   const DASHBOARD_CACHE_KEY = 'sh.dashboard.v3';
   const PERSISTED_CACHE_MAX_AGE_MS = 6 * 60 * 60_000;
@@ -225,7 +225,7 @@
 
   restorePersistedState();
 
-  window.fetch = async (input, init = {}) => {
+  export async function fetchDashboard(input, init = {}) {
     const url = dashboardUrl(input);
     if (!url || String(init?.method || input?.method || 'GET').toUpperCase() !== 'GET') {
       return nativeFetch(input, init);
@@ -258,5 +258,4 @@
     } catch {
       return response;
     }
-  };
-})();
+  }

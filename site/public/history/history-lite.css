@@ -11,7 +11,7 @@
 .date-range { display: grid; grid-template-columns: minmax(128px, 1fr) auto minmax(128px, 1fr); align-items: end; gap: 6px; flex: 1 1 310px; }
 .date-separator { align-self: center; padding-top: 16px; color: var(--muted); }
 .track-controls, .ranking-controls { flex: 1 1 auto; }
-.check-label { display: flex !important; align-items: center; gap: 7px !important; min-height: 40px; color: var(--text) !important; }
+.check-label { display: flex; align-items: center; gap: 7px; min-height: 40px; color: var(--text); }
 .check-label input { width: 18px; min-height: 18px; margin: 0; padding: 0; }
 .compact-load { min-width: 84px; }
 

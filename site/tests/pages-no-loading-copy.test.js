@@ -42,10 +42,10 @@ test('silent loading changes are cache busted through the bundled Pages entry', 
   assert.match(tabs, /spotify-shell\.js\?v=20261004\.1/);
   assert.match(tabs, /spotify\.js\?v=20261004\.1/);
   assert.doesNotMatch(dashboardEntry, /first-week-comparison|legacy-listening-party-route|dashboard-tab-order|dashboard-details-client\.js/);
-  assert.match(dashboardEntry, /current-shell\.js\?v=20261004\.2/);
-  assert.match(dashboardEntry, /dashboard-fetch-cache\.js\?v=20260930\.1/);
-  assert.match(dashboardEntry, /stationhead-channel-style-loader\.js\?v=20261004\.2/);
-  assert.match(dashboardEntry, /stationhead-channel\.js\?v=20261004\.2/);
+  assert.match(tabs, /current-shell\.js\?v=20261005\.2/);
+  assert.match(readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8'), /import \{ fetchDashboard \}/);
+  assert.doesNotMatch(dashboardEntry, /stationhead-channel-style-loader/);
+  assert.match(tabs, /stationhead-channel\.js\?v=20261005\.2/);
   assert.match(currentShell, /stationhead-channel-shell\.js\?v=20261004\.2/);
   assert.match(stationheadRuntime, /stationhead-channel-read-model\.js\?v=20261004\.2/);
   assert.match(assetBuild, /'dashboard-presentation\.css'/);
@@ -53,7 +53,7 @@ test('silent loading changes are cache busted through the bundled Pages entry', 
   assert.doesNotMatch(assetBuild, /'dashboard-root-presentation\.css'|'dashboard-fixes\.css'|'screenshot-audit-cleanup\.css'|'period-display-fixes\.css'/);
   assert.doesNotMatch(dashboardEntry, /dashboard-(?:root-)?presentation\.css|history-global-fixes|dashboard-current-metric-style/);
   assert.doesNotMatch(dashboardEntry, /import '.\/unofficial-listening-parties\.js/);
-  assert.match(dashboardEntry, /dashboard-tabs\.js\?v=20261005\.1/);
+  assert.match(dashboardEntry, /dashboard-tabs\.js\?v=20261005\.2/);
   assert.match(html, /\/assets\/dashboard\.min\.css\?v=[^"']+/);
   assert.match(html, /\/assets\/dashboard\.min\.js\?v=[^"']+/);
 });

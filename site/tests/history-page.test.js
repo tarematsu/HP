@@ -96,8 +96,8 @@ test('track-specific archive aggregation and runtime are removed', () => {
 
 test('history inherits dashboard theme and shared card layout instead of duplicating them', () => {
   for (const declaration of [
-    '--bg: #f6f8fb', '--panel: #ffffff', '--panel-2: #f1f4f8', '--line: #d9e1eb', '--text: #172033',
-    '--muted: #667287', '--accent: #d93f79', '--comment: #168b73', '--radius: 20px',
+    '--bg: #ffffff', '--panel: #ffffff', '--panel-2: #f4f4f4', '--line: #ddd', '--text: #111',
+    '--muted: #666', '--accent: #d93f79', '--comment: #168b73', '--radius: 0',
   ]) {
     const pattern = new RegExp(declaration.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
     assert.match(mainStyles, pattern);
@@ -105,7 +105,7 @@ test('history inherits dashboard theme and shared card layout instead of duplica
   }
   assert.doesNotMatch(historyStyles, /(^|\n):root\s*\{|(^|\n)\.button\s*\{|\.notice\s*\{|\.chart-panel\s*\{/m);
   assert.match(sharedLayout, /\.dashboard-view\s*>\s*:is\([^)]*\.chart-panel[^)]*\.data-panel/);
-  assert.match(sharedLayout, /padding:\s*var\(--pages-panel-padding\) !important/);
+  assert.match(sharedLayout, /padding:\s*var\(--pages-panel-padding\)/);
 });
 
 test('history client uses only the canonical summary endpoints', () => {

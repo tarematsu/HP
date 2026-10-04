@@ -70,6 +70,7 @@ export function musicServiceSection({
   bodyHtml = '',
   className = '',
   hidden = false,
+  group = 'overview',
 } = {}) {
   const heading = dashboardSectionHead({
     kicker,
@@ -78,7 +79,7 @@ export function musicServiceSection({
     trailingHtml,
     className: 'music-service-section-head',
   });
-  return `<section${id ? ` id="${id}"` : ''} class="${joinClasses('music-service-section', className)}"${hidden ? ' hidden' : ''}>
+  return `<section${id ? ` id="${id}"` : ''} class="${joinClasses('music-service-section', className)}" data-service-group="${group}"${hidden ? ' hidden' : ''}>
     ${heading}
     ${bodyHtml}
   </section>`;
@@ -111,4 +112,39 @@ export function mountMusicServiceView({
       ]),
     },
   });
+  const root = document.getElementById(viewId);
+  if (root) bindServiceGroups(root);
+}
+
+function bindServiceGroups(root) {
+  const sections = [...root.querySelectorAll('[data-service-group]')];
+  const groups = [...new Set(sections.map((section) => section.dataset.serviceGroup))];
+  if (groups.length < 2) return;
+  const nav = document.createElement('div');
+  nav.className = 'mode-tabs music-service-view-tabs';
+  nav.setAttribute('aria-label', '表示内容');
+  const labels = { overview: '概要', list: '一覧', playlists: 'プレイリスト' };
+  let active = groups[0];
+  function select(group) {
+    active = group;
+    for (const section of sections) section.hidden = section.dataset.serviceGroup !== group;
+    for (const button of nav.querySelectorAll('button')) {
+      const selected = button.dataset.serviceGroup === group;
+      button.classList.toggle('active', selected);
+      button.setAttribute('aria-pressed', String(selected));
+    }
+    root.dispatchEvent(new CustomEvent('music-service:group-change', { detail: { group } }));
+    window.dispatchEvent(new Event('resize'));
+  }
+  for (const group of groups) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.serviceGroup = group;
+    button.textContent = labels[group] || group;
+    button.addEventListener('click', () => select(group));
+    nav.append(button);
+  }
+  const meta = root.querySelector('.music-service-meta');
+  if (meta) meta.after(nav); else root.prepend(nav);
+  select(active);
 }

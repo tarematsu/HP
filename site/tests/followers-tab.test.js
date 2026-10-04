@@ -14,8 +14,8 @@ const FIXED_HANDLES = ['sakuramankai', 'sakuramankai2', 'sakurazaka46jp', 'nogiz
 
 test('Stationhead and music streaming follow routes share one shell and runtime', () => {
   assert.doesNotMatch(entry, /followers-shell\.js/);
-  assert.match(route, /followers:\s*\{[\s\S]*viewId: 'followersView'[\s\S]*followers-shell\.js\?v=20261005\.1[\s\S]*followers\.js\?v=20261005\.1[\s\S]*source: 'stationhead'/);
-  assert.match(route, /'music-followers':\s*\{[\s\S]*viewId: 'followersView'[\s\S]*followers-shell\.js\?v=20261005\.1[\s\S]*followers\.js\?v=20261005\.1[\s\S]*source: 'music-streaming'/);
+  assert.match(route, /followers:\s*\{[\s\S]*viewId: 'followersView'[\s\S]*followers-shell\.js\?v=20261005\.2[\s\S]*followers\.js\?v=20261005\.2[\s\S]*source: 'stationhead'/);
+  assert.match(route, /'music-followers':\s*\{[\s\S]*viewId: 'followersView'[\s\S]*followers-shell\.js\?v=20261005\.2[\s\S]*followers\.js\?v=20261005\.2[\s\S]*source: 'music-streaming'/);
   assert.match(route, /id: 'followers', label: 'フォロワー', defaultMode: 'followers'/);
   assert.match(route, /id: 'music-followers', label: 'フォロー', defaultMode: 'music-followers'/);
   assert.match(shell, /mountDashboardShell/);

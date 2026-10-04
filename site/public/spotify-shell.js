@@ -33,7 +33,7 @@ const trendPanels = [
 ];
 
 const tracksPanel = musicServiceSection({
-  id: 'spotifyTrackSection',
+  id: 'spotifyTrackSection', group: 'list',
   title: '櫻坂46の再生数一覧',
   titleId: 'spotifyTableTitle',
   trailingHtml: artistTabs,

@@ -38,7 +38,7 @@ test('Stationhead subtabs share one layout spacing and disabled-state contract',
   assert.match(sharedCss, /\.stationhead-subtabs\s*\{[^}]*grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\)/s);
   assert.match(sharedCss, /\.stationhead-subtabs\s*>\s*button\s*\{[^}]*min-height:\s*44px/s);
   assert.match(sharedCss, /\.stationhead-channel-panel\s*\{[^}]*gap:\s*var\(--pages-view-gap, 12px\)/s);
-  assert.match(navigationCss, /\.stationhead-channel-view\s*\{[^}]*margin-top:\s*4px\s*!important/s);
+  assert.match(navigationCss, /\.stationhead-channel-view\s*\{[^}]*margin-top:\s*8px/s);
   assert.match(navigationCss, /\.stationhead-subtabs\s*>\s*button:disabled\s*\{[^}]*text-decoration:\s*line-through/s);
 });
 

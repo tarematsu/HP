@@ -158,7 +158,7 @@ export function observeDashboardChartResize(target, redraw, {
     clearTimeout(timer);
     timer = setTimeout(() => {
       timer = 0;
-      if (enabled()) redraw();
+      if (!document.hidden && target.getClientRects().length && enabled()) redraw();
     }, delay);
   };
   if (typeof ResizeObserver !== 'undefined') {
