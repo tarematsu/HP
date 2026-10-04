@@ -60,6 +60,6 @@ test('Ohisama likes match the Buddies card layout and exclude non-Hinata tracks'
   assert.match(runtime, /className = 'like-rank-content'/);
   assert.match(runtime, /className = 'like-rank-metrics'/);
   assert.match(runtime, /likes\.slice\(0, 10\)/);
-  assert.match(runtime, /id=\\"hinataLikesCsv\\"/);
+  assert.match(runtime, /id="hinataLikesCsv"/);
   assert.match(runtime, /downloadCsv\(`ohisama-like-ranking-/);
 });
