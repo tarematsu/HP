@@ -1,7 +1,7 @@
 import { runOptimizedOhisamaCollectorScheduled } from './ohisama-collector-optimized.js';
 import { registerOhisamaFollowerTarget } from './ohisama-collector-entry.js';
 import { collectInitialStationheadFollowers } from './stationhead-initial-followers.js';
-import { cachedOhisamaFollowerTargetRegistrar } from './ohisama-follower-target-cache.js';
+import { cachedOhisamaFollowerMetadataRegistrar } from './ohisama-follower-target-cache.js';
 import { withOhisamaFollowerMembership } from './ohisama-follower-membership.js';
 import { captureOhisamaPlayback } from './ohisama-playback.js';
 import {
@@ -30,6 +30,38 @@ export function activeBroadcastFollowerRegistrar(registerFollowerTarget) {
   };
 }
 
+export function ohisamaFollowerRegistrar(dependencies = {}) {
+  const publishFollowerMetadata = cachedOhisamaFollowerMetadataRegistrar(
+    withOhisamaFollowerMembership(
+      async (targetEnv, snapshot, observedAt, session) => {
+        await (dependencies.collectInitialFollowers || collectInitialStationheadFollowers)(
+          targetEnv,
+          snapshot.host_handle,
+          observedAt,
+          {
+            session: session ? { auth_token: session.authToken, device_uid: session.deviceUid } : undefined,
+            fetchFn: dependencies.fetch,
+          },
+        );
+        return false;
+      },
+    ),
+  );
+
+  return activeBroadcastFollowerRegistrar(async (targetEnv, snapshot, observedAt, session) => {
+    // Authoritative target registration must run for every observed live host.
+    // The R2 cache is intentionally applied only to optional metadata work so
+    // a stale cache can never suppress recovery of a missing OTHER_DB row.
+    const added = await (dependencies.registerFollowerTarget || registerOhisamaFollowerTarget)(
+      targetEnv,
+      snapshot,
+      observedAt,
+    );
+    await publishFollowerMetadata(targetEnv, snapshot, observedAt, session);
+    return added;
+  });
+}
+
 function capturingFetch(fetchImpl, onChannelPayload) {
   return async (input, init) => {
     const response = await fetchImpl(input, init);
@@ -45,20 +77,7 @@ function capturingFetch(fetchImpl, onChannelPayload) {
 }
 
 export async function runOhisamaPagesScheduled(controller, env, ctx, dependencies = {}) {
-  const registerFollowerTarget = activeBroadcastFollowerRegistrar(
-    cachedOhisamaFollowerTargetRegistrar(
-      withOhisamaFollowerMembership(
-        async (targetEnv, snapshot, observedAt, session) => {
-          const added = await (dependencies.registerFollowerTarget || registerOhisamaFollowerTarget)(targetEnv, snapshot, observedAt);
-          await (dependencies.collectInitialFollowers || collectInitialStationheadFollowers)(targetEnv, snapshot.host_handle, observedAt, {
-            session: session ? { auth_token: session.authToken, device_uid: session.deviceUid } : undefined,
-            fetchFn: dependencies.fetch,
-          });
-          return added;
-        },
-      ),
-    ),
-  );
+  const registerFollowerTarget = ohisamaFollowerRegistrar(dependencies);
   let channelPayload = null;
   const fetchImpl = dependencies.fetch || fetch;
   const result = await runOptimizedOhisamaCollectorScheduled(
