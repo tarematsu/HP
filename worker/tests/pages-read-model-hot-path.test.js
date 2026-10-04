@@ -37,6 +37,11 @@ test('runtime exposes only the R2 serving hot path for completed history', async
   assert.deepEqual(await response.json(), { source: 'r2' });
   assert.deepEqual(calls, ['r2']);
   assert.match(runtimeSource, /pages-response-fetch-entry\.js/);
+  assert.match(runtimeSource, /request\.url\.includes\(MINUTE_RUNTIME_STATE_PATH\)/);
+  assert.doesNotMatch(
+    runtimeSource,
+    /export async function runCoreFetch\([^)]*\) \{\n  const url = new URL\(request\.url\);/,
+  );
   assert.doesNotMatch(runtimeSource, /pages-read-model-entry|pages-read-model-dispatch|pages-six-hour-read-model/);
 });
 

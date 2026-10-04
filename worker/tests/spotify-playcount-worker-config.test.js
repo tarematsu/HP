@@ -28,7 +28,7 @@ test('Spotify collector is isolated behind the shared scheduler and owns its eve
   ]);
   assert.equal(value.queues.consumers.length, 1);
   assert.equal(value.queues.consumers[0].queue, 'stationhead-spotify-playcount');
-  assert.equal(value.queues.consumers[0].max_batch_size, 5);
+  assert.equal(value.queues.consumers[0].max_batch_size, 1);
   assert.equal(value.queues.consumers[0].max_concurrency, 2);
   assert.equal(value.queues.consumers[0].max_retries <= 4, true);
   assert.deepEqual(value.vars, { SPOTIFY_PLAYCOUNT_ENABLED: true });
@@ -97,6 +97,25 @@ test('failed Spotify Queue scheduling remains retryable', async () => {
   assert.equal(result.failed, 1);
 });
 
+test('Spotify album collection packs five albums into one billable Queue envelope', async () => {
+  const { packSpotifyQueueBodies } = await import('../src/spotify-playcount-schedule.js');
+  const albums = Array.from({ length: 12 }, (_, index) => ({
+    message_type: 'spotify-playcount-album',
+    message_version: 3,
+    album_id: `album-${index}`,
+  }));
+  const packed = packSpotifyQueueBodies(albums);
+  assert.equal(packed.length, 3);
+  assert.deepEqual(packed.map((body) => body.message_type), [
+    'spotify-playcount-album-batch',
+    'spotify-playcount-album-batch',
+    'spotify-playcount-album-batch',
+  ]);
+  assert.deepEqual(packed.map((body) => body.albums.length), [5, 5, 2]);
+  assert.deepEqual(packed.flatMap((body) => body.albums.map((album) => album.album_id)),
+    albums.map((album) => album.album_id));
+});
+
 test('a stale day is carried forward at the next 05:00 and requests one read-model refresh', () => {
   const scheduledRun = readFileSync(
     new URL('../src/spotify-playcount-scheduled-run.js', import.meta.url),
@@ -126,6 +145,7 @@ test('catalog discovery is split into one artist per chained queue step before a
 
   assert.match(schedule, /message_type: 'spotify-playcount-catalog'/);
   assert.match(schedule, /catalog_queued: 1/);
+  assert.match(schedule, /SPOTIFY_ALBUM_ENVELOPE_SIZE = 5/);
   assert.doesNotMatch(schedule, /for \(const artist of collectionArtists\) \{\s*const releases = await discoverArtistReleases/);
   assert.match(catalog, /SELECT run_token,status,catalog_total,catalog_completed/);
   assert.match(catalog, /catalog_completed=catalog_completed\+1/);
@@ -133,6 +153,8 @@ test('catalog discovery is split into one artist per chained queue step before a
   assert.match(catalog, /queueActiveReleases/);
   assert.match(router, /spotify-playcount-catalog/);
   assert.match(router, /spotify-playcount-album/);
+  assert.match(router, /SPOTIFY_ALBUM_BATCH_TYPE/);
+  assert.match(router, /state\.retry/);
   assert.match(router, /SPOTIFY_READ_MODEL_REFRESH_TYPE/);
   assert.match(router, /latestCompleteRevision/);
   assert.match(schedule, /confirmationPass/);

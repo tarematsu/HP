@@ -12,9 +12,27 @@ import {
 } from './spotify-scheduled-queue.js';
 
 export const SPOTIFY_MONTHLY_LISTENERS_TYPE = 'spotify-monthly-listeners';
+export const SPOTIFY_ALBUM_BATCH_TYPE = 'spotify-playcount-album-batch';
 
 function batchWith(messages) {
   return { messages };
+}
+
+function expandAlbumBatchEntry(entry) {
+  const body = entry?.body;
+  if (body?.message_type !== SPOTIFY_ALBUM_BATCH_TYPE
+      || Number(body?.message_version) !== 1
+      || !Array.isArray(body?.albums)
+      || body.albums.length === 0) return null;
+  const state = { retry: false };
+  return {
+    state,
+    messages: body.albums.map((album) => ({
+      body: album,
+      ack: () => {},
+      retry: () => { state.retry = true; },
+    })),
+  };
 }
 
 export function spotifyMonthlyListenerRetryDelaySeconds(attempt) {
@@ -157,6 +175,7 @@ async function latestCompleteRevision(db) {
 export async function processSpotifyPlaycountBatch(batch, env, dependencies = {}) {
   const catalog = [];
   const albums = [];
+  const albumBatches = [];
   const monthlyListeners = [];
   const readModelRefresh = [];
   const scheduledDispatches = [];
@@ -166,6 +185,7 @@ export async function processSpotifyPlaycountBatch(batch, env, dependencies = {}
     const type = entry?.body?.message_type;
     if (type === 'spotify-playcount-catalog') catalog.push(entry);
     else if (type === 'spotify-playcount-album') albums.push(entry);
+    else if (type === SPOTIFY_ALBUM_BATCH_TYPE) albumBatches.push(entry);
     else if (type === SPOTIFY_MONTHLY_LISTENERS_TYPE) monthlyListeners.push(entry);
     else if (type === SPOTIFY_READ_MODEL_REFRESH_TYPE) readModelRefresh.push(entry);
     else if (type === SPOTIFY_SCHEDULED_DISPATCH_TYPE) scheduledDispatches.push(entry);
@@ -182,9 +202,27 @@ export async function processSpotifyPlaycountBatch(batch, env, dependencies = {}
   if (catalog.length) {
     results.push(await processSpotifyCatalogBatch(batchWith(catalog), env, dependencies));
   }
-  if (albums.length) {
+
+  const expandedAlbumEntries = [...albums];
+  const expandedStates = [];
+  for (const entry of albumBatches) {
+    const expanded = expandAlbumBatchEntry(entry);
+    if (!expanded) {
+      entry.ack?.();
+      ignored += 1;
+      continue;
+    }
+    expandedAlbumEntries.push(...expanded.messages);
+    expandedStates.push({ entry, state: expanded.state });
+  }
+
+  if (expandedAlbumEntries.length) {
     const before = await latestCompleteRevision(env?.OTHER_DB);
-    results.push(await processSpotifyAlbumBatch(batchWith(albums), env, dependencies));
+    results.push(await processSpotifyAlbumBatch(batchWith(expandedAlbumEntries), env, dependencies));
+    for (const { entry, state } of expandedStates) {
+      if (state.retry) entry.retry?.();
+      else entry.ack?.();
+    }
     const after = await latestCompleteRevision(env?.OTHER_DB);
     if (after?.confirmed && after.revision !== before?.revision) {
       await collectMonthlyListenersAfterPlaycount(env, after, dependencies);
