@@ -104,7 +104,7 @@ export function kugouAcgVolumeList(payload) {
 
 export function kugouAcgVolumeUrl() {
   const params = new URLSearchParams({ rankid:String(KUGOU_ACG_RANK_ID), ranktype:'1', plat:'0', with_rest_tag:'1' });
-  return `https://mobilecdnbj.kugou.com/api/v3/rank/vol?${params}`;
+  return `http://mobilecdnbj.kugou.com/api/v3/rank/vol?${params}`;
 }
 
 export function kugouAcgSongsUrl(volid) {
@@ -118,7 +118,7 @@ export function kugouAcgSongsUrl(volid) {
     plat:'0',
     with_res_tag:'1',
   });
-  return `https://mobilecdnbj.kugou.com/api/v3/rank/song?${params}`;
+  return `http://mobilecdnbj.kugou.com/api/v3/rank/song?${params}`;
 }
 
 function canonicalArtistFromEntry(entry) {
