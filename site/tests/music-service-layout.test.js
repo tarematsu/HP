@@ -6,15 +6,18 @@ const spotify = readFileSync(new URL('../public/spotify-shell.js', import.meta.u
 const apple = readFileSync(new URL('../public/apple-music-shell.js', import.meta.url), 'utf8');
 const amazon = readFileSync(new URL('../public/amazon-music-shell.js', import.meta.url), 'utf8');
 const youtube = readFileSync(new URL('../public/youtube-music-shell.js', import.meta.url), 'utf8');
-const regional = readFileSync(new URL('../public/regional-music-shell.js', import.meta.url), 'utf8');
+const kkbox = readFileSync(new URL('../public/kkbox-shell.js', import.meta.url), 'utf8');
+const qq = readFileSync(new URL('../public/qq-music-shell.js', import.meta.url), 'utf8');
+const kugou = readFileSync(new URL('../public/kugou-music-shell.js', import.meta.url), 'utf8');
 const commonShell = readFileSync(new URL('../public/music-service-shell.js', import.meta.url), 'utf8');
 const commonRuntime = readFileSync(new URL('../public/music-service-runtime-common.js', import.meta.url), 'utf8');
 const commonCss = readFileSync(new URL('../public/music-service-common.css', import.meta.url), 'utf8');
-const regionalCss = readFileSync(new URL('../public/regional-music.css', import.meta.url), 'utf8');
 const playlistRuntime = readFileSync(new URL('../public/music-service-playlists.js', import.meta.url), 'utf8');
 
+const serviceShells = [spotify, apple, amazon, youtube, kkbox, qq, kugou];
+
 test('all music subscription views mount through one shared shell contract', () => {
-  for (const source of [spotify, apple, amazon, youtube, regional]) {
+  for (const source of serviceShells) {
     assert.match(source, /mountMusicServiceView/);
     assert.match(source, /musicServiceSection/);
     assert.doesNotMatch(source, /mountDashboardShell|dashboardNotice|dashboardTable/);
@@ -28,24 +31,28 @@ test('all music subscription views mount through one shared shell contract', () 
   assert.match(commonShell, /export function musicServiceFilterTabs/);
   assert.match(commonShell, /dashboardSectionHead/);
   assert.match(commonShell, /className: 'music-service-section-head'/);
-  assert.doesNotMatch(commonShell, /regional-chart-meta|regional-chart-section|regional-chart-filter/);
+  assert.doesNotMatch(commonShell, /regional/i);
 });
 
-test('metadata and regional cadence share one compact contract', () => {
+test('every service owns its own metadata identity and shared cadence contract', () => {
   assert.match(spotify, /meta: \{ valueId: 'spotifyUpdatedAt', cadence: '毎日朝ごろ' \}/);
   assert.match(apple, /meta: \{ valueId: 'appleUpdatedAt', cadence: '毎日6:00' \}/);
   assert.match(amazon, /meta: \{ valueId: 'amazonUpdatedAt', cadence: '毎日6:00' \}/);
   assert.match(youtube, /meta: \{ valueId: 'youtubeMusicUpdated', cadence: '毎日0:00' \}/);
-  assert.match(regional, /id: 'regionalMusicCompactMeta'/);
-  assert.match(regional, /valueId: 'regionalMusicChartUpdated'/);
-  assert.match(regional, /cadenceId: 'regionalMusicChartCadence'/);
+  assert.match(kkbox, /valueId: 'kkboxUpdatedAt'/);
+  assert.match(kkbox, /cadenceId: 'kkboxCadence'/);
+  assert.match(qq, /valueId: 'qqMusicUpdatedAt'/);
+  assert.match(qq, /cadenceId: 'qqMusicCadence'/);
+  assert.match(kugou, /valueId: 'kugouMusicUpdatedAt'/);
+  assert.match(kugou, /cadenceId: 'kugouMusicCadence'/);
+  assert.match(commonRuntime, /export const MUSIC_SERVICE_CADENCE/);
   assert.match(commonRuntime, /qq_music: '毎週木曜日18:00'/);
   assert.match(commonRuntime, /kugou_music: '平日11:30 \/ ACG新歌榜: 水曜11:40'/);
-  assert.doesNotMatch(commonShell, /qq_music|kugou_music|netease_cloud_music/);
+  assert.doesNotMatch(commonRuntime, /REGIONAL_MUSIC_CADENCE|loadRegionalMusicReadModel/);
 });
 
 test('service shells retain only data-specific section definitions', () => {
-  for (const source of [spotify, apple, amazon, youtube, regional]) {
+  for (const source of serviceShells) {
     assert.match(source, /musicServiceTable/);
     assert.doesNotMatch(source, /dashboardSummary|dashboardSummaryItem|dashboardDataCard|dashboardChartCard/);
   }
@@ -53,9 +60,9 @@ test('service shells retain only data-specific section definitions', () => {
   assert.match(apple, /appleTrendSection/);
   assert.match(amazon, /amazonTrendSection/);
   assert.match(youtube, /youtubeMusicArtistSection/);
-  assert.match(regional, /qqJapanChartSection/);
-  assert.match(regional, /kugouJapanChartSection/);
-  assert.doesNotMatch(regional, /melonArtistPopularitySection/);
+  assert.match(kkbox, /KKBOX 日語チャート グループ別最高順位推移/);
+  assert.match(qq, /QQ音乐 日本榜 グループ別最高順位推移/);
+  assert.match(kugou, /酷狗音乐 日本榜 グループ別最高順位推移/);
 });
 
 test('all music subscription presentation uses one responsive layout contract', () => {
@@ -65,17 +72,19 @@ test('all music subscription presentation uses one responsive layout contract', 
     '.music-service-section',
     '.music-service-filter.mode-tabs',
     '.music-service-table :is(th, td)',
+    '.music-service-rank-legend',
+    '.music-service-rank-chart',
+    '.music-service-history-table',
     '.music-service-playlist-table',
   ]) {
     assert.ok(commonCss.includes(selector), selector);
   }
   assert.match(commonCss, /@media \(max-width: 760px\)/);
-  assert.doesNotMatch(regionalCss, /regional-chart-meta|regional-chart-section-head|regional-chart-filter/);
-  assert.doesNotMatch(regionalCss, /regional-music-view\.is-chart-compact \.regional-music-table/);
+  assert.doesNotMatch(commonCss, /regional/i);
 });
 
-test('Spotify Apple Amazon and regional filters use the shared filter primitive', () => {
-  for (const source of [spotify, apple, amazon, regional]) {
+test('all service filters use the shared filter primitive', () => {
+  for (const source of [spotify, apple, amazon, kkbox, qq, kugou]) {
     assert.match(source, /musicServiceFilterTabs/);
     assert.doesNotMatch(source, /dashboardModeTabs/);
   }
