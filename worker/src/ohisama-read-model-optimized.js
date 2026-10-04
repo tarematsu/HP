@@ -50,8 +50,16 @@ function validPayload(payload) {
   return Boolean(payload
     && payload.model === OHISAMA_PAGES_MODEL_KEY
     && Array.isArray(payload.history_24h)
-    && Array.isArray(payload.daily)
-    && Array.isArray(payload.weekly));
+    && Array.isArray(payload.daily));
+}
+
+function upgradeLegacyPayload(payload) {
+  if (!validPayload(payload)) return null;
+  if (Array.isArray(payload.weekly)) return payload;
+  return {
+    ...payload,
+    weekly: rollupOhisamaWeekly(payload.daily, integer(payload.updated_at) ?? Date.now()),
+  };
 }
 
 async function readJsonObject(r2, key) {
@@ -69,7 +77,10 @@ async function readJsonObject(r2, key) {
 
 async function loadExistingPayload(r2) {
   const hot = await readJsonObject(r2, OHISAMA_READ_MODEL_HOT_STATE_KEY);
-  if (Number(hot?.version) === 1 && validPayload(hot?.payload)) return hot.payload;
+  if (Number(hot?.version) === 1) {
+    const upgraded = upgradeLegacyPayload(hot?.payload);
+    if (upgraded) return upgraded;
+  }
 
   const legacyKey = pagesActionsR2ResponseKey(OHISAMA_PAGES_MODEL_KEY);
   const legacyEnvelope = await readJsonObject(r2, legacyKey);
@@ -77,8 +88,9 @@ async function loadExistingPayload(r2) {
   const legacyPayload = typeof legacyEnvelope?.body === 'string'
     ? (() => { try { return JSON.parse(legacyEnvelope.body); } catch { return null; } })()
     : legacyEnvelope?.body;
-  if (!validPayload(legacyPayload) || legacyPayload?.section_updated_at) return null;
-  return legacyPayload;
+  const upgraded = upgradeLegacyPayload(legacyPayload);
+  if (!upgraded || legacyPayload?.section_updated_at) return null;
+  return upgraded;
 }
 
 async function saveHotPayload(r2, payload, updatedAt) {
