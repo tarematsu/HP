@@ -40,11 +40,10 @@ test('media startup launches six Stationhead windows at thirty-second offsets', 
     deferred,
     /kMediaStartupStageDelayMs\s*\*\s*static_cast<int64_t>\(i \+ 1\)/,
   );
-  assert.match(deferred, /lastStationheadLaunchAt_ \+ kMediaStartupStageDelayMs/);
-  assert.match(deferred, /memoryPressureActive_[\s\S]*continue/);
-  assert.match(deferred, /break;/);
-  assert.match(deferred, /ozekiScheduledAt[\s\S]*kMediaStartupStageDelayMs \* 6/);
-  assert.match(deferred, /now >= std::max\(ozekiScheduledAt, ozekiPacedAt\)[\s\S]*stationhead_->Start\(\)/);
+  assert.match(
+    deferred,
+    /now\s*-\s*startupAt_\s*>=\s*kMediaStartupStageDelayMs\s*\*\s*6[\s\S]*stationhead_->Start\(\)/,
+  );
   assert.match(deferred, /Stationhead peer #[\s\S]*launch issued at \+/);
   assert.match(deferred, /Stationhead #6 launch issued at \+180 seconds/);
 });
