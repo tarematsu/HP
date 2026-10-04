@@ -33,6 +33,7 @@ export const MUSIC_SERVICE_READ_MODEL_VERSION = 1;
 export const MUSIC_SERVICE_READ_MODEL_CADENCE_SECONDS = 24 * 60 * 60;
 export const MUSIC_SERVICE_READ_MODEL_SERVICES = Object.freeze(Object.keys(MUSIC_SERVICE_DEFINITIONS));
 
+const LEGACY_MUSIC_SERVICE_READ_MODEL_PREFIX = 'regional-music:';
 const JSON_HEADERS = Object.freeze({
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'public, max-age=30, s-maxage=300, stale-while-revalidate=600',
@@ -408,16 +409,26 @@ async function r2Json(r2, key) {
   return null;
 }
 
-async function existingMaterializedPayload(r2, modelKey) {
+async function materializedPayloadAtKey(r2, modelKey, serviceId) {
   const envelope = await r2Json(r2, pagesActionsR2ResponseKey(modelKey));
   if (Number(envelope?.version) !== 1 || typeof envelope?.body !== 'string') return null;
   try {
     const payload = JSON.parse(envelope.body);
-    if (!payload || payload.service !== modelKey.slice(MUSIC_SERVICE_READ_MODEL_PREFIX.length)) return null;
+    if (!payload || payload.service !== serviceId) return null;
     return { envelope, payload };
   } catch {
     return null;
   }
+}
+
+async function existingMaterializedPayload(r2, modelKey) {
+  const serviceId = modelKey.startsWith(MUSIC_SERVICE_READ_MODEL_PREFIX)
+    ? modelKey.slice(MUSIC_SERVICE_READ_MODEL_PREFIX.length)
+    : '';
+  if (!serviceId) return null;
+  const current = await materializedPayloadAtKey(r2, modelKey, serviceId);
+  if (current) return current;
+  return materializedPayloadAtKey(r2, `${LEGACY_MUSIC_SERVICE_READ_MODEL_PREFIX}${serviceId}`, serviceId);
 }
 
 function usableCollectorSnapshot(snapshot, service) {
