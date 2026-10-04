@@ -14,6 +14,7 @@ import {
   parseKugouAcgSongs,
 } from './kugou-acg-chart-history.js';
 
+export const KUGOU_ACG_BACKFILL_MESSAGE_TYPE = 'kugou-acg-history-backfill';
 export const KUGOU_ACG_BACKFILL_DEFAULT_START = '2019-01-01';
 export const KUGOU_ACG_BACKFILL_BATCH_SIZE = 4;
 export const KUGOU_ACG_BACKFILL_MAX_BATCH_SIZE = 10;
