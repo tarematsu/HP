@@ -129,6 +129,9 @@ test('unified observability runs account-wide post-deploy, collection, and daily
     'daily.projection.enforceProjected must be a boolean',
     'daily.violationSources is inconsistent',
     'elif enforce_projected and projected >= limit',
+    'freeTier.projection.enforceProjected must be a boolean',
+    'freeTier.actualUsage',
+    'actual >= limit or (enforce_projected and projected >= limit)',
     'daily.usage.queueCount',
     'Daily metrics checked: `{len(DAILY_METRICS)}`',
   ]);

@@ -65,33 +65,38 @@ def violation_set(report: dict[str, Any], label: str, errors: list[str]) -> set[
     return set(value)
 
 
-def validate_metrics(
-    report: dict[str, Any],
-    metrics: tuple[str, ...],
-    label: str,
-    errors: list[str],
-) -> None:
-    usage = mapping(report.get("usage"), f"{label}.usage", errors)
-    limits = mapping(report.get("limits"), f"{label}.limits", errors)
-    actual_violations = violation_set(report, label, errors)
+def validate_free_tier_violations(report: dict[str, Any], errors: list[str]) -> None:
+    actual_usage = mapping(report.get("actualUsage"), "freeTier.actualUsage", errors)
+    usage = mapping(report.get("usage"), "freeTier.usage", errors)
+    limits = mapping(report.get("limits"), "freeTier.limits", errors)
+    projection = mapping(report.get("projection"), "freeTier.projection", errors)
+    actual_violations = violation_set(report, "freeTier", errors)
+    enforce_projected = projection.get("enforceProjected")
+    if not isinstance(enforce_projected, bool):
+        errors.append("freeTier.projection.enforceProjected must be a boolean")
+        enforce_projected = False
     expected_violations: set[str] = set()
-    for metric in metrics:
-        actual = number(usage.get(metric))
+    for metric in FREE_TIER_METRICS:
+        actual = number(actual_usage.get(metric))
+        projected = number(usage.get(metric))
         limit = number(limits.get(metric))
         if actual is None or actual < 0:
-            errors.append(f"{label}.usage.{metric} must be a non-negative finite number")
+            errors.append(f"freeTier.actualUsage.{metric} must be a non-negative finite number")
+            continue
+        if projected is None or projected < 0:
+            errors.append(f"freeTier.usage.{metric} must be a non-negative finite number")
             continue
         if limit is None or limit <= 0:
-            errors.append(f"{label}.limits.{metric} must be a positive finite number")
+            errors.append(f"freeTier.limits.{metric} must be a positive finite number")
             continue
-        if actual >= limit:
+        if actual >= limit or (enforce_projected and projected >= limit):
             expected_violations.add(metric)
-    unknown = actual_violations - set(metrics)
+    unknown = actual_violations - set(FREE_TIER_METRICS)
     if unknown:
-        errors.append(f"{label}.violations contains unknown metrics: {','.join(sorted(unknown))}")
+        errors.append(f"freeTier.violations contains unknown metrics: {','.join(sorted(unknown))}")
     if actual_violations != expected_violations:
         errors.append(
-            f"{label}.violations is inconsistent: expected={','.join(sorted(expected_violations)) or '-'} "
+            f"freeTier.violations is inconsistent: expected={','.join(sorted(expected_violations)) or '-'} "
             f"actual={','.join(sorted(actual_violations)) or '-'}"
         )
 
@@ -195,7 +200,7 @@ def validate_daily(report: dict[str, Any], workers: tuple[str, ...] = WORKERS) -
 
 def validate_free_tier(report: dict[str, Any]) -> list[str]:
     errors: list[str] = []
-    validate_metrics(report, FREE_TIER_METRICS, "freeTier", errors)
+    validate_free_tier_violations(report, errors)
     counts = mapping(report.get("resourceCounts"), "freeTier.resourceCounts", errors)
     for key in REQUIRED_RESOURCE_COUNTS:
         positive_integer(counts.get(key), f"freeTier.resourceCounts.{key}", errors)
@@ -256,10 +261,15 @@ def self_test() -> int:
             "r2Buckets": 1,
             "kvNamespaces": 1,
         },
+        "actualUsage": {
+            **{metric: 0 for metric in FREE_TIER_METRICS},
+            "unknownR2ActionsChargedAsClassA": [],
+        },
         "usage": {
             **{metric: 0 for metric in FREE_TIER_METRICS},
             "unknownR2ActionsChargedAsClassA": [],
         },
+        "projection": {"enforceProjected": True},
         "limits": {metric: 1 for metric in FREE_TIER_METRICS},
         "violations": [],
     }
@@ -298,6 +308,16 @@ def self_test() -> int:
     broken_free = json.loads(json.dumps(free))
     broken_free["resourceCounts"]["kvNamespaces"] = 0
     assert any("kvNamespaces" in item for item in validate_free_tier(broken_free))
+
+    warmup_free = json.loads(json.dumps(free))
+    warmup_free["projection"]["enforceProjected"] = False
+    warmup_free["usage"]["queueOperations"] = 2
+    assert validate_free_tier(warmup_free) == []
+
+    actual_free_breach = json.loads(json.dumps(warmup_free))
+    actual_free_breach["actualUsage"]["queueOperations"] = 1
+    actual_free_breach["violations"] = ["queueOperations"]
+    assert validate_free_tier(actual_free_breach) == []
 
     inconsistent = json.loads(json.dumps(free))
     inconsistent["usage"]["queueOperations"] = 1
