@@ -2,7 +2,7 @@
 // Action coordinates are returned to the native trusted-click dispatcher just
 // like the YouTube control recovery path.
 namespace {
-const wchar_t* NativeMediaTverPlaybackWatchdogPolicyScript() noexcept {
+const wchar_t* BuildNativeMediaTverPlaybackWatchdogPolicyScript() noexcept {
   try {
     // Keep the two sizeable source literals separate for MSVC, then join them
     // once at runtime. The semicolon preserves strict execution order: current
@@ -17,6 +17,9 @@ const wchar_t* NativeMediaTverPlaybackWatchdogPolicyScript() noexcept {
     return kNativeMediaTverControlRecoveryScript;
   }
 }
+
+const wchar_t* const kNativeMediaTverPlaybackWatchdogPolicyScript =
+    BuildNativeMediaTverPlaybackWatchdogPolicyScript();
 
 // Kept as a narrow post-trusted-action verifier. Fullscreen targeting itself is
 // owned by the unified runtime and its returned bottom-right video coordinate.
