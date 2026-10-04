@@ -24,6 +24,7 @@ const cssGroups = Object.freeze({
     'first-week-comparison.css',
     'played-tracks.css',
     'followers.css',
+    'leaderboard.css',
     'hinata.css',
     'history/history-past-toggle.css',
     'history/history-range-navigator.css',
@@ -33,6 +34,8 @@ const cssGroups = Object.freeze({
     'apple-music.css',
     'amazon-music.css',
     'music-service-common.css',
+    'followers.css',
+    'leaderboard.css',
   ],
 });
 
