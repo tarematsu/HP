@@ -19,9 +19,10 @@ const unofficial = readFileSync(new URL('../public/unofficial-listening-parties.
 const likes = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
 
 test('current and likes views use explicit user-facing metric names in shared component declarations', () => {
-  for (const label of ['総再生数', '最終取得', '対象楽曲数', '合計いいね数', '合計いいね数（前日比）', '楽曲別一覧', '最新いいね数', 'リスパ']) {
+  for (const label of ['総再生数', '最終取得', '対象楽曲数', '合計いいね数', '楽曲別一覧', '最新いいね数', 'リスパ']) {
     assert.match(staticUi, new RegExp(label));
   }
+  assert.doesNotMatch(staticUi, /合計いいね数（前日比）/);
   assert.doesNotMatch(staticUi, /最大いいね数/);
   assert.match(likesShell, /dashboardSummary/);
   assert.match(likesShell, /className: 'likes-summary'/);
@@ -56,7 +57,7 @@ test('likes runtime and CSV use the same likes terminology', () => {
   assert.match(likes, /最新いいね数/);
   assert.match(likes, /'最終取得'/);
   assert.match(likes, /likesTotalLikes/);
-  assert.match(likes, /likesTotalDelta/);
+  assert.doesNotMatch(likes, /likesTotalDelta/);
   assert.doesNotMatch(likes, /likesMaxLikes/);
   assert.doesNotMatch(likes, /metric\('最新いいね'/);
 });
