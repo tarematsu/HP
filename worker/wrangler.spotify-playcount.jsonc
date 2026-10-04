@@ -15,6 +15,9 @@
       "invocation_logs": true
     }
   },
+  "triggers": {
+    "crons": []
+  },
   "vars": {
     "SPOTIFY_PLAYCOUNT_ENABLED": true
   },

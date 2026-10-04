@@ -99,12 +99,13 @@ test('live trigger uses the narrow lease boundary instead of loading derive and 
 test('runtime keeps queue and serving graphs lazy without a scheduled graph', () => {
   for (const moduleName of [
     'minute-enrichment-optimized-entry.js',
-    'pages-response-fetch-entry.js',
     'runtime-queue.js',
   ]) {
     assert.match(runtimeEntry, new RegExp(`import\\('./${moduleName.replaceAll('.', '\\.')}'\\)`));
     assert.doesNotMatch(runtimeEntry, new RegExp(`from './${moduleName.replaceAll('.', '\\.')}'`));
   }
+  assert.match(runtimeEntry, /from '\.\/pages-response-fetch-entry\.js'/);
+  assert.doesNotMatch(runtimeEntry, /import\('\.\/pages-response-fetch-entry\.js'\)/);
   assert.doesNotMatch(runtimeEntry, /pages-read-model-entry|runtime-scheduled|runCoreScheduled|scheduled\s*:/);
   assert.doesNotMatch(runtimeEntry, /ingest-channel-optimized-entry/);
 });

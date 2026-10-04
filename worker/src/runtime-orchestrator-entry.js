@@ -1,5 +1,6 @@
 import { budgetedLiveCompleteMessage } from './minute-live-complete-message.js';
 import { readMinuteFactRuntimeStateList } from './minute-facts-runtime-state-read.js';
+import { runPagesResponseFetch } from './pages-response-fetch-entry.js';
 
 const EMPTY_DEPENDENCIES = Object.freeze({});
 const LIVE_DERIVE_QUEUE_NAME = 'stationhead-minute-live-derive';
@@ -10,7 +11,6 @@ const ENRICHMENT_QUEUE_NAMES = new Set([
 
 let fetchGuardPromise;
 let enrichmentModulePromise;
-let pagesResponseModulePromise;
 let runtimeQueueModulePromise;
 let liveTriggerModulePromise;
 let liveRevisionModulePromise;
@@ -75,11 +75,6 @@ function loadFetchGuard() {
 function loadEnrichmentModule() {
   enrichmentModulePromise ||= import('./minute-enrichment-optimized-entry.js');
   return enrichmentModulePromise;
-}
-
-function loadPagesResponseModule() {
-  pagesResponseModulePromise ||= import('./pages-response-fetch-entry.js');
-  return pagesResponseModulePromise;
 }
 
 function loadRuntimeQueueModule() {
@@ -156,8 +151,7 @@ export async function runCoreFetch(request, env, ctx, dependencies = EMPTY_DEPEN
       headers: { 'cache-control': 'no-store' },
     });
   }
-  const run = dependencies.runPagesFetch
-    || (await loadPagesResponseModule()).runPagesResponseFetch;
+  const run = dependencies.runPagesFetch || runPagesResponseFetch;
   return run(request, env, ctx, dependencies.pages || EMPTY_DEPENDENCIES);
 }
 
