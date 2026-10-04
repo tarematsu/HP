@@ -7,10 +7,18 @@ import {
   collectLatestKugouAcgHistory,
   kugouAcgHistoryRecord,
   kugouAcgHistoryR2Key,
+  kugouAcgSongsUrl,
   kugouAcgVolumeList,
+  kugouAcgVolumeUrl,
   parseKugouAcgSongs,
   upsertKugouAcgHistoryArtifacts,
 } from '../src/kugou-acg-chart-history.js';
+
+test('Kugou ACG rank endpoints use the provider-supported HTTP host', () => {
+  assert.match(kugouAcgVolumeUrl(), /^http:\/\/mobilecdnbj\.kugou\.com\/api\/v3\/rank\/vol\?/);
+  assert.match(kugouAcgSongsUrl('126794'), /^http:\/\/mobilecdnbj\.kugou\.com\/api\/v3\/rank\/song\?/);
+  assert.equal(new URL(kugouAcgSongsUrl('126794')).searchParams.get('volid'), '126794');
+});
 
 test('Kugou ACG volume list derives ISO week from date-form volume names', () => {
   const volumes = kugouAcgVolumeList({

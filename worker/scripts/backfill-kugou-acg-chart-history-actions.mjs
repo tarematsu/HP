@@ -49,10 +49,14 @@ async function waitForCompletion(r2, requestedAt, startDate) {
         stored_periods: progress.stored_periods,
         history_entries: progress.history_entries,
         remaining: progress.remaining,
+        last_error: progress.last_error,
       });
       if (signature !== previousSignature) {
         console.log(JSON.stringify({ event: 'kugou_acg_backfill_progress', ...progress }));
         previousSignature = signature;
+      }
+      if (progress.status === 'error') {
+        throw new Error(`Kugou ACG worker backfill failed: ${String(progress.last_error || 'unknown error').slice(0, 2000)}`);
       }
       if (progress.complete === true && progress.status === 'complete') return progress;
     }

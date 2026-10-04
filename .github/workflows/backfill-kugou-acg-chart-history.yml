@@ -23,7 +23,7 @@ permissions:
 
 concurrency:
   group: kugou-acg-chart-history-backfill
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   backfill:
