@@ -200,6 +200,13 @@ function setVisible(visible) {
     const section = byId(id);
     if (section) section.hidden = !visible;
   }
+  if (!visible) return;
+  const view = byId('regionalMusicView');
+  const genericTables = byId('regionalMusicGenericTables');
+  const compactMeta = byId('regionalMusicCompactMeta');
+  view?.classList.add('is-chart-compact');
+  if (genericTables) genericTables.hidden = true;
+  if (compactMeta) compactMeta.hidden = false;
 }
 
 export function renderKkboxHistory(payload) {
