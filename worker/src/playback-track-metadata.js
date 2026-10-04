@@ -28,6 +28,13 @@ function trustedCanonicalSeed(track) {
     && Number(track?.presentation_version) === CANONICAL_PRESENTATION_VERSION;
 }
 
+function trustedAggregateSeed(track) {
+  return Number(track?.track_id) > 0
+    && text(track?.title)
+    && text(track?.artist)
+    && Number(track?.presentation_version) === CANONICAL_PRESENTATION_VERSION;
+}
+
 function markCanonicalPresentation(rows) {
   return (rows || []).map((row) => Number(row?.track_id) > 0 && !trackNeedsHydration(row)
     ? { ...row, presentation_version: CANONICAL_PRESENTATION_VERSION }
@@ -216,7 +223,7 @@ export async function hydratePlaybackAggregates(db, daily, likes, queue = []) {
   const likeEntries = Object.entries(likes || {});
   const rows = [...dailyEntries, ...likeEntries].map(([, row]) => sanitizeMetadataRow(row));
   const seedRows = [...queue, ...rows].map(sanitizeMetadataRow)
-    .filter(trustedCanonicalSeed);
+    .filter(trustedAggregateSeed);
   const hydrated = markCanonicalPresentation(await canonicalizeTrackRows(db, rows, { seedRows }));
   const dailyRows = hydrated.slice(0, dailyEntries.length);
   const likeRows = hydrated.slice(dailyEntries.length);
