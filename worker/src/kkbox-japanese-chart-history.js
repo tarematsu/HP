@@ -3,9 +3,19 @@ import { KKBOX_JAPANESE_CATEGORY, canonicalKkboxArtists, kkboxChartId } from './
 export const KKBOX_JAPANESE_HISTORY_VIEW_KEY = 'regional-music/kkbox/japanese-chart-history/view.json';
 export const KKBOX_JAPANESE_HISTORY_START = '2012-01-01';
 
+const KKBOX_CURRENT_ARTISTS = new Set(['sakurazaka46', 'nogizaka46', 'hinatazaka46']);
+
 function dateOnly(value) {
   const text = String(value || '').trim();
   return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : null;
+}
+
+function currentCanonicalArtists(value) {
+  return Array.isArray(value) ? value.filter((artist) => KKBOX_CURRENT_ARTISTS.has(artist)) : [];
+}
+
+function currentGroupEntry(entry) {
+  return currentCanonicalArtists(entry?.canonical_artists).length > 0;
 }
 
 function recordKey(record) {
@@ -37,7 +47,7 @@ function rowFromRecord(record, entry) {
     period_type: record.period_type,
     chart_type: record.chart_type,
     period: record.period,
-    canonical_artists: Array.isArray(entry.canonical_artists) ? entry.canonical_artists : [],
+    canonical_artists: currentCanonicalArtists(entry.canonical_artists),
     rank: Number(entry.rank),
     previous_rank: Number(entry.previous_rank) > 0 ? Number(entry.previous_rank) : null,
     title: entry.title ?? null,
@@ -59,7 +69,7 @@ function periodSummary(record) {
     status: record.status || 'ok',
     source_url: record.source_url ?? null,
     source_rows: Number(record.source_rows) || 0,
-    entries: Array.isArray(record.entries) ? record.entries.length : 0,
+    entries: Array.isArray(record.entries) ? record.entries.filter(currentGroupEntry).length : 0,
     error: record.error ?? null,
   };
 }
@@ -91,7 +101,7 @@ export function kkboxHistoryRecord(chart, result, requestedDate = null) {
     status: 'ok',
     source_url: result?.source_url ?? null,
     source_rows: Number(result?.source_rows) || 0,
-    entries: Array.isArray(result?.entries) ? result.entries : [],
+    entries: Array.isArray(result?.entries) ? result.entries.filter(currentGroupEntry) : [],
   };
 }
 
@@ -132,11 +142,13 @@ export function kkboxHistoryRecordsFromSnapshot(snapshot) {
       .filter((row) => String(row?.service_playlist_id || '') === String(playlist.service_playlist_id))
       .map((row) => {
         const track = tracks.get(String(row?.service_track_id || '')) || {};
-        const canonicalArtists = Array.isArray(row?.canonical_artists) && row.canonical_artists.length
-          ? row.canonical_artists
-          : Array.isArray(track?.canonical_artists) && track.canonical_artists.length
-            ? track.canonical_artists
-            : canonicalKkboxArtists(`${row?.artist_name || track?.artist_name || ''} ${row?.artist_roles || track?.artist_roles || ''}`);
+        const canonicalArtists = currentCanonicalArtists(
+          Array.isArray(row?.canonical_artists) && row.canonical_artists.length
+            ? row.canonical_artists
+            : Array.isArray(track?.canonical_artists) && track.canonical_artists.length
+              ? track.canonical_artists
+              : canonicalKkboxArtists(`${row?.artist_name || track?.artist_name || ''} ${row?.artist_roles || track?.artist_roles || ''}`),
+        );
         return {
           track_id: String(row?.service_track_id || ''),
           rank: Number(row?.position),
@@ -176,18 +188,32 @@ export function mergeKkboxJapaneseHistory(existing = null, records = [], updated
     .map((record) => [record.territory, record.period_type, record.chart_type, record.period].join('|')));
   const historyMap = new Map();
   for (const row of Array.isArray(existing?.history) ? existing.history : []) {
+    if (!currentGroupEntry(row)) continue;
     const periodKey = [row.territory, row.period_type, row.chart_type, row.period].join('|');
-    if (!replacedPeriods.has(periodKey)) historyMap.set(historyKey(row), row);
+    if (!replacedPeriods.has(periodKey)) {
+      const currentRow = { ...row, canonical_artists: currentCanonicalArtists(row.canonical_artists) };
+      historyMap.set(historyKey(currentRow), currentRow);
+    }
   }
   for (const record of records) {
-    for (const entry of Array.isArray(record?.entries) ? record.entries : []) {
+    for (const entry of Array.isArray(record?.entries) ? record.entries.filter(currentGroupEntry) : []) {
       const row = rowFromRecord(record, entry);
-      if (row.period && row.track_id && Number.isFinite(row.rank) && row.rank > 0) historyMap.set(historyKey(row), row);
+      if (row.period && row.track_id && row.canonical_artists.length && Number.isFinite(row.rank) && row.rank > 0) {
+        historyMap.set(historyKey(row), row);
+      }
     }
   }
 
-  const periods = [...periodMap.values()].sort(sortPeriods);
   const history = [...historyMap.values()].sort(sortHistory);
+  const periods = [...periodMap.values()].map((row) => ({
+    ...row,
+    entries: row?.period
+      ? history.filter((item) => item.territory === row.territory
+        && item.period_type === row.period_type
+        && item.chart_type === row.chart_type
+        && item.period === row.period).length
+      : 0,
+  })).sort(sortPeriods);
   const successful = periods.filter((row) => row.status === 'ok');
   const failed = periods.filter((row) => row.status !== 'ok');
   const series = {};
@@ -221,9 +247,8 @@ export function mergeKkboxJapaneseHistory(existing = null, records = [], updated
 }
 
 export async function upsertKkboxJapaneseHistoryArtifacts({ load, save, records, updatedAt = Date.now() }) {
-  if (!Array.isArray(records) || !records.length) return { changed: false, view: await load(KKBOX_JAPANESE_HISTORY_VIEW_KEY) };
   const existing = await load(KKBOX_JAPANESE_HISTORY_VIEW_KEY);
-  const next = mergeKkboxJapaneseHistory(existing, records, updatedAt);
+  const next = mergeKkboxJapaneseHistory(existing, Array.isArray(records) ? records : [], updatedAt);
   const before = JSON.stringify({
     periods: existing?.periods || [],
     history: existing?.history || [],

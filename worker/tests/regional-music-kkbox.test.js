@@ -69,12 +69,13 @@ test('KKBOX chart URL uses the live KMA Japanese category endpoint', () => {
   assert.equal(url.searchParams.get('date'), '2024-10-03');
 });
 
-test('KKBOX target matching preserves multi-group Sakamichi collaborations', () => {
+test('KKBOX target matching preserves current multi-group Sakamichi collaborations only', () => {
   assert.deepEqual(canonicalKkboxArtists('坂道選抜, 乃木坂46, 櫻坂46, 日向坂46'), [
     'sakurazaka46',
     'hinatazaka46',
     'nogizaka46',
   ]);
+  assert.deepEqual(canonicalKkboxArtists('欅坂46, けやき坂46'), []);
 });
 
 test('KKBOX parser filters the chart to tracked Sakamichi entries and keeps ranks', async () => {
