@@ -66,7 +66,7 @@ async function waitForCompletion(r2, requestedAt, startDate) {
 }
 
 async function waitForPagesReadModel(r2, progress) {
-  const key = pagesActionsR2ResponseKey('regional-music:kugou_music');
+  const key = pagesActionsR2ResponseKey('music-service:kugou_music');
   const deadline = Date.now() + 5 * 60_000;
   while (Date.now() < deadline) {
     const envelope = await readJson(r2, key);

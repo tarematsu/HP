@@ -2,23 +2,23 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  loadRegionalMusicReadModel,
-  publishRegionalMusicReadModels,
-  publishRegionalMusicServiceReadModel,
+  loadMusicServicesReadModel,
+  publishMusicServiceReadModels,
+  publishMusicServiceReadModel,
   qqAnimeChartReadModel,
   qqJapanChartReadModel,
-  regionalChartHistoryReadModel,
-  regionalMusicReadModelKey,
-  regionalMusicReadModelPayload,
-  regionalMusicServiceReadModelPayload,
-} from '../src/regional-music-read-model.js';
+  chartHistoryReadModel,
+  musicServiceReadModelKey,
+  musicServicesReadModelPayload,
+  musicServiceReadModelPayload,
+} from '../src/music-service-read-model.js';
 import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
 import { QQ_JAPAN_HISTORY_VIEW_KEY } from '../src/qq-japan-chart-history-view.js';
 import { QQ_ANIME_HISTORY_INDEX_KEY, QQ_ANIME_HISTORY_VIEW_KEY } from '../src/qq-anime-chart-history-view.js';
 import { KKBOX_JAPANESE_HISTORY_VIEW_KEY } from '../src/kkbox-japanese-chart-history.js';
 
-test('regional music read model normalizes collector health for retained services', () => {
-  const payload = regionalMusicReadModelPayload({
+test('music service read model normalizes collector health for retained services', () => {
+  const payload = musicServicesReadModelPayload({
     artists: [{ service: 'kkbox', canonical_artist: 'sakurazaka46', followers: 478 }],
     tracks: [],
     releases: [],
@@ -54,7 +54,7 @@ test('regional music read model normalizes collector health for retained service
 });
 
 test('service read model contains only the selected service and owns its update timestamp', () => {
-  const payload = regionalMusicServiceReadModelPayload({
+  const payload = musicServiceReadModelPayload({
     artists:[
       { service:'youtube_music', canonical_artist:'sakurazaka46', followers:10, observed_at:700 },
       { service:'qq_music', canonical_artist:'sakurazaka46', followers:20, observed_at:800 },
@@ -79,11 +79,11 @@ test('service read model contains only the selected service and owns its update 
   assert.equal('qq_anime_chart' in payload,false);
   assert.equal('kkbox_japanese_chart' in payload,false);
   assert.equal('kugou_japan_chart' in payload,false);
-  assert.equal(regionalMusicReadModelKey('youtube_music'),'regional-music:youtube_music');
-  assert.throws(()=>regionalMusicReadModelKey('missing'),/unknown regional music service/);
+  assert.equal(musicServiceReadModelKey('youtube_music'),'music-service:youtube_music');
+  assert.throws(()=>musicServiceReadModelKey('missing'),/unknown music service/);
 });
 
-test('regional chart view normalizers preserve compact history payloads', () => {
+test('music chart view normalizers preserve compact history payloads', () => {
   const normalized = qqJapanChartReadModel({
     coverage:{ earliest_period:'2018_1', latest_period:'2026_40', entries:2 },
     history:[
@@ -94,7 +94,7 @@ test('regional chart view normalizers preserve compact history payloads', () => 
   assert.equal(normalized.coverage.latest_period, '2026_40');
   assert.equal(normalized.history.length, 2);
   assert.deepEqual(qqAnimeChartReadModel({ coverage:normalized.coverage, history:normalized.history }), normalized);
-  assert.deepEqual(regionalChartHistoryReadModel({
+  assert.deepEqual(chartHistoryReadModel({
     coverage:{latest_period:'2026-40'},
     periods:[{period:'2026-40'}],
     history:[{period:'2026-40',rank:3}],
@@ -105,8 +105,8 @@ test('regional chart view normalizers preserve compact history payloads', () => 
   });
 });
 
-test('regional read model includes complete Kugou Japan chart seed and coverage boundary', () => {
-  const payload = regionalMusicReadModelPayload({}, 456);
+test('music service read model includes complete Kugou Japan chart seed and coverage boundary', () => {
+  const payload = musicServicesReadModelPayload({}, 456);
   const history = payload.kugou_japan_chart.history;
   const counts = history.reduce((map, item) => map.set(item.canonical_artist, (map.get(item.canonical_artist) || 0) + 1), new Map());
   const best = (artist) => Math.min(...history.filter((item) => item.canonical_artist === artist).map((item) => item.rank));
@@ -125,7 +125,7 @@ test('regional read model includes complete Kugou Japan chart seed and coverage 
 });
 
 test('YouTube Music collector metadata exposes free public metrics without account-only fields', () => {
-  const payload = regionalMusicServiceReadModelPayload({
+  const payload = musicServiceReadModelPayload({
     artists: [{
       service: 'youtube_music',
       canonical_artist: 'sakurazaka46',
@@ -164,7 +164,7 @@ test('playlist membership query follows the latest playlist snapshot, including 
     },
   };
 
-  const snapshot = await loadRegionalMusicReadModel(db);
+  const snapshot = await loadMusicServicesReadModel(db);
   assert.deepEqual(snapshot.memberships, []);
   assert.deepEqual(snapshot.releases, []);
   const membershipQuery = queries.find((sql) => sql.includes('regional_music_playlist_memberships AS m'));
@@ -175,9 +175,9 @@ test('playlist membership query follows the latest playlist snapshot, including 
   assert.ok(queries.some((sql) => sql.includes('monthly_audience')));
 });
 
-test('regional music publication writes independent service-scoped R2 objects', async () => {
+test('music service publication writes independent service-scoped R2 objects', async () => {
   const writes = [];
-  const result = await publishRegionalMusicReadModels({
+  const result = await publishMusicServiceReadModels({
     OTHER_DB: {},
     PAGES_RESPONSE_R2: { put() {}, async get() { return null; } },
   }, ['kkbox','qq_music'], 1000, {
@@ -197,8 +197,8 @@ test('regional music publication writes independent service-scoped R2 objects', 
   });
 
   assert.equal(writes.length, 2);
-  const kkbox=writes.find(row=>row.key==='regional-music:kkbox');
-  const qq=writes.find(row=>row.key==='regional-music:qq_music');
+  const kkbox=writes.find(row=>row.key==='music-service:kkbox');
+  const qq=writes.find(row=>row.key==='music-service:qq_music');
   assert.ok(kkbox);
   assert.ok(qq);
   assert.equal(kkbox.status,200);
@@ -217,7 +217,7 @@ test('regional music publication writes independent service-scoped R2 objects', 
   assert.equal(result.skipped,0);
 });
 
-test('unchanged service source keeps its previous read-model update time and performs no write', async () => {
+test('unchanged legacy service source keeps its previous read-model update time and performs no write', async () => {
   const existingPayload={
     ok:true,
     read_model_version:1,
@@ -234,7 +234,7 @@ test('unchanged service source keeps its previous read-model update time and per
     updated_at:800,
   };
   const existingKey=pagesActionsR2ResponseKey('regional-music:kkbox');
-  const result=await publishRegionalMusicServiceReadModel({
+  const result=await publishMusicServiceReadModel({
     OTHER_DB:{},
     PAGES_RESPONSE_R2:{
       put(){throw new Error('must not write');},
@@ -250,6 +250,7 @@ test('unchanged service source keeps its previous read-model update time and per
     }),
     saveR2Response:async()=>{throw new Error('must not save');},
   });
+  assert.equal(result.model_key,'music-service:kkbox');
   assert.equal(result.skipped,true);
   assert.equal(result.updated_at,800);
   assert.equal(result.source_updated_at,700);
@@ -259,7 +260,7 @@ test('QQ service publication injects both Japan and anime chart views from R2', 
   const writes=[];
   const japan={updated_at:940,coverage:{latest_period:'2026_40'},history:[{period:'2026_40',rank:9,title:'J'}]};
   const anime={updated_at:950,coverage:{latest_period:'2026_40'},history:[{period:'2026_40',rank:7,title:'A'}]};
-  await publishRegionalMusicServiceReadModel({
+  await publishMusicServiceReadModel({
     OTHER_DB:{},
     PAGES_RESPONSE_R2:{put(){},async get(key){
       if(key===QQ_JAPAN_HISTORY_VIEW_KEY) return {async json(){return structuredClone(japan);}};
@@ -279,14 +280,14 @@ test('QQ service publication injects both Japan and anime chart views from R2', 
 test('KKBOX service publication owns Japanese chart history and source timestamp', async () => {
   const writes=[];
   const view={updated_at:960,coverage:{latest_period:'2026-40'},periods:[{period:'2026-40'}],history:[{period:'2026-40',rank:4,title:'K'}]};
-  await publishRegionalMusicServiceReadModel({
+  await publishMusicServiceReadModel({
     OTHER_DB:{},
     PAGES_RESPONSE_R2:{put(){},async get(key){return key===KKBOX_JAPANESE_HISTORY_VIEW_KEY?{async json(){return structuredClone(view);}}:null;}},
   },'kkbox',1000,{
     loadReadModel:async()=>({artists:[],tracks:[],releases:[],playlists:[],memberships:[],services:[]}),
     saveR2Response:async(_r2,key,body)=>{writes.push({key,body:JSON.parse(body)});return {storage:'r2',bytes:body.length};},
   });
-  assert.equal(writes[0].key,'regional-music:kkbox');
+  assert.equal(writes[0].key,'music-service:kkbox');
   assert.equal(writes[0].body.kkbox_japanese_chart.history[0].rank,4);
   assert.equal(writes[0].body.source_updated_at,960);
   assert.equal('qq_japan_chart' in writes[0].body,false);

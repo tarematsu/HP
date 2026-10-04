@@ -24,11 +24,23 @@ const shellFiles = [
   'spotify-shell.js',
   'apple-music-shell.js',
   'amazon-music-shell.js',
+  'youtube-music-shell.js',
+  'kkbox-shell.js',
+  'qq-music-shell.js',
+  'kugou-music-shell.js',
   'played-tracks-shell.js',
   'first-week-comparison-shell.js',
   'nogizaka-listening-party-shell.js',
 ];
-const musicServiceShellFiles = new Set(['spotify-shell.js', 'apple-music-shell.js', 'amazon-music-shell.js']);
+const musicServiceShellFiles = new Set([
+  'spotify-shell.js',
+  'apple-music-shell.js',
+  'amazon-music-shell.js',
+  'youtube-music-shell.js',
+  'kkbox-shell.js',
+  'qq-music-shell.js',
+  'kugou-music-shell.js',
+]);
 const shells = Object.fromEntries(shellFiles.map((file) => [
   file,
   readFileSync(new URL(`../public/${file}`, import.meta.url), 'utf8'),
@@ -179,7 +191,8 @@ test('dashboard shells share reusable UI components without runtime stylesheet l
   for (const helper of ['musicServiceMeta', 'musicServiceNotice', 'musicServiceViewClassName', 'musicServiceFilterTabs', 'musicServiceTable', 'musicServiceSection', 'mountMusicServiceView']) {
     assert.match(musicServiceShell, new RegExp(`export function ${helper}\\(`));
   }
-  assert.match(musicServiceShell, /'regional-music-view', 'is-chart-compact', 'music-service-view'/);
+  assert.match(musicServiceShell, /joinClasses\('is-chart-compact', 'music-service-view', classes\)/);
+  assert.doesNotMatch(musicServiceShell, /regional/i);
   for (const name of ['followers-shell.js', 'apple-music-shell.js', 'amazon-music-shell.js']) {
     assert.match(shells[name], /dashboardChartHost/, `${name} must use the shared chart host`);
   }

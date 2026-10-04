@@ -76,7 +76,7 @@ test('Amazon Music uses the shared music-service metadata and section layout whi
   assert.match(shell, /musicServiceSection/);
   assert.match(shell, /musicServiceFilterTabs/);
   assert.match(shell, /musicServiceTable/);
-  assert.match(commonShell, /'regional-music-view', 'is-chart-compact', 'music-service-view'/);
+  assert.match(commonShell, /joinClasses\('is-chart-compact', 'music-service-view', classes\)/);
   assert.match(commonShell, /'music-service-meta'/);
   assert.match(commonShell, /'music-service-section'/);
   assert.match(shell, /title: 'Amazon Music総合順位推移'/);

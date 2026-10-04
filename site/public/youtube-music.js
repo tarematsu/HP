@@ -7,11 +7,11 @@ import {
 import { appendTableRow } from './dashboard-table-dom.js?v=20261001.1';
 import {
   MUSIC_ARTIST_LABELS,
-  loadRegionalMusicReadModel,
+  loadMusicServiceReadModel,
   musicDateTimeText,
   musicValueText,
   replaceMusicTableBody,
-} from './music-service-runtime-common.js?v=20261004.1';
+} from './music-service-runtime-common.js?v=20261004.2';
 
 const SERVICE = 'youtube_music';
 
@@ -123,7 +123,7 @@ function render(payload) {
 export async function loadYoutubeMusicView() {
   setNotice('youtubeMusicNotice', 'YouTube Music公開データを読み込んでいます。');
   try {
-    render(await loadRegionalMusicReadModel(SERVICE));
+    render(await loadMusicServiceReadModel(SERVICE));
   } catch {
     setNotice('youtubeMusicNotice', 'データを取得できませんでした。時間をおいて再度お試しください。', true);
     for (const [id, columns] of [['youtubeMusicArtistBody', 5], ['youtubeMusicReleaseBody', 4], ['youtubeMusicTrackBody', 5], ['youtubeMusicPlaylistBody', 3]]) {

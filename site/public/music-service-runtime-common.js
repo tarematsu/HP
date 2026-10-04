@@ -21,9 +21,18 @@ export const SAKAMICHI_GROUP_COLORS = Object.freeze({
   hinatazaka46: '#9ecff3',
 });
 
-export const REGIONAL_MUSIC_CADENCE = Object.freeze({
+export const MUSIC_SERVICE_CADENCE = Object.freeze({
+  youtube_music: '毎日0:00',
+  kkbox: '-',
   qq_music: '毎週木曜日18:00',
   kugou_music: '平日11:30 / ACG新歌榜: 水曜11:40',
+});
+
+const MUSIC_SERVICE_ENDPOINTS = Object.freeze({
+  youtube_music: '/api/youtube-music',
+  kkbox: '/api/kkbox',
+  qq_music: '/api/qq-music',
+  kugou_music: '/api/kugou-music',
 });
 
 const dateTimeFormat = dashboardDateTimeFormatter({
@@ -55,18 +64,19 @@ export function replaceMusicTableBody(id) {
   return body;
 }
 
-export function loadRegionalMusicReadModel(service) {
+export function loadMusicServiceReadModel(service) {
   const serviceId = String(service || '').trim();
-  if (!serviceId) return Promise.reject(new Error('regional music service is required'));
+  const endpoint = MUSIC_SERVICE_ENDPOINTS[serviceId];
+  if (!endpoint) return Promise.reject(new Error(`unknown music service: ${serviceId || '(empty)'}`));
   if (!readModelPromises.has(serviceId)) {
-    const request = fetch(`/api/regional-music?service=${encodeURIComponent(serviceId)}`, {
+    const request = fetch(endpoint, {
       headers: { accept: 'application/json' },
       cache: 'default',
     }).then(async (response) => {
-      if (!response.ok) throw new Error(`regional music ${serviceId} HTTP ${response.status}`);
+      if (!response.ok) throw new Error(`${serviceId} HTTP ${response.status}`);
       const payload = await response.json();
       if (!payload?.ok || payload.service !== serviceId) {
-        throw new Error(payload?.error || `regional music ${serviceId} read model unavailable`);
+        throw new Error(payload?.error || `${serviceId} read model unavailable`);
       }
       return payload;
     }).catch((error) => {
