@@ -125,6 +125,7 @@ export function buildOhisamaCadencedPayload(
 
   if (!historyDue && previousPayload) {
     next.daily = preserved(previousPayload, 'daily', currentPayload.daily || []);
+    next.weekly = preserved(previousPayload, 'weekly', currentPayload.weekly || []);
   }
 
   if (playedRefreshed) {
