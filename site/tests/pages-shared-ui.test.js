@@ -15,7 +15,7 @@ const currentShell = readFileSync(new URL('../public/current-shell.js', import.m
 const hinataShell = readFileSync(new URL('../public/hinata-shell.js', import.meta.url), 'utf8');
 const nogizakaShell = readFileSync(new URL('../public/nogizaka-listening-party-shell.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
-const rankingChart = readFileSync(new URL('../public/history/history-ranking-chart.js', import.meta.url), 'utf8');
+const leaderboardRuntime = readFileSync(new URL('../public/leaderboard.js', import.meta.url), 'utf8');
 const broadcastsChart = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
 const rankChart = readFileSync(new URL('../public/dashboard-rank-chart.js', import.meta.url), 'utf8');
 const tableDom = readFileSync(new URL('../public/dashboard-table-dom.js', import.meta.url), 'utf8');
@@ -46,7 +46,7 @@ test('dashboard exposes shared runtime primitives for repeated view rendering wo
 test('all active client Canvas charts reuse the shared Canvas foundation', () => {
   const sources = {
     historyPeriod: periodChart,
-    historyRanking: rankingChart,
+    historyRanking: leaderboardRuntime,
     historyBroadcasts: broadcastsChart,
     spotify: runtimes['spotify.js'],
     subscriptionRank: rankChart,
