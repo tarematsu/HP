@@ -2,9 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 import { collectInitialStationheadFollowers, registerBuddiesInitialFollowerTarget } from '../src/stationhead-initial-followers.js';
-import { activeBroadcastFollowerRegistrar } from '../src/ohisama-pages-entry.js';
-import { cachedOhisamaFollowerTargetRegistrar } from '../src/ohisama-follower-target-cache.js';
-import { withOhisamaFollowerMembership } from '../src/ohisama-follower-membership.js';
+import { ohisamaFollowerRegistrar } from '../src/ohisama-pages-entry.js';
+import { OHISAMA_FOLLOWER_TARGET_CACHE_KEY } from '../src/ohisama-follower-target-cache.js';
 
 function fixture() {
   const values = new Map();
@@ -80,23 +79,54 @@ test('initial collection keeps missing historical counts sparse', async () => {
   assert.equal(result.accounts.find(account => account.handle === 'newhost').previous_day_delta, null);
 });
 
-test('Ohisama registrar forwards live credentials through every wrapper without saved auth', async () => {
+test('Ohisama registrar forwards live credentials while caching only optional initial metadata', async () => {
   const { env } = fixture();
   const session = { authToken: 'live-token', deviceUid: 'live-device' };
-  const registrar = activeBroadcastFollowerRegistrar(cachedOhisamaFollowerTargetRegistrar(withOhisamaFollowerMembership(
-    async (targetEnv, snapshot, observedAt, state) => {
-      assert.equal(state, session);
-      return collectInitialStationheadFollowers(targetEnv, snapshot.host_handle, observedAt, {
-        session: { auth_token: state.authToken, device_uid: state.deviceUid },
-        fetchFn: async (_url, init) => {
-          assert.equal(init.headers.authorization, 'Bearer live-token');
-          assert.equal(init.headers['sth-device-uid'], 'live-device');
-          return Response.json({ account: { handle: 'newhost', followers: 42 } });
-        },
-      });
+  let registrations = 0;
+  let initialCollections = 0;
+  const registrar = ohisamaFollowerRegistrar({
+    registerFollowerTarget: async (_targetEnv, snapshot) => {
+      registrations += 1;
+      assert.equal(snapshot.host_handle, 'newhost');
+      return true;
     },
-  )));
+    collectInitialFollowers: async (_targetEnv, handle, _observedAt, options) => {
+      initialCollections += 1;
+      assert.equal(handle, 'newhost');
+      assert.deepEqual(options.session, { auth_token: 'live-token', device_uid: 'live-device' });
+      return true;
+    },
+  });
   assert.equal(await registrar(env, { host_handle: 'newhost', is_broadcasting: 1 }, Date.now(), session), true);
+  assert.equal(registrations, 1);
+  assert.equal(initialCollections, 1);
+});
+
+test('Ohisama live target registration bypasses a stale R2 metadata cache', async () => {
+  const { env, values } = fixture();
+  values.set(OHISAMA_FOLLOWER_TARGET_CACHE_KEY, JSON.stringify({
+    version: 3,
+    updated_at: 500,
+    handles: ['newhost'],
+  }));
+  let registrations = 0;
+  let initialCollections = 0;
+  const registrar = ohisamaFollowerRegistrar({
+    registerFollowerTarget: async () => {
+      registrations += 1;
+      return registrations === 1;
+    },
+    collectInitialFollowers: async () => {
+      initialCollections += 1;
+      return true;
+    },
+  });
+  const snapshot = { host_handle: 'newhost', is_broadcasting: 1 };
+
+  assert.equal(await registrar(env, snapshot, 1000), true);
+  assert.equal(await registrar(env, snapshot, 2000), false);
+  assert.equal(registrations, 2);
+  assert.equal(initialCollections, 0);
 });
 
 test('Buddies registers only a live-observed host and retries registry confirmation even with an R2 marker', async () => {

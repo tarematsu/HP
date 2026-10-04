@@ -36,9 +36,12 @@ async function saveHandles(bucket, handles, observedAt) {
   return true;
 }
 
-export function cachedOhisamaFollowerTargetRegistrar(registerFollowerTarget) {
-  if (typeof registerFollowerTarget !== 'function') {
-    throw new TypeError('registerFollowerTarget must be a function');
+// This cache suppresses only optional follower metadata/initial-sample work.
+// Live target registration in OTHER_DB must stay outside this wrapper so a
+// retained R2 cache entry can never hide a missing dynamic target row.
+export function cachedOhisamaFollowerMetadataRegistrar(registerFollowerMetadata) {
+  if (typeof registerFollowerMetadata !== 'function') {
+    throw new TypeError('registerFollowerMetadata must be a function');
   }
   return async (env, snapshot, observedAt, session) => {
     const handle = normalizedHandle(snapshot?.host_handle);
@@ -47,13 +50,18 @@ export function cachedOhisamaFollowerTargetRegistrar(registerFollowerTarget) {
     const handles = await loadHandles(env?.PAGES_RESPONSE_R2);
     if (handles.has(handle)) return false;
 
-    const added = await registerFollowerTarget(env, snapshot, observedAt, session);
+    const changed = await registerFollowerMetadata(env, snapshot, observedAt, session);
     handles.add(handle);
     await saveHandles(env?.PAGES_RESPONSE_R2, handles, observedAt).catch(() => false);
-    return added;
+    return changed;
   };
 }
 
+// Backwards-compatible export for tests/importers during rollout. Do not use
+// this wrapper around authoritative D1 target registration.
+export const cachedOhisamaFollowerTargetRegistrar = cachedOhisamaFollowerMetadataRegistrar;
+
 export default {
+  cachedOhisamaFollowerMetadataRegistrar,
   cachedOhisamaFollowerTargetRegistrar,
 };
