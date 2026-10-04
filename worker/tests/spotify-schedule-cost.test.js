@@ -78,12 +78,18 @@ test('album batching preserves shared artist targets and skips unknown targets',
   ];
   assert.equal(await queueActiveReleases(env, '2026-09-30', 'run', artists), 2);
   assert.equal(expectedAlbums, 2);
-  assert.deepEqual(sent.map(({ body }) => [body.album_id, body.targets]), [
+  assert.equal(sent.length, 1);
+  const envelope = sent[0];
+  assert.equal(envelope.contentType, 'json');
+  assert.equal(envelope.body.message_type, 'spotify-playcount-album-batch');
+  assert.equal(envelope.body.message_version, 1);
+  assert.deepEqual(envelope.body.albums.map((body) => [body.album_id, body.targets]), [
     ['shared', artists], ['single', [artists[0]]],
   ]);
-  assert.ok(sent.every(({ body, contentType }) => contentType === 'json'
-    && body.snapshot_date === '2026-09-30' && body.run_token === 'run'
-    && body.message_type === 'spotify-playcount-album' && body.message_version === 3));
+  assert.ok(envelope.body.albums.every((body) => body.snapshot_date === '2026-09-30'
+    && body.run_token === 'run'
+    && body.message_type === 'spotify-playcount-album'
+    && body.message_version === 3));
 });
 
 test('manual collection targets today in JST without consuming an older incomplete run', async () => {
