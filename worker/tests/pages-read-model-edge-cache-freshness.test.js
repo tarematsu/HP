@@ -12,14 +12,14 @@ function materialized(body, updatedAt) {
   return response;
 }
 
-test('materialized L1 cache is bypassed after sixty seconds even when the model itself is still fresh', async () => {
+test('materialized L1 cache is bypassed after five minutes even when the model itself is still fresh', async () => {
   const now = Date.UTC(2026, 8, 19, 0, 0);
   let r2Reads = 0;
   let cacheWrites = 0;
   const response = await runPagesResponseFetch(request(), {}, {
     now: () => now,
     cache: {
-      match: async () => materialized({ source: 'old-edge' }, now - 61_000),
+      match: async () => materialized({ source: 'old-edge' }, now - 301_000),
       put: async () => { cacheWrites += 1; },
     },
     loadR2Response: async () => {
@@ -34,13 +34,13 @@ test('materialized L1 cache is bypassed after sixty seconds even when the model 
   assert.deepEqual(await response.json(), { source: 'new-r2' });
 });
 
-test('materialized L1 cache remains usable inside the sixty second freshness window', async () => {
+test('materialized L1 cache remains usable inside the five minute freshness window', async () => {
   const now = Date.UTC(2026, 8, 19, 0, 0);
   let r2Reads = 0;
   const response = await runPagesResponseFetch(request(), {}, {
     now: () => now,
     cache: {
-      match: async () => materialized({ source: 'edge' }, now - 30_000),
+      match: async () => materialized({ source: 'edge' }, now - 299_000),
       put: async () => {},
     },
     loadR2Response: async () => {
@@ -71,12 +71,12 @@ test('unchanged older models are cached from the time R2 was checked', async () 
     },
   };
   await runPagesResponseFetch(request(), {}, dependencies);
-  now += 30_000;
+  now += 240_000;
   const cached = await runPagesResponseFetch(request(), {}, dependencies);
   assert.equal(reads, 1);
   assert.equal(cached.headers.get('x-materialized-at'), String(generatedAt));
   assert.equal(cached.headers.get('x-api-source'), 'edge-cache');
-  now += 31_000;
+  now += 61_000;
   await runPagesResponseFetch(request(), {}, dependencies);
   assert.equal(reads, 2);
 });
