@@ -9,7 +9,7 @@ const INTERNAL_RESPONSE_PATH = '/_internal/pages-response';
 const DASHBOARD_MODEL_KEY = 'dashboard';
 const TRACK_HISTORY_MODEL_KEY = 'track-history';
 const DEFAULT_STALE_FALLBACK_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-const DEFAULT_EDGE_CACHE_MAX_AGE_MS = 60 * 1000;
+const DEFAULT_EDGE_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
 const DASHBOARD_EDGE_CACHE_MAX_AGE_MS = 15 * 1000;
 const PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS = new Set([
   'apple-music',
