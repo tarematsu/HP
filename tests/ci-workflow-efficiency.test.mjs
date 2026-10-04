@@ -35,7 +35,7 @@ test('CI is one deterministic Stationhead checks job', () => {
   assert.match(ci, /^  checks:\n/m);
   assert.doesNotMatch(ci, /^  changes:\n/m);
   assert.doesNotMatch(ci, /needs\.changes/);
-  assert.doesNotMatch(ci, /actions\/upload-artifact/);
+  assert.match(ci, /actions\/upload-artifact@v4/);
   assert.doesNotMatch(ci, /npm audit|npm run test:d1|npm run db:migrate/);
   assert.match(ci, /cache-dependency-path:[\s\S]*site\/package-lock\.json[\s\S]*worker\/package-lock\.json/);
   assert.match(ci, /working-directory: site/);
