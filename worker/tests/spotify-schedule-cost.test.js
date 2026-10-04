@@ -96,8 +96,8 @@ test('album batching preserves shared artist targets and skips unknown targets',
     && body.message_version === 3));
 });
 
-test('album queue envelopes hold fifteen albums to stay within the daily Queue budget', () => {
-  const bodies = Array.from({ length: 16 }, (_, index) => ({
+test('album queue envelopes hold twenty albums to stay within the daily Queue budget', () => {
+  const bodies = Array.from({ length: 21 }, (_, index) => ({
     message_type: 'spotify-playcount-album',
     message_version: 3,
     snapshot_date: '2026-10-04',
@@ -107,7 +107,7 @@ test('album queue envelopes hold fifteen albums to stay within the daily Queue b
   }));
   const packed = packSpotifyQueueBodies(bodies);
   assert.equal(packed.length, 2);
-  assert.equal(packed[0].albums.length, 15);
+  assert.equal(packed[0].albums.length, 20);
   assert.equal(packed[1].albums.length, 1);
 });
 
