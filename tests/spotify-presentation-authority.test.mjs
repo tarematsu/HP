@@ -124,9 +124,8 @@ test('manual higher-priority presentation is not overwritten by Spotify metadata
   });
 });
 
-test('MINUTE_DB registers Spotify presentation authority as the schema tip', () => {
+test('MINUTE_DB still registers Spotify presentation authority before newer migrations', () => {
   const path = 'database/facts-migrations/072_spotify_presentation_authority.sql';
   assert.equal(factsDescriptor.migrations.filter((value) => value === path).length, 1);
-  assert.equal(factsDescriptor.schema, path);
-  assert.equal(factsDescriptor.migrations.at(-1), path);
+  assert.ok(factsDescriptor.migrations.indexOf(path) < factsDescriptor.migrations.length - 1);
 });
