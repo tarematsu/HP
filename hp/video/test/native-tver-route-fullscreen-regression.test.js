@@ -10,15 +10,17 @@ const mediaSection = readFileSync(
 const trustedInput = readFileSync(
   new URL('../../native/src/renderer_panels/media_trusted_input.inc', import.meta.url), 'utf8');
 
-test('TVer real fullscreen remains authoritative and uses a trusted corner tap', () => {
+test('TVer real fullscreen remains authoritative and uses the native trusted user-gesture bridge', () => {
   assert.doesNotMatch(runtime, /__homePanelTverEnsureViewportFullscreen|viewportFullscreen/);
   assert.doesNotMatch(runtime, /data-homepanel-tver-fill|homepanel-tver-viewport-fill/);
   assert.match(runtime, /document\.fullscreenElement/);
-  assert.match(runtime, /video\.getBoundingClientRect/);
-  assert.match(runtime, /rect\.right - 12/);
-  assert.match(runtime, /rect\.bottom - 12/);
-  assert.match(runtime, /return \[x, y\]/);
-  assert.doesNotMatch(runtime, /homepanel:tver-fullscreen-key|fullscreenControl/);
+  assert.match(runtime, /currentSettingsSpeedConfirmed/);
+  assert.match(runtime, /currentSettingsQualityConfirmed/);
+  assert.match(runtime, /homepanel:tver-fullscreen-key/);
+  assert.match(mediaSection, /NativeMediaRequestTverBrowserFullscreen/);
+  assert.match(mediaSection, /Runtime\.evaluate/);
+  assert.match(mediaSection, /userGesture/);
+  assert.match(mediaSection, /NativeMediaDispatchFullscreenKeyEvents/);
   assert.match(trustedInput, /Input\.dispatchMouseEvent/);
 });
 
