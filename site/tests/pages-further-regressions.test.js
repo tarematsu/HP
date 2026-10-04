@@ -8,11 +8,6 @@ import {
 } from '../functions/api/sakurazaka46jp.js';
 import { inferArtistFromDisplayTitle } from '../functions/lib/playback.js';
 import {
-  currentUtcWeekRange,
-  inclusivePresetStart,
-  utcDate,
-} from '../public/history/history-date-utils.js';
-import {
   aggregateCompleteTrackRows,
   normalizeTrackRows,
   summarizeCompleteTrackRows,
@@ -59,21 +54,6 @@ test('track rows recover whitespace-only titles and artists before rendering or 
   assert.equal(rows[0].artist, 'Recovered artist');
 });
 
-test('UTC week boundaries and inclusive presets use only the UTC calendar day', () => {
-  const sundayUtc = Date.parse('2026-07-26T15:30:00Z');
-  assert.equal(utcDate(0, sundayUtc), '2026-07-26');
-  assert.deepEqual(currentUtcWeekRange(sundayUtc), {
-    from: '2026-07-20',
-    to: '2026-07-26',
-  });
-  const mondayUtc = Date.parse('2026-07-27T00:30:00Z');
-  assert.deepEqual(currentUtcWeekRange(mondayUtc), {
-    from: '2026-07-27',
-    to: '2026-07-27',
-  });
-  assert.equal(inclusivePresetStart('2026-07-30', 30), '2026-07-01');
-});
-
 test('official series keeps distinct nearby events and reports missing summaries from minute facts', () => {
   const primary = [{
     event_name: 'Event A',
@@ -100,7 +80,7 @@ test('active Pages archive runtimes stay UTC except official-party display dates
   const likes = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
   const broadcasts = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
   const dashboardTime = readFileSync(new URL('../public/dashboard-time.js', import.meta.url), 'utf8');
-  const dashboard = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
+  const dashboard = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
   const mainPage = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   const likesShell = readFileSync(new URL('../public/likes-shell.js', import.meta.url), 'utf8');
   const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
@@ -129,14 +109,14 @@ test('active Pages archive runtimes stay UTC except official-party display dates
   assert.doesNotMatch(utcArchiveSources, /Asia\/Tokyo|JST_OFFSET_MS|jstDate|todayJst|currentJstWeekRange|applyJstPreset/);
 });
 
-test('dashboard image retries stay in the current runtime and successful refreshes clear stale errors', () => {
+test('dashboard artwork handling stays in the current runtime and successful refreshes clear stale errors', () => {
   const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-  const source = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
   const fetchCache = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
   assert.doesNotMatch(entry, /IMAGE_RETRY_DELAYS|MutationObserver/);
-  assert.match(source, /IMAGE_RETRY_DELAYS/);
-  assert.match(source, /new URL\(value, location\.href\)/);
-  assert.match(source, /image\.dataset\.lastSource = next/);
+  assert.match(source, /track\?\.thumbnail_url/);
+  assert.match(source, /image\.removeAttribute\('src'\)/);
+  assert.match(source, /image\.hidden = true/);
   assert.doesNotMatch(source, /MutationObserver/);
   assert.match(fetchCache, /function clearTransientStatus/);
   assert.match(fetchCache, /node\.hidden = true/);
