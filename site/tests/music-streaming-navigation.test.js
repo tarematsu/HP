@@ -44,19 +44,14 @@ function quotedServicePattern(service) {
 }
 
 test('music streaming navigation exposes one flat service registry', () => {
-  const template = html.match(/<template id="subscriptionSourceTabsTemplate">([\s\S]*?)<\/template>/);
-  assert.ok(template, 'subscription source template must exist');
-  assert.doesNotMatch(template[1], /data-subscription-group(?:-content)?=/);
-  assert.match(template[1], /class="dashboard-source-row"/);
-  for (const service of visibleSubscriptionServices) assert.match(template[1], new RegExp(`data-source="${service}"`));
-  for (const service of removedServices) {
-    assert.doesNotMatch(template[1], new RegExp(`data-source="${service}"`));
-    assert.doesNotMatch(tabs, quotedServicePattern(service));
-  }
-  assert.match(template[1], /data-source="qq_music">🇨🇳QQ音乐<\/button>/);
-  assert.match(template[1], /data-source="kugou_music">🇨🇳酷狗音乐<\/button>/);
+  assert.doesNotMatch(html, /subscriptionSourceTabsTemplate|dashboard-source-row/);
+  assert.match(tabs, /id: 'subscriptions'/);
+  for (const service of visibleSubscriptionServices) assert.match(tabs, quotedServicePattern(service));
+  for (const service of removedServices) assert.doesNotMatch(tabs, quotedServicePattern(service));
+  assert.match(tabs, /id: 'qq_music', label: '🇨🇳QQ音乐'/);
+  assert.match(tabs, /id: 'kugou_music', label: '🇨🇳酷狗音乐'/);
   assert.match(css, /\.dashboard-source-tabs\.is-multiline/);
-  assert.match(css, /\.dashboard-source-row/);
+  assert.doesNotMatch(css, /\.dashboard-source-row/);
 });
 
 test('KKBOX QQ and Kugou are first-class lazy views like Spotify', () => {
@@ -144,6 +139,6 @@ test('shared service CSS owns chart presentation and the retired regional styles
 });
 
 test('dashboard navigation is bundled directly without a lazy loader workaround', () => {
-  assert.match(entry, /dashboard-tabs\.js\?v=20260930\.1/);
+  assert.match(entry, /dashboard-tabs\.js\?v=20261004\.1/);
   assert.doesNotMatch(build, /dashboard-tabs-loader|args\.path === '\.\/dashboard-tabs\.js/);
 });
