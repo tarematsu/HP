@@ -45,12 +45,13 @@ test('toolbars controls fitting tables charts and music sections use shared sema
   assert.match(playedTracksShell, /dashboardControls/);
   assert.match(playedTracksShell, /className: 'played-tracks-controls'/);
   assert.doesNotMatch(playedTracksShell, /view-toolbar played-tracks-toolbar/);
-  assert.match(spotifyShell, /dashboardTable/);
+  assert.match(spotifyShell, /musicServiceTable/);
   assert.match(spotifyShell, /wrapClassName: 'table-fit-mobile'/);
   assert.match(spotifyShell, /musicServiceSection/);
-  assert.match(spotifyShell, /musicServiceMeta/);
-  assert.match(musicServiceShell, /regional-chart-section/);
-  assert.match(musicServiceShell, /regional-chart-meta/);
+  assert.match(spotifyShell, /mountMusicServiceView/);
+  assert.match(musicServiceShell, /dashboardTable/);
+  assert.match(musicServiceShell, /music-service-section-head/);
+  assert.match(musicServiceShell, /music-service-meta/);
 });
 
 test('history renderer assigns table meaning classes without injecting layout CSS', () => {
