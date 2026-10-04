@@ -1,6 +1,7 @@
 const R2_RESPONSE_KEY_PREFIX = 'pages-response/v1/';
 const ACTIONS_RESPONSE_KEY_PREFIX = 'pages-response/actions-v2/';
 const ACTIONS_RAW_RESPONSE_KEY_PREFIX = 'pages-response/actions-raw-v1/';
+const ACTIONS_RAW_METADATA_KEY_PREFIX = 'pages-response/actions-raw-meta-v1/';
 const TRACK_HISTORY_MODEL_KEY = 'track-history';
 const TRACK_HISTORY_STATUS_MODEL_KEY = 'track-history-status';
 const FOLLOWERS_MODEL_KEY = 'followers';
@@ -45,6 +46,11 @@ export function pagesActionsR2ResponseKey(modelKey) {
 export function pagesActionsRawR2ResponseKey(modelKey) {
   const key = normalizedModelKey(modelKey);
   return key ? `${ACTIONS_RAW_RESPONSE_KEY_PREFIX}${hexModelKey(key)}.json` : null;
+}
+
+export function pagesActionsRawMetadataR2ResponseKey(modelKey) {
+  const key = normalizedModelKey(modelKey);
+  return key ? `${ACTIONS_RAW_METADATA_KEY_PREFIX}${hexModelKey(key)}.json` : null;
 }
 
 function objectOrNull(value) {
@@ -208,12 +214,19 @@ function persistedRawHeaders(metadata) {
   }
 }
 
-function responseFromRawActionsObject(object, sourceEtag, now, maximumAgeMs) {
+function validRawMetadata(metadata, sourceEtag) {
+  return objectOrNull(metadata)
+    && Number(metadata.version) === 1
+    && String(metadata.source_etag || '') === String(sourceEtag || '');
+}
+
+function responseFromRawActionsObject(object, sourceEtag, now, maximumAgeMs, sidecarMetadata = null) {
   if (!object?.body) return null;
-  const metadata = objectOrNull(object.customMetadata) || {};
-  if (Number(metadata.version) !== 1 || String(metadata.source_etag || '') !== String(sourceEtag || '')) {
-    return null;
-  }
+  const embeddedMetadata = objectOrNull(object.customMetadata) || {};
+  const metadata = validRawMetadata(sidecarMetadata, sourceEtag)
+    ? sidecarMetadata
+    : (validRawMetadata(embeddedMetadata, sourceEtag) ? embeddedMetadata : null);
+  if (!metadata) return null;
   const updatedAt = Number(metadata.updated_at);
   if (!freshEnough(updatedAt, now, maximumAgeMs)) return null;
   const headers = new Headers(objectOrNull(persistedRawHeaders(metadata)) || {});
@@ -228,6 +241,15 @@ function responseFromRawActionsObject(object, sourceEtag, now, maximumAgeMs) {
     status: Number(metadata.status) || 200,
     headers,
   });
+}
+
+async function rawMetadataFromObject(object) {
+  if (!object?.body) return null;
+  try {
+    return objectOrNull(await object.json());
+  } catch {
+    return null;
+  }
 }
 
 async function seedRawActionsResponse(r2, rawKey, sourceEtag, envelope) {
@@ -257,14 +279,23 @@ async function loadStreamedActionsResponse(r2, modelKey, now, maximumAgeMs) {
   }
   const sourceKey = pagesActionsR2ResponseKey(modelKey);
   const rawKey = pagesActionsRawR2ResponseKey(modelKey);
-  if (!sourceKey || !rawKey) return null;
+  const metadataKey = pagesActionsRawMetadataR2ResponseKey(modelKey);
+  if (!sourceKey || !rawKey || !metadataKey) return null;
 
-  const [sourceHead, rawObject] = await Promise.all([
+  const [sourceHead, rawObject, rawMetadataObject] = await Promise.all([
     r2.head(sourceKey),
     r2.get(rawKey),
+    r2.get(metadataKey),
   ]);
   if (!sourceHead?.etag) return null;
-  const rawResponse = responseFromRawActionsObject(rawObject, sourceHead.etag, now, maximumAgeMs);
+  const sidecarMetadata = await rawMetadataFromObject(rawMetadataObject);
+  const rawResponse = responseFromRawActionsObject(
+    rawObject,
+    sourceHead.etag,
+    now,
+    maximumAgeMs,
+    sidecarMetadata,
+  );
   if (rawResponse) return rawResponse;
 
   const sourceObject = await r2.get(sourceKey);
