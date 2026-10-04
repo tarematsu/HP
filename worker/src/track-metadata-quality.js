@@ -18,26 +18,10 @@ const ARTIST_PLACEHOLDERS = new Set([
   '—',
 ]);
 
-const KNOWN_ARTIST_DISPLAY_NAMES = new Map([
-  ['sakurazaka46', '櫻坂46'],
-  ['hinatazaka46', '日向坂46'],
-  ['nogizaka46', '乃木坂46'],
-]);
-
 const SPOTIFY_TRACK_ID_PATTERN = /^[A-Za-z0-9]{22}$/;
 
 function normalizedText(value) {
   return String(value ?? '').trim();
-}
-
-function normalizedArtistAlias(value) {
-  return normalizedText(value).normalize('NFKC').replace(/\s+/gu, '').toLowerCase();
-}
-
-export function normalizeKnownArtistDisplayName(value) {
-  const text = normalizedText(value);
-  if (!text) return null;
-  return KNOWN_ARTIST_DISPLAY_NAMES.get(normalizedArtistAlias(text)) || text;
 }
 
 function looksLikeSpotifyTrackId(value) {
@@ -76,8 +60,7 @@ export function trackTitleValue(value) {
 export function trackArtistValue(value) {
   const text = normalizedText(value);
   if (!text) return null;
-  if (ARTIST_PLACEHOLDERS.has(text.normalize('NFKC').toLowerCase())) return null;
-  return normalizeKnownArtistDisplayName(text);
+  return ARTIST_PLACEHOLDERS.has(text.normalize('NFKC').toLowerCase()) ? null : text;
 }
 
 export function trackDisplayTitleParts(value, knownTitle = null) {
