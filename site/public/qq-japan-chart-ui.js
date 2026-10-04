@@ -15,7 +15,7 @@ import {
 
 const ARTIST_ORDER = MUSIC_ARTIST_ORDER.slice(0, 3);
 const OUT_OF_CHART_RANK = 101;
-const CHART_START_DATE = '2021-01-01';
+const CHART_START_DATE = '2020-10-01';
 
 let requestId = 0;
 let initialized = false;
