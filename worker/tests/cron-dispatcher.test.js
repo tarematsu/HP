@@ -23,8 +23,13 @@ function doNamespace(name, calls) {
   return {
     getByName(instance) {
       return {
-        async fetch(url) {
-          calls.push({ name, instance, url });
+        async fetch(url, init = {}) {
+          calls.push({
+            name,
+            instance,
+            url,
+            body: init.body ? JSON.parse(init.body) : undefined,
+          });
           return new Response('ok');
         },
       };
@@ -98,6 +103,20 @@ test('regional and Stationhead collection schedules are dispatched to target Wor
   await runCronDispatcher({ scheduledTime: Date.UTC(2026, 9, 5, 12, 17) }, env(calls));
   assert.deepEqual(calls.map(({ name }) => name), ['nogizaka', 'collection-jobs']);
   assert.equal(calls.at(-1).body.cron, '17 12 * * 1');
+});
+
+test('hourly HomePanel watchdog forces radar due without restoring a HomePanel Worker Cron', async () => {
+  const calls = [];
+  await runCronDispatcher({ scheduledTime: Date.UTC(2026, 9, 6, 14, 0) }, env(calls));
+  const homePanelCalls = calls.filter((call) => call.name.startsWith('homepanel'));
+  assert.equal(homePanelCalls.length, 3);
+  assert.deepEqual(homePanelCalls[0], {
+    name: 'homepanel-scheduler',
+    instance: 'global',
+    url: 'https://scheduler.internal/wake',
+    body: { names: ['radar'] },
+  });
+  assert.equal(config.durable_objects.bindings[0].script_name, 'homepanel-cloud');
 });
 
 test('daily midnight JST dispatches followers and YouTube Music from the shared Worker', async () => {

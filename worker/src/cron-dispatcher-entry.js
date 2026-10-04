@@ -38,8 +38,20 @@ export function amazonMusicDue(timestamp) {
 }
 
 async function dispatchHomePanel(env) {
+  const scheduler = env?.HOMEPANEL_SCHEDULER_COORDINATOR;
+  if (!scheduler?.getByName) throw new Error('HomePanel Durable Object binding unavailable: global');
+  const schedulerResponse = await scheduler.getByName('global').fetch(
+    'https://scheduler.internal/wake',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ names: ['radar'] }),
+    },
+  );
+  if (!schedulerResponse.ok) throw new Error(`HomePanel global dispatch failed (${schedulerResponse.status})`);
+  try { await schedulerResponse.body?.cancel(); } catch {}
+
   const targets = [
-    [env?.HOMEPANEL_SCHEDULER_COORDINATOR, 'global', 'https://scheduler.internal/ensure'],
     [env?.HOMEPANEL_VIDEO_FEED_COORDINATOR, 'video-liveness', 'https://homepanel.internal/video-liveness-run'],
     [env?.HOMEPANEL_VIDEO_FEED_COORDINATOR, 'tver-feed-refresh', 'https://homepanel.internal/tver-feed-refresh-run'],
   ];
