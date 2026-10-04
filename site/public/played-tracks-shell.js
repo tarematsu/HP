@@ -29,12 +29,6 @@ const tracksTable = dashboardTable({
 });
 
 mountDashboardShell({
-  tab: {
-    view: 'played-tracks',
-    label: '再生履歴',
-    anchorSelector: '[data-view="likes"]',
-    position: 'beforebegin',
-  },
   view: {
     id: 'playedTracksView',
     className: 'played-tracks-view',

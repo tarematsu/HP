@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+const route = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../public/hinata-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/hinata.js', import.meta.url), 'utf8');
 const followersShell = readFileSync(new URL('../public/followers-shell.js', import.meta.url), 'utf8');
@@ -10,8 +10,8 @@ const followersShell = readFileSync(new URL('../public/followers-shell.js', impo
 test('Ohisama and followers chart headers omit update-time pills', () => {
   assert.doesNotMatch(shell, /hinataUpdated|更新時間|JST文字列/);
   assert.doesNotMatch(followersShell, /followersLatestDate/);
-  assert.match(entry, /hinata-shell\.js\?v=20261001\.2/);
-  assert.match(entry, /followers-shell\.js\?v=20261001\.1/);
+  assert.match(route, /hinata-shell\.js\?v=20261001\.2/);
+  assert.match(route, /followers-shell\.js\?v=20261001\.1/);
 });
 
 test('Ohisama daily Canvas marks date gaps with the same missing-period treatment as history', () => {

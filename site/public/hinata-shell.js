@@ -23,12 +23,6 @@ const dailyTable = dashboardTable({
 });
 
 mountDashboardShell({
-  tab: {
-    view: 'hinata',
-    label: 'Ohisama',
-    anchorSelectors: ['[data-view="amazon-music"]', '[data-view="spotify"]'],
-    position: 'afterend',
-  },
   view: {
     id: 'hinataView',
     className: 'hinata-view',

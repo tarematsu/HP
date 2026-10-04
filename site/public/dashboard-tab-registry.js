@@ -1,20 +1,30 @@
-import { mountDashboardTab } from './dashboard-ui-common.js?v=20260930.2';
-import { STATIONHEAD_CHANNEL_TABS } from './stationhead-channel-tabs.js?v=20261004.2';
+import { STATIONHEAD_CHANNEL_TABS } from './stationhead-channel-model.js?v=20261004.1';
 
 const BUDDIES_ROUTES = {
-  current: { view: 'current', label: '現在', active: true },
-  history: { view: 'history', mode: 'daily', label: '過去' },
-  'played-tracks': { view: 'played-tracks', label: '再生履歴' },
-  likes: { view: 'likes', mode: 'likes', label: 'いいね' },
-  broadcasts: { view: 'history', mode: 'broadcasts', label: 'リスパ' },
+  current: { view: 'current', active: true },
+  history: { view: 'history', mode: 'daily' },
+  'played-tracks': { view: 'played-tracks' },
+  likes: { view: 'likes', mode: 'likes' },
+  broadcasts: { view: 'history', mode: 'broadcasts' },
 };
 
-const BASE_TABS = [
-  ...STATIONHEAD_CHANNEL_TABS.map(({ value, label }) => ({ ...BUDDIES_ROUTES[value], label })),
-  { view: 'spotify', label: 'Spotify' },
-  { view: 'history', mode: 'ranking', label: 'リーダーボード' },
-];
-
-for (const tab of BASE_TABS) mountDashboardTab(tab);
-
-document.getElementById('modeTabs')?.classList.add('stationhead-subtabs');
+const tabs = document.getElementById('modeTabs');
+if (tabs) {
+  const fragment = document.createDocumentFragment();
+  for (const { value, label } of STATIONHEAD_CHANNEL_TABS) {
+    const route = BUDDIES_ROUTES[value];
+    if (!route) continue;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.view = route.view;
+    if (route.mode) button.dataset.mode = route.mode;
+    button.textContent = label;
+    if (route.active) {
+      button.className = 'active';
+      button.setAttribute('aria-current', 'page');
+    }
+    fragment.append(button);
+  }
+  tabs.replaceChildren(fragment);
+  tabs.classList.add('stationhead-subtabs');
+}

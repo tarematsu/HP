@@ -8,12 +8,19 @@ const client = readFileSync(new URL('../public/dashboard-client.js', import.meta
 const dashboardEndpoint = readFileSync(new URL('../functions/api/dashboard.js', import.meta.url), 'utf8');
 const contract = readFileSync(new URL('../functions/lib/api-contract.js', import.meta.url), 'utf8');
 
-test('shared bootstrap eagerly includes first-week comparison while keeping unrelated heavy renderers lazy', () => {
-  assert.match(entry, /^import '\.\/first-week-comparison-shell\.js\?v=20261002\.2';$/m);
-  assert.match(entry, /^import '\.\/first-week-comparison\.js\?v=20261002\.2';$/m);
+test('shared bootstrap keeps every non-current view and first-week comparison lazy', () => {
   for (const asset of [
+    'history-shell.js',
+    'first-week-comparison-shell.js',
+    'first-week-comparison.js',
+    'likes-shell.js',
+    'hinata-shell.js',
+    'followers-shell.js',
     'played-tracks-shell.js',
     'spotify-shell.js',
+    'amazon-music-shell.js',
+    'apple-music-shell.js',
+    'nogizaka-listening-party-shell.js',
     'dashboard-chart-stability.js',
     'dashboard-chart-comparison.js',
     'dashboard-chart-detail.js',
@@ -24,9 +31,22 @@ test('shared bootstrap eagerly includes first-week comparison while keeping unre
     assert.doesNotMatch(entry, new RegExp(`^import ['\"](?:\\./|/)${asset.replaceAll('.', '\\.')}`, 'm'), asset);
   }
 
-  assert.doesNotMatch(tabs, /first-week-comparison-shell|first-week-comparison\.js/);
-  assert.match(tabs, /import\('\/played-tracks-shell\.js\?v=/);
-  assert.match(tabs, /import\('\/spotify-shell\.js\?v=/);
+  for (const asset of [
+    'history-shell.js',
+    'first-week-comparison-shell.js',
+    'first-week-comparison.js',
+    'likes-shell.js',
+    'hinata-shell.js',
+    'followers-shell.js',
+    'played-tracks-shell.js',
+    'spotify-shell.js',
+    'amazon-music-shell.js',
+    'apple-music-shell.js',
+  ]) assert.match(tabs, new RegExp(asset.replaceAll('.', '\\.')));
+
+  assert.match(tabs, /stationhead\.min\.css/);
+  assert.match(tabs, /subscriptions\.min\.css/);
+  assert.doesNotMatch(entry, /legacy-listening-party-route|dashboard-tab-order/);
 });
 
 test('current listeners are ready before one cache restoration and the first network refresh', () => {

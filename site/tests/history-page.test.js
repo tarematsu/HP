@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const mainPage = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const tabRegistry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
+const tabsClient = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const historyShell = readFileSync(new URL('../public/history-shell.js', import.meta.url), 'utf8');
 const likesShell = readFileSync(new URL('../public/likes-shell.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
@@ -11,6 +12,8 @@ const historyClient = readFileSync(new URL('../public/history/history-lite.js', 
 const historyData = readFileSync(new URL('../public/history/history-data-client.js', import.meta.url), 'utf8');
 const historyStyles = readFileSync(new URL('../public/history/history-lite.css', import.meta.url), 'utf8');
 const mainStyles = readFileSync(new URL('../public/app-lite.css', import.meta.url), 'utf8');
+const navigationStyles = readFileSync(new URL('../public/dashboard-navigation.css', import.meta.url), 'utf8');
+const sharedLayout = readFileSync(new URL('../public/pages-layout.css', import.meta.url), 'utf8');
 const likesClient = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
 const broadcastClient = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
@@ -20,14 +23,13 @@ const rankingLibrary = readFileSync(new URL('../functions/lib/track-ranking.js',
 const sakurazakaApi = readFileSync(new URL('../functions/api/sakurazaka46jp.js', import.meta.url), 'utf8');
 const middleware = readFileSync(new URL('../functions/_middleware.js', import.meta.url), 'utf8');
 
-const NAV_ARCHIVE_MODES = ['daily', 'ranking', 'broadcasts'];
+const NAV_ARCHIVE_MODES = ['daily', 'broadcasts'];
 const INTERNAL_ARCHIVE_MODES = ['daily', 'weekly', 'monthly', 'ranking', 'broadcasts'];
 
-test('main dashboard exposes only active archive tabs and likes without separate pages', () => {
-  for (const mode of NAV_ARCHIVE_MODES) {
-    assert.match(tabRegistry, new RegExp(`view: 'history', mode: '${mode}'`));
-  }
-  assert.doesNotMatch(tabRegistry, /view: 'history', mode: '(?:weekly|monthly)'/);
+test('main dashboard exposes only visible Buddies archive tabs while leaderboard stays a source route', () => {
+  for (const mode of NAV_ARCHIVE_MODES) assert.match(tabRegistry, new RegExp(`view: 'history', mode: '${mode}'`));
+  assert.doesNotMatch(tabRegistry, /view: 'history', mode: '(?:weekly|monthly|ranking)'/);
+  assert.match(tabsClient, /id: 'ranking', label: 'リーダーボード', defaultMode: 'ranking'/);
   assert.match(tabRegistry, /view: 'likes', mode: 'likes', label: 'いいね'/);
   assert.doesNotMatch(tabRegistry, /mode: 'tracks'|label: '再生曲'/);
   assert.equal(existsSync(new URL('../public/history/index.html', import.meta.url)), false);
@@ -52,23 +54,22 @@ test('embedded history defaults invalid hashes to weekly and lazy-loads mode run
   for (const mode of INTERNAL_ARCHIVE_MODES) assert.match(historyClient, new RegExp(`${mode}: \\{`));
 });
 
-test('shared tabs use a fixed grid without horizontal scrolling', () => {
-  assert.match(historyStyles, /\.mode-tabs \{[^}]*display:\s*grid/);
-  assert.match(historyStyles, /grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
-  assert.match(historyStyles, /\.mode-tabs \{[^}]*overflow:\s*hidden/);
-  assert.match(historyStyles, /\.mode-tabs button, \.mode-tabs a \{[^}]*white-space:\s*normal/);
+test('Buddies tabs use the shared five-column navigation instead of history-owned tab CSS', () => {
+  assert.match(navigationStyles, /#modeTabs\.mode-tabs\.dashboard-tabs,[\s\S]*\.stationhead-subtabs[\s\S]*grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\)/);
+  assert.doesNotMatch(historyStyles, /\.mode-tabs\s*\{/);
 });
 
-test('history keeps the guide as an accessible hidden label source', () => {
+test('history keeps the guide as an accessible hidden label source without styling the hidden guide', () => {
   assert.match(historyShell, /<div id="guide" hidden aria-hidden="true">/);
   assert.match(historyClient, /setText\('guideTitle', config\.title\)/);
   assert.match(historyClient, /setText\('tableTitle', config\.table\)/);
+  assert.doesNotMatch(historyStyles, /\.guide\s*\{/);
 });
 
 test('history keeps one visible chart and delegates chart drawing to mode-specific runtimes', () => {
   assert.match(historyShell, /<canvas id="chart"[^>]*><\/canvas>/);
-  assert.match(historyStyles, /\.chart-panel \{[^}]*margin-top/);
   assert.match(historyStyles, /\.data-panel \{[^}]*content-visibility:\s*auto/);
+  assert.doesNotMatch(historyStyles, /\.chart-panel\s*\{|\.section-head\s*\{|\.chart-head\s*\{/);
   assert.doesNotMatch(historyClient, /drawSummaryChart|prepareCanvas|history-broadcasts\.js/);
   assert.match(historyClient, /history:data-loaded/);
   assert.match(historyEntry, /history-period-chart\.js\?v=\d{8}\.\d+/);
@@ -94,25 +95,18 @@ test('track-specific archive aggregation and runtime are removed', () => {
   assert.doesNotMatch(historyClient, /TRACK_COLUMNS|trackDate|trackWeekMode|mode === 'tracks'|\/api\/track-history|aggregateCompleteTrackRows|history:track-rows/);
 });
 
-test('history inherits dashboard visual tokens instead of duplicating the base theme', () => {
+test('history inherits dashboard theme and shared card layout instead of duplicating them', () => {
   for (const declaration of [
-    '--bg: #f6f8fb',
-    '--panel: #ffffff',
-    '--panel-2: #f1f4f8',
-    '--line: #d9e1eb',
-    '--text: #172033',
-    '--muted: #667287',
-    '--accent: #d93f79',
-    '--comment: #168b73',
-    '--radius: 20px',
+    '--bg: #f6f8fb', '--panel: #ffffff', '--panel-2: #f1f4f8', '--line: #d9e1eb', '--text: #172033',
+    '--muted: #667287', '--accent: #d93f79', '--comment: #168b73', '--radius: 20px',
   ]) {
     const pattern = new RegExp(declaration.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
     assert.match(mainStyles, pattern);
     assert.doesNotMatch(historyStyles, pattern);
   }
-  assert.doesNotMatch(historyStyles, /(^|\n):root\s*\{|(^|\n)\.button\s*\{/m);
-  assert.match(historyStyles, /\.chart-panel \{[^}]*padding:\s*18px/);
-  assert.match(historyStyles, /\.data-panel \{[^}]*padding:\s*18px/);
+  assert.doesNotMatch(historyStyles, /(^|\n):root\s*\{|(^|\n)\.button\s*\{|\.notice\s*\{|\.chart-panel\s*\{/m);
+  assert.match(sharedLayout, /\.dashboard-view\s*>\s*:is\([^)]*\.chart-panel[^)]*\.data-panel/);
+  assert.match(sharedLayout, /padding:\s*var\(--pages-panel-padding\) !important/);
 });
 
 test('history client uses only the canonical summary endpoints', () => {

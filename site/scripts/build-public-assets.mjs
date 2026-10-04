@@ -8,26 +8,33 @@ const siteRoot = resolve(scriptDir, '..');
 const publicRoot = resolve(siteRoot, 'public');
 const assetsDir = resolve(publicRoot, 'assets');
 
-const cssFiles = [
-  'app-lite.css',
-  'monochrome.css',
-  'dashboard-presentation.css',
-  'dashboard-current-enhancements.css',
-  'pages-layout.css',
-  'dashboard-navigation.css',
-  'spotify.css',
-  'first-week-comparison.css',
-  'played-tracks.css',
-  'apple-music.css',
-  'amazon-music.css',
-  'followers.css',
-  'hinata.css',
-  'history/history-past-toggle.css',
-  'history/history-range-navigator.css',
-  'music-service-common.css',
-  'dashboard-ui-common.css',
-  'mobile-layout-refinements.css',
-];
+const cssGroups = Object.freeze({
+  dashboard: [
+    'app-lite.css',
+    'monochrome.css',
+    'dashboard-presentation.css',
+    'dashboard-current-enhancements.css',
+    'pages-layout.css',
+    'dashboard-navigation.css',
+    'dashboard-ui-common.css',
+    'mobile-layout-refinements.css',
+  ],
+  stationhead: [
+    'history/history-lite.css',
+    'first-week-comparison.css',
+    'played-tracks.css',
+    'followers.css',
+    'hinata.css',
+    'history/history-past-toggle.css',
+    'history/history-range-navigator.css',
+  ],
+  subscriptions: [
+    'spotify.css',
+    'apple-music.css',
+    'amazon-music.css',
+    'music-service-common.css',
+  ],
+});
 
 const browserModuleResolver = {
   name: 'browser-module-resolver',
@@ -54,11 +61,13 @@ const publicCssResolver = {
   },
 };
 
-function inputContributions(metafile, limit = 20) {
+function inputContributions(metafiles, limit = 20) {
   const bytes = new Map();
-  for (const output of Object.values(metafile.outputs)) {
-    for (const [input, details] of Object.entries(output.inputs || {})) {
-      bytes.set(input, (bytes.get(input) || 0) + (details.bytesInOutput || 0));
+  for (const metafile of Array.isArray(metafiles) ? metafiles : [metafiles]) {
+    for (const output of Object.values(metafile.outputs)) {
+      for (const [input, details] of Object.entries(output.inputs || {})) {
+        bytes.set(input, (bytes.get(input) || 0) + (details.bytesInOutput || 0));
+      }
     }
   }
   return [...bytes.entries()]
@@ -70,6 +79,25 @@ function inputContributions(metafile, limit = 20) {
     .slice(0, limit);
 }
 
+async function buildCssBundle(name, files) {
+  return build({
+    stdin: {
+      contents: files.map((file) => `@import "./public/${file}";`).join('\n'),
+      resolveDir: siteRoot,
+      sourcefile: `${name}-bundle.css`,
+      loader: 'css',
+    },
+    outfile: resolve(assetsDir, `${name}.min.css`),
+    bundle: true,
+    minify: true,
+    legalComments: 'none',
+    charset: 'utf8',
+    metafile: true,
+    plugins: [publicCssResolver],
+  });
+}
+
+// Discard chunks from previous builds; deploy only the current module graph.
 await rm(resolve(assetsDir, 'chunks'), { recursive: true, force: true });
 await mkdir(assetsDir, { recursive: true });
 
@@ -90,21 +118,11 @@ const jsBuild = await build({
   plugins: [browserModuleResolver],
 });
 
-const cssBuild = await build({
-  stdin: {
-    contents: cssFiles.map((file) => `@import "./public/${file}";`).join('\n'),
-    resolveDir: siteRoot,
-    sourcefile: 'dashboard-bundle.css',
-    loader: 'css',
-  },
-  outfile: resolve(assetsDir, 'dashboard.min.css'),
-  bundle: true,
-  minify: true,
-  legalComments: 'none',
-  charset: 'utf8',
-  metafile: true,
-  plugins: [publicCssResolver],
-});
+const cssBuilds = await Promise.all(Object.entries(cssGroups).map(async ([name, files]) => [
+  name,
+  await buildCssBundle(name, files),
+]));
+const cssBuildMap = new Map(cssBuilds);
 
 const jsOutputs = Object.entries(jsBuild.metafile.outputs);
 const initialOutputs = new Set();
@@ -119,20 +137,26 @@ collectInitial(jsOutputs.find(([path]) => path.endsWith('/dashboard.min.js'))[0]
 const initialJsBytes = [...initialOutputs].reduce((total, path) => total + jsBuild.metafile.outputs[path].bytes, 0);
 const totalJsBytes = jsOutputs.reduce((total, [, output]) => total + output.bytes, 0);
 
-const [js, css] = await Promise.all([
-  stat(resolve(assetsDir, 'dashboard.min.js')),
-  stat(resolve(assetsDir, 'dashboard.min.css')),
-]);
+const js = await stat(resolve(assetsDir, 'dashboard.min.js'));
+const cssSizes = Object.fromEntries(await Promise.all(Object.keys(cssGroups).map(async (name) => [
+  name,
+  (await stat(resolve(assetsDir, `${name}.min.css`))).size,
+])));
+const initialCssBytes = cssSizes.dashboard;
+const totalCssBytes = Object.values(cssSizes).reduce((total, size) => total + size, 0);
 
 console.log(JSON.stringify({
   event: 'pages_assets_built',
   js_bytes: js.size,
-  css_bytes: css.size,
+  css_bytes: initialCssBytes,
+  stationhead_css_bytes: cssSizes.stationhead,
+  subscriptions_css_bytes: cssSizes.subscriptions,
+  total_css_bytes: totalCssBytes,
   initial_js_bytes: initialJsBytes,
   total_js_bytes: totalJsBytes,
-  initial_total_bytes: initialJsBytes + css.size,
-  total_bytes: totalJsBytes + css.size,
-  browser_files: jsOutputs.length + 1,
+  initial_total_bytes: initialJsBytes + initialCssBytes,
+  total_bytes: totalJsBytes + totalCssBytes,
+  browser_files: jsOutputs.length + Object.keys(cssGroups).length,
   largest_js_inputs: inputContributions(jsBuild.metafile),
-  largest_css_inputs: inputContributions(cssBuild.metafile),
+  largest_css_inputs: inputContributions([...cssBuildMap.values()].map((result) => result.metafile)),
 }));

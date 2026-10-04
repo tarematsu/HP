@@ -20,9 +20,9 @@ test('current metrics are statically ordered while current-only renderers load l
   assert.match(metrics, /dashboard-daily-summaries\.js\?v=20260930\.2/);
   assert.match(metrics, /dashboard-fetch-cache\.js\?v=20260930\.1/);
   assert.doesNotMatch(metrics, /dashboard-current-enhancements\.js|dashboard-details-client\.js/);
-  assert.match(metrics, /dashboard-client\.js\?v=20260930\.2/);
+  assert.match(metrics, /dashboard-client\.js\?v=20261004\.1/);
   assert.match(metrics, /function ensureCurrentRuntime\(\)/);
-  assert.doesNotMatch(metrics, /replayCurrentPayload|runtime-replay/);
+  assert.doesNotMatch(metrics, /replayCurrentPayload|runtime-replay|IMAGE_RETRY_DELAYS|MutationObserver/);
   assert.doesNotMatch(header, /\.css\?v=|createElement\('link'\)/);
   assert.doesNotMatch(metrics, /window\.fetch|response\.clone\(\)\.json|restoreDashboardCache/);
   assert.match(fetchCache, /dashboard:payload/);

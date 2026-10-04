@@ -11,15 +11,12 @@ const registry = readFileSync(new URL('../public/dashboard-tab-registry.js', imp
 const api = readFileSync(new URL('../functions/api/track-history.js', import.meta.url), 'utf8');
 const r2Api = readFileSync(new URL('../../worker/src/pages-track-history-r2-api.js', import.meta.url), 'utf8');
 
-test('played tracks tab is visible immediately and shell mounts its view', () => {
+test('played tracks tab is owned by the fixed Buddies registry and shell mounts only its view', () => {
   assert.match(registry, /view: 'played-tracks', label: '再生履歴'/);
   assert.match(shell, /dashboard-ui-common\.js\?v=20261001\.1/);
   assert.match(shell, /mountDashboardShell/);
-  assert.match(shell, /view: 'played-tracks'/);
-  assert.match(shell, /label: '再生履歴'/);
-  assert.match(shell, /anchorSelector: '\[data-view="likes"\]'/);
-  assert.match(shell, /position: 'beforebegin'/);
   assert.match(shell, /id: 'playedTracksView'/);
+  assert.doesNotMatch(shell, /\btab:\s*\{|view: 'played-tracks'|anchorSelector/);
   assert.match(shell, /dashboardControls/);
   assert.match(shell, /className: 'played-tracks-controls'/);
   assert.match(shell, /dashboardSummary/);
@@ -86,7 +83,7 @@ test('track history exposes a lightweight date index from the R2 day model', () 
 
 test('played tracks shell and runtime are both lazy behind the shared router', () => {
   assert.doesNotMatch(metrics, /^import .*played-tracks-shell/m);
-  assert.match(metrics, /dashboard-tabs\.js\?v=20260930\.1/);
+  assert.match(metrics, /dashboard-tabs\.js\?v=20261004\.1/);
   assert.match(tabs, /import\('\/played-tracks-shell\.js\?v=20260928\.1'\)/);
   assert.match(tabs, /'played-tracks'/);
   assert.match(tabs, /import\('\/played-tracks\.js\?v=20260927\.2'\)/);

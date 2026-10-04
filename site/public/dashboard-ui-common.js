@@ -230,46 +230,8 @@ export function dashboardChartHost({ id, className = '', ariaLabel = '', role = 
   return `<div id="${id}" class="${joinClasses('shared-svg-chart', className)}"${role ? ` role="${role}"` : ''}${ariaLabel ? ` aria-label="${ariaLabel}"` : ''}></div>`;
 }
 
-function firstMatch(root, selectors) {
-  for (const selector of selectors || []) {
-    const node = selector ? root?.querySelector(selector) : null;
-    if (node) return node;
-  }
+export function mountDashboardTab() {
   return null;
-}
-
-export function mountDashboardTab({
-  view,
-  mode = '',
-  label,
-  active = false,
-  anchorSelector = '',
-  anchorSelectors = [],
-  position = 'beforebegin',
-  tabsId = 'modeTabs',
-} = {}) {
-  const tabs = byId(tabsId);
-  if (!tabs || !view) return null;
-  const selector = mode
-    ? `[data-view="${CSS.escape(view)}"][data-mode="${CSS.escape(mode)}"]`
-    : `[data-view="${CSS.escape(view)}"]:not([data-mode])`;
-  const existing = tabs.querySelector(selector);
-  if (existing) return existing;
-
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.dataset.view = view;
-  if (mode) button.dataset.mode = mode;
-  button.textContent = String(label || mode || view);
-  if (active) {
-    button.classList.add('active');
-    button.setAttribute('aria-current', 'page');
-  }
-  const selectors = anchorSelectors.length ? anchorSelectors : [anchorSelector];
-  const anchor = firstMatch(tabs, selectors);
-  if (anchor) anchor.insertAdjacentElement(position, button);
-  else tabs.append(button);
-  return button;
 }
 
 export function mountDashboardView({
@@ -298,9 +260,6 @@ export function mountDashboardView({
   return section;
 }
 
-export function mountDashboardShell({ tab, view } = {}) {
-  return {
-    tab: tab ? mountDashboardTab(tab) : null,
-    view: view ? mountDashboardView(view) : null,
-  };
+export function mountDashboardShell({ view } = {}) {
+  return view ? mountDashboardView(view) : null;
 }

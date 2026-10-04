@@ -92,13 +92,11 @@ export function mountMusicServiceView({
   sections = [],
   beforeSectionsHtml = '',
   afterSectionsHtml = '',
-  tab,
   anchorId = 'likesView',
   position = 'beforebegin',
 } = {}) {
   if (!viewId) throw new Error('music service viewId is required');
   mountDashboardShell({
-    ...(tab ? { tab } : {}),
     view: {
       id: viewId,
       className: musicServiceViewClassName(className),

@@ -1,8 +1,13 @@
+const ASSET_VERSION = '20261004.1';
 const HISTORY_MODES = new Set(['daily', 'weekly', 'monthly', 'ranking', 'broadcasts']);
-
-const LAZY_VIEWS = Object.freeze({
+const HISTORY_VIEW = {
+  viewId: 'historyView',
+  shell: () => import('/history-shell.js?v=20260930.1'),
+};
+const LAZY_VIEWS = {
   hinata: {
     viewId: 'hinataView',
+    shell: () => import('/hinata-shell.js?v=20261001.2'),
     runtime: () => import('/hinata.js?v=20260930.5'),
     loadExport: 'loadHinataView',
     noticeId: 'hinataNotice',
@@ -11,6 +16,7 @@ const LAZY_VIEWS = Object.freeze({
   },
   followers: {
     viewId: 'followersView',
+    shell: () => import('/followers-shell.js?v=20261001.1'),
     runtime: () => import('/followers.js?v=20260930.3'),
     loadExport: 'loadFollowersView',
     noticeId: 'followersNotice',
@@ -27,8 +33,8 @@ const LAZY_VIEWS = Object.freeze({
   },
   spotify: {
     viewId: 'spotifyView',
-    shell: () => import('/spotify-shell.js?v=20260929.1'),
-    runtime: () => import('/spotify.js?v=20260929.1'),
+    shell: () => import('/spotify-shell.js?v=20261004.1'),
+    runtime: () => import('/spotify.js?v=20261004.1'),
     loadExport: 'loadSpotifyView',
     noticeId: 'spotifyNotice',
     errorLabel: 'spotify',
@@ -45,7 +51,7 @@ const LAZY_VIEWS = Object.freeze({
   },
   'apple-music': {
     viewId: 'appleMusicView',
-    shell: () => import('/apple-music-shell.js?v=20261001.1'),
+    shell: () => import('/apple-music-shell.js?v=20261004.1'),
     runtime: () => import('/apple-music.js?v=20261001.1'),
     loadExport: 'loadAppleMusicView',
     noticeId: 'appleMusicNotice',
@@ -99,60 +105,57 @@ const LAZY_VIEWS = Object.freeze({
   },
   likes: {
     viewId: 'likesView',
+    shell: () => import('/likes-shell.js?v=20260930.1'),
     runtime: () => import('/history/history-likes.js?v=20260930.1'),
     noticeId: 'likesNotice',
     errorLabel: 'likes',
     errorMessage: 'いいねデータの初期化に失敗しました。再読み込みしてください。',
   },
-});
-const VIEW_MODES = new Set(['current', ...HISTORY_MODES, ...Object.keys(LAZY_VIEWS)]);
-const VIEW_IDS = ['currentView', 'historyView', ...Object.values(LAZY_VIEWS).map(({ viewId }) => viewId)];
+};
 
-const NAVIGATION = Object.freeze([
-  Object.freeze({
+const NAVIGATION = [
+  {
     id: 'stationhead',
-    sources: Object.freeze([
-      Object.freeze({
-        id: 'buddies',
-        label: 'Buddies',
-        defaultMode: 'current',
-        modes: Object.freeze(['current', 'daily', 'weekly', 'monthly', 'played-tracks', 'likes', 'broadcasts']),
-      }),
-      Object.freeze({ id: 'hinata', label: 'Ohisama', defaultMode: 'hinata', modes: Object.freeze(['hinata']) }),
-      Object.freeze({ id: 'nogizaka', label: 'Nogizaka', defaultMode: 'nogizaka', modes: Object.freeze(['nogizaka']) }),
-      Object.freeze({ id: 'ranking', label: 'リーダーボード', defaultMode: 'ranking', modes: Object.freeze(['ranking']) }),
-      Object.freeze({ id: 'followers', label: 'フォロワー', defaultMode: 'followers', modes: Object.freeze(['followers']) }),
-    ]),
-  }),
-  Object.freeze({
+    sources: [
+      { id: 'buddies', label: 'Buddies', defaultMode: 'current', modes: ['current', 'daily', 'weekly', 'monthly', 'played-tracks', 'likes', 'broadcasts'] },
+      { id: 'hinata', label: 'Ohisama', defaultMode: 'hinata', modes: ['hinata'] },
+      { id: 'nogizaka', label: 'Nogizaka', defaultMode: 'nogizaka', modes: ['nogizaka'] },
+      { id: 'ranking', label: 'リーダーボード', defaultMode: 'ranking', modes: ['ranking'] },
+      { id: 'followers', label: 'フォロワー', defaultMode: 'followers', modes: ['followers'] },
+    ],
+  },
+  {
     id: 'subscriptions',
-    sources: Object.freeze([
-      Object.freeze({ id: 'spotify', label: 'Spotify', defaultMode: 'spotify', modes: Object.freeze(['spotify']) }),
-      Object.freeze({ id: 'apple-music', label: 'Apple Music', defaultMode: 'apple-music', modes: Object.freeze(['apple-music']) }),
-      Object.freeze({ id: 'amazon-music', label: 'Amazon Music', defaultMode: 'amazon-music', modes: Object.freeze(['amazon-music']) }),
-      Object.freeze({ id: 'youtube-music', label: 'YouTube Music', defaultMode: 'youtube-music', modes: Object.freeze(['youtube-music']) }),
-      Object.freeze({ id: 'kkbox', label: '🇹🇼KKBOX', defaultMode: 'kkbox', modes: Object.freeze(['kkbox']) }),
-      Object.freeze({ id: 'qq_music', label: '🇨🇳QQ音乐', defaultMode: 'qq_music', modes: Object.freeze(['qq_music']) }),
-      Object.freeze({ id: 'kugou_music', label: '🇨🇳酷狗音乐', defaultMode: 'kugou_music', modes: Object.freeze(['kugou_music']) }),
-    ]),
-  }),
-]);
+    sources: [
+      { id: 'spotify', label: 'Spotify', defaultMode: 'spotify', modes: ['spotify'] },
+      { id: 'apple-music', label: 'Apple Music', defaultMode: 'apple-music', modes: ['apple-music'] },
+      { id: 'amazon-music', label: 'Amazon Music', defaultMode: 'amazon-music', modes: ['amazon-music'] },
+      { id: 'youtube-music', label: 'YouTube Music', defaultMode: 'youtube-music', modes: ['youtube-music'] },
+      { id: 'kkbox', label: '🇹🇼KKBOX', defaultMode: 'kkbox', modes: ['kkbox'] },
+      { id: 'qq_music', label: '🇨🇳QQ音乐', defaultMode: 'qq_music', modes: ['qq_music'] },
+      { id: 'kugou_music', label: '🇨🇳酷狗音乐', defaultMode: 'kugou_music', modes: ['kugou_music'] },
+    ],
+  },
+];
 const MODE_NAVIGATION = new Map();
 for (const section of NAVIGATION) {
   for (const source of section.sources) {
     for (const mode of source.modes) MODE_NAVIGATION.set(mode, { section, source });
   }
 }
-const BUDDIES_VISIBLE_MODES = new Set(['current', 'daily', 'played-tracks', 'likes', 'broadcasts']);
+const VIEW_MODES = new Set(['current', ...HISTORY_MODES, ...Object.keys(LAZY_VIEWS)]);
+const VIEW_IDS = ['currentView', 'historyView', ...Object.values(LAZY_VIEWS).map(({ viewId }) => viewId)];
+const SECTION_STYLES = {
+  stationhead: `/assets/stationhead.min.css?v=${ASSET_VERSION}`,
+  subscriptions: `/assets/subscriptions.min.css?v=${ASSET_VERSION}`,
+};
 
-const currentView = document.getElementById('currentView');
-const historyView = document.getElementById('historyView');
 const tabs = document.getElementById('modeTabs');
 const sectionTabs = document.getElementById('sectionTabs');
 const sourceTabs = document.getElementById('sourceTabs');
-const subscriptionSourceTabsTemplate = document.getElementById('subscriptionSourceTabsTemplate');
 const skipLink = document.querySelector('.skip-link');
 const modulePromises = new Map();
+const stylePromises = new Map();
 const lastSourceBySection = new Map(NAVIGATION.map((section) => [section.id, section.sources[0]?.id || '']));
 const lastModeBySource = new Map();
 let historyRuntimeMode = null;
@@ -161,6 +164,38 @@ let initialRouteReady = false;
 
 for (const section of NAVIGATION) {
   for (const source of section.sources) lastModeBySource.set(source.id, source.defaultMode);
+}
+
+function navigationForMode(mode) {
+  return MODE_NAVIGATION.get(mode) || MODE_NAVIGATION.get('current');
+}
+
+function ensureModeStyles(mode) {
+  if (mode === 'current') return Promise.resolve();
+  const sectionId = navigationForMode(mode)?.section.id;
+  const href = SECTION_STYLES[sectionId];
+  if (!href) return Promise.resolve();
+  if (!stylePromises.has(href)) {
+    const promise = new Promise((resolve, reject) => {
+      const existing = document.querySelector(`link[data-dashboard-section-style="${sectionId}"]`);
+      if (existing) {
+        resolve();
+        return;
+      }
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = href;
+      link.dataset.dashboardSectionStyle = sectionId;
+      link.addEventListener('load', resolve, { once: true });
+      link.addEventListener('error', () => reject(new Error(`stylesheet failed: ${sectionId}`)), { once: true });
+      document.head.append(link);
+    }).catch((error) => {
+      stylePromises.delete(href);
+      throw error;
+    });
+    stylePromises.set(href, promise);
+  }
+  return stylePromises.get(href);
 }
 
 function releaseUnexpectedSkipLinkFocus() {
@@ -182,53 +217,27 @@ function visibleTabMode(mode) {
   return mode === 'weekly' || mode === 'monthly' ? 'daily' : mode;
 }
 
-function navigationForMode(mode) {
-  return MODE_NAVIGATION.get(mode) || MODE_NAVIGATION.get('current');
-}
-
 function renderSourceTabs(section, activeSource) {
   if (!sourceTabs) return;
-  if (section.id === 'subscriptions' && subscriptionSourceTabsTemplate) {
-    const content = subscriptionSourceTabsTemplate.content.cloneNode(true);
-    content.querySelectorAll('button[data-source]').forEach((button) => {
-      const selected = button.dataset.source === activeSource.id;
-      button.classList.toggle('active', selected);
-      button.setAttribute('aria-pressed', selected ? 'true' : 'false');
-    });
-    sourceTabs.classList.add('is-multiline');
-    sourceTabs.replaceChildren(content);
-  } else {
-    const fragment = document.createDocumentFragment();
-    sourceTabs.classList.remove('is-multiline');
-    for (const source of section.sources) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.dataset.source = source.id;
-      button.textContent = source.label;
-      const selected = source.id === activeSource.id;
-      button.classList.toggle('active', selected);
-      button.setAttribute('aria-pressed', selected ? 'true' : 'false');
-      fragment.append(button);
-    }
-    sourceTabs.replaceChildren(fragment);
+  const fragment = document.createDocumentFragment();
+  for (const source of section.sources) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.source = source.id;
+    button.textContent = source.label;
+    const selected = source.id === activeSource.id;
+    button.classList.toggle('active', selected);
+    button.setAttribute('aria-pressed', String(selected));
+    fragment.append(button);
   }
+  sourceTabs.classList.toggle('is-multiline', section.id === 'subscriptions');
+  sourceTabs.replaceChildren(fragment);
   sourceTabs.hidden = false;
 }
 
 function syncModeTabs(source) {
   if (!tabs) return;
-  if (!sectionTabs || !sourceTabs) {
-    tabs.hidden = false;
-    return;
-  }
-
-  const showBuddiesModes = source.id === 'buddies';
-  tabs.hidden = !showBuddiesModes;
-  tabs.querySelectorAll('button').forEach((button) => {
-    const visible = showBuddiesModes && BUDDIES_VISIBLE_MODES.has(routeModeForButton(button));
-    button.hidden = !visible;
-    if (!visible) button.removeAttribute('aria-current');
-  });
+  tabs.hidden = Boolean(sectionTabs && sourceTabs) && source.id !== 'buddies';
 }
 
 function syncNavigation(mode) {
@@ -238,11 +247,10 @@ function syncNavigation(mode) {
   const { section, source } = navigation;
   lastSourceBySection.set(section.id, source.id);
   lastModeBySource.set(source.id, mode);
-
   sectionTabs.querySelectorAll('button[data-section]').forEach((button) => {
     const selected = button.dataset.section === section.id;
     button.classList.toggle('active', selected);
-    button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+    button.setAttribute('aria-pressed', String(selected));
   });
   renderSourceTabs(section, source);
   syncModeTabs(source);
@@ -265,10 +273,7 @@ function updateLocation(mode, { replace = false } = {}) {
   if (current === target) return;
   const oldURL = location.href;
   history[replace ? 'replaceState' : 'pushState'](null, '', target);
-  const newURL = location.href;
-  if (oldURL !== newURL) {
-    window.dispatchEvent(new HashChangeEvent('hashchange', { oldURL, newURL }));
-  }
+  if (oldURL !== location.href) window.dispatchEvent(new HashChangeEvent('hashchange', { oldURL, newURL: location.href }));
 }
 
 function showOnly(view) {
@@ -297,7 +302,7 @@ function setRoute(mode, view, { updateUrl = true, replaceUrl = false } = {}) {
 }
 
 function showCurrent(options = {}) {
-  setRoute('current', currentView, options);
+  setRoute('current', document.getElementById('currentView'), options);
   markRouteReady();
 }
 
@@ -310,25 +315,18 @@ function showRuntimeError(config, error) {
   notice.hidden = false;
 }
 
-async function ensureLazyShell(mode) {
-  const config = LAZY_VIEWS[mode];
-  if (!config?.shell) return;
-  await loadOnce(`${mode}:shell`, config.shell);
-}
-
 async function showLazyView(mode, options = {}) {
   const config = LAZY_VIEWS[mode];
   if (!config) return;
-  setRoute(mode, config.shell ? null : document.getElementById(config.viewId), options);
-  if (!config.shell) markRouteReady();
-
+  setRoute(mode, null, options);
   try {
-    await ensureLazyShell(mode);
+    await Promise.all([
+      ensureModeStyles(mode),
+      loadOnce(`${mode}:shell`, config.shell),
+    ]);
     if (activeMode !== mode) return;
-    if (config.shell) {
-      showOnly(document.getElementById(config.viewId));
-      markRouteReady();
-    }
+    showOnly(document.getElementById(config.viewId));
+    markRouteReady();
     const runtime = await loadOnce(`${mode}:runtime`, config.runtime);
     if (activeMode !== mode) return;
     if (config.loadExport) await runtime[config.loadExport]?.();
@@ -346,29 +344,35 @@ async function showHistory(mode, { updateUrl = true, replaceUrl = false, syncRun
     showCurrent({ updateUrl, replaceUrl });
     return;
   }
-
-  const runtimeReady = historyRuntimeMode !== null;
-  setRoute(mode, runtimeReady ? historyView : null, { updateUrl, replaceUrl });
-  if (runtimeReady) markRouteReady();
-
+  setRoute(mode, null, { updateUrl, replaceUrl });
   try {
+    await Promise.all([
+      ensureModeStyles(mode),
+      loadOnce('history:shell', HISTORY_VIEW.shell),
+    ]);
+    if (activeMode !== mode) return;
     if (mode === 'ranking') {
       await loadOnce('ranking-status', () => import('/history/history-ranking-table-status.js?v=20260923.2'));
       if (activeMode !== mode) return;
     }
-    await loadOnce('history-runtime', () => import('/history/history-main.js?v=20261002.4'));
+    if (mode === 'broadcasts') {
+      await loadOnce('first-week:shell', () => import('/first-week-comparison-shell.js?v=20261002.2'));
+      await loadOnce('first-week:runtime', () => import('/first-week-comparison.js?v=20261002.2'));
+      if (activeMode !== mode) return;
+    }
+    await loadOnce('history:runtime', () => import('/history/history-main.js?v=20261002.4'));
     if (activeMode !== mode) return;
     if (syncRuntime && historyRuntimeMode !== mode) {
       tabs?.querySelector(`button[data-mode="${mode}"]`)?.dispatchEvent(new Event('click'));
     }
     if (activeMode !== mode) return;
     historyRuntimeMode = mode;
-    showOnly(historyView);
+    showOnly(document.getElementById(HISTORY_VIEW.viewId));
     markRouteReady();
   } catch (error) {
     if (activeMode !== mode) return;
     historyRuntimeMode = null;
-    showOnly(historyView);
+    showOnly(document.getElementById(HISTORY_VIEW.viewId));
     markRouteReady();
     showRuntimeError({
       noticeId: 'notice',
@@ -382,7 +386,7 @@ async function showHistory(mode, { updateUrl = true, replaceUrl = false, syncRun
 
 function modeFromLocation() {
   const mode = location.hash.slice(1);
-  if (mode === 'first-week') {
+  if (mode === 'first-week' || mode === 'unofficial') {
     history.replaceState(null, '', `${location.pathname}${location.search}#broadcasts`);
     return 'broadcasts';
   }
@@ -419,49 +423,28 @@ sectionTabs?.addEventListener('click', (event) => {
   const section = NAVIGATION.find((item) => item.id === button.dataset.section);
   if (!section) return;
   const source = sourceById(section, lastSourceBySection.get(section.id));
-  if (!source) return;
-  activateMode(lastModeBySource.get(source.id) || source.defaultMode);
+  if (source) activateMode(lastModeBySource.get(source.id) || source.defaultMode);
 });
 
 sourceTabs?.addEventListener('click', (event) => {
   const button = event.target.closest('button[data-source]');
   if (!button || !sourceTabs.contains(button)) return;
-  const currentNavigation = navigationForMode(activeMode);
-  const source = sourceById(currentNavigation?.section, button.dataset.source);
-  if (!source) return;
-  activateMode(lastModeBySource.get(source.id) || source.defaultMode);
+  const source = sourceById(navigationForMode(activeMode)?.section, button.dataset.source);
+  if (source) activateMode(lastModeBySource.get(source.id) || source.defaultMode);
 });
 
 tabs?.addEventListener('click', (event) => {
   const button = event.target.closest('button');
   if (!button || !tabs.contains(button)) return;
   const mode = routeModeForButton(button);
-  if (!mode || !VIEW_MODES.has(mode)) return;
+  if (!VIEW_MODES.has(mode)) return;
   event.preventDefault();
-  if (HISTORY_MODES.has(mode)) {
-    void showHistory(mode, { syncRuntime: false });
-  } else {
-    showMode(mode);
-  }
+  if (HISTORY_MODES.has(mode)) void showHistory(mode, { syncRuntime: false });
+  else showMode(mode);
 }, { capture: true });
-
-if (tabs && sectionTabs && sourceTabs) {
-  new MutationObserver(() => {
-    const navigation = navigationForMode(activeMode);
-    if (navigation) syncModeTabs(navigation.source);
-  }).observe(tabs, { childList: true });
-}
 
 window.addEventListener('popstate', syncFromLocation);
 window.addEventListener('hashchange', syncFromLocation);
-
-void Promise.all([
-  ensureLazyShell('amazon-music'),
-  ensureLazyShell('apple-music'),
-  ensureLazyShell('nogizaka'),
-]).catch((error) => {
-  console.error('dashboard tab shell failed to start', error);
-});
 
 const initialMode = modeFromLocation();
 showMode(initialMode, {

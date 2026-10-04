@@ -30,19 +30,18 @@ test('Stationhead sources are Buddies, Ohisama, Nogizaka, leaderboard and follow
 });
 
 test('Buddies keeps first-week comparison inside listening parties while global leaderboard and followers stay outside its view tabs', () => {
-  assert.match(route, /id: 'buddies',[\s\S]*modes: Object\.freeze\(\['current', 'daily', 'weekly', 'monthly', 'played-tracks', 'likes', 'broadcasts'\]\)/);
-  assert.match(route, /const BUDDIES_VISIBLE_MODES = new Set\(\['current', 'daily', 'played-tracks', 'likes', 'broadcasts'\]\)/);
+  assert.match(route, /id: 'buddies',[\s\S]*modes: \['current', 'daily', 'weekly', 'monthly', 'played-tracks', 'likes', 'broadcasts'\]/);
+  assert.doesNotMatch(route, /const BUDDIES_VISIBLE_MODES/);
   assert.doesNotMatch(route, /'first-week': \{/);
-  assert.match(route, /mode === 'first-week'[\s\S]*#broadcasts/);
-  assert.match(route, /const showBuddiesModes = source\.id === 'buddies'/);
-  assert.match(route, /tabs\.hidden = !showBuddiesModes/);
-  assert.match(route, /new MutationObserver/);
+  assert.match(route, /mode === 'first-week' \|\| mode === 'unofficial'[\s\S]*#broadcasts/);
+  assert.match(route, /tabs\.hidden = Boolean\(sectionTabs && sourceTabs\) && source\.id !== 'buddies'/);
+  assert.doesNotMatch(route, /new MutationObserver/);
 });
 
 test('in-app route changes notify hash-driven views after pushState', () => {
   assert.match(route, /const oldURL = location\.href;/);
   assert.match(route, /history\[replace \? 'replaceState' : 'pushState'\]\(null, '', target\);/);
-  assert.match(route, /new HashChangeEvent\('hashchange', \{ oldURL, newURL \}\)/);
+  assert.match(route, /new HashChangeEvent\('hashchange', \{ oldURL, newURL: location\.href \}\)/);
 });
 
 test('navigation styles are bundled and responsive', () => {

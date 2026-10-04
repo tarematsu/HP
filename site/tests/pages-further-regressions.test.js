@@ -129,12 +129,15 @@ test('active Pages archive runtimes stay UTC except official-party display dates
   assert.doesNotMatch(utcArchiveSources, /Asia\/Tokyo|JST_OFFSET_MS|jstDate|todayJst|currentJstWeekRange|applyJstPreset/);
 });
 
-test('dashboard image retries use canonical URLs and successful refreshes clear stale errors', () => {
-  const source = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+test('dashboard image retries stay in the current runtime and successful refreshes clear stale errors', () => {
+  const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
   const fetchCache = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(entry, /IMAGE_RETRY_DELAYS|MutationObserver/);
   assert.match(source, /IMAGE_RETRY_DELAYS/);
-  assert.match(source, /canonicalImageSource/);
-  assert.match(source, /image\.dataset\.lastSource = source/);
+  assert.match(source, /new URL\(value, location\.href\)/);
+  assert.match(source, /image\.dataset\.lastSource = next/);
+  assert.doesNotMatch(source, /MutationObserver/);
   assert.match(fetchCache, /function clearTransientStatus/);
   assert.match(fetchCache, /node\.hidden = true/);
   assert.match(fetchCache, /clearTransientStatus\(\)/);

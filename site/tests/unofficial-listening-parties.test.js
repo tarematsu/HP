@@ -5,8 +5,8 @@ import { readFile } from 'node:fs/promises';
 const viewSource = await readFile(new URL('../public/unofficial-listening-parties.js', import.meta.url), 'utf8');
 const registrySource = await readFile(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
 const metricsSource = await readFile(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+const tabsSource = await readFile(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const historyEntry = await readFile(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
-const legacyRoute = await readFile(new URL('../public/legacy-listening-party-route.js', import.meta.url), 'utf8');
 
 const eventRows = [...viewSource.matchAll(/^  \['\d{4}\/\d{2}\/\d{2}'.+?\],$/gm)].map(([row]) => row);
 
@@ -68,14 +68,14 @@ test('all remaining rows build X announcement URLs from compact account and stat
   assert.match(viewSource, /sourceLink\.rel = 'noopener noreferrer'/);
 });
 
-test('unofficial list is visible only while リスパ is active and legacy route is normalized', () => {
+test('unofficial list is visible only while リスパ is active and legacy route is normalized centrally', () => {
   assert.match(viewSource, /querySelector\('#modeTabs \[data-mode="broadcasts"\]'\)/);
   assert.match(viewSource, /TAB_LABEL = 'リスパ'/);
   assert.match(viewSource, /panel\.hidden = !tab\.classList\.contains\('active'\)/);
   assert.match(viewSource, /new MutationObserver\(syncTab\)/);
   assert.match(viewSource, /location\.hash !== '#unofficial'/);
-  assert.match(legacyRoute, /location\.hash === '#unofficial'/);
-  assert.match(legacyRoute, /#broadcasts/);
+  assert.match(tabsSource, /mode === 'first-week' \|\| mode === 'unofficial'/);
+  assert.match(tabsSource, /#broadcasts/);
 });
 
 test('unofficial data stays out of initial entry and loads only through broadcasts history runtime', () => {
