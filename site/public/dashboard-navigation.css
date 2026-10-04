@@ -145,6 +145,26 @@
   display: none !important;
 }
 
+/* Keep the Stationhead source row visually attached to the shared subtab row.
+   Ohisama/Nogizaka mount their subtabs in the view, while Buddies keeps them in
+   the header, so remove the header divider and use the same compact handoff. */
+.dashboard-header:has(#sourceTabs > button[data-source="buddies"].active),
+.dashboard-header:has(#sourceTabs > button[data-source="hinata"].active),
+.dashboard-header:has(#sourceTabs > button[data-source="nogizaka"].active) {
+  border-bottom: 0 !important;
+}
+
+.dashboard-header:has(#sourceTabs > button[data-source="buddies"].active) .dashboard-navigation,
+.dashboard-header:has(#sourceTabs > button[data-source="hinata"].active) .dashboard-navigation,
+.dashboard-header:has(#sourceTabs > button[data-source="nogizaka"].active) .dashboard-navigation {
+  row-gap: 4px;
+}
+
+.hinata-view,
+.nogizaka-listening-party-view {
+  margin-top: 4px !important;
+}
+
 @media (max-width: 760px) {
   .dashboard-navigation {
     gap: 4px;

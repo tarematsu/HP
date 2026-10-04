@@ -8,6 +8,22 @@ const STATIONHEAD_CHANNEL_TABS = Object.freeze([
   Object.freeze({ value: 'broadcasts', label: 'リスパ' }),
 ]);
 
+const ALL_CHANNEL_SECTIONS = Object.freeze(STATIONHEAD_CHANNEL_TABS.map(({ value }) => value));
+const STATIONHEAD_CHANNEL_PROFILES = Object.freeze({
+  buddies: Object.freeze({
+    enabled: ALL_CHANNEL_SECTIONS,
+    paused: Object.freeze([]),
+  }),
+  ohisama: Object.freeze({
+    enabled: Object.freeze(['current', 'history', 'played-tracks', 'likes']),
+    paused: Object.freeze(['broadcasts']),
+  }),
+  nogizaka: Object.freeze({
+    enabled: Object.freeze(['broadcasts']),
+    paused: Object.freeze(['current', 'history', 'played-tracks', 'likes']),
+  }),
+});
+
 function dataAttributeName(value) {
   return String(value || 'stationhead-section').replace(/[^a-z0-9-]/gi, '');
 }
@@ -16,20 +32,36 @@ function datasetKey(attribute) {
   return attribute.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
 }
 
+function inferredChannel(dataAttribute) {
+  const value = dataAttributeName(dataAttribute);
+  if (value.startsWith('hinata-') || value.startsWith('ohisama-')) return 'ohisama';
+  if (value.startsWith('nogizaka-')) return 'nogizaka';
+  return 'buddies';
+}
+
+export function stationheadChannelProfile(channel = 'buddies') {
+  return STATIONHEAD_CHANNEL_PROFILES[channel] || STATIONHEAD_CHANNEL_PROFILES.buddies;
+}
+
 export function stationheadChannelTabs({
+  channel = '',
   dataAttribute = 'stationhead-section',
   ariaLabel = 'Stationhead表示切替',
   active = 'current',
-  enabled = STATIONHEAD_CHANNEL_TABS.map(({ value }) => value),
+  enabled = null,
+  paused = null,
   unavailableTitle = '未提供',
+  pausedTitle = '一時停止中',
 } = {}) {
-  const enabledSet = new Set(enabled);
+  const profile = stationheadChannelProfile(channel || inferredChannel(dataAttribute));
+  const enabledSet = new Set(enabled || profile.enabled);
+  const pausedSet = new Set(paused || profile.paused);
   return dashboardModeTabs(STATIONHEAD_CHANNEL_TABS.map(({ value, label }) => ({
     value,
     label,
     active: value === active,
     disabled: !enabledSet.has(value),
-    title: enabledSet.has(value) ? '' : unavailableTitle,
+    title: enabledSet.has(value) ? '' : (pausedSet.has(value) ? pausedTitle : unavailableTitle),
   })), {
     dataAttribute,
     className: 'stationhead-subtabs',
@@ -75,4 +107,4 @@ export function bindStationheadChannelTabs(root, {
   return select;
 }
 
-export { STATIONHEAD_CHANNEL_TABS };
+export { ALL_CHANNEL_SECTIONS, STATIONHEAD_CHANNEL_PROFILES, STATIONHEAD_CHANNEL_TABS };

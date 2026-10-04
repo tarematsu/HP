@@ -1,4 +1,5 @@
 import {
+  appendEmptyState,
   appendEmptyTableRow,
   byId,
   dashboardControls,
@@ -12,11 +13,13 @@ import {
   setText,
 } from './dashboard-ui-common.js?v=20261001.1';
 import { appendTableRow } from './dashboard-table-dom.js?v=20261001.1';
+import { downloadCsv } from './csv-download.js?v=20261001.1';
 import { stationheadPlaybackCards } from './stationhead-playback-shell.js?v=20261001.1';
 import { bindStationheadChannelTabs, stationheadChannelTabs } from './stationhead-channel-tabs.js?v=20261003.1';
 
 const HINATA_URL = '/api/hinata';
 const REFRESH_INTERVAL_MS = 5 * 60_000;
+const MEDALS = ['🥇', '🥈', '🥉'];
 const state = {
   payload: null,
   selectedPlayedPeriod: '',
@@ -137,6 +140,7 @@ function mountChannelLayout() {
   })}${dashboardDataCard({
     title: '楽曲別一覧',
     kicker: 'DATA',
+    trailingHtml: '<button id="hinataLikesCsv" class="button" type="button">CSV</button>',
     bodyHtml: likesTable,
   })}`;
 
@@ -371,10 +375,47 @@ function renderPlayed(payload) {
   renderPlayedPeriod(payload);
 }
 
-function renderLikes(payload) {
-  const likes = (Array.isArray(payload?.likes) ? payload.likes : [])
+function hinataLikeRows(payload = state.payload) {
+  return (Array.isArray(payload?.likes) ? payload.likes : [])
     .filter((row) => finite(row?.like_count) != null)
+    .filter((row) => String(row?.artist || '').normalize('NFKC').includes('日向坂46'))
     .sort((left, right) => Number(right.like_count) - Number(left.like_count));
+}
+
+function likeMetric(label, value) {
+  const box = document.createElement('span');
+  box.append(document.createTextNode(label));
+  const strong = document.createElement('b');
+  strong.textContent = value;
+  box.appendChild(strong);
+  return box;
+}
+
+function likeRankingThumbnail(row) {
+  const visual = document.createElement('span');
+  visual.className = 'like-rank-thumb';
+  const source = reducedImage(row?.thumbnail_url, 76);
+  if (!source) {
+    visual.textContent = '♪';
+    visual.classList.add('is-fallback');
+    return visual;
+  }
+  const image = document.createElement('img');
+  image.src = source;
+  image.alt = '';
+  image.loading = 'lazy';
+  image.decoding = 'async';
+  image.addEventListener('error', () => {
+    image.remove();
+    visual.textContent = '♪';
+    visual.classList.add('is-fallback');
+  }, { once: true });
+  visual.append(image);
+  return visual;
+}
+
+function renderLikes(payload) {
+  const likes = hinataLikeRows(payload);
   setText('hinataLikesTrackCount', numberText(likes.length));
   setText('hinataLikesTotalLikes', numberText(likes.reduce((sum, row) => sum + Number(row.like_count || 0), 0)));
   const latestAt = likes.reduce((latest, row) => Math.max(latest, finite(row?.observed_at) || 0), 0);
@@ -382,16 +423,36 @@ function renderLikes(payload) {
 
   const ranking = byId('hinataLikesRankingList');
   if (ranking) {
-    ranking.replaceChildren(...likes.slice(0, 5).map((row) => {
-      const item = document.createElement('li');
-      const title = row?.title || row?.spotify_id || '曲名不明';
-      item.textContent = `${title}${row?.artist ? ` / ${row.artist}` : ''}　♡ ${numberText(row.like_count)}`;
-      return item;
-    }));
-    if (!likes.length) {
-      const item = document.createElement('li');
-      item.textContent = 'いいねデータはまだありません。';
-      ranking.append(item);
+    ranking.replaceChildren();
+    const rows = likes.slice(0, 10);
+    if (!rows.length) {
+      appendEmptyState(ranking, 'いいねデータはまだありません。', { className: 'empty-ranking', tagName: 'li' });
+    } else {
+      const fragment = document.createDocumentFragment();
+      rows.forEach((row, index) => {
+        const displayRank = index + 1;
+        const item = document.createElement('li');
+        item.className = 'like-rank-item';
+        const rank = document.createElement('strong');
+        rank.className = 'like-rank-number';
+        rank.textContent = MEDALS[displayRank - 1] || String(displayRank);
+        const content = document.createElement('div');
+        content.className = 'like-rank-content';
+        const heading = document.createElement('div');
+        heading.className = 'like-rank-heading';
+        const title = document.createElement('span');
+        title.textContent = row?.title || row?.spotify_id || '曲名不明';
+        heading.appendChild(title);
+        const artist = document.createElement('small');
+        artist.textContent = row?.artist || '—';
+        content.append(heading, artist);
+        const metrics = document.createElement('div');
+        metrics.className = 'like-rank-metrics';
+        metrics.append(likeMetric('最新いいね数', numberText(row?.like_count)));
+        item.append(rank, likeRankingThumbnail(row), content, metrics);
+        fragment.appendChild(item);
+      });
+      ranking.appendChild(fragment);
     }
   }
 
@@ -411,6 +472,20 @@ function renderLikes(payload) {
       finite(row?.observed_at) == null ? '—' : `${jstDateTime.format(new Date(row.observed_at))} JST`,
     ]);
   });
+}
+
+function exportLikesCsv() {
+  const rows = hinataLikeRows();
+  downloadCsv(`ohisama-like-ranking-${new Date().toISOString().slice(0, 10)}.csv`, [
+    ['順位', '曲名', 'アーティスト', '最新いいね数', '最終取得'],
+    ...rows.map((row, index) => [
+      index + 1,
+      row?.title || row?.spotify_id || '曲名不明',
+      row?.artist || '—',
+      row?.like_count ?? '',
+      finite(row?.observed_at) == null ? '' : new Date(Number(row.observed_at)).toISOString(),
+    ]),
+  ]);
 }
 
 function render(payload) {
@@ -450,6 +525,7 @@ bindStationheadChannelTabs(root, {
   initial: 'current',
   onSelect: () => requestAnimationFrame(() => window.dispatchEvent(new Event('resize'))),
 });
+byId('hinataLikesCsv')?.addEventListener('click', exportLikesCsv);
 void refresh();
 setInterval(() => { if (!document.hidden) void refresh(); }, REFRESH_INTERVAL_MS);
 setInterval(() => { if (!document.hidden && state.payload) updatePlaybackProgress(); }, 1_000);

@@ -23,7 +23,7 @@ test('Nogizaka tab is mounted immediately before Hinata when available', () => {
   assert.match(tabs, /loadNogizakaListeningPartyView/);
 });
 
-test('Nogizaka uses the shared five Stationhead subtabs with only listening party enabled', () => {
+test('Nogizaka uses the shared five Stationhead subtabs with current through likes paused', () => {
   for (const pair of [
     ["value: 'current', label: '現在'", '現在'],
     ["value: 'history', label: '過去'", '過去'],
@@ -36,14 +36,15 @@ test('Nogizaka uses the shared five Stationhead subtabs with only listening part
   assert.match(shell, /stationheadChannelTabs/);
   assert.match(shell, /active: 'broadcasts'/);
   assert.match(shell, /enabled: \['broadcasts'\]/);
-  assert.match(shell, /unavailableTitle: 'Nogizakaでは未提供'/);
+  assert.match(stationheadTabs, /nogizaka:[\s\S]*enabled: Object\.freeze\(\['broadcasts'\]\)[\s\S]*paused: Object\.freeze\(\['current', 'history', 'played-tracks', 'likes'\]\)/);
+  assert.match(stationheadTabs, /pausedTitle = '一時停止中'/);
   assert.match(shell, /class="stationhead-channel-panel" data-nogizaka-panel="broadcasts"/);
   assert.match(stationheadTabs, /dashboardModeTabs/);
   assert.match(stationheadTabs, /disabled: !enabledSet\.has\(value\)/);
   assert.match(stationheadTabs, /if \(!requested \|\| requested\.disabled\) return/);
 });
 
-test('Unavailable Nogizaka tabs are visibly struck through by the shared Stationhead style', () => {
+test('Paused Nogizaka tabs are visibly struck through by the shared Stationhead style', () => {
   assert.match(sharedCss, /\.stationhead-subtabs\s*>\s*button:disabled\s*\{[^}]*opacity:\s*\.42/s);
   assert.match(sharedCss, /\.stationhead-subtabs\s*>\s*button:disabled\s*\{[^}]*text-decoration:\s*line-through/s);
   assert.match(sharedCss, /\.stationhead-subtabs\s*\{[^}]*grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\)/s);

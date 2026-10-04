@@ -11,7 +11,6 @@ const summary = dashboardSummary([
   dashboardSummaryItem({ label: '最終取得', valueId: 'likesLatestAt', valueClassName: 'summary-date' }),
   dashboardSummaryItem({ label: '対象楽曲数', valueId: 'likesTrackCount' }),
   dashboardSummaryItem({ label: '合計いいね数', valueId: 'likesTotalLikes' }),
-  dashboardSummaryItem({ label: '合計いいね数（前日比）', valueId: 'likesTotalDelta' }),
 ], { className: 'likes-summary', ariaLabel: 'いいね集計概要' });
 
 const likesTable = dashboardTable({

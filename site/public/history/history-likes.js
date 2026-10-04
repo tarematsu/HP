@@ -31,12 +31,6 @@ import {
   if (!el('likesView')) return;
 
   const fmt = (value) => finite(value) == null ? '—' : number.format(Number(value));
-  const fmtSigned = (value) => {
-    const parsed = finite(value);
-    if (parsed == null) return '—';
-    if (parsed > 0) return `+${number.format(parsed)}`;
-    return number.format(parsed);
-  };
   const trackName = (row) => displayTrackTitle(row);
   const artistName = (row) => displayTrackArtist(row);
   const setNotice = (text, error = false) => setSharedNotice('likesNotice', text, error);
@@ -70,7 +64,6 @@ import {
   function renderSummary() {
     el('likesTrackCount').textContent = fmt(state.summary.track_count || 0);
     el('likesTotalLikes').textContent = fmt(state.summary.total_like_count);
-    el('likesTotalDelta').textContent = fmtSigned(state.summary.total_like_count_previous_day_delta);
     el('likesLatestAt').textContent = state.summary.latest_observed_at
       ? shortDate.format(new Date(Number(state.summary.latest_observed_at)))
       : '—';
