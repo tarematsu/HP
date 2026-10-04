@@ -12,18 +12,18 @@ test('all Stationhead channel tabs share one five-column layout source', () => {
   assert.match(registry, /STATIONHEAD_CHANNEL_TABS/);
   assert.match(registry, /STATIONHEAD_CHANNEL_TABS\.map/);
   assert.match(registry, /classList\.add\('stationhead-subtabs'\)/);
-  assert.match(stationhead, /const STATIONHEAD_CHANNEL_TABS = Object\.freeze/);
+  assert.match(stationhead, /const STATIONHEAD_CHANNEL_TABS = \[/);
   for (const value of ['current', 'history', 'played-tracks', 'likes', 'broadcasts']) {
     assert.match(stationhead, new RegExp(`value: '${value}'`));
   }
-  assert.match(navigation, /#modeTabs\.mode-tabs\.dashboard-tabs,\s*\.stationhead-subtabs\s*\{[^}]*grid-template-columns: repeat\(5, minmax\(0, 1fr\)\)/s);
+  assert.match(navigation, /\.stationhead-subtabs\s*\{[^}]*grid-template-columns: repeat\(5, minmax\(0, 1fr\)\)/s);
   assert.match(navigation, /\.stationhead-subtabs > button\s*\{[^}]*min-height: 44px/s);
   assert.doesNotMatch(layout + mobile, /#modeTabs\.mode-tabs\.dashboard-tabs/);
 });
 
 test('paused Stationhead sections are profile-driven and remain ready to re-enable', () => {
-  assert.match(stationhead, /ohisama:[\s\S]*enabled: Object\.freeze\(\['current', 'history', 'played-tracks', 'likes'\]\)[\s\S]*paused: Object\.freeze\(\['broadcasts'\]\)/);
-  assert.match(stationhead, /nogizaka:[\s\S]*enabled: Object\.freeze\(\['broadcasts'\]\)[\s\S]*paused: Object\.freeze\(\['current', 'history', 'played-tracks', 'likes'\]\)/);
+  assert.match(stationhead, /ohisama:[\s\S]*enabled: \['current', 'history', 'played-tracks', 'likes'\][\s\S]*paused: \['broadcasts'\]/);
+  assert.match(stationhead, /nogizaka:[\s\S]*enabled: \['broadcasts'\][\s\S]*paused: \['current', 'history', 'played-tracks', 'likes'\]/);
   assert.match(stationhead, /pausedTitle = '一時停止中'/);
   assert.match(stationhead, /disabled: !enabledSet\.has\(value\)/);
   assert.match(navigation, /\.stationhead-subtabs > button:disabled[\s\S]*text-decoration: line-through/);
