@@ -78,32 +78,50 @@ async function persistCandidateTracks(db, message, tracks, collectedAt) {
   await batchStatements(db, writes);
 }
 
-function rawTrackArtistCoverage(rawItems, targets) {
+function rawArtistIds(rawArtists) {
+  const ids = [];
+  for (const entry of rawArtists || []) {
+    const artist = entry?.artist || entry;
+    const directId = safeText(artist?.id);
+    const uri = safeText(artist?.uri);
+    const artistId = directId || (uri.startsWith('spotify:artist:') ? uri.slice('spotify:artist:'.length) : '');
+    if (artistId) ids.push(artistId);
+  }
+  return ids;
+}
+
+export function rawTargetTrackCoverage(payload, targets) {
   const targetIds = new Set(
     (targets || []).map((target) => safeText(target?.spotify_artist_id)).filter(Boolean),
   );
-  let complete = Array.isArray(rawItems) && rawItems.length > 0;
+  const album = payload?.data?.albumUnion || payload?.data?.album || payload;
+  const rawItems = Array.isArray(album?.tracks?.items) ? album.tracks.items : [];
+  const albumArtistIds = rawArtistIds(album?.artists?.items || album?.artists);
+  let complete = rawItems.length > 0;
   let hasTargetCredit = false;
-  for (const item of rawItems || []) {
+  let targetTracks = 0;
+  let invalidTargetTracks = 0;
+
+  for (const item of rawItems) {
     const rawTrack = item?.track || item;
-    const artists = rawTrack?.artists?.items;
-    if (!Array.isArray(artists) || !artists.length) {
+    let artistIds = rawArtistIds(rawTrack?.artists?.items || rawTrack?.artists);
+    if (!artistIds.length) artistIds = albumArtistIds;
+    if (!artistIds.length) {
       complete = false;
       continue;
     }
-    let hasValidArtist = false;
-    for (const entry of artists) {
-      const artist = entry?.artist || entry;
-      const directId = safeText(artist?.id);
-      const uri = safeText(artist?.uri);
-      const artistId = directId || (uri.startsWith('spotify:artist:') ? uri.slice('spotify:artist:'.length) : '');
-      if (!artistId) continue;
-      hasValidArtist = true;
-      if (targetIds.has(artistId)) hasTargetCredit = true;
-    }
-    if (!hasValidArtist) complete = false;
+    if (!artistIds.some((artistId) => targetIds.has(artistId))) continue;
+
+    hasTargetCredit = true;
+    targetTracks += 1;
+    const directId = safeText(rawTrack?.id);
+    const uri = safeText(rawTrack?.uri);
+    const trackId = directId || (uri.startsWith('spotify:track:') ? uri.slice('spotify:track:'.length) : '');
+    const playcount = integer(rawTrack?.playcount);
+    if (!trackId || playcount == null || playcount < 0) invalidTargetTracks += 1;
   }
-  return { complete, hasTargetCredit };
+
+  return { complete, hasTargetCredit, targetTracks, invalidTargetTracks };
 }
 
 async function collectAlbum(env, message, session, dependencies) {
@@ -113,12 +131,14 @@ async function collectAlbum(env, message, session, dependencies) {
   if (!(await activeRunMatches(env.OTHER_DB, message))) {
     return { trackCount: 0, stale: true, unrelated: false };
   }
-  const rawItems = Array.isArray(payload?.data?.album?.tracks?.items)
-    ? payload.data.album.tracks.items
-    : [];
   const tracks = normalizeAlbumTracks(payload, message.targets);
+  const coverage = rawTargetTrackCoverage(payload, message.targets);
+  if (coverage.invalidTargetTracks > 0 || coverage.targetTracks > tracks.length) {
+    throw new Error(
+      `Spotify album ${message.album_id} returned ${coverage.invalidTargetTracks || coverage.targetTracks - tracks.length} target tracks without usable playcounts`,
+    );
+  }
   if (!tracks.length) {
-    const coverage = rawTrackArtistCoverage(rawItems, message.targets);
     if (coverage.complete && !coverage.hasTargetCredit) {
       return { trackCount: 0, stale: false, unrelated: true };
     }
