@@ -1,5 +1,6 @@
 import { dashboardModeTabs, mountDashboardView } from './dashboard-ui-common.js?v=20261004.1';
 import { STATIONHEAD_CHANNEL_TABS } from './stationhead-channel-model.js?v=20261004.1';
+import { bindStationheadHistoryGranularity } from './stationhead-history-granularity.js?v=20261005.1';
 
 function role(name) {
   return `data-role="${name}"`;
@@ -75,11 +76,13 @@ export function stationheadChannelMarkup() {
 }
 
 export function mountStationheadChannelShell({ id, hidden = true, anchorIds = [] } = {}) {
-  return mountDashboardView({
+  const view = mountDashboardView({
     id,
     className: 'stationhead-channel-view',
     hidden,
     anchorIds,
     html: stationheadChannelMarkup(),
   });
+  bindStationheadHistoryGranularity(view);
+  return view;
 }
