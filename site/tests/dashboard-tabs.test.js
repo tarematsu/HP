@@ -17,23 +17,22 @@ const redirects = readFileSync(new URL('../public/_redirects', import.meta.url),
 const historyPageUrl = new URL('../public/history/index.html', import.meta.url);
 const likesPageUrl = new URL('../public/history/likes/index.html', import.meta.url);
 
-test('dashboard starts on current and mounts only the five visible Buddies mode tabs', () => {
-  assert.ok(registry.indexOf("view: 'current'") < registry.indexOf("mode: 'daily'"));
-  assert.match(registry, /view: 'current', label: '現在', active: true/);
+test('dashboard starts on the shared Buddies Stationhead view without duplicate outer subtabs', () => {
+  assert.match(currentShell, /mountStationheadChannelShell/);
   assert.match(currentShell, /id: 'currentView'/);
   assert.match(currentShell, /hidden: false/);
-  assert.match(historyShell, /id: 'historyView'/);
-  assert.match(historyShell, /className: 'history-view'/);
-  assert.match(likesShell, /id: 'likesView'/);
-  assert.match(likesShell, /className: 'likes-view'/);
-  for (const mode of ['daily', 'likes', 'broadcasts']) assert.match(registry, new RegExp(`mode: '${mode}'`));
-  assert.match(registry, /view: 'played-tracks'/);
-  assert.doesNotMatch(registry, /mode: 'ranking'|view: 'spotify'/);
+  assert.match(currentShell, /stationheadModel = 'buddies'/);
+  assert.match(registry, /tabs\.replaceChildren\(\)/);
+  assert.match(registry, /tabs\.hidden = true/);
+  assert.doesNotMatch(registry, /STATIONHEAD_CHANNEL_TABS|BUDDIES_ROUTES|createElement\('button'\)/);
+  assert.match(stationheadShell, /dashboardModeTabs/);
+  assert.match(stationheadShell, /className: 'stationhead-subtabs'/);
+  for (const section of ['current', 'history', 'played-tracks', 'likes', 'broadcasts']) {
+    assert.match(stationheadShell, new RegExp(`data-stationhead-panel=\\"${section}\\"`));
+  }
+  assert.match(tabsClient, /id: 'buddies', label: 'Buddies', defaultMode: 'current'/);
   assert.match(tabsClient, /id: 'ranking', label: 'リーダーボード'/);
   assert.match(tabsClient, /id: 'spotify', label: 'Spotify'/);
-  assert.doesNotMatch(registry, /view: 'first-week'|label: '初週比較'/);
-  assert.doesNotMatch(registry, /mode: 'weekly'|mode: 'monthly'/);
-  assert.doesNotMatch([registry, historyShell].join('\n'), /mode: 'tracks'|id="trackControls"/);
   assert.match(page, /<nav class="dashboard-navigation" aria-label="統計メニュー">/);
   for (const id of ['sectionTabs', 'sourceTabs', 'modeTabs']) assert.match(page, new RegExp(`id="${id}"`));
   assert.doesNotMatch(page, /id="currentView"|id="historyView"|id="likesView"/);
@@ -148,7 +147,7 @@ test('tab selection stays on the root document and never navigates to history pa
 });
 
 test('current Stationhead detail and legacy history detail stay in their owning shells', () => {
-  assert.match(stationheadShell, /data-role="live-detail"/);
+  assert.match(stationheadShell, /role\('live-detail'\)/);
   assert.match(historyShell, /id="chartDetail"[^>]*data-history-chart-detail/);
   assert.equal((historyShell.match(/id="chartDetail"/g) || []).length, 1);
   assert.match(dashboardEntry, /stationhead-channel\.js\?v=/);
