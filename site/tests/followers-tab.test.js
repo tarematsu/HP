@@ -72,7 +72,7 @@ test('music streaming follow adapter uses materialized service read models and n
 });
 
 test('Stationhead follower adapter reads only the materialized public API', () => {
-  assert.match(readModel, /fetch\('\/api\/followers'/);
+  assert.match(readModel, /loadDashboardJson\('\/api\/followers'/);
   assert.doesNotMatch(route, /OTHER_DB|MINUTE_DB|\.prepare\(/);
   assert.match(workerConfig, /"binding": "PAGES_RESPONSE_R2"/);
 });

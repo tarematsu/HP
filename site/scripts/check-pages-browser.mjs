@@ -25,9 +25,11 @@ await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const origin = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch();
 const results = [];
+const runtimeErrors = [];
 try {
   for (const width of [390, 1440]) {
     const page = await browser.newPage({ viewport: { width, height: 960 } });
+    page.on('pageerror', error => runtimeErrors.push({ width, message: error.message, url: page.url() }));
     await page.route('**/api/**', async route => {
       const path = new URL(route.request().url()).pathname + new URL(route.request().url()).search;
       if (!live) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, rows: [], history: [], dates: [], artists: [], tracks: [], ranking: [], series: [], items: [], latest: {}, queue: [] }) });
@@ -44,7 +46,8 @@ try {
     for (const mode of ['current', 'daily', 'weekly', 'monthly', 'played-tracks', 'likes', 'broadcasts', 'hinata', 'nogizaka', 'spotify', 'apple-music', 'amazon-music', 'youtube-music', 'kkbox', 'qq_music', 'kugou_music', 'ranking', 'followers', 'music-ranking', 'music-followers']) {
       await page.evaluate(mode => { location.hash = mode; }, mode);
       await page.waitForFunction(() => [...document.querySelectorAll('.dashboard-view')].some(node => !node.hidden), { timeout: 10000 });
-      await page.waitForTimeout(live ? 1500 : 500);
+      await page.waitForLoadState('networkidle', { timeout: 45000 });
+      await page.waitForTimeout(200);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2);
       assert.equal(overflow, false, `${mode} at ${width}px overflows the document`);
       assert.equal(await page.locator('main').count(), 1);
@@ -61,7 +64,7 @@ try {
       }
       for (const button of await page.locator('.dashboard-view:not([hidden]) [data-stationhead-section]:not(:disabled)').all()) {
         await button.click();
-        await page.waitForTimeout(live ? 1500 : 300);
+        await page.waitForLoadState('networkidle', { timeout: 45000 });
         const section = await button.getAttribute('data-stationhead-section');
         await page.screenshot({ path: `${output}/${mode}-${section}-${width}.png`, fullPage: true });
       }
@@ -80,7 +83,17 @@ try {
       await page.screenshot({ path: `${output}/${mode}-${width}.png`, fullPage: true });
       results.push({ mode, width, overflow, downloads });
     }
+    for (const account of ['sakurazaka46jp', 'nogizaka46smej']) {
+      await page.goto(`${origin}/${account}/`);
+      await page.waitForLoadState('networkidle', { timeout: 45000 });
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2), false, `${account}: page overflow`);
+      await page.screenshot({ path: `${output}/${account}-${width}.png`, fullPage: true });
+      results.push({ account, width });
+    }
     await page.close();
   }
-  await writeFile(`${output}/results.json`, JSON.stringify({ source: live ? 'production API snapshots with PR assets' : 'empty fixture', capturedAt: new Date().toISOString(), results, apiResults }, null, 2));
-} finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
+  await writeFile(`${output}/results.json`, JSON.stringify({ source: live ? 'production API snapshots with PR assets' : 'empty fixture', capturedAt: new Date().toISOString(), results, apiResults, runtimeErrors }, null, 2));
+  assert.deepEqual(runtimeErrors, [], 'browser runtime exceptions');
+} finally {
+  await writeFile(`${output}/results.json`, JSON.stringify({ source: live ? 'production API snapshots with PR assets' : 'empty fixture', capturedAt: new Date().toISOString(), results, apiResults, runtimeErrors }, null, 2));
+  await browser.close(); await new Promise(resolve => server.close(resolve)); }

@@ -1,3 +1,4 @@
+import { loadDashboardJson } from './dashboard-data-client.js?v=20261005.2';
 import { safeInteger as integer } from './dashboard-ui-common.js?v=20261004.1';
 import {
   MUSIC_ARTIST_LABELS,
@@ -206,14 +207,7 @@ async function stationheadPayload({ force = false } = {}) {
   const key = 'followers:stationhead';
   if (force) cachedPayloads.delete(key);
   if (!cachedPayloads.has(key)) {
-    const promise = fetch('/api/followers', {
-      headers: { accept: 'application/json' },
-      cache: force ? 'reload' : 'default',
-    }).then(async (response) => {
-      const payload = await response.json().catch(() => null);
-      if (!response.ok || !payload?.ok) throw new Error(payload?.error || `followers HTTP ${response.status}`);
-      return normalizeStationheadFollowers(payload);
-    }).catch((error) => {
+    const promise = loadDashboardJson('/api/followers', { force }).then(normalizeStationheadFollowers).catch((error) => {
       cachedPayloads.delete(key);
       throw error;
     });
