@@ -85,11 +85,11 @@ LR"JS(
           /アンケート/.test(clean(dialog.textContent)));
   const posterPlay = document.getElementById?.('episode-play');
   if (questionnaire || visible(posterPlay)) {
-    // Do not hide a required questionnaire or race the initial Play action.
     state.fullscreenCornerTapAt = now;
     schedule(900);
     return;
   }
+)JS" LR"JS(
 
   const videos = Array.from(document.querySelectorAll('video'));
   const videoScore = video => {
@@ -200,6 +200,7 @@ LR"JS(
       if (speedIndicator && clickOnce(speedIndicator, 'speed-menu', 900)) return;
       schedule(700);
     }
+)JS" LR"JS(
 
     const qualityElements = controls.filter(element => qualityValue(element));
     const lowOption = qualityElements.find(element =>
@@ -209,8 +210,6 @@ LR"JS(
         (qualityIndicator && qualityValue(qualityIndicator) === '低') ||
         (lowOption && selected(lowOption)));
     state.currentSettingsQualityConfirmed = qualityConfirmed;
-    // Share confirmation with the legacy recovery body so it does not reopen an
-    // obsolete settings menu after the current TVer UI already reports "低".
     if (qualityConfirmed) state.qualityApplied = true;
     if (!qualityConfirmed) {
       state.fullscreenCornerTapAt = now;
@@ -220,16 +219,15 @@ LR"JS(
       schedule(700);
     }
 
-    // Do not enter fullscreen until both settings are confirmed by TVer's own
-    // current UI. This keeps the setting menus reachable during recovery.
+    // Keep setting menus reachable until TVer's own UI confirms both values.
     if (!speedConfirmed || !qualityConfirmed) {
       state.fullscreenCornerTapAt = now;
       schedule(700);
       return;
     }
   } else {
-    // TVer does not permit speed changes during ads. Keep retrying when the
-    // long-form program media replaces the ad video.
+    // Ads do not permit speed changes. Retry after the long-form program media
+    // replaces the ad video.
     state.currentSettingsSpeedConfirmed = false;
     state.currentSettingsQualityConfirmed = false;
     state.fullscreenCornerTapAt = now;
