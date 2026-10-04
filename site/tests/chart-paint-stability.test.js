@@ -18,7 +18,8 @@ const rankingChart = readFileSync(new URL('../public/history/history-ranking-cha
 
 test('current Stationhead dashboard has one shared data adapter and Canvas runtime', () => {
   assert.match(dashboard, /stationhead-channel\.js\?v=/);
-  assert.doesNotMatch(dashboard, /dashboard-current-layout\.js|dashboard-chart-comparison\.js|dashboard-chart-detail\.js|dashboard-fetch-cache\.js/);
+  assert.match(dashboard, /dashboard-fetch-cache\.js\?v=/);
+  assert.doesNotMatch(dashboard, /dashboard-current-layout\.js|dashboard-chart-comparison\.js|dashboard-chart-detail\.js/);
   assert.match(channelRuntime, /prepareDashboardCanvas/);
   assert.match(channelRuntime, /function renderCurrentChart\(/);
   assert.match(channelReadModel, /async function fetchJson\(/);
@@ -27,6 +28,7 @@ test('current Stationhead dashboard has one shared data adapter and Canvas runti
   assert.match(channelReadModel, /function nogizakaModel\(\)/);
   assert.doesNotMatch(channelRuntime, /window\.fetch|response\.clone\(\)\.json/);
   assert.doesNotMatch(dashboardLayout, /audienceChart|getContext\('2d'\)|clearRect\(/);
+  assert.match(dashboardCache, /url\.searchParams\.set\('since'/);
 });
 
 test('current and history charts share one paint gate controller', () => {
