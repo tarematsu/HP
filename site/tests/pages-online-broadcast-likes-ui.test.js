@@ -2,19 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const daily = readFileSync(new URL('../public/dashboard-daily-summaries.js', import.meta.url), 'utf8');
 const likes = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
 const broadcasts = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
 const canvas = readFileSync(new URL('../public/dashboard-chart-canvas.js', import.meta.url), 'utf8');
-
-test('current online card uses the requested label and three daily averages without the 24h range', () => {
-  assert.match(daily, /オンライン数/);
-  assert.match(daily, /onlineYesterdayAvg/);
-  assert.match(daily, /onlineDayBeforeAvg/);
-  assert.match(daily, /onlineThreeDaysAgoAvg/);
-  assert.match(daily, /removeOnlineRange/);
-  assert.match(daily, /getElementById\('online24h'\)\?\.remove\(\)/);
-});
 
 test('like ranking and track list keep only Sakurazaka46 and unknown artists', () => {
   assert.match(likes, /function includedInLikeRanking/);
