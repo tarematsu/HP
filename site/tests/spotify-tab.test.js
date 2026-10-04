@@ -230,7 +230,7 @@ test('Spotify tab uses the shared music-service chart-and-list layout with the s
   assert.match(shell, /musicServiceSection/);
   assert.match(shell, /musicServiceFilterTabs/);
   assert.match(shell, /musicServiceTable/);
-  assert.match(commonShell, /'regional-music-view', 'is-chart-compact', 'music-service-view'/);
+  assert.match(commonShell, /joinClasses\('is-chart-compact', 'music-service-view', classes\)/);
   assert.match(commonShell, /'music-service-meta'/);
   assert.match(commonShell, /'music-service-section'/);
   assert.match(commonShell, /className: 'music-service-section-head'/);
