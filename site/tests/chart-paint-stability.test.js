@@ -9,7 +9,6 @@ const dashboardCache = readFileSync(new URL('../public/dashboard-fetch-cache.js'
 const dashboardLayout = readFileSync(new URL('../public/dashboard-current-layout.js', import.meta.url), 'utf8');
 const dashboardStability = readFileSync(new URL('../public/dashboard-chart-stability.js', import.meta.url), 'utf8');
 const paintGate = readFileSync(new URL('../public/chart-paint-gate.js', import.meta.url), 'utf8');
-const dashboardDetail = readFileSync(new URL('../public/dashboard-chart-detail.js', import.meta.url), 'utf8');
 const historyMain = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const historyLite = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 const historyStability = readFileSync(new URL('../public/history/history-chart-stability.js', import.meta.url), 'utf8');
@@ -51,9 +50,9 @@ test('dashboard first paint settles from the unified materialized payload', () =
   assert.match(dashboardStability, /source === 'network' \? 180 : 280/);
   assert.match(dashboardStability, /Array\.isArray\(payload\?\.history\)/);
   assert.match(dashboardStability, /dashboard:payload/);
-  assert.match(dashboardDetail, /currentChartDetail/);
-  assert.match(dashboardDetail, /dashboard:payload/);
-  assert.doesNotMatch(dashboardDetail, /dashboard:details/);
+  assert.match(channelRuntime, /function renderCurrentDetail\(/);
+  assert.match(channelRuntime, /data-role="\$\{name\}"/);
+  assert.doesNotMatch(channelRuntime, /dashboard:details/);
 });
 
 test('history owns period charts while the shared leaderboard owns ranking canvas paint', () => {
