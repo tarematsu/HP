@@ -1,124 +1,105 @@
 import {
-  dashboardModeTabs,
-  dashboardNotice,
-  dashboardTable,
-  mountDashboardShell,
-} from './dashboard-ui-common.js?v=20261004.1';
-import {
-  musicServiceMeta,
+  mountMusicServiceView,
+  musicServiceFilterTabs,
+  musicServiceNotice,
   musicServiceSection,
-  musicServiceViewClassName,
-} from './music-service-shell.js?v=20261004.1';
+  musicServiceTable,
+} from './music-service-shell.js?v=20261004.2';
 
-const artistTable = dashboardTable({
-  className: 'regional-music-table regional-music-artist-table music-service-track-table',
+const table = (options = {}) => musicServiceTable({
+  wrapClassName: 'regional-music-table-wrap',
+  ...options,
+});
+
+const artistTable = table({
+  className: 'regional-music-artist-table',
   headers: ['アーティスト', 'フォロワー', 'いいね', 'サービスID'],
   bodyId: 'regionalMusicArtistBody',
-  wrapClassName: 'regional-music-table-wrap',
 });
 
-const trackTable = dashboardTable({
-  className: 'regional-music-table regional-music-track-table music-service-track-table',
+const trackTable = table({
+  className: 'regional-music-track-table',
   headers: ['アーティスト', '曲名', '再生数', 'リスナー', 'いいね', 'コメント', '順位'],
   bodyId: 'regionalMusicTrackBody',
-  wrapClassName: 'regional-music-table-wrap',
 });
 
-const playlistTable = dashboardTable({
-  className: 'regional-music-table regional-music-playlist-table music-service-playlist-table',
+const playlistTable = table({
+  kind: 'playlist',
+  className: 'regional-music-playlist-table',
   headers: ['プレイリスト', '種別', '所有者', '対象曲数'],
   bodyId: 'regionalMusicPlaylistBody',
-  wrapClassName: 'regional-music-table-wrap',
 });
 
-const kkboxHistoryTable = dashboardTable({
-  className: 'regional-music-table regional-music-kugou-history-table regional-music-kkbox-history-table music-service-track-table',
+const kkboxHistoryTable = table({
+  className: 'regional-music-kugou-history-table regional-music-kkbox-history-table',
   headers: ['更新日', 'グループ', '順位', '曲名'],
   bodyId: 'kkboxJapaneseHistoryBody',
-  wrapClassName: 'regional-music-table-wrap',
 });
 
-const kugouHistoryTable = dashboardTable({
-  className: 'regional-music-table regional-music-kugou-history-table music-service-track-table',
+const kugouHistoryTable = table({
+  className: 'regional-music-kugou-history-table',
   headers: ['年月日', 'グループ', '順位', '曲名'],
   bodyId: 'kugouJapanHistoryBody',
-  wrapClassName: 'regional-music-table-wrap',
 });
 
-const kugouAcgHistoryTable = dashboardTable({
-  className: 'regional-music-table regional-music-kugou-history-table music-service-track-table',
+const kugouAcgHistoryTable = table({
+  className: 'regional-music-kugou-history-table',
   headers: ['更新日', 'グループ', '順位', '曲名'],
   bodyId: 'kugouAcgHistoryBody',
-  wrapClassName: 'regional-music-table-wrap',
 });
 
-const qqHistoryTable = dashboardTable({
-  className: 'regional-music-table regional-music-kugou-history-table regional-music-qq-history-table music-service-track-table',
+const qqHistoryTable = table({
+  className: 'regional-music-kugou-history-table regional-music-qq-history-table',
   headers: ['更新日', 'グループ', '順位', '曲名'],
   bodyId: 'qqJapanHistoryBody',
-  wrapClassName: 'regional-music-table-wrap',
 });
 
-const qqAnimeHistoryTable = dashboardTable({
-  className: 'regional-music-table regional-music-kugou-history-table regional-music-qq-history-table music-service-track-table',
+const qqAnimeHistoryTable = table({
+  className: 'regional-music-kugou-history-table regional-music-qq-history-table',
   headers: ['更新日', 'グループ', '順位', '曲名'],
   bodyId: 'qqAnimeHistoryBody',
-  wrapClassName: 'regional-music-table-wrap',
 });
 
-const qqPopularityTable = dashboardTable({
-  className: 'regional-music-table regional-music-qq-popularity-table music-service-track-table',
+const qqPopularityTable = table({
+  className: 'regional-music-qq-popularity-table',
   headers: ['グループ', '順位', '曲名'],
   bodyId: 'qqArtistPopularityBody',
-  wrapClassName: 'regional-music-table-wrap',
 });
 
 function artistFilterButtons(prefix, label) {
-  return dashboardModeTabs([
+  return musicServiceFilterTabs([
     { value: 'all', label: 'すべて', active: true },
     { value: 'sakurazaka46', label: '櫻坂' },
     { value: 'nogizaka46', label: '乃木坂' },
     { value: 'hinatazaka46', label: '日向坂' },
   ], {
     dataAttribute: `${prefix}-artist-filter`,
-    className: 'regional-chart-filter',
     ariaLabel: label,
-    role: 'group',
-    selection: 'pressed',
   });
 }
 
 function kkboxSeriesFilterButtons() {
   return [
-    dashboardModeTabs([
+    musicServiceFilterTabs([
       { value: 'tw', label: '台湾', active: true },
       { value: 'hk', label: '香港' },
     ], {
       dataAttribute: 'kkbox-territory-filter',
-      className: 'regional-chart-filter',
       ariaLabel: 'KKBOX 地域',
-      role: 'group',
-      selection: 'pressed',
     }),
-    dashboardModeTabs([
+    musicServiceFilterTabs([
       { value: 'weekly', label: '週次', active: true },
       { value: 'daily', label: '日次' },
     ], {
       dataAttribute: 'kkbox-period-filter',
-      className: 'regional-chart-filter',
       ariaLabel: 'KKBOX 更新周期',
-      role: 'group',
-      selection: 'pressed',
     }),
-    dashboardModeTabs([
+    musicServiceFilterTabs([
       { value: 'newrelease', label: '新曲', active: true },
       { value: 'song', label: '楽曲' },
     ], {
       dataAttribute: 'kkbox-chart-filter',
-      className: 'regional-chart-filter',
       ariaLabel: 'KKBOX チャート種別',
-      role: 'group',
-      selection: 'pressed',
     }),
   ].join('');
 }
@@ -205,37 +186,35 @@ const kugouAcgHistorySection = musicServiceSection({
   hidden: true,
 });
 
-mountDashboardShell({
-  view: {
-    id: 'regionalMusicView',
-    className: musicServiceViewClassName(),
-    anchorId: 'likesView',
-    position: 'beforebegin',
-    html: `
-      ${musicServiceMeta({
-        id: 'regionalMusicCompactMeta',
-        valueId: 'regionalMusicChartUpdated',
-        cadenceId: 'regionalMusicChartCadence',
-      })}
-      ${dashboardNotice({ id: 'regionalMusicNotice' })}
-      <div id="regionalMusicCompactNotice">${dashboardNotice({ id: 'regionalMusicCompactNoticeText' })}</div>
-      ${kkboxChartSection}
-      ${kkboxHistorySection}
-      ${qqChartSection}
-      ${qqHistorySection}
-      ${qqAnimeChartSection}
-      ${qqAnimeHistorySection}
-      ${qqPopularitySection}
-      ${kugouChartSection}
-      ${kugouHistorySection}
-      ${kugouAcgChartSection}
-      ${kugouAcgHistorySection}
-      <div id="regionalMusicGenericTables">
-        ${musicServiceSection({ id: 'regionalMusicArtistSection', title: 'アーティスト', bodyHtml: artistTable })}
-        ${musicServiceSection({ id: 'regionalMusicTrackSection', title: '楽曲', bodyHtml: trackTable })}
-        ${musicServiceSection({ id: 'regionalMusicPlaylistSection', title: 'プレイリスト', bodyHtml: playlistTable })}
-      </div>`,
+const genericSections = `<div id="regionalMusicGenericTables">
+  ${musicServiceSection({ id: 'regionalMusicArtistSection', title: 'アーティスト', bodyHtml: artistTable })}
+  ${musicServiceSection({ id: 'regionalMusicTrackSection', title: '楽曲', bodyHtml: trackTable })}
+  ${musicServiceSection({ id: 'regionalMusicPlaylistSection', title: 'プレイリスト', bodyHtml: playlistTable })}
+</div>`;
+
+mountMusicServiceView({
+  viewId: 'regionalMusicView',
+  noticeId: 'regionalMusicNotice',
+  meta: {
+    id: 'regionalMusicCompactMeta',
+    valueId: 'regionalMusicChartUpdated',
+    cadenceId: 'regionalMusicChartCadence',
   },
+  beforeSectionsHtml: `<div id="regionalMusicCompactNotice">${musicServiceNotice('regionalMusicCompactNoticeText')}</div>`,
+  sections: [
+    kkboxChartSection,
+    kkboxHistorySection,
+    qqChartSection,
+    qqHistorySection,
+    qqAnimeChartSection,
+    qqAnimeHistorySection,
+    qqPopularitySection,
+    kugouChartSection,
+    kugouHistorySection,
+    kugouAcgChartSection,
+    kugouAcgHistorySection,
+    genericSections,
+  ],
 });
 
 void import('./kkbox-history-ui.js?v=20261004.2').then(({ initKkboxHistoryUi }) => initKkboxHistoryUi());
