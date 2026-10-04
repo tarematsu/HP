@@ -10,7 +10,6 @@ const historyLite = readFileSync(new URL('../public/history/history-lite.js', im
 const historyDataClient = readFileSync(new URL('../public/history/history-data-client.js', import.meta.url), 'utf8');
 const axisLabels = readFileSync(new URL('../public/history/history-axis-labels.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
-const rankingChart = readFileSync(new URL('../public/history/history-ranking-chart.js', import.meta.url), 'utf8');
 const leaderboardRuntime = readFileSync(new URL('../public/leaderboard.js', import.meta.url), 'utf8');
 const leaderboardModel = readFileSync(new URL('../public/leaderboard-read-model.js', import.meta.url), 'utf8');
 
@@ -61,11 +60,11 @@ test('history summary presentation stays in the shared history renderer', () => 
   assert.doesNotMatch(historyMain, /history-page-fixes|history-table-cleanup|history-summary-average-labels/);
 });
 
-test('shared leaderboard and axis updates do not add duplicate legacy observers or fetch overlays', () => {
+test('shared leaderboard owns missing bands without duplicate legacy observers or fetch overlays', () => {
   assert.doesNotMatch(leaderboardRuntime, /DOMNodeInserted|MutationObserver|previousFetch|response\.clone\(\)\.json/);
-  assert.doesNotMatch(rankingChart, /DOMNodeInserted|MutationObserver/);
-  assert.match(rankingChart, /dashboardMissingIndexBands/);
-  assert.match(rankingChart, /drawDashboardMissingBands/);
+  assert.match(leaderboardRuntime, /dashboardMissingIndexBands/);
+  assert.match(leaderboardRuntime, /drawDashboardMissingBands/);
+  assert.match(leaderboardRuntime, /DASHBOARD_MISSING_KEY/);
   assert.match(axisLabels, /history:data-loaded/);
   assert.match(axisLabels, /hashchange/);
   assert.doesNotMatch(axisLabels, /modeTabs'\)\?\.addEventListener\('click'|MutationObserver|createElement\('style'\)/);
