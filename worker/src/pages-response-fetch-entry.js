@@ -3,7 +3,6 @@ import {
   materializedResponseMaximumAge,
 } from '../../site/functions/lib/api-contract.js';
 import { loadMaterializedR2Response } from './pages-response-r2.js';
-import { loadTrackHistoryR2ApiResponse } from './pages-track-history-r2-api.js';
 
 const EMPTY_DEPENDENCIES = Object.freeze({});
 const INTERNAL_RESPONSE_PATH = '/_internal/pages-response';
@@ -30,10 +29,16 @@ const R2_ONLY_MODEL_KEYS = new Set([
 ]);
 
 let responseStoreModulePromise;
+let trackHistoryApiModulePromise;
 
 function loadResponseStoreModule() {
   responseStoreModulePromise ||= import('./pages-response-store.js');
   return responseStoreModulePromise;
+}
+
+function loadTrackHistoryApiModule() {
+  trackHistoryApiModulePromise ||= import('./pages-track-history-r2-api.js');
+  return trackHistoryApiModulePromise;
 }
 
 function edgeCache(dependencies) {
@@ -160,7 +165,7 @@ export async function runPagesResponseFetch(
     let response;
     if (modelKey === TRACK_HISTORY_MODEL_KEY && url.searchParams.get('api') === '1') {
       const loadTrackHistoryApi = dependencies.loadTrackHistoryApiResponse
-        || loadTrackHistoryR2ApiResponse;
+        || (await loadTrackHistoryApiModule()).loadTrackHistoryR2ApiResponse;
       response = await loadTrackHistoryApi(
         env?.PAGES_RESPONSE_R2,
         request,
@@ -184,9 +189,6 @@ export async function runPagesResponseFetch(
         materializedStaleMaximumAge(env, maximumAge),
       );
     } else if (modelKey === DASHBOARD_MODEL_KEY) {
-      // Live minute-fact publication writes the dashboard Actions-R2 object
-      // immediately. Prefer it to any rollout-era KV copy so KV propagation or
-      // an old KV entry cannot hide the latest five-minute fact.
       const loadR2 = dependencies.loadR2Response || loadMaterializedR2Response;
       response = await loadR2(env?.PAGES_RESPONSE_R2, modelKey, now, maximumAge);
       if (!response) {
