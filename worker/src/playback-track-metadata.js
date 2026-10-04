@@ -1,10 +1,6 @@
 import { canonicalizeTrackRows } from '../../site/functions/lib/canonical-track-rows.js';
 import { fetchTrackMetadata } from './track-metadata.js';
-import {
-  normalizeKnownArtistDisplayName,
-  sanitizeMetadataRow,
-  trackNeedsHydration,
-} from './track-metadata-quality.js';
+import { sanitizeMetadataRow, trackNeedsHydration } from './track-metadata-quality.js';
 
 const VISIBLE_TRACK_LIMIT = 6;
 const EXTERNAL_LOOKUP_LIMIT = 2;
@@ -65,9 +61,9 @@ function mergePresentation(tracks, rows) {
     const title = authoritative
       ? text(row?.title) || text(track?.title)
       : text(track?.title) || text(row?.title);
-    const artist = normalizeKnownArtistDisplayName(authoritative
+    const artist = authoritative
       ? text(row?.artist) || text(track?.artist)
-      : text(track?.artist) || text(row?.artist));
+      : text(track?.artist) || text(row?.artist);
     const thumbnailUrl = authoritative
       ? text(row?.thumbnail_url) || text(track?.thumbnail_url)
       : text(track?.thumbnail_url) || text(row?.thumbnail_url);
@@ -99,8 +95,6 @@ async function loadStoredPresentation(db, spotifyIds) {
 }
 
 function metadataStatement(db, row) {
-  const artist = normalizeKnownArtistDisplayName(row.artist);
-  const displayTitle = row.title && artist ? `${row.title} — ${artist}` : row.display_title || null;
   return db.prepare(`INSERT INTO sh_track_metadata(
       spotify_id,isrc,title,artist,display_title,thumbnail_url,spotify_url,source,fetched_at,raw_json
     ) VALUES(?,?,?,?,?,?,?,?,?,?)
@@ -137,8 +131,8 @@ function metadataStatement(db, row) {
       row.spotify_id,
       row.isrc || null,
       row.title,
-      artist,
-      displayTitle,
+      row.artist,
+      row.display_title || null,
       row.thumbnail_url || null,
       row.spotify_url || null,
       row.source || 'spotify_oembed',
@@ -189,10 +183,7 @@ export async function resolveMissingSpotifyPresentation(
         continue;
       }
       failedUntil.delete(spotifyId);
-      fetched.push({
-        ...metadata,
-        artist: normalizeKnownArtistDisplayName(metadata.artist),
-      });
+      fetched.push(metadata);
     }
 
     if (!fetched.length) return resolved;
