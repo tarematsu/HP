@@ -5,10 +5,11 @@ import test from 'node:test';
 const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const registry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
 const currentShell = readFileSync(new URL('../public/current-shell.js', import.meta.url), 'utf8');
+const stationheadShell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
+const stationheadRuntime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
 const historyShell = readFileSync(new URL('../public/history-shell.js', import.meta.url), 'utf8');
 const likesShell = readFileSync(new URL('../public/likes-shell.js', import.meta.url), 'utf8');
 const dashboardEntry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-const currentChartDetail = readFileSync(new URL('../public/dashboard-chart-detail.js', import.meta.url), 'utf8');
 const tabsClient = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const redirects = readFileSync(new URL('../public/_redirects', import.meta.url), 'utf8');
@@ -55,12 +56,8 @@ test('dashboard hides the static page skeleton until the selected route shell is
 });
 
 test('archive and likes markup are owned by lazily loaded shared shell modules', () => {
-  for (const id of ['controls', 'summaryCards', 'chartPanel', 'rankingWeeklyPanel']) {
-    assert.match(historyShell, new RegExp(`(?:id=\\"${id}\\"|id: '${id}')`));
-  }
-  for (const id of ['likesCsv', 'likesNotice', 'likesRankingList', 'likesTbody']) {
-    assert.match(likesShell, new RegExp(`(?:id=\\"${id}\\"|id: '${id}'|bodyId: '${id}')`));
-  }
+  for (const id of ['controls', 'summaryCards', 'chartPanel', 'rankingWeeklyPanel']) assert.match(historyShell, new RegExp(`(?:id=\\"${id}\\"|id: '${id}')`));
+  for (const id of ['likesCsv', 'likesNotice', 'likesRankingList', 'likesTbody']) assert.match(likesShell, new RegExp(`(?:id=\\"${id}\\"|id: '${id}'|bodyId: '${id}')`));
   assert.match(historyShell, /dashboardControls/);
   assert.match(historyShell, /dashboardSummary/);
   assert.match(historyShell, /dashboardChartCard/);
@@ -86,13 +83,7 @@ test('feature tabs share one lazy route registry, stylesheet loader and module c
   assert.match(tabsClient, /function ensureModeStyles\(mode\)/);
   assert.match(tabsClient, /async function showLazyView\(mode, options = \{}\)/);
   for (const [mode, shell, runtime] of [
-    ['hinata', 'hinata-shell.js', 'hinata.js'],
-    ['followers', 'followers-shell.js', 'followers.js'],
-    ['played-tracks', 'played-tracks-shell.js', 'played-tracks.js'],
-    ['likes', 'likes-shell.js', 'history-likes.js'],
-    ['spotify', 'spotify-shell.js', 'spotify.js'],
-    ['amazon-music', 'amazon-music-shell.js', 'amazon-music.js'],
-    ['apple-music', 'apple-music-shell.js', 'apple-music.js'],
+    ['hinata', 'hinata-shell.js', 'hinata.js'], ['followers', 'followers-shell.js', 'followers.js'], ['played-tracks', 'played-tracks-shell.js', 'played-tracks.js'], ['likes', 'likes-shell.js', 'history-likes.js'], ['spotify', 'spotify-shell.js', 'spotify.js'], ['amazon-music', 'amazon-music-shell.js', 'amazon-music.js'], ['apple-music', 'apple-music-shell.js', 'apple-music.js'],
   ]) {
     assert.match(tabsClient, new RegExp(`'${mode}'|${mode}:`));
     assert.match(tabsClient, new RegExp(shell.replaceAll('.', '\\.')));
@@ -156,12 +147,12 @@ test('tab selection stays on the root document and never navigates to history pa
   assert.doesNotMatch(historyEntry, /legacyHistoryRoute|location\.replace/);
 });
 
-test('current and history chart details are owned by their respective shells and renderers', () => {
-  assert.match(currentShell, /id="currentChartDetail"[^>]*data-current-chart-detail/);
+test('current Stationhead detail and legacy history detail stay in their owning shells', () => {
+  assert.match(stationheadShell, /data-role="live-detail"/);
   assert.match(historyShell, /id="chartDetail"[^>]*data-history-chart-detail/);
   assert.equal((historyShell.match(/id="chartDetail"/g) || []).length, 1);
-  assert.match(dashboardEntry, /dashboard-chart-detail\.js\?v=20260930\.2/);
-  assert.match(currentChartDetail, /document\.getElementById\('currentChartDetail'\)/);
+  assert.match(dashboardEntry, /stationhead-channel\.js\?v=/);
+  assert.match(stationheadRuntime, /setText\(root, 'live-detail'/);
   assert.doesNotMatch(tabsClient, /savedHistoryDetail|historyChartDetail|currentChartDetail\.textContent/);
 });
 
