@@ -11,6 +11,11 @@ struct NativeMemoryPressureSnapshot {
   bool valid = false;
 };
 
+struct NativeWebViewMemoryPriorityResult {
+  unsigned discovered = 0;
+  unsigned adjusted = 0;
+};
+
 inline NativeMemoryPressureSnapshot QueryNativeMemoryPressure() noexcept {
   MEMORYSTATUSEX status{};
   status.dwLength = sizeof(status);
@@ -48,6 +53,64 @@ inline ULONGLONG NativeMemoryAvailableMiB(
   return snapshot.availablePhysicalBytes / (1024ULL * 1024ULL);
 }
 
-void SetNativeMediaMemoryPressureMode(bool enabled) noexcept;
+inline ULONGLONG NativeMemoryTotalMiB(
+    const NativeMemoryPressureSnapshot& snapshot) noexcept {
+  return snapshot.totalPhysicalBytes / (1024ULL * 1024ULL);
+}
+
+inline NativeWebViewMemoryPriorityResult ApplyNativeWebViewMemoryPriority(
+    bool lowPriority) noexcept {
+  NativeWebViewMemoryPriorityResult result;
+  const DWORD rootProcessId = GetCurrentProcessId();
+  HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  if (snapshot == INVALID_HANDLE_VALUE) return result;
+
+  struct ProcessEntry {
+    DWORD parentProcessId = 0;
+    std::wstring executable;
+  };
+  std::map<DWORD, ProcessEntry> processes;
+  PROCESSENTRY32W entry{};
+  entry.dwSize = sizeof(entry);
+  if (Process32FirstW(snapshot, &entry)) {
+    do {
+      processes[entry.th32ProcessID] =
+          ProcessEntry{entry.th32ParentProcessID, entry.szExeFile};
+    } while (Process32NextW(snapshot, &entry));
+  }
+  CloseHandle(snapshot);
+
+  const auto belongsToCurrentProcess = [&processes, rootProcessId](DWORD processId) {
+    DWORD cursor = processId;
+    for (unsigned depth = 0; depth < 32; ++depth) {
+      const auto found = processes.find(cursor);
+      if (found == processes.end()) return false;
+      const DWORD parent = found->second.parentProcessId;
+      if (parent == rootProcessId) return true;
+      if (parent == 0 || parent == cursor) return false;
+      cursor = parent;
+    }
+    return false;
+  };
+
+  for (const auto& [processId, process] : processes) {
+    if (_wcsicmp(process.executable.c_str(), L"msedgewebview2.exe") != 0 ||
+        !belongsToCurrentProcess(processId)) {
+      continue;
+    }
+    ++result.discovered;
+    HANDLE handle = OpenProcess(PROCESS_SET_INFORMATION, FALSE, processId);
+    if (!handle) continue;
+    MEMORY_PRIORITY_INFORMATION priority{};
+    priority.MemoryPriority =
+        lowPriority ? MEMORY_PRIORITY_LOW : MEMORY_PRIORITY_NORMAL;
+    if (SetProcessInformation(
+            handle, ProcessMemoryPriority, &priority, sizeof(priority))) {
+      ++result.adjusted;
+    }
+    CloseHandle(handle);
+  }
+  return result;
+}
 
 }  // namespace hp
