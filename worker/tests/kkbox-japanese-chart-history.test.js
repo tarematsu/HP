@@ -34,6 +34,34 @@ test('KKBOX history view keeps checked request coverage separate from matched en
   assert.equal(view.coverage.series['tw/weekly/newrelease'].checked_requests, 2);
 });
 
+test('KKBOX history removes legacy Keyakizaka groups while preserving older current-group rows', () => {
+  const existing = {
+    periods: [{
+      territory: 'tw',
+      period_type: 'weekly',
+      chart_type: 'newrelease',
+      requested_date: '2019-01-03',
+      period: '2019-01-03',
+      status: 'ok',
+      entries: 2,
+    }],
+    history: [
+      {
+        territory: 'tw', period_type: 'weekly', chart_type: 'newrelease', period: '2019-01-03',
+        track_id: 'legacy-1', rank: 5, canonical_artists: ['keyakizaka46'], title: 'legacy',
+      },
+      {
+        territory: 'tw', period_type: 'weekly', chart_type: 'newrelease', period: '2019-01-03',
+        track_id: 'current-1', rank: 9, canonical_artists: ['nogizaka46'], title: 'current',
+      },
+    ],
+  };
+  const view = mergeKkboxJapaneseHistory(existing, [], 1000);
+  assert.deepEqual(view.history.map((row) => row.track_id), ['current-1']);
+  assert.equal(view.periods[0].entries, 1);
+  assert.equal(view.coverage.entries, 1);
+});
+
 test('KKBOX history upsert is idempotent and replaces the same requested period', async () => {
   const store = new Map();
   const load = async (key) => store.get(key) || null;
