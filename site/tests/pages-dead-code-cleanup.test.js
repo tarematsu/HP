@@ -33,8 +33,8 @@ test('current view ships the same final Stationhead DOM as Ohisama and Nogizaka'
   assert.match(currentShell, /mountStationheadChannelShell/);
   assert.match(currentShell, /stationheadModel = 'buddies'/);
   assert.match(stationheadShell, /class="primary-grid"/);
-  assert.match(stationheadShell, /data-role="station-link"/);
-  assert.match(stationheadShell, /data-role="live-chart"/);
+  assert.match(stationheadShell, /role\('station-link'\)/);
+  assert.match(stationheadShell, /role\('live-chart'\)/);
   assert.match(stationheadReadModel, /station_url: 'https:\/\/stationhead\.com\/c\/buddies'/);
   assert.doesNotMatch(stationheadShell, /goal-card|streamCount|goalBar|goalPercent|goalRemaining|goalRate|goalMilestones|metricGoalCompact|streamGoal|goalEta/);
   assert.doesNotMatch(stationheadRuntime, /MutationObserver|insertAdjacent|\.appendChild\(.*stationhead-channel-panel/);
