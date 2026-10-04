@@ -42,7 +42,10 @@ test('dashboard skeleton and shared Stationhead shell keep accessibility, privac
   for (const id of ['channelName', 'updated']) assert.match(html, new RegExp(`id="${id}"`));
   assert.match(currentShell, /mountStationheadChannelShell/);
   assert.match(currentShell, /stationheadModel = 'buddies'/);
-  for (const role of ['online', 'streams', 'members', 'station-link', 'queue', 'track-bites', 'live-chart']) {
+  assert.match(stationheadShell, /metric\('オンライン', 'online', true\)/);
+  assert.match(stationheadShell, /metric\('総再生数', 'streams'\)/);
+  assert.match(stationheadShell, /metric\('総メンバー数', 'members'\)/);
+  for (const role of ['station-link', 'queue', 'track-bites', 'live-chart']) {
     assert.match(stationheadShell, new RegExp(`role\\('${role}'\\)`));
   }
   for (const section of ['current', 'history', 'played-tracks', 'likes', 'broadcasts']) {
