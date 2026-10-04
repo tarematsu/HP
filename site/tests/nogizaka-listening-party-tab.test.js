@@ -39,9 +39,10 @@ test('Nogizaka shares all five Stationhead subtab markup but enables only its re
 
 test('Nogizaka listening-party presentation is rendered by the same shared HTML and JS', () => {
   for (const text of ['開催数', '平均同接', '最大同接', '平均時間', 'リスパ一覧', '所要時間', 'イベント名']) assert.match(shell, new RegExp(text));
-  for (const token of ['broadcast-count', 'broadcast-average', 'broadcast-maximum', 'broadcast-duration', 'broadcast-chart', 'broadcast-tbody']) {
-    assert.match(shell, new RegExp(`role\\('${token}'\\)`));
+  for (const [label, token] of [['開催数', 'broadcast-count'], ['平均同接', 'broadcast-average'], ['最大同接', 'broadcast-maximum'], ['平均時間', 'broadcast-duration']]) {
+    assert.match(shell, new RegExp(`summaryItem\\('${label}', '${token}'\\)`));
   }
+  for (const token of ['broadcast-chart', 'broadcast-tbody']) assert.match(shell, new RegExp(`role\\('${token}'\\)`));
   assert.match(runtime, /function renderBroadcasts\(/);
   assert.match(runtime, /payload\?\.rows/);
   assert.match(runtime, /payload\?\.series/);
