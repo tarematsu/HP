@@ -17,6 +17,30 @@ import {
 
 export * from './queue-ingest-state.js';
 
+const SAKAMICHI_ARTIST_NAMES = new Map([
+  ['sakurazaka46', '櫻坂46'],
+  ['hinatazaka46', '日向坂46'],
+  ['nogizaka46', '乃木坂46'],
+]);
+
+function normalizeMetadataArtist(value) {
+  const original = text(value);
+  if (!original) return null;
+  const key = original.normalize('NFKC').replace(/\s+/gu, '').toLowerCase();
+  return SAKAMICHI_ARTIST_NAMES.get(key) || original;
+}
+
+function normalizeMetadataDisplayTitle(track, artist) {
+  const title = text(track?.title);
+  const originalArtist = text(track?.artist);
+  const originalDisplayTitle = text(track?.display_title);
+  if (!title || !originalArtist || !artist || artist === originalArtist) return originalDisplayTitle;
+  if (!originalDisplayTitle || originalDisplayTitle === `${title} — ${originalArtist}`) {
+    return `${title} — ${artist}`;
+  }
+  return originalDisplayTitle;
+}
+
 const INGEST_HANDLERS = {
   snapshot: async (env, body, observedAt, data) => {
     const snapshot = await saveLeanSnapshot(env.DB, observedAt, data);
@@ -64,7 +88,10 @@ const INGEST_HANDLERS = {
   },
   track_metadata: async (env, body, observedAt, data) => {
     const tracks = Array.isArray(data?.tracks) ? data.tracks : [];
-    const statements = tracks.filter((track) => track?.spotify_id).map((track) => env.DB.prepare(`INSERT INTO sh_track_metadata (
+    const statements = tracks.filter((track) => track?.spotify_id).map((track) => {
+      const artist = normalizeMetadataArtist(track.artist);
+      const displayTitle = normalizeMetadataDisplayTitle(track, artist);
+      return env.DB.prepare(`INSERT INTO sh_track_metadata (
         spotify_id,isrc,title,artist,display_title,thumbnail_url,
         spotify_url,source,fetched_at,raw_json
       ) VALUES (?,?,?,?,?,?,?,?,?,?)
@@ -87,18 +114,19 @@ const INGEST_HANDLERS = {
         OR (excluded.spotify_url IS NOT NULL AND excluded.spotify_url IS NOT sh_track_metadata.spotify_url)
         OR excluded.source IS NOT sh_track_metadata.source
         OR (excluded.raw_json IS NOT NULL AND excluded.raw_json IS NOT sh_track_metadata.raw_json)`)
-      .bind(
-        text(track.spotify_id),
-        text(track.isrc)?.trim().toUpperCase() || null,
-        text(track.title),
-        text(track.artist),
-        text(track.display_title),
-        text(track.thumbnail_url),
-        text(track.spotify_url),
-        text(track.source || 'spotify_oembed'),
-        num(track.fetched_at) ?? observedAt,
-        rawJson(track.raw),
-      ));
+        .bind(
+          text(track.spotify_id),
+          text(track.isrc)?.trim().toUpperCase() || null,
+          text(track.title),
+          artist,
+          displayTitle,
+          text(track.thumbnail_url),
+          text(track.spotify_url),
+          text(track.source || 'spotify_oembed'),
+          num(track.fetched_at) ?? observedAt,
+          rawJson(track.raw),
+        );
+    });
     const batchResult = statements.length ? await env.DB.batch(statements) : [];
     const written = Array.isArray(batchResult)
       ? batchResult.reduce(
