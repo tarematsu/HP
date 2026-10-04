@@ -46,12 +46,13 @@ test('hidden-tab dashboard cache has a bounded lifetime', () => {
   assert.match(source, /state\.cachedAt = Date\.now\(\)/);
 });
 
-test('dashboard refreshes resume from persisted delta state instead of rereading 24h history', () => {
+test('shared Buddies adapter keeps the persisted dashboard delta cache instead of rereading 24h history', () => {
   const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+  const adapter = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
   const source = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
-  const client = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
-  assert.match(entry, /import\('\.\/dashboard-fetch-cache\.js\?v=[^']+'\)/);
-  assert.match(client, /\/api\/dashboard\?history=0/);
+  assert.match(entry, /dashboard-fetch-cache\.js\?v=20260930\.1/);
+  assert.match(adapter, /fetchJson\('\/api\/dashboard\?history=0'/);
+  assert.doesNotMatch(adapter, /dashboard-details/);
   assert.match(source, /DASHBOARD_CACHE_KEY = 'sh\.dashboard\.v3'/);
   assert.match(source, /PERSISTED_CACHE_MAX_AGE_MS = 6 \* 60 \* 60_000/);
   assert.match(source, /function restorePersistedState\(\)/);
