@@ -13,7 +13,7 @@ class FakeR2 {
   }
   async get() {
     if (!this.value) return null;
-    return { async json: () => JSON.parse(this.value) };
+    return { json: async () => JSON.parse(this.value) };
   }
   async put(_key, value) {
     this.puts += 1;
