@@ -1,28 +1,19 @@
 import { dashboardModeTabs } from './dashboard-ui-common.js?v=20261004.1';
 
-const STATIONHEAD_CHANNEL_TABS = Object.freeze([
-  Object.freeze({ value: 'current', label: '現在' }),
-  Object.freeze({ value: 'history', label: '過去' }),
-  Object.freeze({ value: 'played-tracks', label: '再生履歴' }),
-  Object.freeze({ value: 'likes', label: 'いいね' }),
-  Object.freeze({ value: 'broadcasts', label: 'リスパ' }),
-]);
+const STATIONHEAD_CHANNEL_TABS = [
+  { value: 'current', label: '現在' },
+  { value: 'history', label: '過去' },
+  { value: 'played-tracks', label: '再生履歴' },
+  { value: 'likes', label: 'いいね' },
+  { value: 'broadcasts', label: 'リスパ' },
+];
 
-const ALL_CHANNEL_SECTIONS = Object.freeze(STATIONHEAD_CHANNEL_TABS.map(({ value }) => value));
-const STATIONHEAD_CHANNEL_PROFILES = Object.freeze({
-  buddies: Object.freeze({
-    enabled: ALL_CHANNEL_SECTIONS,
-    paused: Object.freeze([]),
-  }),
-  ohisama: Object.freeze({
-    enabled: Object.freeze(['current', 'history', 'played-tracks', 'likes']),
-    paused: Object.freeze(['broadcasts']),
-  }),
-  nogizaka: Object.freeze({
-    enabled: Object.freeze(['broadcasts']),
-    paused: Object.freeze(['current', 'history', 'played-tracks', 'likes']),
-  }),
-});
+const ALL_CHANNEL_SECTIONS = STATIONHEAD_CHANNEL_TABS.map(({ value }) => value);
+const STATIONHEAD_CHANNEL_PROFILES = {
+  buddies: { enabled: ALL_CHANNEL_SECTIONS, paused: [] },
+  ohisama: { enabled: ['current', 'history', 'played-tracks', 'likes'], paused: ['broadcasts'] },
+  nogizaka: { enabled: ['broadcasts'], paused: ['current', 'history', 'played-tracks', 'likes'] },
+};
 
 function dataAttributeName(value) {
   return String(value || 'stationhead-section').replace(/[^a-z0-9-]/gi, '');
@@ -100,8 +91,7 @@ export function bindStationheadChannelTabs(root, {
   }
 
   root.querySelectorAll(selector).forEach((button) => {
-    if (button.disabled) return;
-    button.addEventListener('click', () => select(button.dataset[sectionKey] || initial));
+    if (!button.disabled) button.addEventListener('click', () => select(button.dataset[sectionKey] || initial));
   });
   select(initial);
   return select;
