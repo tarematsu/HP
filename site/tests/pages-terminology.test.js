@@ -13,7 +13,7 @@ const spotify = readFileSync(new URL('../public/spotify.js', import.meta.url), '
 const sakurazakaListeningPartyApi = readFileSync(new URL('../functions/api/sakurazaka46jp.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
-const ranking = readFileSync(new URL('../public/history/history-ranking-all-host-table.js', import.meta.url), 'utf8');
+const ranking = readFileSync(new URL('../public/leaderboard-read-model.js', import.meta.url), 'utf8');
 const official = readFileSync(new URL('../public/history/history-broadcast-table.js', import.meta.url), 'utf8');
 const officialUi = readFileSync(new URL('../public/official-listening-party-ui.js', import.meta.url), 'utf8');
 const unofficial = readFileSync(new URL('../public/unofficial-listening-parties.js', import.meta.url), 'utf8');
@@ -29,13 +29,15 @@ test('shared Stationhead and likes views use explicit user-facing metric names a
   assert.doesNotMatch(metrics, /pages-terminology/);
 });
 
-test('history renderer owns final totals, growth, tracks, and ranking terminology', () => {
+test('history and shared leaderboard own their final user-facing terminology', () => {
   for (const label of [
     '取得記録数', 'メンバー数（開始）', 'メンバー数（終了）', 'メンバー増加数', '楽曲数',
     '平均再生数増加量', '平均メンバー増加数', '圏外・欠測週数', '圏外・欠測数', '平均所要時間',
   ]) assert.match(history, new RegExp(label));
   assert.match(history, /\['relation_label', '種別'\]/);
-  assert.match(ranking, /\['relation_label', '種別'\]/);
+  assert.match(ranking, /\{ key: 'relation', label: '種別' \}/);
+  assert.match(ranking, /\{ key: 'channel', label: 'チャンネル' \}/);
+  assert.match(ranking, /\{ key: 'artist', label: 'アーティスト名' \}/);
   assert.doesNotMatch(historyEntry, /history-page-fixes|history-table-cleanup|history-summary-average-labels/);
 });
 
