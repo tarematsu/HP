@@ -28,4 +28,7 @@ test('KKBOX historical chart entries use the QQ-style chart and history layout',
   assert.match(runtime, /hiragana_keyakizaka46: 'けやき坂46'/);
   assert.match(runtime, /loadRegionalMusicReadModel\(SERVICE\)/);
   assert.match(runtime, /location\.hash\.slice\(1\) === SERVICE/);
+  assert.match(runtime, /genericTables\.hidden = true/);
+  assert.match(runtime, /compactMeta\.hidden = false/);
+  assert.match(runtime, /classList\.add\('is-chart-compact'\)/);
 });
