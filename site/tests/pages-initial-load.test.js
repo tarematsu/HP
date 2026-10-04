@@ -4,7 +4,6 @@ import test from 'node:test';
 
 const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
-const client = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
 const readModel = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
 const dashboardEndpoint = readFileSync(new URL('../functions/api/dashboard.js', import.meta.url), 'utf8');
 const contract = readFileSync(new URL('../functions/lib/api-contract.js', import.meta.url), 'utf8');
@@ -43,6 +42,5 @@ test('dashboard materializer contains chart details and avoids a secondary brows
   assert.match(dashboardEndpoint, /augmentDashboardChartData/);
   assert.match(dashboardEndpoint, /daily_summaries/);
   assert.doesNotMatch(entry, /dashboard-details-client\.js/);
-  assert.doesNotMatch(client, /\/api\/dashboard-details|dashboard:details/);
-  assert.doesNotMatch(readModel, /\/api\/dashboard-details/);
+  assert.doesNotMatch(readModel, /\/api\/dashboard-details|dashboard:details/);
 });
