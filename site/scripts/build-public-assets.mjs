@@ -21,7 +21,6 @@ const cssFiles = [
   'apple-music.css',
   'amazon-music.css',
   'followers.css',
-  'hinata.css',
   'history/history-past-toggle.css',
   'history/history-range-navigator.css',
   'music-service-common.css',
@@ -71,7 +70,6 @@ function inputContributions(metafile, limit = 20) {
     .slice(0, limit);
 }
 
-// Discard chunks from previous builds; deploy only the current module graph.
 await rm(resolve(assetsDir, 'chunks'), { recursive: true, force: true });
 await mkdir(assetsDir, { recursive: true });
 
