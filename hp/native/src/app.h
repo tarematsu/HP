@@ -100,6 +100,7 @@ class App {
   StationheadFallbackRevisionGate stationheadPlaybackFallbackRevision_;
   int64_t lastTelemetryAt_ = 0;
   int64_t lastAirHistorySavedAt_ = 0;
+  int64_t lastStationheadLaunchAt_ = 0;
   int64_t toastUntil_ = 0;
   int64_t nextAppTickAt_ = 0;
   int64_t nextMemoryPressureCheckAt_ = 0;
