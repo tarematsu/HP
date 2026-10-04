@@ -15,7 +15,6 @@ const stationheadStyles = readFileSync(new URL('../public/stationhead-channel-st
 const currentShell = readFileSync(new URL('../public/current-shell.js', import.meta.url), 'utf8');
 const hinataShell = readFileSync(new URL('../public/hinata-shell.js', import.meta.url), 'utf8');
 const nogizakaShell = readFileSync(new URL('../public/nogizaka-listening-party-shell.js', import.meta.url), 'utf8');
-const currentChart = readFileSync(new URL('../public/dashboard-chart-comparison.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
 const rankingChart = readFileSync(new URL('../public/history/history-ranking-chart.js', import.meta.url), 'utf8');
 const broadcastsChart = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
@@ -47,7 +46,6 @@ test('dashboard exposes shared runtime primitives for repeated view rendering wo
 
 test('all active client Canvas charts reuse the shared Canvas foundation', () => {
   const sources = {
-    legacyCurrent: currentChart,
     historyPeriod: periodChart,
     historyRanking: rankingChart,
     historyBroadcasts: broadcastsChart,
@@ -97,7 +95,6 @@ test('Stationhead shared shell owns notices tables legends and five mode tabs on
 test('Stationhead secondary CSS is loaded by one shared lazy style loader', () => {
   assert.doesNotMatch(sharedUi, /ensureStylesheet|createElement\('link'\)/);
   assert.match(stationheadStyles, /ensureDashboardSectionStyles/);
-
 
   assert.doesNotMatch(currentShell, /\.css\?v=|createElement\('link'\)/);
   assert.doesNotMatch(hinataShell, /\.css\?v=|createElement\('link'\)/);
