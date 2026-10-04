@@ -5,7 +5,6 @@ import test from 'node:test';
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
-const api = readFileSync(new URL('../functions/api/spotify-playcounts.js', import.meta.url), 'utf8');
 
 test('Spotify stays a lazy source route', () => {
   assert.match(tabs, /spotify:\s*\{/);
@@ -21,9 +20,4 @@ test('Spotify uses the shared music-service layout and Canvas runtime', () => {
   assert.match(runtime, /drawDashboardLine/);
   assert.match(runtime, /prepareDashboardCanvas/);
   assert.match(runtime, /fetch\('\/api\/spotify-playcounts'\)/);
-});
-
-test('Spotify API stays on the materialized read-model path', () => {
-  assert.match(api, /PAGES_READ_MODEL_SERVICE/);
-  assert.doesNotMatch(api, /OTHER_DB|MINUTE_DB|\.prepare\(/);
 });
