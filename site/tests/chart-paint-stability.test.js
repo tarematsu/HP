@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const dashboard = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+const channelRuntime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
+const channelReadModel = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
 const dashboardCache = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
 const dashboardLayout = readFileSync(new URL('../public/dashboard-current-layout.js', import.meta.url), 'utf8');
 const dashboardStability = readFileSync(new URL('../public/dashboard-chart-stability.js', import.meta.url), 'utf8');
@@ -14,21 +16,16 @@ const historyStability = readFileSync(new URL('../public/history/history-chart-s
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
 const rankingChart = readFileSync(new URL('../public/history/history-ranking-chart.js', import.meta.url), 'utf8');
 
-test('dashboard has one response parser and one canvas renderer', () => {
-  assert.doesNotMatch(dashboard, /dashboard-current-enhancements\.js/);
-  assert.match(dashboard, /dashboard-current-layout\.js\?v=20260924\.1/);
-  assert.match(dashboard, /dashboard-chart-stability\.js\?v=20260930\.2/);
-  assert.match(dashboard, /dashboard-chart-comparison\.js\?v=20260930\.2/);
-  assert.match(dashboard, /dashboard-chart-detail\.js\?v=20260930\.2/);
-  assert.match(dashboard, /dashboard-fetch-cache\.js\?v=20260930\.1/);
-  assert.doesNotMatch(dashboard, /dashboard-details-client\.js/);
-  assert.doesNotMatch(dashboard, /window\.fetch|response\.clone\(\)\.json|renderPayload|restoreDashboardCache/);
-  assert.match(dashboardCache, /function dispatchPayload\(payload, source\)/);
-  assert.match(dashboardCache, /detail: \{ payload, source \}/);
-  assert.match(dashboardCache, /function responseWithParsedPayload/);
-  assert.match(dashboardCache, /Object\.defineProperty\(next, 'json'/);
-  assert.match(dashboardCache, /dispatchPayload\(state\.lastPayload, 'cache'\)/);
-  assert.match(dashboardCache, /dispatchPayload\(payload, 'network'\)/);
+test('current Stationhead dashboard has one shared data adapter and Canvas runtime', () => {
+  assert.match(dashboard, /stationhead-channel\.js\?v=/);
+  assert.doesNotMatch(dashboard, /dashboard-current-layout\.js|dashboard-chart-comparison\.js|dashboard-chart-detail\.js|dashboard-fetch-cache\.js/);
+  assert.match(channelRuntime, /prepareDashboardCanvas/);
+  assert.match(channelRuntime, /function renderCurrentChart\(/);
+  assert.match(channelReadModel, /async function fetchJson\(/);
+  assert.match(channelReadModel, /function buddiesModel\(\)/);
+  assert.match(channelReadModel, /function ohisamaModel\(\)/);
+  assert.match(channelReadModel, /function nogizakaModel\(\)/);
+  assert.doesNotMatch(channelRuntime, /window\.fetch|response\.clone\(\)\.json/);
   assert.doesNotMatch(dashboardLayout, /audienceChart|getContext\('2d'\)|clearRect\(/);
 });
 
