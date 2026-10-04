@@ -6,6 +6,7 @@ import {
   API_CONTRACT_VERSION,
   API_GROUPS,
   apiCacheTtlSeconds,
+  canonicalApiCacheRequest,
   canonicalApiPaths,
   edgeCacheableApiRequest,
   materializedApiKey,
@@ -89,6 +90,21 @@ test('materialized response freshness follows event and revision policies', () =
   assert.equal(materializedApiKey('https://skrzk.test/api/hinata'), null);
   assert.equal(materializedApiKey('https://skrzk.test/api/track-history'), null);
   assert.equal(materializedApiKey('https://skrzk.test/api/dashboard-details?channel_id=318'), null);
+});
+
+test('Sakamichi Spotify request uses the shared materialized read model and cache key', () => {
+  assert.equal(
+    materializedApiKey('https://skrzk.test/api/spotify-playcounts?artists=sakamichi'),
+    'spotify-playcounts',
+  );
+  assert.equal(
+    materializedApiKey('https://skrzk.test/api/spotify-playcounts?artists=other'),
+    null,
+  );
+  assert.equal(
+    canonicalApiCacheRequest(new Request('https://skrzk.test/api/spotify-playcounts?artists=sakamichi')).url,
+    'https://skrzk.test/api/spotify-playcounts',
+  );
 });
 
 test('current minute history uses a 30-second shared cache', () => {

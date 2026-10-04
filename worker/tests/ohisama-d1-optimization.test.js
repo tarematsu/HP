@@ -5,7 +5,10 @@ import {
   OHISAMA_AUTH_HOT_STATE_KEY,
   runOptimizedOhisamaCollectorScheduled,
 } from '../src/ohisama-collector-optimized.js';
-import { refreshOptimizedOhisamaReadModel } from '../src/ohisama-read-model-optimized.js';
+import {
+  refreshOptimizedOhisamaReadModel,
+  rollupOhisamaWeekly,
+} from '../src/ohisama-read-model-optimized.js';
 import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
 
 const HINATA_KEY = pagesActionsR2ResponseKey('hinata');
@@ -45,6 +48,52 @@ function pageEnvelope(payload, updatedAt) {
   });
 }
 
+test('Ohisama weekly rollup uses Monday UTC boundaries and Buddies-style weighted aggregates', () => {
+  const updatedAt = Date.parse('2026-10-04T23:55:00Z');
+  const rows = [
+    {
+      period_key: '2026-09-28',
+      period_start: Date.parse('2026-09-28T00:00:00Z'),
+      period_end: Date.parse('2026-09-29T00:00:00Z'),
+      sample_count: 100,
+      listener_avg: 80,
+      listener_min: 50,
+      listener_max: 110,
+      stream_start: 1000,
+      stream_end: 1400,
+      member_start: 2000,
+      member_end: 2002,
+    },
+    {
+      period_key: '2026-09-29',
+      period_start: Date.parse('2026-09-29T00:00:00Z'),
+      period_end: Date.parse('2026-09-30T00:00:00Z'),
+      sample_count: 300,
+      listener_avg: 120,
+      listener_min: 70,
+      listener_max: 150,
+      stream_start: 1400,
+      stream_end: 2000,
+      member_start: 2002,
+      member_end: 2008,
+    },
+  ];
+
+  const weekly = rollupOhisamaWeekly(rows, updatedAt);
+  assert.equal(weekly.length, 1);
+  assert.equal(weekly[0].period_key, '2026-09-28');
+  assert.equal(weekly[0].sample_count, 400);
+  assert.equal(weekly[0].listener_avg, 110);
+  assert.equal(weekly[0].listener_min, 50);
+  assert.equal(weekly[0].listener_max, 150);
+  assert.equal(weekly[0].stream_start, 1000);
+  assert.equal(weekly[0].stream_end, 2000);
+  assert.equal(weekly[0].stream_growth, 1000);
+  assert.equal(weekly[0].member_start, 2000);
+  assert.equal(weekly[0].member_end, 2008);
+  assert.equal(weekly[0].member_growth, 8);
+});
+
 test('Ohisama same-day read-model refresh stays entirely off D1', async () => {
   const observedAt = Date.parse('2026-09-30T12:05:00Z');
   const previousAt = observedAt - 300_000;
@@ -71,6 +120,7 @@ test('Ohisama same-day read-model refresh stays entirely off D1', async () => {
         member_end: 2000,
         member_growth: 0,
       }],
+      weekly: [],
     }, previousAt),
   ]]));
   const env = {
@@ -92,10 +142,12 @@ test('Ohisama same-day read-model refresh stays entirely off D1', async () => {
 
   assert.equal(result.mode, 'incremental');
   assert.equal(result.daily_persisted, false);
+  assert.equal(result.weekly_persisted, false);
+  assert.equal(result.payload.weekly[0].period_key, '2026-09-28');
   assert.equal(r2.puts, 1);
 });
 
-test('Ohisama UTC day rollover persists the completed daily row exactly once', async () => {
+test('Ohisama UTC day rollover persists completed daily and weekly summaries exactly once', async () => {
   const observedAt = Date.parse('2026-10-01T00:00:00Z');
   const previousAt = observedAt - 300_000;
   const r2 = new FakeR2(new Map([[
@@ -122,17 +174,19 @@ test('Ohisama UTC day rollover persists the completed daily row exactly once', a
         member_growth: 10,
         updated_at: previousAt,
       }],
+      weekly: [],
     }, previousAt),
   ]]));
-  let writes = 0;
+  const writes = [];
   const env = {
     PAGES_RESPONSE_R2: r2,
     OHISAMA_DB: {
       prepare(sql) {
-        assert.match(String(sql), /INSERT INTO sh_daily_summary/);
+        const statement = String(sql);
+        assert.match(statement, /INSERT INTO sh_(?:daily|weekly)_summary/);
         return {
           bind() { return this; },
-          async run() { writes += 1; return { meta: { changes: 1 } }; },
+          async run() { writes.push(statement); return { meta: { changes: 1 } }; },
         };
       },
     },
@@ -150,7 +204,10 @@ test('Ohisama UTC day rollover persists the completed daily row exactly once', a
 
   assert.equal(result.mode, 'incremental');
   assert.equal(result.daily_persisted, true);
-  assert.equal(writes, 1);
+  assert.equal(result.weekly_persisted, true);
+  assert.equal(writes.length, 2);
+  assert.match(writes[0], /INSERT INTO sh_daily_summary/);
+  assert.match(writes[1], /INSERT INTO sh_weekly_summary/);
 });
 
 test('Ohisama collector uses R2 auth hot state and skips the per-run D1 state write', async () => {

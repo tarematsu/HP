@@ -1,17 +1,9 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
 function workflow(name) {
   return readFileSync(new URL(`../.github/workflows/${name}`, import.meta.url), 'utf8');
-}
-
-function jobSection(source, name, nextName) {
-  const start = source.indexOf(`  ${name}:\n`);
-  assert.notEqual(start, -1, `${name} job must exist`);
-  const end = nextName ? source.indexOf(`  ${nextName}:\n`, start + 1) : source.length;
-  assert.notEqual(end, -1, `${nextName} job must exist after ${name}`);
-  return source.slice(start, end);
 }
 
 function triggerPaths(source, name, nextName) {
@@ -24,6 +16,7 @@ function triggerPaths(source, name, nextName) {
 }
 
 const ci = workflow('ci.yml');
+const visualAudit = workflow('pages-visual-audit.yml');
 const homePanelCi = workflow('homepanel-unified-ci.yml');
 const nativeBuild = workflow('native-windows-build.yml');
 const productionDeploy = workflow('deploy-split-pipeline.yml');
@@ -38,40 +31,21 @@ const workerDependencyGuard = readFileSync(
   'utf8',
 );
 
-test('CI selects affected scopes and keeps repository checks free of Pages dependencies', () => {
-  assert.match(ci, /^  changes:\n/m);
-  assert.match(ci, /needs\.changes\.outputs\.pages == 'true'/);
-  assert.match(ci, /needs\.changes\.outputs\.worker == 'true'/);
-  assert.match(ci, /needs\.changes\.outputs\.sql == 'true'/);
-  assert.match(ci, /needs\.changes\.outputs\.repository_full == 'true'/);
-  assert.match(ci, /Run CI workflow contract/);
-  assert.doesNotMatch(ci, /\.github\/workflows\/ci\.yml\|\.github\/actions\/\*/);
-
-  const repository = jobSection(ci, 'repository', 'pages');
-  assert.match(repository, /uses: actions\/cache@v4/);
-  assert.match(repository, /worker\/node_modules/);
-  assert.match(repository, /npm ci --prefer-offline/);
-  assert.doesNotMatch(repository, /site\/node_modules/);
-  assert.doesNotMatch(repository, /working-directory: site/);
-  assert.match(repository, /check-js-syntax\.mjs scripts tests \.github\/scripts\/ci/);
-});
-
-test('CI restores workspace dependencies and keeps expensive D1 checks manual-only', () => {
-  const pages = jobSection(ci, 'pages', 'worker');
-  const worker = jobSection(ci, 'worker', 'audit');
-
-  assert.match(pages, /uses: actions\/cache@v4/);
-  assert.match(pages, /site\/node_modules/);
-  assert.match(pages, /worker\/node_modules/);
-  assert.match(pages, /node --test tests\/\*\.test\.js/);
-  assert.doesNotMatch(pages, /npm run test:integration/);
-  assert.match(pages, /cache-hit != 'true'/);
-  assert.match(pages, /if: github\.event_name == 'workflow_dispatch'\n        run: npm run test:d1/);
-  assert.match(pages, /if: github\.event_name == 'workflow_dispatch'\n        run: npm run db:migrate/);
-
-  assert.match(worker, /uses: actions\/cache@v4/);
-  assert.match(worker, /worker\/node_modules/);
-  assert.match(worker, /cache-hit != 'true'/);
+test('CI is one deterministic Stationhead checks job', () => {
+  assert.match(ci, /^  checks:\n/m);
+  assert.doesNotMatch(ci, /^  changes:\n/m);
+  assert.doesNotMatch(ci, /needs\.changes/);
+  assert.doesNotMatch(ci, /actions\/upload-artifact/);
+  assert.doesNotMatch(ci, /npm audit|npm run test:d1|npm run db:migrate/);
+  assert.match(ci, /cache-dependency-path:[\s\S]*site\/package-lock\.json[\s\S]*worker\/package-lock\.json/);
+  assert.match(ci, /working-directory: site/);
+  assert.match(ci, /working-directory: worker/);
+  assert.match(ci, /node scripts\/check-js-syntax\.mjs scripts tests \.github\/scripts\/ci/);
+  assert.match(ci, /npm run test:js/);
+  assert.match(ci, /npm run test:sql/);
+  assert.match(ci, /node --test tests\/\*\.test\.js/);
+  assert.match(ci, /npm run check/);
+  assert.match(ci, /npm test/);
 });
 
 test('CI trigger paths stay inside the Stationhead boundary', () => {
@@ -90,6 +64,19 @@ test('CI trigger paths stay inside the Stationhead boundary', () => {
   assert.doesNotMatch(trigger, /\.github\/actions\/\*\*/);
   assert.doesNotMatch(trigger, /\.github\/scripts\/\*\*/);
   assert.doesNotMatch(trigger, /hp\/\*\*/);
+});
+
+test('Pages screenshots are scheduled/manual only and the live browser audit is removed', () => {
+  assert.match(visualAudit, /^  workflow_dispatch:\n/m);
+  assert.match(visualAudit, /^  schedule:\n/m);
+  assert.match(visualAudit, /cron: '17 \*\/6 \* \* \*'/);
+  assert.doesNotMatch(visualAudit, /^  pull_request:\n/m);
+  assert.match(visualAudit, /capture-pages-visual-audit\.mjs/);
+  assert.doesNotMatch(visualAudit, /wrangler pages deploy|audit-pages-live\.mjs|audit-pages-materialized-production\.mjs/);
+  assert.equal(
+    existsSync(new URL('../.github/workflows/pages-live-browser-audit.yml', import.meta.url)),
+    false,
+  );
 });
 
 test('HomePanel CI uses the same scoped checks on pull requests and main', () => {

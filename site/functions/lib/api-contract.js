@@ -97,7 +97,9 @@ export function materializedApiKey(input) {
     const mode = String(url.searchParams.get('mode') || 'summary').trim().toLowerCase();
     return mode === 'summary' ? 'host-history:summary' : null;
   }
-  if (pathname === '/api/spotify-playcounts' && onlyParameters(url, ['artist'])) {
+  if (pathname === '/api/spotify-playcounts' && onlyParameters(url, ['artist', 'artists'])) {
+    const artists = String(url.searchParams.get('artists') || '').trim().toLowerCase();
+    if (artists && artists !== 'sakamichi') return null;
     return 'spotify-playcounts';
   }
   if (pathname === '/api/followers' && onlyParameters(url)) return 'followers';
@@ -166,6 +168,7 @@ export function canonicalApiCacheRequest(request) {
   }
   if (pathname === '/api/spotify-playcounts') {
     url.searchParams.delete('artist');
+    url.searchParams.delete('artists');
   }
   const sorted = [...url.searchParams.entries()].sort(([aKey, aValue], [bKey, bValue]) =>
     aKey.localeCompare(bKey) || aValue.localeCompare(bValue));
