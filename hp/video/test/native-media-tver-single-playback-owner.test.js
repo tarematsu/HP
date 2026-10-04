@@ -27,14 +27,13 @@ test('paused TVer playback recovery never toggles the video surface', () => {
   assert.doesNotMatch(runtime, /__homePanelTverResumeBlocked/);
 });
 
-test('TVer fullscreen recovery targets the bottom-right video coordinate directly', () => {
-  assert.match(runtime, /const requestFullscreen = \(\) =>/);
-  assert.match(runtime, /video\.getBoundingClientRect/);
-  assert.match(runtime, /rect\.right - 12/);
-  assert.match(runtime, /rect\.bottom - 12/);
-  assert.match(runtime, /state\.fullscreenCornerTapAt/);
-  assert.match(runtime, /return \[x, y\]/);
-  assert.doesNotMatch(runtime, /homepanel:tver-fullscreen-key|fullscreenControl/);
+test('TVer redesigned settings bridge owns program setup before native fullscreen', () => {
+  assert.match(runtime, /currentSettingsSpeedConfirmed/);
+  assert.match(runtime, /currentSettingsQualityConfirmed/);
+  assert.match(runtime, /if \(!speedConfirmed \|\| !qualityConfirmed\)/);
+  assert.match(runtime, /homepanel:tver-fullscreen-key/);
+  assert.match(runtime, /currentSettingsFullscreenRequestAt/);
+  assert.match(runtime, /state\.fullscreenCornerTapAt = now/);
   assert.doesNotMatch(runtime, /data-homepanel-tver-fill|homepanel-tver-viewport-fill/);
 });
 
