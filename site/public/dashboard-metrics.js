@@ -1,7 +1,8 @@
 import './dashboard-tab-registry.js?v=20261004.1';
 import './current-shell.js?v=20261004.2';
 import './dashboard-header.js?v=20260928.1';
-import './dashboard-tabs.js?v=20261004.2';
+import './dashboard-tabs.js?v=20261004.1';
+import './stationhead-channel-style-loader.js?v=20261004.2';
 
 let currentRuntimePromise = null;
 
