@@ -14,7 +14,11 @@ test('responsive source tabs keep usable button sizing', () => {
 });
 
 test('shared Stationhead broadcast chart and empty state stay inside one chart card', () => {
-  assert.match(stationheadShell, /data-stationhead-panel="broadcasts"[\s\S]*class="card chart-card chart-panel"[\s\S]*data-role="broadcast-chart"[\s\S]*data-role="broadcast-chart-empty"/);
+  const panel = stationheadShell.indexOf('data-stationhead-panel="broadcasts"');
+  const chart = stationheadShell.indexOf('class="card chart-card chart-panel"', panel);
+  const canvas = stationheadShell.indexOf("role('broadcast-chart')", chart);
+  const empty = stationheadShell.indexOf("role('broadcast-chart-empty')", canvas);
+  assert.ok(panel >= 0 && chart > panel && canvas > chart && empty > canvas);
   assert.match(tabs, /nogizaka-listening-party-shell\.js\?v=/);
 });
 
