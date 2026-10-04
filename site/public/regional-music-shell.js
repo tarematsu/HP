@@ -31,6 +31,13 @@ const playlistTable = dashboardTable({
   wrapClassName: 'regional-music-table-wrap',
 });
 
+const kkboxHistoryTable = dashboardTable({
+  className: 'regional-music-table regional-music-kkbox-history-table music-service-track-table',
+  headers: ['年月日', '地域', '周期', 'チャート', 'グループ', '順位', '曲名'],
+  bodyId: 'kkboxJapaneseHistoryBody',
+  wrapClassName: 'regional-music-table-wrap',
+});
+
 const kugouHistoryTable = dashboardTable({
   className: 'regional-music-table regional-music-kugou-history-table music-service-track-table',
   headers: ['年月日', 'グループ', '順位', '曲名'],
@@ -80,6 +87,13 @@ function artistFilterButtons(prefix, label) {
     selection: 'pressed',
   });
 }
+
+const kkboxHistorySection = musicServiceSection({
+  id: 'kkboxJapaneseHistorySection',
+  title: 'KKBOX 日語チャート ランクイン履歴',
+  bodyHtml: kkboxHistoryTable,
+  hidden: true,
+});
 
 const qqChartSection = musicServiceSection({
   id: 'qqJapanChartSection',
@@ -162,6 +176,7 @@ mountDashboardShell({
       })}
       ${dashboardNotice({ id: 'regionalMusicNotice' })}
       <div id="regionalMusicCompactNotice">${dashboardNotice({ id: 'regionalMusicCompactNoticeText' })}</div>
+      ${kkboxHistorySection}
       ${qqChartSection}
       ${qqHistorySection}
       ${qqAnimeChartSection}
@@ -179,4 +194,5 @@ mountDashboardShell({
   },
 });
 
+void import('./kkbox-history-ui.js?v=20261004.1').then(({ initKkboxHistoryUi }) => initKkboxHistoryUi());
 void import('./qq-japan-chart-ui.js?v=20261004.1').then(({ initQqJapanHistoryUi }) => initQqJapanHistoryUi());
