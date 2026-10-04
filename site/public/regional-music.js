@@ -20,7 +20,7 @@ import {
 
 const SUPPORTED_SERVICES = new Set(['kkbox', 'qq_music', 'kugou_music']);
 const OUT_OF_CHART_RANK = 101;
-const CHART_START_DATE = '2021-01-01';
+const CHART_START_DATE = '2020-10-01';
 
 let activeRequest = 0;
 let kugouArtistFilter = 'all';
