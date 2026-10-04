@@ -3,6 +3,7 @@ import { handleInternalScheduled } from './internal-scheduled-dispatch.js';
 import {
   KUGOU_ACG_BACKFILL_BATCH_SIZE,
   KUGOU_ACG_BACKFILL_DEFAULT_START,
+  KUGOU_ACG_BACKFILL_MESSAGE_TYPE,
   runKugouAcgBackfillBatch,
 } from './kugou-acg-backfill.js';
 import { publishRegionalMusicServiceReadModel } from './regional-music-read-model.js';
@@ -16,7 +17,7 @@ export const REGIONAL_MUSIC_ALLOWED_CRONS = Object.freeze([
   REGIONAL_MUSIC_DAILY_CRON,
   ...REGIONAL_SCHEDULED_JOB_CRONS,
 ]);
-export const KUGOU_ACG_BACKFILL_MESSAGE_TYPE = 'kugou-acg-history-backfill';
+export { KUGOU_ACG_BACKFILL_MESSAGE_TYPE };
 
 async function runScheduled(controller, env, ctx) {
   if (REGIONAL_SCHEDULED_JOB_CRONS.includes(controller?.cron)) {
