@@ -5,7 +5,11 @@ import {
   KUGOU_ACG_BACKFILL_MESSAGE_TYPE,
   runRegionalMusicServiceQueue,
 } from '../src/regional-music-service-entry.js';
-import { runKugouAcgBackfillBatch } from '../src/kugou-acg-backfill.js';
+import {
+  KUGOU_ACG_HISTORICAL_FETCH_VERSION,
+  kugouAcgHistoricalSongsUrl,
+  runKugouAcgBackfillBatch,
+} from '../src/kugou-acg-backfill.js';
 import {
   KUGOU_ACG_HISTORY_INDEX_KEY,
   KUGOU_ACG_HISTORY_PROGRESS_KEY,
@@ -32,9 +36,10 @@ function tagged(payload) {
   return `<!--KG_TAG_RES_START-->${JSON.stringify(payload)}<!--KG_TAG_RES_END-->`;
 }
 
-function kugouFetch() {
+function kugouFetch(requests = []) {
   return async (input) => {
     const url = new URL(String(input));
+    requests.push(url);
     if (url.pathname.endsWith('/rank/vol')) {
       const payload = {
         status: 1,
@@ -51,16 +56,29 @@ function kugouFetch() {
     const payload = {
       status: 1,
       errcode: 0,
-      data: { info: [{ filename: `櫻坂46 - song-${volid}`, album_audio_id: Number(volid) }] },
+      data: { info: [{ authors:[{ author_name:'櫻坂46' }], songname:`song-${volid}`, album_audio_id: Number(volid) }] },
     };
     return { ok: true, async text() { return tagged(payload); } };
   };
 }
 
-test('Kugou ACG backfill stores tagged provider responses in resumable batches', async () => {
+test('historical Kugou ACG song URL selects the requested volume mode', () => {
+  const url = new URL(kugouAcgHistoricalSongsUrl('126794'));
+  assert.equal(url.protocol, 'http:');
+  assert.equal(url.hostname, 'mobilecdnbj.kugou.com');
+  assert.equal(url.searchParams.get('rankid'), '33162');
+  assert.equal(url.searchParams.get('volid'), '126794');
+  assert.equal(url.searchParams.get('ranktype'), '0');
+  assert.equal(url.searchParams.get('with_res_tag'), '0');
+  assert.equal(url.searchParams.get('area_code'), '1');
+  assert.equal(url.searchParams.get('show_portrait_mv'), '1');
+});
+
+test('Kugou ACG backfill stores tagged provider responses in resumable historical batches', async () => {
   const store = r2Store();
+  const requests = [];
   const env = { PAGES_RESPONSE_R2: store.binding };
-  const fetchImpl = kugouFetch();
+  const fetchImpl = kugouFetch(requests);
 
   const first = await runKugouAcgBackfillBatch(env, {
     startDate: '2026-09-01', batchSize: 2, now: 1000,
@@ -68,9 +86,12 @@ test('Kugou ACG backfill stores tagged provider responses in resumable batches',
   assert.equal(first.complete, false);
   assert.equal(first.fetched_this_batch, 2);
   assert.equal(first.remaining, 1);
+  assert.equal(first.historical_fetch_version, KUGOU_ACG_HISTORICAL_FETCH_VERSION);
   assert.equal(store.values.get(KUGOU_ACG_HISTORY_INDEX_KEY).weeks['2026_40'].volid, '103');
+  assert.equal(store.values.get(KUGOU_ACG_HISTORY_INDEX_KEY).weeks['2026_40'].historical_fetch_version, KUGOU_ACG_HISTORICAL_FETCH_VERSION);
   assert.equal(store.values.get(KUGOU_ACG_HISTORY_VIEW_KEY).history.length, 2);
   assert.equal(store.values.get(KUGOU_ACG_HISTORY_PROGRESS_KEY).status, 'running');
+  assert.ok(requests.filter((url) => url.pathname.endsWith('/rank/song')).every((url) => url.searchParams.get('ranktype') === '0'));
 
   const second = await runKugouAcgBackfillBatch(env, {
     startDate: '2026-09-01', batchSize: 2, now: 2000,
@@ -81,6 +102,31 @@ test('Kugou ACG backfill stores tagged provider responses in resumable batches',
   assert.equal(second.stored_periods, 3);
   assert.equal(second.history_entries, 3);
   assert.equal(store.values.get(KUGOU_ACG_HISTORY_PROGRESS_KEY).status, 'complete');
+});
+
+test('Kugou ACG backfill refreshes periods saved by the old current-chart request mode', async () => {
+  const store = r2Store();
+  store.values.set(KUGOU_ACG_HISTORY_INDEX_KEY, {
+    version:1,
+    weeks:{
+      '2026_40':{ period:'2026_40', volid:'103', entries:0 },
+      '2026_39':{ period:'2026_39', volid:'102', entries:0 },
+      '2026_38':{ period:'2026_38', volid:'101', entries:0 },
+    },
+  });
+  store.values.set(KUGOU_ACG_HISTORY_VIEW_KEY, { version:1, history:[] });
+  const requests = [];
+  const result = await runKugouAcgBackfillBatch(
+    { PAGES_RESPONSE_R2: store.binding },
+    { startDate:'2026-09-01', batchSize:3, now:3000 },
+    kugouFetch(requests),
+  );
+  assert.equal(result.complete, true);
+  assert.equal(result.fetched_this_batch, 3);
+  assert.equal(result.history_entries, 3);
+  assert.equal(requests.filter((url) => url.pathname.endsWith('/rank/song')).length, 3);
+  assert.ok(Object.values(store.values.get(KUGOU_ACG_HISTORY_INDEX_KEY).weeks)
+    .every((row) => row.historical_fetch_version === KUGOU_ACG_HISTORICAL_FETCH_VERSION));
 });
 
 test('regional queue publishes each Kugou ACG batch and queues continuation before ack', async () => {
