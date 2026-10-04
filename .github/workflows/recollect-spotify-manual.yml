@@ -1,4 +1,5 @@
 name: Recollect Spotify today manually
+# A main-branch push touching this file with [run-spotify-today] intentionally triggers same-day recovery.
 on:
   workflow_dispatch:
   push:
