@@ -36,17 +36,14 @@ test('YouTube requests F before falling back to fullscreen button click', () => 
   assert.doesNotMatch(youtube, /const videoFullscreenPoint = media =>/);
 });
 
-test('TVer fullscreen keeps the trusted bottom-right tap as the first attempt', () => {
-  const request = tver.slice(
-    tver.indexOf('const requestFullscreen = () =>'),
-    tver.indexOf('const bindVideo = () =>'),
-  );
-  assert.match(request, /video\.getBoundingClientRect/);
-  assert.match(request, /rect\.right - 12/);
-  assert.match(request, /rect\.bottom - 12/);
-  assert.match(request, /state\.fullscreenCornerTapAt/);
-  assert.match(request, /return \[x, y\]/);
-  assert.doesNotMatch(request, /homepanel:tver-fullscreen-key|fullscreenControl/);
+test('TVer redesigned player confirms speed and quality before native fullscreen', () => {
+  const speed = tver.indexOf('currentSettingsSpeedConfirmed');
+  const quality = tver.indexOf('currentSettingsQualityConfirmed');
+  const gate = tver.indexOf('if (!speedConfirmed || !qualityConfirmed)');
+  const nativeFullscreen = tver.indexOf("post('homepanel:tver-fullscreen-key')", gate);
+  assert.ok(speed >= 0 && quality > speed && gate > quality && nativeFullscreen > gate);
+  assert.match(tver, /Runtime\.evaluate\(userGesture=true\)/);
+  assert.match(tver, /state\.fullscreenCornerTapAt = now/);
   assert.doesNotMatch(tver, /data-homepanel-tver-fill|homepanel-tver-viewport-fill/);
 });
 
@@ -57,12 +54,15 @@ test('TVer ads prioritize Skip and only use fullscreen recovery when Skip is una
   assert.ok(ad >= 0 && skip > ad && fullscreen > skip);
 });
 
-test('TVer post-click verification escalates through the native fullscreen bridge', () => {
+test('TVer fullscreen requests are scoped to the native episode bridge', () => {
   assert.match(wrapper, /homepanel:youtube-fullscreen-key/);
   assert.match(wrapper, /sourceContains\(L"youtube\.com\/watch"\)/);
   assert.match(wrapper, /homepanel:tver-fullscreen-key/);
   assert.match(wrapper, /sourceContains\(L"tver\.jp\/episodes\/"\)/);
-  assert.doesNotMatch(tver, /homepanel:tver-fullscreen-key/);
+  assert.match(wrapper, /NativeMediaRequestTverBrowserFullscreen/);
+  assert.match(wrapper, /Runtime\.evaluate/);
+  assert.match(wrapper, /userGesture/);
+  assert.match(tver, /homepanel:tver-fullscreen-key/);
   assert.match(tverVerify, /homepanel:tver-fullscreen-key/);
   assert.match(tverVerify, /homepanel:tver-wake/);
   assert.match(tverVerify, /fullscreenCornerTapAt = 0/);
