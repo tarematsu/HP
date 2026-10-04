@@ -14,6 +14,9 @@ const STATIONHEAD_COLORS = Object.freeze({
   sakurazaka46jp: '#d93f79',
   nogizaka46smej: '#812990',
 });
+const STATIONHEAD_MISSING_RANGES = Object.freeze([
+  Object.freeze({ from: '2026-01-26', to: '2026-09-14', label: '欠測' }),
+]);
 const STREAMING_SERVICES = Object.freeze([
   ['spotify', 'Spotify'],
   ['apple-music', 'Apple Music'],
@@ -50,6 +53,17 @@ function latestTimestamp(values) {
   return Math.max(0, ...values.map(timestamp).filter((value) => value != null));
 }
 
+function stationheadMissingPeriod(period) {
+  return STATIONHEAD_MISSING_RANGES.some(({ from, to }) => period >= from && period <= to);
+}
+
+function stationheadRankStatus(period, rank, row) {
+  if (rank != null) return '';
+  if (stationheadMissingPeriod(period)) return '欠測';
+  if (row?.synthetic || row?.is_out_of_rank) return '圏外';
+  return '—';
+}
+
 async function fetchJson(url, { signal = null, force = false } = {}) {
   const response = await fetch(url, {
     signal,
@@ -80,19 +94,25 @@ function relationLabel(row) {
 }
 
 export function normalizeStationheadLeaderboard(payload = {}) {
-  const rows = (Array.isArray(payload?.rows) ? payload.rows : [])
-    .map((row) => ({
-      period: dateKey(row?.ranking_date),
-      rank: positiveRank(row?.rank),
-      host: String(row?.host_name || '').trim(),
-      channel: String(row?.stationhead_channel_name || '').trim() || '-',
-      artist: String(row?.artist_name || '').trim() || '-',
-      relation: relationLabel(row),
-    }))
+  const timelineRows = (Array.isArray(payload?.rows) ? payload.rows : [])
+    .map((row) => {
+      const period = dateKey(row?.ranking_date);
+      const rank = positiveRank(row?.rank);
+      return {
+        period,
+        rank,
+        rank_status: stationheadRankStatus(period, rank, row),
+        host: String(row?.host_name || '').trim(),
+        channel: String(row?.stationhead_channel_name || '').trim() || '-',
+        artist: String(row?.artist_name || '').trim() || '-',
+        relation: relationLabel(row),
+      };
+    })
     .filter((row) => row.period && row.host)
     .sort((a, b) => b.period.localeCompare(a.period)
       || (a.rank ?? Number.MAX_SAFE_INTEGER) - (b.rank ?? Number.MAX_SAFE_INTEGER)
       || a.host.localeCompare(b.host));
+  const rows = timelineRows.filter((row) => row.rank_status !== '欠測' && row.rank_status !== '圏外');
 
   const chartHosts = (Array.isArray(payload?.chart_hosts) && payload.chart_hosts.length
     ? payload.chart_hosts
@@ -101,7 +121,7 @@ export function normalizeStationheadLeaderboard(payload = {}) {
     .filter(Boolean);
   const allowed = new Set(chartHosts.map((value) => value.toLowerCase()));
   const pointsByHost = new Map(chartHosts.map((host) => [host.toLowerCase(), []]));
-  for (const row of rows) {
+  for (const row of timelineRows) {
     const key = row.host.toLowerCase();
     if (!allowed.has(key)) continue;
     pointsByHost.get(key)?.push({ date: row.period, rank: row.rank });
@@ -118,7 +138,7 @@ export function normalizeStationheadLeaderboard(payload = {}) {
     updated_at: timestamp(payload?.materialized_at),
     cadence: '毎週月曜日夜',
     chart_title: series.length === 1 ? `${series[0].label} 順位推移` : '週間リーダーボード順位',
-    chart_foot: '順位は上ほど高順位です。空白は圏外または欠測です。',
+    chart_foot: '順位は上ほど高順位です。灰色は欠測期間です。空白週は圏外です。',
     table_title: '週間リーダーボード',
     columns: [
       { key: 'period', label: '週' },
@@ -130,6 +150,7 @@ export function normalizeStationheadLeaderboard(payload = {}) {
     ],
     rows,
     series,
+    missing_ranges: STATIONHEAD_MISSING_RANGES,
     notice: rows.length ? '' : 'リーダーボードデータはまだありません。',
   };
 }
