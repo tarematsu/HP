@@ -6,7 +6,14 @@ import {
   resolveMissingSpotifyPresentation,
 } from '../src/playback-track-metadata.js';
 
-const canonical = { track_id: 898, title: 'タイトル', artist: '櫻坂46', thumbnail_url: 'https://example.test/art.jpg', spotify_id: 'spotify898' };
+const canonical = {
+  track_id: 898,
+  title: '自称バレエダンサー',
+  artist: '櫻坂46',
+  thumbnail_url: 'https://example.test/art.jpg',
+  spotify_id: 'spotify898',
+  presentation_version: 1,
+};
 
 function catalog() {
   const queries = [];
@@ -30,15 +37,33 @@ test('an existing canonical ID still hydrates missing display metadata without l
   assert.equal(track.thumbnail_url, canonical.thumbnail_url);
   assert.equal(track.position, 2);
   assert.equal(track.played_count, 7);
+  assert.equal(track.presentation_version, 1);
   assert.equal(db.queries.length, 1);
   assert.deepEqual(db.queries[0].ids, [898]);
 });
 
-test('complete cached metadata satisfies an unchanged queue without database reads', async () => {
+test('complete provisional Stationhead romanization is verified once and replaced by canonical Spotify presentation', async () => {
+  const db = catalog();
+  const [track] = await hydratePlaybackTrackMetadata(db, [{
+    track_id: 898,
+    spotify_id: 'spotify898',
+    title: 'Jisho Ballet Dancer',
+    artist: 'Sakurazaka46',
+    thumbnail_url: 'https://example.test/stationhead.jpg',
+  }]);
+  assert.equal(track.title, '自称バレエダンサー');
+  assert.equal(track.artist, '櫻坂46');
+  assert.equal(track.thumbnail_url, canonical.thumbnail_url);
+  assert.equal(track.presentation_version, 1);
+  assert.equal(db.queries.length, 1);
+});
+
+test('complete cached canonical metadata satisfies an unchanged queue without database reads', async () => {
   const db = catalog();
   const [track] = await hydratePlaybackTrackMetadata(db, [{ track_id: 898, position: 1 }], [canonical]);
   assert.equal(track.title, canonical.title);
   assert.equal(track.position, 1);
+  assert.equal(track.presentation_version, 1);
   assert.equal(db.queries.length, 0);
 });
 
@@ -66,7 +91,7 @@ test('aggregate repair preserves totals, likes and timestamps and is reused with
   assert.equal(db.queries.length, 1);
 });
 
-test('complete Stationhead title and artist skip central D1 lookup entirely', async () => {
+test('complete Stationhead title and artist skip direct Spotify repair lookup', async () => {
   const db = {
     prepare() { throw new Error('D1 should not be read'); },
   };
@@ -74,6 +99,39 @@ test('complete Stationhead title and artist skip central D1 lookup entirely', as
   const result = await resolveMissingSpotifyPresentation(db, source);
   assert.equal(result[0].title, 'Song');
   assert.equal(result[0].artist, 'Artist');
+});
+
+test('stored authoritative Spotify metadata replaces a provisional romanized title during repair', async () => {
+  const db = {
+    prepare(sql) {
+      assert.match(sql.trim(), /^SELECT spotify_id/is);
+      return {
+        bind() {
+          return {
+            async all() {
+              return { results: [{
+                spotify_id: 'spotify-new-release',
+                title: '自称バレエダンサー',
+                artist: '櫻坂46',
+                thumbnail_url: 'https://example.test/spotify.jpg',
+                source: 'spotify_oembed',
+                fetched_at: 200,
+              }] };
+            },
+          };
+        },
+      };
+    },
+  };
+  const [track] = await resolveMissingSpotifyPresentation(db, [{
+    spotify_id: 'spotify-new-release',
+    title: 'Jisho Ballet Dancer',
+    artist: null,
+    thumbnail_url: 'https://example.test/stationhead.jpg',
+  }]);
+  assert.equal(track.title, '自称バレエダンサー');
+  assert.equal(track.artist, '櫻坂46');
+  assert.equal(track.thumbnail_url, 'https://example.test/spotify.jpg');
 });
 
 test('shared Spotify repair recovers an ID carried only in the title before metadata lookup', async () => {
