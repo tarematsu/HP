@@ -32,9 +32,7 @@ test('Stationhead subtabs share one layout, spacing, and divider contract', () =
   assert.match(sharedCss, /\.stationhead-subtabs\s*>\s*button\s*\{[^}]*min-height:\s*44px/s);
   assert.match(sharedCss, /\.stationhead-channel-panel\s*\{[^}]*gap:\s*var\(--pages-view-gap, 12px\)/s);
   assert.match(sharedCss, /@media \(max-width: 760px\)[\s\S]*\.stationhead-channel-panel\s*\{[^}]*--pages-view-gap-mobile/s);
-  for (const source of ['buddies', 'hinata', 'nogizaka']) {
-    assert.match(navigationCss, new RegExp(`data-source="${source}"\\]\\.active\\)[\\s\\S]*border-bottom:\\s*0\\s*!important`));
-  }
+  assert.match(navigationCss, /button\.active:is\(\[data-source="buddies"\], \[data-source="hinata"\], \[data-source="nogizaka"\]\)[\s\S]*border-bottom:\s*0\s*!important/);
   assert.match(navigationCss, /\.hinata-view,\s*\n\.nogizaka-listening-party-view\s*\{[^}]*margin-top:\s*4px\s*!important/s);
 });
 
