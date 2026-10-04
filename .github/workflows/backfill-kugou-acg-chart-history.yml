@@ -7,7 +7,10 @@ on:
     paths:
       - '.github/workflows/backfill-kugou-acg-chart-history.yml'
       - 'worker/scripts/backfill-kugou-acg-chart-history-actions.mjs'
+      - 'worker/src/kugou-acg-backfill.js'
       - 'worker/src/kugou-acg-chart-history.js'
+      - 'worker/src/regional-music-service-entry.js'
+      - 'worker/wrangler.regional-music.jsonc'
   workflow_dispatch:
     inputs:
       start_date:
@@ -45,6 +48,10 @@ jobs:
         working-directory: worker
         run: npm ci --prefer-offline --no-audit --no-fund
 
-      - name: Backfill Kugou ACG新歌榜 history
+      - name: Deploy regional music worker
+        working-directory: worker
+        run: npm run deploy:regional-music
+
+      - name: Queue and verify Kugou ACG新歌榜 history backfill
         working-directory: worker
         run: node scripts/backfill-kugou-acg-chart-history-actions.mjs
