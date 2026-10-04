@@ -49,13 +49,14 @@ test('build only bundles and minifies the source-owned module and style graph', 
     'amazon-music.css',
     'followers.css',
     'hinata.css',
-    'regional-music.css',
+    'music-service-common.css',
     'dashboard-ui-common.css',
   ]) assert.match(buildScript, new RegExp(css.replaceAll('.', '\\.')));
   assert.ok(
     buildScript.lastIndexOf("'dashboard-ui-common.css'") > buildScript.indexOf("'hinata.css'"),
     'shared presentation contract must be last in the CSS bundle',
   );
+  assert.doesNotMatch(buildScript, /regional-music\.css/);
   assert.doesNotMatch(buildScript, /optimizeBundled|shareCommonUiHelpers|canvasTransforms|onLoad\(|readFile/);
 });
 
