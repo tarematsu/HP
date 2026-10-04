@@ -45,7 +45,8 @@ function providerDateText(value) {
 }
 
 function artistVisible(canonicalArtist) {
-  return activeArtistFilter === 'all' || canonicalArtist === activeArtistFilter;
+  return ARTIST_ORDER.includes(canonicalArtist)
+    && (activeArtistFilter === 'all' || canonicalArtist === activeArtistFilter);
 }
 
 function syncFilterButtons() {
