@@ -4,102 +4,169 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
+  ACTIONS_RAW_MODEL_KEYS,
   loadMaterializedR2Response,
   pagesActionsR2ResponseKey,
+  pagesActionsRawMetadataR2ResponseKey,
   pagesActionsRawR2ResponseKey,
 } from '../src/pages-response-r2.js';
-import {
-  rawMetadataForEnvelope,
-  seedRawActionsModel,
-} from '../scripts/seed-pages-actions-raw.mjs';
+import { seedRawActionsModel } from '../scripts/seed-pages-actions-raw.mjs';
 
-const NOW = Date.UTC(2026, 9, 5, 0, 0, 0);
+const NOW = Date.UTC(2026, 9, 5, 0, 30);
+const MODEL_KEY = 'spotify-playcounts';
 
-function envelopeFor(payload) {
+function actionsObject(body, updatedAt = NOW) {
   return {
-    version: 1,
-    status: 200,
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-      'x-test-header': 'kept',
+    body: {},
+    async json() {
+      return {
+        version: 1,
+        status: 200,
+        headers: { 'content-type': 'application/json; charset=utf-8' },
+        updated_at: updatedAt,
+        cadence_seconds: 21600,
+        body: JSON.stringify(body),
+      };
     },
-    updated_at: NOW,
-    cadence_seconds: 86400,
-    body: JSON.stringify(payload),
   };
 }
 
-function rawObject(body, metadata) {
+function rawObject(body) {
   return {
-    body,
-    customMetadata: metadata,
+    body: JSON.stringify(body),
     writeHttpMetadata(headers) {
       headers.set('content-type', 'application/json; charset=utf-8');
     },
   };
 }
 
-for (const modelKey of ['history:weekly', 'track-history-status']) {
-  test(`${modelKey} serves a preseeded raw companion without reading the canonical body`, async () => {
-    const envelope = envelopeFor({ ok: true, model: modelKey, rows: [1, 2, 3] });
-    const envelopeText = JSON.stringify(envelope);
-    const etag = createHash('md5').update(envelopeText).digest('hex');
-    const sourceKey = pagesActionsR2ResponseKey(modelKey);
-    const rawKey = pagesActionsRawR2ResponseKey(modelKey);
-    let sourceGets = 0;
-    let rawWrites = 0;
-
-    const response = await loadMaterializedR2Response({
-      async head(key) {
-        return key === sourceKey ? { etag } : null;
-      },
-      async get(key) {
-        if (key === sourceKey) {
-          sourceGets += 1;
-          throw new Error('canonical body should not be read');
-        }
-        if (key === rawKey) {
-          return rawObject(envelope.body, rawMetadataForEnvelope(envelope, etag));
-        }
-        return null;
-      },
-      async put() {
-        rawWrites += 1;
-      },
-    }, modelKey, NOW + 1_000, Number.MAX_SAFE_INTEGER);
-
-    assert.equal(response.status, 200);
-    assert.equal(response.headers.get('x-api-source'), 'actions-r2-raw');
-    assert.equal(response.headers.get('x-test-header'), 'kept');
-    assert.deepEqual(await response.json(), { ok: true, model: modelKey, rows: [1, 2, 3] });
-    assert.equal(sourceGets, 0);
-    assert.equal(rawWrites, 0);
-  });
+function metadataObject(sourceEtag, updatedAt = NOW) {
+  return {
+    body: {},
+    async json() {
+      return {
+        version: 1,
+        source_etag: sourceEtag,
+        status: 200,
+        headers: { 'content-type': 'application/json; charset=utf-8' },
+        updated_at: updatedAt,
+        cadence_seconds: 21600,
+      };
+    },
+  };
 }
 
-test('Actions raw seeder writes the canonical-body MD5 as source_etag metadata', () => {
-  const modelKey = 'history:daily';
-  const envelope = envelopeFor({ ok: true, rows: [{ day: '2026-10-04' }] });
+test('CPU-sensitive Actions models have raw body and metadata sidecar keys', () => {
+  assert.deepEqual(ACTIONS_RAW_MODEL_KEYS, [
+    'history:daily',
+    'history:weekly',
+    'spotify-playcounts',
+    'track-history-status',
+  ]);
+  assert.equal(
+    pagesActionsRawR2ResponseKey('history:daily'),
+    'pages-response/actions-raw-v1/686973746f72793a6461696c79.json',
+  );
+  assert.equal(
+    pagesActionsRawMetadataR2ResponseKey('history:daily'),
+    'pages-response/actions-raw-meta-v1/686973746f72793a6461696c79.json',
+  );
+});
+
+test('preseeded raw sidecar bypasses canonical Actions envelope parsing', async () => {
+  const sourceKey = pagesActionsR2ResponseKey(MODEL_KEY);
+  const rawKey = pagesActionsRawR2ResponseKey(MODEL_KEY);
+  const metadataKey = pagesActionsRawMetadataR2ResponseKey(MODEL_KEY);
+  let canonicalGets = 0;
+  let canonicalParses = 0;
+  const canonical = actionsObject({ source: 'canonical' });
+  const originalJson = canonical.json.bind(canonical);
+  canonical.json = async () => {
+    canonicalParses += 1;
+    return originalJson();
+  };
+
+  const response = await loadMaterializedR2Response({
+    async head(key) {
+      return key === sourceKey ? { etag: 'etag-current' } : null;
+    },
+    async get(key) {
+      if (key === rawKey) return rawObject({ source: 'raw' });
+      if (key === metadataKey) return metadataObject('etag-current');
+      if (key === sourceKey) {
+        canonicalGets += 1;
+        return canonical;
+      }
+      return null;
+    },
+  }, MODEL_KEY, NOW, Number.MAX_SAFE_INTEGER);
+
+  assert.equal(response.headers.get('x-api-source'), 'actions-r2-raw');
+  assert.deepEqual(await response.json(), { source: 'raw' });
+  assert.equal(canonicalGets, 0);
+  assert.equal(canonicalParses, 0);
+});
+
+test('raw sidecar ETag mismatch falls back to canonical envelope', async () => {
+  const sourceKey = pagesActionsR2ResponseKey(MODEL_KEY);
+  const rawKey = pagesActionsRawR2ResponseKey(MODEL_KEY);
+  const metadataKey = pagesActionsRawMetadataR2ResponseKey(MODEL_KEY);
+  let canonicalParses = 0;
+  const canonical = actionsObject({ source: 'canonical' });
+  const originalJson = canonical.json.bind(canonical);
+  canonical.json = async () => {
+    canonicalParses += 1;
+    return originalJson();
+  };
+
+  const response = await loadMaterializedR2Response({
+    async head(key) {
+      return key === sourceKey ? { etag: 'etag-current' } : null;
+    },
+    async get(key) {
+      if (key === rawKey) return rawObject({ source: 'stale-raw' });
+      if (key === metadataKey) return metadataObject('etag-old');
+      if (key === sourceKey) return canonical;
+      return null;
+    },
+  }, MODEL_KEY, NOW, Number.MAX_SAFE_INTEGER);
+
+  assert.equal(response.headers.get('x-api-source'), 'actions-r2');
+  assert.deepEqual(await response.json(), { source: 'canonical' });
+  assert.equal(canonicalParses, 1);
+});
+
+test('Actions raw seeder writes a raw body and small ETag metadata object', () => {
+  const body = JSON.stringify({ ok: true, rows: Array.from({ length: 20 }, (_, index) => index) });
+  const envelope = {
+    version: 1,
+    status: 200,
+    headers: { 'content-type': 'application/json; charset=utf-8' },
+    updated_at: NOW,
+    cadence_seconds: 21600,
+    body,
+  };
   const envelopeText = JSON.stringify(envelope);
   const expectedEtag = createHash('md5').update(envelopeText).digest('hex');
-  let written = null;
+  const written = new Map();
 
-  const result = seedRawActionsModel(modelKey, {
+  const result = seedRawActionsModel(MODEL_KEY, {
     getObject(key, path) {
-      assert.equal(key, pagesActionsR2ResponseKey(modelKey));
+      assert.equal(key, pagesActionsR2ResponseKey(MODEL_KEY));
       writeFileSync(path, envelopeText, 'utf8');
     },
-    putObject(key, path, metadata) {
-      written = { key, body: readFileSync(path, 'utf8'), metadata };
+    putObject(key, path, contentType) {
+      written.set(key, { content: readFileSync(path, 'utf8'), contentType });
     },
   });
 
+  const raw = written.get(pagesActionsRawR2ResponseKey(MODEL_KEY));
+  const metadata = written.get(pagesActionsRawMetadataR2ResponseKey(MODEL_KEY));
+  assert.equal(raw.content, body);
+  assert.equal(raw.contentType, 'application/json; charset=utf-8');
+  const parsedMetadata = JSON.parse(metadata.content);
+  assert.equal(parsedMetadata.source_etag, expectedEtag);
+  assert.equal(parsedMetadata.updated_at, NOW);
+  assert.equal(parsedMetadata.status, 200);
   assert.equal(result.source_etag, expectedEtag);
-  assert.equal(written.key, pagesActionsRawR2ResponseKey(modelKey));
-  assert.equal(written.body, envelope.body);
-  assert.equal(written.metadata.source_etag, expectedEtag);
-  assert.deepEqual(
-    JSON.parse(decodeURIComponent(written.metadata.headers_uri)),
-    envelope.headers,
-  );
 });
