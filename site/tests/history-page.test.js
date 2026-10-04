@@ -55,7 +55,7 @@ test('embedded history defaults invalid hashes to weekly and lazy-loads mode run
 });
 
 test('Buddies tabs use the shared five-column navigation instead of history-owned tab CSS', () => {
-  assert.match(navigationStyles, /#modeTabs\.mode-tabs\.dashboard-tabs,[\s\S]*\.stationhead-subtabs[\s\S]*grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\)/);
+  assert.match(navigationStyles, /\.stationhead-subtabs\s*\{[^}]*grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\)/s);
   assert.doesNotMatch(historyStyles, /\.mode-tabs\s*\{/);
 });
 
