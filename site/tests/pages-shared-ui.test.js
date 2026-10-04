@@ -11,7 +11,6 @@ const canvasChart = readFileSync(new URL('../public/dashboard-chart-canvas.js', 
 const stationheadShell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
 const stationheadRuntime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
 const stationheadReadModel = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
-const stationheadStyles = readFileSync(new URL('../public/stationhead-channel-style-loader.js', import.meta.url), 'utf8');
 const currentShell = readFileSync(new URL('../public/current-shell.js', import.meta.url), 'utf8');
 const hinataShell = readFileSync(new URL('../public/hinata-shell.js', import.meta.url), 'utf8');
 const nogizakaShell = readFileSync(new URL('../public/nogizaka-listening-party-shell.js', import.meta.url), 'utf8');
@@ -92,10 +91,10 @@ test('Stationhead shared shell owns notices tables legends and five mode tabs on
   assert.match(navigationCss, /\.stationhead-subtabs/);
 });
 
-test('Stationhead secondary CSS is loaded by one shared lazy style loader', () => {
+test('Stationhead secondary CSS uses the shared lazy style loader directly', () => {
   assert.doesNotMatch(sharedUi, /ensureStylesheet|createElement\('link'\)/);
-  assert.match(stationheadStyles, /ensureDashboardSectionStyles/);
-
+  assert.match(stationheadRuntime, /import \{ ensureDashboardSectionStyles \} from '.\/dashboard-styles\.js/);
+  assert.match(stationheadRuntime, /ensureDashboardSectionStyles\('stationhead'\)/);
   assert.doesNotMatch(currentShell, /\.css\?v=|createElement\('link'\)/);
   assert.doesNotMatch(hinataShell, /\.css\?v=|createElement\('link'\)/);
   assert.doesNotMatch(nogizakaShell, /\.css\?v=|createElement\('link'\)/);
