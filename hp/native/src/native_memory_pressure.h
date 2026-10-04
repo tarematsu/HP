@@ -48,39 +48,6 @@ inline ULONGLONG NativeMemoryAvailableMiB(
   return snapshot.availablePhysicalBytes / (1024ULL * 1024ULL);
 }
 
-inline UINT NativeMemoryPressureMessage() noexcept {
-  static const UINT message =
-      RegisterWindowMessageW(L"HomePanel.NativeMemoryPressure.v1");
-  return message;
-}
-
-inline void NotifyNativeMediaMemoryPressure(HWND root, bool active) noexcept {
-  if (!root || !IsWindow(root)) return;
-  const UINT message = NativeMemoryPressureMessage();
-  if (message == 0) return;
-
-  struct Payload {
-    UINT message = 0;
-    bool active = false;
-  } payload{message, active};
-
-  EnumChildWindows(
-      root,
-      [](HWND child, LPARAM parameter) -> BOOL {
-        auto* payload = reinterpret_cast<Payload*>(parameter);
-        if (!payload) return TRUE;
-        wchar_t className[96]{};
-        if (GetClassNameW(child, className, static_cast<int>(_countof(className))) <= 0 ||
-            wcscmp(className, L"HomePanelNativeMvPanel") != 0) {
-          return TRUE;
-        }
-        DWORD_PTR ignored = 0;
-        SendMessageTimeoutW(
-            child, payload->message, payload->active ? 1 : 0, 0,
-            SMTO_ABORTIFHUNG | SMTO_BLOCK, 100, &ignored);
-        return TRUE;
-      },
-      reinterpret_cast<LPARAM>(&payload));
-}
+void SetNativeMediaMemoryPressureMode(bool enabled) noexcept;
 
 }  // namespace hp
