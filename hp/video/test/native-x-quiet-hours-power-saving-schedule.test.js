@@ -18,14 +18,19 @@ test('native X random draw is independent from quiet hours and runtime gating ha
   );
   assert.match(
     mediaBase,
-    /bool NativeMediaHostSuppressX\([\s\S]*bool tver, bool phaseStarted, ULONGLONG phaseStartedAt,[\s\S]*bool xPhaseActive\) noexcept/,
+    /bool NativeMediaHostSuppressX\([\s\S]*HWND hostWindow, bool tver, bool phaseStarted, ULONGLONG phaseStartedAt,[\s\S]*bool xPhaseActive\) noexcept/,
   );
   assert.match(mediaBase, /if \(xPhaseActive\) return !NativeMediaXRuntimeAllowed\(\)/);
   assert.match(mediaBase, /if \(!phaseStarted\) return false/);
-  assert.match(mediaBase, /return now - phaseStartedAt >= xStartMs && !NativeMediaXRuntimeAllowed\(\)/);
+  assert.match(mediaBase, /if \(now - phaseStartedAt < xStartMs\) return false/);
+  assert.match(mediaBase, /if \(NativeMediaXRuntimeAllowed\(\)\) return false/);
   assert.match(
     mediaBase,
-    /#define gNativeMediaPowerSaving NativeMediaHostSuppressX\([\s\S]*phase_ == Phase::Tver, phaseStarted_, phaseStartedAt_, xPhaseActive_\)/,
+    /!tver && NativeMediaXSlotEnabled\(false\) && hostWindow && IsWindow\(hostWindow\)[\s\S]*::SetTimer\(hostWindow, kNativeMediaPhaseTimer, 1U, nullptr\)/,
+  );
+  assert.match(
+    mediaBase,
+    /#define gNativeMediaPowerSaving NativeMediaHostSuppressX\([\s\S]*hostWindow_, phase_ == Phase::Tver, phaseStarted_, phaseStartedAt_, xPhaseActive_\)/,
   );
   assert.match(
     mediaBase,
@@ -37,6 +42,17 @@ test('native X random draw is independent from quiet hours and runtime gating ha
   );
   assert.match(mediaBase, /static_assert\(!NativeMediaXCanStartAtSecondOfDay\(1 \* 60 \* 60\)\)/);
   assert.match(mediaBase, /static_assert\(NativeMediaXCanStartAtSecondOfDay\(6 \* 60 \* 60\)\)/);
+});
+
+test('unselected X tail has no reserved two-minute phase', () => {
+  assert.match(
+    mediaBase,
+    /const UINT tailX = NativeMediaXSlotEnabled\(false\)\s*\? kNativeMediaXPhaseMs : 0U;/,
+  );
+  assert.match(
+    mediaBase,
+    /No X navigation is scheduled for an unselected slot[\s\S]*return startupPrefix \+ youtubeContentDurationMs \+ 1000U;/,
+  );
 });
 
 test('scheduled power-saving mode runs from 12:00 through 19:59', () => {
