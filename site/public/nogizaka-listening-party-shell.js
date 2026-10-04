@@ -47,7 +47,6 @@ mountDashboardShell({
     id: 'nogizakaListeningPartyView',
     className: 'history-view nogizaka-listening-party-view',
     anchorId: 'likesView',
-    position: 'beforebegin',
     html: `${dashboardNotice({ id: 'nogizakaListeningPartyNotice' })}${subtabs}${listeningPartyPanel}`,
   },
 });
