@@ -14,6 +14,7 @@ constexpr int kStationheadCollectionPhaseMinute = 0;
 constexpr int64_t kRenderSettleMs = 2'000;
 constexpr int64_t kContentPollIntervalMs = 2'000;
 constexpr int64_t kCaptureTimeoutMs = 90'000;
+constexpr int64_t kMemoryPressureRetryMs = 5 * 60'000;
 constexpr size_t kMaxSnapshotCharacters = 28 * 1024;
 
 bool CallbackAlive(const std::shared_ptr<std::atomic<bool>>& alive) noexcept {
@@ -73,6 +74,9 @@ void StationheadLeaderboardCollector::Start(int64_t nowMs) {
   captureInFlight_ = false;
   nextCaptureAt_ =
       NextHourlyCollectionSlot(nowMs, kStationheadCollectionPhaseMinute);
+  if (memoryPressure_) {
+    nextCaptureAt_ = std::max(nextCaptureAt_, nowMs + kMemoryPressureRetryMs);
+  }
   captureDueAt_ = 0;
   timeoutAt_ = 0;
   UpdateNextWake();
@@ -95,9 +99,53 @@ void StationheadLeaderboardCollector::Stop() {
   stationhead_leaderboard_diagnostics::Mark("stopped");
 }
 
+void StationheadLeaderboardCollector::SetMemoryPressure(
+    bool active, int64_t nowMs) {
+  if (memoryPressure_ == active) return;
+  memoryPressure_ = active;
+  if (!active) {
+    UpdateNextWake();
+    stationhead_leaderboard_diagnostics::Mark("memory_pressure_cleared");
+    return;
+  }
+
+  if (started_) {
+    ++generation_;
+    creating_ = false;
+    captureInFlight_ = false;
+    captureDueAt_ = 0;
+    timeoutAt_ = 0;
+    CloseController();
+    environment_.Reset();
+    nextCaptureAt_ = std::max(
+        nextCaptureAt_, nowMs + kMemoryPressureRetryMs);
+    UpdateNextWake();
+  }
+  stationhead_leaderboard_diagnostics::Mark("memory_pressure_suspended");
+}
+
 void StationheadLeaderboardCollector::Tick(int64_t nowMs) {
   if (!started_) return;
   stationhead_leaderboard_diagnostics::MarkTick();
+
+  if (memoryPressure_) {
+    const bool attemptActive = creating_ || controller_ || webview_ ||
+        captureInFlight_ || captureDueAt_ > 0 || timeoutAt_ > 0;
+    if (attemptActive) {
+      ++generation_;
+      creating_ = false;
+      captureInFlight_ = false;
+      captureDueAt_ = 0;
+      timeoutAt_ = 0;
+      CloseController();
+      environment_.Reset();
+    }
+    if (nextCaptureAt_ <= nowMs) {
+      nextCaptureAt_ = nowMs + kMemoryPressureRetryMs;
+    }
+    UpdateNextWake();
+    return;
+  }
 
   if (PowerSavingController::IsPowerSavingActive()) {
     const bool attemptActive = creating_ || controller_ || webview_ ||
@@ -140,7 +188,7 @@ void StationheadLeaderboardCollector::Tick(int64_t nowMs) {
 }
 
 void StationheadLeaderboardCollector::BeginCapture(int64_t nowMs) {
-  if (!started_ || creating_ || captureInFlight_ ||
+  if (!started_ || creating_ || captureInFlight_ || memoryPressure_ ||
       PowerSavingController::IsPowerSavingActive()) {
     return;
   }
@@ -172,15 +220,17 @@ void StationheadLeaderboardCollector::BeginCapture(int64_t nowMs) {
       [this, alive, generation](HRESULT result,
                                 ICoreWebView2Environment* environment) {
         if (!CallbackAlive(alive) || !started_ || generation != generation_) return;
-        if (PowerSavingController::IsPowerSavingActive()) {
+        if (memoryPressure_ || PowerSavingController::IsPowerSavingActive()) {
           ++generation_;
           creating_ = false;
           captureInFlight_ = false;
           captureDueAt_ = 0;
           timeoutAt_ = 0;
           environment_.Reset();
-          nextCaptureAt_ = NextHourlyCollectionSlot(
-              UnixMillis(), kStationheadCollectionPhaseMinute);
+          const int64_t now = UnixMillis();
+          nextCaptureAt_ = memoryPressure_
+              ? now + kMemoryPressureRetryMs
+              : NextHourlyCollectionSlot(now, kStationheadCollectionPhaseMinute);
           UpdateNextWake();
           return;
         }
@@ -216,7 +266,7 @@ HRESULT StationheadLeaderboardCollector::CreateProfileController(
 }
 
 void StationheadLeaderboardCollector::CreateController(uint64_t generation) {
-  if (!started_ || generation != generation_ || !environment_ ||
+  if (!started_ || generation != generation_ || !environment_ || memoryPressure_ ||
       PowerSavingController::IsPowerSavingActive()) {
     return;
   }
@@ -229,7 +279,7 @@ void StationheadLeaderboardCollector::CreateController(uint64_t generation) {
               if (controller) controller->Close();
               return S_OK;
             }
-            if (PowerSavingController::IsPowerSavingActive()) {
+            if (memoryPressure_ || PowerSavingController::IsPowerSavingActive()) {
               if (controller) controller->Close();
               ++generation_;
               creating_ = false;
@@ -237,8 +287,10 @@ void StationheadLeaderboardCollector::CreateController(uint64_t generation) {
               captureDueAt_ = 0;
               timeoutAt_ = 0;
               environment_.Reset();
-              nextCaptureAt_ = NextHourlyCollectionSlot(
-                  UnixMillis(), kStationheadCollectionPhaseMinute);
+              const int64_t now = UnixMillis();
+              nextCaptureAt_ = memoryPressure_
+                  ? now + kMemoryPressureRetryMs
+                  : NextHourlyCollectionSlot(now, kStationheadCollectionPhaseMinute);
               UpdateNextWake();
               return S_OK;
             }
@@ -261,7 +313,7 @@ void StationheadLeaderboardCollector::CreateController(uint64_t generation) {
 }
 
 void StationheadLeaderboardCollector::ConfigureAndNavigate(uint64_t generation) {
-  if (!started_ || generation != generation_ || !controller_ ||
+  if (!started_ || generation != generation_ || !controller_ || memoryPressure_ ||
       PowerSavingController::IsPowerSavingActive()) {
     return;
   }
@@ -288,7 +340,7 @@ void StationheadLeaderboardCollector::ConfigureAndNavigate(uint64_t generation) 
                 !args || timeoutAt_ <= 0) {
               return S_OK;
             }
-            if (PowerSavingController::IsPowerSavingActive()) {
+            if (memoryPressure_ || PowerSavingController::IsPowerSavingActive()) {
               ++generation_;
               creating_ = false;
               captureInFlight_ = false;
@@ -296,8 +348,10 @@ void StationheadLeaderboardCollector::ConfigureAndNavigate(uint64_t generation) 
               timeoutAt_ = 0;
               CloseController();
               environment_.Reset();
-              nextCaptureAt_ = NextHourlyCollectionSlot(
-                  UnixMillis(), kStationheadCollectionPhaseMinute);
+              const int64_t now = UnixMillis();
+              nextCaptureAt_ = memoryPressure_
+                  ? now + kMemoryPressureRetryMs
+                  : NextHourlyCollectionSlot(now, kStationheadCollectionPhaseMinute);
               UpdateNextWake();
               return S_OK;
             }
@@ -325,7 +379,7 @@ void StationheadLeaderboardCollector::ConfigureAndNavigate(uint64_t generation) 
 }
 
 void StationheadLeaderboardCollector::NavigateCurrent(uint64_t generation) {
-  if (!started_ || generation != generation_ || !webview_ ||
+  if (!started_ || generation != generation_ || !webview_ || memoryPressure_ ||
       PowerSavingController::IsPowerSavingActive()) {
     return;
   }
@@ -349,7 +403,7 @@ void StationheadLeaderboardCollector::NavigateCurrent(uint64_t generation) {
 void StationheadLeaderboardCollector::CaptureSnapshot(
     int64_t nowMs, uint64_t generation) {
   if (!started_ || generation != generation_ || !webview_ || captureInFlight_ ||
-      PowerSavingController::IsPowerSavingActive()) {
+      memoryPressure_ || PowerSavingController::IsPowerSavingActive()) {
     return;
   }
   captureInFlight_ = true;
@@ -451,7 +505,7 @@ const links = Array.from(root?.querySelectorAll?.('a[href]') || [])
                 currentView.Get() != webview_.Get()) {
               return S_OK;
             }
-            if (PowerSavingController::IsPowerSavingActive()) {
+            if (memoryPressure_ || PowerSavingController::IsPowerSavingActive()) {
               ++generation_;
               creating_ = false;
               captureInFlight_ = false;
@@ -459,8 +513,10 @@ const links = Array.from(root?.querySelectorAll?.('a[href]') || [])
               timeoutAt_ = 0;
               CloseController();
               environment_.Reset();
-              nextCaptureAt_ = NextHourlyCollectionSlot(
-                  UnixMillis(), kStationheadCollectionPhaseMinute);
+              const int64_t now = UnixMillis();
+              nextCaptureAt_ = memoryPressure_
+                  ? now + kMemoryPressureRetryMs
+                  : NextHourlyCollectionSlot(now, kStationheadCollectionPhaseMinute);
               UpdateNextWake();
               return S_OK;
             }
