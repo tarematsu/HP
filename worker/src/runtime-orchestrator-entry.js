@@ -8,6 +8,7 @@ const ENRICHMENT_QUEUE_NAMES = new Set([
   'stationhead-minute-enrichment',
   'stationhead-track-metadata',
 ]);
+const MINUTE_RUNTIME_STATE_PATH = '/internal/minute-runtime-state';
 
 let fetchGuardPromise;
 let enrichmentModulePromise;
@@ -138,18 +139,23 @@ export async function runCoreQueue(batch, env, ctx, dependencies = EMPTY_DEPENDE
 }
 
 export async function runCoreFetch(request, env, ctx, dependencies = EMPTY_DEPENDENCIES) {
-  const url = new URL(request.url);
-  if (request.method === 'GET' && url.pathname === '/internal/minute-runtime-state') {
-    const read = dependencies.readMinuteRuntimeState || readMinuteFactRuntimeStateList;
-    const tasks = await read(env);
-    return Response.json({
-      ok: Array.isArray(tasks),
-      service: 'sh-runtime-orchestrator',
-      tasks: Array.isArray(tasks) ? tasks : [],
-      checked_at: Date.now(),
-    }, {
-      headers: { 'cache-control': 'no-store' },
-    });
+  // Pages read-model traffic is the dominant fetch path. Avoid parsing its URL
+  // here only to parse it again in runPagesResponseFetch; inspect the rare
+  // runtime-state route only when its literal path can actually be present.
+  if (request.method === 'GET' && request.url.includes(MINUTE_RUNTIME_STATE_PATH)) {
+    const url = new URL(request.url);
+    if (url.pathname === MINUTE_RUNTIME_STATE_PATH) {
+      const read = dependencies.readMinuteRuntimeState || readMinuteFactRuntimeStateList;
+      const tasks = await read(env);
+      return Response.json({
+        ok: Array.isArray(tasks),
+        service: 'sh-runtime-orchestrator',
+        tasks: Array.isArray(tasks) ? tasks : [],
+        checked_at: Date.now(),
+      }, {
+        headers: { 'cache-control': 'no-store' },
+      });
+    }
   }
   const run = dependencies.runPagesFetch || runPagesResponseFetch;
   return run(request, env, ctx, dependencies.pages || EMPTY_DEPENDENCIES);

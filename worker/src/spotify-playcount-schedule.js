@@ -16,6 +16,9 @@ import {
   batchStatements,
 } from './spotify-playcount-common.js';
 
+const SPOTIFY_ALBUM_BATCH_TYPE = 'spotify-playcount-album-batch';
+const SPOTIFY_ALBUM_ENVELOPE_SIZE = 5;
+
 function isConfirmationRunToken(value) {
   return String(value || '').endsWith(':confirm');
 }
@@ -120,9 +123,35 @@ export function catalogQueueMessage(snapshotDate, runToken, artist, index, total
   };
 }
 
+export function packSpotifyQueueBodies(bodies) {
+  const packed = [];
+  let albums = [];
+  const flushAlbums = () => {
+    if (!albums.length) return;
+    packed.push({
+      message_type: SPOTIFY_ALBUM_BATCH_TYPE,
+      message_version: 1,
+      albums,
+    });
+    albums = [];
+  };
+  for (const body of bodies || []) {
+    if (body?.message_type === 'spotify-playcount-album') {
+      albums.push(body);
+      if (albums.length >= SPOTIFY_ALBUM_ENVELOPE_SIZE) flushAlbums();
+      continue;
+    }
+    flushAlbums();
+    packed.push(body);
+  }
+  flushAlbums();
+  return packed;
+}
+
 export async function sendQueueBatch(queue, bodies) {
-  for (let offset = 0; offset < bodies.length; offset += QUEUE_BATCH_SIZE) {
-    const chunk = bodies.slice(offset, offset + QUEUE_BATCH_SIZE);
+  const packedBodies = packSpotifyQueueBodies(bodies);
+  for (let offset = 0; offset < packedBodies.length; offset += QUEUE_BATCH_SIZE) {
+    const chunk = packedBodies.slice(offset, offset + QUEUE_BATCH_SIZE);
     if (typeof queue.sendBatch === 'function') {
       await queue.sendBatch(chunk.map((body) => ({ body, contentType: 'json' })));
     } else {
