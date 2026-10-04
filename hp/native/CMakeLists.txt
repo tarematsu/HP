@@ -244,6 +244,7 @@ set(HOMEPANEL_UPDATER_SOURCES
 
 add_executable(HomePanelUpdater WIN32 ${HOMEPANEL_UPDATER_SOURCES})
 homepanel_configure_common_target(HomePanelUpdater)
+target_precompile_headers(HomePanelUpdater PRIVATE src/updater_no_file_logging.h)
 add_dependencies(HomePanelUpdater homepanel_version_files)
 target_link_libraries(HomePanelUpdater PRIVATE winhttp bcrypt wintrust crypt32 shell32 ole32 user32 windowsapp runtimeobject iphlpapi)
 
