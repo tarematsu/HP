@@ -28,7 +28,7 @@ const results = [];
 const runtimeErrors = [];
 async function checkCsv(page, label) {
   const downloads = [];
-  for (const button of await page.locator('.dashboard-view:not([hidden]) .csv-button:visible:not(:disabled)').all()) {
+  for (const button of await page.locator('.dashboard-view:not([hidden]) :is(.csv-button, #csv, #likesCsv):visible:not(:disabled)').all()) {
     const pending = page.waitForEvent('download', { timeout: 5000 });
     await button.click();
     const download = await pending;
