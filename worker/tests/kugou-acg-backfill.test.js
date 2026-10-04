@@ -143,3 +143,35 @@ test('completed Kugou ACG backfill publishes without another queue message', asy
   assert.equal(continuations, 0);
   assert.equal(acked, true);
 });
+
+test('failed Kugou ACG queue batches persist diagnostics before retry', async () => {
+  const store = r2Store();
+  let acked = false;
+  const message = {
+    body: {
+      message_type: KUGOU_ACG_BACKFILL_MESSAGE_TYPE,
+      start_date: '2019-01-01',
+      requested_at: 123,
+    },
+    ack() { acked = true; },
+  };
+
+  await assert.rejects(() => runRegionalMusicServiceQueue(
+    { messages: [message] },
+    { PAGES_RESPONSE_R2: store.binding },
+    {},
+    {
+      runBackfill: async () => { throw new TypeError('fetch failed'); },
+      publishReadModel: async () => { throw new Error('must not publish'); },
+      sendContinuation: async () => { throw new Error('must not continue'); },
+    },
+  ), /fetch failed/);
+
+  const progress = store.values.get(KUGOU_ACG_HISTORY_PROGRESS_KEY);
+  assert.equal(progress.status, 'error');
+  assert.equal(progress.complete, false);
+  assert.equal(progress.start_date, '2019-01-01');
+  assert.equal(progress.requested_at, 123);
+  assert.match(progress.last_error, /fetch failed/);
+  assert.equal(acked, false);
+});
