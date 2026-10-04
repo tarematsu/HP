@@ -1,0 +1,32 @@
+name: Audit Sakamichi source normalization temporary
+on:
+  push:
+    branches: [audit/sakamichi-source-normalized-20261004]
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        working-directory: worker
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Verify normalized stored source data
+        working-directory: worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== ENGLISH_ALIAS_COUNTS ==='
+          npx wrangler d1 execute stationhead-minute --remote --yes --json --command "SELECT 'sh_track_metadata' AS source,COUNT(*) AS rows FROM sh_track_metadata WHERE LOWER(REPLACE(REPLACE(TRIM(artist),' ',''),'　','')) IN ('sakurazaka46','hinatazaka46','nogizaka46') UNION ALL SELECT 'sh_track_dictionary',COUNT(*) FROM sh_track_dictionary WHERE LOWER(REPLACE(REPLACE(TRIM(artist),' ',''),'　','')) IN ('sakurazaka46','hinatazaka46','nogizaka46') UNION ALL SELECT 'sh_isrc_metadata',COUNT(*) FROM sh_isrc_metadata WHERE LOWER(REPLACE(REPLACE(TRIM(artist),' ',''),'　','')) IN ('sakurazaka46','hinatazaka46','nogizaka46') UNION ALL SELECT 'sh_tracks',COUNT(*) FROM sh_tracks WHERE LOWER(REPLACE(REPLACE(TRIM(artist),' ',''),'　','')) IN ('sakurazaka46','hinatazaka46','nogizaka46');"
+          echo '=== HINATA_SAMPLE ==='
+          npx wrangler d1 execute stationhead-minute --remote --yes --json --command "SELECT spotify_id,title,artist,display_title,source FROM sh_track_metadata WHERE title IN ('お願いバッハ！','君にやられた！','シーラカンス') ORDER BY title,spotify_id LIMIT 30;"
