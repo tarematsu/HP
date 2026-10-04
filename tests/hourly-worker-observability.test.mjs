@@ -12,7 +12,7 @@ const dispatcher = JSON.parse(readFileSync(
 ));
 
 test('generic Cron dispatcher persists invocations for CPU coverage', () => {
-  assert.equal(cloud.triggers, undefined);
+  assert.deepEqual(cloud.triggers, { crons: [] });
   assert.deepEqual(dispatcher.triggers?.crons, ['* * * * *']);
   assert.equal(dispatcher.observability?.enabled, true);
   assert.equal(dispatcher.observability?.logs?.enabled, true);
