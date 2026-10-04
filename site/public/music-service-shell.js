@@ -1,7 +1,17 @@
-import { dashboardSectionHead } from './dashboard-ui-common.js?v=20261001.1';
+import {
+  dashboardModeTabs,
+  dashboardNotice,
+  dashboardSectionHead,
+  dashboardTable,
+  mountDashboardShell,
+} from './dashboard-ui-common.js?v=20261004.1';
 
 function joinClasses(...values) {
   return values.flat().filter(Boolean).join(' ');
+}
+
+function joinHtml(values) {
+  return values.flat(Infinity).filter(Boolean).join('');
 }
 
 export function musicServiceViewClassName(...classes) {
@@ -16,10 +26,39 @@ export function musicServiceMeta({
   id = '',
   className = '',
 } = {}) {
-  return `<div${id ? ` id="${id}"` : ''} class="${joinClasses('regional-chart-meta', 'music-service-meta', className)}">
+  return `<div${id ? ` id="${id}"` : ''} class="${joinClasses('music-service-meta', className)}">
     <span>${label} <strong${valueId ? ` id="${valueId}"` : ''}>-</strong></span>
     <span>更新周期 <strong${cadenceId ? ` id="${cadenceId}"` : ''}>${cadence || '-'}</strong></span>
   </div>`;
+}
+
+export function musicServiceNotice(id) {
+  return id ? dashboardNotice({ id }) : '';
+}
+
+export function musicServiceFilterTabs(items, {
+  className = '',
+  role = 'group',
+  selection = 'pressed',
+  ...options
+} = {}) {
+  return dashboardModeTabs(items, {
+    ...options,
+    className: joinClasses('music-service-filter', className),
+    role,
+    selection,
+  });
+}
+
+export function musicServiceTable({
+  kind = 'track',
+  className = '',
+  ...options
+} = {}) {
+  return dashboardTable({
+    ...options,
+    className: joinClasses('music-service-table', `music-service-${kind}-table`, className),
+  });
 }
 
 export function musicServiceSection({
@@ -37,10 +76,41 @@ export function musicServiceSection({
     title,
     titleId,
     trailingHtml,
-    className: 'regional-chart-section-head',
+    className: 'music-service-section-head',
   });
-  return `<section${id ? ` id="${id}"` : ''} class="${joinClasses('music-service-section', 'regional-chart-section', className)}"${hidden ? ' hidden' : ''}>
+  return `<section${id ? ` id="${id}"` : ''} class="${joinClasses('music-service-section', className)}"${hidden ? ' hidden' : ''}>
     ${heading}
     ${bodyHtml}
   </section>`;
+}
+
+export function mountMusicServiceView({
+  viewId,
+  className = '',
+  noticeId = '',
+  meta = null,
+  sections = [],
+  beforeSectionsHtml = '',
+  afterSectionsHtml = '',
+  tab,
+  anchorId = 'likesView',
+  position = 'beforebegin',
+} = {}) {
+  if (!viewId) throw new Error('music service viewId is required');
+  mountDashboardShell({
+    ...(tab ? { tab } : {}),
+    view: {
+      id: viewId,
+      className: musicServiceViewClassName(className),
+      anchorId,
+      position,
+      html: joinHtml([
+        meta ? musicServiceMeta(meta) : '',
+        musicServiceNotice(noticeId),
+        beforeSectionsHtml,
+        sections,
+        afterSectionsHtml,
+      ]),
+    },
+  });
 }

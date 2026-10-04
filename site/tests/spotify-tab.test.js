@@ -209,7 +209,7 @@ test('Spotify API reports missing D1 only on the producer path', async () => {
   assert.equal(missing.status, 503);
 });
 
-test('Spotify tab uses the QQ compact chart-and-list layout with the shared Canvas renderer', () => {
+test('Spotify tab uses the shared music-service chart-and-list layout with the shared Canvas renderer', () => {
   const shell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
   const commonShell = readFileSync(new URL('../public/music-service-shell.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
@@ -224,14 +224,17 @@ test('Spotify tab uses the QQ compact chart-and-list layout with the shared Canv
   assert.match(shell, /id=\"spotifyMonthlyListenerTrendCharts\"/);
   assert.match(shell, /Spotify 今年リリース上位10曲合計の再生数前日比推移（坂道3グループ）/);
   assert.match(shell, /Spotify Daily Top Artist（日本）の順位推移（坂道3グループ）/);
-  assert.match(shell, /musicServiceViewClassName\('spotify-view'\)/);
-  assert.match(shell, /musicServiceMeta\(\{ valueId: 'spotifyUpdatedAt', cadence: '毎日朝ごろ' \}\)/);
+  assert.match(shell, /mountMusicServiceView/);
+  assert.match(shell, /className: 'spotify-view'/);
+  assert.match(shell, /meta: \{ valueId: 'spotifyUpdatedAt', cadence: '毎日朝ごろ' \}/);
   assert.match(shell, /musicServiceSection/);
+  assert.match(shell, /musicServiceFilterTabs/);
+  assert.match(shell, /musicServiceTable/);
   assert.match(commonShell, /'regional-music-view', 'is-chart-compact', 'music-service-view'/);
-  assert.match(commonShell, /'regional-chart-meta', 'music-service-meta'/);
-  assert.match(commonShell, /'music-service-section', 'regional-chart-section'/);
-  assert.match(commonShell, /regional-chart-section-head/);
-  assert.match(shell, /className: 'regional-chart-filter'/);
+  assert.match(commonShell, /'music-service-meta'/);
+  assert.match(commonShell, /'music-service-section'/);
+  assert.match(commonShell, /className: 'music-service-section-head'/);
+  assert.match(commonShell, /'music-service-filter'/);
   assert.match(shell, /label: '櫻坂46'/);
   assert.match(shell, /label: '乃木坂46'/);
   assert.match(shell, /label: '日向坂46'/);
@@ -242,7 +245,6 @@ test('Spotify tab uses the QQ compact chart-and-list layout with the shared Canv
   assert.match(shell, /id=\"spotifyTop10YearTrendCharts\"/);
   assert.match(shell, /id=\"spotifyArtistRankTrendCharts\"/);
   assert.doesNotMatch(shell, /spotify-monthly-listeners\?format=svg/);
-
   assert.match(runtime, /GRAPH_ARTIST_KEYS = Object\.freeze\(\['sakurazaka46', 'nogizaka46', 'hinatazaka46'\]\)/);
   assert.match(runtime, /nogizaka46: '#8264b0'/);
   assert.match(runtime, /sakurazaka46: '#f3a6c8'/);

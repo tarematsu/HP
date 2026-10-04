@@ -28,6 +28,7 @@ const shellFiles = [
   'first-week-comparison-shell.js',
   'nogizaka-listening-party-shell.js',
 ];
+const musicServiceShellFiles = new Set(['spotify-shell.js', 'apple-music-shell.js', 'amazon-music-shell.js']);
 const shells = Object.fromEntries(shellFiles.map((file) => [
   file,
   readFileSync(new URL(`../public/${file}`, import.meta.url), 'utf8'),
@@ -138,15 +139,19 @@ test('dashboard shells share reusable UI components without runtime stylesheet l
   assert.match(sharedUi, /export function mountDashboardTab/);
   assert.match(sharedUi, /export function mountDashboardView/);
   assert.match(sharedUi, /export function mountDashboardShell/);
+  assert.match(musicServiceShell, /dashboard-ui-common\.js\?v=20261004\.1/);
+  assert.match(musicServiceShell, /mountDashboardShell/);
 
   for (const [name, source] of Object.entries(shells)) {
-    assert.match(source, /dashboard-ui-common\.js\?v=20261001\.1/, `${name} must import shared UI helpers`);
+    if (musicServiceShellFiles.has(name)) assert.match(source, /music-service-shell\.js\?v=20261004\.2/, `${name} must import the music-service shell`);
+    else assert.match(source, /dashboard-ui-common\.js\?v=20261001\.1/, `${name} must import shared UI helpers`);
     assert.doesNotMatch(source, /\.css\?v=|style:\s*\{|function ensureStylesheet\s*\(/, `${name} must rely on the CSS bundle`);
   }
 
   for (const [name, source] of Object.entries(shells)) {
     if (name === 'first-week-comparison-shell.js') continue;
-    assert.match(source, /mountDashboardShell\(/, `${name} must use the common shell mount`);
+    if (musicServiceShellFiles.has(name)) assert.match(source, /mountMusicServiceView\(/, `${name} must use the common music-service mount`);
+    else assert.match(source, /mountDashboardShell\(/, `${name} must use the common dashboard shell mount`);
     assert.doesNotMatch(source, /function mountTab\s*\(/, `${name} must not reimplement tab mounting`);
     assert.doesNotMatch(source, /function mountView\s*\(/, `${name} must not reimplement view mounting`);
   }
@@ -166,13 +171,14 @@ test('dashboard shells share reusable UI components without runtime stylesheet l
   for (const name of ['history-shell.js', 'likes-shell.js', 'played-tracks-shell.js', 'nogizaka-listening-party-shell.js']) {
     assert.match(shells[name], /dashboard(?:Summary|DataCard|ChartCard)/, `${name} must compose shared cards`);
   }
-  for (const name of ['spotify-shell.js', 'apple-music-shell.js', 'amazon-music-shell.js']) {
-    assert.match(shells[name], /musicServiceMeta/, `${name} must use the QQ metadata primitive`);
-    assert.match(shells[name], /musicServiceSection/, `${name} must use the QQ section primitive`);
-    assert.match(shells[name], /musicServiceViewClassName/, `${name} must use the QQ view primitive`);
+  for (const name of musicServiceShellFiles) {
+    assert.match(shells[name], /mountMusicServiceView/, `${name} must use the shared music-service mount`);
+    assert.match(shells[name], /musicServiceSection/, `${name} must use the shared music-service section primitive`);
+    assert.match(shells[name], /musicServiceTable/, `${name} must use the shared music-service table primitive`);
   }
-  assert.match(musicServiceShell, /regional-chart-meta/);
-  assert.match(musicServiceShell, /regional-chart-section/);
+  for (const helper of ['musicServiceMeta', 'musicServiceNotice', 'musicServiceViewClassName', 'musicServiceFilterTabs', 'musicServiceTable', 'musicServiceSection', 'mountMusicServiceView']) {
+    assert.match(musicServiceShell, new RegExp(`export function ${helper}\\(`));
+  }
   assert.match(musicServiceShell, /'regional-music-view', 'is-chart-compact', 'music-service-view'/);
   for (const name of ['followers-shell.js', 'apple-music-shell.js', 'amazon-music-shell.js']) {
     assert.match(shells[name], /dashboardChartHost/, `${name} must use the shared chart host`);
@@ -183,30 +189,39 @@ test('dashboard shells share reusable UI components without runtime stylesheet l
 });
 
 test('dashboard shells reuse shared notices tables legends and mode tabs instead of duplicating markup', () => {
-  const noticeShells = [
-    'history-shell.js', 'likes-shell.js', 'hinata-shell.js', 'followers-shell.js', 'spotify-shell.js',
-    'apple-music-shell.js', 'amazon-music-shell.js', 'played-tracks-shell.js',
+  const directNoticeShells = [
+    'history-shell.js', 'likes-shell.js', 'hinata-shell.js', 'followers-shell.js', 'played-tracks-shell.js',
     'first-week-comparison-shell.js',
   ];
-  for (const name of noticeShells) {
+  for (const name of directNoticeShells) {
     assert.match(shells[name], /dashboardNotice/, `${name} must use the shared notice primitive`);
     assert.doesNotMatch(shells[name], /class="notice"\s+role="status"/, `${name} must not hand-write notice markup`);
   }
+  for (const name of musicServiceShellFiles) {
+    assert.match(shells[name], /mountMusicServiceView/, `${name} must delegate notice construction to the music-service shell`);
+    assert.doesNotMatch(shells[name], /class="notice"\s+role="status"/, `${name} must not hand-write notice markup`);
+  }
+  assert.match(musicServiceShell, /dashboardNotice/);
 
-  const tableShells = [
-    'history-shell.js', 'likes-shell.js', 'hinata-shell.js', 'followers-shell.js', 'spotify-shell.js',
-    'apple-music-shell.js', 'amazon-music-shell.js', 'played-tracks-shell.js',
+  const directTableShells = [
+    'history-shell.js', 'likes-shell.js', 'hinata-shell.js', 'followers-shell.js', 'played-tracks-shell.js',
     'first-week-comparison-shell.js', 'nogizaka-listening-party-shell.js',
   ];
-  for (const name of tableShells) {
+  for (const name of directTableShells) {
     assert.match(shells[name], /dashboardTable/, `${name} must use the shared table primitive`);
     assert.doesNotMatch(shells[name], /<div class="table-wrap/, `${name} must not hand-write table wrappers`);
   }
+  for (const name of musicServiceShellFiles) {
+    assert.match(shells[name], /musicServiceTable/, `${name} must delegate table construction to the music-service shell`);
+    assert.doesNotMatch(shells[name], /<div class="table-wrap/, `${name} must not hand-write table wrappers`);
+  }
+  assert.match(musicServiceShell, /dashboardTable/);
 
   for (const name of ['history-shell.js', 'hinata-shell.js', 'followers-shell.js', 'apple-music-shell.js', 'first-week-comparison-shell.js', 'nogizaka-listening-party-shell.js']) {
     assert.match(shells[name], /dashboardLegend/, `${name} must use the shared legend primitive`);
   }
-  assert.match(shells['spotify-shell.js'], /dashboardModeTabs/);
+  assert.match(shells['spotify-shell.js'], /musicServiceFilterTabs/);
+  assert.match(musicServiceShell, /dashboardModeTabs/);
   assert.doesNotMatch(shells['spotify-shell.js'], /<div class="mode-tabs">/);
 });
 

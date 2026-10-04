@@ -15,6 +15,7 @@ const tableDom = readFileSync(new URL('../public/dashboard-table-dom.js', import
 const css = readFileSync(new URL('../public/apple-music.css', import.meta.url), 'utf8');
 const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
+const commonShell = readFileSync(new URL('../public/music-service-shell.js', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/apple-music.js', import.meta.url), 'utf8');
 const playlistApi = readFileSync(new URL('../functions/api/apple-music-playlists.js', import.meta.url), 'utf8');
 
@@ -24,7 +25,8 @@ test('Apple Music is a dashboard route backed only by Worker materialized read m
   assert.match(tabs, /import\('\/apple-music\.js\?v=20261001\.1'\)/);
   assert.doesNotMatch(tabs, /import\(location\.origin \+ '\/apple-music\.js/);
   assert.match(tabs, /async function showLazyView/);
-  assert.match(shell, /mountDashboardShell/);
+  assert.match(shell, /mountMusicServiceView/);
+  assert.match(commonShell, /mountDashboardShell/);
   assert.match(shell, /dashboardChartHost/);
   assert.match(sharedUi, /class="\$\{joinClasses\('shared-svg-chart', className\)\}"/);
   assert.match(runtime, /fetch\('\/api\/apple-music'/);
@@ -127,12 +129,13 @@ test('Apple Music UI uses sh_tracks.id before localized song_key for identity', 
   assert.match(runtime, /return String\(track\?\.song_key \|\| track\?\.apple_music_id \|\| ''\)/);
 });
 
-test('Apple Music view fixes the top graph to Japan and uses one regional ranking table', () => {
+test('Apple Music view fixes the top graph to Japan and uses one shared ranking table', () => {
   assert.match(shell, /id: 'appleRankChart'/);
   assert.match(shell, /dashboardLegend/);
   assert.match(shell, /id: 'appleRankLegend'/);
   assert.match(shell, /日本の人気曲順位推移/);
-  assert.match(shell, /dashboardTable/);
+  assert.match(shell, /musicServiceTable/);
+  assert.match(commonShell, /dashboardTable/);
   assert.match(shell, /id: 'appleRegionCompareTable'/);
   assert.match(shell, /地域別人気順位一覧/);
   assert.doesNotMatch(shell, /appleRegionTabs|appleMusicTbody|前日比/);

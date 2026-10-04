@@ -1,26 +1,21 @@
+import { dashboardChartHost } from './dashboard-ui-common.js?v=20261001.1';
 import {
-  dashboardChartHost,
-  dashboardModeTabs,
-  dashboardNotice,
-  dashboardTable,
-  mountDashboardShell,
-} from './dashboard-ui-common.js?v=20261001.1';
-import {
-  musicServiceMeta,
+  mountMusicServiceView,
+  musicServiceFilterTabs,
   musicServiceSection,
-  musicServiceViewClassName,
-} from './music-service-shell.js?v=20261004.1';
+  musicServiceTable,
+} from './music-service-shell.js?v=20261004.2';
 import { installAmazonMusicUpdatedAt } from './music-service-updated-at.js?v=20261004.1';
 
-const tracksTable = dashboardTable({
-  className: 'amazon-table regional-music-table music-service-track-table',
+const tracksTable = musicServiceTable({
+  className: 'amazon-table',
   wrapClassName: 'table-fit-mobile',
   colgroupHtml: '<colgroup><col class="amazon-rank-col"><col class="amazon-rank-col"><col class="amazon-artist-col"><col></colgroup>',
   headers: ['Amazon Music総合順位', '前日比', 'アーティスト', '曲名'],
   bodyId: 'amazonMusicTbody',
 });
 
-const modeButtons = dashboardModeTabs([
+const modeButtons = musicServiceFilterTabs([
   { value: 'all', label: '全楽曲順位', active: true },
   { value: 'titles', label: '表題曲比較' },
   { value: 'sakurazaka', label: '櫻坂46' },
@@ -28,10 +23,8 @@ const modeButtons = dashboardModeTabs([
   { value: 'hinatazaka', label: '日向坂46' },
 ], {
   dataAttribute: 'amazon-mode',
-  className: 'amazon-mode-switch regional-chart-filter',
+  className: 'amazon-mode-switch',
   ariaLabel: 'Amazon Music表示切替',
-  role: 'group',
-  selection: 'pressed',
 });
 
 const rankSection = musicServiceSection({
@@ -60,25 +53,18 @@ const playlistSection = musicServiceSection({
   bodyHtml: '<div id="amazonPlaylistMount"></div>',
 });
 
-mountDashboardShell({
+mountMusicServiceView({
   tab: {
     view: 'amazon-music',
     label: 'Amazon Music',
     anchorSelector: '[data-view="spotify"]',
     position: 'afterend',
   },
-  view: {
-    id: 'amazonMusicView',
-    className: musicServiceViewClassName('amazon-music-view'),
-    anchorId: 'likesView',
-    position: 'beforebegin',
-    html: `
-      ${musicServiceMeta({ valueId: 'amazonUpdatedAt', cadence: '毎日6:00' })}
-      ${dashboardNotice({ id: 'amazonMusicNotice' })}
-      ${rankSection}
-      ${tracksSection}
-      ${playlistSection}`,
-  },
+  viewId: 'amazonMusicView',
+  className: 'amazon-music-view',
+  noticeId: 'amazonMusicNotice',
+  meta: { valueId: 'amazonUpdatedAt', cadence: '毎日6:00' },
+  sections: [rankSection, tracksSection, playlistSection],
 });
 
 installAmazonMusicUpdatedAt();

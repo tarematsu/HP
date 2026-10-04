@@ -10,29 +10,32 @@ const regional = readFileSync(new URL('../public/regional-music-shell.js', impor
 const commonShell = readFileSync(new URL('../public/music-service-shell.js', import.meta.url), 'utf8');
 const commonRuntime = readFileSync(new URL('../public/music-service-runtime-common.js', import.meta.url), 'utf8');
 const commonCss = readFileSync(new URL('../public/music-service-common.css', import.meta.url), 'utf8');
+const regionalCss = readFileSync(new URL('../public/regional-music.css', import.meta.url), 'utf8');
 const playlistRuntime = readFileSync(new URL('../public/music-service-playlists.js', import.meta.url), 'utf8');
 
-test('all music subscription views use the QQ compact shell contract', () => {
+test('all music subscription views mount through one shared shell contract', () => {
   for (const source of [spotify, apple, amazon, youtube, regional]) {
-    assert.match(source, /musicServiceMeta/);
+    assert.match(source, /mountMusicServiceView/);
     assert.match(source, /musicServiceSection/);
-    assert.match(source, /musicServiceViewClassName/);
+    assert.doesNotMatch(source, /mountDashboardShell|dashboardNotice|dashboardTable/);
   }
+  assert.match(commonShell, /export function mountMusicServiceView/);
   assert.match(commonShell, /export function musicServiceViewClassName/);
-  assert.match(commonShell, /'regional-music-view', 'is-chart-compact', 'music-service-view'/);
   assert.match(commonShell, /export function musicServiceMeta/);
-  assert.match(commonShell, /'regional-chart-meta', 'music-service-meta'/);
+  assert.match(commonShell, /export function musicServiceNotice/);
   assert.match(commonShell, /export function musicServiceSection/);
+  assert.match(commonShell, /export function musicServiceTable/);
+  assert.match(commonShell, /export function musicServiceFilterTabs/);
   assert.match(commonShell, /dashboardSectionHead/);
-  assert.match(commonShell, /'music-service-section', 'regional-chart-section'/);
-  assert.doesNotMatch(commonShell, /MutationObserver|ensureRegionalNotice|REGIONAL_SPECIAL_SERVICES/);
+  assert.match(commonShell, /className: 'music-service-section-head'/);
+  assert.doesNotMatch(commonShell, /regional-chart-meta|regional-chart-section|regional-chart-filter/);
 });
 
 test('metadata and regional cadence share one compact contract', () => {
-  assert.match(spotify, /musicServiceMeta\(\{ valueId: 'spotifyUpdatedAt', cadence: '毎日朝ごろ' \}\)/);
-  assert.match(apple, /musicServiceMeta\(\{ valueId: 'appleUpdatedAt', cadence: '毎日6:00' \}\)/);
-  assert.match(amazon, /musicServiceMeta\(\{ valueId: 'amazonUpdatedAt', cadence: '毎日6:00' \}\)/);
-  assert.match(youtube, /musicServiceMeta\(\{ valueId: 'youtubeMusicUpdated', cadence: '毎日0:00' \}\)/);
+  assert.match(spotify, /meta: \{ valueId: 'spotifyUpdatedAt', cadence: '毎日朝ごろ' \}/);
+  assert.match(apple, /meta: \{ valueId: 'appleUpdatedAt', cadence: '毎日6:00' \}/);
+  assert.match(amazon, /meta: \{ valueId: 'amazonUpdatedAt', cadence: '毎日6:00' \}/);
+  assert.match(youtube, /meta: \{ valueId: 'youtubeMusicUpdated', cadence: '毎日0:00' \}/);
   assert.match(regional, /id: 'regionalMusicCompactMeta'/);
   assert.match(regional, /valueId: 'regionalMusicChartUpdated'/);
   assert.match(regional, /cadenceId: 'regionalMusicChartCadence'/);
@@ -41,8 +44,9 @@ test('metadata and regional cadence share one compact contract', () => {
   assert.doesNotMatch(commonShell, /qq_music|kugou_music|netease_cloud_music/);
 });
 
-test('service shells keep data-specific sections but no longer own overview-card layout', () => {
-  for (const source of [spotify, apple, amazon, youtube]) {
+test('service shells retain only data-specific section definitions', () => {
+  for (const source of [spotify, apple, amazon, youtube, regional]) {
+    assert.match(source, /musicServiceTable/);
     assert.doesNotMatch(source, /dashboardSummary|dashboardSummaryItem|dashboardDataCard|dashboardChartCard/);
   }
   assert.match(spotify, /spotifyOverviewTrendSection/);
@@ -52,25 +56,34 @@ test('service shells keep data-specific sections but no longer own overview-card
   assert.match(regional, /qqJapanChartSection/);
   assert.match(regional, /kugouJapanChartSection/);
   assert.doesNotMatch(regional, /melonArtistPopularitySection/);
-  assert.doesNotMatch(regional, /regionalMusicGenericHeader|regional-music-summary|regionalMusicHealth/);
 });
 
-test('music subscription presentation reuses one small responsive contract', () => {
-  assert.match(commonCss, /\.music-service-meta/);
-  assert.match(commonCss, /\.music-service-section/);
-  assert.match(commonCss, /\.music-service-panel/);
-  assert.match(commonCss, /\.music-service-playlist-table/);
+test('all music subscription presentation uses one responsive layout contract', () => {
+  for (const selector of [
+    '.music-service-view.is-chart-compact',
+    '.music-service-meta',
+    '.music-service-section',
+    '.music-service-filter.mode-tabs',
+    '.music-service-table :is(th, td)',
+    '.music-service-playlist-table',
+  ]) {
+    assert.ok(commonCss.includes(selector), selector);
+  }
   assert.match(commonCss, /@media \(max-width: 760px\)/);
+  assert.doesNotMatch(regionalCss, /regional-chart-meta|regional-chart-section-head|regional-chart-filter/);
+  assert.doesNotMatch(regionalCss, /regional-music-view\.is-chart-compact \.regional-music-table/);
 });
 
-test('Amazon and regional filters use the shared mode-tab primitive', () => {
-  assert.match(amazon, /dashboardModeTabs/);
-  assert.match(regional, /dashboardModeTabs/);
-  assert.doesNotMatch(amazon, /<div class="mode-tabs amazon-mode-switch/);
-  assert.doesNotMatch(regional, /<div class="mode-tabs regional-chart-filter/);
+test('Spotify Apple Amazon and regional filters use the shared filter primitive', () => {
+  for (const source of [spotify, apple, amazon, regional]) {
+    assert.match(source, /musicServiceFilterTabs/);
+    assert.doesNotMatch(source, /dashboardModeTabs/);
+  }
+  assert.match(commonShell, /dashboardModeTabs/);
+  assert.match(commonShell, /className: joinClasses\('music-service-filter', className\)/);
 });
 
-test('playlist detail stays lazy and renders directly inside the shared QQ section', () => {
+test('playlist detail stays lazy and renders inside shared sections', () => {
   assert.match(amazon, /function playlistModuleUrl\(\)/);
   assert.match(amazon, /\['\/music-service-playlists\.js', 'v=20261004\.1'\]\.join\('\?'\)/);
   assert.match(amazon, /import\(playlistModuleUrl\(\)\)/);

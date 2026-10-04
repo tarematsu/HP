@@ -1,33 +1,27 @@
 import {
   dashboardChartHost,
   dashboardLegend,
-  dashboardModeTabs,
-  dashboardNotice,
-  dashboardTable,
-  mountDashboardShell,
 } from './dashboard-ui-common.js?v=20261001.1';
 import {
-  musicServiceMeta,
+  mountMusicServiceView,
+  musicServiceFilterTabs,
   musicServiceSection,
-  musicServiceViewClassName,
-} from './music-service-shell.js?v=20261004.1';
+  musicServiceTable,
+} from './music-service-shell.js?v=20261004.2';
 import { installAppleMusicUpdatedAt } from './music-service-updated-at.js?v=20261004.1';
 
-const artistTabs = dashboardModeTabs([
+const artistTabs = musicServiceFilterTabs([
   { value: 'sakurazaka46', label: '櫻坂46', active: true },
   { value: 'nogizaka46', label: '乃木坂46' },
   { value: 'hinatazaka46', label: '日向坂46' },
 ], {
   dataAttribute: 'apple-artist',
-  className: 'regional-chart-filter',
   ariaLabel: 'Apple Musicアーティスト切替',
-  role: 'group',
-  selection: 'pressed',
 });
 
-const regionTable = dashboardTable({
+const regionTable = musicServiceTable({
   id: 'appleRegionCompareTable',
-  className: 'apple-table apple-region-table regional-music-table music-service-track-table',
+  className: 'apple-table apple-region-table',
   wrapClassName: 'apple-region-table-wrap',
 });
 
@@ -62,25 +56,18 @@ const playlistSection = musicServiceSection({
   bodyHtml: '<div id="applePlaylistMount"></div>',
 });
 
-mountDashboardShell({
+mountMusicServiceView({
   tab: {
     view: 'apple-music',
     label: 'Apple Music',
     anchorSelector: '[data-view="spotify"]',
     position: 'beforebegin',
   },
-  view: {
-    id: 'appleMusicView',
-    className: musicServiceViewClassName('apple-music-view'),
-    anchorId: 'likesView',
-    position: 'beforebegin',
-    html: `
-      ${musicServiceMeta({ valueId: 'appleUpdatedAt', cadence: '毎日6:00' })}
-      ${dashboardNotice({ id: 'appleMusicNotice' })}
-      ${rankSection}
-      ${tracksSection}
-      ${playlistSection}`,
-  },
+  viewId: 'appleMusicView',
+  className: 'apple-music-view',
+  noticeId: 'appleMusicNotice',
+  meta: { valueId: 'appleUpdatedAt', cadence: '毎日6:00' },
+  sections: [rankSection, tracksSection, playlistSection],
 });
 
 installAppleMusicUpdatedAt();
