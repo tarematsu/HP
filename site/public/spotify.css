@@ -79,13 +79,7 @@
 }
 
 .spotify-data-panel .section-head {
-  align-items: center;
   gap: 6px;
-}
-
-.spotify-data-panel .mode-tabs {
-  grid-template-columns: repeat(3, max-content);
-  margin: 0 0 0 auto;
 }
 
 #spotifyTableTitle {
