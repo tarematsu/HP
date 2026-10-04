@@ -113,6 +113,34 @@
   outline-offset: -2px;
 }
 
+.stationhead-history-chart-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.stationhead-history-chart-wrap > .shared-dashboard-canvas {
+  position: relative;
+  z-index: 0;
+}
+
+.stationhead-history-gap-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.stationhead-history-gap-band {
+  position: absolute;
+  display: block;
+  background: rgba(100, 107, 116, .18);
+}
+
+.history-missing-legend {
+  color: var(--muted, #667287);
+}
+
 /* SVG-only feature renderers retain semantic classes; Canvas charts use dashboard-chart-canvas.js. */
 :is(
   .shared-rank-grid,
