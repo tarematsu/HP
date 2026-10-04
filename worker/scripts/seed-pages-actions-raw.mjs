@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   pagesActionsR2ResponseKey,
+  pagesActionsRawMetadataR2ResponseKey,
   pagesActionsRawR2ResponseKey,
 } from '../src/pages-response-r2.js';
 
@@ -29,17 +30,7 @@ function wrangler(args, options = {}) {
 }
 
 function sourceEtag(envelopeText) {
-  // Wrangler uploads these small read-model envelopes with one R2 PUT. R2 stores
-  // an MD5 checksum for non-multipart uploads, which is also exposed as the ETag
-  // used by the runtime's existing raw-companion validation.
   return createHash('md5').update(envelopeText).digest('hex');
-}
-
-function metadataHeaders(metadata) {
-  return Object.entries(metadata).flatMap(([key, value]) => [
-    '--header',
-    `x-amz-meta-${key}:${String(value)}`,
-  ]);
 }
 
 export function rawMetadataForEnvelope(envelope, etag) {
@@ -58,21 +49,22 @@ export function seedRawActionsModel(modelKey, dependencies = {}) {
     'r2', 'object', 'get', `${responseBucket}/${key}`,
     '--remote', '--file', path,
   ]));
-  const putObject = dependencies.putObject || ((key, path, metadata) => wrangler([
+  const putObject = dependencies.putObject || ((key, path) => wrangler([
     'r2', 'object', 'put', `${responseBucket}/${key}`,
     '--remote', '--file', path,
     '--content-type', 'application/json; charset=utf-8',
-    ...metadataHeaders(metadata),
   ], { capture: false }));
 
   const sourceKey = pagesActionsR2ResponseKey(modelKey);
   const rawKey = pagesActionsRawR2ResponseKey(modelKey);
-  if (!sourceKey || !rawKey) throw new Error(`invalid pages read-model key: ${modelKey}`);
+  const metadataKey = pagesActionsRawMetadataR2ResponseKey(modelKey);
+  if (!sourceKey || !rawKey || !metadataKey) throw new Error(`invalid pages read-model key: ${modelKey}`);
 
   const directory = mkdtempSync(join(workerRoot, '.pages-actions-raw-'));
   try {
     const sourcePath = join(directory, 'source.json');
     const rawPath = join(directory, 'raw.json');
+    const metadataPath = join(directory, 'metadata.json');
     getObject(sourceKey, sourcePath);
     const envelopeText = readFileSync(sourcePath, 'utf8');
     const envelope = JSON.parse(envelopeText);
@@ -81,9 +73,19 @@ export function seedRawActionsModel(modelKey, dependencies = {}) {
     }
     JSON.parse(envelope.body);
     const etag = sourceEtag(envelopeText);
+    const metadata = rawMetadataForEnvelope(envelope, etag);
     writeFileSync(rawPath, envelope.body, 'utf8');
-    putObject(rawKey, rawPath, rawMetadataForEnvelope(envelope, etag));
-    return { key: modelKey, source_key: sourceKey, raw_key: rawKey, bytes: envelope.body.length, source_etag: etag };
+    writeFileSync(metadataPath, JSON.stringify(metadata), 'utf8');
+    putObject(rawKey, rawPath);
+    putObject(metadataKey, metadataPath);
+    return {
+      key: modelKey,
+      source_key: sourceKey,
+      raw_key: rawKey,
+      metadata_key: metadataKey,
+      bytes: envelope.body.length,
+      source_etag: etag,
+    };
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
