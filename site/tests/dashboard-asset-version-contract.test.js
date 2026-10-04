@@ -9,10 +9,10 @@ const styles = readFileSync(new URL('../public/dashboard-styles.js', import.meta
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const common = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
 const rangeNavigator = readFileSync(new URL('../public/history/history-range-navigator.js', import.meta.url), 'utf8');
-const currentChart = readFileSync(new URL('../public/dashboard-chart-comparison.js', import.meta.url), 'utf8');
+const currentChart = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
 const firstWeekChart = readFileSync(new URL('../public/first-week-comparison.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
-const rankingChart = readFileSync(new URL('../public/history/history-ranking-chart.js', import.meta.url), 'utf8');
+const rankingChart = readFileSync(new URL('../public/leaderboard.js', import.meta.url), 'utf8');
 
 function assetVersion(source, asset) {
   const escaped = asset.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -53,18 +53,9 @@ test('build minifies dashboard and official entry points with shared CSS groups'
   assert.match(buildScript, /const cssGroups = Object\.freeze\(\{/);
   for (const group of ['dashboard', 'stationhead', 'subscriptions']) assert.match(buildScript, new RegExp(`${group}: \\[`));
   for (const css of [
-    'app-lite.css',
-    'dashboard-presentation.css',
-    'pages-layout.css',
-    'dashboard-ui-common.css',
-    'first-week-comparison.css',
-    'played-tracks.css',
-    'followers.css',
-    'hinata.css',
-    'spotify.css',
-    'apple-music.css',
-    'amazon-music.css',
-    'music-service-common.css',
+    'app-lite.css', 'dashboard-presentation.css', 'pages-layout.css', 'dashboard-ui-common.css',
+    'first-week-comparison.css', 'played-tracks.css', 'followers.css', 'hinata.css', 'spotify.css',
+    'apple-music.css', 'amazon-music.css', 'music-service-common.css',
   ]) assert.match(buildScript, new RegExp(css.replaceAll('.', '\\.')));
   assert.doesNotMatch(buildScript, /regional-music\.css/);
   assert.match(buildScript, /buildCssBundle\(name, files\)/);
@@ -81,9 +72,9 @@ test('feature stylesheet loading exists only in the central route client', () =>
   assert.doesNotMatch(rangeNavigator, /ensureStylesheet|createElement\('link'\)|\.css\?v=/);
 });
 
-test('Canvas chart normalization lives in source modules instead of build transforms', () => {
+test('Canvas chart normalization lives in active source modules instead of build transforms', () => {
   assert.match(currentChart, /context\.font = '11px system-ui'/);
-  assert.match(currentChart, /drawSeries\(context, current, xFor, yOnline, '#111', 2\)/);
+  assert.match(currentChart, /drawOnlineSeries\(context, rows, x, y, '#111', 2\)/);
   assert.match(firstWeekChart, /context\.font = '11px system-ui'/);
   assert.match(firstWeekChart, /lineWidth: 2/);
   assert.match(firstWeekChart, /drawDashboardLine/);
@@ -91,5 +82,5 @@ test('Canvas chart normalization lives in source modules instead of build transf
   assert.match(periodChart, /width: 2/);
   assert.match(rankingChart, /context\.font = '11px system-ui'/);
   assert.match(rankingChart, /lineWidth: 2/);
-  assert.match(rankingChart, /context\.arc\(positions\[row\.index\], yFor\(row\.rank\), 3,/);
+  assert.match(rankingChart, /context\.arc\(positions\[rowIndex\], yFor\(row\.rank\), 3,/);
 });
