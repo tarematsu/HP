@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const native = readFileSync(new URL(
   '../../native/src/renderer_panels/media_tver_current_player_settings.inc', import.meta.url), 'utf8');
-const script = native.match(/LR"JS\(([\s\S]*?)\)JS"/)?.[1];
+const script = Array.from(native.matchAll(/LR"JS\(([\s\S]*?)\)JS"/g), match => match[1]).join('');
 assert.ok(script, 'extract current TVer player settings bridge');
 
 function control(label, role = 'button', onClick = () => {}) {
