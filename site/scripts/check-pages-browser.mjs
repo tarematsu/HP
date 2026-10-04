@@ -6,7 +6,10 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
 import assert from 'node:assert/strict';
 const root = resolve('site/public');
-const output = resolve('site/artifacts/browser');
+const live = process.argv.includes('--live');
+const output = resolve(`site/artifacts/${live ? 'browser-live' : 'browser'}`);
+const snapshots = new Map();
+const apiResults = [];
 await mkdir(output, { recursive: true });
 const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json' };
 const server = createServer(async (req, res) => {
@@ -25,12 +28,23 @@ const results = [];
 try {
   for (const width of [390, 1440]) {
     const page = await browser.newPage({ viewport: { width, height: 960 } });
-    await page.route('**/api/**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, rows: [], history: [], dates: [], artists: [], tracks: [], ranking: [], series: [], items: [], latest: {}, queue: [] }) }));
+    await page.route('**/api/**', async route => {
+      const path = new URL(route.request().url()).pathname + new URL(route.request().url()).search;
+      if (!live) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, rows: [], history: [], dates: [], artists: [], tracks: [], ranking: [], series: [], items: [], latest: {}, queue: [] }) });
+      if (!snapshots.has(path)) snapshots.set(path, (async () => {
+        const response = await fetch(`https://skrzk.pages.dev${path}`, { signal: AbortSignal.timeout(30000) });
+        const body = await response.text();
+        apiResults.push({ path, status: response.status, capturedAt: new Date().toISOString(), bytes: Buffer.byteLength(body) });
+        return { status: response.status, contentType: 'application/json', body };
+      })());
+      try { await route.fulfill(await snapshots.get(path)); }
+      catch (error) { apiResults.push({ path, error: error.message }); await route.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'snapshot unavailable' }) }); }
+    });
     await page.goto(origin);
     for (const mode of ['current', 'daily', 'weekly', 'monthly', 'played-tracks', 'likes', 'broadcasts', 'hinata', 'nogizaka', 'spotify', 'apple-music', 'amazon-music', 'youtube-music', 'kkbox', 'qq_music', 'kugou_music', 'ranking', 'followers', 'music-ranking', 'music-followers']) {
       await page.evaluate(mode => { location.hash = mode; }, mode);
       await page.waitForFunction(() => [...document.querySelectorAll('.dashboard-view')].some(node => !node.hidden), { timeout: 10000 });
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(live ? 1500 : 500);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2);
       assert.equal(overflow, false, `${mode} at ${width}px overflows the document`);
       assert.equal(await page.locator('main').count(), 1);
@@ -45,10 +59,28 @@ try {
         assert.equal(await visible.getAttribute('data-group'), group);
         await page.screenshot({ path: `${output}/${mode}-${group}-${width}.png`, fullPage: true });
       }
+      for (const button of await page.locator('.dashboard-view:not([hidden]) [data-stationhead-section]:not(:disabled)').all()) {
+        await button.click();
+        await page.waitForTimeout(live ? 1500 : 300);
+        const section = await button.getAttribute('data-stationhead-section');
+        await page.screenshot({ path: `${output}/${mode}-${section}-${width}.png`, fullPage: true });
+      }
+      const downloads = [];
+      for (const button of await page.locator('.dashboard-view:not([hidden]) .csv-button:visible:not(:disabled)').all()) {
+        const downloadPromise = page.waitForEvent('download', { timeout: 5000 });
+        await button.click();
+        const download = await downloadPromise;
+        assert.match(download.suggestedFilename(), /\.csv$/i);
+        const target = `${output}/${mode}-${width}-${downloads.length}.csv`;
+        await download.saveAs(target);
+        const csv = await readFile(target, 'utf8');
+        assert.ok(csv.trim().length > 0, 'CSV is empty');
+        downloads.push({ name: download.suggestedFilename(), bytes: Buffer.byteLength(csv) });
+      }
       await page.screenshot({ path: `${output}/${mode}-${width}.png`, fullPage: true });
-      results.push({ mode, width, overflow });
+      results.push({ mode, width, overflow, downloads });
     }
     await page.close();
   }
-  await writeFile(`${output}/results.json`, JSON.stringify(results, null, 2));
+  await writeFile(`${output}/results.json`, JSON.stringify({ source: live ? 'production API snapshots with PR assets' : 'empty fixture', capturedAt: new Date().toISOString(), results, apiResults }, null, 2));
 } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
