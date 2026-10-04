@@ -6,7 +6,9 @@ const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/regional-music.js', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../public/regional-music-shell.js', import.meta.url), 'utf8');
+const commonShell = readFileSync(new URL('../public/music-service-shell.js', import.meta.url), 'utf8');
 const commonRuntime = readFileSync(new URL('../public/music-service-runtime-common.js', import.meta.url), 'utf8');
+const musicCss = readFileSync(new URL('../public/music-service-common.css', import.meta.url), 'utf8');
 const regionalApi = readFileSync(new URL('../functions/api/regional-music.js', import.meta.url), 'utf8');
 const qqRuntime = readFileSync(new URL('../public/qq-japan-chart-ui.js', import.meta.url), 'utf8');
 const youtubeRuntime = readFileSync(new URL('../public/youtube-music.js', import.meta.url), 'utf8');
@@ -74,18 +76,22 @@ test('regional, QQ, and YouTube reuse one materialized read-model loader', () =>
     assert.doesNotMatch(source, /const readModelPromise(?:s)? =/);
   }
   assert.match(runtime, /payload\.service/);
-  assert.match(shell, /id: 'regionalMusicView'/);
+  assert.match(shell, /viewId: 'regionalMusicView'/);
   assert.match(shell, /regionalMusicArtistBody/);
   assert.match(shell, /regionalMusicTrackBody/);
   assert.match(shell, /regionalMusicPlaylistBody/);
   assert.match(build, /'regional-music\.css'/);
 });
 
-test('regional shell reuses shared tabs, notices, tables, and service sections', () => {
-  assert.match(shell, /dashboardModeTabs/);
-  assert.match(shell, /dashboardNotice\(\{ id: 'regionalMusicNotice' \}\)/);
-  assert.match(shell, /dashboardTable/);
+test('regional shell reuses shared filters, notices, tables, and service sections', () => {
+  assert.match(shell, /musicServiceFilterTabs/);
+  assert.match(shell, /musicServiceNotice/);
+  assert.match(shell, /musicServiceTable/);
   assert.match(shell, /musicServiceSection/);
+  assert.match(shell, /mountMusicServiceView/);
+  assert.match(commonShell, /dashboardModeTabs/);
+  assert.match(commonShell, /dashboardNotice/);
+  assert.match(commonShell, /dashboardTable/);
   assert.doesNotMatch(shell, /<div class="mode-tabs regional-chart-filter"/);
 });
 
@@ -107,7 +113,8 @@ test('Kugou exposes Japan and ACG chart history with shared filters', () => {
   assert.match(shell, /kugouAcgRankChart/);
   assert.match(runtime, /setCompactChartMode/);
   assert.match(runtime, /regionalMusicGenericTables/);
-  assert.match(regionalCss, /\.regional-music-view\.is-chart-compact/);
+  assert.match(musicCss, /\.music-service-view\.is-chart-compact/);
+  assert.doesNotMatch(regionalCss, /\.regional-music-view\.is-chart-compact/);
 });
 
 test('QQ uses shared cadence, read model, charts, filters, and tables', () => {
@@ -135,6 +142,8 @@ test('YouTube Music shares the common runtime and renders public metrics', () =>
   assert.match(youtubeShell, /月間視聴者/);
   assert.match(youtubeShell, /総視聴回数/);
   assert.match(youtubeShell, /youtubeMusicReleaseBody/);
+  assert.match(youtubeShell, /mountMusicServiceView/);
+  assert.match(youtubeShell, /musicServiceTable/);
   assert.doesNotMatch(youtubeRuntime, /youtubeMusicHealth|youtubeMusicStatus|youtubeMusicArtistCount|youtubeMusicTrackCount|youtubeMusicReleaseCount/);
   assert.doesNotMatch(youtubeRuntime, /function (?:cell|row)\s*\(/);
 });
