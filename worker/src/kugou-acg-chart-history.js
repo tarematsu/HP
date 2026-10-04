@@ -121,6 +121,21 @@ export function kugouAcgSongsUrl(volid) {
   return `http://mobilecdnbj.kugou.com/api/v3/rank/song?${params}`;
 }
 
+export function parseKugouApiJson(value) {
+  const text = String(value ?? '')
+    .replaceAll('<!--KG_TAG_RES_START-->', '')
+    .replaceAll('<!--KG_TAG_RES_END-->', '')
+    .trim();
+  if (!text) throw new Error('Kugou ACG returned an empty response');
+  return JSON.parse(text);
+}
+
+async function responsePayload(response) {
+  if (typeof response?.text === 'function') return parseKugouApiJson(await response.text());
+  if (typeof response?.json === 'function') return response.json();
+  throw new Error('Kugou ACG response body is unavailable');
+}
+
 function canonicalArtistFromEntry(entry) {
   const filename = String(entry?.filename || entry?.FileName || '');
   const artistPart = filename.split(/\s+-\s+/,1)[0] || '';
@@ -285,7 +300,7 @@ async function fetchJson(fetchImpl, url) {
     signal:AbortSignal.timeout(30_000),
   });
   if (!response.ok) throw new Error(`Kugou ACG HTTP ${response.status}`);
-  const payload = await response.json();
+  const payload = await responsePayload(response);
   if (Number(payload?.status) !== 1 || Number(payload?.errcode || 0) !== 0) throw new Error('Kugou ACG provider error');
   return payload;
 }
