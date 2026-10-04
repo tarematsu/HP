@@ -75,7 +75,7 @@ export function stationheadChannelMarkup() {
     </section>`;
 }
 
-export function mountStationheadChannelShell({ id, hidden = true, anchorIds = [] } = {}) {
+export function mountStationheadChannelShell({ id, hidden = true, anchorIds = [], model = 'buddies' } = {}) {
   const view = mountDashboardView({
     id,
     className: 'stationhead-channel-view',
@@ -83,6 +83,7 @@ export function mountStationheadChannelShell({ id, hidden = true, anchorIds = []
     anchorIds,
     html: stationheadChannelMarkup(),
   });
+  if (view) view.dataset.stationheadModel = model;
   bindStationheadHistoryGranularity(view);
   return view;
 }
