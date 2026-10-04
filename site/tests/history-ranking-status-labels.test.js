@@ -2,30 +2,21 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const statusSource = readFileSync(
-  new URL('../public/history/history-ranking-table-status.js', import.meta.url),
-  'utf8',
-);
 const tabsSource = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const leaderboardSource = readFileSync(new URL('../public/leaderboard.js', import.meta.url), 'utf8');
 const leaderboardModel = readFileSync(new URL('../public/leaderboard-read-model.js', import.meta.url), 'utf8');
 
-test('legacy leaderboard status helper still classifies the known collection gap and genuine out-of-rank weeks', () => {
-  assert.match(statusSource, /MISSING_START = '2026-01-26'/);
-  assert.match(statusSource, /MISSING_END = '2026-09-14'/);
-  assert.match(statusSource, /week >= MISSING_START && week <= MISSING_END\) return '欠測'/);
-  assert.match(statusSource, /row\?\.synthetic \|\| row\?\.is_out_of_rank\) return '圏外'/);
-  assert.match(statusSource, /finiteRank\(row\?\.rank\) != null\) return ''/);
+test('shared leaderboard model classifies the known collection gap and genuine out-of-rank weeks', () => {
+  assert.match(leaderboardModel, /from: '2026-01-26', to: '2026-09-14', label: '欠測'/);
+  assert.match(leaderboardModel, /if \(stationheadMissingPeriod\(period\)\) return '欠測'/);
+  assert.match(leaderboardModel, /if \(row\?\.synthetic \|\| row\?\.is_out_of_rank\) return '圏外'/);
+  assert.match(leaderboardModel, /if \(rank != null\) return ''/);
 });
 
-test('legacy leaderboard list helper hides missing and out-of-rank rows while keeping ranked rows', () => {
-  assert.match(statusSource, /headers\.indexOf\('週'\)/);
-  assert.match(statusSource, /headers\.indexOf\('ホスト'\)/);
-  assert.match(statusSource, /headers\.indexOf\('順位'\)/);
-  assert.match(statusSource, /status === '欠測' \|\| status === '圏外'/);
-  assert.match(statusSource, /row\.remove\(\)/);
-  assert.doesNotMatch(statusSource, /cells\[rankIndex\]\.textContent = status/);
-  assert.match(statusSource, /queueMicrotask\(\(\) => queueMicrotask\(hideNonRankedRows\)\)/);
+test('shared leaderboard model omits missing and out-of-rank rows from the visible table', () => {
+  assert.match(leaderboardModel, /const rows = timelineRows\.filter\(\(row\) => row\.rank_status !== '欠測' && row\.rank_status !== '圏外'\)/);
+  assert.match(leaderboardModel, /rank_status: stationheadRankStatus\(period, rank, row\)/);
+  assert.match(leaderboardSource, /row\?\.rank_status \|\| '圏外'/);
 });
 
 test('shared leaderboard replaces the history table-status lazy hook', () => {
@@ -33,4 +24,5 @@ test('shared leaderboard replaces the history table-status lazy hook', () => {
   assert.match(tabsSource, /ranking:\s*\{[\s\S]*viewId: 'leaderboardView'[\s\S]*leaderboard\.js[\s\S]*source: 'stationhead'/);
   assert.match(leaderboardSource, /leaderboardReadModel\(source\)\.load/);
   assert.match(leaderboardModel, /normalizeStationheadLeaderboard/);
+  assert.doesNotMatch(leaderboardSource, /MutationObserver|queueMicrotask/);
 });
