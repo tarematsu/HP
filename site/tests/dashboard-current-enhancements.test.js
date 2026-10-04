@@ -8,7 +8,6 @@ const stationheadRuntime = readFileSync(new URL('../public/stationhead-channel.j
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const fetchCache = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
-const layout = readFileSync(new URL('../public/dashboard-current-layout.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/dashboard-current-enhancements.css', import.meta.url), 'utf8');
 const sharedLayout = readFileSync(new URL('../public/pages-layout.css', import.meta.url), 'utf8');
 const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
@@ -30,7 +29,7 @@ test('current Stationhead renderer and markup are shared instead of Buddies-spec
   assert.doesNotMatch(header, /\.css\?v=|createElement\('link'\)/);
   assert.doesNotMatch(metrics, /window\.fetch|response\.clone\(\)\.json|restoreDashboardCache/);
   assert.match(fetchCache, /dashboard:payload/);
-  assert.doesNotMatch(layout, /append\(|insertAdjacent|MutationObserver|goal-card|audienceChart|getContext\('2d'\)|drawEnhancedChart/);
+  assert.doesNotMatch(stationheadRuntime, /ensureMetricLayout|enforceStationheadLink|drawEnhancedChart/);
 });
 
 test('shared mobile layout owns tab count and current metric columns', () => {
@@ -42,7 +41,7 @@ test('shared current chart overlays direct five-minute playback bars on the onli
   assert.match(stationheadRuntime, /payload\?\.history_24h/);
   assert.match(stationheadRuntime, /stream_delta_5m/);
   assert.match(stationheadRuntime, /context\.fillRect\(/);
-  assert.match(stationheadRuntime, /context\.strokeStyle = '#111'/);
+  assert.match(stationheadRuntime, /drawOnlineSeries\(context, rows, x, y, '#111', 2\)/);
   assert.match(stationheadRuntime, /再生数増加/);
   assert.doesNotMatch(stationheadRuntime, /comment_velocity|commentVelocity|コメント\/2分/);
 });
