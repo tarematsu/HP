@@ -57,6 +57,10 @@ R2_CLASS_B = frozenset(value.lower() for value in (
 _ACCOUNT_SCOPE = "account"
 _DAY_SECONDS = 24 * 60 * 60
 _PROJECTION_METHOD = "linear-from-utc-midnight"
+_PROJECTION_MIN_ELAPSED_SECONDS = max(
+    0,
+    int(os.environ.get("FREE_TIER_PROJECTION_MIN_ELAPSED_SECONDS", "3600")),
+)
 _DAILY_RATE_METRICS = (
     "queueOperations", "doRequests", "doActiveGbSeconds", "doRowsRead",
     "doRowsWritten", "kvReads", "kvWrites", "kvDeletes", "kvLists",
@@ -309,6 +313,8 @@ def projection_metadata(now: dt.datetime) -> dict[str, Any]:
         "periodSeconds": _DAY_SECONDS,
         "elapsedSeconds": elapsed,
         "factor": _DAY_SECONDS / elapsed,
+        "minimumEnforcementSeconds": _PROJECTION_MIN_ELAPSED_SECONDS,
+        "enforceProjected": elapsed >= _PROJECTION_MIN_ELAPSED_SECONDS,
         "projectedMetrics": list(_DAILY_RATE_METRICS),
     }
 
@@ -322,8 +328,16 @@ def project_daily_allowances(actual: dict[str, Any], projection: dict[str, Any])
     return projected
 
 
-def evaluate(usage: dict[str, Any]) -> list[str]:
-    return [key for key, limit in LIMITS.items() if float(usage[key]) >= float(limit)]
+def evaluate(
+    actual: dict[str, Any],
+    usage: dict[str, Any],
+    enforce_projected: bool,
+) -> list[str]:
+    return [
+        key for key, limit in LIMITS.items()
+        if float(actual[key]) >= float(limit)
+        or (enforce_projected and float(usage[key]) >= float(limit))
+    ]
 
 
 def usage_basis(key: str) -> str:
@@ -402,7 +416,15 @@ def self_test() -> int:
         assert projected[key] == actual[key], key
     assert actual["r2ClassAOperations"] == 2 and actual["r2ClassBOperations"] == 5
     assert actual["r2StoredBytes"] == 105 and actual["doStoredBytes"] == 50
-    assert actual["kvStoredBytes"] == 200 and evaluate(actual) == []
+    assert actual["kvStoredBytes"] == 200 and evaluate(actual, actual, True) == []
+    warmup = projection_metadata(dt.datetime(2026, 7, 23, 0, 15, tzinfo=dt.timezone.utc))
+    warmup_actual = {**actual, "queueOperations": 200}
+    warmup_usage = project_daily_allowances(warmup_actual, warmup)
+    assert warmup["enforceProjected"] is False
+    assert warmup_usage["queueOperations"] > LIMITS["queueOperations"]
+    assert evaluate(warmup_actual, warmup_usage, warmup["enforceProjected"]) == []
+    actual_breach = {**actual, "queueOperations": LIMITS["queueOperations"]}
+    assert evaluate(actual_breach, warmup_usage, warmup["enforceProjected"]) == ["queueOperations"]
     assert _durable_object_duration_gb_seconds([{"sum": {"activeTime": 1_000_000}}]) == 0.128
     print("account-wide discovery-free audit self-test passed")
     return 0
@@ -434,7 +456,7 @@ def main() -> int:
     actual = aggregate(account_row)
     projection = projection_metadata(now)
     usage = project_daily_allowances(actual, projection)
-    violations = evaluate(usage)
+    violations = evaluate(actual, usage, projection["enforceProjected"])
 
     names_by_id, queue_name_lookup_error = queue_names_by_id()
     queue_rows = projected_queue_breakdown(
@@ -484,6 +506,11 @@ def main() -> int:
         f"- Generated: `{report['generatedAt']}`",
         f"- Elapsed UTC day: `{projection['elapsedSeconds']:,}` seconds",
         f"- Daily 24-hour projection factor: `{projection['factor']:.3g}x`",
+        (
+            "- Projection enforcement: `active`"
+            if projection["enforceProjected"]
+            else f"- Projection enforcement: `warm-up until {projection['minimumEnforcementSeconds']:,} elapsed seconds`; actual breaches still fail immediately"
+        ),
         "- Daily meters: projected from 00:00 UTC to 24 hours",
         "- Monthly and storage meters: unprojected observed values",
         "",
@@ -493,7 +520,8 @@ def main() -> int:
     for key, limit in LIMITS.items():
         lines.append(
             f"| {key} | {actual[key]:,} | {usage[key]:,} | {usage_basis(key)} | "
-            f"{limit:,} | {'VIOLATION' if key in violations else 'OK'} |"
+            f"{limit:,} | "
+            f"{'VIOLATION' if key in violations else ('WARMUP' if key in _DAILY_RATE_METRICS and not projection['enforceProjected'] and float(usage[key]) >= float(limit) else 'OK')} |"
         )
 
     lines.extend([

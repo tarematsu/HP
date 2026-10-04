@@ -62,6 +62,14 @@ test('account-wide gate projects only daily allowance meters', () => {
   }
   assert.match(freeTier, /_MONTHLY_OR_STATE_METRICS/);
   assert.match(freeTier, /project_daily_allowances\(actual, projection\)/);
+  assert.match(freeTier, /FREE_TIER_PROJECTION_MIN_ELAPSED_SECONDS/);
+  assert.match(freeTier, /"enforceProjected": elapsed >= _PROJECTION_MIN_ELAPSED_SECONDS/);
+  assert.match(
+    freeTier,
+    /evaluate\(actual, usage, projection\["enforceProjected"\]\)/,
+  );
+  assert.match(freeTier, /actual breaches still fail immediately/);
+  assert.match(freeTier, /'WARMUP'/);
   assert.match(freeTier, /"actualUsage": actual/);
   assert.match(freeTier, /mixed-daily-projection-and-period-actual/);
   assert.match(freeTier, /Daily meters: projected from 00:00 UTC to 24 hours/);
