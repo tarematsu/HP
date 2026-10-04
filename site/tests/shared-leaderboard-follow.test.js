@@ -38,6 +38,17 @@ test('Stationhead-specific normalization is confined to adapters', () => {
   assert.match(followersModel, /normalizeStationheadFollowers/);
 });
 
+test('Stationhead leaderboard preserves missing-gap and out-of-rank presentation semantics', () => {
+  assert.match(leaderboardModel, /STATIONHEAD_MISSING_RANGES/);
+  assert.match(leaderboardModel, /rank_status: stationheadRankStatus/);
+  assert.match(leaderboardModel, /row\.rank_status !== '欠測' && row\.rank_status !== '圏外'/);
+  assert.match(leaderboardModel, /missing_ranges: STATIONHEAD_MISSING_RANGES/);
+  assert.match(leaderboardRuntime, /DASHBOARD_MISSING_KEY/);
+  assert.match(leaderboardRuntime, /dashboardMissingIndexBands/);
+  assert.match(leaderboardRuntime, /drawDashboardMissingBands/);
+  assert.match(leaderboardRuntime, /appendLegendEntry\(legend, '欠測'/);
+});
+
 test('music streaming adapters reuse materialized public read models and never query D1', () => {
   assert.match(leaderboardModel, /loadMusicServiceReadModel\(service\)/);
   assert.match(leaderboardModel, /fetchJson\('\/api\/amazon-music'/);
