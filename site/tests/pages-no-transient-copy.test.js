@@ -18,13 +18,14 @@ test('dashboard title is final in HTML and is not rewritten after paint', () => 
   assert.doesNotMatch(header, /document\.title|channelName\.replaceChildren|DASHBOARD_TITLE/);
 });
 
-test('history shell contains structure only and first reveal waits for runtime initialization', () => {
+test('history shell contains structure only and first reveal waits for shell, CSS and runtime initialization', () => {
   for (const copy of ['主要指標の推移', '集計一覧', '再生数増加', 'メンバー増加数']) {
     assert.doesNotMatch(shell, new RegExp(`>${copy}<`));
   }
-  assert.match(tabs, /const runtimeReady = historyRuntimeMode !== null;/);
-  assert.match(tabs, /setRoute\(mode, runtimeReady \? historyView : null/);
-  assert.match(tabs, /await loadOnce\('history-runtime',[\s\S]*showOnly\(historyView\);[\s\S]*markRouteReady\(\)/);
+  assert.match(tabs, /setRoute\(mode, null, \{ updateUrl, replaceUrl \}\)/);
+  assert.match(tabs, /ensureModeStyles\(mode\)/);
+  assert.match(tabs, /loadOnce\('history:shell', HISTORY_VIEW\.shell\)/);
+  assert.match(tabs, /await loadOnce\('history:runtime',[\s\S]*showOnly\(document\.getElementById\(HISTORY_VIEW\.viewId\)\);[\s\S]*markRouteReady\(\)/);
 });
 
 test('history static copy stays in runtime and tabs update immediately', () => {

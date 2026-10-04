@@ -26,34 +26,10 @@ const tracksTable = musicServiceTable({
 });
 
 const trendPanels = [
-  musicServiceSection({
-    id: 'spotifyOverviewTrendSection',
-    title: 'Spotify 全曲合計再生数前日比推移（坂道3グループ）',
-    titleId: 'spotifyTrendTitle',
-    className: 'spotify-trend-panel',
-    bodyHtml: '<div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="全曲合計再生数前日比"></div>',
-  }),
-  musicServiceSection({
-    id: 'spotifyMonthlyListenerTrendSection',
-    title: 'Spotify 月間リスナー推移（坂道3グループ）',
-    titleId: 'spotifyMonthlyListenerTrendTitle',
-    className: 'spotify-trend-panel',
-    bodyHtml: '<div id="spotifyMonthlyListenerTrendCharts" class="spotify-trend-charts" aria-label="月間リスナー"></div>',
-  }),
-  musicServiceSection({
-    id: 'spotifyTop10YearTrendSection',
-    title: 'Spotify 今年リリース上位10曲合計の再生数前日比推移（坂道3グループ）',
-    titleId: 'spotifyTop10YearTrendTitle',
-    className: 'spotify-trend-panel',
-    bodyHtml: '<div id="spotifyTop10YearTrendCharts" class="spotify-trend-charts" aria-label="今年リリース曲前日比"></div>',
-  }),
-  musicServiceSection({
-    id: 'spotifyArtistRankTrendSection',
-    title: 'Spotify Daily Top Artist（日本）の順位推移（坂道3グループ）',
-    titleId: 'spotifyArtistRankTrendTitle',
-    className: 'spotify-trend-panel',
-    bodyHtml: '<div id="spotifyArtistRankTrendCharts" class="spotify-trend-charts" aria-label="日本アーティスト順位"></div>',
-  }),
+  musicServiceSection({ id: 'spotifyOverviewTrendSection', title: 'Spotify 全曲合計再生数前日比推移（坂道3グループ）', titleId: 'spotifyTrendTitle', className: 'spotify-trend-panel', bodyHtml: '<div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="全曲合計再生数前日比"></div>' }),
+  musicServiceSection({ id: 'spotifyMonthlyListenerTrendSection', title: 'Spotify 月間リスナー推移（坂道3グループ）', titleId: 'spotifyMonthlyListenerTrendTitle', className: 'spotify-trend-panel', bodyHtml: '<div id="spotifyMonthlyListenerTrendCharts" class="spotify-trend-charts" aria-label="月間リスナー"></div>' }),
+  musicServiceSection({ id: 'spotifyTop10YearTrendSection', title: 'Spotify 今年リリース上位10曲合計の再生数前日比推移（坂道3グループ）', titleId: 'spotifyTop10YearTrendTitle', className: 'spotify-trend-panel', bodyHtml: '<div id="spotifyTop10YearTrendCharts" class="spotify-trend-charts" aria-label="今年リリース曲前日比"></div>' }),
+  musicServiceSection({ id: 'spotifyArtistRankTrendSection', title: 'Spotify Daily Top Artist（日本）の順位推移（坂道3グループ）', titleId: 'spotifyArtistRankTrendTitle', className: 'spotify-trend-panel', bodyHtml: '<div id="spotifyArtistRankTrendCharts" class="spotify-trend-charts" aria-label="日本アーティスト順位"></div>' }),
 ];
 
 const tracksPanel = musicServiceSection({
@@ -66,12 +42,6 @@ const tracksPanel = musicServiceSection({
 });
 
 mountMusicServiceView({
-  tab: {
-    view: 'spotify',
-    label: 'Spotify',
-    anchorSelector: '[data-view="likes"]',
-    position: 'beforebegin',
-  },
   viewId: 'spotifyView',
   className: 'spotify-view',
   noticeId: 'spotifyNotice',

@@ -3,6 +3,9 @@ import { byId, finiteNumber as finite, integerFormat as integer, setText } from 
 const DASHBOARD_URL = '/api/dashboard?history=0';
 const REFRESH_INTERVAL_MS = 60_000;
 const MIN_REFRESH_GAP_MS = 45_000;
+const IMAGE_RETRY_DELAYS = [5_000, 30_000, 120_000];
+const imageRetryTimers = new WeakMap();
+const retryImages = new WeakSet();
 
 const state = {
   payload: null,
@@ -31,17 +34,73 @@ function reducedImage(source, size = 200) {
   }
 }
 
+function clearImageRetry(image) {
+  const timer = imageRetryTimers.get(image);
+  if (timer) clearTimeout(timer);
+  imageRetryTimers.delete(image);
+}
+
+function installImageRetry(image) {
+  if (retryImages.has(image)) return;
+  retryImages.add(image);
+  const loaded = () => {
+    clearImageRetry(image);
+    image.dataset.retryAttempt = '0';
+    image.classList.add('is-loaded');
+    image.hidden = false;
+  };
+  const failed = () => {
+    image.classList.remove('is-loaded');
+    image.hidden = true;
+    const source = image.dataset.lastSource || '';
+    const attempt = Math.max(0, Number(image.dataset.retryAttempt) || 0);
+    if (!source || attempt >= IMAGE_RETRY_DELAYS.length) return;
+    image.dataset.retryAttempt = String(attempt + 1);
+    clearImageRetry(image);
+    const timer = setTimeout(() => {
+      imageRetryTimers.delete(image);
+      if (image.dataset.lastSource !== source) return;
+      image.removeAttribute('src');
+      requestAnimationFrame(() => {
+        if (image.dataset.lastSource === source) image.src = source;
+      });
+    }, IMAGE_RETRY_DELAYS[attempt]);
+    imageRetryTimers.set(image, timer);
+  };
+  image.addEventListener('load', loaded);
+  image.addEventListener('error', failed);
+  if (image.complete && image.naturalWidth > 0) loaded();
+}
+
 function setImage(id, source, size = 200) {
   const image = byId(id);
   if (!image) return;
+  const retry = id === 'trackImage';
+  if (retry) installImageRetry(image);
   const next = reducedImage(source, size);
   if (!next) {
+    if (retry) {
+      clearImageRetry(image);
+      image.dataset.lastSource = '';
+      image.dataset.retryAttempt = '0';
+      image.classList.remove('is-loaded');
+    }
     image.hidden = true;
     image.removeAttribute('src');
     return;
   }
+  if (retry && image.dataset.lastSource !== next) {
+    clearImageRetry(image);
+    image.dataset.lastSource = next;
+    image.dataset.retryAttempt = '0';
+    image.classList.remove('is-loaded');
+  }
   if (image.src !== next) image.src = next;
-  image.hidden = false;
+  if (!retry) image.hidden = false;
+  else if (image.complete && image.naturalWidth > 0) {
+    image.classList.add('is-loaded');
+    image.hidden = false;
+  }
 }
 
 function inferredArtist(track) {

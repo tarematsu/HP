@@ -1,14 +1,6 @@
 import { dashboardModeTabs } from './dashboard-ui-common.js?v=20261004.1';
+import { ALL_CHANNEL_SECTIONS, STATIONHEAD_CHANNEL_TABS } from './stationhead-channel-model.js?v=20261004.1';
 
-const STATIONHEAD_CHANNEL_TABS = [
-  { value: 'current', label: '現在' },
-  { value: 'history', label: '過去' },
-  { value: 'played-tracks', label: '再生履歴' },
-  { value: 'likes', label: 'いいね' },
-  { value: 'broadcasts', label: 'リスパ' },
-];
-
-const ALL_CHANNEL_SECTIONS = STATIONHEAD_CHANNEL_TABS.map(({ value }) => value);
 const STATIONHEAD_CHANNEL_PROFILES = {
   buddies: { enabled: ALL_CHANNEL_SECTIONS, paused: [] },
   ohisama: { enabled: ['current', 'history', 'played-tracks', 'likes'], paused: ['broadcasts'] },

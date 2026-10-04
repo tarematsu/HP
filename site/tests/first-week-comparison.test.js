@@ -75,18 +75,21 @@ test('API rejects missing minute database binding', async () => {
   assert.equal((await response.json()).error, 'MINUTE_DB binding missing');
 });
 
-test('dashboard embeds first-week comparison in the listening-party view', () => {
+test('dashboard embeds first-week comparison in the listening-party view and loads it on demand', () => {
   const registry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
   const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+  const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
   const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
   const shell = readFileSync(new URL('../public/first-week-comparison-shell.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../public/first-week-comparison.js', import.meta.url), 'utf8');
   const css = readFileSync(new URL('../public/first-week-comparison.css', import.meta.url), 'utf8');
   assert.doesNotMatch(registry, /view: 'first-week'|label: '初週比較'/);
   assert.match(registry, /mode: 'broadcasts', label: 'リスパ'/);
-  assert.match(entry, /first-week-comparison-shell\.js\?v=20261002\.2/);
-  assert.match(entry, /first-week-comparison\.js\?v=20261002\.2/);
-  assert.match(entry, /dashboard-tabs\.js\?v=20260930\.1/);
+  assert.doesNotMatch(entry, /first-week-comparison-shell|first-week-comparison\.js/);
+  assert.match(entry, /dashboard-tabs\.js\?v=20261004\.1/);
+  assert.match(tabs, /mode === 'broadcasts'/);
+  assert.match(tabs, /loadOnce\('first-week:shell'[\s\S]*first-week-comparison-shell\.js/);
+  assert.match(tabs, /loadOnce\('first-week:runtime'[\s\S]*first-week-comparison\.js/);
   assert.doesNotMatch(historyEntry, /first-week-comparison-shell|first-week-comparison\.js/);
   assert.doesNotMatch(shell, /\.css\?v=|style:\s*\{|mountDashboardShell/);
   assert.match(shell, /dashboard-ui-common\.js\?v=20261001\.1/);
@@ -119,12 +122,12 @@ test('first-week view exposes listener comparison only', () => {
   assert.match(runtime, /detail\.replaceChildren\(\)/);
 });
 
-test('tab order no longer owns first-week comparison', () => {
+test('first-week comparison no longer adds any initial-entry module', () => {
   const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-  const order = readFileSync(new URL('../public/dashboard-tab-order.js', import.meta.url), 'utf8');
-  assert.match(entry, /dashboard-tab-order\.js\?v=20261002\.1/);
-  assert.ok(entry.indexOf('dashboard-tab-order.js') < entry.indexOf('dashboard-tabs.js'));
-  assert.doesNotMatch(order, /firstWeek|first-week/);
-  assert.match(order, /querySelector\('\[data-view="spotify"\]'\)/);
-  assert.match(order, /tabs\.append\(spotify\)/);
+  const registry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
+  const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(entry, /first-week|dashboard-tab-order/);
+  assert.match(registry, /mode: 'broadcasts', label: 'リスパ'/);
+  assert.doesNotMatch(registry, /view: 'spotify'/);
+  assert.match(tabs, /id: 'spotify', label: 'Spotify', defaultMode: 'spotify'/);
 });

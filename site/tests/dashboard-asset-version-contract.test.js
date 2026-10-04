@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const buildScript = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
+const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const common = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
 const rangeNavigator = readFileSync(new URL('../public/history/history-range-navigator.js', import.meta.url), 'utf8');
@@ -14,12 +15,12 @@ const rankingChart = readFileSync(new URL('../public/history/history-ranking-cha
 
 function assetVersion(source, asset) {
   const escaped = asset.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = source.match(new RegExp(`${escaped}\\?v=([^'"\\s)>]+)`));
+  const match = source.match(new RegExp(`${escaped}\\?v=([^'"\\s)>\x60]+)`));
   assert.ok(match, `${asset} must use an explicit deployment version`);
   return match[1];
 }
 
-test('dashboard HTML references one CSS and one JavaScript entry', () => {
+test('dashboard HTML ships one core CSS and one JavaScript entry', () => {
   const styles = [...html.matchAll(/<link\s+rel="stylesheet"\s+href="([^"]+)"/g)].map((match) => match[1]);
   const modules = [...html.matchAll(/<script\s+type="module"\s+src="([^"]+)"/g)].map((match) => match[1]);
   assert.equal(styles.length, 1);
@@ -28,39 +29,52 @@ test('dashboard HTML references one CSS and one JavaScript entry', () => {
   assert.match(modules[0], /^\/assets\/dashboard\.min\.js\?v=\d{8}\.\d+$/);
   assert.equal(assetVersion(html, 'assets/dashboard.min.css'), assetVersion(html, 'assets/dashboard.min.js'));
   assert.match(html, /data-dashboard-css-bundled="true"/);
-  assert.match(assetVersion(html, 'assets/dashboard.min.css'), /^\d{8}\.\d+$/);
-  assert.match(assetVersion(html, 'assets/dashboard.min.js'), /^\d{8}\.\d+$/);
+  assert.doesNotMatch(html, /stationhead\.min\.css|subscriptions\.min\.css/);
   assert.doesNotMatch(html, /(?:app-lite|monochrome|dashboard-presentation|dashboard-metrics)\.(?:css|js)\?v=/);
 });
 
-test('build only bundles and minifies the source-owned module and style graph', () => {
+test('route CSS uses the same deployment version and is loaded centrally', () => {
+  const version = assetVersion(html, 'assets/dashboard.min.css');
+  assert.match(tabs, new RegExp(`const ASSET_VERSION = '${version.replace('.', '\\.')}'`));
+  assert.match(tabs, /stationhead:\s*`\/assets\/stationhead\.min\.css\?v=\$\{ASSET_VERSION\}`/);
+  assert.match(tabs, /subscriptions:\s*`\/assets\/subscriptions\.min\.css\?v=\$\{ASSET_VERSION\}`/);
+  assert.match(tabs, /function ensureModeStyles\(mode\)/);
+  assert.match(tabs, /document\.createElement\('link'\)/);
+  assert.match(tabs, /data-dashboard-section-style|dataset\.dashboardSectionStyle/);
+});
+
+test('build minifies one JS graph and three CSS route groups', () => {
   assert.match(buildScript, /entryPoints:\s*\{ 'dashboard\.min': resolve\(publicRoot, 'dashboard-metrics\.js'\) \}/);
   assert.match(buildScript, /outdir:\s*assetsDir/);
   assert.match(buildScript, /bundle:\s*true/);
   assert.match(buildScript, /splitting:\s*true/);
   assert.match(buildScript, /minify:\s*true/);
-  assert.match(buildScript, /outfile:\s*resolve\(assetsDir, 'dashboard\.min\.css'\)/);
+  assert.match(buildScript, /const cssGroups = Object\.freeze\(\{/);
+  for (const group of ['dashboard', 'stationhead', 'subscriptions']) assert.match(buildScript, new RegExp(`${group}: \\[`));
   for (const css of [
     'app-lite.css',
     'dashboard-presentation.css',
     'pages-layout.css',
+    'dashboard-ui-common.css',
+    'first-week-comparison.css',
+    'played-tracks.css',
+    'followers.css',
+    'hinata.css',
     'spotify.css',
     'apple-music.css',
     'amazon-music.css',
-    'followers.css',
-    'hinata.css',
     'music-service-common.css',
-    'dashboard-ui-common.css',
   ]) assert.match(buildScript, new RegExp(css.replaceAll('.', '\\.')));
-  assert.ok(
-    buildScript.lastIndexOf("'dashboard-ui-common.css'") > buildScript.indexOf("'hinata.css'"),
-    'shared presentation contract must be last in the CSS bundle',
-  );
   assert.doesNotMatch(buildScript, /regional-music\.css/);
+  assert.match(buildScript, /buildCssBundle\(name, files\)/);
+  assert.match(buildScript, /stationhead_css_bytes/);
+  assert.match(buildScript, /subscriptions_css_bytes/);
+  assert.match(buildScript, /total_css_bytes/);
   assert.doesNotMatch(buildScript, /optimizeBundled|shareCommonUiHelpers|canvasTransforms|onLoad\(|readFile/);
 });
 
-test('source modules never request feature styles at runtime', () => {
+test('feature stylesheet loading exists only in the central route client', () => {
+  assert.match(tabs, /createElement\('link'\)/);
   assert.doesNotMatch(header, /createElement\('link'\)|stylesheet|\.css\?v=/);
   assert.doesNotMatch(common, /ensureStylesheet|createElement\('link'\)|\.css\?v=/);
   assert.doesNotMatch(rangeNavigator, /ensureStylesheet|createElement\('link'\)|\.css\?v=/);

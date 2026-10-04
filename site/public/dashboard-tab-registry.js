@@ -1,5 +1,4 @@
-import { mountDashboardTab } from './dashboard-ui-common.js?v=20260930.2';
-import { STATIONHEAD_CHANNEL_TABS } from './stationhead-channel-tabs.js?v=20261004.2';
+import { STATIONHEAD_CHANNEL_TABS } from './stationhead-channel-model.js?v=20261004.1';
 
 const BUDDIES_ROUTES = {
   current: { view: 'current', label: '現在', active: true },
@@ -9,12 +8,24 @@ const BUDDIES_ROUTES = {
   broadcasts: { view: 'history', mode: 'broadcasts', label: 'リスパ' },
 };
 
-const BASE_TABS = [
-  ...STATIONHEAD_CHANNEL_TABS.map(({ value, label }) => ({ ...BUDDIES_ROUTES[value], label })),
-  { view: 'spotify', label: 'Spotify' },
-  { view: 'history', mode: 'ranking', label: 'リーダーボード' },
-];
-
-for (const tab of BASE_TABS) mountDashboardTab(tab);
-
-document.getElementById('modeTabs')?.classList.add('stationhead-subtabs');
+const tabs = document.getElementById('modeTabs');
+if (tabs) {
+  const fragment = document.createDocumentFragment();
+  const buttons = STATIONHEAD_CHANNEL_TABS.map(({ value, label }) => {
+    const route = BUDDIES_ROUTES[value];
+    if (!route) return null;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.view = route.view;
+    if (route.mode) button.dataset.mode = route.mode;
+    button.textContent = label;
+    if (route.active) {
+      button.className = 'active';
+      button.setAttribute('aria-current', 'page');
+    }
+    return button;
+  }).filter(Boolean);
+  fragment.append(...buttons);
+  tabs.replaceChildren(fragment);
+  tabs.classList.add('stationhead-subtabs');
+}

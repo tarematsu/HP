@@ -43,17 +43,10 @@ const listeningPartyPanel = `<div class="stationhead-channel-panel" data-nogizak
 })}</div>`;
 
 mountDashboardShell({
-  tab: {
-    view: 'nogizaka',
-    label: 'Nogizaka',
-    anchorSelectors: ['[data-view="hinata"]', '[data-mode="broadcasts"]'],
-    position: 'beforebegin',
-  },
   view: {
     id: 'nogizakaListeningPartyView',
     className: 'history-view nogizaka-listening-party-view',
     anchorId: 'likesView',
-    position: 'beforebegin',
     html: `${dashboardNotice({ id: 'nogizakaListeningPartyNotice' })}${subtabs}${listeningPartyPanel}`,
   },
 });

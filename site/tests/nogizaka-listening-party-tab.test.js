@@ -8,19 +8,19 @@ const shell = readFileSync(new URL('../public/nogizaka-listening-party-shell.js'
 const runtime = readFileSync(new URL('../public/nogizaka-listening-party.js', import.meta.url), 'utf8');
 const partyUi = readFileSync(new URL('../public/official-listening-party-ui.js', import.meta.url), 'utf8');
 const stationheadTabs = readFileSync(new URL('../public/stationhead-channel-tabs.js', import.meta.url), 'utf8');
+const stationheadModel = readFileSync(new URL('../public/stationhead-channel-model.js', import.meta.url), 'utf8');
 const sharedCss = readFileSync(new URL('../public/dashboard-navigation.css', import.meta.url), 'utf8') + readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/nogizaka-listening-party.js', import.meta.url), 'utf8');
 const publisher = readFileSync(new URL('../../worker/src/nogizaka-pages-read-model.js', import.meta.url), 'utf8');
 
-test('Nogizaka tab is mounted immediately before Hinata when available', () => {
-  assert.match(shell, /view: 'nogizaka'/);
-  assert.match(shell, /label: 'Nogizaka'/);
-  assert.match(shell, /anchorSelectors: \['\[data-view="hinata"\]', '\[data-mode="broadcasts"\]'\]/);
-  assert.match(shell, /position: 'beforebegin'/);
+test('Nogizaka is a source route with a lazily mounted view', () => {
+  assert.doesNotMatch(shell, /\btab:\s*\{|anchorSelectors|position:\s*'beforebegin'/);
   assert.match(tabs, /nogizaka:\s*\{/);
-  assert.match(tabs, /ensureLazyShell\('nogizaka'\)/);
+  assert.match(tabs, /viewId: 'nogizakaListeningPartyView'/);
+  assert.match(tabs, /nogizaka-listening-party-shell\.js/);
   assert.match(tabs, /loadNogizakaListeningPartyView/);
+  assert.match(tabs, /id: 'nogizaka', label: 'Nogizaka', defaultMode: 'nogizaka'/);
 });
 
 test('Nogizaka uses the shared five Stationhead subtabs with current through likes paused', () => {
@@ -31,8 +31,9 @@ test('Nogizaka uses the shared five Stationhead subtabs with current through lik
     ["value: 'likes', label: 'いいね'", 'いいね'],
     ["value: 'broadcasts', label: 'リスパ'", 'リスパ'],
   ]) {
-    assert.match(stationheadTabs, new RegExp(pair[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), pair[1]);
+    assert.match(stationheadModel, new RegExp(pair[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), pair[1]);
   }
+  assert.match(stationheadTabs, /stationhead-channel-model\.js/);
   assert.match(shell, /stationheadChannelTabs/);
   assert.match(shell, /active: 'broadcasts'/);
   assert.doesNotMatch(shell, /enabled: \['broadcasts'\]|unavailableTitle/);

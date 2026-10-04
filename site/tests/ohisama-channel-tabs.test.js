@@ -7,6 +7,7 @@ const currentShell = readFileSync(new URL('../public/current-shell.js', import.m
 const playbackShell = readFileSync(new URL('../public/stationhead-playback-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/hinata-channel-tabs.js', import.meta.url), 'utf8');
 const stationheadTabs = readFileSync(new URL('../public/stationhead-channel-tabs.js', import.meta.url), 'utf8');
+const stationheadModel = readFileSync(new URL('../public/stationhead-channel-model.js', import.meta.url), 'utf8');
 const navigationCss = readFileSync(new URL('../public/dashboard-navigation.css', import.meta.url), 'utf8');
 const sharedCss = navigationCss + readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 
@@ -19,8 +20,9 @@ test('Ohisama exposes the shared five Stationhead subtabs', () => {
     ["value: 'likes', label: 'いいね'", 'いいね'],
     ["value: 'broadcasts', label: 'リスパ'", 'リスパ'],
   ]) {
-    assert.match(stationheadTabs, new RegExp(pair[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), pair[1]);
+    assert.match(stationheadModel, new RegExp(pair[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), pair[1]);
   }
+  assert.match(stationheadTabs, /stationhead-channel-model\.js/);
   assert.match(runtime, /stationheadChannelTabs/);
   assert.match(runtime, /bindStationheadChannelTabs/);
   assert.match(runtime, /stationhead-channel-panel/);

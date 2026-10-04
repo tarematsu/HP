@@ -17,12 +17,12 @@ let loadPromise = null;
 let lastPayload = null;
 
 function playlistModuleUrl() {
-  return ['/apple-music-playlists.js', 'v=20261001.1'].join('?');
+  return ['/music-service-playlists.js', 'v=20261004.1'].join('?');
 }
 
 function loadPlaylistMemberships(force = false) {
   void import(playlistModuleUrl())
-    .then((module) => module.loadAppleMusicPlaylistMemberships?.({ force }))
+    .then((module) => module.loadMusicServicePlaylists?.('apple', { force }))
     .catch((error) => console.warn('Apple Music playlist view failed to load', error));
 }
 

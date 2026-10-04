@@ -7,25 +7,26 @@ const route = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.ur
 const shell = readFileSync(new URL('../public/hinata-shell.js', import.meta.url), 'utf8');
 const channelTabs = readFileSync(new URL('../public/hinata-channel-tabs.js', import.meta.url), 'utf8');
 const stationheadTabs = readFileSync(new URL('../public/stationhead-channel-tabs.js', import.meta.url), 'utf8');
+const stationheadModel = readFileSync(new URL('../public/stationhead-channel-model.js', import.meta.url), 'utf8');
 const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
 const sharedRoute = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/hinata.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/hinata.css', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/hinata.js', import.meta.url), 'utf8');
 
-test('Pages mounts a dedicated Hinata dashboard tab after Amazon Music', () => {
-  assert.match(metrics, /hinata-shell\.js/);
+test('Pages keeps Hinata behind the shared lazy dashboard route', () => {
+  assert.doesNotMatch(metrics, /hinata-shell\.js/);
+  assert.match(route, /hinata:\s*\{/);
+  assert.match(route, /shell: \(\) => import\('\/hinata-shell\.js\?v=20261001\.2'\)/);
+  assert.match(route, /id: 'hinata', label: 'Ohisama', defaultMode: 'hinata'/);
   assert.match(shell, /mountDashboardShell/);
-  assert.match(shell, /view: 'hinata'/);
-  assert.match(shell, /label: 'Ohisama'/);
-  assert.match(shell, /anchorSelectors: \['\[data-view="amazon-music"\]', '\[data-view="spotify"\]'\]/);
-  assert.match(shell, /position: 'afterend'/);
+  assert.match(shell, /id: 'hinataView'/);
+  assert.doesNotMatch(shell, /\btab:\s*\{|view: 'hinata'|anchorSelectors/);
   assert.match(shell, /日向坂/);
   assert.match(shell, /オンライン/);
   assert.match(shell, /総再生数/);
   assert.match(shell, /総メンバー数/);
   assert.match(shell, /日次データ/);
-  assert.match(route, /hinata: \{/);
   assert.match(route, /viewId: 'hinataView'/);
   assert.match(sharedUi, /export function mountDashboardShell/);
   assert.match(sharedRoute, /function modeFromLocation\(\)/);
@@ -63,8 +64,9 @@ test('Hinata tab reads only the materialized model API', () => {
 
 test('all Ohisama subtabs are read-model-only like the Buddies views', () => {
   for (const section of ['current', 'history', 'played-tracks', 'likes', 'broadcasts']) {
-    assert.match(stationheadTabs, new RegExp(`value: '${section}'`));
+    assert.match(stationheadModel, new RegExp(`value: '${section}'`));
   }
+  assert.match(stationheadTabs, /stationhead-channel-model\.js/);
   assert.match(channelTabs, /stationheadChannelTabs/);
   assert.match(channelTabs, /bindStationheadChannelTabs/);
   assert.match(channelTabs, /const HINATA_URL = '\/api\/hinata'/);

@@ -19,10 +19,12 @@ test('dashboard payload parsing is owned by the fetch cache instead of the entry
   assert.match(fetchCache, /dispatchPayload\(payload, 'network'\)/);
 });
 
-test('inactive tab runtimes are loaded on demand through one shared loader and never idle-prefetched', () => {
-  assert.match(tabs, /const LAZY_VIEWS = Object\.freeze/);
+test('inactive tab shells and runtimes are loaded on demand through one shared loader and never idle-prefetched', () => {
+  assert.match(tabs, /const LAZY_VIEWS = \{/);
   assert.match(tabs, /const modulePromises = new Map\(\)/);
+  assert.match(tabs, /const stylePromises = new Map\(\)/);
   assert.match(tabs, /function loadOnce\(key, importer\)/);
+  assert.match(tabs, /shell: \(\) => import\('\/history-shell\.js\?v=20260930\.1'\)/);
   assert.match(tabs, /import\('\/history\/history-main\.js\?v=\d{8}\.\d+'\)/);
   assert.match(tabs, /import\('\/history\/history-likes\.js\?v=20260930\.1'\)/);
   assert.match(tabs, /import\('\/history\/history-ranking-table-status\.js\?v=20260923\.2'\)/);

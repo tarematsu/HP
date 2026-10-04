@@ -4,7 +4,6 @@ import test from 'node:test';
 
 const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const route = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
-const sharedRoute = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../public/followers-shell.js', import.meta.url), 'utf8');
 const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/followers.js', import.meta.url), 'utf8');
@@ -13,15 +12,16 @@ const workerConfig = readFileSync(new URL('../../worker/wrangler.sakurazaka46jp.
 
 const FIXED_HANDLES = ['sakuramankai', 'sakuramankai2', 'sakurazaka46jp', 'nogizaka46smej'];
 
-test('followers is registered in the common lazy router after its shell mounts', () => {
-  assert.match(entry, /followers-shell\.js/);
-  assert.ok(entry.indexOf('followers-shell.js') < entry.indexOf('dashboard-tabs.js'));
-  assert.match(route, /followers: \{/);
+test('followers is registered in the common lazy router and mounts only its deferred view', () => {
+  assert.doesNotMatch(entry, /followers-shell\.js/);
+  assert.match(route, /followers:\s*\{/);
+  assert.match(route, /shell: \(\) => import\('\/followers-shell\.js\?v=20261001\.1'\)/);
   assert.match(route, /followers\.js\?v=20260930\.3/);
   assert.match(route, /viewId: 'followersView'/);
+  assert.match(route, /id: 'followers', label: 'フォロワー', defaultMode: 'followers'/);
   assert.match(shell, /mountDashboardShell/);
-  assert.match(shell, /view: 'followers'/);
-  assert.match(shell, /label: 'フォロワー'/);
+  assert.match(shell, /id: 'followersView'/);
+  assert.doesNotMatch(shell, /\btab:\s*\{|view: 'followers'|label: 'フォロワー'/);
 });
 
 test('followers shows update timestamp and daily midnight cadence', () => {

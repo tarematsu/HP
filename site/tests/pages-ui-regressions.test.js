@@ -35,11 +35,14 @@ test('dashboard playback restores artwork from string and object Stationhead met
   assert.equal(normalized.is_current, true);
 });
 
-test('dashboard entry reveals images only after their load event', () => {
-  const source = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-  assert.match(source, /installImageState\('trackImage'\)/);
-  assert.match(source, /classList\.add\('is-loaded'\)/);
-  assert.match(source, /addEventListener\('error', failed\)/);
+test('artwork retry stays out of the initial entry and runs only with the current runtime', () => {
+  const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+  const runtime = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(entry, /IMAGE_RETRY_DELAYS|installImageRetry|MutationObserver/);
+  assert.match(runtime, /const IMAGE_RETRY_DELAYS/);
+  assert.match(runtime, /classList\.add\('is-loaded'\)/);
+  assert.match(runtime, /addEventListener\('error', failed\)/);
+  assert.doesNotMatch(runtime, /MutationObserver/);
 });
 
 test('official stream series resolves hosts without the removed minute-fact host column', () => {

@@ -30,21 +30,49 @@ function harness(hash = '', load = async () => ({})) {
     addEventListener(name, callback) { tabListeners.set(name, callback); },
   };
   nodes.set('modeTabs', tabs);
-  const location = { hash, pathname: '/', search: '', origin: 'https://pages.test' };
-  const updateLocation = (_state, _title, url) => { location.hash = new URL(url, location.origin).hash; };
+  const location = { hash, pathname: '/', search: '', origin: 'https://pages.test', href: `https://pages.test/${hash}` };
+  const updateLocation = (_state, _title, url) => {
+    const next = new URL(url, location.origin);
+    location.hash = next.hash;
+    location.href = next.href;
+  };
+  const document = {
+    getElementById: id => nodes.get(id),
+    querySelector: () => null,
+    createElement() {
+      const listeners = new Map();
+      return {
+        dataset: {},
+        addEventListener(name, callback) { listeners.set(name, callback); },
+        dispatchLoad() { listeners.get('load')?.(); },
+      };
+    },
+    head: { append(node) { queueMicrotask(() => node.dispatchLoad?.()); } },
+    documentElement: { classList: { remove() {} } },
+  };
+  class TestHashChangeEvent extends Event {
+    constructor(type, init = {}) { super(type); Object.assign(this, init); }
+  }
   runInNewContext(source, {
-    document: { getElementById: id => nodes.get(id), querySelector: () => null, documentElement: { classList: { remove() {} } } },
+    document,
     location,
     history: { pushState: updateLocation, replaceState: updateLocation },
     window: { addEventListener(name, callback) { windowListeners.set(name, callback); }, dispatchEvent() {} },
-    Event, console,
+    Event,
+    HashChangeEvent: TestHashChangeEvent,
+    console,
     loadTestModule: load,
+    queueMicrotask,
   });
   return {
     visible: () => [...nodes.values()].filter(node => node.id && !node.hidden).map(node => node.id),
     button: mode => buttons.find(button => button.dataset.view === mode),
     click(mode) { tabListeners.get('click')({ target: this.button(mode), preventDefault() {} }); },
-    back(mode) { location.hash = mode ? `#${mode}` : ''; windowListeners.get('popstate')(); },
+    back(mode) {
+      location.hash = mode ? `#${mode}` : '';
+      location.href = `https://pages.test/${location.hash}`;
+      windowListeners.get('popstate')();
+    },
     location,
   };
 }

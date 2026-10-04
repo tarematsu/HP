@@ -8,7 +8,6 @@ const currentShell = readFileSync(new URL('../public/current-shell.js', import.m
 const historyShell = readFileSync(new URL('../public/history-shell.js', import.meta.url), 'utf8');
 const likesShell = readFileSync(new URL('../public/likes-shell.js', import.meta.url), 'utf8');
 const dashboardEntry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-const tabOrder = readFileSync(new URL('../public/dashboard-tab-order.js', import.meta.url), 'utf8');
 const currentChartDetail = readFileSync(new URL('../public/dashboard-chart-detail.js', import.meta.url), 'utf8');
 const tabsClient = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
@@ -17,7 +16,7 @@ const redirects = readFileSync(new URL('../public/_redirects', import.meta.url),
 const historyPageUrl = new URL('../public/history/index.html', import.meta.url);
 const likesPageUrl = new URL('../public/history/likes/index.html', import.meta.url);
 
-test('dashboard starts on current and exposes every visible mode through the shared registry and shells', () => {
+test('dashboard starts on current and mounts only the five visible Buddies mode tabs', () => {
   assert.ok(registry.indexOf("view: 'current'") < registry.indexOf("mode: 'daily'"));
   assert.match(registry, /view: 'current', label: '現在', active: true/);
   assert.match(currentShell, /id: 'currentView'/);
@@ -26,8 +25,11 @@ test('dashboard starts on current and exposes every visible mode through the sha
   assert.match(historyShell, /className: 'history-view'/);
   assert.match(likesShell, /id: 'likesView'/);
   assert.match(likesShell, /className: 'likes-view'/);
-  for (const mode of ['daily', 'ranking', 'likes', 'broadcasts']) assert.match(registry, new RegExp(`mode: '${mode}'`));
-  for (const view of ['played-tracks', 'spotify']) assert.match(registry, new RegExp(`view: '${view}'`));
+  for (const mode of ['daily', 'likes', 'broadcasts']) assert.match(registry, new RegExp(`mode: '${mode}'`));
+  assert.match(registry, /view: 'played-tracks'/);
+  assert.doesNotMatch(registry, /mode: 'ranking'|view: 'spotify'/);
+  assert.match(tabsClient, /id: 'ranking', label: 'リーダーボード'/);
+  assert.match(tabsClient, /id: 'spotify', label: 'Spotify'/);
   assert.doesNotMatch(registry, /view: 'first-week'|label: '初週比較'/);
   assert.doesNotMatch(registry, /mode: 'weekly'|mode: 'monthly'/);
   assert.doesNotMatch([registry, historyShell].join('\n'), /mode: 'tracks'|id="trackControls"/);
@@ -36,23 +38,23 @@ test('dashboard starts on current and exposes every visible mode through the sha
   assert.doesNotMatch(page, /id="currentView"|id="historyView"|id="likesView"/);
 });
 
-test('dashboard keeps Spotify at the right edge before routing starts', () => {
-  assert.match(dashboardEntry, /dashboard-tab-order\.js\?v=20261002\.1/);
-  assert.match(dashboardEntry, /dashboard-tabs\.js\?v=20260930\.1/);
-  assert.ok(dashboardEntry.indexOf('dashboard-tab-order.js') < dashboardEntry.indexOf('dashboard-tabs.js'));
-  assert.doesNotMatch(tabOrder, /firstWeek|first-week/);
-  assert.match(tabOrder, /tabs\.append\(spotify\)/);
+test('source-only routes live in the common navigation model instead of hidden mode buttons', () => {
+  assert.doesNotMatch(registry, /mode: 'ranking'|view: 'spotify'/);
+  assert.match(tabsClient, /id: 'ranking', label: 'リーダーボード', defaultMode: 'ranking'/);
+  assert.match(tabsClient, /id: 'spotify', label: 'Spotify', defaultMode: 'spotify'/);
+  assert.doesNotMatch(dashboardEntry, /dashboard-tab-order\.js/);
+  assert.match(dashboardEntry, /dashboard-tabs\.js\?v=20261004\.1/);
 });
 
 test('dashboard hides the static page skeleton until the selected route shell is ready', () => {
-  assert.match(page, /<style id="dashboard-prepaint-guard">[\s\S]*html\[data-dashboard-booting\] #content \{ visibility: hidden; \}/);
-  assert.match(page, /document\.documentElement\.setAttribute\('data-dashboard-booting', ''\)/);
+  assert.match(page, /dashboard-prepaint-guard[\s\S]*html\[data-dashboard-booting\] #content\s*\{?\s*visibility:\s*hidden/);
+  assert.match(page, /document\.documentElement\.setAttribute\('data-dashboard-booting',\s*''\)/);
   assert.match(page, /dashboard:route-ready/);
   assert.match(tabsClient, /window\.dispatchEvent\(new Event\('dashboard:route-ready'\)\)/);
   assert.ok(page.indexOf('dashboard-prepaint-guard') < page.indexOf('/assets/dashboard.min.css'));
 });
 
-test('archive and likes markup are owned by their shared shell modules', () => {
+test('archive and likes markup are owned by lazily loaded shared shell modules', () => {
   for (const id of ['controls', 'summaryCards', 'chartPanel', 'rankingWeeklyPanel']) {
     assert.match(historyShell, new RegExp(`(?:id=\\"${id}\\"|id: '${id}')`));
   }
@@ -68,21 +70,26 @@ test('archive and likes markup are owned by their shared shell modules', () => {
   assert.match(likesShell, /dashboardNotice/);
   assert.match(likesShell, /dashboardTable/);
   assert.doesNotMatch(likesShell, /id="likesLoad"/);
-  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260930\.1'/);
+  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20261004\.1'/);
+  assert.doesNotMatch(dashboardEntry, /history-shell|likes-shell/);
+  assert.match(tabsClient, /shell: \(\) => import\('\/history-shell\.js\?v=20260930\.1'\)/);
+  assert.match(tabsClient, /shell: \(\) => import\('\/likes-shell\.js\?v=20260930\.1'\)/);
   assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=\d{8}\.\d+'\)/);
   assert.match(tabsClient, /import\('\/history\/history-likes\.js\?v=20260930\.1'\)/);
-  assert.match(tabsClient, /setRoute\(mode, runtimeReady \? historyView : null/);
-  assert.match(tabsClient, /viewId: 'likesView'/);
   assert.match(historyEntry, /VALID_MODES/);
 });
 
-test('feature tabs share one lazy route registry and loader', () => {
-  assert.match(tabsClient, /const LAZY_VIEWS = Object\.freeze/);
+test('feature tabs share one lazy route registry, stylesheet loader and module cache', () => {
+  assert.match(tabsClient, /const LAZY_VIEWS = \{/);
   assert.match(tabsClient, /const modulePromises = new Map\(\)/);
-  assert.match(tabsClient, /function loadOnce\(key, importer\)/);
+  assert.match(tabsClient, /const stylePromises = new Map\(\)/);
+  assert.match(tabsClient, /function ensureModeStyles\(mode\)/);
   assert.match(tabsClient, /async function showLazyView\(mode, options = \{}\)/);
   for (const [mode, shell, runtime] of [
+    ['hinata', 'hinata-shell.js', 'hinata.js'],
+    ['followers', 'followers-shell.js', 'followers.js'],
     ['played-tracks', 'played-tracks-shell.js', 'played-tracks.js'],
+    ['likes', 'likes-shell.js', 'history-likes.js'],
     ['spotify', 'spotify-shell.js', 'spotify.js'],
     ['amazon-music', 'amazon-music-shell.js', 'amazon-music.js'],
     ['apple-music', 'apple-music-shell.js', 'apple-music.js'],
@@ -91,21 +98,24 @@ test('feature tabs share one lazy route registry and loader', () => {
     assert.match(tabsClient, new RegExp(shell.replaceAll('.', '\\.')));
     assert.match(tabsClient, new RegExp(runtime.replaceAll('.', '\\.')));
   }
-  assert.doesNotMatch(tabsClient, /'first-week': \{|first-week-comparison-shell|first-week-comparison\.js/);
-  assert.match(tabsClient, /mode === 'first-week'[\s\S]*#broadcasts/);
+  assert.match(tabsClient, /stationhead\.min\.css/);
+  assert.match(tabsClient, /subscriptions\.min\.css/);
   assert.doesNotMatch(tabsClient, /function ensureSpotifyShell|function showSpotify|function showAppleMusic|function showPlayedTracks/);
 });
 
-test('obsolete unofficial view is not a central dashboard route', () => {
-  assert.doesNotMatch(tabsClient, /'unofficial'|unofficialView|showUnofficial/);
+test('legacy listening-party hashes normalize to the shared broadcasts route only', () => {
+  assert.match(tabsClient, /mode === 'first-week' \|\| mode === 'unofficial'/);
+  assert.match(tabsClient, /#broadcasts/);
+  assert.doesNotMatch(tabsClient, /unofficialView|showUnofficial|['"]unofficial['"]\s*:/);
   assert.doesNotMatch(registry, /view: 'unofficial'/);
 });
 
-test('first-week comparison is loaded with the dashboard instead of behind a route loader', () => {
-  assert.match(dashboardEntry, /import '\.\/first-week-comparison-shell\.js\?v=20261002\.2'/);
-  assert.match(dashboardEntry, /import '\.\/first-week-comparison\.js\?v=20261002\.2'/);
+test('first-week comparison loads only with the broadcasts route', () => {
+  assert.doesNotMatch(dashboardEntry, /first-week-comparison-shell|first-week-comparison\.js/);
+  assert.match(tabsClient, /mode === 'broadcasts'/);
+  assert.match(tabsClient, /loadOnce\('first-week:shell'[\s\S]*first-week-comparison-shell\.js/);
+  assert.match(tabsClient, /loadOnce\('first-week:runtime'[\s\S]*first-week-comparison\.js/);
   assert.doesNotMatch(historyEntry, /first-week-comparison-shell|first-week-comparison\.js/);
-  assert.doesNotMatch(tabsClient, /first-week-comparison-shell|first-week-comparison\.js/);
 });
 
 test('history mode-specific runtimes remain lazy-loaded after history starts', () => {
@@ -122,10 +132,10 @@ test('history mode-specific runtimes remain lazy-loaded after history starts', (
 });
 
 test('late async runtimes cannot reactivate a tab the user already left', () => {
-  assert.match(tabsClient, /await ensureLazyShell\(mode\);\s*if \(activeMode !== mode\) return;/);
+  assert.match(tabsClient, /await Promise\.all\([\s\S]*loadOnce\(`\$\{mode\}:shell`[\s\S]*if \(activeMode !== mode\) return;/);
   assert.match(tabsClient, /const runtime = await loadOnce\(`\$\{mode\}:runtime`/);
   assert.match(tabsClient, /if \(activeMode !== mode\) return;\s*if \(config\.loadExport\)/);
-  assert.match(tabsClient, /await loadOnce\('history-runtime'[\s\S]*if \(activeMode !== mode\) return;/);
+  assert.match(tabsClient, /await loadOnce\('history:runtime'[\s\S]*if \(activeMode !== mode\) return;/);
   assert.match(tabsClient, /catch \(error\) \{\s*if \(activeMode !== mode\) return;/);
 });
 
