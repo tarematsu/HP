@@ -44,6 +44,8 @@ test('played-tracks daily query keeps only the legacy prefix before exact playba
   assert.match(sql, /JOIN sh_queue_revisions revisions ON revisions\.id=starts\.latest_revision_id/);
   assert.match(sql, /JOIN sh_queue_revision_items items ON items\.revision_id=revisions\.id/);
   assert.match(sql, /FROM sh_track_history_queue_starts starts/);
+  assert.match(sql, /FROM sh_track_counter_current counters/);
+  assert.doesNotMatch(sql, /FROM sh_track_counter_changes counters/);
   assert.doesNotMatch(sql, /sh_queue_items/);
   assert.equal((sql.match(/\?/g) || []).length, (TRACK_HISTORY_SQL.match(/\?/g) || []).length);
   assert.match(repair, /const eventStart = Math\.max\(fromTs, Math\.min\(toTs, firstEventAt\(eventRows, fromTs\)\)\)/);

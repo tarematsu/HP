@@ -35,10 +35,8 @@ const DIRECT_QUEUE_STARTS_SQL = `WITH RECURSIVE queue_bounds AS (
         NULL AS preview_url,
         COALESCE((
           SELECT counters.count_value
-          FROM sh_track_counter_changes counters
+          FROM sh_track_counter_current counters
           WHERE counters.occurrence_key='revision:'||CAST(revisions.id AS TEXT)||':'||CAST(items.position AS TEXT)
-          ORDER BY counters.observed_at DESC,counters.id DESC
-          LIMIT 1
         ),items.bite_count) AS bite_count,
         NULL AS raw_json
       FROM queue_starts starts
