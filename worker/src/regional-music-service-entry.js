@@ -6,6 +6,7 @@ import {
   KUGOU_ACG_BACKFILL_MESSAGE_TYPE,
   runKugouAcgBackfillBatch,
 } from './kugou-acg-backfill.js';
+import { KUGOU_ACG_HISTORY_PROGRESS_KEY } from './kugou-acg-chart-history.js';
 import { publishRegionalMusicServiceReadModel } from './regional-music-read-model.js';
 import {
   REGIONAL_SCHEDULED_JOB_CRONS,
@@ -29,6 +30,31 @@ async function runScheduled(controller, env, ctx) {
   return app.scheduled(controller, env, ctx);
 }
 
+function backfillErrorDetail(error) {
+  return [
+    error?.name,
+    error?.message,
+    error?.cause?.message || error?.cause,
+    error?.stack,
+  ].filter(Boolean).map(String).join(' | ').slice(0, 3000);
+}
+
+async function recordKugouBackfillFailure(env, body, error) {
+  if (!env?.PAGES_RESPONSE_R2?.put) return;
+  const updatedAt = Date.now();
+  await env.PAGES_RESPONSE_R2.put(KUGOU_ACG_HISTORY_PROGRESS_KEY, JSON.stringify({
+    version: 1,
+    status: 'error',
+    complete: false,
+    updated_at: updatedAt,
+    start_date: String(body?.start_date || KUGOU_ACG_BACKFILL_DEFAULT_START),
+    requested_at: Number(body?.requested_at) || null,
+    last_error: backfillErrorDetail(error),
+  }), {
+    httpMetadata: { contentType: 'application/json; charset=utf-8' },
+  });
+}
+
 export async function runRegionalMusicServiceQueue(batch, env, context, dependencies = {}) {
   const messages = batch?.messages || [];
   const message = messages[0];
@@ -47,27 +73,42 @@ export async function runRegionalMusicServiceQueue(batch, env, context, dependen
 
   const startDate = String(body.start_date || KUGOU_ACG_BACKFILL_DEFAULT_START);
   const batchSize = Number(body.batch_size) || KUGOU_ACG_BACKFILL_BATCH_SIZE;
-  const result = await runBackfill(env, {
-    startDate,
-    batchSize,
-    now: Date.now(),
-  }, globalThis.fetch);
+  try {
+    const result = await runBackfill(env, {
+      startDate,
+      batchSize,
+      now: Date.now(),
+    }, globalThis.fetch);
 
-  await publishReadModel(env, 'kugou_music', Date.now());
+    await publishReadModel(env, 'kugou_music', Date.now());
 
-  if (!result.complete) {
-    await sendContinuation({
-      message_type: KUGOU_ACG_BACKFILL_MESSAGE_TYPE,
-      message_version: 1,
-      start_date: startDate,
-      batch_size: batchSize,
-      requested_at: Number(body.requested_at) || Date.now(),
+    if (!result.complete) {
+      await sendContinuation({
+        message_type: KUGOU_ACG_BACKFILL_MESSAGE_TYPE,
+        message_version: 1,
+        start_date: startDate,
+        batch_size: batchSize,
+        requested_at: Number(body.requested_at) || Date.now(),
+      });
+    }
+
+    console.log(JSON.stringify({ event: 'kugou_acg_backfill_batch_complete', ...result }));
+    message.ack?.();
+    return result;
+  } catch (error) {
+    await recordKugouBackfillFailure(env, body, error).catch((recordError) => {
+      console.error(JSON.stringify({
+        event: 'kugou_acg_backfill_failure_record_failed',
+        error: String(recordError?.message || recordError).slice(0, 800),
+      }));
     });
+    console.error(JSON.stringify({
+      event: 'kugou_acg_backfill_batch_failed',
+      start_date: startDate,
+      error: backfillErrorDetail(error),
+    }));
+    throw error;
   }
-
-  console.log(JSON.stringify({ event: 'kugou_acg_backfill_batch_complete', ...result }));
-  message.ack?.();
-  return result;
 }
 
 export default {
