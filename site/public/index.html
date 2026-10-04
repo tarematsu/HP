@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ja">
+<html lang="ja" data-dashboard-css-bundled="true">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -7,7 +7,9 @@
   <meta name="color-scheme" content="light">
   <meta name="robots" content="noindex,nofollow,noarchive,nosnippet,noimageindex">
   <title>#櫻坂46_ステへ統計</title>
-  <style id="dashboard-prepaint-guard">html[data-dashboard-booting] #content{visibility:hidden}</style>
+  <style id="dashboard-prepaint-guard">
+    html[data-dashboard-booting] #content { visibility: hidden; }
+  </style>
   <script>
     document.documentElement.setAttribute('data-dashboard-booting', '');
     const revealDashboard = () => document.documentElement.removeAttribute('data-dashboard-booting');
@@ -32,7 +34,7 @@
           <button type="button" data-section="subscriptions" aria-pressed="false">音楽ストリーミングサービス</button>
         </div>
         <div id="sourceTabs" class="dashboard-source-tabs" aria-label="収集対象"></div>
-        <div id="modeTabs" class="mode-tabs dashboard-tabs stationhead-subtabs" aria-label="Buddies 表示種類"></div>
+        <div id="modeTabs" class="mode-tabs dashboard-tabs" aria-label="Buddies 表示種類"></div>
       </nav>
     </header>
   </main>
