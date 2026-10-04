@@ -49,14 +49,15 @@ LR"JS(
   // current player values as the source of truth instead of relying on old
   // "画質/設定" buttons or only mutating HTMLMediaElement.playbackRate.
   const controlSelector = [
-    'button', '[role="button"]', '[role="menuitem"]', '[role="option"]',
-    '[role="radio"]', '[aria-label]', '[title]', '[data-testid]'
+    'button', '[role="button"]', '[role="menuitem"]',
+    '[role="menuitemradio"]', '[role="option"]', '[role="radio"]',
+    '[aria-label]', '[title]', '[data-testid]'
   ].join(',');
   const controls = Array.from(document.querySelectorAll(controlSelector))
       .filter(connected);
   const roleContainer = element => {
     const role = element?.getAttribute?.('role') || '';
-    if (/^(?:menuitem|option|radio)$/i.test(role)) return true;
+    if (/^(?:menuitem|menuitemradio|option|radio)$/i.test(role)) return true;
     try {
       return Boolean(element?.closest?.(
           '[role="menu"],[role="listbox"],[role="dialog"]'));
@@ -122,11 +123,13 @@ LR"JS(
 
   const duration = Number.isFinite(video.duration) && video.duration > 0
       ? video.duration : 0;
-  const adMarker = controls.some(element => labels(element).some(value =>
-      /(?:広告|CM).{0,14}スキップ|skip\s+(?:this\s+)?ad/i.test(value))) ||
-      Boolean(document.querySelector(
-          '[data-testid*="advert" i],[data-testid*="commercial" i],'
-          + '[class*="advert" i],[class*="commercial" i]'));
+  const adNodes = Array.from(document.querySelectorAll(
+      '[data-testid*="advert" i],[data-testid*="commercial" i],'
+      + '[class*="advert" i],[class*="commercial" i]')).filter(visible);
+  const adMarker = controls.some(element => visible(element) &&
+      labels(element).some(value =>
+        /(?:広告|CM).{0,14}スキップ|skip\s+(?:this\s+)?ad/i.test(value))) ||
+      adNodes.length > 0;
   const programMedia = duration > 65 && !adMarker;
 
   const parseSpeed = value => {
@@ -215,6 +218,14 @@ LR"JS(
       if (qualityIndicator &&
           clickOnce(qualityIndicator, 'quality-menu-v2', 900)) return;
       schedule(700);
+    }
+
+    // Do not enter fullscreen until both settings are confirmed by TVer's own
+    // current UI. This keeps the setting menus reachable during recovery.
+    if (!speedConfirmed || !qualityConfirmed) {
+      state.fullscreenCornerTapAt = now;
+      schedule(700);
+      return;
     }
   } else {
     // TVer does not permit speed changes during ads. Keep retrying when the
