@@ -12,7 +12,7 @@ test('Spotify collector is isolated behind the shared scheduler and owns its eve
   const value = config();
   assert.equal(value.name, 'sh-spotify-playcount-collector');
   assert.equal(value.main, 'src/spotify-playcount-service-entry.js');
-  assert.equal(value.triggers, undefined);
+  assert.deepEqual(value.triggers, { crons: [] });
   assert.deepEqual(value.d1_databases.map(({ binding }) => binding), ['MINUTE_DB', 'OTHER_DB']);
   assert.deepEqual(value.r2_buckets, [
     {
