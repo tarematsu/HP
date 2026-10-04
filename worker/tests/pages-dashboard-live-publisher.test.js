@@ -5,7 +5,7 @@ import test from 'node:test';
 const publisher = readFileSync(new URL('../src/pages-dashboard-live-publisher.js', import.meta.url), 'utf8');
 const fastStore = readFileSync(new URL('../src/minute-facts-fast-store.js', import.meta.url), 'utf8');
 const dashboardEntry = readFileSync(new URL('../../site/public/dashboard-metrics.js', import.meta.url), 'utf8');
-const dashboardClient = readFileSync(new URL('../../site/public/dashboard-client.js', import.meta.url), 'utf8');
+const dashboardReadModel = readFileSync(new URL('../../site/public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
 
 test('committed live minute facts immediately publish the current dashboard model', () => {
   assert.match(fastStore, /await timedStage\('upsert_minute_fact'/);
@@ -29,8 +29,8 @@ test('steady-state live publication is differential and reads D1 only for bounde
   assert.doesNotMatch(publisher, /FROM sh_dashboard_history_5m/);
 });
 
-test('current-tab client has no secondary details request when the materialized model embeds details', () => {
+test('current-tab read model has no secondary details request when the materialized model embeds details', () => {
   assert.doesNotMatch(dashboardEntry, /dashboard-details-client\.js/);
-  assert.doesNotMatch(dashboardClient, /\/api\/dashboard-details|dashboard:details/);
-  assert.equal((dashboardClient.match(/\/api\/dashboard/g) || []).length, 1);
+  assert.doesNotMatch(dashboardReadModel, /\/api\/dashboard-details|dashboard:details/);
+  assert.equal((dashboardReadModel.match(/\/api\/dashboard\?history=0/g) || []).length, 1);
 });
