@@ -19,7 +19,7 @@ export const KUGOU_ACG_BACKFILL_MESSAGE_TYPE = 'kugou-acg-history-backfill';
 export const KUGOU_ACG_BACKFILL_DEFAULT_START = '2019-01-01';
 export const KUGOU_ACG_BACKFILL_BATCH_SIZE = 4;
 export const KUGOU_ACG_BACKFILL_MAX_BATCH_SIZE = 10;
-export const KUGOU_ACG_HISTORICAL_FETCH_VERSION = 3;
+export const KUGOU_ACG_HISTORICAL_FETCH_VERSION = 4;
 
 function normalizedStartDate(value) {
   const text = String(value || KUGOU_ACG_BACKFILL_DEFAULT_START).trim();
@@ -39,11 +39,10 @@ export function kugouAcgHistoricalSongsUrl(volid) {
     pagesize: '100',
     page: '1',
     version: '9108',
-    ranktype: '0',
+    ranktype: '2',
     plat: '0',
     area_code: '1',
-    with_res_tag: '0',
-    show_portrait_mv: '1',
+    with_res_tag: '1',
   });
   return `http://mobilecdnbj.kugou.com/api/v3/rank/song?${params}`;
 }
@@ -70,7 +69,7 @@ async function fetchJson(fetchImpl, url) {
     headers: {
       accept: 'application/json,text/plain,*/*',
       referer: 'https://www.kugou.com/',
-      'user-agent': 'Mozilla/5.0 compatible; skrzk-pages-kugou-acg-backfill/3.0',
+      'user-agent': 'Mozilla/5.0 compatible; skrzk-pages-kugou-acg-backfill/4.0',
     },
     signal: AbortSignal.timeout(30_000),
   });
