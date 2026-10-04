@@ -15,6 +15,9 @@ import {
   prepareDashboardCanvas,
 } from './dashboard-chart-canvas.js?v=20261001.2';
 import {
+  DASHBOARD_MISSING_KEY,
+  dashboardMissingIndexBands,
+  drawDashboardMissingBands,
   nearestPositionIndex,
   observeDashboardChartResize,
 } from './dashboard-chart-runtime.js?v=20261001.1';
@@ -53,7 +56,7 @@ function cellText(column, row) {
   const value = row?.[column?.key];
   if (column?.format === 'rank') {
     const rank = rankValue(value);
-    return rank == null ? '圏外' : `${numberFormat.format(rank)}位`;
+    return rank == null ? String(row?.rank_status || '圏外') : `${numberFormat.format(rank)}位`;
   }
   if (value === null || value === undefined || value === '') return '-';
   if (typeof value === 'number') return numberFormat.format(value);
@@ -116,21 +119,40 @@ function setChartEmpty(empty) {
   }
 }
 
-function renderLegend(series) {
+function appendLegendEntry(legend, labelText, color, { filled = false } = {}) {
+  const entry = document.createElement('span');
+  entry.className = 'leaderboard-legend-item';
+  const swatch = document.createElement('i');
+  swatch.className = 'leaderboard-legend-swatch';
+  if (filled) swatch.style.backgroundColor = color;
+  else swatch.style.borderTopColor = color;
+  swatch.setAttribute('aria-hidden', 'true');
+  const label = document.createElement('span');
+  label.textContent = labelText;
+  entry.append(swatch, label);
+  legend.append(entry);
+}
+
+function renderLegend(series, hasMissingBand = false) {
   const legend = byId('leaderboardLegend');
   if (!legend) return;
   legend.replaceChildren();
-  series.forEach((item, index) => {
-    const entry = document.createElement('span');
-    entry.className = 'leaderboard-legend-item';
-    const swatch = document.createElement('i');
-    swatch.className = 'leaderboard-legend-swatch';
-    swatch.style.borderTopColor = seriesColor(item, index);
-    swatch.setAttribute('aria-hidden', 'true');
-    const label = document.createElement('span');
-    label.textContent = item.label || item.id || '-';
-    entry.append(swatch, label);
-    legend.append(entry);
+  series.forEach((item, index) => appendLegendEntry(
+    legend,
+    item.label || item.id || '-',
+    seriesColor(item, index),
+  ));
+  if (hasMissingBand) appendLegendEntry(legend, '欠測', DASHBOARD_MISSING_KEY, { filled: true });
+}
+
+function dateIsMissing(payload, date) {
+  return (Array.isArray(payload?.missing_ranges) ? payload.missing_ranges : []).some((range) => {
+    const from = String(range?.from || '');
+    const to = String(range?.to || '');
+    return /^\d{4}-\d{2}-\d{2}$/.test(from)
+      && /^\d{4}-\d{2}-\d{2}$/.test(to)
+      && date >= from
+      && date <= to;
   });
 }
 
@@ -156,7 +178,6 @@ function renderChart(payload) {
     return;
   }
   setChartEmpty(false);
-  renderLegend(series);
   const dates = [...new Set(series.flatMap((item) => item.points.map((point) => point.date)))].sort();
   const ranks = series.flatMap((item) => item.points.map((point) => point.rank).filter((rank) => rank != null));
   if (!dates.length || !ranks.length) {
@@ -178,6 +199,15 @@ function renderChart(payload) {
   area.height = Math.max(1, height - area.top - area.bottom);
   const positions = dates.map((_, index) => area.left
     + (dates.length === 1 ? area.width / 2 : area.width * index / (dates.length - 1)));
+  const step = positions.length > 1 ? area.width / (positions.length - 1) : area.width;
+  const hasMissingBand = drawDashboardMissingBands(
+    context,
+    dashboardMissingIndexBands(dates, positions, area, {
+      isMissing: (date) => dateIsMissing(payload, date),
+      step,
+    }),
+    { top: area.top, height: area.height },
+  );
   const maxRank = Math.max(1, ...ranks);
   const yFor = (rank) => area.top + (Math.max(1, Number(rank)) - 1) / Math.max(1, maxRank - 1) * area.height;
 
@@ -221,6 +251,7 @@ function renderChart(payload) {
     return { ...item, byDate };
   });
 
+  renderLegend(series, hasMissingBand);
   drawDashboardXAxis(context, {
     left: area.left,
     right: area.right,
