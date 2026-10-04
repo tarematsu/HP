@@ -4,7 +4,11 @@ const ACTIONS_RAW_RESPONSE_KEY_PREFIX = 'pages-response/actions-raw-v1/';
 const TRACK_HISTORY_MODEL_KEY = 'track-history';
 const TRACK_HISTORY_STATUS_MODEL_KEY = 'track-history-status';
 const FOLLOWERS_MODEL_KEY = 'followers';
-const STREAMED_ACTIONS_MODEL_KEY = 'history:daily';
+const STREAMED_ACTIONS_MODEL_KEYS = new Set([
+  'history:daily',
+  'history:weekly',
+  TRACK_HISTORY_STATUS_MODEL_KEY,
+]);
 const FOLLOWER_HANDLES = Object.freeze([
   'sakuramankai',
   'sakuramankai2',
@@ -193,6 +197,17 @@ async function responseFromActionsObject(object, now, maximumAgeMs) {
   return envelope ? responseFromActionsEnvelope(envelope, now, maximumAgeMs) : null;
 }
 
+function persistedRawHeaders(metadata) {
+  try {
+    if (metadata.headers_uri) {
+      return JSON.parse(decodeURIComponent(metadata.headers_uri));
+    }
+    return JSON.parse(metadata.headers_json || '{}');
+  } catch {
+    return {};
+  }
+}
+
 function responseFromRawActionsObject(object, sourceEtag, now, maximumAgeMs) {
   if (!object?.body) return null;
   const metadata = objectOrNull(object.customMetadata) || {};
@@ -201,13 +216,7 @@ function responseFromRawActionsObject(object, sourceEtag, now, maximumAgeMs) {
   }
   const updatedAt = Number(metadata.updated_at);
   if (!freshEnough(updatedAt, now, maximumAgeMs)) return null;
-  let persistedHeaders = {};
-  try {
-    persistedHeaders = JSON.parse(metadata.headers_json || '{}');
-  } catch {
-    persistedHeaders = {};
-  }
-  const headers = new Headers(objectOrNull(persistedHeaders) || {});
+  const headers = new Headers(objectOrNull(persistedRawHeaders(metadata)) || {});
   if (typeof object.writeHttpMetadata === 'function') object.writeHttpMetadata(headers);
   headers.set('x-api-source', 'actions-r2-raw');
   headers.set('x-materialized-at', String(updatedAt));
@@ -309,10 +318,10 @@ export async function loadMaterializedR2Response(
   now = Date.now(),
   maximumAgeMs = Number.MAX_SAFE_INTEGER,
 ) {
-  // The large daily history model keeps its canonical Actions envelope for
-  // revision management, but serves a raw companion after validating the
-  // envelope ETag so normal cache misses do not parse ~500 KB of nested JSON.
-  if (modelKey === STREAMED_ACTIONS_MODEL_KEY) {
+  // Large and ranking-oriented Actions read models keep their canonical envelope
+  // for revision management, but serve a raw companion after validating the
+  // canonical ETag so cache misses do not parse nested JSON before streaming it.
+  if (STREAMED_ACTIONS_MODEL_KEYS.has(modelKey)) {
     const streamed = await loadStreamedActionsResponse(r2, modelKey, now, maximumAgeMs);
     if (streamed) return streamed;
   }
