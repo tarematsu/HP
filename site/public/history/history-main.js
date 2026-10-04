@@ -1,11 +1,11 @@
 const SUMMARY_MODES = new Set(['daily', 'weekly', 'monthly']);
-const VALID_MODES = new Set([...SUMMARY_MODES, 'ranking', 'broadcasts']);
+const VALID_MODES = new Set([...SUMMARY_MODES, 'broadcasts']);
 const requestedMode = location.hash.slice(1);
 const runtimePromises = new Map();
 
 function runtimeKey(mode) {
   if (SUMMARY_MODES.has(mode)) return 'summary';
-  if (mode === 'ranking' || mode === 'broadcasts') return mode;
+  if (mode === 'broadcasts') return mode;
   return '';
 }
 
@@ -14,10 +14,6 @@ async function importModeRuntime(mode) {
   if (!key) return;
   if (key === 'summary') {
     await import('/history/history-period-chart.js?v=20261002.4');
-    return;
-  }
-  if (key === 'ranking') {
-    await import('/history/history-ranking-chart.js?v=20260930.2&rev=20260930.3');
     return;
   }
   await import('/unofficial-listening-parties.js?v=20260927.1');
@@ -49,6 +45,5 @@ await import('/history/history-axis-labels.js?v=20260923.6');
 await import('/history/history-chart-stability.js?v=20260925.1');
 await ensureHistoryModeRuntime(initialMode);
 await import('/history/history-range-navigator.js?v=20260925.1');
-await import('/history/history-ranking-simplified.js?v=20261002.1');
 await import('/history/history-lite.js?v=20261001.1');
 window.dispatchEvent(new Event('history:runtime-ready'));
