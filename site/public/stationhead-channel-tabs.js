@@ -32,12 +32,19 @@ function datasetKey(attribute) {
   return attribute.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
 }
 
+function inferredChannel(dataAttribute) {
+  const value = dataAttributeName(dataAttribute);
+  if (value.startsWith('hinata-') || value.startsWith('ohisama-')) return 'ohisama';
+  if (value.startsWith('nogizaka-')) return 'nogizaka';
+  return 'buddies';
+}
+
 export function stationheadChannelProfile(channel = 'buddies') {
   return STATIONHEAD_CHANNEL_PROFILES[channel] || STATIONHEAD_CHANNEL_PROFILES.buddies;
 }
 
 export function stationheadChannelTabs({
-  channel = 'buddies',
+  channel = '',
   dataAttribute = 'stationhead-section',
   ariaLabel = 'Stationhead表示切替',
   active = 'current',
@@ -46,7 +53,7 @@ export function stationheadChannelTabs({
   unavailableTitle = '未提供',
   pausedTitle = '一時停止中',
 } = {}) {
-  const profile = stationheadChannelProfile(channel);
+  const profile = stationheadChannelProfile(channel || inferredChannel(dataAttribute));
   const enabledSet = new Set(enabled || profile.enabled);
   const pausedSet = new Set(paused || profile.paused);
   return dashboardModeTabs(STATIONHEAD_CHANNEL_TABS.map(({ value, label }) => ({
