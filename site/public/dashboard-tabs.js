@@ -1,11 +1,4 @@
 const HISTORY_MODES = new Set(['daily', 'weekly', 'monthly', 'ranking', 'broadcasts']);
-const REGIONAL_MUSIC_MODES = new Set(['kkbox', 'qq_music', 'kugou_music']);
-const REGIONAL_MUSIC_VIEW = Object.freeze({
-  viewId: 'regionalMusicView',
-  shell: () => import('/regional-music-shell.js?v=20261004.1'),
-  runtime: () => import('/regional-music.js?v=20261004.1'),
-  noticeId: 'regionalMusicNotice',
-});
 
 const LAZY_VIEWS = Object.freeze({
   hinata: {
@@ -62,11 +55,38 @@ const LAZY_VIEWS = Object.freeze({
   'youtube-music': {
     viewId: 'youtubeMusicView',
     shell: () => import('/youtube-music-shell.js?v=20261003.4'),
-    runtime: () => import('/youtube-music.js?v=20261004.1'),
+    runtime: () => import('/youtube-music.js?v=20261004.2'),
     loadExport: 'loadYoutubeMusicView',
     noticeId: 'youtubeMusicNotice',
     errorLabel: 'youtube music',
     errorMessage: 'YouTube Musicデータの初期化に失敗しました。再読み込みしてください。',
+  },
+  kkbox: {
+    viewId: 'kkboxView',
+    shell: () => import('/kkbox-shell.js?v=20261004.1'),
+    runtime: () => import('/kkbox.js?v=20261004.1'),
+    loadExport: 'loadKkboxView',
+    noticeId: 'kkboxNotice',
+    errorLabel: 'kkbox',
+    errorMessage: 'KKBOXデータの初期化に失敗しました。再読み込みしてください。',
+  },
+  qq_music: {
+    viewId: 'qqMusicView',
+    shell: () => import('/qq-music-shell.js?v=20261004.1'),
+    runtime: () => import('/qq-music.js?v=20261004.1'),
+    loadExport: 'loadQqMusicView',
+    noticeId: 'qqMusicNotice',
+    errorLabel: 'qq music',
+    errorMessage: 'QQ音乐データの初期化に失敗しました。再読み込みしてください。',
+  },
+  kugou_music: {
+    viewId: 'kugouMusicView',
+    shell: () => import('/kugou-music-shell.js?v=20261004.1'),
+    runtime: () => import('/kugou-music.js?v=20261004.1'),
+    loadExport: 'loadKugouMusicView',
+    noticeId: 'kugouMusicNotice',
+    errorLabel: 'kugou music',
+    errorMessage: '酷狗音乐データの初期化に失敗しました。再読み込みしてください。',
   },
   nogizaka: {
     viewId: 'nogizakaListeningPartyView',
@@ -85,8 +105,8 @@ const LAZY_VIEWS = Object.freeze({
     errorMessage: 'いいねデータの初期化に失敗しました。再読み込みしてください。',
   },
 });
-const VIEW_MODES = new Set(['current', ...HISTORY_MODES, ...Object.keys(LAZY_VIEWS), ...REGIONAL_MUSIC_MODES]);
-const VIEW_IDS = ['currentView', 'historyView', ...Object.values(LAZY_VIEWS).map(({ viewId }) => viewId), REGIONAL_MUSIC_VIEW.viewId];
+const VIEW_MODES = new Set(['current', ...HISTORY_MODES, ...Object.keys(LAZY_VIEWS)]);
+const VIEW_IDS = ['currentView', 'historyView', ...Object.values(LAZY_VIEWS).map(({ viewId }) => viewId)];
 
 const NAVIGATION = Object.freeze([
   Object.freeze({
@@ -321,29 +341,6 @@ async function showLazyView(mode, options = {}) {
   }
 }
 
-async function showRegionalMusicView(mode, options = {}) {
-  setRoute(mode, null, options);
-  try {
-    await loadOnce('regional-music:shell', REGIONAL_MUSIC_VIEW.shell);
-    if (activeMode !== mode) return;
-    showOnly(document.getElementById(REGIONAL_MUSIC_VIEW.viewId));
-    markRouteReady();
-    const runtime = await loadOnce('regional-music:runtime', REGIONAL_MUSIC_VIEW.runtime);
-    if (activeMode !== mode) return;
-    await runtime.loadRegionalMusicView?.(mode);
-  } catch (error) {
-    if (activeMode !== mode) return;
-    markRouteReady();
-    showRuntimeError({
-      ...REGIONAL_MUSIC_VIEW,
-      errorLabel: `regional music ${mode}`,
-      errorMessage: '地域音楽サービスの初期化に失敗しました。再読み込みしてください。',
-    }, error);
-  } finally {
-    releaseUnexpectedSkipLinkFocus();
-  }
-}
-
 async function showHistory(mode, { updateUrl = true, replaceUrl = false, syncRuntime = true } = {}) {
   if (!HISTORY_MODES.has(mode)) {
     showCurrent({ updateUrl, replaceUrl });
@@ -395,7 +392,6 @@ function modeFromLocation() {
 function showMode(mode, options = {}) {
   if (mode === 'current') showCurrent(options);
   else if (HISTORY_MODES.has(mode)) void showHistory(mode, options);
-  else if (REGIONAL_MUSIC_MODES.has(mode)) void showRegionalMusicView(mode, options);
   else void showLazyView(mode, options);
 }
 

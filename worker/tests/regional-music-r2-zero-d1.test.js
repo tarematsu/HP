@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  publishRegionalMusicReadModels,
-  publishRegionalMusicServiceReadModel,
-} from '../src/regional-music-read-model.js';
+  publishMusicServiceReadModels,
+  publishMusicServiceReadModel,
+} from '../src/music-service-read-model.js';
 import { regionalSnapshotKey } from '../src/regional-music-r2-snapshot.js';
 
 function r2Snapshot(service, updatedAt = 1234) {
@@ -53,14 +53,14 @@ function r2Snapshot(service, updatedAt = 1234) {
   };
 }
 
-test('regional publication uses latest R2 snapshot without loading D1', async () => {
+test('music service publication uses latest R2 snapshot without loading D1', async () => {
   const service = 'kkbox';
   const latestKey = regionalSnapshotKey(service);
   const snapshot = r2Snapshot(service);
   const writes = [];
   let d1Loads = 0;
 
-  const result = await publishRegionalMusicServiceReadModel({
+  const result = await publishMusicServiceReadModel({
     OTHER_DB: {
       prepare() {
         throw new Error('D1 must not be read when an R2 snapshot exists');
@@ -86,17 +86,17 @@ test('regional publication uses latest R2 snapshot without loading D1', async ()
 
   assert.equal(d1Loads, 0);
   assert.equal(writes.length, 1);
-  assert.equal(writes[0].key, 'regional-music:kkbox');
+  assert.equal(writes[0].key, 'music-service:kkbox');
   assert.equal(writes[0].body.source_updated_at, 1234);
   assert.equal(writes[0].body.tracks[0].track_id, 42);
   assert.equal(writes[0].body.services[0].storage, 'r2');
   assert.equal(result.skipped, false);
 });
 
-test('regional publication keeps D1 compatibility fallback when latest R2 snapshot is missing', async () => {
+test('music service publication keeps D1 compatibility fallback when latest R2 snapshot is missing', async () => {
   let d1Loads = 0;
   const writes = [];
-  await publishRegionalMusicServiceReadModel({
+  await publishMusicServiceReadModel({
     OTHER_DB: {},
     PAGES_RESPONSE_R2: {
       async get() { return null; },
@@ -133,7 +133,7 @@ test('mixed publication scopes D1 fallback only to the service missing R2', asyn
   const fallbackCalls = [];
   const writes = [];
 
-  const result = await publishRegionalMusicReadModels({
+  const result = await publishMusicServiceReadModels({
     OTHER_DB: {},
     PAGES_RESPONSE_R2: {
       async get(key) {
@@ -164,6 +164,6 @@ test('mixed publication scopes D1 fallback only to the service missing R2', asyn
   assert.deepEqual(fallbackCalls, ['youtube_music']);
   assert.equal(result.d1_fallback, true);
   assert.deepEqual(result.d1_fallback_services, ['youtube_music']);
-  assert.equal(writes.find((row) => row.key === 'regional-music:kkbox').body.source_updated_at, 1500);
-  assert.equal(writes.find((row) => row.key === 'regional-music:youtube_music').body.tracks[0].plays, 999);
+  assert.equal(writes.find((row) => row.key === 'music-service:kkbox').body.source_updated_at, 1500);
+  assert.equal(writes.find((row) => row.key === 'music-service:youtube_music').body.tracks[0].plays, 999);
 });

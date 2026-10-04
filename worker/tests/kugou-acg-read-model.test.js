@@ -48,10 +48,10 @@ test('Kugou publication injects ACG chart history from R2', async () => {
   });
 
   assert.equal(writes.length,1);
-  assert.equal(writes[0].key,'regional-music:kugou_music');
+  assert.equal(writes[0].key,'music-service:kugou_music');
   assert.equal(writes[0].body.kugou_acg_chart.coverage.latest_period,'2026_40');
   assert.equal(writes[0].body.kugou_acg_chart.periods[0].published_at,'2025-03-06');
   assert.equal(writes[0].body.kugou_acg_chart.history[0].rank,35);
   assert.equal(writes[0].body.source_updated_at,950);
-  assert.equal(result.model_key,'regional-music:kugou_music');
+  assert.equal(result.model_key,'music-service:kugou_music');
 });

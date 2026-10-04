@@ -15,7 +15,7 @@ function joinHtml(values) {
 }
 
 export function musicServiceViewClassName(...classes) {
-  return joinClasses('regional-music-view', 'is-chart-compact', 'music-service-view', classes);
+  return joinClasses('is-chart-compact', 'music-service-view', classes);
 }
 
 export function musicServiceMeta({

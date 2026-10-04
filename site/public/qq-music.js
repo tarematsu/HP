@@ -2,29 +2,33 @@ import {
   appendEmptyTableRow,
   byId,
   integerFormat,
+  setNotice,
+  setText,
 } from './dashboard-ui-common.js?v=20261001.1';
 import { appendTableRow } from './dashboard-table-dom.js?v=20261001.1';
 import { renderRankHistoryChart } from './dashboard-rank-chart.js?v=20261003.1';
 import {
   MUSIC_ARTIST_LABELS,
   MUSIC_ARTIST_ORDER,
+  MUSIC_SERVICE_CADENCE,
   SAKAMICHI_GROUP_COLORS,
-  loadRegionalMusicReadModel,
+  loadMusicServiceReadModel,
+  musicDateTimeText,
   replaceMusicTableBody,
-} from './music-service-runtime-common.js?v=20261004.1';
+} from './music-service-runtime-common.js?v=20261004.2';
 
+const SERVICE = 'qq_music';
 const ARTIST_ORDER = MUSIC_ARTIST_ORDER.slice(0, 3);
 const OUT_OF_CHART_RANK = 101;
 const CHART_START_DATE = '2020-10-01';
 
 let requestId = 0;
-let initialized = false;
 let activeArtistFilter = 'all';
 let lastPayload = null;
 
 function periodParts(value) {
   const match = String(value || '').match(/^(\d{4})_(\d{1,2})$/);
-  return match ? { year:Number(match[1]), week:Number(match[2]) } : null;
+  return match ? { year: Number(match[1]), week: Number(match[2]) } : null;
 }
 
 function comparePeriods(left, right) {
@@ -88,28 +92,15 @@ function qqSeries(history, periods) {
       if (!previous || rank < previous.rank) byPeriod.set(period, { rank });
     }
     return {
-      id:canonicalArtist,
-      title:MUSIC_ARTIST_LABELS[canonicalArtist] || canonicalArtist,
-      color:SAKAMICHI_GROUP_COLORS[canonicalArtist],
-      points:periods.map(({ period, date }) => ({
+      id: canonicalArtist,
+      title: MUSIC_ARTIST_LABELS[canonicalArtist] || canonicalArtist,
+      color: SAKAMICHI_GROUP_COLORS[canonicalArtist],
+      points: periods.map(({ period, date }) => ({
         date,
-        rank:byPeriod.get(period)?.rank ?? OUT_OF_CHART_RANK,
+        rank: byPeriod.get(period)?.rank ?? OUT_OF_CHART_RANK,
       })),
     };
   }).filter((series) => series.points.length);
-}
-
-function setVisible(visible) {
-  for (const id of [
-    'qqJapanChartSection',
-    'qqJapanHistorySection',
-    'qqAnimeChartSection',
-    'qqAnimeHistorySection',
-    'qqArtistPopularitySection',
-  ]) {
-    const section = byId(id);
-    if (section) section.hidden = !visible;
-  }
 }
 
 function renderHistory(history, bodyId, emptyText) {
@@ -139,22 +130,22 @@ function renderRankChart(chart, { chartId, legendId, label }) {
   const periods = qqStoredPeriods(chart, history).filter(({ date }) => date >= CHART_START_DATE);
   const series = qqSeries(history, periods);
   renderRankHistoryChart({
-    container:byId(chartId),
+    container: byId(chartId),
     series,
-    dates:periods.map((item) => item.date),
-    height:320,
-    margin:{ left:58, right:18, top:12, bottom:34 },
-    yMax:OUT_OF_CHART_RANK,
-    rankTicks:[1, 25, 50, 75, OUT_OF_CHART_RANK],
-    dateTickCount:5,
-    ariaLabel:`QQ Music ${label}における選択グループの更新日別最高順位推移。保存済み更新日の圏外も含み、1位が上。`,
-    lineClass:'kugou-rank-line',
-    emptyClass:'regional-music-rank-empty',
-    emptyText:`QQ Music ${label}の順位履歴はまだありません。`,
-    rankLabel:(rank) => rank === OUT_OF_CHART_RANK ? '圏外' : `${rank}位`,
-    dateLabel:providerDateText,
-    latestPoint:{ radius:() => 2.5 },
-    legendContainer:byId(legendId),
+    dates: periods.map((item) => item.date),
+    height: 320,
+    margin: { left: 58, right: 18, top: 12, bottom: 34 },
+    yMax: OUT_OF_CHART_RANK,
+    rankTicks: [1, 25, 50, 75, OUT_OF_CHART_RANK],
+    dateTickCount: 5,
+    ariaLabel: `QQ Music ${label}における選択グループの更新日別最高順位推移。保存済み更新日の圏外も含み、1位が上。`,
+    lineClass: 'kugou-rank-line',
+    emptyClass: 'music-service-rank-empty',
+    emptyText: `QQ Music ${label}の順位履歴はまだありません。`,
+    rankLabel: (rank) => rank === OUT_OF_CHART_RANK ? '圏外' : `${rank}位`,
+    dateLabel: providerDateText,
+    latestPoint: { radius: () => 2.5 },
+    legendContainer: byId(legendId),
   });
   return history;
 }
@@ -163,10 +154,10 @@ function renderPopularity(payload) {
   const body = replaceMusicTableBody('qqArtistPopularityBody');
   if (!body) return;
   const trackById = new Map((Array.isArray(payload?.tracks) ? payload.tracks : [])
-    .filter((item) => item?.service === 'qq_music')
+    .filter((item) => item?.service === SERVICE)
     .map((item) => [String(item.service_track_id || ''), item]));
   const rows = (Array.isArray(payload?.artist_track_orders) ? payload.artist_track_orders : [])
-    .filter((item) => item?.service === 'qq_music')
+    .filter((item) => item?.service === SERVICE)
     .filter((item) => ARTIST_ORDER.includes(item?.canonical_artist))
     .filter((item) => artistVisible(item?.canonical_artist))
     .filter((item) => Number.isFinite(Number(item?.position)) && Number(item.position) > 0)
@@ -187,21 +178,35 @@ function renderPopularity(payload) {
   }
 }
 
+function renderStatus(payload) {
+  const state = (payload.services || []).find((item) => item.service === SERVICE) || null;
+  if (state?.status === 'error') {
+    setNotice('qqMusicNotice', 'QQ音乐の収集でエラーが発生しています。直前までの正常データを表示しています。', true);
+  } else if (state?.status === 'degraded') {
+    setNotice('qqMusicNotice', 'QQ音乐の一部項目の取得に失敗しています。取得できたデータのみ表示しています。');
+  } else {
+    setNotice('qqMusicNotice');
+  }
+}
+
 function render(payload) {
   lastPayload = payload;
   syncFilterButtons();
+  setText('qqMusicUpdatedAt', musicDateTimeText(payload.updated_at));
+  setText('qqMusicCadence', MUSIC_SERVICE_CADENCE[SERVICE] || '-');
+  renderStatus(payload);
 
   const japanHistory = renderRankChart(payload?.qq_japan_chart || {}, {
-    chartId:'qqJapanRankChart',
-    legendId:'qqJapanRankLegend',
-    label:'日本榜',
+    chartId: 'qqJapanRankChart',
+    legendId: 'qqJapanRankLegend',
+    label: '日本榜',
   });
   renderHistory(japanHistory, 'qqJapanHistoryBody', 'QQ Music 日本榜のランクイン履歴はありません。');
 
   const animeHistory = renderRankChart(payload?.qq_anime_chart || {}, {
-    chartId:'qqAnimeRankChart',
-    legendId:'qqAnimeRankLegend',
-    label:'动漫音乐榜',
+    chartId: 'qqAnimeRankChart',
+    legendId: 'qqAnimeRankLegend',
+    label: '动漫音乐榜',
   });
   renderHistory(animeHistory, 'qqAnimeHistoryBody', 'QQ Music 动漫音乐榜のランクイン履歴はありません。');
 
@@ -216,29 +221,29 @@ function bindFilters() {
       const next = button.dataset.qqArtistFilter || 'all';
       if (next === activeArtistFilter) return;
       activeArtistFilter = next;
-      if (lastPayload && location.hash.slice(1) === 'qq_music') render(lastPayload);
+      if (lastPayload) render(lastPayload);
       else syncFilterButtons();
     });
   }
 }
 
-async function renderForRoute() {
+export async function loadQqMusicView() {
   const id = ++requestId;
-  const visible = location.hash.slice(1) === 'qq_music';
-  setVisible(visible);
-  if (!visible) return;
   bindFilters();
+  setText('qqMusicUpdatedAt', '-');
+  setText('qqMusicCadence', MUSIC_SERVICE_CADENCE[SERVICE] || '-');
+  setNotice('qqMusicNotice', 'QQ音乐データを読み込んでいます。');
   for (const target of [
     'qqJapanRankLegend', 'qqJapanRankChart', 'qqJapanHistoryBody',
     'qqAnimeRankLegend', 'qqAnimeRankChart', 'qqAnimeHistoryBody',
     'qqArtistPopularityBody',
   ]) replaceMusicTableBody(target);
   try {
-    const payload = await loadRegionalMusicReadModel('qq_music');
-    if (id !== requestId || location.hash.slice(1) !== 'qq_music') return;
-    render(payload);
+    const payload = await loadMusicServiceReadModel(SERVICE);
+    if (id === requestId) render(payload);
   } catch {
-    if (id !== requestId || location.hash.slice(1) !== 'qq_music') return;
+    if (id !== requestId) return;
+    setNotice('qqMusicNotice', 'QQ音乐データを取得できませんでした。時間をおいて再度お試しください。', true);
     const japanBody = replaceMusicTableBody('qqJapanHistoryBody');
     if (japanBody) appendEmptyTableRow(japanBody, 'QQ Music 日本榜の履歴を取得できませんでした。', 4);
     const animeBody = replaceMusicTableBody('qqAnimeHistoryBody');
@@ -246,13 +251,4 @@ async function renderForRoute() {
     const popularityBody = replaceMusicTableBody('qqArtistPopularityBody');
     if (popularityBody) appendEmptyTableRow(popularityBody, 'QQ Music の人気曲順位を取得できませんでした。', 3);
   }
-}
-
-export function initQqJapanHistoryUi() {
-  if (initialized) return;
-  initialized = true;
-  bindFilters();
-  window.addEventListener('hashchange', renderForRoute);
-  window.addEventListener('popstate', renderForRoute);
-  void renderForRoute();
 }

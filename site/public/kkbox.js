@@ -2,26 +2,25 @@ import {
   appendEmptyTableRow,
   byId,
   integerFormat,
+  setNotice,
+  setText,
 } from './dashboard-ui-common.js?v=20261001.1';
 import { appendTableRow } from './dashboard-table-dom.js?v=20261001.1';
 import { renderRankHistoryChart } from './dashboard-rank-chart.js?v=20261003.1';
 import {
   MUSIC_ARTIST_LABELS,
+  MUSIC_SERVICE_CADENCE,
   SAKAMICHI_GROUP_COLORS,
-  loadRegionalMusicReadModel,
+  loadMusicServiceReadModel,
+  musicDateTimeText,
   replaceMusicTableBody,
-} from './music-service-runtime-common.js?v=20261004.1';
+} from './music-service-runtime-common.js?v=20261004.2';
 
 const SERVICE = 'kkbox';
-const SECTION_IDS = ['kkboxJapaneseChartSection', 'kkboxJapaneseHistorySection'];
 const BODY_ID = 'kkboxJapaneseHistoryBody';
 const OUT_OF_CHART_RANK = 101;
 const CHART_START_DATE = '2020-10-01';
-const ARTIST_ORDER = Object.freeze([
-  'sakurazaka46',
-  'nogizaka46',
-  'hinatazaka46',
-]);
+const ARTIST_ORDER = Object.freeze(['sakurazaka46', 'nogizaka46', 'hinatazaka46']);
 
 let activeRequest = 0;
 let activeTerritory = 'tw';
@@ -117,7 +116,7 @@ function renderChart(chart) {
     dateTickCount: 5,
     ariaLabel: 'KKBOX 日語チャートにおける選択条件・選択グループの最高順位推移。2020年10月以降の取得済み更新日の圏外も含み、1位が上。',
     lineClass: 'kugou-rank-line',
-    emptyClass: 'regional-music-rank-empty',
+    emptyClass: 'music-service-rank-empty',
     emptyText: 'KKBOX 日語チャートの順位履歴はまだありません。',
     rankLabel: (rank) => rank === OUT_OF_CHART_RANK ? '圏外' : `${rank}位`,
     dateLabel: dateText,
@@ -179,7 +178,7 @@ function bindFilter(attribute, current, update) {
       const next = filterValue(button, attribute);
       if (!next || next === current()) return;
       update(next);
-      if (lastPayload && location.hash.slice(1) === SERVICE) renderKkboxHistory(lastPayload);
+      if (lastPayload) render(lastPayload);
       else syncFilterButtons();
     });
   }
@@ -192,52 +191,44 @@ function bindFilters() {
   bindFilter('kkbox-artist-filter', () => activeArtistFilter, (value) => { activeArtistFilter = value; });
 }
 
-function setVisible(visible) {
-  for (const id of SECTION_IDS) {
-    const section = byId(id);
-    if (section) section.hidden = !visible;
+function renderStatus(payload) {
+  const state = (payload.services || []).find((item) => item.service === SERVICE) || null;
+  if (state?.status === 'error') {
+    setNotice('kkboxNotice', 'KKBOXの収集でエラーが発生しています。直前までの正常データを表示しています。', true);
+  } else if (state?.status === 'degraded') {
+    setNotice('kkboxNotice', 'KKBOXの一部項目の取得に失敗しています。取得できたデータのみ表示しています。');
+  } else {
+    setNotice('kkboxNotice');
   }
-  if (!visible) return;
-  const view = byId('regionalMusicView');
-  const genericTables = byId('regionalMusicGenericTables');
-  const compactMeta = byId('regionalMusicCompactMeta');
-  view?.classList.add('is-chart-compact');
-  if (genericTables) genericTables.hidden = true;
-  if (compactMeta) compactMeta.hidden = false;
 }
 
-export function renderKkboxHistory(payload) {
+function render(payload) {
   lastPayload = payload;
+  setText('kkboxUpdatedAt', musicDateTimeText(payload.updated_at));
+  setText('kkboxCadence', MUSIC_SERVICE_CADENCE[SERVICE] || '-');
+  renderStatus(payload);
   syncFilterButtons();
   const chart = payload?.kkbox_japanese_chart || {};
   renderChart(chart);
   renderHistory(chart);
 }
 
-async function syncKkboxHistory() {
+export async function loadKkboxView() {
   const request = ++activeRequest;
-  const visible = location.hash.slice(1) === SERVICE;
-  setVisible(visible);
-  if (!visible) return;
   bindFilters();
-  replaceMusicTableBody('kkboxJapaneseRankLegend');
-  replaceMusicTableBody('kkboxJapaneseRankChart');
-  replaceMusicTableBody(BODY_ID);
+  setText('kkboxUpdatedAt', '-');
+  setText('kkboxCadence', MUSIC_SERVICE_CADENCE[SERVICE] || '-');
+  setNotice('kkboxNotice', 'KKBOXデータを読み込んでいます。');
+  for (const target of ['kkboxJapaneseRankLegend', 'kkboxJapaneseRankChart', BODY_ID]) replaceMusicTableBody(target);
   try {
-    const payload = await loadRegionalMusicReadModel(SERVICE);
-    if (request === activeRequest && location.hash.slice(1) === SERVICE) renderKkboxHistory(payload);
+    const payload = await loadMusicServiceReadModel(SERVICE);
+    if (request === activeRequest) render(payload);
   } catch {
-    if (request !== activeRequest || location.hash.slice(1) !== SERVICE) return;
+    if (request !== activeRequest) return;
+    setNotice('kkboxNotice', 'KKBOXデータを取得できませんでした。時間をおいて再度お試しください。', true);
     const body = replaceMusicTableBody(BODY_ID);
     if (body) appendEmptyTableRow(body, 'KKBOX履歴データを取得できませんでした。', 4);
     const chart = byId('kkboxJapaneseRankChart');
     if (chart) chart.textContent = 'KKBOX順位履歴を取得できませんでした。';
   }
-}
-
-export function initKkboxHistoryUi() {
-  bindFilters();
-  window.addEventListener('hashchange', () => void syncKkboxHistory());
-  window.addEventListener('popstate', () => void syncKkboxHistory());
-  void syncKkboxHistory();
 }

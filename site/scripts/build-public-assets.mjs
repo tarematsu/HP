@@ -25,7 +25,6 @@ const cssFiles = [
   'history/history-past-toggle.css',
   'history/history-range-navigator.css',
   'music-service-common.css',
-  'regional-music.css',
   'dashboard-ui-common.css',
   'mobile-layout-refinements.css',
 ];

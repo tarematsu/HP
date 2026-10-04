@@ -21,7 +21,7 @@ function unique(values, label) {
 test('API contract contains unique canonical paths only', () => {
   const canonical = canonicalApiPaths();
   unique(canonical, 'canonical API paths');
-  assert.equal(canonical.length, 22);
+  assert.equal(canonical.length, 25);
   assert.ok(canonical.includes('/api/dashboard-details'));
   assert.ok(canonical.includes('/api/hinata'));
   assert.ok(canonical.includes('/api/history-current'));
@@ -36,15 +36,19 @@ test('API contract contains unique canonical paths only', () => {
   assert.ok(canonical.includes('/api/amazon-music-playlists'));
   assert.ok(canonical.includes('/api/apple-music'));
   assert.ok(canonical.includes('/api/apple-music-playlists'));
+  assert.ok(canonical.includes('/api/youtube-music'));
+  assert.ok(canonical.includes('/api/kkbox'));
+  assert.ok(canonical.includes('/api/qq-music'));
+  assert.ok(canonical.includes('/api/kugou-music'));
   assert.ok(canonical.includes('/api/followers'));
-  assert.ok(canonical.includes('/api/regional-music'));
+  assert.equal(canonical.includes('/api/regional-music'), false);
   assert.equal(existsSync(new URL('../functions/api/_middleware.js', import.meta.url)), false);
 });
 
 test('GET /api catalog is generated from the canonical contract only', () => {
   const catalog = apiCatalog(0);
   assert.equal(catalog.contract_version, API_CONTRACT_VERSION);
-  assert.equal(catalog.contract_version, 21);
+  assert.equal(catalog.contract_version, 22);
   assert.deepEqual(catalog.groups, API_GROUPS);
   assert.equal('compatibility' in catalog, false);
   assert.equal('retired' in catalog, false);
@@ -63,22 +67,20 @@ test('materialized response freshness follows event and revision policies', () =
   }
   assert.equal(materializedResponseCadenceSeconds('spotify-playcounts'), 0);
   assert.equal(materializedResponseMaximumAge('spotify-playcounts'), Number.MAX_SAFE_INTEGER);
-  assert.equal(materializedResponseCadenceSeconds('regional-music:kkbox'), 0);
-  assert.equal(materializedResponseMaximumAge('regional-music:kkbox'), Number.MAX_SAFE_INTEGER);
+  assert.equal(materializedResponseCadenceSeconds('music-service:kkbox'), 0);
+  assert.equal(materializedResponseMaximumAge('music-service:kkbox'), Number.MAX_SAFE_INTEGER);
   assert.equal(materializedResponseCadenceSeconds('followers'), 0);
   assert.equal(materializedResponseMaximumAge('followers'), Number.MAX_SAFE_INTEGER);
   assert.equal(materializedResponseCadenceSeconds('host-history:summary'), 1440 * 60);
   assert.equal(materializedResponseMaximumAge('host-history:summary'), Number.MAX_SAFE_INTEGER);
   assert.equal(materializedApiKey('https://skrzk.test/api/history?mode=monthly'), null);
   assert.equal(materializedApiKey('https://skrzk.test/api/followers'), 'followers');
-  assert.equal(materializedApiKey('https://skrzk.test/api/regional-music'), null);
-  assert.equal(materializedApiKey('https://skrzk.test/api/regional-music?service=kkbox'), 'regional-music:kkbox');
-  assert.equal(materializedApiKey('https://skrzk.test/api/regional-music?service=qq_music'), 'regional-music:qq_music');
-  assert.equal(materializedApiKey('https://skrzk.test/api/regional-music?service=kugou_music'), 'regional-music:kugou_music');
-  assert.equal(materializedApiKey('https://skrzk.test/api/regional-music?service=youtube_music'), 'regional-music:youtube_music');
-  assert.equal(materializedApiKey('https://skrzk.test/api/regional-music?service=genie'), null);
-  assert.equal(materializedApiKey('https://skrzk.test/api/regional-music?service=netease_cloud_music'), null);
-  assert.equal(materializedApiKey('https://skrzk.test/api/regional-music?service=missing'), null);
+  assert.equal(materializedApiKey('https://skrzk.test/api/youtube-music'), 'music-service:youtube_music');
+  assert.equal(materializedApiKey('https://skrzk.test/api/kkbox'), 'music-service:kkbox');
+  assert.equal(materializedApiKey('https://skrzk.test/api/qq-music'), 'music-service:qq_music');
+  assert.equal(materializedApiKey('https://skrzk.test/api/kugou-music'), 'music-service:kugou_music');
+  assert.equal(materializedApiKey('https://skrzk.test/api/kkbox?service=kkbox'), null);
+  assert.equal(materializedApiKey('https://skrzk.test/api/regional-music?service=kkbox'), null);
   assert.equal(materializedApiKey('https://skrzk.test/api/amazon-music'), null);
   assert.equal(materializedApiKey('https://skrzk.test/api/amazon-music-playlists'), null);
   assert.equal(materializedApiKey('https://skrzk.test/api/apple-music'), null);
@@ -103,7 +105,7 @@ test('current minute history uses a 30-second shared cache', () => {
   assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/apple-music')), 300);
   assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/apple-music-playlists')), 300);
   assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/followers')), 300);
-  assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/regional-music?service=kkbox')), 300);
+  assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/kkbox')), 300);
 });
 
 test('official Stationhead status and live listening-party endpoints bypass shared edge cache', () => {
