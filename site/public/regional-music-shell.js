@@ -31,6 +31,13 @@ const playlistTable = dashboardTable({
   wrapClassName: 'regional-music-table-wrap',
 });
 
+const kkboxHistoryTable = dashboardTable({
+  className: 'regional-music-table regional-music-kugou-history-table regional-music-kkbox-history-table music-service-track-table',
+  headers: ['更新日', 'グループ', '順位', '曲名'],
+  bodyId: 'kkboxJapaneseHistoryBody',
+  wrapClassName: 'regional-music-table-wrap',
+});
+
 const kugouHistoryTable = dashboardTable({
   className: 'regional-music-table regional-music-kugou-history-table music-service-track-table',
   headers: ['年月日', 'グループ', '順位', '曲名'],
@@ -80,6 +87,56 @@ function artistFilterButtons(prefix, label) {
     selection: 'pressed',
   });
 }
+
+function kkboxSeriesFilterButtons() {
+  return [
+    dashboardModeTabs([
+      { value: 'tw', label: '台湾', active: true },
+      { value: 'hk', label: '香港' },
+    ], {
+      dataAttribute: 'kkbox-territory-filter',
+      className: 'regional-chart-filter',
+      ariaLabel: 'KKBOX 地域',
+      role: 'group',
+      selection: 'pressed',
+    }),
+    dashboardModeTabs([
+      { value: 'weekly', label: '週次', active: true },
+      { value: 'daily', label: '日次' },
+    ], {
+      dataAttribute: 'kkbox-period-filter',
+      className: 'regional-chart-filter',
+      ariaLabel: 'KKBOX 更新周期',
+      role: 'group',
+      selection: 'pressed',
+    }),
+    dashboardModeTabs([
+      { value: 'newrelease', label: '新曲', active: true },
+      { value: 'song', label: '楽曲' },
+    ], {
+      dataAttribute: 'kkbox-chart-filter',
+      className: 'regional-chart-filter',
+      ariaLabel: 'KKBOX チャート種別',
+      role: 'group',
+      selection: 'pressed',
+    }),
+  ].join('');
+}
+
+const kkboxChartSection = musicServiceSection({
+  id: 'kkboxJapaneseChartSection',
+  title: 'KKBOX 日語チャート グループ別最高順位推移',
+  bodyHtml: `${kkboxSeriesFilterButtons()}<div id="kkboxJapaneseRankLegend" class="regional-music-rank-legend" aria-label="グループ凡例"></div><div id="kkboxJapaneseRankChart" class="regional-music-rank-chart"></div>`,
+  hidden: true,
+});
+
+const kkboxHistorySection = musicServiceSection({
+  id: 'kkboxJapaneseHistorySection',
+  title: 'KKBOX 日語チャート ランクイン履歴',
+  trailingHtml: artistFilterButtons('kkbox', 'KKBOX 日語チャート 表示グループ'),
+  bodyHtml: kkboxHistoryTable,
+  hidden: true,
+});
 
 const qqChartSection = musicServiceSection({
   id: 'qqJapanChartSection',
@@ -162,6 +219,8 @@ mountDashboardShell({
       })}
       ${dashboardNotice({ id: 'regionalMusicNotice' })}
       <div id="regionalMusicCompactNotice">${dashboardNotice({ id: 'regionalMusicCompactNoticeText' })}</div>
+      ${kkboxChartSection}
+      ${kkboxHistorySection}
       ${qqChartSection}
       ${qqHistorySection}
       ${qqAnimeChartSection}
@@ -179,4 +238,5 @@ mountDashboardShell({
   },
 });
 
+void import('./kkbox-history-ui.js?v=20261004.2').then(({ initKkboxHistoryUi }) => initKkboxHistoryUi());
 void import('./qq-japan-chart-ui.js?v=20261004.1').then(({ initQqJapanHistoryUi }) => initQqJapanHistoryUi());
