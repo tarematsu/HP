@@ -21,6 +21,7 @@ const cssFiles = [
   'apple-music.css',
   'amazon-music.css',
   'followers.css',
+  'hinata.css',
   'history/history-past-toggle.css',
   'history/history-range-navigator.css',
   'music-service-common.css',
