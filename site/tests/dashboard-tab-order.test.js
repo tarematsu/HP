@@ -19,10 +19,10 @@ test('Buddies visible subtabs follow the shared Stationhead order', () => {
 
 test('followers is a source route instead of a lazily inserted mode tab', () => {
   assert.match(tabsClient, /id: 'followers', label: 'フォロワー', defaultMode: 'followers'/);
-  assert.doesNotMatch(followersShell, /anchorSelector|position:\s*'afterend'/);
+  assert.doesNotMatch(followersShell, /\btab:\s*\{/);
 });
 
 test('Apple Music is a source route instead of a lazily inserted mode tab', () => {
   assert.match(tabsClient, /id: 'apple-music', label: 'Apple Music', defaultMode: 'apple-music'/);
-  assert.doesNotMatch(appleMusicShell, /anchorSelector|position:\s*'beforebegin'/);
+  assert.doesNotMatch(appleMusicShell, /\btab:\s*\{/);
 });
