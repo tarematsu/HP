@@ -7,8 +7,10 @@ const statusSource = readFileSync(
   'utf8',
 );
 const tabsSource = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+const leaderboardSource = readFileSync(new URL('../public/leaderboard.js', import.meta.url), 'utf8');
+const leaderboardModel = readFileSync(new URL('../public/leaderboard-read-model.js', import.meta.url), 'utf8');
 
-test('leaderboard still classifies the known collection gap and genuine out-of-rank weeks', () => {
+test('legacy leaderboard status helper still classifies the known collection gap and genuine out-of-rank weeks', () => {
   assert.match(statusSource, /MISSING_START = '2026-01-26'/);
   assert.match(statusSource, /MISSING_END = '2026-09-14'/);
   assert.match(statusSource, /week >= MISSING_START && week <= MISSING_END\) return '欠測'/);
@@ -16,7 +18,7 @@ test('leaderboard still classifies the known collection gap and genuine out-of-r
   assert.match(statusSource, /finiteRank\(row\?\.rank\) != null\) return ''/);
 });
 
-test('leaderboard list hides missing and out-of-rank rows while keeping ranked rows', () => {
+test('legacy leaderboard list helper hides missing and out-of-rank rows while keeping ranked rows', () => {
   assert.match(statusSource, /headers\.indexOf\('週'\)/);
   assert.match(statusSource, /headers\.indexOf\('ホスト'\)/);
   assert.match(statusSource, /headers\.indexOf\('順位'\)/);
@@ -26,8 +28,9 @@ test('leaderboard list hides missing and out-of-rank rows while keeping ranked r
   assert.match(statusSource, /queueMicrotask\(\(\) => queueMicrotask\(hideNonRankedRows\)\)/);
 });
 
-test('ranking list filter stays lazy and loads before the history data request', () => {
-  assert.match(tabsSource, /history-ranking-table-status\.js\?v=20260923\.2/);
-  assert.match(tabsSource, /if \(mode === 'ranking'\) \{[\s\S]*await loadOnce\('ranking-status'/);
-  assert.match(tabsSource, /if \(activeMode !== mode\) return;[\s\S]*await loadOnce\('history:runtime'/);
+test('shared leaderboard replaces the history table-status lazy hook', () => {
+  assert.doesNotMatch(tabsSource, /history-ranking-table-status|ranking-status/);
+  assert.match(tabsSource, /ranking:\s*\{[\s\S]*viewId: 'leaderboardView'[\s\S]*leaderboard\.js[\s\S]*source: 'stationhead'/);
+  assert.match(leaderboardSource, /leaderboardReadModel\(source\)\.load/);
+  assert.match(leaderboardModel, /normalizeStationheadLeaderboard/);
 });

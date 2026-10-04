@@ -2,33 +2,31 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const entry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+const leaderboard = readFileSync(new URL('../public/leaderboard.js', import.meta.url), 'utf8');
+const leaderboardReadModel = readFileSync(new URL('../public/leaderboard-read-model.js', import.meta.url), 'utf8');
+const leaderboardShell = readFileSync(new URL('../public/leaderboard-shell.js', import.meta.url), 'utf8');
 const rankingChart = readFileSync(new URL('../public/history/history-ranking-chart.js', import.meta.url), 'utf8');
 const rankingAllHosts = readFileSync(new URL('../public/history/history-ranking-all-host-table.js', import.meta.url), 'utf8');
-const rankingSimplified = readFileSync(new URL('../public/history/history-ranking-simplified.js', import.meta.url), 'utf8');
 const historyShell = readFileSync(new URL('../public/history-shell.js', import.meta.url), 'utf8');
 const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 const materialized = readFileSync(new URL('../functions/lib/materialized-history.js', import.meta.url), 'utf8');
 const current = readFileSync(new URL('../functions/api/history-current.js', import.meta.url), 'utf8');
 
-test('ranking runtime loads only the fixed Sakamichi comparison presentation', () => {
-  assert.match(entry, /history-ranking-chart\.js\?v=20260930\.2&rev=20260930\.3/);
-  assert.doesNotMatch(entry, /history-ranking-all-host-table\.js/);
-  assert.match(entry, /history-ranking-simplified\.js\?v=20261002\.1/);
+test('ranking is owned by the shared leaderboard with the fixed Sakamichi comparison', () => {
+  assert.doesNotMatch(entry, /history-ranking-chart\.js|history-ranking-simplified\.js|history-ranking-all-host-table\.js/);
   assert.doesNotMatch(entry, /history-ranking-missing-gap/);
-  assert.match(entry, /runtimeKey\(mode\)/);
-  assert.match(entry, /if \(mode === 'ranking' \|\| mode === 'broadcasts'\) return mode/);
-  assert.match(rankingChart, /const FEATURED_HOSTS = \['sakuramankai', 'sakurazaka46jp', 'nogizaka46smej'\]/);
-  assert.match(rankingChart, /\['sakuramankai', '#000000'\]/);
-  assert.match(rankingChart, /\['sakurazaka46jp', '#d93f79'\]/);
-  assert.match(rankingChart, /\['nogizaka46smej', '#812990'\]/);
-  assert.match(rankingSimplified, /controls\.hidden = rankingMode/);
-  assert.match(rankingSimplified, /moveRankNextToWeek/);
-  assert.match(rankingSimplified, /textContent\.trim\(\) === '順位'/);
-  assert.match(historyShell, /id="rankingScope" type="hidden" value="featured"/);
-  assert.match(historyShell, /id="rankingHost" type="hidden" value=""/);
-  assert.doesNotMatch(historyShell, /<option value="all">全ホスト<\/option>|placeholder="ホスト名"/);
+  assert.match(tabs, /ranking:[\s\S]*viewId: 'leaderboardView'[\s\S]*runtime: \(\) => import\('\/leaderboard\.js\?v=\d{8}\.\d+'\)[\s\S]*source: 'stationhead'/);
+  assert.match(leaderboard, /leaderboardReadModel/);
+  assert.match(leaderboardReadModel, /const STATIONHEAD_FEATURED = Object\.freeze\(\[[\s\S]*'sakuramankai'[\s\S]*'sakurazaka46jp'[\s\S]*'nogizaka46smej'/);
+  assert.match(leaderboardReadModel, /sakuramankai: '#111111'/);
+  assert.match(leaderboardReadModel, /sakurazaka46jp: '#d93f79'/);
+  assert.match(leaderboardReadModel, /nogizaka46smej: '#812990'/);
+  assert.match(leaderboardReadModel, /normalizeStationheadLeaderboard/);
+  assert.match(leaderboardShell, /id: 'leaderboardView'/);
+  assert.doesNotMatch(historyShell, /id="rankingScope"|id="rankingHost"/);
 });
 
 test('legacy all-host table module still defines metadata columns for backwards-compatible imports', () => {
@@ -49,7 +47,7 @@ test('legacy all-host table uses shared mobile table presentation', () => {
   assert.match(sharedCss, /var\(--dashboard-copy-size\)/);
 });
 
-test('ranking chart fills missing weeks and paints the missing band in the same draw pass', () => {
+test('legacy ranking chart fills missing weeks and paints the missing band in the same draw pass', () => {
   assert.match(rankingChart, /const MISSING_START = '2026-01-26'/);
   assert.match(rankingChart, /const MISSING_END = '2026-09-14'/);
   assert.match(rankingChart, /const sourceRows = rows\.filter/);

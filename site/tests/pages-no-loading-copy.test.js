@@ -53,7 +53,7 @@ test('silent loading changes are cache busted through the bundled Pages entry', 
   assert.doesNotMatch(assetBuild, /'dashboard-root-presentation\.css'|'dashboard-fixes\.css'|'screenshot-audit-cleanup\.css'|'period-display-fixes\.css'/);
   assert.doesNotMatch(dashboardEntry, /dashboard-(?:root-)?presentation\.css|history-global-fixes|dashboard-current-metric-style/);
   assert.doesNotMatch(dashboardEntry, /import '.\/unofficial-listening-parties\.js/);
-  assert.match(dashboardEntry, /dashboard-tabs\.js\?v=20261004\.1/);
+  assert.match(dashboardEntry, /dashboard-tabs\.js\?v=20261005\.1/);
   assert.match(html, /\/assets\/dashboard\.min\.css\?v=[^"']+/);
   assert.match(html, /\/assets\/dashboard\.min\.js\?v=[^"']+/);
 });

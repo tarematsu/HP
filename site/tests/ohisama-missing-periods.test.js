@@ -12,7 +12,7 @@ test('Ohisama and followers chart headers omit update-time pills', () => {
   assert.doesNotMatch(shell, /hinataUpdated|更新時間|JST文字列/);
   assert.doesNotMatch(followersShell, /followersLatestDate/);
   assert.match(route, /hinata-shell\.js\?v=20261001\.2/);
-  assert.match(route, /followers-shell\.js\?v=20261001\.1/);
+  assert.match(route, /followers-shell\.js\?v=20261005\.1/);
 });
 
 test('Ohisama daily rows use the same date-aware shared Canvas runtime as every Stationhead source', () => {

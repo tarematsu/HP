@@ -14,7 +14,7 @@ const historyMain = readFileSync(new URL('../public/history/history-main.js', im
 const historyLite = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 const historyStability = readFileSync(new URL('../public/history/history-chart-stability.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
-const rankingChart = readFileSync(new URL('../public/history/history-ranking-chart.js', import.meta.url), 'utf8');
+const leaderboardRuntime = readFileSync(new URL('../public/leaderboard.js', import.meta.url), 'utf8');
 
 test('current Stationhead dashboard has one shared data adapter and Canvas runtime', () => {
   assert.match(dashboard, /stationhead-channel\.js\?v=/);
@@ -56,23 +56,22 @@ test('dashboard first paint settles from the unified materialized payload', () =
   assert.doesNotMatch(dashboardDetail, /dashboard:details/);
 });
 
-test('history has one specialized canvas renderer per mode and hides paint until it settles', () => {
+test('history owns period charts while the shared leaderboard owns ranking canvas paint', () => {
   assert.match(historyMain, /function ensureHistoryModeRuntime/);
   assert.match(historyMain, /history-period-chart\.js\?v=\d{8}\.\d+/);
-  assert.match(historyMain, /history-ranking-chart\.js\?v=20260930\.\d+/);
+  assert.doesNotMatch(historyMain, /history-ranking-chart\.js/);
   assert.match(historyMain, /history-chart-stability\.js\?v=20260925\.1/);
   assert.doesNotMatch(historyMain, /history-ranking-missing-gap/);
   assert.match(historyLite, /history:data-loaded/);
   assert.doesNotMatch(historyLite, /function drawSummaryChart|function prepareCanvas|getContext\('2d'\)/);
   assert.match(periodChart, /history:data-loaded/);
   assert.match(periodChart, /history:period-chart-drawn/);
-  assert.match(rankingChart, /history:data-loaded/);
-  assert.match(rankingChart, /dashboardMissingIndexBands/);
-  assert.match(rankingChart, /drawDashboardMissingBands/);
   assert.doesNotMatch(periodChart, /window\.fetch|response\.clone\(\)\.json/);
-  assert.doesNotMatch(rankingChart, /window\.fetch|response\.clone\(\)\.json/);
+  assert.match(leaderboardRuntime, /prepareDashboardCanvas/);
+  assert.match(leaderboardRuntime, /drawDashboardLine/);
+  assert.match(leaderboardRuntime, /observeDashboardChartResize/);
+  assert.doesNotMatch(leaderboardRuntime, /window\.fetch|response\.clone\(\)\.json|MutationObserver|DOMNodeInserted/);
   assert.match(historyStability, /history:period-chart-drawn/);
-  assert.match(historyStability, /history:ranking-chart-drawn/);
   assert.doesNotMatch(historyStability, /MutationObserver|getContext\('2d'\)|clearRect\(/);
   assert.match(historyStability, /pendingKey: 'paintPending'/);
   assert.match(historyStability, /stableKey: 'paintStable'/);
@@ -94,9 +93,9 @@ test('history mode switches clear stale shared chart state before the next rende
   assert.match(historyStability, /paintedMode = 'broadcasts'/);
 });
 
-test('ranking query changes cannot leave the previous table chart visible', () => {
-  assert.match(historyStability, /function prepareRankingQueryChange\(\)/);
-  assert.match(historyStability, /paintedMode = ''[\s\S]*conceal\('ranking'\)/);
-  assert.match(historyStability, /getElementById\('rankingScope'\)\?\.addEventListener\('change', prepareRankingQueryChange/);
-  assert.match(historyStability, /getElementById\('rankingHost'\)\?\.addEventListener\('keydown',[\s\S]*event\.key === 'Enter'[\s\S]*prepareRankingQueryChange\(\)/);
+test('shared leaderboard redraws only its current payload after resize or pointer selection', () => {
+  assert.match(leaderboardRuntime, /canvas\?\.addEventListener\('pointerup'/);
+  assert.match(leaderboardRuntime, /nearestPositionIndex\(chartModel\.positions/);
+  assert.match(leaderboardRuntime, /observeDashboardChartResize\(canvas,[\s\S]*if \(currentPayload\) renderChart\(currentPayload\)/);
+  assert.match(leaderboardRuntime, /enabled: \(\) => Boolean\(currentPayload\?\.series\?\.length\)/);
 });

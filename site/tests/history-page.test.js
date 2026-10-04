@@ -17,13 +17,12 @@ const sharedLayout = readFileSync(new URL('../public/pages-layout.css', import.m
 const likesClient = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
 const broadcastClient = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
-const rankingChart = readFileSync(new URL('../public/history/history-ranking-chart.js', import.meta.url), 'utf8');
 const trackHistoryApi = readFileSync(new URL('../functions/api/track-history.js', import.meta.url), 'utf8');
 const rankingLibrary = readFileSync(new URL('../functions/lib/track-ranking.js', import.meta.url), 'utf8');
 const sakurazakaApi = readFileSync(new URL('../functions/api/sakurazaka46jp.js', import.meta.url), 'utf8');
 const middleware = readFileSync(new URL('../functions/_middleware.js', import.meta.url), 'utf8');
 
-const INTERNAL_ARCHIVE_MODES = ['daily', 'weekly', 'monthly', 'ranking', 'broadcasts'];
+const INTERNAL_ARCHIVE_MODES = ['daily', 'weekly', 'monthly', 'broadcasts'];
 
 test('main dashboard exposes shared Buddies archive tabs while leaderboard stays a source route', () => {
   assert.match(stationheadModel, /value: 'history', label: '過去'/);
@@ -31,6 +30,7 @@ test('main dashboard exposes shared Buddies archive tabs while leaderboard stays
   assert.match(stationheadModel, /value: 'broadcasts', label: 'リスパ'/);
   assert.doesNotMatch(stationheadModel, /value: '(?:weekly|monthly|ranking|tracks)'/);
   assert.match(tabsClient, /id: 'ranking', label: 'リーダーボード', defaultMode: 'ranking'/);
+  assert.match(tabsClient, /ranking:\s*\{[\s\S]*viewId: 'leaderboardView'/);
   assert.equal(existsSync(new URL('../public/history/index.html', import.meta.url)), false);
   assert.equal(existsSync(new URL('../public/history/likes/index.html', import.meta.url)), false);
 });
@@ -41,9 +41,10 @@ test('weekly and monthly summary modes remain internal after their top tabs are 
   assert.match(historyClient, /monthly: \{/);
 });
 
-test('embedded history defaults invalid hashes to weekly and lazy-loads mode runtimes', () => {
+test('embedded history excludes leaderboard and lazy-loads only archive runtimes', () => {
   assert.match(historyEntry, /const SUMMARY_MODES = new Set\(\['daily', 'weekly', 'monthly'\]\)/);
-  assert.match(historyEntry, /const VALID_MODES = new Set\(\[\.\.\.SUMMARY_MODES, 'ranking', 'broadcasts'\]\)/);
+  assert.match(historyEntry, /const VALID_MODES = new Set\(\[\.\.\.SUMMARY_MODES, 'broadcasts'\]\)/);
+  assert.doesNotMatch(historyEntry, /'ranking'|history-ranking-chart|history-ranking-simplified/);
   assert.doesNotMatch(historyEntry, /'tracks'/);
   assert.match(historyEntry, /history\.replaceState\(null, '', '\/#weekly'\)/);
   assert.match(historyEntry, /window\.__ensureHistoryModeRuntime = ensureHistoryModeRuntime/);
@@ -65,17 +66,16 @@ test('history keeps the guide as an accessible hidden label source without styli
   assert.doesNotMatch(historyStyles, /\.guide\s*\{/);
 });
 
-test('history keeps one visible chart and delegates chart drawing to mode-specific runtimes', () => {
+test('history keeps one visible chart and delegates archive chart drawing to mode-specific runtimes', () => {
   assert.match(historyShell, /<canvas id="chart"[^>]*><\/canvas>/);
   assert.match(historyStyles, /\.data-panel \{[^}]*content-visibility:\s*auto/);
   assert.doesNotMatch(historyStyles, /\.chart-panel\s*\{|\.section-head\s*\{|\.chart-head\s*\{/);
   assert.doesNotMatch(historyClient, /drawSummaryChart|prepareCanvas|history-broadcasts\.js/);
   assert.match(historyClient, /history:data-loaded/);
   assert.match(historyEntry, /history-period-chart\.js\?v=\d{8}\.\d+/);
-  assert.match(historyEntry, /history-ranking-chart\.js\?v=20260930\.2/);
+  assert.doesNotMatch(historyEntry, /history-ranking-chart/);
   assert.match(historyEntry, /history-broadcasts\.js\?v=20261001\.1/);
   assert.match(periodChart, /history:data-loaded/);
-  assert.match(rankingChart, /history:data-loaded/);
   assert.match(broadcastClient, /function draw\(\)/);
 });
 
@@ -159,10 +159,10 @@ test('Sakurazaka endpoint and comparison client share one canonical name and dir
   assert.match(broadcastClient, /\/api\/sakurazaka46jp\?/);
 });
 
-test('edge middleware materializes summaries but not track history', () => {
+test('edge middleware materializes summaries while feature views stay lazy', () => {
   assert.match(middleware, /MATERIALIZED_API_VARIANTS/);
   assert.match(middleware, /SERVICE_MATERIALIZED_MODEL_KEYS/);
   assert.match(middleware, /cache\.put/);
   assert.match(middleware, /materializedApiKey/);
-  assert.doesNotMatch(mainPage, /id="historyView"|id="likesView"/);
+  assert.doesNotMatch(mainPage, /id="historyView"|id="likesView"|id="leaderboardView"|id="followersView"/);
 });

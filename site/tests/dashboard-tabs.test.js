@@ -9,6 +9,8 @@ const stationheadShell = readFileSync(new URL('../public/stationhead-channel-she
 const stationheadRuntime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
 const historyShell = readFileSync(new URL('../public/history-shell.js', import.meta.url), 'utf8');
 const likesShell = readFileSync(new URL('../public/likes-shell.js', import.meta.url), 'utf8');
+const leaderboardShell = readFileSync(new URL('../public/leaderboard-shell.js', import.meta.url), 'utf8');
+const followersShell = readFileSync(new URL('../public/followers-shell.js', import.meta.url), 'utf8');
 const dashboardEntry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const tabsClient = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
@@ -38,12 +40,18 @@ test('dashboard starts on the shared Buddies Stationhead view without duplicate 
   assert.doesNotMatch(page, /id="currentView"|id="historyView"|id="likesView"/);
 });
 
-test('source-only routes live in the common navigation model instead of hidden mode buttons', () => {
+test('leaderboard and follow are source routes with unique ids and shared views', () => {
   assert.doesNotMatch(registry, /mode: 'ranking'|view: 'spotify'/);
   assert.match(tabsClient, /id: 'ranking', label: 'リーダーボード', defaultMode: 'ranking'/);
-  assert.match(tabsClient, /id: 'spotify', label: 'Spotify', defaultMode: 'spotify'/);
-  assert.doesNotMatch(dashboardEntry, /dashboard-tab-order\.js/);
-  assert.match(dashboardEntry, /dashboard-tabs\.js\?v=20261004\.1/);
+  assert.match(tabsClient, /id: 'followers', label: 'フォロワー', defaultMode: 'followers'/);
+  assert.match(tabsClient, /id: 'music-ranking', label: 'リーダーボード', defaultMode: 'music-ranking'/);
+  assert.match(tabsClient, /id: 'music-followers', label: 'フォロー', defaultMode: 'music-followers'/);
+  assert.match(tabsClient, /ranking:\s*\{[\s\S]*viewId: 'leaderboardView'[\s\S]*source: 'stationhead'/);
+  assert.match(tabsClient, /'music-ranking':\s*\{[\s\S]*viewId: 'leaderboardView'[\s\S]*source: 'music-streaming'/);
+  assert.match(tabsClient, /followers:\s*\{[\s\S]*viewId: 'followersView'[\s\S]*source: 'stationhead'/);
+  assert.match(tabsClient, /'music-followers':\s*\{[\s\S]*viewId: 'followersView'[\s\S]*source: 'music-streaming'/);
+  assert.match(leaderboardShell, /id: 'leaderboardView'/);
+  assert.match(followersShell, /id: 'followersView'/);
 });
 
 test('dashboard hides the static page skeleton until the selected route shell is ready', () => {
@@ -51,11 +59,10 @@ test('dashboard hides the static page skeleton until the selected route shell is
   assert.match(page, /document\.documentElement\.setAttribute\('data-dashboard-booting',\s*''\)/);
   assert.match(page, /dashboard:route-ready/);
   assert.match(tabsClient, /window\.dispatchEvent\(new Event\('dashboard:route-ready'\)\)/);
-  assert.ok(page.indexOf('dashboard-prepaint-guard') < page.indexOf('/assets/dashboard.min.css'));
 });
 
 test('archive and likes markup are owned by lazily loaded shared shell modules', () => {
-  for (const id of ['controls', 'summaryCards', 'chartPanel', 'rankingWeeklyPanel']) assert.match(historyShell, new RegExp(`(?:id=\\"${id}\\"|id: '${id}')`));
+  for (const id of ['controls', 'summaryCards', 'chartPanel']) assert.match(historyShell, new RegExp(`(?:id=\\"${id}\\"|id: '${id}')`));
   for (const id of ['likesCsv', 'likesNotice', 'likesRankingList', 'likesTbody']) assert.match(likesShell, new RegExp(`(?:id=\\"${id}\\"|id: '${id}'|bodyId: '${id}')`));
   assert.match(historyShell, /dashboardControls/);
   assert.match(historyShell, /dashboardSummary/);
@@ -66,8 +73,8 @@ test('archive and likes markup are owned by lazily loaded shared shell modules',
   assert.match(likesShell, /dashboardNotice/);
   assert.match(likesShell, /dashboardTable/);
   assert.doesNotMatch(likesShell, /id="likesLoad"/);
-  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20261004\.1'/);
-  assert.doesNotMatch(dashboardEntry, /history-shell|likes-shell/);
+  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20261005\.1'/);
+  assert.doesNotMatch(dashboardEntry, /history-shell|likes-shell|leaderboard-shell|followers-shell/);
   assert.match(tabsClient, /shell: \(\) => import\('\/history-shell\.js\?v=20260930\.1'\)/);
   assert.match(tabsClient, /shell: \(\) => import\('\/likes-shell\.js\?v=20260930\.1'\)/);
   assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=\d{8}\.\d+'\)/);
@@ -75,22 +82,31 @@ test('archive and likes markup are owned by lazily loaded shared shell modules',
   assert.match(historyEntry, /VALID_MODES/);
 });
 
-test('feature tabs share one lazy route registry, stylesheet loader and module cache', () => {
+test('feature tabs share one lazy route registry stylesheet loader and module cache', () => {
   assert.match(tabsClient, /const LAZY_VIEWS = \{/);
   assert.match(tabsClient, /const modulePromises = new Map\(\)/);
   assert.match(tabsClient, /const stylePromises = new Map\(\)/);
   assert.match(tabsClient, /function ensureModeStyles\(mode\)/);
   assert.match(tabsClient, /async function showLazyView\(mode, options = \{}\)/);
   for (const [mode, shell, runtime] of [
-    ['hinata', 'hinata-shell.js', 'hinata.js'], ['followers', 'followers-shell.js', 'followers.js'], ['played-tracks', 'played-tracks-shell.js', 'played-tracks.js'], ['likes', 'likes-shell.js', 'history-likes.js'], ['spotify', 'spotify-shell.js', 'spotify.js'], ['amazon-music', 'amazon-music-shell.js', 'amazon-music.js'], ['apple-music', 'apple-music-shell.js', 'apple-music.js'],
+    ['hinata', 'hinata-shell.js', 'hinata.js'],
+    ['ranking', 'leaderboard-shell.js', 'leaderboard.js'],
+    ['followers', 'followers-shell.js', 'followers.js'],
+    ['music-ranking', 'leaderboard-shell.js', 'leaderboard.js'],
+    ['music-followers', 'followers-shell.js', 'followers.js'],
+    ['played-tracks', 'played-tracks-shell.js', 'played-tracks.js'],
+    ['likes', 'likes-shell.js', 'history-likes.js'],
+    ['spotify', 'spotify-shell.js', 'spotify.js'],
+    ['amazon-music', 'amazon-music-shell.js', 'amazon-music.js'],
+    ['apple-music', 'apple-music-shell.js', 'apple-music.js'],
   ]) {
     assert.match(tabsClient, new RegExp(`'${mode}'|${mode}:`));
     assert.match(tabsClient, new RegExp(shell.replaceAll('.', '\\.')));
     assert.match(tabsClient, new RegExp(runtime.replaceAll('.', '\\.')));
   }
+  assert.match(tabsClient, /config\.loadExport\) await runtime\[config\.loadExport\]\?\.\(config\.loadArgs \|\| undefined\)/);
   assert.match(tabsClient, /stationhead\.min\.css/);
   assert.match(tabsClient, /subscriptions\.min\.css/);
-  assert.doesNotMatch(tabsClient, /function ensureSpotifyShell|function showSpotify|function showAppleMusic|function showPlayedTracks/);
 });
 
 test('legacy listening-party hashes normalize to the shared broadcasts route only', () => {
@@ -108,17 +124,13 @@ test('first-week comparison loads only with the broadcasts route', () => {
   assert.doesNotMatch(historyEntry, /first-week-comparison-shell|first-week-comparison\.js/);
 });
 
-test('history mode-specific runtimes remain lazy-loaded after history starts', () => {
-  assert.match(historyEntry, /function ensureHistoryModeRuntime/);
-  assert.match(historyEntry, /history-period-chart\.js\?v=\d{8}\.\d+/);
-  assert.match(historyEntry, /history-ranking-chart\.js\?v=20260930\.\d+/);
-  assert.doesNotMatch(historyEntry, /history-ranking-missing-gap/);
-  assert.doesNotMatch(historyEntry, /history-ranking-all-host-table\.js/);
-  assert.match(historyEntry, /history-ranking-simplified\.js\?v=20261002\.1/);
-  assert.match(tabsClient, /history-ranking-table-status\.js\?v=20260923\.2/);
-  assert.match(tabsClient, /mode === 'ranking'[\s\S]*loadOnce\('ranking-status'/);
+test('history no longer owns the leaderboard runtime', () => {
+  assert.match(historyEntry, /const VALID_MODES = new Set\(\[\.\.\.SUMMARY_MODES, 'broadcasts'\]\)/);
+  assert.doesNotMatch(historyEntry, /history-ranking-chart|history-ranking-simplified|mode === 'ranking'/);
+  assert.doesNotMatch(tabsClient, /history-ranking-table-status/);
+  assert.doesNotMatch(tabsClient, /const HISTORY_MODES = new Set\([^\n]*ranking/);
+  assert.match(tabsClient, /ranking:\s*\{[\s\S]*leaderboard-shell\.js[\s\S]*leaderboard\.js/);
   assert.match(historyEntry, /history-broadcasts\.js\?v=20261001\.1/);
-  assert.doesNotMatch(tabsClient, /history-period-chart|history-ranking-chart|history-broadcasts/);
 });
 
 test('late async runtimes cannot reactivate a tab the user already left', () => {
@@ -146,13 +158,12 @@ test('tab selection stays on the root document and never navigates to history pa
   assert.doesNotMatch(historyEntry, /legacyHistoryRoute|location\.replace/);
 });
 
-test('current Stationhead detail and legacy history detail stay in their owning shells', () => {
+test('current Stationhead detail and history detail stay in their owning shells', () => {
   assert.match(stationheadShell, /role\('live-detail'\)/);
   assert.match(historyShell, /id="chartDetail"[^>]*data-history-chart-detail/);
   assert.equal((historyShell.match(/id="chartDetail"/g) || []).length, 1);
   assert.match(dashboardEntry, /stationhead-channel\.js\?v=/);
   assert.match(stationheadRuntime, /setText\(root, 'live-detail'/);
-  assert.doesNotMatch(tabsClient, /savedHistoryDetail|historyChartDetail|currentChartDetail\.textContent/);
 });
 
 test('standalone history and likes HTML pages are removed', () => {

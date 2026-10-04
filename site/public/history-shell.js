@@ -10,11 +10,10 @@ import {
   mountDashboardShell,
 } from './dashboard-ui-common.js?v=20261001.1';
 import './history/history-table-gaps.js?v=20261002.1';
-import './history/history-ranking-compact-layout.js?v=20261003.1';
 
 const controls = dashboardControls({
   id: 'controls',
-  bodyHtml: '<div id="standardControls" class="control-group standard-controls"><div id="rangePresets" class="range-presets" aria-label="期間プリセット"><button type="button" data-days="30">1ヶ月</button><button type="button" data-days="180">半年</button><button type="button" data-days="365">1年</button><button type="button" data-days="all" class="active">全期間</button></div><input id="from" type="hidden" value="2024-05-01"><input id="to" type="hidden"></div><div id="rankingControls" hidden style="display:none"><input id="rankingScope" type="hidden" value="featured"><input id="rankingHost" type="hidden" value=""></div><button id="load" type="button" hidden aria-hidden="true" tabindex="-1"></button>',
+  bodyHtml: '<div id="standardControls" class="control-group standard-controls"><div id="rangePresets" class="range-presets" aria-label="期間プリセット"><button type="button" data-days="30">1ヶ月</button><button type="button" data-days="180">半年</button><button type="button" data-days="365">1年</button><button type="button" data-days="all" class="active">全期間</button></div><input id="from" type="hidden" value="2024-05-01"><input id="to" type="hidden"></div><div id="rankingControls" hidden style="display:none"></div><button id="load" type="button" hidden aria-hidden="true" tabindex="-1"></button>',
 });
 
 const summary = dashboardSummary([
@@ -50,24 +49,11 @@ const data = dashboardDataCard({
   bodyHtml: `${dataTable}<button id="more" class="button more-button" type="button" hidden>さらに表示</button>`,
 });
 
-const weekly = dashboardDataCard({
+const rankingCompatibility = dashboardDataCard({
   id: 'rankingWeeklyPanel',
-  title: 'Buddies週間実績',
-  kicker: 'BUDDIES WEEKLY METRICS',
-  bodyHtml: dashboardTable({
-    className: 'weekly-ranking-table',
-    headId: 'rankingWeeklyThead',
-    bodyId: 'rankingWeeklyTbody',
-    numeric: false,
-  }),
+  bodyHtml: dashboardTable({ headId: 'rankingWeeklyThead', bodyId: 'rankingWeeklyTbody', numeric: false }),
   hidden: true,
 });
-
-const rankingMeta = `
-  <div id="rankingCompactMeta" class="regional-chart-meta" hidden>
-    <span>更新日時 <strong id="rankingUpdatedAt">-</strong></span>
-    <span>更新周期 <strong>毎週月曜日夜</strong></span>
-  </div>`;
 
 mountDashboardShell({
   view: {
@@ -75,6 +61,6 @@ mountDashboardShell({
     className: 'history-view',
     anchorId: 'currentView',
     position: 'afterend',
-    html: `<div id="guide" hidden aria-hidden="true"><p class="kicker"></p><h2 id="guideTitle"></h2><p id="guideText"></p></div>${rankingMeta}${controls}${dashboardNotice({ id: 'notice', hidden: false })}${summary}${chart}${data}${weekly}`,
+    html: `<div id="guide" hidden aria-hidden="true"><p class="kicker"></p><h2 id="guideTitle"></h2><p id="guideText"></p></div>${controls}${dashboardNotice({ id: 'notice', hidden: false })}${summary}${chart}${data}${rankingCompatibility}`,
   },
 });

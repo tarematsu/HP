@@ -43,13 +43,15 @@ function quotedServicePattern(service) {
   return new RegExp(`['\\"]${service}['\\"]`);
 }
 
-test('music streaming navigation exposes one flat service registry', () => {
+test('music streaming navigation exposes one flat service registry plus shared aggregate views', () => {
   assert.doesNotMatch(html, /subscriptionSourceTabsTemplate|dashboard-source-row/);
   assert.match(tabs, /id: 'subscriptions'/);
   for (const service of visibleSubscriptionServices) assert.match(tabs, quotedServicePattern(service));
   for (const service of removedServices) assert.doesNotMatch(tabs, quotedServicePattern(service));
   assert.match(tabs, /id: 'qq_music', label: '🇨🇳QQ音乐'/);
   assert.match(tabs, /id: 'kugou_music', label: '🇨🇳酷狗音乐'/);
+  assert.match(tabs, /id: 'music-ranking', label: 'リーダーボード'/);
+  assert.match(tabs, /id: 'music-followers', label: 'フォロー'/);
   assert.match(css, /\.dashboard-source-tabs\.is-multiline/);
   assert.doesNotMatch(css, /\.dashboard-source-row/);
 });
@@ -67,6 +69,13 @@ test('KKBOX QQ and Kugou are first-class lazy views like Spotify', () => {
   }
   assert.match(tabs, /const VIEW_MODES = new Set\(\['current', \.\.\.HISTORY_MODES, \.\.\.Object\.keys\(LAZY_VIEWS\)\]\)/);
   assert.doesNotMatch(tabs, /REGIONAL_MUSIC|showRegionalMusicView|regionalMusicView|regional-music/);
+});
+
+test('shared aggregate views use the same shell runtime with different read-model source args', () => {
+  assert.match(tabs, /'music-ranking':\s*\{[\s\S]*leaderboard-shell\.js[\s\S]*leaderboard\.js[\s\S]*source: 'music-streaming'/);
+  assert.match(tabs, /ranking:\s*\{[\s\S]*leaderboard-shell\.js[\s\S]*leaderboard\.js[\s\S]*source: 'stationhead'/);
+  assert.match(tabs, /'music-followers':\s*\{[\s\S]*followers-shell\.js[\s\S]*followers\.js[\s\S]*source: 'music-streaming'/);
+  assert.match(tabs, /followers:\s*\{[\s\S]*followers-shell\.js[\s\S]*followers\.js[\s\S]*source: 'stationhead'/);
 });
 
 test('each streaming service has a direct public API contract', () => {
@@ -136,9 +145,10 @@ test('shared service CSS owns chart presentation and the retired regional styles
   assert.match(musicCss, /\.music-service-history-table/);
   assert.doesNotMatch(musicCss, /regional/i);
   assert.doesNotMatch(build, /regional-music\.css/);
+  assert.match(build, /subscriptions:[\s\S]*'followers\.css'[\s\S]*'leaderboard\.css'/);
 });
 
 test('dashboard navigation is bundled directly without a lazy loader workaround', () => {
-  assert.match(entry, /dashboard-tabs\.js\?v=20261004\.1/);
+  assert.match(entry, /dashboard-tabs\.js\?v=20261005\.1/);
   assert.doesNotMatch(build, /dashboard-tabs-loader|args\.path === '\.\/dashboard-tabs\.js/);
 });
