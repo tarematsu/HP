@@ -100,10 +100,12 @@ test('Sakamichi latest loader performs one small date lookup and one indexed det
 
 test('Spotify detail UI switches the shared table between all three Sakamichi groups', () => {
   const shell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
+  const commonShell = readFileSync(new URL('../public/music-service-shell.js', import.meta.url), 'utf8');
   const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
 
-  assert.match(shell, /dashboardModeTabs/);
+  assert.match(shell, /musicServiceFilterTabs/);
+  assert.match(commonShell, /dashboardModeTabs/);
   assert.match(shell, /value: 'sakurazaka46', label: '櫻坂46', active: true/);
   assert.match(shell, /value: 'nogizaka46', label: '乃木坂46'/);
   assert.match(shell, /value: 'hinatazaka46', label: '日向坂46'/);
