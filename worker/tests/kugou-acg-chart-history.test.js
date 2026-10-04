@@ -11,6 +11,7 @@ import {
   kugouAcgVolumeList,
   kugouAcgVolumeUrl,
   parseKugouAcgSongs,
+  parseKugouApiJson,
   upsertKugouAcgHistoryArtifacts,
 } from '../src/kugou-acg-chart-history.js';
 
@@ -18,6 +19,15 @@ test('Kugou ACG rank endpoints use the provider-supported HTTP host', () => {
   assert.match(kugouAcgVolumeUrl(), /^http:\/\/mobilecdnbj\.kugou\.com\/api\/v3\/rank\/vol\?/);
   assert.match(kugouAcgSongsUrl('126794'), /^http:\/\/mobilecdnbj\.kugou\.com\/api\/v3\/rank\/song\?/);
   assert.equal(new URL(kugouAcgSongsUrl('126794')).searchParams.get('volid'), '126794');
+});
+
+test('Kugou API parser unwraps KG_TAG JSON envelopes', () => {
+  const payload = parseKugouApiJson(
+    '<!--KG_TAG_RES_START-->{"status":1,"errcode":0,"data":{"info":[]}}<!--KG_TAG_RES_END-->',
+  );
+  assert.equal(payload.status, 1);
+  assert.equal(payload.errcode, 0);
+  assert.deepEqual(payload.data.info, []);
 });
 
 test('Kugou ACG volume list derives ISO week from date-form volume names', () => {
