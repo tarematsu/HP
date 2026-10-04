@@ -13,7 +13,7 @@ test('all Stationhead channel tabs share one five-column layout source', () => {
   assert.match(registry, /STATIONHEAD_CHANNEL_TABS/);
   assert.match(registry, /STATIONHEAD_CHANNEL_TABS\.map/);
   assert.match(registry, /classList\.add\('stationhead-subtabs'\)/);
-  assert.match(stationheadModel, /const STATIONHEAD_CHANNEL_TABS = \[/);
+  assert.match(stationheadModel, /export const STATIONHEAD_CHANNEL_TABS = Object\.freeze\(\[/);
   for (const value of ['current', 'history', 'played-tracks', 'likes', 'broadcasts']) {
     assert.match(stationheadModel, new RegExp(`value: '${value}'`));
   }
