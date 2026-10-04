@@ -35,12 +35,16 @@ test('Spotify collector is isolated behind the shared scheduler and owns its eve
 
   const serviceEntry = readFileSync(new URL('../src/spotify-playcount-service-entry.js', import.meta.url), 'utf8');
   const scheduledQueue = readFileSync(new URL('../src/spotify-scheduled-queue.js', import.meta.url), 'utf8');
+  const scheduledRun = readFileSync(new URL('../src/spotify-playcount-scheduled-run.js', import.meta.url), 'utf8');
   assert.match(scheduledQueue, /SPOTIFY_PLAYCOUNT_CRON = '0 \* \* \* \*'/);
+  assert.match(scheduledQueue, /runSpotifyScheduledWork/);
+  assert.match(scheduledRun, /probeStaleSpotifyUpdate/);
+  assert.match(scheduledRun, /spotify_stale_source_probe/);
   assert.match(serviceEntry, /enqueueSpotifyScheduledDispatch/);
   assert.doesNotMatch(serviceEntry, /handleInternalScheduled/);
 });
 
-test('shared scheduler delegates Spotify work to the Queue CPU budget', async () => {
+test('shared scheduler delegates the complete Spotify scheduled path to the Queue CPU budget', async () => {
   const {
     enqueueSpotifyScheduledDispatch,
     processSpotifyScheduledDispatchEntry,
@@ -64,7 +68,7 @@ test('shared scheduler delegates Spotify work to the Queue CPU budget', async ()
     body: queued[0],
     ack: () => { acknowledged += 1; },
   }, {}, {
-    runSpotifyPlaycountScheduled: async (controller) => { received = controller; },
+    runSpotifyScheduledWork: async (controller) => { received = controller; },
   });
   assert.deepEqual(received, { cron: SPOTIFY_PLAYCOUNT_CRON, scheduledTime: 1234 });
   assert.equal(acknowledged, 1);
@@ -87,23 +91,26 @@ test('failed Spotify Queue scheduling remains retryable', async () => {
     },
     retry: () => { retried += 1; },
   }, {}, {
-    runSpotifyPlaycountScheduled: async () => { throw new Error('temporary'); },
+    runSpotifyScheduledWork: async () => { throw new Error('temporary'); },
   });
   assert.equal(retried, 1);
   assert.equal(result.failed, 1);
 });
 
 test('a stale day is carried forward at the next 05:00 and requests one read-model refresh', () => {
-  const entry = readFileSync(new URL('../src/spotify-playcount-entry.js', import.meta.url), 'utf8');
+  const scheduledRun = readFileSync(
+    new URL('../src/spotify-playcount-scheduled-run.js', import.meta.url),
+    'utf8',
+  );
   const migration = readFileSync(
     new URL('../../database/other-migrations/041_spotify_playcount_daily.sql', import.meta.url),
     'utf8',
   );
-  assert.match(entry, /jstHour\(scheduledTime\) !== 5/);
-  assert.match(entry, /status='stale'/);
-  assert.match(entry, /is_carried_forward/);
-  assert.match(entry, /status='complete'/);
-  assert.match(entry, /if \(carried > 0\)[\s\S]*requestSpotifyReadModelRefresh/);
+  assert.match(scheduledRun, /jstHour\(scheduledTime\) !== 5/);
+  assert.match(scheduledRun, /status='stale'/);
+  assert.match(scheduledRun, /is_carried_forward/);
+  assert.match(scheduledRun, /status='complete'/);
+  assert.match(scheduledRun, /if \(carried > 0\)[\s\S]*requestRefresh/);
   assert.match(migration, /is_carried_forward INTEGER NOT NULL DEFAULT 0/);
 });
 
