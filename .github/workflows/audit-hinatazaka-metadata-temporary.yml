@@ -1,0 +1,34 @@
+name: Audit Hinatazaka Spotify metadata temporary
+on:
+  push:
+    branches: [audit/hinatazaka-metadata-20261004]
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        working-directory: worker
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Compare Hinatazaka canonical and Spotify presentation
+        working-directory: worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== MISMATCHES ==='
+          npx wrangler d1 execute stationhead-minute --remote --yes --json --command "SELECT d.spotify_id,d.title AS canonical_title,d.artist AS canonical_artist,m.title AS spotify_title,m.artist AS spotify_artist,d.metadata_source,m.source AS spotify_source,m.fetched_at FROM sh_track_dictionary d JOIN sh_track_metadata m ON m.spotify_id=d.spotify_id WHERE (d.artist IN ('日向坂46','Hinatazaka46','HINATAZAKA46') OR m.artist IN ('日向坂46','Hinatazaka46','HINATAZAKA46')) AND m.source IN ('spotify_oembed','isrc_peer') AND (COALESCE(TRIM(d.title),'')<>COALESCE(TRIM(m.title),'') OR COALESCE(TRIM(d.artist),'')<>COALESCE(TRIM(m.artist),'')) ORDER BY m.fetched_at DESC LIMIT 100;"
+          echo '=== ENGLISH_SPOTIFY_ROWS ==='
+          npx wrangler d1 execute stationhead-minute --remote --yes --json --command "SELECT spotify_id,title,artist,source,fetched_at FROM sh_track_metadata WHERE source IN ('spotify_oembed','isrc_peer') AND artist IN ('Hinatazaka46','HINATAZAKA46') ORDER BY fetched_at DESC LIMIT 100;"
+          echo '=== ENGLISH_CANONICAL_ROWS ==='
+          npx wrangler d1 execute stationhead-minute --remote --yes --json --command "SELECT track_id,spotify_id,title,artist,metadata_source,fetched_at FROM sh_track_canonical_metadata WHERE artist IN ('Hinatazaka46','HINATAZAKA46') ORDER BY fetched_at DESC LIMIT 100;"
