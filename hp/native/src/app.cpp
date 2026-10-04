@@ -197,28 +197,39 @@ void App::StartDeferredServices(int64_t now) {
 
   // Former Spotify slots now run the exact Stationhead lifecycle while retaining
   // their original WebView2 profiles, cookies and Spotify authentication state.
-  // Under real system memory pressure do not add another renderer process. Any
-  // already-playing Stationhead remains untouched and deferred slots resume when
-  // the hysteresis guard reports that memory has recovered.
+  // Memory pressure pauses only launches that have not happened yet. Already
+  // playing Stationhead windows stay alive, and launch pacing remains 30 seconds
+  // after pressure clears so multiple renderers never start in one burst.
   for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
     if (stationheadPeerStarted_[i] || !stationheadPeers_[i]) continue;
-    const int64_t launchAt =
+    const int64_t scheduledAt = startupAt_ +
         kMediaStartupStageDelayMs * static_cast<int64_t>(i + 1);
-    if (now - startupAt_ < launchAt || memoryPressureActive_) continue;
+    const int64_t pacedAt = lastStationheadLaunchAt_ > 0
+        ? lastStationheadLaunchAt_ + kMediaStartupStageDelayMs
+        : scheduledAt;
+    if (memoryPressureActive_ || now < std::max(scheduledAt, pacedAt)) continue;
     stationheadPeers_[i]->Start();
     stationheadPeerStarted_[i] = true;
+    lastStationheadLaunchAt_ = now;
     stationheadPeers_[i]->SetAudioMuted(true);
     MarkStationheadPlacementDirty();
     logger_->Info(
         L"Stationhead peer #" + std::to_wstring(i + 1) +
         L" launch issued at +" + std::to_wstring((i + 1) * 30) + L" seconds");
+    break;
   }
 
   // The preserved ozeki profile remains the sixth Stationhead window.
+  const int64_t ozekiScheduledAt =
+      startupAt_ + kMediaStartupStageDelayMs * 6;
+  const int64_t ozekiPacedAt = lastStationheadLaunchAt_ > 0
+      ? lastStationheadLaunchAt_ + kMediaStartupStageDelayMs
+      : ozekiScheduledAt;
   if (!memoryPressureActive_ && !stationheadStarted_ && stationhead_ &&
-      now - startupAt_ >= kMediaStartupStageDelayMs * 6) {
+      now >= std::max(ozekiScheduledAt, ozekiPacedAt)) {
     stationhead_->Start();
     stationheadStarted_ = true;
+    lastStationheadLaunchAt_ = now;
     stationhead_->SetAudioMuted(stationheadAudioMuted_);
     MarkStationheadPlacementDirty();
     logger_->Info(L"Stationhead #6 launch issued at +180 seconds");
@@ -248,6 +259,7 @@ void App::StopServices() {
   if (window_) KillTimer(window_, kCentralTimer);
   nextAppTickAt_ = 0;
   nextMemoryPressureCheckAt_ = 0;
+  lastStationheadLaunchAt_ = 0;
   if (memoryPressureActive_) {
     ApplyNativeWebViewMemoryPriority(false);
     memoryPressureActive_ = false;
@@ -346,12 +358,16 @@ void App::Tick() {
   uint32_t nextTickMs = kMaxAppTimerMs;
   for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
     if (!stationheadPeerStarted_[i]) {
+      if (memoryPressureActive_) continue;
+      const int64_t scheduledAt = startupAt_ +
+          kMediaStartupStageDelayMs * static_cast<int64_t>(i + 1);
+      const int64_t pacedAt = lastStationheadLaunchAt_ > 0
+          ? lastStationheadLaunchAt_ + kMediaStartupStageDelayMs
+          : scheduledAt;
       nextTickMs = std::min(
           nextTickMs,
           NextDelayFromDeadline(
-              now,
-              startupAt_ + kMediaStartupStageDelayMs * static_cast<int64_t>(i + 1),
-              kMaxAppTimerMs));
+              now, std::max(scheduledAt, pacedAt), kMaxAppTimerMs));
       continue;
     }
     if (!stationheadPeers_[i]) continue;
@@ -365,12 +381,16 @@ void App::Tick() {
               now, stationheadPeers_[i]->NextWakeAt(), kMaxAppTimerMs));
     }
   }
-  if (!stationheadStarted_) {
+  if (!stationheadStarted_ && !memoryPressureActive_) {
+    const int64_t scheduledAt =
+        startupAt_ + static_cast<int64_t>(kMediaStartupStageDelayMs * 6);
+    const int64_t pacedAt = lastStationheadLaunchAt_ > 0
+        ? lastStationheadLaunchAt_ + kMediaStartupStageDelayMs
+        : scheduledAt;
     nextTickMs = std::min(
         nextTickMs,
         NextDelayFromDeadline(
-            now, startupAt_ + static_cast<int64_t>(kMediaStartupStageDelayMs * 6),
-            kMaxAppTimerMs));
+            now, std::max(scheduledAt, pacedAt), kMaxAppTimerMs));
   }
   if (!startupUpdateScheduled_ && cloudStarted_) {
     nextTickMs = std::min(
