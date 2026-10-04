@@ -26,12 +26,6 @@ const followersMeta = `
   </div>`;
 
 mountDashboardShell({
-  tab: {
-    view: 'followers',
-    label: 'フォロワー',
-    anchorSelector: '[data-view="first-week"]',
-    position: 'afterend',
-  },
   view: {
     id: 'followersView',
     className: 'followers-view',
