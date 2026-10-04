@@ -20,3 +20,11 @@ test('broadcast live-status runtime loads before the compact history renderer', 
   assert.ok(summaryIndex >= 0);
   assert.ok(historyIndex > summaryIndex);
 });
+
+
+test('official live overlay uses an explicit adapter and never replaces browser fetch', () => {
+  assert.match(summaryRuntime, /export async function fetchOfficialBroadcast/);
+  assert.doesNotMatch(summaryRuntime, /browser\.fetch\s*=/);
+  const runtime = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
+  assert.match(runtime, /await fetchOfficialBroadcast/);
+});

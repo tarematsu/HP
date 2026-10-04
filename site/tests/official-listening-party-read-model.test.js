@@ -36,7 +36,7 @@ test('official listening-party table renders final fields directly without hidde
 test('official listening-party chart no longer fetches or mutates table enrichment data', () => {
   assert.doesNotMatch(chart, /host-history|TABLE_METRICS|enhanceBroadcastTable|loadHostSessions|scheduleTableEnhance/);
   assert.doesNotMatch(chart, /getElementById\('thead'\)|getElementById\('tbody'\)/);
-  assert.match(chart, /fetch\(`\/api\/sakurazaka46jp\?/);
+  assert.match(chart, /fetchOfficialBroadcast\(`\/api\/sakurazaka46jp\?/);
 });
 
 test('broadcast runtime URLs remain stable while the response contract is consolidated', () => {

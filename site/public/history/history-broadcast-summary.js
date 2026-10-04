@@ -1,5 +1,5 @@
 const browser = typeof window === 'undefined' ? null : window;
-const previousFetch = browser?.fetch?.bind(browser) || null;
+const nativeFetch = browser?.fetch?.bind(browser) || null;
 const SERIES_CACHE_PREFIX = 'sakurazaka46jp:v1:';
 const LIVE_REFRESH_MS = 15_000;
 
@@ -120,7 +120,7 @@ async function mergeLiveStatusResponse(input, baseResponse) {
     return baseResponse;
   }
   try {
-    const statusResponse = await previousFetch('/api/sakurazaka46jp-status', {
+    const statusResponse = await nativeFetch('/api/sakurazaka46jp-status', {
       cache: 'no-store',
       headers: { accept: 'application/json' },
     });
@@ -151,11 +151,9 @@ function clearSeriesCache() {
   } catch {}
 }
 
-if (browser && previousFetch) {
-  browser.fetch = async (input, init) => {
-    const baseResponse = await previousFetch(input, init);
-    return mergeLiveStatusResponse(input, baseResponse);
-  };
+export async function fetchOfficialBroadcast(input, init) {
+  const baseResponse = await nativeFetch(input, init);
+  return mergeLiveStatusResponse(input, baseResponse);
 }
 
 document.querySelector('[data-mode="broadcasts"]')?.addEventListener('click', () => {

@@ -161,7 +161,8 @@
   display: none;
 }
 @media (max-width: 760px) {
-  .dashboard-source-tabs {
+  .dashboard-source-tabs,
+  .dashboard-source-tabs.is-multiline {
     display: none;
   }
   .dashboard-source-tabs:not(.is-multiline) {

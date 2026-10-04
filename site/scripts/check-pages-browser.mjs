@@ -34,6 +34,17 @@ try {
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2);
       assert.equal(overflow, false, `${mode} at ${width}px overflows the document`);
       assert.equal(await page.locator('main').count(), 1);
+      assert.equal(await page.locator('#sourceTabs').isVisible(), width > 760, `${mode}: selector breakpoint`);
+      assert.equal(await page.locator('#sourceSelect').isVisible(), width <= 760, `${mode}: native selector breakpoint`);
+      for (const button of await page.locator('.dashboard-view:not([hidden]) .music-service-view-tabs button').all()) {
+        await button.click();
+        const group = await button.getAttribute('data-service-group');
+        assert.equal(await button.getAttribute('aria-pressed'), 'true');
+        const visible = page.locator('.dashboard-view:not([hidden]) .music-service-group:not([hidden])');
+        assert.equal(await visible.count(), 1);
+        assert.equal(await visible.getAttribute('data-group'), group);
+        await page.screenshot({ path: `${output}/${mode}-${group}-${width}.png`, fullPage: true });
+      }
       await page.screenshot({ path: `${output}/${mode}-${width}.png`, fullPage: true });
       results.push({ mode, width, overflow });
     }

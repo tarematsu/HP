@@ -1,3 +1,4 @@
+import { fetchOfficialBroadcast } from './history-broadcast-summary.js?v=20261005.2';
 import {
   byId,
   cssColor,
@@ -299,7 +300,7 @@ import { JST_DATE_EN_CA } from '../dashboard-time.js?v=20261001.1';
           v: CACHE_REVISION,
           revision: API_REVISION,
         });
-        const response = await fetch(`/api/sakurazaka46jp?${params}`, {
+        const response = await fetchOfficialBroadcast(`/api/sakurazaka46jp?${params}`, {
           signal: controller.signal,
           headers: { accept: 'application/json' },
         });
