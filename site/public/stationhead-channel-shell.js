@@ -70,7 +70,7 @@ export function stationheadChannelMarkup() {
     <section class="stationhead-channel-panel" data-stationhead-panel="broadcasts" hidden>
       <section class="summary-cards" aria-label="リスパ集計概要">${summaryItem('開催数', 'broadcast-count')}${summaryItem('平均同接', 'broadcast-average')}${summaryItem('最大同接', 'broadcast-maximum')}${summaryItem('平均時間', 'broadcast-duration')}</section>
       <section class="card chart-card chart-panel"><div class="section-head chart-head"><div><p class="kicker">LISTENING PARTY</p><h2>同接推移</h2></div><div class="legend" ${role('broadcast-legend')}></div></div><canvas class="shared-dashboard-canvas" ${role('broadcast-chart')} width="960" height="360" aria-label="公式リスパの同接推移"></canvas><p class="shared-empty" ${role('broadcast-chart-empty')} hidden>グラフデータがありません。</p></section>
-      <section class="card data-panel"><div class="section-head"><div><p class="kicker">DATA</p><h2>リスパ一覧</h2></div></div><div class="table-wrap"><table class="shared-numeric-table official-party-table"><thead><tr><th>日付</th><th>時間</th><th>時間</th><th>平均同接</th><th>最小</th><th>最大</th><th>曲数</th><th>推定再生</th><th>内容</th><th>名前</th></tr></thead><tbody ${role('broadcast-tbody')}></tbody></table></div></section>
+      <section class="card data-panel"><div class="section-head"><div><p class="kicker">DATA</p><h2>リスパ一覧</h2></div></div><div class="table-wrap"><table class="shared-numeric-table official-party-table"><thead><tr><th>日付</th><th>時間帯</th><th>所要時間</th><th>平均同接</th><th>最小同接</th><th>最大同接</th><th>楽曲数</th><th>推定再生数</th><th>放送内容</th><th>イベント名</th></tr></thead><tbody ${role('broadcast-tbody')}></tbody></table></div></section>
     </section>`;
 }
 
