@@ -25,7 +25,7 @@ import { JST_DATE_EN_CA } from '../dashboard-time.js?v=20261001.1';
   const notice = byId('notice');
   const fromInput = byId('from');
   const toInput = byId('to');
-  if (!button || !canvas || !legend || !notice || !fromInput || !toInput) return;
+  if (!canvas || !legend || !notice || !fromInput || !toInput) return;
 
   const CACHE_MS = 15 * 60_000;
   const MAX_CACHE_POINTS = 30_000;
@@ -56,7 +56,7 @@ import { JST_DATE_EN_CA } from '../dashboard-time.js?v=20261001.1';
   let controller = null;
   let loadTimer = 0;
 
-  const active = () => button.classList.contains('active');
+  const active = () => location.hash === '#broadcasts' && !byId('historyView')?.hidden;
   const escape = (value) => String(value ?? '')
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
@@ -351,7 +351,9 @@ import { JST_DATE_EN_CA } from '../dashboard-time.js?v=20261001.1';
 
   canvas.addEventListener('click', handlePointer, true);
   canvas.addEventListener('touchstart', handlePointer, { capture: true, passive: true });
-  button.addEventListener('click', () => scheduleLoad(120));
+  button?.addEventListener('click', () => scheduleLoad(120));
+  window.addEventListener('history:select-mode', () => scheduleLoad(120));
+  window.addEventListener('hashchange', () => { if (active()) scheduleLoad(120); else controller?.abort(); });
   byId('load')?.addEventListener('click', () => {
     loadedKey = '';
     scheduleLoad(160);

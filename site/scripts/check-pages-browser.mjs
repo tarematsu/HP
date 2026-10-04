@@ -15,7 +15,7 @@ const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css
 const server = createServer(async (req, res) => {
   try {
     const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
-    const file = resolve(root, `.${pathname === '/' ? '/index.html' : pathname}`);
+    const file = resolve(root, `.${pathname.endsWith('/') ? `${pathname}index.html` : pathname}`);
     if (!file.startsWith(`${root}/`)) throw new Error('outside root');
     res.setHeader('Content-Type', mime[extname(file)] || 'application/octet-stream');
     res.end(await readFile(file));
@@ -26,6 +26,21 @@ const origin = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch();
 const results = [];
 const runtimeErrors = [];
+async function checkCsv(page, label) {
+  const downloads = [];
+  for (const button of await page.locator('.dashboard-view:not([hidden]) .csv-button:visible:not(:disabled)').all()) {
+    const pending = page.waitForEvent('download', { timeout: 5000 });
+    await button.click();
+    const download = await pending;
+    assert.match(download.suggestedFilename(), /\.csv$/i);
+    const target = `${output}/${label}-${downloads.length}.csv`;
+    await download.saveAs(target);
+    const csv = await readFile(target, 'utf8');
+    assert.ok(csv.trim().length > 0, 'CSV is empty');
+    downloads.push({ name: download.suggestedFilename(), bytes: Buffer.byteLength(csv) });
+  }
+  return downloads;
+}
 try {
   for (const width of [390, 1440]) {
     const page = await browser.newPage({ viewport: { width, height: 960 } });
@@ -53,34 +68,29 @@ try {
       assert.equal(await page.locator('main').count(), 1);
       assert.equal(await page.locator('#sourceTabs').isVisible(), width > 760, `${mode}: selector breakpoint`);
       assert.equal(await page.locator('#sourceSelect').isVisible(), width <= 760, `${mode}: native selector breakpoint`);
+      if (live && ['daily', 'weekly', 'monthly'].includes(mode)) {
+        assert.ok(await page.locator('#tbody tr').count() > 0, `${mode}: history rows did not load`);
+      }
+      await page.screenshot({ path: `${output}/${mode}-${width}.png`, fullPage: true });
+      const downloads = await checkCsv(page, `${mode}-${width}`);
       for (const button of await page.locator('.dashboard-view:not([hidden]) .music-service-view-tabs button').all()) {
         await button.click();
+        await page.waitForLoadState('networkidle', { timeout: 45000 });
         const group = await button.getAttribute('data-service-group');
         assert.equal(await button.getAttribute('aria-pressed'), 'true');
         const visible = page.locator('.dashboard-view:not([hidden]) .music-service-group:not([hidden])');
         assert.equal(await visible.count(), 1);
         assert.equal(await visible.getAttribute('data-group'), group);
         await page.screenshot({ path: `${output}/${mode}-${group}-${width}.png`, fullPage: true });
+        downloads.push(...await checkCsv(page, `${mode}-${group}-${width}`));
       }
       for (const button of await page.locator('.dashboard-view:not([hidden]) [data-stationhead-section]:not(:disabled)').all()) {
         await button.click();
         await page.waitForLoadState('networkidle', { timeout: 45000 });
         const section = await button.getAttribute('data-stationhead-section');
         await page.screenshot({ path: `${output}/${mode}-${section}-${width}.png`, fullPage: true });
+        downloads.push(...await checkCsv(page, `${mode}-${section}-${width}`));
       }
-      const downloads = [];
-      for (const button of await page.locator('.dashboard-view:not([hidden]) .csv-button:visible:not(:disabled)').all()) {
-        const downloadPromise = page.waitForEvent('download', { timeout: 5000 });
-        await button.click();
-        const download = await downloadPromise;
-        assert.match(download.suggestedFilename(), /\.csv$/i);
-        const target = `${output}/${mode}-${width}-${downloads.length}.csv`;
-        await download.saveAs(target);
-        const csv = await readFile(target, 'utf8');
-        assert.ok(csv.trim().length > 0, 'CSV is empty');
-        downloads.push({ name: download.suggestedFilename(), bytes: Buffer.byteLength(csv) });
-      }
-      await page.screenshot({ path: `${output}/${mode}-${width}.png`, fullPage: true });
       results.push({ mode, width, overflow, downloads });
     }
     for (const account of ['sakurazaka46jp', 'nogizaka46smej']) {

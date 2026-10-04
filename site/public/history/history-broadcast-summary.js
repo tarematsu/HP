@@ -28,7 +28,7 @@ function requestUrl(input) {
 }
 
 function active() {
-  return document.querySelector('#modeTabs button.active[data-mode="broadcasts"]') != null;
+  return location.hash === '#broadcasts' && !document.getElementById('historyView')?.hidden;
 }
 
 function mergeLiveSeries(basePayload, statusPayload) {

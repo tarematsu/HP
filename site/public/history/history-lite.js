@@ -562,13 +562,6 @@ import {
     el('historyPastWeekMode')?.addEventListener('change', (event) => {
       void setPastWeekMode(Boolean(event.currentTarget.checked));
     });
-    el('rankingScope').addEventListener('change', () => void loadMode());
-    el('rankingHost').addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') {
-        event.preventDefault();
-        void loadMode();
-      }
-    });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) state.controller?.abort();
     });
@@ -592,5 +585,6 @@ import {
     void loadMode();
   }
 
+  window.addEventListener('history:select-mode', event => void setMode(event.detail?.mode));
   void start();
 })();

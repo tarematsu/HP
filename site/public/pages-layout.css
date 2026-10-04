@@ -490,8 +490,8 @@
   }
   .table-fit-mobile > table {
     width: 100%;
-    min-width: 0;
-    table-layout: fixed;
+    min-width: 600px;
+    table-layout: auto;
   }
   .table-fit-mobile :is(th, td) {
     padding-inline: 4px;
@@ -499,7 +499,6 @@
     overflow-wrap: anywhere;
   }
   .table-wrap :is(th, td) {
-    text-align: left;
     padding: 6px 7px;
   }
   .like-rank-item {
@@ -542,4 +541,11 @@
   color: var(--text);
   font: inherit;
   cursor: pointer;
+}
+
+@media (max-width: 760px) {
+  .table-wrap > table.spotify-table { min-width: 600px; }
+  .table-wrap > table.followers-table { min-width: 640px; }
+  .table-wrap > table.leaderboard-table { min-width: 720px; }
+  .table-wrap > table.shared-numeric-table:has(th:nth-child(5)) { min-width: 640px; }
 }

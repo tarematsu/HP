@@ -184,7 +184,15 @@ function buddiesModel() {
     }),
     loadBroadcasts: cached(async ({ signal, force }) => {
       const summary = await fetchJson(`/api/history?mode=broadcasts&from=2024-06-01&to=${todayUtc()}`, { signal, force });
-      return normalizeBroadcasts(summary);
+      const normalized = normalizeBroadcasts(summary);
+      try {
+        const chart = await fetchJson(`/api/sakurazaka46jp?from=2024-06-01&to=${todayUtc()}&revision=3`, { signal, force });
+        normalized.series = Array.isArray(chart.series) ? chart.series : [];
+      } catch (error) {
+        if (error.name === 'AbortError') throw error;
+        normalized.chart_error = true;
+      }
+      return normalized;
     }),
   };
 }

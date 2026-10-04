@@ -409,7 +409,7 @@ async function showHistory(mode, { updateUrl = true, replaceUrl = false, syncRun
     await loadOnce('history:runtime', () => import('/history/history-main.js?v=20261002.4'));
     if (activeMode !== mode) return;
     if (syncRuntime && historyRuntimeMode !== mode) {
-      tabs?.querySelector(`button[data-mode="${mode}"]`)?.dispatchEvent(new Event('click'));
+      window.dispatchEvent(new CustomEvent('history:select-mode', { detail: { mode } }));
     }
     if (activeMode !== mode) return;
     historyRuntimeMode = mode;

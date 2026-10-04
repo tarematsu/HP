@@ -1,0 +1,1 @@
+import{a as t,b as a}from"./chunk-MFITJ2BI.js";import"./chunk-UTINEYLO.js";import"./chunk-UYTSKFUP.js";var i=t({id:"hinataView",anchorIds:["historyView","currentView"]});i&&(i.dataset.stationheadModel="ohisama",a(i));

@@ -1,0 +1,1 @@
+import{a}from"./chunk-7KGNLC3N.js";import"./chunk-RU6EW4IO.js";import"./chunk-OIJYU354.js";import"./chunk-UTINEYLO.js";import"./chunk-H4MRTWWR.js";import"./chunk-AUI62JIT.js";import"./chunk-UYTSKFUP.js";function t(i={}){return a("hinataView",i)}export{t as loadHinataView};

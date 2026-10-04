@@ -39,7 +39,7 @@ test('toolbars controls fitting tables charts and music sections use shared sema
   assert.match(css, /\.view-toolbar\s*\{/);
   assert.match(css, /\.controls\s*\{/);
   assert.match(css, /\.table-wrap\.table-fit-mobile/);
-  assert.match(css, /\.table-fit-mobile > table[\s\S]*table-layout:\s*fixed/);
+  assert.match(css, /\.table-fit-mobile > table[\s\S]*table-layout:\s*auto/);
   assert.match(css, /\.chart-fit > :is\(svg, canvas\)/);
   assert.doesNotMatch(firstWeekShell, /view-toolbar first-week-toolbar|data-first-week-metric/);
   assert.match(playedTracksShell, /dashboardControls/);
