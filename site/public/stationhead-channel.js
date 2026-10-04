@@ -3,9 +3,12 @@ import { appendEmptyTableRow, finiteNumber as finite, integerFormat as integer }
 import { prepareDashboardCanvas } from './dashboard-chart-canvas.js?v=20261001.2';
 import { appendTableRow } from './dashboard-table-dom.js?v=20261001.1';
 import { downloadCsv } from './csv-download.js?v=20261001.1';
-import { stationheadChannelReadModel, DAY_MS } from './stationhead-channel-read-model.js?v=20261004.2';
+import { stationheadChannelReadModel, DAY_MS } from './stationhead-channel-read-model.js?v=20261005.3';
 
 const FIVE_MINUTES_MS = 300_000;
+const EXTREMA_POINT_COLOR = '#888';
+const PREVIOUS_ONLINE_COLOR = '#969ca6';
+const STREAM_BAR_COLOR = '#168b73';
 const jstDateTime = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 const jstDate = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit' });
 const jstTime = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
@@ -43,31 +46,125 @@ function drawGrid(context, width, height, area, maximum, minimum = 0) {
   }
 }
 
+function labelBox(context, text, x, y, align, width, height) {
+  context.save();
+  context.font = '600 11px system-ui';
+  const textWidth = context.measureText(text).width;
+  const boxWidth = textWidth + 10;
+  const boxHeight = 18;
+  let left = align === 'right' ? x - boxWidth : x;
+  left = Math.max(2, Math.min(width - boxWidth - 2, left));
+  const top = Math.max(2, Math.min(height - boxHeight - 2, y - boxHeight / 2));
+  context.fillStyle = 'rgba(255,255,255,.92)';
+  context.fillRect(left, top, boxWidth, boxHeight);
+  context.fillStyle = '#111';
+  context.textAlign = 'left';
+  context.textBaseline = 'middle';
+  context.fillText(text, left + 5, top + boxHeight / 2);
+  context.restore();
+}
+
+function drawOnlineSeries(context, rows, x, y, color, width = 2) {
+  context.strokeStyle = color;
+  context.lineWidth = width;
+  context.beginPath();
+  let started = false;
+  let previousAt = null;
+  for (const row of rows) {
+    const value = finite(row?.online_member_count);
+    const observedAt = finite(row?.observed_at);
+    if (value == null || observedAt == null || (previousAt != null && observedAt - previousAt > 20 * 60_000)) started = false;
+    if (value == null || observedAt == null) { previousAt = observedAt; continue; }
+    const px = x(observedAt); const py = y(value);
+    if (!started) { context.moveTo(px, py); started = true; } else context.lineTo(px, py);
+    previousAt = observedAt;
+  }
+  context.stroke();
+}
+
+function ensureCurrentLegend(root, canvas, hasPrevious, hasStreams) {
+  let legend = role(root, 'live-legend');
+  if (!legend && canvas) {
+    legend = document.createElement('div');
+    legend.className = 'legend current-chart-legend';
+    legend.dataset.role = 'live-legend';
+    canvas.before(legend);
+  }
+  if (!legend) return;
+  legend.replaceChildren();
+  const entries = [['現在', '#111']];
+  if (hasPrevious) entries.push(['24時間前', PREVIOUS_ONLINE_COLOR]);
+  if (hasStreams) entries.push(['再生数増加', STREAM_BAR_COLOR]);
+  entries.forEach(([label, color], index) => {
+    if (index) legend.append(' / ');
+    const span = document.createElement('span'); span.textContent = label; span.style.color = color; legend.append(span);
+  });
+}
+
+function shiftedPreviousRows(payload, minTime, maxTime) {
+  return (Array.isArray(payload?.previous_day_history) ? payload.previous_day_history : [])
+    .map((row) => ({ observed_at: finite(row?.observed_at) == null ? null : finite(row.observed_at) + DAY_MS, online_member_count: finite(row?.online_member_count) }))
+    .filter((row) => row.observed_at != null && row.online_member_count != null && row.observed_at >= minTime && row.observed_at <= maxTime)
+    .sort((a, b) => a.observed_at - b.observed_at);
+}
+
+function nearestRow(rows, target, maxDistance = Infinity) {
+  let selected = null; let distance = Infinity;
+  for (const row of rows) { const observedAt = finite(row?.observed_at); if (observedAt == null) continue; const next = Math.abs(observedAt - target); if (next < distance) { selected = row; distance = next; } }
+  return distance <= maxDistance ? selected : null;
+}
+
+function renderCurrentDetail(runtime, event) {
+  const rows = (Array.isArray(runtime.current?.history_24h) ? runtime.current.history_24h : []).filter((row) => finite(row?.observed_at) != null);
+  if (!rows.length) return;
+  const canvas = role(runtime.root, 'live-chart'); const bounds = canvas?.getBoundingClientRect();
+  if (!canvas || !bounds || bounds.width <= 0) return;
+  const area = { left: 54, right: 54 }; const plotWidth = Math.max(1, bounds.width - area.left - area.right);
+  const minTime = Number(rows[0].observed_at); const maxTime = Number(rows.at(-1).observed_at); const span = Math.max(1, maxTime - minTime);
+  const pointer = Math.max(area.left, Math.min(bounds.width - area.right, event.clientX - bounds.left));
+  const target = minTime + span * (pointer - area.left) / plotWidth;
+  const onlineRow = nearestRow(rows, target); const streamRow = nearestRow(rows.filter((row) => finite(row?.stream_delta_5m) != null), target, FIVE_MINUTES_MS / 2);
+  if (!onlineRow) return;
+  setText(runtime.root, 'live-detail', `${jstDateTime.format(new Date(streamRow?.observed_at ?? onlineRow.observed_at))} JST　オンライン ${numberText(onlineRow.online_member_count)}人${streamRow ? `　再生数増加 +${numberText(streamRow.stream_delta_5m)}` : ''}`);
+}
+
 function renderCurrentChart(runtime, payload) {
   const { root } = runtime;
   const canvas = role(root, 'live-chart');
-  const rows = (Array.isArray(payload?.history_24h) ? payload.history_24h : []).filter((row) => finite(row?.observed_at) != null);
+  const rows = (Array.isArray(payload?.history_24h) ? payload.history_24h : []).filter((row) => finite(row?.observed_at) != null).sort((a, b) => a.observed_at - b.observed_at);
   const prepared = setupCanvas(canvas, 360);
   if (!prepared) return;
   const { context, width, height } = prepared;
   if (!rows.length) {
     context.fillStyle = '#667287'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.font = '14px system-ui'; context.fillText('履歴データがありません', width / 2, height / 2);
-    setText(root, 'live-detail', '');
-    return;
+    setText(root, 'live-detail', ''); ensureCurrentLegend(root, canvas, false, false); return;
   }
-  const area = { left: 54, right: 42, top: 24, bottom: 42 }; area.width = width - area.left - area.right; area.height = height - area.top - area.bottom;
+  const area = { left: 54, right: 54, top: 30, bottom: 42 }; area.width = width - area.left - area.right; area.height = height - area.top - area.bottom;
   const minTime = Number(rows[0].observed_at); const maxTime = Number(rows.at(-1).observed_at); const span = Math.max(FIVE_MINUTES_MS, maxTime - minTime);
-  const online = rows.map((r) => finite(r.online_member_count)).filter((v) => v != null); const min = Math.max(0, Math.floor(Math.min(...online, 0) / 10) * 10); const max = Math.max(min + 10, Math.ceil(Math.max(...online, 10) / 10) * 10);
+  const previous = shiftedPreviousRows(payload, minTime, maxTime);
+  const online = [...rows, ...previous].map((row) => finite(row.online_member_count)).filter((value) => value != null);
+  const rawMin = online.length ? Math.min(...online) : 0; const rawMax = online.length ? Math.max(...online) : 10; const padding = Math.max(1, (rawMax - rawMin) * .06);
+  const min = Math.max(0, Math.floor((rawMin - padding) / 10) * 10); const max = Math.max(min + 10, Math.ceil((rawMax + padding) / 10) * 10);
   const x = (time) => area.left + area.width * (Number(time) - minTime) / span; const y = (value) => area.top + area.height - area.height * (Number(value) - min) / Math.max(1, max - min);
   drawGrid(context, width, height, area, max, min);
-  const deltas = rows.map((r) => finite(r.stream_delta_5m)).filter((v) => v != null && v >= 0); const deltaMax = Math.max(1, ...deltas);
-  context.fillStyle = 'rgba(22,139,115,.30)';
+  const deltas = rows.map((row) => finite(row.stream_delta_5m)).filter((value) => value != null && value >= 0); const deltaMax = Math.max(1, ...deltas);
+  context.fillStyle = STREAM_BAR_COLOR; context.globalAlpha = .34;
   const barWidth = Math.max(1, Math.min(6, area.width * FIVE_MINUTES_MS / Math.max(DAY_MS, span) * .82));
   for (const row of rows) { const value = finite(row.stream_delta_5m); if (value == null || value < 0) continue; const bar = area.height * value / deltaMax; context.fillRect(x(row.observed_at) - barWidth / 2, area.top + area.height - bar, barWidth, bar); }
-  context.strokeStyle = '#111'; context.lineWidth = 2; context.beginPath(); let started = false;
-  for (const row of rows) { const value = finite(row.online_member_count); if (value == null) { started = false; continue; } const px = x(row.observed_at); const py = y(value); if (!started) { context.moveTo(px, py); started = true; } else context.lineTo(px, py); } context.stroke();
+  context.globalAlpha = 1;
+  drawOnlineSeries(context, previous, x, y, PREVIOUS_ONLINE_COLOR, 2);
+  drawOnlineSeries(context, rows, x, y, '#111', 2);
   context.fillStyle = '#667287'; context.font = '11px system-ui'; context.textAlign = 'center'; context.textBaseline = 'alphabetic';
-  for (let i = 0; i < 5; i += 1) { const time = minTime + span * i / 4; context.fillText(jstTime.format(new Date(time)), x(time), height - 12); }
+  for (let i = 0; i < 5; i += 1) { const time = minTime + span * i / 4; context.fillText(jstTime.format(new Date(time)), x(time), height - 14); }
+  context.textAlign = 'left'; context.fillText('オンライン数（人）', 4, 12); context.textAlign = 'right'; context.fillText('再生数増加', width - 4, 12); context.textAlign = 'center'; context.fillText('時刻（JST）', width / 2, height - 2);
+  const currentOnline = rows.filter((row) => finite(row.online_member_count) != null); if (currentOnline.length) {
+    const minRow = currentOnline.reduce((selected, row) => finite(row.online_member_count) < finite(selected.online_member_count) ? row : selected);
+    const maxRow = currentOnline.reduce((selected, row) => finite(row.online_member_count) > finite(selected.online_member_count) ? row : selected);
+    for (const [row, label, align, dx, dy] of [[minRow, '最小', 'left', 5, 14], [maxRow, '最大', 'right', -5, -14]]) {
+      const value = finite(row.online_member_count); context.fillStyle = EXTREMA_POINT_COLOR; context.beginPath(); context.arc(x(row.observed_at), y(value), 3, 0, Math.PI * 2); context.fill(); labelBox(context, `${label} ${integer.format(Math.round(value))}（${jstTime.format(new Date(row.observed_at))}）`, x(row.observed_at) + dx, y(value) + dy, align, width, height);
+    }
+  }
+  ensureCurrentLegend(root, canvas, previous.length > 0, deltas.length > 0);
   const latest = rows.at(-1); setText(root, 'live-detail', `${jstDateTime.format(new Date(latest.observed_at))} JST　オンライン ${numberText(latest.online_member_count)}人　再生数増加 ${latest.stream_delta_5m == null ? '—' : `+${numberText(latest.stream_delta_5m)}`}/5分`);
 }
 
@@ -141,7 +238,12 @@ function broadcastDuration(row) { const start = epoch(row?.started_at); const en
 function renderBroadcasts(runtime, payload) {
   const rows = Array.isArray(payload?.rows) ? payload.rows : []; setText(runtime.root, 'broadcast-count', numberText(rows.length)); const averages = rows.map((r) => finite(r.listener_avg)).filter((v) => v != null); setText(runtime.root, 'broadcast-average', averages.length ? Number(averages.reduce((a, b) => a + b, 0) / averages.length).toFixed(1) : '—'); const maximums = rows.map((r) => finite(r.listener_max)).filter((v) => v != null); setText(runtime.root, 'broadcast-maximum', maximums.length ? numberText(Math.max(...maximums)) : '—'); const durations = rows.map(broadcastDuration).filter((v) => v != null); setText(runtime.root, 'broadcast-duration', durations.length ? `${Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)}分` : '—');
   const body = role(runtime.root, 'broadcast-tbody'); if (body) { body.replaceChildren(); if (!rows.length) appendEmptyTableRow(body, 'リスパデータがありません。', 10); else for (const row of rows) { const start = epoch(row.started_at); const end = epoch(row.ended_at); appendTableRow(body, [start ? jstDate.format(new Date(start)) : '—', start ? `${jstTime.format(new Date(start))}-${end ? jstTime.format(new Date(end)) : payload.collection_active ? '現在' : '—'}` : '—', broadcastDuration(row) == null ? '—' : `${Math.round(broadcastDuration(row))}分`, finite(row.listener_avg) == null ? '—' : Number(row.listener_avg).toFixed(1), numberText(row.listener_min), numberText(row.listener_max), numberText(row.distinct_tracks), numberText(row.estimated_streams), row.broadcast_content || '—', row.event_name || '—']); } }
-  const series = Array.isArray(payload?.series) ? payload.series.find((item) => Array.isArray(item?.points) && item.points.length) : null; const canvas = role(runtime.root, 'broadcast-chart'); const empty = role(runtime.root, 'broadcast-chart-empty'); if (!series) { if (canvas) canvas.hidden = true; if (empty) { empty.hidden = false; empty.textContent = payload.chart_error ? 'グラフの取得に失敗しました。画面を開き直してください。' : 'グラフデータがありません。'; } return; } if (canvas) canvas.hidden = false; if (empty) empty.hidden = true; const prepared = setupCanvas(canvas, 360); if (!prepared) return; const { context, width, height } = prepared; const points = series.points.map((p) => [finite(p?.[0]), finite(p?.[1])]).filter(([x, y]) => x != null && y != null); if (!points.length) return; const area = { left: 54, right: 24, top: 24, bottom: 42 }; area.width = width - area.left - area.right; area.height = height - area.top - area.bottom; const maxX = Math.max(1, ...points.map((p) => p[0])); const maxY = Math.max(10, ...points.map((p) => p[1])); const x = (v) => area.left + area.width * v / maxX; const y = (v) => area.top + area.height - area.height * v / maxY; drawGrid(context, width, height, area, maxY, 0); context.strokeStyle = '#111'; context.lineWidth = 2.2; context.beginPath(); points.forEach(([px, py], i) => i ? context.lineTo(x(px), y(py)) : context.moveTo(x(px), y(py))); context.stroke(); const legend = role(runtime.root, 'broadcast-legend'); if (legend) legend.textContent = series.event_name || '同接';
+  const series = (Array.isArray(payload?.series) ? payload.series : []).map((item, index) => ({ name: item?.event_name || `イベント${index + 1}`, points: (Array.isArray(item?.points) ? item.points : []).map((point) => [finite(point?.[0]), finite(point?.[1])]).filter(([x, y]) => x != null && y != null) })).filter((item) => item.points.length);
+  const canvas = role(runtime.root, 'broadcast-chart'); const empty = role(runtime.root, 'broadcast-chart-empty'); if (!series.length) { if (canvas) canvas.hidden = true; if (empty) { empty.hidden = false; empty.textContent = payload.chart_error ? 'グラフの取得に失敗しました。画面を開き直してください。' : 'グラフデータがありません。'; } const legend = role(runtime.root, 'broadcast-legend'); if (legend) legend.replaceChildren(); return; }
+  if (canvas) canvas.hidden = false; if (empty) empty.hidden = true; const prepared = setupCanvas(canvas, 360); if (!prepared) return; const { context, width, height } = prepared; const allPoints = series.flatMap((item) => item.points); const area = { left: 54, right: 24, top: 24, bottom: 42 }; area.width = width - area.left - area.right; area.height = height - area.top - area.bottom; const maxX = Math.max(1, ...allPoints.map((point) => point[0])); const maxY = Math.max(10, ...allPoints.map((point) => point[1])); const x = (value) => area.left + area.width * value / maxX; const y = (value) => area.top + area.height - area.height * value / maxY; drawGrid(context, width, height, area, maxY, 0);
+  series.forEach((item, index) => { context.strokeStyle = colorFor(index); context.lineWidth = 2; context.beginPath(); item.points.forEach(([px, py], pointIndex) => pointIndex ? context.lineTo(x(px), y(py)) : context.moveTo(x(px), y(py))); context.stroke(); });
+  context.fillStyle = '#667287'; context.font = '11px system-ui'; context.textAlign = 'center'; context.textBaseline = 'alphabetic'; for (let index = 0; index < 5; index += 1) { const minute = maxX * index / 4; context.fillText(`${Math.round(minute)}分`, x(minute), height - 14); }
+  const legend = role(runtime.root, 'broadcast-legend'); if (legend) { legend.replaceChildren(); series.forEach((item, index) => { if (index) legend.append(' / '); const span = document.createElement('span'); span.textContent = item.name; span.style.color = colorFor(index); legend.append(span); }); }
 }
 
 async function loadSection(runtime, section, { force = false } = {}) {
@@ -183,6 +285,7 @@ function initialize(root) {
   const runtime = { root, model, section: '', selectionSequence: 0, requestSequence: 0, playedSequence: 0, current: null, playbackIndex: -1, playedDates: [], playedPeriod: '', likes: [] };
   const capabilities = new Set(model.capabilities);
   root.querySelectorAll('[data-stationhead-section]').forEach((button) => { const enabled = capabilities.has(button.dataset.stationheadSection); button.disabled = !enabled; button.setAttribute('aria-disabled', String(!enabled)); button.title = enabled ? '' : '未提供'; if (enabled) button.addEventListener('click', () => selectSection(runtime, button.dataset.stationheadSection)); });
+  role(root, 'live-chart')?.addEventListener('pointerup', (event) => renderCurrentDetail(runtime, event), true);
   role(root, 'played-week')?.addEventListener('change', () => { runtime.playedPeriod = ''; void loadPlayed(runtime); });
   role(root, 'likes-csv')?.addEventListener('click', () => downloadCsv(`${model.source}-like-ranking-${new Date().toISOString().slice(0, 10)}.csv`, [['順位', '曲名', 'アーティスト', '最新いいね数', '最終取得'], ...runtime.likes.map((row, index) => [index + 1, row.title || '曲名不明', row.artist || '', row.like_count ?? '', row.observed_at ? new Date(row.observed_at).toISOString() : ''])]));
   const initial = model.capabilities.includes('current') ? 'current' : model.capabilities[0];
