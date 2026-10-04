@@ -20,7 +20,7 @@ test('leaderboard uses QQ-style update metadata above chart and data', () => {
 
 test('shared leaderboard owns only metadata, chart, and data surfaces', () => {
   assert.match(shell, /id: 'leaderboardChartPanel'/);
-  assert.match(shell, /id: 'leaderboardTableTitle'/);
+  assert.match(shell, /titleId: 'leaderboardTableTitle'/);
   assert.match(shell, /className: 'leaderboard-table'/);
   assert.doesNotMatch(shell, /dashboardControls|dashboardSummary|rankingWeeklyPanel|id="csv"/);
   assert.doesNotMatch(shell, /history-ranking-compact-layout\.js/);
