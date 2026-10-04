@@ -1,10 +1,17 @@
 const R2_RESPONSE_KEY_PREFIX = 'pages-response/v1/';
 const ACTIONS_RESPONSE_KEY_PREFIX = 'pages-response/actions-v2/';
 const ACTIONS_RAW_RESPONSE_KEY_PREFIX = 'pages-response/actions-raw-v1/';
+const ACTIONS_RAW_METADATA_RESPONSE_KEY_PREFIX = 'pages-response/actions-raw-meta-v1/';
 const TRACK_HISTORY_MODEL_KEY = 'track-history';
 const TRACK_HISTORY_STATUS_MODEL_KEY = 'track-history-status';
 const FOLLOWERS_MODEL_KEY = 'followers';
 const STREAMED_ACTIONS_MODEL_KEY = 'history:daily';
+export const ACTIONS_RAW_MODEL_KEYS = Object.freeze([
+  'history:daily',
+  'history:weekly',
+  'spotify-playcounts',
+  TRACK_HISTORY_STATUS_MODEL_KEY,
+]);
 const FOLLOWER_HANDLES = Object.freeze([
   'sakuramankai',
   'sakuramankai2',
@@ -28,6 +35,10 @@ function hexModelKey(value) {
     .join('');
 }
 
+function normalizedEtag(value) {
+  return String(value || '').trim().replace(/^"|"$/g, '');
+}
+
 export function pagesR2ResponseKey(modelKey) {
   const key = normalizedModelKey(modelKey);
   return key ? `${R2_RESPONSE_KEY_PREFIX}${encodeURIComponent(key)}.json` : null;
@@ -41,6 +52,11 @@ export function pagesActionsR2ResponseKey(modelKey) {
 export function pagesActionsRawR2ResponseKey(modelKey) {
   const key = normalizedModelKey(modelKey);
   return key ? `${ACTIONS_RAW_RESPONSE_KEY_PREFIX}${hexModelKey(key)}.json` : null;
+}
+
+export function pagesActionsRawMetadataR2ResponseKey(modelKey) {
+  const key = normalizedModelKey(modelKey);
+  return key ? `${ACTIONS_RAW_METADATA_RESPONSE_KEY_PREFIX}${hexModelKey(key)}.json` : null;
 }
 
 function objectOrNull(value) {
@@ -196,7 +212,8 @@ async function responseFromActionsObject(object, now, maximumAgeMs) {
 function responseFromRawActionsObject(object, sourceEtag, now, maximumAgeMs) {
   if (!object?.body) return null;
   const metadata = objectOrNull(object.customMetadata) || {};
-  if (Number(metadata.version) !== 1 || String(metadata.source_etag || '') !== String(sourceEtag || '')) {
+  if (Number(metadata.version) !== 1
+      || normalizedEtag(metadata.source_etag) !== normalizedEtag(sourceEtag)) {
     return null;
   }
   const updatedAt = Number(metadata.updated_at);
@@ -221,6 +238,57 @@ function responseFromRawActionsObject(object, sourceEtag, now, maximumAgeMs) {
   });
 }
 
+async function rawMetadataFromObject(object) {
+  if (!object?.body) return null;
+  try {
+    const metadata = await object.json();
+    return objectOrNull(metadata);
+  } catch {
+    return null;
+  }
+}
+
+function responseFromSeededRawActionsObject(rawObject, metadata, sourceEtag, now, maximumAgeMs) {
+  if (!rawObject?.body || Number(metadata?.version) !== 1) return null;
+  if (normalizedEtag(metadata?.source_etag) !== normalizedEtag(sourceEtag)) return null;
+  const updatedAt = Number(metadata?.updated_at);
+  if (!freshEnough(updatedAt, now, maximumAgeMs)) return null;
+  const headers = new Headers(objectOrNull(metadata?.headers) || {});
+  if (typeof rawObject.writeHttpMetadata === 'function') rawObject.writeHttpMetadata(headers);
+  headers.set('x-api-source', 'actions-r2-raw');
+  headers.set('x-materialized-at', String(updatedAt));
+  const cadence = Number(metadata?.cadence_seconds);
+  if (Number.isFinite(cadence) && cadence > 0) {
+    headers.set('x-materialized-cadence-seconds', String(Math.trunc(cadence)));
+  }
+  return new Response(rawObject.body, {
+    status: Number(metadata?.status) || 200,
+    headers,
+  });
+}
+
+async function loadSeededRawActionsResponse(r2, modelKey, now, maximumAgeMs) {
+  if (typeof r2?.head !== 'function' || typeof r2?.get !== 'function') return null;
+  const sourceKey = pagesActionsR2ResponseKey(modelKey);
+  const rawKey = pagesActionsRawR2ResponseKey(modelKey);
+  const metadataKey = pagesActionsRawMetadataR2ResponseKey(modelKey);
+  if (!sourceKey || !rawKey || !metadataKey) return null;
+  const [sourceHead, rawObject, metadataObject] = await Promise.all([
+    r2.head(sourceKey),
+    r2.get(rawKey),
+    r2.get(metadataKey),
+  ]);
+  if (!sourceHead?.etag || !rawObject?.body || !metadataObject?.body) return null;
+  const metadata = await rawMetadataFromObject(metadataObject);
+  return responseFromSeededRawActionsObject(
+    rawObject,
+    metadata,
+    sourceHead.etag,
+    now,
+    maximumAgeMs,
+  );
+}
+
 async function seedRawActionsResponse(r2, rawKey, sourceEtag, envelope) {
   if (Number(envelope?.status || 200) !== 200 || typeof envelope?.body !== 'string') return;
   try {
@@ -243,6 +311,8 @@ async function seedRawActionsResponse(r2, rawKey, sourceEtag, envelope) {
 }
 
 async function loadStreamedActionsResponse(r2, modelKey, now, maximumAgeMs) {
+  const seeded = await loadSeededRawActionsResponse(r2, modelKey, now, maximumAgeMs);
+  if (seeded) return seeded;
   if (typeof r2?.head !== 'function' || typeof r2?.get !== 'function' || typeof r2?.put !== 'function') {
     return null;
   }
@@ -270,6 +340,10 @@ async function loadStreamedActionsResponse(r2, modelKey, now, maximumAgeMs) {
 async function loadActionsEnvelope(r2, modelKey, now, maximumAgeMs) {
   const key = pagesActionsR2ResponseKey(modelKey);
   if (!key || typeof r2?.get !== 'function') return null;
+  if (modelKey !== STREAMED_ACTIONS_MODEL_KEY && ACTIONS_RAW_MODEL_KEYS.includes(modelKey)) {
+    const seeded = await loadSeededRawActionsResponse(r2, modelKey, now, maximumAgeMs);
+    if (seeded) return seeded;
+  }
   return responseFromActionsObject(await r2.get(key), now, maximumAgeMs);
 }
 
@@ -309,9 +383,8 @@ export async function loadMaterializedR2Response(
   now = Date.now(),
   maximumAgeMs = Number.MAX_SAFE_INTEGER,
 ) {
-  // The large daily history model keeps its canonical Actions envelope for
-  // revision management, but serves a raw companion after validating the
-  // envelope ETag so normal cache misses do not parse ~500 KB of nested JSON.
+  // Large Actions-owned models can serve a raw companion after validating the
+  // canonical envelope ETag, keeping cache-miss CPU below the stateless budget.
   if (modelKey === STREAMED_ACTIONS_MODEL_KEY) {
     const streamed = await loadStreamedActionsResponse(r2, modelKey, now, maximumAgeMs);
     if (streamed) return streamed;
