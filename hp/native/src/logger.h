@@ -1,24 +1,19 @@
 #pragma once
 #include "common.h"
+
 namespace hp {
+
+// Runtime file logging is intentionally disabled. Keep this tiny compatibility
+// type so existing error-handling paths do not need to allocate a log file,
+// format messages, lock a stream, flush, or rotate diagnostics on low-end hosts.
 class Logger {
  public:
-  explicit Logger(fs::path path, size_t maxBytes = 2 * 1024 * 1024, int rotations = 3);
-  ~Logger();
-  void Info(std::wstring_view message) noexcept { Write(L"INFO", message); }
-  void Warn(std::wstring_view message) noexcept { Write(L"WARN", message); }
-  void Error(std::wstring_view message) noexcept { Write(L"ERROR", message); }
-  fs::path Path() const { return path_; }
- private:
-  void Write(const wchar_t* level, std::wstring_view message) noexcept;
-  void OpenOutput();
-  void Rotate();
-  fs::path path_;
-  size_t maxBytes_;
-  int rotations_;
-  size_t currentBytes_ = 0;
-  size_t pendingBytes_ = 0;
-  std::ofstream output_;
-  std::mutex mutex_;
+  explicit Logger(fs::path = {}, size_t = 0, int = 0) noexcept {}
+  ~Logger() = default;
+
+  void Info(std::wstring_view) const noexcept {}
+  void Warn(std::wstring_view) const noexcept {}
+  void Error(std::wstring_view) const noexcept {}
 };
+
 }  // namespace hp
