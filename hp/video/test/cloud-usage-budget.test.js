@@ -134,7 +134,7 @@ test('device exchange isolates HTTP CPU while preserving telemetry-before-sync o
 });
 
 test('video liveness remains hourly while Cron ownership is externalized', () => {
-  assert.equal(cloudConfig.triggers, undefined);
+  assert.deepEqual(cloudConfig.triggers, { crons: [] });
   assert.match(livenessSchedule, /LIVENESS_INTERVAL_SECONDS = 60 \* 60/);
   assert.match(livenessMonitor, /LIVENESS_BATCH_SIZE = 5/);
   assert.match(livenessMonitor, /PROBE_CONCURRENCY = 5/);
