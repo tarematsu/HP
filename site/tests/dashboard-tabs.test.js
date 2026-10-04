@@ -106,7 +106,7 @@ test('feature tabs share one lazy route registry stylesheet loader and module ca
   }
   assert.match(tabsClient, /config\.loadExport\) await runtime\[config\.loadExport\]\?\.\(config\.loadArgs \|\| undefined\)/);
   assert.match(tabsClient, /ensureDashboardSectionStyles/);
-  
+
 });
 
 test('legacy listening-party hashes normalize to the shared broadcasts route only', () => {

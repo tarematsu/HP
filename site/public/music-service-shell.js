@@ -124,10 +124,20 @@ function bindServiceGroups(root) {
   nav.className = 'mode-tabs music-service-view-tabs';
   nav.setAttribute('aria-label', '表示内容');
   const labels = { overview: '概要', list: '一覧', playlists: 'プレイリスト' };
+  // Group visibility must not overwrite runtime-owned empty/filter visibility.
+  const panels = groups.map((group) => {
+    const panel = document.createElement('div');
+    panel.className = 'music-service-group';
+    panel.dataset.group = group;
+    const children = sections.filter(section => section.dataset.serviceGroup === group);
+    children[0].before(panel);
+    panel.append(...children);
+    return panel;
+  });
   let active = groups[0];
   function select(group) {
     active = group;
-    for (const section of sections) section.hidden = section.dataset.serviceGroup !== group;
+    for (const panel of panels) panel.hidden = panel.dataset.group !== group;
     for (const button of nav.querySelectorAll('button')) {
       const selected = button.dataset.serviceGroup === group;
       button.classList.toggle('active', selected);

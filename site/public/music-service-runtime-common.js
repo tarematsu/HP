@@ -1,3 +1,4 @@
+import { loadDashboardJson } from './dashboard-data-client.js?v=20261005.2';
 import { byId, integerFormat } from './dashboard-ui-common.js?v=20261001.1';
 import { dashboardDateTimeFormatter } from './dashboard-time.js?v=20261001.1';
 
@@ -69,15 +70,8 @@ export function loadMusicServiceReadModel(service) {
   const endpoint = MUSIC_SERVICE_ENDPOINTS[serviceId];
   if (!endpoint) return Promise.reject(new Error(`unknown music service: ${serviceId || '(empty)'}`));
   if (!readModelPromises.has(serviceId)) {
-    const request = fetch(endpoint, {
-      headers: { accept: 'application/json' },
-      cache: 'default',
-    }).then(async (response) => {
-      if (!response.ok) throw new Error(`${serviceId} HTTP ${response.status}`);
-      const payload = await response.json();
-      if (!payload?.ok || payload.service !== serviceId) {
-        throw new Error(payload?.error || `${serviceId} read model unavailable`);
-      }
+    const request = loadDashboardJson(endpoint).then((payload) => {
+      if (payload.service !== serviceId) throw new Error(`${serviceId} read model unavailable`);
       return payload;
     }).catch((error) => {
       readModelPromises.delete(serviceId);

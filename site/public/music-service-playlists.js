@@ -1,3 +1,4 @@
+import { loadDashboardJson } from './dashboard-data-client.js?v=20261005.2';
 import {
   appendEmptyTableRow,
   byId as element,
@@ -250,11 +251,8 @@ function bindArtistFilter(service, config) {
   }
 }
 
-async function fetchPayload(config) {
-  const response = await fetch(config.endpoint, { headers: { accept: 'application/json' } });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload?.ok) throw new Error(payload?.error || `playlist API HTTP ${response.status}`);
-  return payload;
+async function fetchPayload(config, force = false) {
+  return loadDashboardJson(config.endpoint, { force });
 }
 
 export async function loadMusicServicePlaylists(service, { force = false } = {}) {
@@ -269,7 +267,7 @@ export async function loadMusicServicePlaylists(service, { force = false } = {})
     return payload;
   }
   if (!requests.has(key) || force) {
-    const request = fetchPayload(config)
+    const request = fetchPayload(config, force)
       .then((payload) => {
         payloads.set(key, payload);
         renderTable(key, config, payload);

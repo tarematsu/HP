@@ -97,8 +97,8 @@ test('Stationhead shared shell owns notices tables legends and five mode tabs on
 test('Stationhead secondary CSS is loaded by one shared lazy style loader', () => {
   assert.doesNotMatch(sharedUi, /ensureStylesheet|createElement\('link'\)/);
   assert.match(stationheadStyles, /ensureDashboardSectionStyles/);
-  
-  
+
+
   assert.doesNotMatch(currentShell, /\.css\?v=|createElement\('link'\)/);
   assert.doesNotMatch(hinataShell, /\.css\?v=|createElement\('link'\)/);
   assert.doesNotMatch(nogizakaShell, /\.css\?v=|createElement\('link'\)/);
