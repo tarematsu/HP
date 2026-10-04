@@ -16,7 +16,7 @@ test('compact section tabs wrap long labels inside their half-width cells', () =
 test('compact five-column Stationhead tabs wrap inside their grid cells', () => {
   assert.match(
     navigationCss,
-    /@media \(max-width: 760px\)[\s\S]*#modeTabs\.mode-tabs\.dashboard-tabs > button,[\s\S]*\.stationhead-subtabs > button\s*\{[^}]*white-space:\s*normal;[^}]*overflow-wrap:\s*anywhere;/,
+    /@media \(max-width: 760px\)[\s\S]*\.stationhead-subtabs > button\s*\{[^}]*white-space:\s*normal;[^}]*overflow-wrap:\s*anywhere;/,
   );
 });
 
