@@ -362,7 +362,9 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   syncAdObserver(adActive);
   state.fullscreenApplied = fullscreen();
   if (state.fullscreenApplied) state.fullscreenKeyRequestedAt = 0;
-  if (!adActive && !state.fullscreenApplied) return requestFullscreen();
+  if (!adActive && !state.fullscreenApplied && !video?.paused) {
+    return requestFullscreen();
+  }
 
   if (adActive) {
     state.adActive = true;

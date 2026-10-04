@@ -45,7 +45,7 @@ test('fullscreen fallback and ad clicks keep independent action state', () => {
   assert.doesNotMatch(runtime, /state\.actionCleanup = cleanup/);
 
   const firstFullscreen = runtime.indexOf(
-    'if (!adActive && !state.fullscreenApplied) return requestFullscreen();',
+    'if (!adActive && !state.fullscreenApplied && !video?.paused) {',
   );
   const adStart = runtime.indexOf('if (adActive) {');
   assert.ok(firstFullscreen >= 0 && adStart > firstFullscreen);
