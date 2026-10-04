@@ -2,8 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const currentShell = readFileSync(new URL('../public/current-shell.js', import.meta.url), 'utf8');
-const playbackShell = readFileSync(new URL('../public/stationhead-playback-shell.js', import.meta.url), 'utf8');
+const stationheadShell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
 const likesShell = readFileSync(new URL('../public/likes-shell.js', import.meta.url), 'utf8');
 const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
@@ -15,13 +14,14 @@ test('history no longer loads a post-render UI tweak runtime', () => {
   assert.doesNotMatch(entry, /pages-ui-tweaks/);
 });
 
-test('current chart is statically before now playing without a redundant heading block', () => {
-  const chartIndex = currentShell.indexOf('class="card chart-card"');
-  const playbackIndex = currentShell.indexOf('stationheadPlaybackCards({');
-  assert.ok(chartIndex >= 0 && playbackIndex > chartIndex);
-  const chartCard = currentShell.slice(chartIndex, playbackIndex);
+test('shared current chart is statically before now playing without a redundant heading block', () => {
+  const currentPanel = stationheadShell.indexOf('data-stationhead-panel="current"');
+  const chartIndex = stationheadShell.indexOf('class="card chart-card chart-panel"', currentPanel);
+  const playbackIndex = stationheadShell.indexOf('${playbackCards()}', chartIndex);
+  assert.ok(currentPanel >= 0 && chartIndex > currentPanel && playbackIndex > chartIndex);
+  const chartCard = stationheadShell.slice(chartIndex, playbackIndex);
   assert.doesNotMatch(chartCard, /LAST 24 HOURS|オンライン数<\/h2>/);
-  assert.match(playbackShell, /class="primary-grid"/);
+  assert.match(stationheadShell, /class="primary-grid"/);
 });
 
 test('likes update control is removed and CSV stays in the song-table shared data card', () => {

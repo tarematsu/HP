@@ -3,33 +3,33 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const currentShell = readFileSync(new URL('../public/current-shell.js', import.meta.url), 'utf8');
+const sharedShell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
+const stationheadRuntime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const fetchCache = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
 const layout = readFileSync(new URL('../public/dashboard-current-layout.js', import.meta.url), 'utf8');
-const chart = readFileSync(new URL('../public/dashboard-chart-comparison.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/dashboard-current-enhancements.css', import.meta.url), 'utf8');
 const sharedLayout = readFileSync(new URL('../public/pages-layout.css', import.meta.url), 'utf8');
 const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 
-test('current metrics are statically ordered while current-only renderers load lazily without duplicates', () => {
-  assert.match(metrics, /dashboard-current-layout\.js\?v=20260924\.1/);
-  assert.match(metrics, /dashboard-chart-stability\.js\?v=20260930\.2/);
-  assert.match(metrics, /dashboard-chart-comparison\.js\?v=20260930\.2/);
-  assert.match(metrics, /dashboard-chart-detail\.js\?v=20260930\.2/);
-  assert.match(metrics, /dashboard-daily-summaries\.js\?v=20260930\.2/);
-  assert.match(metrics, /dashboard-fetch-cache\.js\?v=20260930\.1/);
-  assert.doesNotMatch(metrics, /dashboard-current-enhancements\.js|dashboard-details-client\.js/);
-  assert.match(metrics, /dashboard-client\.js\?v=20261004\.1/);
+test('current Stationhead renderer and markup are shared instead of Buddies-specific', () => {
+  assert.match(metrics, /stationhead-channel\.js\?v=/);
   assert.match(metrics, /function ensureCurrentRuntime\(\)/);
-  assert.doesNotMatch(metrics, /replayCurrentPayload|runtime-replay|IMAGE_RETRY_DELAYS|MutationObserver/);
+  assert.match(metrics, /dashboard-fetch-cache\.js\?v=/);
+  assert.match(currentShell, /mountStationheadChannelShell/);
+  assert.match(currentShell, /stationheadModel = 'buddies'/);
+  assert.match(sharedShell, /metric\('オンライン', 'online', true\)/);
+  assert.match(sharedShell, /metric\('総再生数', 'streams'\)/);
+  assert.match(sharedShell, /metric\('総メンバー数', 'members'\)/);
+  assert.ok(sharedShell.indexOf("metric('オンライン', 'online', true)") < sharedShell.indexOf("metric('総再生数', 'streams')"));
+  assert.ok(sharedShell.indexOf("metric('総再生数', 'streams')") < sharedShell.indexOf("metric('総メンバー数', 'members')"));
+  assert.match(stationheadRuntime, /function renderCurrent\(/);
+  assert.match(stationheadRuntime, /function renderCurrentChart\(/);
+  assert.doesNotMatch(metrics, /dashboard-current-layout\.js|dashboard-chart-stability\.js|dashboard-chart-comparison\.js|dashboard-chart-detail\.js|dashboard-daily-summaries\.js|dashboard-client\.js/);
   assert.doesNotMatch(header, /\.css\?v=|createElement\('link'\)/);
   assert.doesNotMatch(metrics, /window\.fetch|response\.clone\(\)\.json|restoreDashboardCache/);
   assert.match(fetchCache, /dashboard:payload/);
-  assert.ok(currentShell.indexOf("valueId: 'online'") < currentShell.indexOf("valueId: 'totalStreams'"));
-  assert.ok(currentShell.indexOf("valueId: 'totalStreams'") < currentShell.indexOf("valueId: 'members'"));
-  assert.match(currentShell, /dashboardMetric/);
-  assert.match(currentShell, /dashboardMetrics/);
   assert.doesNotMatch(layout, /append\(|insertAdjacent|MutationObserver|goal-card|audienceChart|getContext\('2d'\)|drawEnhancedChart/);
 });
 
@@ -38,35 +38,17 @@ test('shared mobile layout owns tab count and current metric columns', () => {
   assert.doesNotMatch(sharedLayout, /#currentView/);
 });
 
-test('current chart fully overlays direct five-minute playback bars on the online plot', () => {
-  assert.match(chart, /オンライン数（人）/);
-  assert.match(chart, /context\.fillText\('再生数増加'/);
-  assert.match(chart, /stream\.textContent = '再生数増加'/);
-  assert.match(chart, /stream_5m_history/);
-  assert.match(chart, /drawStreamBars/);
-  assert.match(chart, /const plotHeight = Math\.max\(1, height - padding\.top - padding\.bottom\)/);
-  assert.match(chart, /const yStream = \(value\) => plotBottom - Math\.max\(0, Number\(value\)\) \* plotHeight \/ streamMax/);
-  assert.match(chart, /drawStreamBars\(context, streamAverages, xFor, yStream, plotBottom, plotWidth\)/);
-  assert.doesNotMatch(chart, /sectionGap|streamTop|streamPlotHeight|onlinePlotHeight/);
-  assert.doesNotMatch(chart, /再生数増加\/分（5分平均）|stream_minute_history|コメント\/2分|comment_velocity|commentVelocity|rgba\(22,139,115/);
-  assert.match(chart, /時刻（JST）/);
-  assert.match(chart, /JST_TIME_HM/);
-  assert.match(chart, /drawSeries\(context, current, xFor, yOnline, '#111', 2\)/);
-  assert.match(chart, /const EXTREMA_POINT_COLOR = '#888'/);
-  assert.match(chart, /if \(minRow\) \{[\s\S]*context\.fillStyle = EXTREMA_POINT_COLOR/);
-  assert.match(chart, /if \(maxRow\) \{[\s\S]*context\.fillStyle = EXTREMA_POINT_COLOR/);
-  assert.match(chart, /`最小 \$\{integer\.format\(currentMin\)\}（\$\{JST_TIME_HM\.format/);
-  assert.match(chart, /`最大 \$\{integer\.format\(currentMax\)\}（\$\{JST_TIME_HM\.format/);
-  assert.doesNotMatch(chart, /strokeRect\(/);
+test('shared current chart overlays direct five-minute playback bars on the online plot', () => {
+  assert.match(stationheadRuntime, /payload\?\.history_24h/);
+  assert.match(stationheadRuntime, /stream_delta_5m/);
+  assert.match(stationheadRuntime, /context\.fillRect\(/);
+  assert.match(stationheadRuntime, /context\.strokeStyle = '#111'/);
+  assert.match(stationheadRuntime, /再生数増加/);
+  assert.doesNotMatch(stationheadRuntime, /comment_velocity|commentVelocity|コメント\/2分/);
 });
 
-test('stream goal is static inside the metric and ETA is display-only JST', () => {
-  assert.match(currentShell, /id="metricGoalCompact"/);
-  assert.match(currentShell, /id="streamGoal"/);
-  assert.match(currentShell, /id="goalEta"/);
-  assert.doesNotMatch(currentShell, /goal-card|id="streamCount"|id="goalBar"|id="goalPercent"|id="goalRemaining"|id="goalRate"|id="goalMilestones"/);
-  assert.match(layout, /jstGoalDateTime = new Intl\.DateTimeFormat[\s\S]*timeZone: 'Asia\/Tokyo'/);
-  assert.match(layout, /jstGoalDateTime\.format/);
+test('shared Stationhead current shell contains no Buddies-only goal card', () => {
+  assert.doesNotMatch(sharedShell, /metricGoalCompact|streamGoal|goalEta|goal-card|streamCount|goalBar|goalPercent|goalRemaining|goalRate|goalMilestones/);
   assert.doesNotMatch(css, /\.goal-card/);
 });
 

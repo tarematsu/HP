@@ -28,49 +28,59 @@ test('main page references only existing local static assets', async () => {
   }
 });
 
-test('dashboard skeleton and shell modules keep accessibility, privacy and all public sections', async () => {
+test('dashboard skeleton and shared Stationhead shell keep accessibility, privacy and all channel sections', async () => {
   const html = await text('public/index.html');
   const registry = await text('public/dashboard-tab-registry.js');
   const currentShell = await text('public/current-shell.js');
+  const stationheadShell = await text('public/stationhead-channel-shell.js');
   const historyShell = await text('public/history-shell.js');
   const likesShell = await text('public/likes-shell.js');
-  const playbackShell = await text('public/stationhead-playback-shell.js');
-  const shellSource = [currentShell, historyShell, likesShell, playbackShell].join('\n');
+
   assert.match(html, /<html lang="ja"(?:\s[^>]*)?>/);
   assert.match(html, /name="viewport"/);
   assert.match(html, /noindex,nofollow/);
-  for (const id of [
-    'trackFallback', 'online', 'members', 'totalStreams', 'membersYesterdayDelta', 'membersDayBeforeDelta',
-    'streamsYesterdayDelta', 'streamsDayBeforeDelta', 'nowPlayingLink', 'queue', 'metricGoalCompact', 'streamGoal',
-    'goalEta', 'audienceChart', 'historyView', 'likesView', 'likesRankingList', 'likesTbody',
-  ]) assert.match(shellSource, new RegExp(`(?:id=\\"${id}\\"|[A-Za-z]+: '${id}')`));
   for (const id of ['channelName', 'updated']) assert.match(html, new RegExp(`id="${id}"`));
-  assert.doesNotMatch(shellSource, /id="streamCount"|id="goalMilestones"|goal-card/);
-  assert.match(registry, /view: 'current', label: '現在', active: true/);
-  assert.match(registry, /view: 'history', mode: 'daily', label: '過去'/);
-  assert.match(registry, /view: 'likes', mode: 'likes', label: 'いいね'/);
-  assert.match(playbackShell, /rel="noopener noreferrer"/);
+  assert.match(currentShell, /mountStationheadChannelShell/);
+  assert.match(currentShell, /stationheadModel = 'buddies'/);
+  assert.match(stationheadShell, /metric\('オンライン', 'online', true\)/);
+  assert.match(stationheadShell, /metric\('総再生数', 'streams'\)/);
+  assert.match(stationheadShell, /metric\('総メンバー数', 'members'\)/);
+  for (const role of ['station-link', 'queue', 'track-bites', 'live-chart']) {
+    assert.match(stationheadShell, new RegExp(`role\\('${role}'\\)`));
+  }
+  for (const section of ['current', 'history', 'played-tracks', 'likes', 'broadcasts']) {
+    assert.match(stationheadShell, new RegExp(`data-stationhead-panel=\\"${section}\\"`));
+  }
+  assert.match(stationheadShell, /rel="noopener noreferrer"/);
+  assert.doesNotMatch(stationheadShell, /goal-card|metricGoalCompact|streamGoal|goalEta/);
+  assert.match(registry, /tabs\.replaceChildren\(\)/);
+  assert.match(registry, /tabs\.hidden = true/);
+  assert.match(historyShell, /id: 'historyView'/);
+  assert.match(likesShell, /id: 'likesView'/);
   assert.doesNotMatch(html, /href="\/history/);
   assert.doesNotMatch(html, /id="currentView"|id="historyView"|id="likesView"/);
 });
 
 test('dashboard current page renders online history and direct five-minute playback counts from one payload', async () => {
   const currentShell = await text('public/current-shell.js');
-  const client = await text('public/dashboard-client.js');
+  const stationheadShell = await text('public/stationhead-channel-shell.js');
+  const stationheadRuntime = await text('public/stationhead-channel.js');
+  const stationheadReadModel = await text('public/stationhead-channel-read-model.js');
   const entry = await text('public/dashboard-metrics.js');
-  const chart = await text('public/dashboard-chart-comparison.js');
-  const detail = await text('public/dashboard-chart-detail.js');
-  assert.match(currentShell, /id="audienceChart"/);
-  assert.match(currentShell, /class="online-key">オンライン<\/span>/);
-  assert.doesNotMatch(currentShell, /<h2>オンライン数<\/h2>|コメント勢い/);
-  assert.match(client, /const DASHBOARD_URL = '\/api\/dashboard\?history=0'/);
-  assert.match(client, /payload\.queue/);
+  const cache = await text('public/dashboard-fetch-cache.js');
+
+  assert.match(currentShell, /mountStationheadChannelShell/);
+  assert.match(stationheadShell, /role\('live-chart'\)/);
+  assert.match(stationheadShell, /過去24時間/);
+  assert.match(stationheadRuntime, /payload\?\.history_24h/);
+  assert.match(stationheadRuntime, /stream_delta_5m/);
+  assert.match(stationheadRuntime, /online_member_count/);
+  assert.match(stationheadRuntime, /context\.fillRect\(/);
+  assert.doesNotMatch(stationheadRuntime, /comment_velocity|commentVelocity|コメント\/2分/);
+  assert.match(stationheadReadModel, /fetchJson\('\/api\/dashboard\?history=0'/);
+  assert.match(stationheadReadModel, /queue: Array\.isArray\(payload\?\.queue\) \? payload\.queue : \[\]/);
+  assert.match(entry, /dashboard-fetch-cache\.js\?v=/);
+  assert.match(cache, /url\.searchParams\.set\('since'/);
+  assert.match(cache, /queue_revision/);
   assert.doesNotMatch(entry, /dashboard-details-client\.js/);
-  assert.match(chart, /payload\?\.history/);
-  assert.match(chart, /payload\?\.stream_5m_history/);
-  assert.match(chart, /dashboard:payload/);
-  assert.match(chart, /online_member_count/);
-  assert.doesNotMatch(chart, /再生数増加\/分（5分平均）|comment_velocity|commentVelocity|コメント\/2分/);
-  assert.match(detail, /再生数増加 \+\$\{numberText\(streamRow\.stream_delta\)\}/);
-  assert.doesNotMatch(detail, /comment_velocity|commentVelocity|コメント勢い/);
 });

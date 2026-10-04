@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const mainPage = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-const tabRegistry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
+const stationheadModel = readFileSync(new URL('../public/stationhead-channel-model.js', import.meta.url), 'utf8');
 const tabsClient = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const historyShell = readFileSync(new URL('../public/history-shell.js', import.meta.url), 'utf8');
 const likesShell = readFileSync(new URL('../public/likes-shell.js', import.meta.url), 'utf8');
@@ -23,21 +23,20 @@ const rankingLibrary = readFileSync(new URL('../functions/lib/track-ranking.js',
 const sakurazakaApi = readFileSync(new URL('../functions/api/sakurazaka46jp.js', import.meta.url), 'utf8');
 const middleware = readFileSync(new URL('../functions/_middleware.js', import.meta.url), 'utf8');
 
-const NAV_ARCHIVE_MODES = ['daily', 'broadcasts'];
 const INTERNAL_ARCHIVE_MODES = ['daily', 'weekly', 'monthly', 'ranking', 'broadcasts'];
 
-test('main dashboard exposes only visible Buddies archive tabs while leaderboard stays a source route', () => {
-  for (const mode of NAV_ARCHIVE_MODES) assert.match(tabRegistry, new RegExp(`view: 'history', mode: '${mode}'`));
-  assert.doesNotMatch(tabRegistry, /view: 'history', mode: '(?:weekly|monthly|ranking)'/);
+test('main dashboard exposes shared Buddies archive tabs while leaderboard stays a source route', () => {
+  assert.match(stationheadModel, /value: 'history', label: '過去'/);
+  assert.match(stationheadModel, /value: 'likes', label: 'いいね'/);
+  assert.match(stationheadModel, /value: 'broadcasts', label: 'リスパ'/);
+  assert.doesNotMatch(stationheadModel, /value: '(?:weekly|monthly|ranking|tracks)'/);
   assert.match(tabsClient, /id: 'ranking', label: 'リーダーボード', defaultMode: 'ranking'/);
-  assert.match(tabRegistry, /view: 'likes', mode: 'likes', label: 'いいね'/);
-  assert.doesNotMatch(tabRegistry, /mode: 'tracks'|label: '再生曲'/);
   assert.equal(existsSync(new URL('../public/history/index.html', import.meta.url)), false);
   assert.equal(existsSync(new URL('../public/history/likes/index.html', import.meta.url)), false);
 });
 
 test('weekly and monthly summary modes remain internal after their top tabs are removed', () => {
-  assert.doesNotMatch(tabRegistry, /mode: 'weekly'|mode: 'monthly'/);
+  assert.doesNotMatch(stationheadModel, /value: 'weekly'|value: 'monthly'/);
   assert.match(historyClient, /weekly: \{/);
   assert.match(historyClient, /monthly: \{/);
 });

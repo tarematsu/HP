@@ -76,15 +76,15 @@ test('API rejects missing minute database binding', async () => {
 });
 
 test('dashboard embeds first-week comparison in the listening-party view and loads it on demand', () => {
-  const registry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
+  const stationheadModel = readFileSync(new URL('../public/stationhead-channel-model.js', import.meta.url), 'utf8');
   const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
   const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
   const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
   const shell = readFileSync(new URL('../public/first-week-comparison-shell.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../public/first-week-comparison.js', import.meta.url), 'utf8');
   const css = readFileSync(new URL('../public/first-week-comparison.css', import.meta.url), 'utf8');
-  assert.doesNotMatch(registry, /view: 'first-week'|label: '初週比較'/);
-  assert.match(registry, /mode: 'broadcasts', label: 'リスパ'/);
+  assert.doesNotMatch(stationheadModel, /label: '初週比較'/);
+  assert.match(stationheadModel, /value: 'broadcasts', label: 'リスパ'/);
   assert.doesNotMatch(entry, /first-week-comparison-shell|first-week-comparison\.js/);
   assert.match(entry, /dashboard-tabs\.js\?v=20261004\.1/);
   assert.match(tabs, /mode === 'broadcasts'/);
@@ -124,10 +124,10 @@ test('first-week view exposes listener comparison only', () => {
 
 test('first-week comparison no longer adds any initial-entry module', () => {
   const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-  const registry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
+  const stationheadModel = readFileSync(new URL('../public/stationhead-channel-model.js', import.meta.url), 'utf8');
   const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
   assert.doesNotMatch(entry, /first-week|dashboard-tab-order/);
-  assert.match(registry, /mode: 'broadcasts', label: 'リスパ'/);
-  assert.doesNotMatch(registry, /view: 'spotify'/);
+  assert.match(stationheadModel, /value: 'broadcasts', label: 'リスパ'/);
+  assert.doesNotMatch(stationheadModel, /view: 'spotify'/);
   assert.match(tabs, /id: 'spotify', label: 'Spotify', defaultMode: 'spotify'/);
 });

@@ -90,8 +90,8 @@ test('pending ROCK IN listening party stays visible without samples and keeps it
 });
 
 test('Pages stores listening-party labels at their owning sources without late rewrites', () => {
-  const registry = readFileSync(
-    new URL('../site/public/dashboard-tab-registry.js', import.meta.url),
+  const stationheadModel = readFileSync(
+    new URL('../site/public/stationhead-channel-model.js', import.meta.url),
     'utf8',
   );
   const history = readFileSync(
@@ -110,7 +110,7 @@ test('Pages stores listening-party labels at their owning sources without late r
     new URL('../site/public/dashboard-time.js', import.meta.url),
     'utf8',
   );
-  assert.match(registry, /mode: 'broadcasts', label: 'リスパ'/);
+  assert.match(stationheadModel, /value: 'broadcasts', label: 'リスパ'/);
   assert.match(history, /broadcasts: \{ title: '公式リスパ比較', table: '公式リスパ一覧', chart: '公式リスパ 同接推移（開始0分比較）' \}/);
   assert.doesNotMatch(chart, /button\.textContent = '公式リスパ'/);
   assert.doesNotMatch(chart, /chartTitle'\)\.textContent/);

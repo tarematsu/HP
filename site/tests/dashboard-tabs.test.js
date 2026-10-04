@@ -5,10 +5,11 @@ import test from 'node:test';
 const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const registry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
 const currentShell = readFileSync(new URL('../public/current-shell.js', import.meta.url), 'utf8');
+const stationheadShell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
+const stationheadRuntime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
 const historyShell = readFileSync(new URL('../public/history-shell.js', import.meta.url), 'utf8');
 const likesShell = readFileSync(new URL('../public/likes-shell.js', import.meta.url), 'utf8');
 const dashboardEntry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-const currentChartDetail = readFileSync(new URL('../public/dashboard-chart-detail.js', import.meta.url), 'utf8');
 const tabsClient = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const redirects = readFileSync(new URL('../public/_redirects', import.meta.url), 'utf8');
@@ -16,23 +17,22 @@ const redirects = readFileSync(new URL('../public/_redirects', import.meta.url),
 const historyPageUrl = new URL('../public/history/index.html', import.meta.url);
 const likesPageUrl = new URL('../public/history/likes/index.html', import.meta.url);
 
-test('dashboard starts on current and mounts only the five visible Buddies mode tabs', () => {
-  assert.ok(registry.indexOf("view: 'current'") < registry.indexOf("mode: 'daily'"));
-  assert.match(registry, /view: 'current', label: '現在', active: true/);
+test('dashboard starts on the shared Buddies Stationhead view without duplicate outer subtabs', () => {
+  assert.match(currentShell, /mountStationheadChannelShell/);
   assert.match(currentShell, /id: 'currentView'/);
   assert.match(currentShell, /hidden: false/);
-  assert.match(historyShell, /id: 'historyView'/);
-  assert.match(historyShell, /className: 'history-view'/);
-  assert.match(likesShell, /id: 'likesView'/);
-  assert.match(likesShell, /className: 'likes-view'/);
-  for (const mode of ['daily', 'likes', 'broadcasts']) assert.match(registry, new RegExp(`mode: '${mode}'`));
-  assert.match(registry, /view: 'played-tracks'/);
-  assert.doesNotMatch(registry, /mode: 'ranking'|view: 'spotify'/);
+  assert.match(currentShell, /stationheadModel = 'buddies'/);
+  assert.match(registry, /tabs\.replaceChildren\(\)/);
+  assert.match(registry, /tabs\.hidden = true/);
+  assert.doesNotMatch(registry, /STATIONHEAD_CHANNEL_TABS|BUDDIES_ROUTES|createElement\('button'\)/);
+  assert.match(stationheadShell, /dashboardModeTabs/);
+  assert.match(stationheadShell, /className: 'stationhead-subtabs'/);
+  for (const section of ['current', 'history', 'played-tracks', 'likes', 'broadcasts']) {
+    assert.match(stationheadShell, new RegExp(`data-stationhead-panel=\\"${section}\\"`));
+  }
+  assert.match(tabsClient, /id: 'buddies', label: 'Buddies', defaultMode: 'current'/);
   assert.match(tabsClient, /id: 'ranking', label: 'リーダーボード'/);
   assert.match(tabsClient, /id: 'spotify', label: 'Spotify'/);
-  assert.doesNotMatch(registry, /view: 'first-week'|label: '初週比較'/);
-  assert.doesNotMatch(registry, /mode: 'weekly'|mode: 'monthly'/);
-  assert.doesNotMatch([registry, historyShell].join('\n'), /mode: 'tracks'|id="trackControls"/);
   assert.match(page, /<nav class="dashboard-navigation" aria-label="統計メニュー">/);
   for (const id of ['sectionTabs', 'sourceTabs', 'modeTabs']) assert.match(page, new RegExp(`id="${id}"`));
   assert.doesNotMatch(page, /id="currentView"|id="historyView"|id="likesView"/);
@@ -55,12 +55,8 @@ test('dashboard hides the static page skeleton until the selected route shell is
 });
 
 test('archive and likes markup are owned by lazily loaded shared shell modules', () => {
-  for (const id of ['controls', 'summaryCards', 'chartPanel', 'rankingWeeklyPanel']) {
-    assert.match(historyShell, new RegExp(`(?:id=\\"${id}\\"|id: '${id}')`));
-  }
-  for (const id of ['likesCsv', 'likesNotice', 'likesRankingList', 'likesTbody']) {
-    assert.match(likesShell, new RegExp(`(?:id=\\"${id}\\"|id: '${id}'|bodyId: '${id}')`));
-  }
+  for (const id of ['controls', 'summaryCards', 'chartPanel', 'rankingWeeklyPanel']) assert.match(historyShell, new RegExp(`(?:id=\\"${id}\\"|id: '${id}')`));
+  for (const id of ['likesCsv', 'likesNotice', 'likesRankingList', 'likesTbody']) assert.match(likesShell, new RegExp(`(?:id=\\"${id}\\"|id: '${id}'|bodyId: '${id}')`));
   assert.match(historyShell, /dashboardControls/);
   assert.match(historyShell, /dashboardSummary/);
   assert.match(historyShell, /dashboardChartCard/);
@@ -86,13 +82,7 @@ test('feature tabs share one lazy route registry, stylesheet loader and module c
   assert.match(tabsClient, /function ensureModeStyles\(mode\)/);
   assert.match(tabsClient, /async function showLazyView\(mode, options = \{}\)/);
   for (const [mode, shell, runtime] of [
-    ['hinata', 'hinata-shell.js', 'hinata.js'],
-    ['followers', 'followers-shell.js', 'followers.js'],
-    ['played-tracks', 'played-tracks-shell.js', 'played-tracks.js'],
-    ['likes', 'likes-shell.js', 'history-likes.js'],
-    ['spotify', 'spotify-shell.js', 'spotify.js'],
-    ['amazon-music', 'amazon-music-shell.js', 'amazon-music.js'],
-    ['apple-music', 'apple-music-shell.js', 'apple-music.js'],
+    ['hinata', 'hinata-shell.js', 'hinata.js'], ['followers', 'followers-shell.js', 'followers.js'], ['played-tracks', 'played-tracks-shell.js', 'played-tracks.js'], ['likes', 'likes-shell.js', 'history-likes.js'], ['spotify', 'spotify-shell.js', 'spotify.js'], ['amazon-music', 'amazon-music-shell.js', 'amazon-music.js'], ['apple-music', 'apple-music-shell.js', 'apple-music.js'],
   ]) {
     assert.match(tabsClient, new RegExp(`'${mode}'|${mode}:`));
     assert.match(tabsClient, new RegExp(shell.replaceAll('.', '\\.')));
@@ -156,12 +146,12 @@ test('tab selection stays on the root document and never navigates to history pa
   assert.doesNotMatch(historyEntry, /legacyHistoryRoute|location\.replace/);
 });
 
-test('current and history chart details are owned by their respective shells and renderers', () => {
-  assert.match(currentShell, /id="currentChartDetail"[^>]*data-current-chart-detail/);
+test('current Stationhead detail and legacy history detail stay in their owning shells', () => {
+  assert.match(stationheadShell, /role\('live-detail'\)/);
   assert.match(historyShell, /id="chartDetail"[^>]*data-history-chart-detail/);
   assert.equal((historyShell.match(/id="chartDetail"/g) || []).length, 1);
-  assert.match(dashboardEntry, /dashboard-chart-detail\.js\?v=20260930\.2/);
-  assert.match(currentChartDetail, /document\.getElementById\('currentChartDetail'\)/);
+  assert.match(dashboardEntry, /stationhead-channel\.js\?v=/);
+  assert.match(stationheadRuntime, /setText\(root, 'live-detail'/);
   assert.doesNotMatch(tabsClient, /savedHistoryDetail|historyChartDetail|currentChartDetail\.textContent/);
 });
 

@@ -3,9 +3,10 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const currentShell = readFileSync(new URL('../public/current-shell.js', import.meta.url), 'utf8');
+const stationheadShell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
 const likesShell = readFileSync(new URL('../public/likes-shell.js', import.meta.url), 'utf8');
 const tabRegistry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
-const staticUi = [currentShell, likesShell, tabRegistry].join('\n');
+const staticUi = [stationheadShell, likesShell, tabRegistry].join('\n');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
 const spotify = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
@@ -18,12 +19,9 @@ const officialUi = readFileSync(new URL('../public/official-listening-party-ui.j
 const unofficial = readFileSync(new URL('../public/unofficial-listening-parties.js', import.meta.url), 'utf8');
 const likes = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
 
-test('current and likes views use explicit user-facing metric names in shared component declarations', () => {
-  for (const label of ['総再生数', '最終取得', '対象楽曲数', '合計いいね数', '楽曲別一覧', '最新いいね数', 'リスパ']) {
-    assert.match(staticUi, new RegExp(label));
-  }
-  assert.doesNotMatch(staticUi, /合計いいね数（前日比）/);
-  assert.doesNotMatch(staticUi, /最大いいね数/);
+test('shared Stationhead and likes views use explicit user-facing metric names at their source', () => {
+  for (const label of ['総再生数', '最終取得', '楽曲数', '楽曲別再生一覧', '最新いいね数', 'リスパ']) assert.match(staticUi, new RegExp(label));
+  assert.doesNotMatch(stationheadShell, /合計いいね数|合計いいね数（前日比）|最大いいね数/);
   assert.match(likesShell, /dashboardSummary/);
   assert.match(likesShell, /className: 'likes-summary'/);
   assert.doesNotMatch(likesShell, /likes-summary[^\n]*style=/);
@@ -35,22 +33,16 @@ test('history renderer owns final totals, growth, tracks, and ranking terminolog
   for (const label of [
     '取得記録数', 'メンバー数（開始）', 'メンバー数（終了）', 'メンバー増加数', '楽曲数',
     '平均再生数増加量', '平均メンバー増加数', '圏外・欠測週数', '圏外・欠測数', '平均所要時間',
-  ]) {
-    assert.match(history, new RegExp(label));
-  }
+  ]) assert.match(history, new RegExp(label));
   assert.match(history, /\['relation_label', '種別'\]/);
   assert.match(ranking, /\['relation_label', '種別'\]/);
   assert.doesNotMatch(historyEntry, /history-page-fixes|history-table-cleanup|history-summary-average-labels/);
 });
 
 test('official and unofficial listening-party tables use event-specific column names', () => {
-  for (const label of ['時間帯', '所要時間', '楽曲数', 'イベント名']) {
-    assert.match(officialUi, new RegExp(label));
-  }
+  for (const label of ['時間帯', '所要時間', '楽曲数', 'イベント名']) assert.match(officialUi, new RegExp(label));
   assert.match(official, /createOfficialPartyHeaderRow/);
-  for (const label of ['開始時刻', 'イベント名', '開催チャンネル']) {
-    assert.match(unofficial, new RegExp(label));
-  }
+  for (const label of ['開始時刻', 'イベント名', '開催チャンネル']) assert.match(unofficial, new RegExp(label));
 });
 
 test('likes runtime and CSV use the same likes terminology', () => {
@@ -69,8 +61,8 @@ test('user-facing wording is stored at its source instead of rewritten during re
   assert.doesNotMatch(sakurazakaListeningPartyApi, /公式ステヘ/);
 });
 
-test('legacy standalone goal card is absent from the current view', () => {
-  assert.match(currentShell, /label: '総再生数'/);
-  assert.match(currentShell, /id="metricGoalCompact"/);
-  assert.doesNotMatch(currentShell, /総再生数の目標|goal-card|id="streamCount"|id="goalBar"|id="goalRate"/);
+test('shared Stationhead current view contains no Buddies-only goal card', () => {
+  assert.match(currentShell, /mountStationheadChannelShell/);
+  assert.match(stationheadShell, /総再生数/);
+  assert.doesNotMatch(stationheadShell, /総再生数の目標|metricGoalCompact|streamGoal|goalEta|goal-card|streamCount|goalBar|goalRate/);
 });

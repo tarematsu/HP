@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const registry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
+const stationheadModel = readFileSync(new URL('../public/stationhead-channel-model.js', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const build = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 const presentation = readFileSync(new URL('../public/dashboard-presentation.css', import.meta.url), 'utf8');
@@ -10,7 +10,7 @@ const presentation = readFileSync(new URL('../public/dashboard-presentation.css'
 test('screenshot audit cleanup is part of the consolidated presentation layer while the listening-party label is static', () => {
   assert.match(build, /'dashboard-presentation\.css'/);
   assert.doesNotMatch(header, /dashboard-presentation\.css|createElement\('link'\)/);
-  assert.match(registry, /view: 'history', mode: 'broadcasts', label: 'リスパ'/);
+  assert.match(stationheadModel, /value: 'broadcasts', label: 'リスパ'/);
   assert.doesNotMatch(header, /\[data-mode="broadcasts"\]|textContent = '(?:Listening Party|リスニングパーティ|リスパ)'/);
 });
 

@@ -2,16 +2,16 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const registry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
+const stationheadModel = readFileSync(new URL('../public/stationhead-channel-model.js', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../public/history/history-past-toggle-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 
 test('history tab stays 過去 without weekly and monthly top tabs', () => {
-  assert.match(registry, /view: 'history', mode: 'daily', label: '過去'/);
+  assert.match(stationheadModel, /value: 'history', label: '過去'/);
   assert.doesNotMatch(shell, /button\.textContent = '過去'|renameDailyTab/);
-  assert.doesNotMatch(registry, /mode: 'weekly'|mode: 'monthly'/);
+  assert.doesNotMatch(stationheadModel, /value: 'weekly'|value: 'monthly'/);
   assert.doesNotMatch(shell, /data-mode="weekly"|data-mode="monthly"/);
 });
 

@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const navigationCss = readFileSync(new URL('../public/dashboard-navigation.css', import.meta.url), 'utf8');
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
-const nogizakaShell = readFileSync(new URL('../public/nogizaka-listening-party-shell.js', import.meta.url), 'utf8');
+const stationheadShell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
 const youtubeRuntime = readFileSync(new URL('../public/youtube-music.js', import.meta.url), 'utf8');
 
 test('responsive source tabs keep usable button sizing', () => {
@@ -13,8 +13,12 @@ test('responsive source tabs keep usable button sizing', () => {
   assert.doesNotMatch(navigationCss, /dashboard-source-row/);
 });
 
-test('Nogizaka chart and empty state stay inside the chart-fit wrapper', () => {
-  assert.match(nogizakaShell, /class="chart-fit"><canvas id="nogizakaPartyChart"[^>]*><\/canvas><p id="nogizakaPartyChartEmpty"/);
+test('shared Stationhead broadcast chart and empty state stay inside one chart card', () => {
+  const panel = stationheadShell.indexOf('data-stationhead-panel="broadcasts"');
+  const chart = stationheadShell.indexOf('class="card chart-card chart-panel"', panel);
+  const canvas = stationheadShell.indexOf("role('broadcast-chart')", chart);
+  const empty = stationheadShell.indexOf("role('broadcast-chart-empty')", canvas);
+  assert.ok(panel >= 0 && chart > panel && canvas > chart && empty > canvas);
   assert.match(tabs, /nogizaka-listening-party-shell\.js\?v=/);
 });
 

@@ -3,16 +3,18 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const shell = readFileSync(new URL('../public/played-tracks-shell.js', import.meta.url), 'utf8');
+const stationheadShell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
+const stationheadModel = readFileSync(new URL('../public/stationhead-channel-model.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/played-tracks.js', import.meta.url), 'utf8');
 const tableDom = readFileSync(new URL('../public/dashboard-table-dom.js', import.meta.url), 'utf8');
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-const registry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/track-history.js', import.meta.url), 'utf8');
 const r2Api = readFileSync(new URL('../../worker/src/pages-track-history-r2-api.js', import.meta.url), 'utf8');
 
-test('played tracks tab is owned by the fixed Buddies registry and shell mounts only its view', () => {
-  assert.match(registry, /view: 'played-tracks', label: '再生履歴'/);
+test('played tracks is owned by the shared Stationhead model while the legacy deep-link shell remains lazy', () => {
+  assert.match(stationheadModel, /value: 'played-tracks', label: '再生履歴'/);
+  assert.match(stationheadShell, /data-stationhead-panel="played-tracks"/);
   assert.match(shell, /dashboard-ui-common\.js\?v=20261001\.1/);
   assert.match(shell, /mountDashboardShell/);
   assert.match(shell, /id: 'playedTracksView'/);
