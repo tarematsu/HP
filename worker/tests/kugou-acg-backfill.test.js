@@ -28,40 +28,36 @@ function r2Store() {
   };
 }
 
+function tagged(payload) {
+  return `<!--KG_TAG_RES_START-->${JSON.stringify(payload)}<!--KG_TAG_RES_END-->`;
+}
+
 function kugouFetch() {
   return async (input) => {
     const url = new URL(String(input));
     if (url.pathname.endsWith('/rank/vol')) {
-      return {
-        ok: true,
-        async json() {
-          return {
-            status: 1,
-            errcode: 0,
-            data: { info: [{ year: 2026, vols: [
-              { volid: '103', volname: '20261001' },
-              { volid: '102', volname: '20260924' },
-              { volid: '101', volname: '20260917' },
-            ] }] },
-          };
-        },
+      const payload = {
+        status: 1,
+        errcode: 0,
+        data: { info: [{ year: 2026, vols: [
+          { volid: '103', volname: '20261001' },
+          { volid: '102', volname: '20260924' },
+          { volid: '101', volname: '20260917' },
+        ] }] },
       };
+      return { ok: true, async text() { return tagged(payload); } };
     }
     const volid = url.searchParams.get('volid');
-    return {
-      ok: true,
-      async json() {
-        return {
-          status: 1,
-          errcode: 0,
-          data: { info: [{ filename: `櫻坂46 - song-${volid}`, album_audio_id: Number(volid) }] },
-        };
-      },
+    const payload = {
+      status: 1,
+      errcode: 0,
+      data: { info: [{ filename: `櫻坂46 - song-${volid}`, album_audio_id: Number(volid) }] },
     };
+    return { ok: true, async text() { return tagged(payload); } };
   };
 }
 
-test('Kugou ACG backfill stores resumable batches and completes on the next batch', async () => {
+test('Kugou ACG backfill stores tagged provider responses in resumable batches', async () => {
   const store = r2Store();
   const env = { PAGES_RESPONSE_R2: store.binding };
   const fetchImpl = kugouFetch();
