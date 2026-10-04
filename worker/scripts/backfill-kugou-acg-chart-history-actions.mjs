@@ -5,10 +5,10 @@ import { createWranglerRemoteR2 } from './remote-r2-json-adapter.mjs';
 import {
   KUGOU_ACG_BACKFILL_BATCH_SIZE,
   KUGOU_ACG_BACKFILL_DEFAULT_START,
+  KUGOU_ACG_BACKFILL_MESSAGE_TYPE,
 } from '../src/kugou-acg-backfill.js';
 import { KUGOU_ACG_HISTORY_PROGRESS_KEY } from '../src/kugou-acg-chart-history.js';
 import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
-import { KUGOU_ACG_BACKFILL_MESSAGE_TYPE } from '../src/regional-music-service-entry.js';
 
 const POLL_INTERVAL_MS = 10_000;
 const POLL_TIMEOUT_MS = 45 * 60_000;
