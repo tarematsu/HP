@@ -6,6 +6,9 @@ export const YOUTUBE_PLAYLIST_URL =
 const RESOLVE_TIMEOUT_MS = 8_000;
 const MAX_PLAYLIST_HTML_CHARS = 6 * 1024 * 1024;
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const PERSISTENT_CACHE_TTL_SECONDS = 6 * 60 * 60;
+const PERSISTENT_CACHE_URL =
+  'https://homepanel-cloud.tarematsu.workers.dev/__cache/youtube-start';
 const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 let cachedStart = null;
 
@@ -43,6 +46,84 @@ export function firstYoutubePlaylistVideoId(html) {
   return endpoint?.[1] || '';
 }
 
+async function firstYoutubePlaylistVideoIdFromResponse(response) {
+  const reader = response?.body?.getReader?.();
+  if (!reader) {
+    const html = await response.text();
+    if (html.length > MAX_PLAYLIST_HTML_CHARS) {
+      throw new Error('youtube playlist response too large');
+    }
+    return firstYoutubePlaylistVideoId(html);
+  }
+
+  const decoder = new TextDecoder();
+  let html = '';
+  try {
+    while (html.length <= MAX_PLAYLIST_HTML_CHARS) {
+      const { done, value } = await reader.read();
+      if (done) {
+        html += decoder.decode();
+        return firstYoutubePlaylistVideoId(html);
+      }
+      html += decoder.decode(value, { stream: true });
+      const videoId = firstYoutubePlaylistVideoId(html);
+      if (videoId) {
+        try { await reader.cancel(); } catch (_) {}
+        return videoId;
+      }
+      if (html.length > MAX_PLAYLIST_HTML_CHARS) break;
+    }
+  } finally {
+    try { reader.releaseLock?.(); } catch (_) {}
+  }
+  throw new Error('youtube playlist first item not found within scan limit');
+}
+
+function persistentCache(dependencies) {
+  if (dependencies.disableCache) return null;
+  return dependencies.cache || globalThis.caches?.default || null;
+}
+
+function validCachedStart(value) {
+  if (!value || value.playlistId !== YOUTUBE_PLAYLIST_ID) return null;
+  const videoId = String(value.videoId || '');
+  const url = youtubeWatchUrl(videoId);
+  if (!url) return null;
+  return {
+    playlistId: YOUTUBE_PLAYLIST_ID,
+    videoId,
+    url,
+    resolvedAt: String(value.resolvedAt || ''),
+    cached: true,
+  };
+}
+
+async function readPersistentCachedStart(dependencies = {}) {
+  const cache = persistentCache(dependencies);
+  if (!cache?.match) return null;
+  try {
+    const response = await cache.match(new Request(PERSISTENT_CACHE_URL));
+    if (!response?.ok) return null;
+    return validCachedStart(await response.json());
+  } catch (_) {
+    return null;
+  }
+}
+
+async function writePersistentCachedStart(value, dependencies = {}) {
+  const cache = persistentCache(dependencies);
+  if (!cache?.put) return;
+  try {
+    const response = new Response(JSON.stringify(value), {
+      headers: {
+        'Cache-Control': `public, max-age=${PERSISTENT_CACHE_TTL_SECONDS}`,
+        'Content-Type': 'application/json; charset=utf-8',
+      },
+    });
+    await cache.put(new Request(PERSISTENT_CACHE_URL), response);
+  } catch (_) {}
+}
+
 export async function resolveYoutubePlaylistStart(dependencies = {}) {
   const fetchImpl = dependencies.fetchImpl || fetch;
   const now = Number(dependencies.now ?? Date.now());
@@ -68,11 +149,7 @@ export async function resolveYoutubePlaylistStart(dependencies = {}) {
     if (!response.ok) {
       throw new Error(`youtube playlist returned ${response.status}`);
     }
-    const html = await response.text();
-    if (html.length > MAX_PLAYLIST_HTML_CHARS) {
-      throw new Error('youtube playlist response too large');
-    }
-    const videoId = firstYoutubePlaylistVideoId(html);
+    const videoId = await firstYoutubePlaylistVideoIdFromResponse(response);
     const url = youtubeWatchUrl(videoId);
     if (!url) throw new Error('youtube playlist first item not found');
 
@@ -85,6 +162,7 @@ export async function resolveYoutubePlaylistStart(dependencies = {}) {
     };
     if (!dependencies.disableCache) {
       cachedStart = { value, expiresAt: now + CACHE_TTL_MS };
+      await writePersistentCachedStart(value, dependencies);
     }
     return value;
   } finally {
@@ -116,8 +194,15 @@ export async function youtubePlaylistStartResponse(dependencies = {}) {
     console.warn('youtube-playlist-start-resolve-failed', {
       error: error instanceof Error ? error.message : String(error),
     });
+    const stale = await readPersistentCachedStart(dependencies);
+    if (stale) {
+      return new Response(null, {
+        status: 302,
+        headers: redirectHeaders(stale.url, 'cloud-stale-cache'),
+      });
+    }
     // Preserve startup if YouTube temporarily blocks Worker-side HTML fetches.
-    // The native fallback reads the first playlist item without using UI controls.
+    // This remains the last-resort path only when no direct watch URL is cached.
     return new Response(null, {
       status: 302,
       headers: redirectHeaders(YOUTUBE_PLAYLIST_URL, 'native-fallback'),
