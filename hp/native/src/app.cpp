@@ -1,6 +1,7 @@
 #include "app.h"
 #include "web_renderer.h"
 #include "cloud_config.h"
+#include "native_memory_pressure.h"
 #include "power_saving_controller.h"
 #include "version.h"
 
@@ -8,6 +9,7 @@ namespace hp {
 namespace {
 constexpr wchar_t kWindowClass[] = L"HomePanelNativeWindow";
 constexpr uint32_t kFastTickMs = 2000;
+constexpr int64_t kMemoryPressureCheckMs = 15'000;
 constexpr uint32_t kMaxAppTimerMs = 24U * 60U * 60U * 1000U;
 constexpr wchar_t kStationheadOzekiProfile[] = L"spotify-v2-6";
 constexpr std::array<const wchar_t*, 5> kStationheadPeerProfiles{
@@ -195,11 +197,14 @@ void App::StartDeferredServices(int64_t now) {
 
   // Former Spotify slots now run the exact Stationhead lifecycle while retaining
   // their original WebView2 profiles, cookies and Spotify authentication state.
+  // Under real system memory pressure do not add another renderer process. Any
+  // already-playing Stationhead remains untouched and deferred slots resume when
+  // the hysteresis guard reports that memory has recovered.
   for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
     if (stationheadPeerStarted_[i] || !stationheadPeers_[i]) continue;
     const int64_t launchAt =
         kMediaStartupStageDelayMs * static_cast<int64_t>(i + 1);
-    if (now - startupAt_ < launchAt) continue;
+    if (now - startupAt_ < launchAt || memoryPressureActive_) continue;
     stationheadPeers_[i]->Start();
     stationheadPeerStarted_[i] = true;
     stationheadPeers_[i]->SetAudioMuted(true);
@@ -210,7 +215,7 @@ void App::StartDeferredServices(int64_t now) {
   }
 
   // The preserved ozeki profile remains the sixth Stationhead window.
-  if (!stationheadStarted_ && stationhead_ &&
+  if (!memoryPressureActive_ && !stationheadStarted_ && stationhead_ &&
       now - startupAt_ >= kMediaStartupStageDelayMs * 6) {
     stationhead_->Start();
     stationheadStarted_ = true;
@@ -242,6 +247,11 @@ void App::StartDeferredServices(int64_t now) {
 void App::StopServices() {
   if (window_) KillTimer(window_, kCentralTimer);
   nextAppTickAt_ = 0;
+  nextMemoryPressureCheckAt_ = 0;
+  if (memoryPressureActive_) {
+    ApplyNativeWebViewMemoryPriority(false);
+    memoryPressureActive_ = false;
+  }
   if (stationheadLeaderboardCollectorStarted_ && stationheadLeaderboardCollector_) {
     stationheadLeaderboardCollector_->Stop();
   }
@@ -268,6 +278,7 @@ void App::Tick() {
   if (!renderer_ || !sensors_ || !cloud_) return;
   const int64_t now = UnixMillis();
 
+  UpdateMemoryPressure(now);
   StartDeferredServices(now);
 
   std::array<StationheadStatus, kStationheadPeerCount> peerStatuses{};
@@ -397,12 +408,47 @@ void App::Tick() {
         NextDelayFromDeadline(
             now, stationheadLeaderboardCollector_->NextWakeAt(), kMaxAppTimerMs));
   }
+  nextTickMs = std::min(
+      nextTickMs,
+      NextDelayFromDeadline(now, nextMemoryPressureCheckAt_, kMaxAppTimerMs));
   if (toastUntil_ > 0) {
     nextTickMs = std::min(
         nextTickMs,
         NextDelayFromDeadline(now, toastUntil_, kMaxAppTimerMs));
   }
   ScheduleNextTick(nextTickMs);
+}
+
+void App::UpdateMemoryPressure(int64_t now) {
+  if (nextMemoryPressureCheckAt_ > now) return;
+  nextMemoryPressureCheckAt_ = now + kMemoryPressureCheckMs;
+
+  const NativeMemoryPressureSnapshot snapshot = QueryNativeMemoryPressure();
+  if (!snapshot.valid) return;
+
+  const bool previous = memoryPressureActive_;
+  const bool active =
+      NativeMemoryPressureShouldBeActive(snapshot, memoryPressureActive_);
+  memoryPressureActive_ = active;
+
+  NativeWebViewMemoryPriorityResult webviewPriority{};
+  if (active || previous != active) {
+    webviewPriority = ApplyNativeWebViewMemoryPriority(active);
+  }
+  if (stationheadLeaderboardCollector_) {
+    stationheadLeaderboardCollector_->SetMemoryPressure(active, now);
+  }
+
+  if (previous == active || !logger_) return;
+  std::wostringstream message;
+  message << L"Native memory pressure " << (active ? L"entered" : L"cleared")
+          << L" load=" << snapshot.memoryLoad << L"%"
+          << L" available=" << NativeMemoryAvailableMiB(snapshot) << L" MiB"
+          << L" total=" << NativeMemoryTotalMiB(snapshot) << L" MiB"
+          << L" webview_processes=" << webviewPriority.discovered
+          << L" adjusted=" << webviewPriority.adjusted;
+  if (active) logger_->Warn(message.str());
+  else logger_->Info(message.str());
 }
 
 void App::Draw() {
