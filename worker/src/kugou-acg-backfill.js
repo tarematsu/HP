@@ -12,6 +12,7 @@ import {
   kugouAcgVolumeList,
   kugouAcgVolumeUrl,
   parseKugouAcgSongs,
+  parseKugouApiJson,
 } from './kugou-acg-chart-history.js';
 
 export const KUGOU_ACG_BACKFILL_MESSAGE_TYPE = 'kugou-acg-history-backfill';
@@ -57,7 +58,10 @@ async function fetchJson(fetchImpl, url) {
     signal: AbortSignal.timeout(30_000),
   });
   if (!response.ok) throw new Error(`Kugou ACG HTTP ${response.status}`);
-  const payload = await response.json();
+  const raw = typeof response.text === 'function'
+    ? await response.text()
+    : JSON.stringify(await response.json());
+  const payload = parseKugouApiJson(raw);
   if (Number(payload?.status) !== 1 || Number(payload?.errcode || 0) !== 0) {
     throw new Error('Kugou ACG provider error');
   }
