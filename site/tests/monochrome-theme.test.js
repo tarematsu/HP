@@ -8,7 +8,8 @@ const assetBuild = readFileSync(new URL('../scripts/build-public-assets.mjs', im
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const dashboardChart = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
-const rankingChart = readFileSync(new URL('../public/history/history-ranking-chart.js', import.meta.url), 'utf8');
+const rankingChart = readFileSync(new URL('../public/leaderboard.js', import.meta.url), 'utf8');
+const rankingModel = readFileSync(new URL('../public/leaderboard-read-model.js', import.meta.url), 'utf8');
 const broadcastChart = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
 const firstWeekShell = readFileSync(new URL('../public/first-week-comparison-shell.js', import.meta.url), 'utf8');
 const firstWeekChart = readFileSync(new URL('../public/first-week-comparison.js', import.meta.url), 'utf8');
@@ -38,8 +39,8 @@ test('canvas graph palette remains independent from monochrome UI overrides', ()
   assert.match(rankingChart, /cssColor/);
   assert.doesNotMatch(periodChart, /getComputedStyle\(document\.documentElement\)/);
   assert.doesNotMatch(rankingChart, /getComputedStyle\(document\.documentElement\)/);
-  assert.match(rankingChart, /\['sakuramankai', '#000000'\]/);
-  assert.match(rankingChart, /\['sakurazaka46jp', '#d93f79'\]/);
+  assert.match(rankingModel, /sakuramankai: '#111111'/);
+  assert.match(rankingModel, /sakurazaka46jp: '#d93f79'/);
   assert.match(theme, /\.legend \.online-key,[\s\S]*color:\s*#111/);
   assert.match(theme, /\.legend \.comment-key\s*\{[\s\S]*color:\s*#168b73/);
   assert.match(theme, /\.legend \.legend-plays\s*\{[\s\S]*color:\s*#6657d8/);
