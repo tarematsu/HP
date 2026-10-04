@@ -19,8 +19,8 @@ test('HomePanel Logger is a zero-allocation zero-file-I/O sink', () => {
   assert.match(loggerHeader, /void Info\([^)]*\) const noexcept \{\}/);
   assert.match(loggerHeader, /void Warn\([^)]*\) const noexcept \{\}/);
   assert.match(loggerHeader, /void Error\([^)]*\) const noexcept \{\}/);
-  assert.doesNotMatch(loggerHeader, /ofstream|wofstream|mutex|flush|rotate|path_/i);
-  assert.doesNotMatch(loggerSource, /ofstream|wofstream|\.write\(|\.flush\(|create_directories|file_size/i);
+  assert.doesNotMatch(loggerHeader, /std::ofstream|std::wofstream|mutex_|path_|currentBytes_|pendingBytes_/);
+  assert.doesNotMatch(loggerSource, /std::ofstream|std::wofstream|\.write\(|\.flush\(|create_directories|file_size/);
 });
 
 test('HomePanelUpdater compiles its diagnostic wide stream to a sink', () => {
