@@ -10,6 +10,7 @@ const publicRoot = resolve(siteRoot, 'public');
 const assetsDir = resolve(publicRoot, 'assets');
 
 const cssGroups = Object.freeze({
+  official: ['official-account-live.css'],
   dashboard: [
     'app-lite.css',
     'monochrome.css',
@@ -110,7 +111,7 @@ await rm(resolve(assetsDir, 'chunks'), { recursive: true, force: true });
 await mkdir(assetsDir, { recursive: true });
 
 const jsBuild = await build({
-  entryPoints: { 'dashboard.min': resolve(publicRoot, 'dashboard-metrics.js') },
+  entryPoints: { 'dashboard.min': resolve(publicRoot, 'dashboard-metrics.js'), 'official-account-live.min': resolve(publicRoot, 'official-account-live.js') },
   outdir: assetsDir,
   chunkNames: 'chunks/[name]-[hash]',
   bundle: true,
@@ -186,8 +187,8 @@ const routeModules = {
   ranking: ['leaderboard-shell.js', 'leaderboard.js'],
   followers: ['followers-shell.js', 'followers.js'],
 };
-function routeGraph(inputs) {
-  const outputs = new Set(initialOutputs);
+function routeGraph(inputs, withBootstrap = true) {
+  const outputs = new Set(withBootstrap ? initialOutputs : []);
   function visit(path) {
     if (outputs.has(path)) return;
     outputs.add(path);
@@ -217,10 +218,14 @@ report.html_files = {};
 for (const file of ['index.html', 'sakurazaka46jp/index.html', 'nogizaka46smej/index.html']) {
   report.html_files[file] = (await stat(resolve(publicRoot, file))).size;
 }
-report.standalone_resources = {};
+report.standalone_entry_sources = {};
 for (const file of ['official-account-live.js', 'official-account-live.css', 'pages-theme.css']) {
-  report.standalone_resources[file] = (await stat(resolve(publicRoot, file))).size;
+  report.standalone_entry_sources[file] = (await stat(resolve(publicRoot, file))).size;
 }
+report.dashboard_total_bytes = [...routeGraph(['dashboard-metrics.js'], false)]
+  .reduce((total, path) => total + jsBuild.metafile.outputs[path].bytes, 0) + cssSizes.dashboard + cssSizes.stationhead + cssSizes.subscriptions;
+report.official_route_bytes = [...routeGraph(['official-account-live.js'], false)]
+  .reduce((total, path) => total + jsBuild.metafile.outputs[path].bytes, 0) + cssSizes.official;
 report.bundled_source_modules = Object.keys(jsBuild.metafile.inputs).sort();
 // These are build graph sizes and local gzip estimates, not production network measurements.
 const budgets = { initial_js_bytes: 25_000, css_bytes: 30_000, total_bytes: 310_000 };

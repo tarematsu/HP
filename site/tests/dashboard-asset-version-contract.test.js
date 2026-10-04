@@ -44,8 +44,8 @@ test('route CSS uses the same deployment version and is loaded centrally', () =>
   assert.match(styles, /dataset\.dashboardSectionStyle/);
 });
 
-test('build minifies one JS graph and three CSS route groups', () => {
-  assert.match(buildScript, /entryPoints:\s*\{ 'dashboard\.min': resolve\(publicRoot, 'dashboard-metrics\.js'\) \}/);
+test('build minifies dashboard and official entry points with shared CSS groups', () => {
+  assert.match(buildScript, /entryPoints:[\s\S]*'dashboard\.min': resolve\(publicRoot, 'dashboard-metrics\.js'\)[\s\S]*'official-account-live\.min'/);
   assert.match(buildScript, /outdir:\s*assetsDir/);
   assert.match(buildScript, /bundle:\s*true/);
   assert.match(buildScript, /splitting:\s*true/);

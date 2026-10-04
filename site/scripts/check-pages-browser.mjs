@@ -37,6 +37,7 @@ async function checkCsv(page, label) {
     await download.saveAs(target);
     const csv = await readFile(target, 'utf8');
     assert.ok(csv.trim().length > 0, 'CSV is empty');
+    if (live) assert.ok(csv.trim().split(/\r?\n/).length > 1, 'CSV contains only headers');
     downloads.push({ name: download.suggestedFilename(), bytes: Buffer.byteLength(csv) });
   }
   return downloads;
@@ -61,20 +62,21 @@ try {
     for (const mode of ['current', 'daily', 'weekly', 'monthly', 'played-tracks', 'likes', 'broadcasts', 'hinata', 'nogizaka', 'spotify', 'apple-music', 'amazon-music', 'youtube-music', 'kkbox', 'qq_music', 'kugou_music', 'ranking', 'followers', 'music-ranking', 'music-followers']) {
       await page.evaluate(mode => { location.hash = mode; }, mode);
       await page.waitForFunction(() => [...document.querySelectorAll('.dashboard-view')].some(node => !node.hidden), { timeout: 10000 });
+      await page.waitForTimeout(800);
       await page.waitForLoadState('networkidle', { timeout: 45000 });
-      await page.waitForTimeout(200);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2);
       assert.equal(overflow, false, `${mode} at ${width}px overflows the document`);
       assert.equal(await page.locator('main').count(), 1);
       assert.equal(await page.locator('#sourceTabs').isVisible(), width > 760, `${mode}: selector breakpoint`);
       assert.equal(await page.locator('#sourceSelect').isVisible(), width <= 760, `${mode}: native selector breakpoint`);
       if (live && ['daily', 'weekly', 'monthly'].includes(mode)) {
-        assert.ok(await page.locator('#tbody tr').count() > 0, `${mode}: history rows did not load`);
+        assert.match(await page.locator('#tbody tr td').first().textContent(), /^\d{4}/, `${mode}: history data did not load`);
       }
       await page.screenshot({ path: `${output}/${mode}-${width}.png`, fullPage: true });
       const downloads = await checkCsv(page, `${mode}-${width}`);
       for (const button of await page.locator('.dashboard-view:not([hidden]) .music-service-view-tabs button').all()) {
         await button.click();
+        await page.waitForTimeout(800);
         await page.waitForLoadState('networkidle', { timeout: 45000 });
         const group = await button.getAttribute('data-service-group');
         assert.equal(await button.getAttribute('aria-pressed'), 'true');
@@ -86,6 +88,7 @@ try {
       }
       for (const button of await page.locator('.dashboard-view:not([hidden]) [data-stationhead-section]:not(:disabled)').all()) {
         await button.click();
+        await page.waitForTimeout(800);
         await page.waitForLoadState('networkidle', { timeout: 45000 });
         const section = await button.getAttribute('data-stationhead-section');
         await page.screenshot({ path: `${output}/${mode}-${section}-${width}.png`, fullPage: true });
