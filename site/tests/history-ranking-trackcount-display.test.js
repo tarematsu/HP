@@ -8,10 +8,7 @@ const history = readFileSync(new URL('../public/history/history-lite.js', import
 const leaderboard = readFileSync(new URL('../public/leaderboard.js', import.meta.url), 'utf8');
 const leaderboardReadModel = readFileSync(new URL('../public/leaderboard-read-model.js', import.meta.url), 'utf8');
 const leaderboardShell = readFileSync(new URL('../public/leaderboard-shell.js', import.meta.url), 'utf8');
-const rankingChart = readFileSync(new URL('../public/history/history-ranking-chart.js', import.meta.url), 'utf8');
-const rankingAllHosts = readFileSync(new URL('../public/history/history-ranking-all-host-table.js', import.meta.url), 'utf8');
 const historyShell = readFileSync(new URL('../public/history-shell.js', import.meta.url), 'utf8');
-const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 const materialized = readFileSync(new URL('../functions/lib/materialized-history.js', import.meta.url), 'utf8');
 const current = readFileSync(new URL('../functions/api/history-current.js', import.meta.url), 'utf8');
 
@@ -29,39 +26,23 @@ test('ranking is owned by the shared leaderboard with the fixed Sakamichi compar
   assert.doesNotMatch(historyShell, /id="rankingScope"|id="rankingHost"/);
 });
 
-test('legacy all-host table module still defines metadata columns for backwards-compatible imports', () => {
-  for (const label of ['順位', 'ホスト名', 'チャンネル', 'アーティスト名', '種別', 'ランクイン週数', '平均順位', '最高順位', '最低順位']) {
-    assert.match(rankingAllHosts, new RegExp(label));
+test('shared leaderboard defines the final Stationhead metadata columns directly', () => {
+  for (const label of ['週', '順位', 'ホスト', 'チャンネル', 'アーティスト名', '種別']) {
+    assert.match(leaderboardReadModel, new RegExp(`label: '${label}'`));
   }
-  assert.match(rankingAllHosts, /\['stationhead_channel_name', 'チャンネル'\]/);
-  assert.match(rankingAllHosts, /\['artist_name', 'アーティスト名'\]/);
-  assert.match(rankingAllHosts, /\['relation_label', '種別'\]/);
-  assert.doesNotMatch(rankingAllHosts, /\['fandom_label', 'ファンダム'\]/);
+  assert.match(leaderboardReadModel, /relation: relationLabel\(row\)/);
+  assert.match(leaderboardReadModel, /row\?\.fandom_type === 'official' \? '公式' : 'ファンダム'/);
+  assert.doesNotMatch(leaderboardReadModel, /fandom_label/);
 });
 
-test('legacy all-host table uses shared mobile table presentation', () => {
-  assert.match(rankingAllHosts, /EXCLUDED_ALL_HOSTS = new Set\(\['sakuramankai', 'sakurazaka46jp', 'nogizaka46smej'\]\)/);
-  assert.match(rankingAllHosts, /\.filter\(\(row\) => !EXCLUDED_ALL_HOSTS\.has\(hostKey\(row\?\.host_name\)\)\)/);
-  assert.doesNotMatch(rankingAllHosts, /createElement\('style'\)|nth-child\(1\).*width: 5%|font-size: 8px/);
-  assert.match(sharedCss, /#historyView table\.all-host-ranking-table \.ranking-host-button/);
-  assert.match(sharedCss, /var\(--dashboard-copy-size\)/);
-});
-
-test('legacy ranking chart fills missing weeks and paints the missing band in the same draw pass', () => {
-  assert.match(rankingChart, /const MISSING_START = '2026-01-26'/);
-  assert.match(rankingChart, /const MISSING_END = '2026-09-14'/);
-  assert.match(rankingChart, /const sourceRows = rows\.filter/);
-  assert.match(rankingChart, /const sourceWeeks = \[\.\.\.new Set\(sourceRows\.map/);
-  assert.match(rankingChart, /const firstWeek = sourceWeeks\[0\]/);
-  assert.match(rankingChart, /rankingWeeks\.map\(isoDate\)\.filter\(\(week\) => week && week >= firstWeek\)/);
-  assert.doesNotMatch(rankingChart, /weeklyRange|mondayOnOrAfter|mondayOnOrBefore|rankingFrom|rankingTo/);
-  assert.match(rankingChart, /function fullWeek\(value\)/);
-  assert.match(rankingChart, /dashboardMissingIndexBands/);
-  assert.match(rankingChart, /const hasMissingBand = drawDashboardMissingBands/);
-  assert.match(rankingChart, /DASHBOARD_MISSING_KEY/);
-  assert.match(rankingChart, /appendDashboardLegendItem\('欠測', DASHBOARD_MISSING_KEY/);
-  assert.match(rankingChart, /history:ranking-chart-drawn/);
-  assert.doesNotMatch(rankingChart, /DOMNodeInserted|MutationObserver/);
+test('shared ranking chart paints the known missing band in the same draw pass', () => {
+  assert.match(leaderboardReadModel, /from: '2026-01-26', to: '2026-09-14', label: '欠測'/);
+  assert.match(leaderboard, /dashboardMissingIndexBands/);
+  assert.match(leaderboard, /const hasMissingBand = drawDashboardMissingBands/);
+  assert.match(leaderboard, /DASHBOARD_MISSING_KEY/);
+  assert.match(leaderboard, /appendLegendEntry\(legend, '欠測', DASHBOARD_MISSING_KEY/);
+  assert.match(leaderboard, /drawDashboardLine/);
+  assert.doesNotMatch(leaderboard, /DOMNodeInserted|MutationObserver/);
 });
 
 test('summary renderer defines only final visible columns and labels track count as 楽曲数', () => {
