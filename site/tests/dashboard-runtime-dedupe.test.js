@@ -21,10 +21,11 @@ test('dashboard cache is restored and persisted by one owner', () => {
   assert.match(client, /applyPayload\(window\.__dashboardCurrentPayload\)/);
 });
 
-test('dashboard initialization does not replay the same payload', () => {
+test('dashboard initialization installs delta cache before the shared Stationhead runtime', () => {
   assert.doesNotMatch(entry, /replayCurrentPayload|runtime-replay/);
-  assert.ok(entry.indexOf('dashboard-chart-comparison.js') < entry.indexOf('dashboard-fetch-cache.js'));
-  assert.ok(entry.indexOf('dashboard-fetch-cache.js') < entry.indexOf('dashboard-client.js'));
+  assert.match(entry, /dashboard-fetch-cache\.js\?v=20260930\.1/);
+  assert.match(entry, /stationhead-channel\.js\?v=/);
+  assert.ok(entry.indexOf('dashboard-fetch-cache.js') < entry.indexOf('stationhead-channel.js'));
 });
 
 test('visibility and interval refreshes share a minimum request gap', () => {
