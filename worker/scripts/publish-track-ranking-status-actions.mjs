@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { loadTrackRanking } from '../../site/functions/lib/track-ranking.js';
 import { uploadEnvelope } from './run-pages-read-model-actions.mjs';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
+import { seedRawActionsModels } from './seed-pages-actions-raw.mjs';
 
 const MODEL_KEY = 'track-history-status';
 const workerRoot = resolve(import.meta.dirname, '..');
@@ -54,5 +55,7 @@ export async function publishTrackRankingStatus({
 
 const invokedPath = process.argv[1] ? resolve(process.argv[1]) : '';
 if (invokedPath === fileURLToPath(import.meta.url)) {
-  console.log(JSON.stringify(await publishTrackRankingStatus()));
+  const published = await publishTrackRankingStatus();
+  const seeded = seedRawActionsModels();
+  console.log(JSON.stringify({ ...published, raw_sidecars: seeded }));
 }
