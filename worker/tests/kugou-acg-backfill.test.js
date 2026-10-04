@@ -62,16 +62,15 @@ function kugouFetch(requests = []) {
   };
 }
 
-test('historical Kugou ACG song URL selects the requested volume mode', () => {
+test('historical Kugou ACG song URL selects the provider volume mode', () => {
   const url = new URL(kugouAcgHistoricalSongsUrl('126794'));
   assert.equal(url.protocol, 'http:');
   assert.equal(url.hostname, 'mobilecdnbj.kugou.com');
   assert.equal(url.searchParams.get('rankid'), '33162');
   assert.equal(url.searchParams.get('volid'), '126794');
-  assert.equal(url.searchParams.get('ranktype'), '0');
-  assert.equal(url.searchParams.get('with_res_tag'), '0');
+  assert.equal(url.searchParams.get('ranktype'), '2');
+  assert.equal(url.searchParams.get('with_res_tag'), '1');
   assert.equal(url.searchParams.get('area_code'), '1');
-  assert.equal(url.searchParams.get('show_portrait_mv'), '1');
 });
 
 test('Kugou ACG backfill stores tagged provider responses in resumable historical batches', async () => {
@@ -91,7 +90,7 @@ test('Kugou ACG backfill stores tagged provider responses in resumable historica
   assert.equal(store.values.get(KUGOU_ACG_HISTORY_INDEX_KEY).weeks['2026_40'].historical_fetch_version, KUGOU_ACG_HISTORICAL_FETCH_VERSION);
   assert.equal(store.values.get(KUGOU_ACG_HISTORY_VIEW_KEY).history.length, 2);
   assert.equal(store.values.get(KUGOU_ACG_HISTORY_PROGRESS_KEY).status, 'running');
-  assert.ok(requests.filter((url) => url.pathname.endsWith('/rank/song')).every((url) => url.searchParams.get('ranktype') === '0'));
+  assert.ok(requests.filter((url) => url.pathname.endsWith('/rank/song')).every((url) => url.searchParams.get('ranktype') === '2'));
 
   const second = await runKugouAcgBackfillBatch(env, {
     startDate: '2026-09-01', batchSize: 2, now: 2000,
@@ -109,9 +108,9 @@ test('Kugou ACG backfill refreshes periods saved by the previous matching versio
   store.values.set(KUGOU_ACG_HISTORY_INDEX_KEY, {
     version:1,
     weeks:{
-      '2026_40':{ period:'2026_40', volid:'103', entries:0, historical_fetch_version:2 },
-      '2026_39':{ period:'2026_39', volid:'102', entries:0, historical_fetch_version:2 },
-      '2026_38':{ period:'2026_38', volid:'101', entries:0, historical_fetch_version:2 },
+      '2026_40':{ period:'2026_40', volid:'103', entries:0, historical_fetch_version:3 },
+      '2026_39':{ period:'2026_39', volid:'102', entries:0, historical_fetch_version:3 },
+      '2026_38':{ period:'2026_38', volid:'101', entries:0, historical_fetch_version:3 },
     },
   });
   store.values.set(KUGOU_ACG_HISTORY_VIEW_KEY, { version:1, history:[] });
