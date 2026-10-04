@@ -1,5 +1,3 @@
-.amazon-mode-switch.mode-tabs { display: flex; grid-template-columns: none; overflow-x: auto; margin: 0 0 10px; }
-.amazon-mode-switch button { flex: 0 0 auto; width: auto; }
 .amazon-mode-switch button.active { border-bottom-color: var(--text); background: transparent; color: var(--text); }
 .amazon-rank-chart { --shared-chart-min-height: 280px; }
 .amazon-rank-svg { overflow: visible; }
