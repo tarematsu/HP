@@ -10,19 +10,21 @@ const publicSources = [
   '../public/played-tracks.js',
   '../public/first-week-comparison.js',
   '../public/first-week-comparison-shell.js',
+  '../public/stationhead-channel-shell.js',
+  '../public/stationhead-channel.js',
   '../public/sakurazaka46jp/index.html',
 ].map((path) => readFileSync(new URL(path, import.meta.url), 'utf8')).join('\n');
 
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const dashboardEntry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+const stationheadRuntime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
+const currentShell = readFileSync(new URL('../public/current-shell.js', import.meta.url), 'utf8');
 const assetBuild = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 
 test('Pages does not render transient loading copy', () => {
-  for (const copy of ['読み込み中', '読み込んでいます', '読み込みます。', '曲情報を取得中']) {
-    assert.doesNotMatch(publicSources, new RegExp(copy));
-  }
+  for (const copy of ['読み込み中', '読み込んでいます', '読み込みます。', '曲情報を取得中']) assert.doesNotMatch(publicSources, new RegExp(copy));
 });
 
 test('silent loading changes are cache busted through the bundled Pages entry', () => {
@@ -39,13 +41,13 @@ test('silent loading changes are cache busted through the bundled Pages entry', 
   assert.match(tabs, /history-likes\.js\?v=20260930\.1/);
   assert.match(tabs, /spotify-shell\.js\?v=20261004\.1/);
   assert.match(tabs, /spotify\.js\?v=20261004\.1/);
-  assert.doesNotMatch(dashboardEntry, /first-week-comparison|legacy-listening-party-route|dashboard-tab-order/);
-  assert.match(dashboardEntry, /dashboard-chart-stability\.js\?v=20260930\.2/);
-  assert.match(dashboardEntry, /dashboard-chart-comparison\.js\?v=20260930\.2/);
-  assert.match(dashboardEntry, /dashboard-chart-detail\.js\?v=20260930\.2/);
-  assert.match(dashboardEntry, /dashboard-daily-summaries\.js\?v=20260930\.2/);
-  assert.doesNotMatch(dashboardEntry, /dashboard-details-client\.js/);
-  assert.match(dashboardEntry, /dashboard-client\.js\?v=20261004\.1/);
+  assert.doesNotMatch(dashboardEntry, /first-week-comparison|legacy-listening-party-route|dashboard-tab-order|dashboard-details-client\.js/);
+  assert.match(dashboardEntry, /current-shell\.js\?v=20261004\.2/);
+  assert.match(dashboardEntry, /dashboard-fetch-cache\.js\?v=20260930\.1/);
+  assert.match(dashboardEntry, /stationhead-channel-style-loader\.js\?v=20261004\.2/);
+  assert.match(dashboardEntry, /stationhead-channel\.js\?v=20261004\.2/);
+  assert.match(currentShell, /stationhead-channel-shell\.js\?v=20261004\.2/);
+  assert.match(stationheadRuntime, /stationhead-channel-read-model\.js\?v=20261004\.2/);
   assert.match(assetBuild, /'dashboard-presentation\.css'/);
   assert.doesNotMatch(assetBuild, /dashboard-tabs-loader/);
   assert.doesNotMatch(assetBuild, /'dashboard-root-presentation\.css'|'dashboard-fixes\.css'|'screenshot-audit-cleanup\.css'|'period-display-fixes\.css'/);
