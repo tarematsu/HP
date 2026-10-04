@@ -22,7 +22,8 @@ test('Amazon Music is a dashboard route backed only by Worker materialized read 
   assert.match(tabs, /import\('\/amazon-music-shell\.js\?v=\d{8}\.\d+'\)/);
   assert.match(tabs, /import\('\/amazon-music\.js\?v=\d{8}\.\d+'\)/);
   assert.match(tabs, /async function showLazyView/);
-  assert.match(shell, /mountDashboardShell/);
+  assert.match(shell, /mountMusicServiceView/);
+  assert.match(commonShell, /mountDashboardShell/);
   assert.match(shell, /dashboardChartHost/);
   assert.match(sharedUi, /class="\$\{joinClasses\('shared-svg-chart', className\)\}"/);
   assert.match(runtime, /fetch\('\/api\/amazon-music'/);
@@ -69,14 +70,15 @@ test('Amazon Music API preserves real materialized-service failures', async () =
   assert.equal((await response.json()).ok, false);
 });
 
-test('Amazon Music uses the QQ metadata and section layout while keeping Sakamichi switches', () => {
-  assert.match(shell, /musicServiceMeta\(\{ valueId: 'amazonUpdatedAt', cadence: '毎日6:00' \}\)/);
-  assert.match(shell, /className: musicServiceViewClassName\('amazon-music-view'\)/);
+test('Amazon Music uses the shared music-service metadata and section layout while keeping Sakamichi switches', () => {
+  assert.match(shell, /meta: \{ valueId: 'amazonUpdatedAt', cadence: '毎日6:00' \}/);
+  assert.match(shell, /className: 'amazon-music-view'/);
   assert.match(shell, /musicServiceSection/);
-  assert.match(shell, /dashboardModeTabs/);
+  assert.match(shell, /musicServiceFilterTabs/);
+  assert.match(shell, /musicServiceTable/);
   assert.match(commonShell, /'regional-music-view', 'is-chart-compact', 'music-service-view'/);
-  assert.match(commonShell, /'regional-chart-meta', 'music-service-meta'/);
-  assert.match(commonShell, /'music-service-section', 'regional-chart-section'/);
+  assert.match(commonShell, /'music-service-meta'/);
+  assert.match(commonShell, /'music-service-section'/);
   assert.match(shell, /title: 'Amazon Music総合順位推移'/);
   assert.match(shell, /title: '全楽曲順位'/);
   assert.match(shell, /title: 'Amazon Music プレイリスト掲載一覧'/);
@@ -110,5 +112,5 @@ test('Amazon Music rank chart keeps first place at the top and fits mobile width
   assert.match(sharedUi, /joinClasses\('shared-svg-chart', className\)/);
   assert.match(sharedCss, /\.shared-svg-chart svg[\s\S]*width:\s*100%/);
   assert.match(css, /\.amazon-table[\s\S]*table-layout:\s*fixed/);
-  assert.match(css, /\.amazon-mode-switch\.mode-tabs[\s\S]*overflow-x:\s*auto/);
+  assert.match(musicCss, /\.music-service-filter\.mode-tabs[\s\S]*overflow-x:\s*auto/);
 });
