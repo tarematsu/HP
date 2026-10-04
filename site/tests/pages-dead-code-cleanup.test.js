@@ -6,8 +6,6 @@ const currentShell = readFileSync(new URL('../public/current-shell.js', import.m
 const stationheadShell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
 const stationheadRuntime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
 const stationheadReadModel = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
-const layout = readFileSync(new URL('../public/dashboard-current-layout.js', import.meta.url), 'utf8');
-const client = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 const likes = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
@@ -38,13 +36,12 @@ test('current view ships the same final Stationhead DOM as Ohisama and Nogizaka'
   assert.match(stationheadReadModel, /station_url: 'https:\/\/stationhead\.com\/c\/buddies'/);
   assert.doesNotMatch(stationheadShell, /goal-card|streamCount|goalBar|goalPercent|goalRemaining|goalRate|goalMilestones|metricGoalCompact|streamGoal|goalEta/);
   assert.doesNotMatch(stationheadRuntime, /MutationObserver|insertAdjacent|\.appendChild\(.*stationhead-channel-panel/);
-  assert.doesNotMatch(layout, /MutationObserver|querySelector\('\.goal-card'\)|ensureMetricLayout|enforceStationheadLink|\.remove\(|\.append\(/);
   assert.doesNotMatch(history, /createTreeWalker|history-page-fixes|history-table-cleanup|history-summary-average-labels/);
 });
 
-test('legacy renderers no longer write to DOM that was always deleted or overwritten', () => {
-  assert.doesNotMatch(client, /renderGoal|goalBar|goalPercent|goalRemaining|goalRate|goalMilestones|liveState|liveDot|description/);
-  assert.doesNotMatch(client, /nowPlayingLink[\s\S]*spotifyUrl|spotifyHint[\s\S]*Spotifyで開く/);
+test('shared renderer no longer writes to DOM that was always deleted or overwritten', () => {
+  assert.doesNotMatch(stationheadRuntime, /renderGoal|goalBar|goalPercent|goalRemaining|goalRate|goalMilestones|liveState|liveDot|description/);
+  assert.doesNotMatch(stationheadRuntime, /nowPlayingLink[\s\S]*spotifyUrl|spotifyHint[\s\S]*Spotifyで開く/);
   assert.doesNotMatch(header, /description|live-line|app-launch|dashboard-actions|channelObserver|updatedObserver/);
   assert.doesNotMatch(likes, /likesLoad/);
 });
