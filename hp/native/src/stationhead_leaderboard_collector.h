@@ -16,6 +16,7 @@ class StationheadLeaderboardCollector {
   void Start(int64_t nowMs);
   void Stop();
   void Tick(int64_t nowMs);
+  void SetMemoryPressure(bool active, int64_t nowMs);
   [[nodiscard]] int64_t NextWakeAt() const noexcept { return nextWakeAt_; }
 
  private:
@@ -49,6 +50,7 @@ class StationheadLeaderboardCollector {
   bool started_ = false;
   bool creating_ = false;
   bool captureInFlight_ = false;
+  bool memoryPressure_ = false;
 };
 
 }  // namespace hp
