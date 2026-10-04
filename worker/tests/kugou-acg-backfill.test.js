@@ -56,7 +56,7 @@ function kugouFetch(requests = []) {
     const payload = {
       status: 1,
       errcode: 0,
-      data: { info: [{ authors:[{ author_name:'櫻坂46' }], songname:`song-${volid}`, album_audio_id: Number(volid) }] },
+      data: { info: [{ authors:[{ author_name:'松田里奈' }], songname:'ピッカーン！', album_audio_id: Number(volid) }] },
     };
     return { ok: true, async text() { return tagged(payload); } };
   };
@@ -104,14 +104,14 @@ test('Kugou ACG backfill stores tagged provider responses in resumable historica
   assert.equal(store.values.get(KUGOU_ACG_HISTORY_PROGRESS_KEY).status, 'complete');
 });
 
-test('Kugou ACG backfill refreshes periods saved by the old current-chart request mode', async () => {
+test('Kugou ACG backfill refreshes periods saved by the previous matching version', async () => {
   const store = r2Store();
   store.values.set(KUGOU_ACG_HISTORY_INDEX_KEY, {
     version:1,
     weeks:{
-      '2026_40':{ period:'2026_40', volid:'103', entries:0 },
-      '2026_39':{ period:'2026_39', volid:'102', entries:0 },
-      '2026_38':{ period:'2026_38', volid:'101', entries:0 },
+      '2026_40':{ period:'2026_40', volid:'103', entries:0, historical_fetch_version:2 },
+      '2026_39':{ period:'2026_39', volid:'102', entries:0, historical_fetch_version:2 },
+      '2026_38':{ period:'2026_38', volid:'101', entries:0, historical_fetch_version:2 },
     },
   });
   store.values.set(KUGOU_ACG_HISTORY_VIEW_KEY, { version:1, history:[] });

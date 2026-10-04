@@ -8,12 +8,38 @@ export const KUGOU_ACG_HISTORY_PROGRESS_KEY = `${KUGOU_ACG_HISTORY_PREFIX}/progr
 export const KUGOU_ACG_HISTORY_TARGETS = Object.freeze(Object.keys(REGIONAL_MUSIC_ARTISTS));
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const KUGOU_ACG_RELATED_TARGETS = Object.freeze({
+  sakurazaka46:Object.freeze({
+    titles:Object.freeze(['ピッカーン', 'whatskazoku']),
+    artists:Object.freeze(['松田里奈', '森田ひかる']),
+  }),
+  hinatazaka46:Object.freeze({
+    titles:Object.freeze(['ロマンティックがほしいなら']),
+    artists:Object.freeze(['小坂菜緒', '正源司陽子', '藤嶌果歩']),
+  }),
+  nogizaka46:Object.freeze({
+    titles:Object.freeze(['月の大きさ', '指望遠鏡', 'ここじゃないどこか', '今、話したい誰かがいる', '空扉', 'あの光', '1・2・3', '１・２・３']),
+    artists:Object.freeze(['からあげ姉妹', '生田絵梨花', '松村沙友理']),
+  }),
+});
 
 function normalize(value) {
   return String(value || '')
     .normalize('NFKC')
     .toLocaleLowerCase('en-US')
     .replace(/[\s\p{P}\p{S}]+/gu, '');
+}
+
+function normalizedTitleKeys(value) {
+  const source = String(value || '').normalize('NFKC').trim();
+  if (!source) return [];
+  const values = new Set([source]);
+  const withoutAnnotations = source
+    .replace(/[（(【\[《「『][^）)】\]》」』]+[）)】\]》」』]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (withoutAnnotations) values.add(withoutAnnotations);
+  return [...values].map(normalize).filter(Boolean);
 }
 
 function periodParts(value) {
@@ -136,10 +162,10 @@ async function responsePayload(response) {
   throw new Error('Kugou ACG response body is unavailable');
 }
 
-function canonicalArtistFromEntry(entry) {
+function entryArtistCandidates(entry) {
   const filename = String(entry?.filename || entry?.FileName || '');
   const artistPart = filename.split(/\s+-\s+/,1)[0] || '';
-  const candidates = [
+  return [
     artistPart,
     entry?.singername,
     entry?.SingerName,
@@ -147,9 +173,25 @@ function canonicalArtistFromEntry(entry) {
     entry?.AuthorName,
     ...(Array.isArray(entry?.authors) ? entry.authors.flatMap((author) => [author?.author_name,author?.name]) : []),
   ].filter(Boolean);
+}
+
+function canonicalArtistFromEntry(entry) {
+  const candidates = entryArtistCandidates(entry);
+  const normalizedCandidates = candidates.map(normalize).filter(Boolean);
   for (const [canonicalArtist, artist] of Object.entries(REGIONAL_MUSIC_ARTISTS)) {
     const aliases = artist.aliases.map(normalize).filter(Boolean);
-    if (candidates.some((candidate) => aliases.some((alias) => normalize(candidate).includes(alias)))) return canonicalArtist;
+    if (normalizedCandidates.some((candidate) => aliases.some((alias) => candidate.includes(alias)))) return canonicalArtist;
+  }
+
+  for (const [canonicalArtist, target] of Object.entries(KUGOU_ACG_RELATED_TARGETS)) {
+    const aliases = target.artists.map(normalize).filter(Boolean);
+    if (normalizedCandidates.some((candidate) => aliases.some((alias) => candidate.includes(alias)))) return canonicalArtist;
+  }
+
+  const titleKeys = normalizedTitleKeys(titleFromEntry(entry));
+  for (const [canonicalArtist, target] of Object.entries(KUGOU_ACG_RELATED_TARGETS)) {
+    const targetTitles = target.titles.map(normalize).filter(Boolean);
+    if (titleKeys.some((title) => targetTitles.includes(title))) return canonicalArtist;
   }
   return null;
 }

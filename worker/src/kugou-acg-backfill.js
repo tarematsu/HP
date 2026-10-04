@@ -19,7 +19,7 @@ export const KUGOU_ACG_BACKFILL_MESSAGE_TYPE = 'kugou-acg-history-backfill';
 export const KUGOU_ACG_BACKFILL_DEFAULT_START = '2019-01-01';
 export const KUGOU_ACG_BACKFILL_BATCH_SIZE = 4;
 export const KUGOU_ACG_BACKFILL_MAX_BATCH_SIZE = 10;
-export const KUGOU_ACG_HISTORICAL_FETCH_VERSION = 2;
+export const KUGOU_ACG_HISTORICAL_FETCH_VERSION = 3;
 
 function normalizedStartDate(value) {
   const text = String(value || KUGOU_ACG_BACKFILL_DEFAULT_START).trim();
