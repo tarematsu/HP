@@ -24,8 +24,11 @@ test('KKBOX historical chart entries use the QQ-style chart and history layout',
   assert.match(runtime, /activePeriodType = 'weekly'/);
   assert.match(runtime, /activeChartType = 'newrelease'/);
   assert.match(runtime, /OUT_OF_CHART_RANK = 101/);
-  assert.match(runtime, /keyakizaka46: '欅坂46'/);
-  assert.match(runtime, /hiragana_keyakizaka46: 'けやき坂46'/);
+  assert.match(runtime, /CHART_START_DATE = '2020-10-01'/);
+  assert.match(runtime, /date >= CHART_START_DATE/);
+  assert.match(runtime, /const ordered = history\s+\.filter\(seriesSelected\)\s+\.filter\(artistVisible\)/);
+  assert.doesNotMatch(runtime, /keyakizaka46/);
+  assert.doesNotMatch(runtime, /hiragana_keyakizaka46/);
   assert.match(runtime, /loadRegionalMusicReadModel\(SERVICE\)/);
   assert.match(runtime, /location\.hash\.slice\(1\) === SERVICE/);
   assert.match(runtime, /genericTables\.hidden = true/);
