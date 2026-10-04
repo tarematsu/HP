@@ -119,10 +119,13 @@ test('YouTube clean player renders content video while preserving Skip Ad', () =
   assert.doesNotMatch(youtubeClean, /MutationObserver|homepanel:youtube-wake/);
 });
 
-test('TVer playback uses one YouTube-style event runtime with native queue ownership', () => {
+test('TVer playback uses one event runtime plus redesigned current-player settings reconciliation', () => {
   assert.match(tverEpisode, /window\.__homePanelTverRuntime/);
   assert.match(tverEpisode, /video\.defaultPlaybackRate = 1\.75/);
   assert.match(tverEpisode, /video\.volume = 1\.0/);
+  assert.match(tverEpisode, /currentSettingsSpeedConfirmed/);
+  assert.match(tverEpisode, /currentSettingsQualityConfirmed/);
+  assert.match(tverEpisode, /\[role="menuitemradio"\]/);
   assert.match(tverQueue, /struct NativeMediaTverNativeQueueState/);
   assert.match(tverQueue, /queueEpisodeIds/);
   assert.doesNotMatch(tverEpisode, /__homePanelTverEpisodeQueue|sessionStorage|location\.replace/);
@@ -153,16 +156,15 @@ test('TVer media initialization performs one pointer wake without burst polling'
   );
 });
 
-test('TVer ads prioritize Skip and use bottom-right fullscreen recovery as a fallback', () => {
+test('TVer ads prioritize Skip while redesigned settings suppress premature fullscreen', () => {
   const adStart = tverEpisode.indexOf('if (adActive) {');
   const skip = tverEpisode.indexOf("arm(skip, 'skip-ad', 600)", adStart);
   const fullscreen = tverEpisode.indexOf('if (!fullscreen()) return requestFullscreen();', skip);
   assert.ok(adStart >= 0 && skip > adStart && fullscreen > skip);
-  assert.match(tverEpisode, /video\.getBoundingClientRect/);
-  assert.match(tverEpisode, /rect\.right - 12/);
-  assert.match(tverEpisode, /rect\.bottom - 12/);
   assert.match(tverEpisode, /state\.fullscreenCornerTapAt/);
-  assert.doesNotMatch(tverEpisode, /homepanel:tver-fullscreen-key|fullscreenControl/);
+  assert.match(tverEpisode, /currentSettingsSpeedConfirmed/);
+  assert.match(tverEpisode, /currentSettingsQualityConfirmed/);
+  assert.match(tverEpisode, /homepanel:tver-fullscreen-key/);
   assert.doesNotMatch(tverEpisode, /data-homepanel-tver-fill|homepanel-tver-viewport-fill/);
   const branch = tverEpisode.slice(adStart, fullscreen);
   assert.doesNotMatch(branch, /video\.play\(|video\.volume = 1\.0|playbackRate = 1\.75/);
