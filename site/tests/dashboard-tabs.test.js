@@ -40,16 +40,13 @@ test('dashboard starts on the shared Buddies Stationhead view without duplicate 
   assert.doesNotMatch(page, /id="currentView"|id="historyView"|id="likesView"/);
 });
 
-test('leaderboard and follow are source routes with unique ids and shared views', () => {
+test('leaderboard and followers are Stationhead source routes with shared views', () => {
   assert.doesNotMatch(registry, /mode: 'ranking'|view: 'spotify'/);
   assert.match(tabsClient, /id: 'ranking', label: 'リーダーボード', defaultMode: 'ranking'/);
   assert.match(tabsClient, /id: 'followers', label: 'フォロワー', defaultMode: 'followers'/);
-  assert.match(tabsClient, /id: 'music-ranking', label: 'リーダーボード', defaultMode: 'music-ranking'/);
-  assert.match(tabsClient, /id: 'music-followers', label: 'フォロー', defaultMode: 'music-followers'/);
   assert.match(tabsClient, /ranking:\s*\{[\s\S]*viewId: 'leaderboardView'[\s\S]*source: 'stationhead'/);
-  assert.match(tabsClient, /'music-ranking':\s*\{[\s\S]*viewId: 'leaderboardView'[\s\S]*source: 'music-streaming'/);
   assert.match(tabsClient, /followers:\s*\{[\s\S]*viewId: 'followersView'[\s\S]*source: 'stationhead'/);
-  assert.match(tabsClient, /'music-followers':\s*\{[\s\S]*viewId: 'followersView'[\s\S]*source: 'music-streaming'/);
+  assert.doesNotMatch(tabsClient, /music-ranking|music-followers|source: 'music-streaming'/);
   assert.match(leaderboardShell, /id: 'leaderboardView'/);
   assert.match(followersShell, /id: 'followersView'/);
 });
@@ -92,8 +89,6 @@ test('feature tabs share one lazy route registry stylesheet loader and module ca
     ['hinata', 'hinata-shell.js', 'hinata.js'],
     ['ranking', 'leaderboard-shell.js', 'leaderboard.js'],
     ['followers', 'followers-shell.js', 'followers.js'],
-    ['music-ranking', 'leaderboard-shell.js', 'leaderboard.js'],
-    ['music-followers', 'followers-shell.js', 'followers.js'],
     ['played-tracks', 'played-tracks-shell.js', 'played-tracks.js'],
     ['likes', 'likes-shell.js', 'history-likes.js'],
     ['spotify', 'spotify-shell.js', 'spotify.js'],
@@ -106,7 +101,6 @@ test('feature tabs share one lazy route registry stylesheet loader and module ca
   }
   assert.match(tabsClient, /config\.loadExport\) await runtime\[config\.loadExport\]\?\.\(config\.loadArgs \|\| undefined\)/);
   assert.match(tabsClient, /ensureDashboardSectionStyles/);
-
 });
 
 test('legacy listening-party hashes normalize to the shared broadcasts route only', () => {
