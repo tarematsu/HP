@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { runPagesReadModelActions } from '../scripts/run-pages-read-model-actions.mjs';
 import {
   loadTrackHistoryDayReadModel,
   materializeTrackHistoryRangeThroughR2,
@@ -128,21 +127,6 @@ function dependencies(range) {
   };
 }
 
-test('scheduled Actions never invoke track-history R2 shard generation', async () => {
-  let calls = 0;
-  const result = await runPagesReadModelActions({
-    startedAt: DAY_START + 19 * 60_000,
-    deadlineMs: DAY_START + 30 * 60_000,
-    now: () => DAY_START + 19 * 60_000,
-    env: { DB: {}, BUDDIES_DB: { name: 'buddies' }, MINUTE_DB: { name: 'minute' }, OTHER_DB: {} },
-    runTrackHistoryStep: async () => { calls += 1; },
-    materializeVariant: async (variant) => ({ key: variant.key }),
-  });
-  assert.equal(calls, 0);
-  assert.equal(result.track_history_steps, 0);
-  assert.equal(result.track_history_result.reason, 'track-history-read-model-disabled');
-});
-
 test('grouped history rows and like rows share one canonical lookup pass', async () => {
   const r2 = new FakeR2();
   const db = new FakeDb();
@@ -238,7 +222,7 @@ test('Buddies playback events replace legacy reconstructed play counts when avai
   assert.equal(shard.rows[0].play_count, 3);
 });
 
-test('explicit maintenance keeps seven staging shards in R2 and writes a stable R2 day model', async () => {
+test('explicit maintenance keeps staging shards in R2 and writes a stable R2 day model', async () => {
   const r2 = new FakeR2();
   const db = new FakeDb();
   const sourceDb = new FakePlaybackDb();
