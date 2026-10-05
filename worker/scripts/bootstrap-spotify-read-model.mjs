@@ -3,13 +3,13 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { spotifyMonthlyListenersSql } from '../../site/functions/api/spotify-monthly-listeners.js';
 import {
   spotifyArtistChartSql,
+  spotifyMonthlyListenersSql,
   spotifyReadModelAll,
   spotifyTrendSql,
-} from '../../site/functions/api/spotify-playcounts.js';
-import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+} from 'sh-shared/spotify-read-model.mjs';
+import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 import { loadSpotifyLatestDetailRows } from '../src/spotify-read-model-detail.js';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 
@@ -111,7 +111,7 @@ export function loadExistingSpotifyEnvelope() {
   const directory = mkdtempSync(join(workerRoot, '.spotify-read-model-existing-'));
   try {
     const path = join(directory, 'spotify-playcounts.json');
-    const key = pagesActionsR2ResponseKey(SPOTIFY_READ_MODEL_KEY);
+    const key = pagesR2ResponseKey(SPOTIFY_READ_MODEL_KEY);
     try {
       wrangler([
         'r2', 'object', 'get', `${responseBucket}/${key}`,
@@ -138,7 +138,7 @@ export function uploadSpotifyEnvelope(envelope) {
   try {
     const path = join(directory, 'spotify-playcounts.json');
     writeFileSync(path, JSON.stringify(envelope), 'utf8');
-    const key = pagesActionsR2ResponseKey(SPOTIFY_READ_MODEL_KEY);
+    const key = pagesR2ResponseKey(SPOTIFY_READ_MODEL_KEY);
     wrangler([
       'r2', 'object', 'put', `${responseBucket}/${key}`,
       '--remote', '--file', path,
