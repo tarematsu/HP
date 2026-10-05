@@ -5,7 +5,7 @@ import test from 'node:test';
 const publisher = readFileSync(new URL('../src/pages-dashboard-live-publisher.js', import.meta.url), 'utf8');
 const fastStore = readFileSync(new URL('../src/minute-facts-fast-store.js', import.meta.url), 'utf8');
 const dashboardEntry = readFileSync(new URL('../../site/public/dashboard-metrics.js', import.meta.url), 'utf8');
-const dashboardReadModel = readFileSync(new URL('../../site/public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
+const dashboardReadModel = readFileSync(new URL('../../site/public/stationhead/buddies-read-model.js', import.meta.url), 'utf8');
 
 test('committed live minute facts immediately publish the current dashboard model', () => {
   assert.match(fastStore, /await timedStage\('upsert_minute_fact'/);
