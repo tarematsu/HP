@@ -14,7 +14,7 @@ export const QQ_WEEKLY_CRON = '0 9 * * 4';
 export const KUGOU_WEEKDAY_CRON = '30 2 * * 1-5';
 export const KUGOU_ACG_WEEKLY_CRON = '40 2 * * 3';
 export const QQ_TOPLIST_POLL_CRON = '30 9-21 * * 4';
-export const HISTORY_READ_MODEL_CRON = '* * * * *';
+export const HISTORY_READ_MODEL_RECOVERY_CRON = '* * * * *';
 export const STATIONHEAD_FOLLOWERS_CRON = '0 15 * * *';
 export const STATIONHEAD_LEADERBOARD_CRON = '17 12 * * 1';
 
@@ -73,7 +73,8 @@ const due = {
 };
 
 const JOBS = Object.freeze([
-  ['pages-history', 'SCHEDULED_COLLECTION_JOBS', HISTORY_READ_MODEL_CRON, due.always],
+  // Recovery only: the normal Stationhead leaderboard path reconciles revisions immediately after collection.
+  ['pages-history-recovery', 'SCHEDULED_COLLECTION_JOBS', HISTORY_READ_MODEL_RECOVERY_CRON, due.always],
   ['nogizaka46smej', 'NOGIZAKA_SCHEDULED', NOGIZAKA_CRON, due.always],
   ['ohisama', 'OHISAMA_SCHEDULED', OHISAMA_CRON, due.ohisama],
   ['spotify-playcount', 'SPOTIFY_PLAYCOUNT_SCHEDULED', SPOTIFY_PLAYCOUNT_CRON, due.spotifyPlaycount],
