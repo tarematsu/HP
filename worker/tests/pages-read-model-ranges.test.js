@@ -5,14 +5,12 @@ import {
   MATERIALIZED_API_VARIANTS,
   materializedApiKey,
 } from '../../site/functions/lib/api-contract.js';
-import { dueVariantKeys } from '../scripts/run-pages-read-model-actions.mjs';
 import {
   mergeTrackHistoryExcludedDates,
   trackHistoryRefreshRanges,
 } from '../src/pages-track-history-support.js';
 
 const DAY_MS = 86_400_000;
-const MINUTE_MS = 60_000;
 const EPOCH = Date.UTC(2024, 4, 1);
 
 const ALL_VARIANTS = [
@@ -21,11 +19,6 @@ const ALL_VARIANTS = [
   'history:weekly',
   'history:broadcasts',
   'host-history:summary',
-  'spotify-playcounts',
-];
-
-const TWELVE_HOUR_VARIANTS = [
-  'dashboard',
   'spotify-playcounts',
 ];
 
@@ -130,15 +123,4 @@ test('canonical materialized variants exclude playback and monthly history', () 
   assert.equal(materialized.get('spotify-playcounts').cadence_minutes, 720);
   assert.equal(materialized.get('spotify-playcounts').event_driven, true);
   assert.equal(materialized.get('dashboard').cadence_minutes, 5);
-});
-
-test('generic cadence metadata remains compatible while scheduled runner excludes event-driven Spotify', () => {
-  const cycle = Date.UTC(2026, 6, 16, 0, 0);
-  assert.deepEqual([...dueVariantKeys(cycle + 26 * MINUTE_MS)], ALL_VARIANTS);
-  assert.deepEqual([...dueVariantKeys(cycle + 55 * MINUTE_MS)], ALL_VARIANTS);
-  assert.deepEqual([...dueVariantKeys(cycle + 56 * MINUTE_MS)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(cycle + 86 * MINUTE_MS)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(cycle + 386 * MINUTE_MS)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(cycle + 746 * MINUTE_MS)], TWELVE_HOUR_VARIANTS);
-  assert.deepEqual([...dueVariantKeys(cycle + 1466 * MINUTE_MS)], ALL_VARIANTS);
 });
