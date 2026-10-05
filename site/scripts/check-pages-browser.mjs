@@ -90,7 +90,10 @@ try {
       if (!live) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(emptyFixture()) });
       if (!snapshots.has(path)) snapshots.set(path, (async () => {
         const response = await fetch(`https://skrzk.pages.dev${path}`, { signal: AbortSignal.timeout(30000) });
-        const body = await response.text(); apiResults.push({ path, status: response.status, capturedAt: new Date().toISOString(), bytes: Buffer.byteLength(body) });
+        const body = await response.text();
+        let payload;
+        try { payload = JSON.parse(body); } catch {}
+        apiResults.push({ path, status: response.status, capturedAt: new Date().toISOString(), bytes: Buffer.byteLength(body), ok: payload?.ok, rows: Array.isArray(payload?.rows) ? payload.rows.length : undefined });
         return { status: response.status, contentType: 'application/json', body };
       })());
       try { await route.fulfill(await snapshots.get(path)); }
@@ -122,7 +125,22 @@ try {
         assert.equal(await page.locator('[data-role="track-image"]').isHidden(), true, 'broken artwork stays hidden');
         assert.equal(await page.locator('.track-fallback').isVisible(), true, 'broken artwork keeps fallback visible');
       }
-      if (live && ['daily', 'weekly', 'monthly'].includes(mode)) assert.match(await page.locator('#tbody tr td').first().textContent(), /^\d{4}/, `${mode}: history data did not load`);
+      if (live && ['daily', 'weekly', 'monthly'].includes(mode)) {
+        // Network idle can precede JSON parsing, the daily overlay and table rendering.
+        // Wait for the selected route's data, while retaining the non-empty assertion.
+        try {
+          await page.waitForFunction((expectedMode) => {
+            const view = document.getElementById('historyView');
+            const cell = view?.querySelector('#tbody tr td');
+            return location.hash === `#${expectedMode}` && view && !view.hidden
+              && /^\d{4}/.test(cell?.textContent || '');
+          }, mode, { timeout: 30000 });
+        } catch (error) {
+          await page.screenshot({ path: `${output}/history-not-ready-${label}.png`, fullPage: true });
+          throw new Error(`${mode}: history data did not load; API results: ${JSON.stringify(apiResults)}`, { cause: error });
+        }
+        assert.match(await page.locator('#tbody tr td').first().textContent(), /^\d{4}/, `${mode}: history data did not load`);
+      }
       if (!live && width === 320 && ['broadcasts', 'ranking', 'youtube-music', 'kkbox'].includes(mode)) await stressVisibleLayout(page, label);
       await page.screenshot({ path: `${output}/${label}.png`, fullPage: true });
       const downloads = await checkCsv(page, label);
