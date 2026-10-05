@@ -89,7 +89,7 @@ export function normalizeStationheadLeaderboard(payload = {}) {
     label: host,
     color: STATIONHEAD_COLORS[host.toLowerCase()] || '',
     points: (pointsByHost.get(host.toLowerCase()) || []).sort((a, b) => a.date.localeCompare(b.date)),
-  })).filter((item) => item.points.some((point) => point.rank != null));
+  }));
   return {
     source: 'stationhead',
     updated_at: timestamp(payload?.materialized_at),

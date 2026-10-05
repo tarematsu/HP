@@ -47,3 +47,27 @@ test('the table keeps missing and out-of-ranking statuses distinct', () => {
   assert.equal(cellText(column, { rank: null, rank_status: '欠測' }), '欠測');
   assert.equal(cellText(column, { rank: 0, rank_status: '圏外' }), '圏外');
 });
+
+test('featured hosts without rank data remain in the legend series', async () => {
+  const { normalizeStationheadLeaderboard } = await import('../public/leaderboard-read-model.js');
+  const payload = normalizeStationheadLeaderboard({ rows: [
+    { ranking_date: '2026-10-05', host_name: 'sakuramankai', rank: 2 },
+  ] });
+  assert.deepEqual(payload.series.map(series => series.id), ['sakuramankai', 'sakurazaka46jp', 'nogizaka46smej']);
+  assert.deepEqual(payload.series.at(-1).points, []);
+});
+
+test('chart legend renders a featured host even when it has no rank points', async () => {
+  const { createLeaderboardChart } = await import('../public/leaderboard/chart.js');
+  const items = [];
+  const legend = { replaceChildren() { items.length = 0; }, append(item) { items.push(item); } };
+  globalThis.document = {
+    getElementById: id => id === 'leaderboardLegend' ? legend : null,
+    createElement: () => ({ style: {}, children: [], setAttribute() {}, append(...children) { this.children.push(...children); } }),
+  };
+  createLeaderboardChart().renderChart({ series: [
+    { id: 'nogizaka46smej', label: 'nogizaka46smej', points: [] },
+  ] });
+  assert.equal(items.length, 1);
+  assert.equal(items[0].children[1].textContent, 'nogizaka46smej');
+});

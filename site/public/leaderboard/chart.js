@@ -36,8 +36,7 @@ export function createLeaderboardChart() {
           .map((point) => ({ date: String(point?.date || ''), rank: rankValue(point?.rank) }))
           .filter((point) => /^\d{4}-\d{2}-\d{2}$/.test(point.date))
           .sort((a, b) => a.date.localeCompare(b.date)),
-      }))
-      .filter((series) => series.points.some((point) => point.rank != null));
+      }));
   }
 
   function setChartEmpty(empty) {
@@ -111,6 +110,7 @@ export function createLeaderboardChart() {
   function renderChart(payload) {
     currentPayload = payload;
     const series = chartSeries(payload);
+    renderLegend(series);
     if (!series.length) {
       setChartEmpty(true);
       return;
