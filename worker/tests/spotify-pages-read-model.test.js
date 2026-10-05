@@ -6,7 +6,7 @@ import {
   spotifyArtistChartSql,
   spotifyTrendSql,
 } from '../../site/functions/api/spotify-playcounts.js';
-import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 import {
   processSpotifyReadModelRefreshBatch,
   publishSpotifyPagesReadModel,
@@ -120,17 +120,25 @@ function db() {
   };
 }
 
-test('Spotify read model writes all Sakamichi detail groups and skips unchanged bodies', async () => {
+function storedObject(stored) {
+  if (!stored) return null;
+  return {
+    customMetadata: stored.customMetadata,
+    async text() { return stored.body; },
+  };
+}
+
+test('Spotify read model writes one canonical raw object and skips unchanged bodies', async () => {
   let stored = null;
   const writes = [];
   const r2 = {
     async get(key) {
-      assert.equal(key, pagesActionsR2ResponseKey('spotify-playcounts'));
-      return stored == null ? null : { async text() { return stored; } };
+      assert.equal(key, pagesR2ResponseKey('spotify-playcounts'));
+      return storedObject(stored);
     },
-    async put(key, body) {
-      writes.push({ key, body });
-      stored = body;
+    async put(key, body, options = {}) {
+      writes.push({ key, body, options });
+      stored = { body, customMetadata: options.customMetadata || {} };
     },
   };
   const env = { OTHER_DB: db(), PAGES_RESPONSE_R2: r2 };
@@ -138,19 +146,19 @@ test('Spotify read model writes all Sakamichi detail groups and skips unchanged 
   const first = await publishSpotifyPagesReadModel(env, { now: 1000 });
   assert.equal(first.published, true);
   assert.equal(writes.length, 1);
+  assert.equal(writes[0].key, 'pages-response/v1/spotify-playcounts.json');
   assert.deepEqual(first.snapshot_dates, {
     sakurazaka46: '2026-09-29',
     nogizaka46: '2026-09-29',
     hinatazaka46: '2026-09-29',
   });
   assert.equal(first.monthly_listener_revision, '2026-09-29:789:1');
-  const envelope = JSON.parse(writes[0].body);
-  assert.equal(envelope.version, 1);
-  assert.equal(envelope.cadence_seconds, 0);
-  assert.equal(envelope.updated_at, 1000);
-  assert.equal(envelope.renderer_revision, 'spotify-event-v3');
-  assert.deepEqual(envelope.refresh_markers, []);
-  const body = JSON.parse(envelope.body);
+  assert.equal(stored.customMetadata.format, 'raw-response-v1');
+  assert.equal(stored.customMetadata.updated_at, '1000');
+  assert.equal(stored.customMetadata.cadence_seconds, '0');
+  assert.equal(stored.customMetadata.renderer_revision, 'spotify-event-v4');
+  assert.equal(stored.customMetadata.refresh_markers_json, '[]');
+  const body = JSON.parse(stored.body);
   assert.deepEqual(Object.keys(body.groups), ['sakurazaka46', 'nogizaka46', 'hinatazaka46']);
   assert.equal(body.groups.sakurazaka46.total_delta, 25);
   assert.equal(body.groups.nogizaka46.total_delta, 40);
@@ -175,7 +183,7 @@ test('Spotify read model writes all Sakamichi detail groups and skips unchanged 
   assert.equal(writes.length, 1);
 });
 
-test('duplicate Spotify refresh is satisfied from R2 without any D1 read', async () => {
+test('duplicate Spotify refresh is satisfied from R2 metadata without any D1 read', async () => {
   const event = {
     message_type: SPOTIFY_READ_MODEL_REFRESH_TYPE,
     reason: 'playcount-complete',
@@ -190,11 +198,11 @@ test('duplicate Spotify refresh is satisfied from R2 without any D1 read', async
   const r2 = {
     async get() {
       r2Reads += 1;
-      return stored == null ? null : { async text() { return stored; } };
+      return storedObject(stored);
     },
-    async put(_key, body) {
+    async put(_key, body, options = {}) {
       r2Writes += 1;
-      stored = body;
+      stored = { body, customMetadata: options.customMetadata || {} };
     },
   };
 
@@ -205,7 +213,7 @@ test('duplicate Spotify refresh is satisfied from R2 without any D1 read', async
   assert.equal(first.published, true);
   assert.equal(first.skipped_d1, false);
   assert.equal(r2Writes, 1);
-  assert.deepEqual(JSON.parse(stored).refresh_markers, [marker]);
+  assert.deepEqual(JSON.parse(stored.customMetadata.refresh_markers_json), [marker]);
 
   let d1Reads = 0;
   let acknowledged = 0;
