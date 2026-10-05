@@ -19,13 +19,14 @@ const artistTabs = musicServiceFilterTabs([
   ariaLabel: 'Apple Musicアーティスト切替',
 });
 
-const regionTable = musicServiceTable({ id: 'appleRegionCompareTable', className: 'apple-table apple-region-table', wrapClassName: 'apple-region-table-wrap' });
+const regionTable = musicServiceTable({ id: 'appleRegionCompareTable', className: 'apple-table apple-region-table sticky-first-column', wrapClassName: 'apple-region-table-wrap scrollable-table' });
+const seriesSelector = '<details class="series-selector" id="appleSeriesSelector"><summary>表示する楽曲</summary><div class="series-selector-options" id="appleSeriesOptions"></div></details>';
 const rankSection = musicServiceSection({
   id: 'appleTrendSection',
   title: 'Apple Music 日本の人気曲順位推移',
   titleId: 'appleJapanRankTitle',
   trailingHtml: artistTabs,
-  bodyHtml: `${dashboardLegend({ id: 'appleRankLegend', className: 'apple-rank-legend', ariaLabel: '日本の現在順位' })}${dashboardChartHost({ id: 'appleRankChart', className: 'apple-rank-chart chart-fit', ariaLabel: 'Apple Music日本の人気曲順位推移', role: '' })}`,
+  bodyHtml: `${seriesSelector}${dashboardLegend({ id: 'appleRankLegend', className: 'apple-rank-legend compact-series-legend', ariaLabel: '日本の現在順位' })}${dashboardChartHost({ id: 'appleRankChart', className: 'apple-rank-chart chart-fit', ariaLabel: 'Apple Music日本の人気曲順位推移', role: '' })}`,
 });
 const tracksSection = musicServiceSection({ id: 'appleTrackSection', group: 'list', title: 'Apple Music 地域別人気順位一覧', titleId: 'appleRegionCompareTitle', bodyHtml: regionTable });
 const playlistSection = musicServiceSection({ id: 'applePlaylistSection', group: 'playlists', title: '櫻坂46 楽曲別プレイリスト掲載一覧', titleId: 'applePlaylistTitle', bodyHtml: '<div id="applePlaylistMount"></div>' });
