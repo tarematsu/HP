@@ -1,22 +1,42 @@
 import { dispatchScheduledService } from './internal-scheduled-dispatch.js';
+import {
+  AMAZON_MUSIC_CRON,
+  CRON_DISPATCHER_CRON,
+  HISTORY_READ_MODEL_RECOVERY_CRON,
+  KKBOX_WEEKLY_CRON,
+  KUGOU_ACG_WEEKLY_CRON,
+  KUGOU_WEEKDAY_CRON,
+  MUSIC_PLAYLIST_REFRESH_CRON,
+  NOGIZAKA_CRON,
+  OHISAMA_CRON,
+  QQ_TOPLIST_POLL_CRON,
+  QQ_WEEKLY_CRON,
+  SPOTIFY_ARTIST_CHART_CRON,
+  SPOTIFY_PLAYCOUNT_CRON,
+  STATIONHEAD_FOLLOWERS_CRON,
+  STATIONHEAD_LEADERBOARD_CRON,
+  YOUTUBE_MUSIC_DAILY_CRON,
+} from './scheduled-crons.js';
 import { shouldDispatchSpotifyArtistChart, shouldDispatchSpotifyPlaycount } from './spotify-playcount-timing.js';
 
-export const CRON_DISPATCHER_CRON = '* * * * *';
-export const NOGIZAKA_CRON = '* * * * *';
-export const OHISAMA_CRON = '*/5 * * * *';
-export const SPOTIFY_PLAYCOUNT_CRON = '0 * * * *';
-export const SPOTIFY_ARTIST_CHART_CRON = '20 22 * * *';
-export const AMAZON_MUSIC_CRON = '0,10,15,20,30,40,50 * * * *';
-export const MUSIC_PLAYLIST_REFRESH_CRON = '0 5,17 * * *';
-export const YOUTUBE_MUSIC_DAILY_CRON = '0 15 * * *';
-export const KKBOX_WEEKLY_CRON = '0 15 * * 0';
-export const QQ_WEEKLY_CRON = '0 9 * * 4';
-export const KUGOU_WEEKDAY_CRON = '30 2 * * 1-5';
-export const KUGOU_ACG_WEEKLY_CRON = '40 2 * * 3';
-export const QQ_TOPLIST_POLL_CRON = '30 9-21 * * 4';
-export const HISTORY_READ_MODEL_RECOVERY_CRON = '* * * * *';
-export const STATIONHEAD_FOLLOWERS_CRON = '0 15 * * *';
-export const STATIONHEAD_LEADERBOARD_CRON = '17 12 * * 1';
+export {
+  AMAZON_MUSIC_CRON,
+  CRON_DISPATCHER_CRON,
+  HISTORY_READ_MODEL_RECOVERY_CRON,
+  KKBOX_WEEKLY_CRON,
+  KUGOU_ACG_WEEKLY_CRON,
+  KUGOU_WEEKDAY_CRON,
+  MUSIC_PLAYLIST_REFRESH_CRON,
+  NOGIZAKA_CRON,
+  OHISAMA_CRON,
+  QQ_TOPLIST_POLL_CRON,
+  QQ_WEEKLY_CRON,
+  SPOTIFY_ARTIST_CHART_CRON,
+  SPOTIFY_PLAYCOUNT_CRON,
+  STATIONHEAD_FOLLOWERS_CRON,
+  STATIONHEAD_LEADERBOARD_CRON,
+  YOUTUBE_MUSIC_DAILY_CRON,
+};
 
 function scheduledTimestamp(controller) {
   const value = Number(controller?.scheduledTime);
