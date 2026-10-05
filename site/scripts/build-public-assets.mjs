@@ -30,12 +30,14 @@ const cssGroups = Object.freeze({
     'hinata.css',
     'history/history-past-toggle.css',
     'history/history-range-navigator.css',
+    'stationhead-channel-tools.css',
   ],
   subscriptions: [
     'spotify.css',
     'apple-music.css',
     'amazon-music.css',
     'music-service-common.css',
+    'subscription-chart-tools.css',
   ],
 });
 
