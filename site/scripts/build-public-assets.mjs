@@ -36,8 +36,6 @@ const cssGroups = Object.freeze({
     'apple-music.css',
     'amazon-music.css',
     'music-service-common.css',
-    'followers.css',
-    'leaderboard.css',
   ],
 });
 
