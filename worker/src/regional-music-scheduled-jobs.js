@@ -15,14 +15,21 @@ import {
 import { publishRegionalMusicReadModel } from './regional-music-read-model.js';
 import { collectRegionalR2Snapshot, regionalDayKey, regionalSnapshotKey } from './regional-music-r2-snapshot.js';
 import { saveRegionalCollectorState } from './regional-music-store.js';
+import {
+  KKBOX_WEEKLY_CRON,
+  KUGOU_ACG_WEEKLY_CRON,
+  KUGOU_WEEKDAY_CRON,
+  QQ_TOPLIST_POLL_CRON,
+  QQ_WEEKLY_CRON,
+} from './scheduled-crons.js';
 
-export const KKBOX_WEEKLY_CRON = '0 15 * * 0';
-export const QQ_WEEKLY_CRON = '0 9 * * 4';
-export const KUGOU_WEEKDAY_CRON = '30 2 * * 1-5';
-export const KUGOU_ACG_WEEKLY_CRON = '40 2 * * 3';
-// Start 30 minutes after the regular QQ weekly collection so both jobs never
-// rewrite the same qq_music R2 snapshot concurrently.
-export const QQ_TOPLIST_POLL_CRON = '30 9-21 * * 4';
+export {
+  KKBOX_WEEKLY_CRON,
+  KUGOU_ACG_WEEKLY_CRON,
+  KUGOU_WEEKDAY_CRON,
+  QQ_TOPLIST_POLL_CRON,
+  QQ_WEEKLY_CRON,
+};
 
 export const REGIONAL_SCHEDULED_JOB_CRONS = Object.freeze([
   KKBOX_WEEKLY_CRON,
