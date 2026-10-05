@@ -1,9 +1,6 @@
 import { materializedResponseCadenceSeconds } from '../../site/functions/lib/api-contract.js';
 import { canonicalizeTrackRows } from '../../site/functions/lib/canonical-track-rows.js';
-import {
-  pagesActionsR2ResponseKey,
-  saveMaterializedR2Response,
-} from './pages-response-r2.js';
+import { saveMaterializedR2Response } from './pages-response-r2.js';
 import {
   attachPlaybackReadModelTrackMetadata,
   loadPlaybackReadModelTrackMetadata,
@@ -59,25 +56,6 @@ async function publishTrackHistoryStatus(env, status) {
       now,
       cadenceSeconds,
     );
-    const actionsKey = pagesActionsR2ResponseKey(TRACK_HISTORY_STATUS_KEY);
-    if (actionsKey) {
-      await r2.put(actionsKey, JSON.stringify({
-        version: 1,
-        updated_at: now,
-        cadence_seconds: cadenceSeconds,
-        status: 200,
-        headers: STATUS_HEADERS,
-        body,
-      }), {
-        httpMetadata: { contentType: 'application/json; charset=utf-8' },
-        customMetadata: {
-          version: '1',
-          model_key: TRACK_HISTORY_STATUS_KEY,
-          updated_at: String(now),
-          cadence_seconds: String(cadenceSeconds),
-        },
-      });
-    }
     return 1;
   } catch (error) {
     console.warn(JSON.stringify({
