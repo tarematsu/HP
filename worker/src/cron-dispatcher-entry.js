@@ -17,6 +17,7 @@ export const QQ_WEEKLY_CRON = '0 9 * * 4';
 export const KUGOU_WEEKDAY_CRON = '30 2 * * 1-5';
 export const KUGOU_ACG_WEEKLY_CRON = '40 2 * * 3';
 export const QQ_TOPLIST_POLL_CRON = '30 9-21 * * 4';
+export const HISTORY_READ_MODEL_CRON = '* * * * *';
 export const STATIONHEAD_FOLLOWERS_CRON = '0 15 * * *';
 export const STATIONHEAD_LEADERBOARD_CRON = '17 12 * * 1';
 
@@ -71,6 +72,7 @@ export async function runCronDispatcher(controller, env) {
   const scheduledAt = scheduledTimestamp(controller);
   const { day, hour, minute } = utcParts(scheduledAt);
   const tasks = [];
+  addServiceTask(tasks, 'pages-history', env?.SCHEDULED_COLLECTION_JOBS, HISTORY_READ_MODEL_CRON, scheduledAt);
   addServiceTask(tasks, 'nogizaka46smej', env?.NOGIZAKA_SCHEDULED, NOGIZAKA_CRON, scheduledAt);
 
   // Buddies owns :00/:05/... independently. Keep Ohisama one minute later.

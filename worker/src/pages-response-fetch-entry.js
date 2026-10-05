@@ -11,6 +11,7 @@ const TRACK_HISTORY_MODEL_KEY = 'track-history';
 const DEFAULT_STALE_FALLBACK_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_EDGE_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
 const DASHBOARD_EDGE_CACHE_MAX_AGE_MS = 15 * 1000;
+const HISTORY_EDGE_CACHE_MAX_AGE_MS = 60_000;
 const PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS = new Set([
   'apple-music',
   'apple-music-playlists',
@@ -158,7 +159,9 @@ export async function runPagesResponseFetch(
     const configuredEdgeMaximumAge = materializedEdgeCacheMaximumAge(env, maximumAge);
     const edgeMaximumAge = modelKey === DASHBOARD_MODEL_KEY
       ? Math.min(configuredEdgeMaximumAge, DASHBOARD_EDGE_CACHE_MAX_AGE_MS)
-      : configuredEdgeMaximumAge;
+      : modelKey.startsWith('history:') || modelKey === 'host-history:summary'
+        ? Math.min(configuredEdgeMaximumAge, HISTORY_EDGE_CACHE_MAX_AGE_MS)
+        : configuredEdgeMaximumAge;
     const edgeResponse = await loadEdgeCachedResponse(cache, cacheKey, now, edgeMaximumAge, maximumAge);
     if (edgeResponse) return edgeResponse;
 

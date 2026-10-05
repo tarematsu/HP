@@ -191,7 +191,9 @@ export async function loadMaterializedSummary(env, mode, from, to, now = Date.no
   const trackCounts = shouldLoadTrackCounts
     ? await loadPeriodTrackCounts(env, mode, from, to)
     : new Map();
-  await persistClosedPeriodTrackCounts(env.OTHER_DB, table, rows, trackCounts, mode, now);
+  if (env.HISTORY_READ_MODEL_READ_ONLY !== true) {
+    await persistClosedPeriodTrackCounts(env.OTHER_DB, table, rows, trackCounts, mode, now);
+  }
 
   const dailyCoverage = await loadSummaryDailyCoverage(env.OTHER_DB, rows, mode);
   const completed = applySummaryCompleteness(rows, mode, now, dailyCoverage);

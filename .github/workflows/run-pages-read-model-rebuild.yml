@@ -2,8 +2,8 @@ name: Rebuild pages read models
 
 on:
   schedule:
-    # Low-frequency recovery sweep. Normal history publication is revision-driven
-    # from runtime maintenance and only targets changed model keys.
+    # Recovery only: scheduled-collection-jobs publishes changed history models
+    # every minute through Queue. Unchanged models are not rendered or uploaded.
     - cron: '26 0 * * *'
   push:
     branches: [main]
@@ -19,6 +19,7 @@ on:
       - 'site/functions/lib/track-ranking.js'
       - 'worker/scripts/remote-d1-adapter.mjs'
       - 'worker/src/pages-response-**'
+      - 'worker/src/history-read-model-**'
       - 'site/functions/api/history.js'
       - 'site/functions/api/spotify-playcounts.js'
       - 'site/functions/lib/api-contract.js'

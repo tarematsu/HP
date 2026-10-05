@@ -37,6 +37,21 @@
         "max_retries": 5,
         "retry_delay": 60,
         "dead_letter_queue": "stationhead-leaderboard-refresh-dlq"
+      },
+      {
+        "queue": "pages-history-refresh",
+        "max_batch_size": 1,
+        "max_concurrency": 1,
+        "max_retries": 5,
+        "retry_delay": 60,
+        "dead_letter_queue": "pages-history-refresh-dlq",
+        "max_batch_timeout": 1
+      }
+    ],
+    "producers": [
+      {
+        "binding": "HISTORY_READ_MODEL_QUEUE",
+        "queue": "pages-history-refresh"
       }
     ]
   }

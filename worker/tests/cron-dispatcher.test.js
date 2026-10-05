@@ -74,11 +74,12 @@ test('generic dispatcher is the only shared Cron owner and has no data bindings'
 test('minute routing keeps Nogizaka shared and staggers Ohisama away from Buddies', async () => {
   const calls = [];
   await runCronDispatcher({ scheduledTime: Date.UTC(2026, 9, 4, 10, 2) }, env(calls));
-  assert.deepEqual(calls.map(({ name }) => name), ['nogizaka']);
+  assert.deepEqual(calls.map(({ name }) => name), ['collection-jobs', 'nogizaka']);
+  assert.equal(calls[0].body.cron, '* * * * *');
 
   calls.length = 0;
   await runCronDispatcher({ scheduledTime: Date.UTC(2026, 9, 4, 10, 1) }, env(calls));
-  assert.deepEqual(calls.map(({ name }) => name), ['nogizaka', 'ohisama']);
+  assert.deepEqual(calls.map(({ name }) => name), ['collection-jobs', 'nogizaka', 'ohisama']);
 });
 
 test('Amazon and Apple dispatcher window preserves 05:00 and 06:00 JST schedules', () => {
@@ -95,13 +96,13 @@ test('regional and Stationhead collection schedules are dispatched to target Wor
   const calls = [];
   // Thursday 18:30 JST: QQ toplist poll, staggered after the 18:00 base collection.
   await runCronDispatcher({ scheduledTime: Date.UTC(2026, 9, 8, 9, 30) }, env(calls));
-  assert.deepEqual(calls.map(({ name }) => name), ['nogizaka', 'regional']);
+  assert.deepEqual(calls.map(({ name }) => name), ['collection-jobs', 'nogizaka', 'regional']);
   assert.equal(calls.at(-1).body.cron, '30 9-21 * * 4');
 
   calls.length = 0;
   // Monday 21:17 JST: weekly Stationhead leaderboard import.
   await runCronDispatcher({ scheduledTime: Date.UTC(2026, 9, 5, 12, 17) }, env(calls));
-  assert.deepEqual(calls.map(({ name }) => name), ['nogizaka', 'collection-jobs']);
+  assert.deepEqual(calls.map(({ name }) => name), ['collection-jobs', 'nogizaka', 'collection-jobs']);
   assert.equal(calls.at(-1).body.cron, '17 12 * * 1');
 });
 
@@ -123,8 +124,8 @@ test('daily midnight JST dispatches followers and YouTube Music from the shared 
   const calls = [];
   await runCronDispatcher({ scheduledTime: Date.UTC(2026, 9, 6, 15, 0) }, env(calls));
   const serviceCalls = calls.filter((call) => ['nogizaka', 'regional', 'collection-jobs'].includes(call.name));
-  assert.deepEqual(serviceCalls.map(({ name }) => name), ['nogizaka', 'regional', 'collection-jobs']);
-  assert.equal(serviceCalls[1].body.cron, '0 15 * * *');
+  assert.deepEqual(serviceCalls.map(({ name }) => name), ['collection-jobs', 'nogizaka', 'regional', 'collection-jobs']);
   assert.equal(serviceCalls[2].body.cron, '0 15 * * *');
+  assert.equal(serviceCalls[3].body.cron, '0 15 * * *');
   assert.equal(calls.filter((call) => call.name.startsWith('homepanel')).length, 3);
 });

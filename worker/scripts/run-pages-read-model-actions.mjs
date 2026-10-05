@@ -140,30 +140,25 @@ export function uploadEnvelope(modelKey, envelope) {
   }
 }
 
-function loadExistingEnvelope(modelKey) {
+function loadR2JsonObject(key, strict = false) {
   const directory = mkdtempSync(join(workerRoot, '.pages-response-existing-'));
   try {
-    const path = join(directory, `${encodeURIComponent(modelKey)}.json`);
-    const key = pagesActionsR2ResponseKey(modelKey);
+    const path = join(directory, 'object.json');
     try {
-      wrangler([
-        'r2', 'object', 'get', `${responseBucket}/${key}`,
-        '--remote', '--file', path,
-      ]);
-    } catch {
+      wrangler(['r2', 'object', 'get', `${responseBucket}/${key}`, '--remote', '--file', path]);
+    } catch (error) {
+      if (strict && !/404|not found|does not exist/i.test(String(error.stderr || error.message))) throw error;
       return null;
     }
-    try {
-      const envelope = JSON.parse(readFileSync(path, 'utf8'));
-      return envelope && typeof envelope === 'object' && !Array.isArray(envelope)
-        ? envelope
-        : null;
-    } catch {
-      return null;
-    }
+    const value = JSON.parse(readFileSync(path, 'utf8'));
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+}
+
+function loadExistingEnvelope(modelKey) {
+  return loadR2JsonObject(pagesActionsR2ResponseKey(modelKey));
 }
 
 export async function overdueVariantKeys(variants, now, dependencies = {}) {
@@ -350,6 +345,12 @@ export async function materializeVariant(variant, env, now, dependencies = {}) {
   }
 
   if (sourceRevision && reusableEnvelope(existing, sourceRevision, rendererRevision)) {
+    if (dependencies.skipUnchanged === true) return {
+      key: variant.key, bytes: existing.body.length, object_key: null,
+      source_revision: sourceRevision, renderer_revision: rendererRevision,
+      rendered: false, changed: false, deferred: false, skipped: true,
+      skip_reason: 'unchanged-source',
+    };
     const envelope = {
       ...existing,
       updated_at: now,
@@ -444,6 +445,12 @@ function productionEnvironment() {
     BUDDIES_DB: buddiesDb,
     MINUTE_DB: remoteDatabase(factsDatabase, 'minute'),
     OTHER_DB: remoteDatabase(otherDatabase, 'other'),
+    PAGES_RESPONSE_R2: {
+      async get(key) {
+        const value = loadR2JsonObject(key, true);
+        return value ? { json: async () => value } : null;
+      },
+    },
   };
 }
 

@@ -114,7 +114,7 @@ test('history client reduces repeated reads with mode-specific browser session c
   assert.match(historyClient, /storage\.setItem/);
   assert.match(historyClient, /historyCacheTtl\(mode\)/);
   assert.match(historyData, /DAILY_HISTORY_CACHE_TTL_MS = 30_000/);
-  assert.match(historyData, /DEFAULT_HISTORY_CACHE_TTL_MS = 5 \* 60_000/);
+  assert.match(historyData, /DEFAULT_HISTORY_CACHE_TTL_MS = 60_000/);
 });
 
 test('history tables render newest rows first and paginate only in the browser', () => {

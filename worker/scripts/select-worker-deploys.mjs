@@ -38,6 +38,7 @@ const deployScriptWorkers = new Map([
   ['worker/scripts/deploy-amazon-music.mjs', amazonMusicWorker],
   ['worker/scripts/deploy-regional-music.mjs', regionalMusicWorker],
   ['worker/scripts/deploy-scheduled-collection-jobs.mjs', scheduledCollectionJobsWorker],
+  ['worker/scripts/history-renderer-revision.mjs', scheduledCollectionJobsWorker],
   ['worker/scripts/deploy-cron-dispatcher.mjs', cronDispatcherWorker],
   ['worker/scripts/deploy-runtime.mjs', runtimeWorker],
   ['worker/scripts/pages-response-kv-namespace.mjs', runtimeWorker],

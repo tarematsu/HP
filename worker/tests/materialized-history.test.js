@@ -186,3 +186,12 @@ test('materialized history response keeps the public payload shape without raw D
   assert.equal(calls.filter((call) => call.source === 'r2').length, 1);
   assert.equal(calls.filter((call) => call.source === 'other-update').length, 1);
 });
+
+test('Worker generation enriches missing closed track totals without D1 writes', async () => {
+  const calls = [];
+  const env = environment(calls);
+  env.HISTORY_READ_MODEL_READ_ONLY = true;
+  const result = await loadMaterializedSummary(env, 'daily', '2026-07-01', '2026-07-28', Date.parse('2026-07-28T01:00:00Z'));
+  assert.equal(result.rows[0].distinct_tracks, 17);
+  assert.equal(calls.some(call => call.source === 'other-update'), false);
+});

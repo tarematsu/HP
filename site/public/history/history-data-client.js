@@ -3,8 +3,8 @@ const HISTORY_CACHE_MIGRATION_KEY = 'sh.history.direct-fetch.v1';
 const DAILY_MODE = 'daily';
 
 export const DAILY_HISTORY_CACHE_TTL_MS = 30_000;
-export const DEFAULT_HISTORY_CACHE_TTL_MS = 5 * 60_000;
-export const BROADCAST_HISTORY_CACHE_TTL_MS = 15 * 60_000;
+export const DEFAULT_HISTORY_CACHE_TTL_MS = 60_000;
+export const BROADCAST_HISTORY_CACHE_TTL_MS = 60_000;
 
 export function historyCacheTtl(mode) {
   if (mode === DAILY_MODE) return DAILY_HISTORY_CACHE_TTL_MS;

@@ -120,6 +120,7 @@ export function edgeCacheableApiRequest(request) {
 export function apiCacheTtlSeconds(request) {
   const pathname = request?.url ? normalizedPathname(new URL(request.url).pathname) : '';
   if (pathname === '/api/history-current') return 30;
+  if (pathname === '/api/history' || pathname === '/api/host-history') return 60;
   if (pathname === '/api/first-week-comparison') return 3600;
   return API_EDGE_TTL_SECONDS;
 }

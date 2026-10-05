@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { MATERIALIZED_API_VARIANTS } from '../../site/functions/lib/api-contract.js';
 import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
-import { loadCompactReadModelRevision } from './run-pages-read-model-revision-actions.mjs';
+import { loadWorkerHistoryRevision } from './run-pages-read-model-revision-actions.mjs';
 
 const workerRoot = resolve(import.meta.dirname, '..');
 const wranglerScript = resolve(workerRoot, 'node_modules/wrangler/bin/wrangler.js');
@@ -63,7 +63,7 @@ export async function detectPagesReadModelRevisionDrift(options = {}) {
     }),
   };
   const loadPublished = options.loadPublishedEnvelope || loadPublishedEnvelope;
-  const loadRevision = options.loadRevision || loadCompactReadModelRevision;
+  const loadRevision = options.loadRevision || loadWorkerHistoryRevision;
   const variants = options.variants || REVISION_DRIVEN_VARIANTS;
   const dueKeys = [];
   const states = [];

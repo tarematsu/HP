@@ -7,6 +7,15 @@ import {
   runPagesReadModelActions,
 } from './run-pages-read-model-actions.mjs';
 
+import { HISTORY_READ_MODEL_KEYS, loadHistorySourceRevisions } from '../src/history-read-model-source.js';
+import { historyRendererSourceRevision } from './history-renderer-revision.mjs';
+import { renderHistoryReadModel } from '../src/history-read-model-renderer.js';
+
+export async function loadWorkerHistoryRevision(variant, env, now = Date.now()) {
+  if (!HISTORY_READ_MODEL_KEYS.includes(variant.key)) return loadCompactReadModelRevision(variant, env, now);
+  return (await loadHistorySourceRevisions({ ...env, HISTORY_READ_MODEL_RENDERER_REVISION: historyRendererSourceRevision() }, now))[variant.key];
+}
+
 const COMPACT_REVISION_KEYS = new Set([
   'history:daily',
   'history:weekly',
@@ -37,7 +46,13 @@ export async function loadCompactReadModelRevision(variant, env, now = Date.now(
 export function materializeRevisionGatedVariant(variant, env, now, dependencies = {}) {
   return materializeVariant(variant, env, now, {
     ...dependencies,
-    loadSourceRevision: dependencies.loadSourceRevision || loadCompactReadModelRevision,
+    loadSourceRevision: dependencies.loadSourceRevision || loadWorkerHistoryRevision,
+    ...(HISTORY_READ_MODEL_KEYS.includes(variant.key) ? {
+      rendererRevision: dependencies.rendererRevision ?? historyRendererSourceRevision(),
+      skipUnchanged: true,
+      responseHandler: dependencies.responseHandler || (async () => async ({ env: renderEnv }) =>
+        Response.json(await renderHistoryReadModel(variant.key, renderEnv, now))),
+    } : {}),
   });
 }
 

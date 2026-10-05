@@ -109,7 +109,7 @@ test('Sakamichi Spotify request uses the shared materialized read model and cach
 
 test('current minute history uses a 30-second shared cache', () => {
   assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/history-current?mode=daily')), 30);
-  assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/history?mode=daily')), 300);
+  assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/history?mode=daily')), 60);
   assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/dashboard-details?channel_id=318')), 300);
   assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/hinata')), 300);
   assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/first-week-comparison')), 3600);

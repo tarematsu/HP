@@ -201,7 +201,7 @@ async function queryBroadcastRows(env, fromTs, toTs) {
   }
 }
 
-async function loadBroadcastPayload(env, from, to) {
+export async function loadBroadcastPayload(env, from, to) {
   const fromTs = parseDateStart(from, '2024-06-01');
   const toTs = parseDateStart(to, todayUtcString()) + 86400000;
   let loaded;

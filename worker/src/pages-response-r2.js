@@ -383,14 +383,14 @@ export async function loadMaterializedR2Response(
   now = Date.now(),
   maximumAgeMs = Number.MAX_SAFE_INTEGER,
 ) {
-  // Large Actions-owned models can serve a raw companion after validating the
+  // Large materialized models can serve a raw companion after validating the
   // canonical envelope ETag, keeping cache-miss CPU below the stateless budget.
   if (modelKey === STREAMED_ACTIONS_MODEL_KEY) {
     const streamed = await loadStreamedActionsResponse(r2, modelKey, now, maximumAgeMs);
     if (streamed) return streamed;
   }
-  // Actions owns the general materialized API variants. Track history stays
-  // Worker-owned; followers prefer Actions because Stationhead blocks Worker egress.
+  // Worker producers and Actions recovery share the canonical envelope keys.
+  // Track history also supports its Worker-native response storage.
   if (modelKey === TRACK_HISTORY_STATUS_MODEL_KEY) {
     return (await loadActionsEnvelope(r2, modelKey, now, maximumAgeMs))
       || loadWorkerR2Response(r2, modelKey, now, maximumAgeMs);
