@@ -28,15 +28,13 @@ test('Stationhead sources are Buddies, Ohisama, Nogizaka, leaderboard and follow
   assert.doesNotMatch(route, /id: 'analysis'/);
 });
 
-test('music streaming section appends shared leaderboard and follow routes after service views', () => {
+test('music streaming section contains only streaming service views', () => {
   const subscriptions = route.indexOf("id: 'subscriptions'");
   const spotify = route.indexOf("id: 'spotify'", subscriptions);
   const kugou = route.indexOf("id: 'kugou_music'", subscriptions);
-  const ranking = route.indexOf("id: 'music-ranking', label: 'リーダーボード'", subscriptions);
-  const followers = route.indexOf("id: 'music-followers', label: 'フォロー'", subscriptions);
-  assert.ok(subscriptions >= 0 && spotify > subscriptions && kugou > spotify && ranking > kugou && followers > ranking);
-  assert.match(route, /music-ranking[\s\S]*source: 'music-streaming'/);
-  assert.match(route, /music-followers[\s\S]*source: 'music-streaming'/);
+  assert.ok(subscriptions >= 0 && spotify > subscriptions && kugou > spotify);
+  assert.doesNotMatch(route, /id: 'music-ranking'|id: 'music-followers'/);
+  assert.doesNotMatch(route, /'music-ranking':|'music-followers':/);
 });
 
 test('Buddies keeps first-week comparison inside listening parties while global leaderboard and followers stay outside its view tabs', () => {
