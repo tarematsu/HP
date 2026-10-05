@@ -4,6 +4,7 @@ import {
   STATIONHEAD_AUTH_PAGE_URL,
   firstDefined,
 } from './collector-config.js';
+import { OHISAMA_CRON } from './scheduled-crons.js';
 import { jwtExpiryMs, normalizeBearer } from './shared.js';
 
 const STATE_ID = 'stationhead';
@@ -13,7 +14,7 @@ const FIVE_MINUTES_MS = 5 * 60_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 8_000;
 const DEFAULT_REFRESH_BEFORE_MS = 60 * 60_000;
 
-export const OHISAMA_COLLECTOR_CRON = '*/5 * * * *';
+export const OHISAMA_COLLECTOR_CRON = OHISAMA_CRON;
 
 function positiveNumber(value, fallback, maximum = Number.MAX_SAFE_INTEGER) {
   const parsed = Number(value);
