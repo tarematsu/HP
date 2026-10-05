@@ -2,7 +2,8 @@ import {
   MATERIALIZED_API_VARIANTS,
   materializedResponseMaximumAge,
 } from '../../site/functions/lib/api-contract.js';
-import { loadMaterializedR2Response } from './pages-response-r2.js';
+import { loadMaterializedResponse } from './pages-response-store.js';
+import { normalizeFollowersResponse } from './stationhead-followers-response.js';
 
 const EMPTY_DEPENDENCIES = Object.freeze({});
 const INTERNAL_RESPONSE_PATH = '/_internal/pages-response';
@@ -31,6 +32,7 @@ function loadTrackHistoryApiModule() {
   trackHistoryApiModulePromise ||= import('./pages-track-history-r2-api.js');
   return trackHistoryApiModulePromise;
 }
+
 function materializedStaleMaximumAge(env, freshMaximumAge) {
   const configured = Number(env?.PAGES_RESPONSE_STALE_MAX_AGE_MS);
   const staleMaximumAge = Number.isFinite(configured) && configured >= 0
@@ -38,24 +40,37 @@ function materializedStaleMaximumAge(env, freshMaximumAge) {
     : DEFAULT_STALE_FALLBACK_MAX_AGE_MS;
   return Math.max(Number(freshMaximumAge) || 0, staleMaximumAge);
 }
+
 function responseIsStale(response, now, maximumAge) {
   const rawUpdatedAt = response?.headers?.get('x-materialized-at');
   if (rawUpdatedAt == null || rawUpdatedAt === '') return false;
   const updatedAt = Number(rawUpdatedAt);
   const age = Number(maximumAge);
-  return Number.isFinite(updatedAt) && updatedAt >= 0 && Number.isFinite(age) && age >= 0 && now - updatedAt > age;
+  return Number.isFinite(updatedAt)
+    && updatedAt >= 0
+    && Number.isFinite(age)
+    && age >= 0
+    && now - updatedAt > age;
 }
+
 function staleMaterializedResponse(response) {
   if (!response) return null;
   const headers = new Headers(response.headers);
   headers.set('x-materialized-stale', '1');
-  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
+
 async function loadCanonicalR2(env, modelKey, now, maximumAge, dependencies) {
-  const loadR2 = dependencies.loadR2Response || loadMaterializedR2Response;
+  const loadR2 = dependencies.loadR2Response || loadMaterializedResponse;
   const staleMaximumAge = materializedStaleMaximumAge(env, maximumAge);
   const response = await loadR2(env?.PAGES_RESPONSE_R2, modelKey, now, staleMaximumAge);
-  return responseIsStale(response, now, maximumAge) ? staleMaterializedResponse(response) : response;
+  return responseIsStale(response, now, maximumAge)
+    ? staleMaterializedResponse(response)
+    : response;
 }
 
 export async function runPagesResponseFetch(
@@ -68,7 +83,9 @@ export async function runPagesResponseFetch(
     ? injectedDependencies
     : _contextOrDependencies;
   const url = new URL(request.url);
-  if (request.method !== 'GET' || url.pathname !== INTERNAL_RESPONSE_PATH) return new Response(null, { status: 404 });
+  if (request.method !== 'GET' || url.pathname !== INTERNAL_RESPONSE_PATH) {
+    return new Response(null, { status: 404 });
+  }
   const modelKey = String(url.searchParams.get('key') || '').trim();
   if (!modelKey) return new Response(null, { status: 400 });
   const now = dependencies.now?.() ?? Date.now();
@@ -90,14 +107,23 @@ export async function runPagesResponseFetch(
     } else if (PUBLIC_R2_MODEL_KEYS.has(modelKey)) {
       response = await loadCanonicalR2(env, modelKey, now, maximumAge, dependencies);
     }
-    return response || new Response(null, { status: 404, headers: { 'cache-control': 'no-store' } });
+    if (modelKey === FOLLOWERS_MODEL_KEY) {
+      response = await normalizeFollowersResponse(response, now);
+    }
+    return response || new Response(null, {
+      status: 404,
+      headers: { 'cache-control': 'no-store' },
+    });
   } catch (error) {
     console.error(JSON.stringify({
       event: 'pages_response_storage_read_failed',
       model_key: modelKey,
       error: String(error?.message || error).slice(0, 500),
     }));
-    return new Response(null, { status: 503, headers: { 'cache-control': 'no-store' } });
+    return new Response(null, {
+      status: 503,
+      headers: { 'cache-control': 'no-store' },
+    });
   }
 }
 
