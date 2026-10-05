@@ -43,7 +43,6 @@
     "PAGES_RESPONSE_EDGE_CACHE_MAX_AGE_MS": 300000,
     "REQUEST_TIMEOUT_MS": 8000
   },
-  "kv_namespaces": [{ "binding": "PAGES_RESPONSE_KV", "id": "00000000000000000000000000000000" }],
   "r2_buckets": [{ "binding": "PAGES_RESPONSE_R2", "bucket_name": "sh-pages-responses" }],
   "durable_objects": { "bindings": [{ "name": "MINUTE_LIVE_JOB_COORDINATOR", "class_name": "MinuteLiveJobCoordinator" }] },
   "migrations": [
