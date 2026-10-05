@@ -3,7 +3,6 @@ import {
   materializedResponseMaximumAge,
 } from '../../site/functions/lib/api-contract.js';
 import { loadMaterializedR2Response } from './pages-response-r2.js';
-import { loadReadModelR2 } from './read-model-r2.js';
 
 const EMPTY_DEPENDENCIES = Object.freeze({});
 const INTERNAL_RESPONSE_PATH = '/_internal/pages-response';
@@ -11,48 +10,35 @@ const DASHBOARD_MODEL_KEY = 'dashboard';
 const TRACK_HISTORY_MODEL_KEY = 'track-history';
 const FOLLOWERS_MODEL_KEY = 'followers';
 const DEFAULT_STALE_FALLBACK_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-const DEFAULT_EDGE_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
-const DASHBOARD_EDGE_CACHE_MAX_AGE_MS = 15 * 1000;
-const HISTORY_EDGE_CACHE_MAX_AGE_MS = 60_000;
 const PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS = new Set([
   'apple-music',
   'apple-music-playlists',
   'amazon-music',
+  'amazon-music-playlists',
   'spotify-playlists',
   'nogizaka-listening-party',
   'regional-music',
   FOLLOWERS_MODEL_KEY,
   'leaderboard',
 ]);
-const R2_ONLY_MODEL_KEYS = new Set([
-  ...MATERIALIZED_API_VARIANTS
-    .map(({ key }) => key)
-    .filter((key) => key !== DASHBOARD_MODEL_KEY),
+const PUBLIC_R2_MODEL_KEYS = new Set([
+  ...MATERIALIZED_API_VARIANTS.map(({ key }) => key),
   ...PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS,
+  TRACK_HISTORY_MODEL_KEY,
 ]);
+// Temporary migration fallback only. Normal publication and public reads use R2.
+const LEGACY_KV_FALLBACK_KEYS = new Set([DASHBOARD_MODEL_KEY]);
 
 let responseStoreModulePromise;
 let trackHistoryApiModulePromise;
-
 function loadResponseStoreModule() {
   responseStoreModulePromise ||= import('./pages-response-store.js');
   return responseStoreModulePromise;
 }
-
 function loadTrackHistoryApiModule() {
   trackHistoryApiModulePromise ||= import('./pages-track-history-r2-api.js');
   return trackHistoryApiModulePromise;
 }
-
-function edgeCache(dependencies) {
-  return dependencies.cache || globalThis.caches?.default || null;
-}
-
-function edgeCacheKey(request, dependencies) {
-  if (dependencies.cacheKey) return dependencies.cacheKey(request);
-  return new Request(request.url, { method: 'GET' });
-}
-
 function materializedStaleMaximumAge(env, freshMaximumAge) {
   const configured = Number(env?.PAGES_RESPONSE_STALE_MAX_AGE_MS);
   const staleMaximumAge = Number.isFinite(configured) && configured >= 0
@@ -60,128 +46,54 @@ function materializedStaleMaximumAge(env, freshMaximumAge) {
     : DEFAULT_STALE_FALLBACK_MAX_AGE_MS;
   return Math.max(Number(freshMaximumAge) || 0, staleMaximumAge);
 }
-
-function materializedEdgeCacheMaximumAge(env, materializedMaximumAge) {
-  const configured = Number(env?.PAGES_RESPONSE_EDGE_CACHE_MAX_AGE_MS);
-  const edgeMaximumAge = Number.isFinite(configured) && configured >= 0
-    ? configured
-    : DEFAULT_EDGE_CACHE_MAX_AGE_MS;
-  return Math.min(Math.max(0, Number(materializedMaximumAge) || 0), edgeMaximumAge);
-}
-
 function responseIsStale(response, now, maximumAge) {
   const rawUpdatedAt = response?.headers?.get('x-materialized-at');
   if (rawUpdatedAt == null || rawUpdatedAt === '') return false;
   const updatedAt = Number(rawUpdatedAt);
   const age = Number(maximumAge);
-  return Number.isFinite(updatedAt)
-    && updatedAt >= 0
-    && Number.isFinite(age)
-    && age >= 0
-    && now - updatedAt > age;
+  return Number.isFinite(updatedAt) && updatedAt >= 0 && Number.isFinite(age) && age >= 0 && now - updatedAt > age;
 }
-
 function staleMaterializedResponse(response) {
+  if (!response) return null;
   const headers = new Headers(response.headers);
   headers.set('x-materialized-stale', '1');
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
-
-function freshMaterializedResponse(response, now, maximumAge, sourceMaximumAge) {
-  const updatedAt = Number(response?.headers?.get('x-materialized-at'));
-  const cachedAt = Number(response?.headers?.get('x-pages-edge-cached-at') ?? updatedAt);
-  const age = Number(maximumAge);
-  if (responseIsStale(response, now, sourceMaximumAge)) return null;
-  if (!Number.isFinite(cachedAt) || cachedAt > now) return null;
-  if (!Number.isFinite(updatedAt) || updatedAt < 0) return null;
-  if (Number.isFinite(age) && age >= 0 && now - cachedAt > age) return null;
-  const headers = new Headers(response.headers);
-  headers.set('x-api-source', 'edge-cache');
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
-}
-
-async function loadEdgeCachedResponse(cache, key, now, maximumAge, sourceMaximumAge) {
-  if (!cache?.match) return null;
-  try {
-    return freshMaterializedResponse(await cache.match(key), now, maximumAge, sourceMaximumAge);
-  } catch (error) {
-    console.warn(JSON.stringify({
-      event: 'pages_response_edge_cache_read_failed',
-      error: String(error?.message || error).slice(0, 300),
-    }));
-    return null;
-  }
-}
-
-function cacheResponse(cache, key, response, context, now) {
-  if (!cache?.put || !response?.headers?.get('x-materialized-at')) return null;
-  const cachedResponse = response.clone();
-  cachedResponse.headers.set('x-pages-edge-cached-at', String(now));
-  const write = cache.put(key, cachedResponse).catch((error) => {
-    console.warn(JSON.stringify({
-      event: 'pages_response_edge_cache_write_failed',
-      error: String(error?.message || error).slice(0, 300),
-    }));
-  });
-  if (context?.waitUntil) context.waitUntil(write);
-  return context?.waitUntil ? null : write;
-}
-
-async function loadR2OnlyResponse(env, modelKey, now, maximumAge, dependencies) {
+async function loadCanonicalR2(env, modelKey, now, maximumAge, dependencies) {
+  const loadR2 = dependencies.loadR2Response || loadMaterializedR2Response;
   const staleMaximumAge = materializedStaleMaximumAge(env, maximumAge);
-  const legacy = dependencies.loadR2Response || loadMaterializedR2Response;
-  let response;
-  if (modelKey === FOLLOWERS_MODEL_KEY) {
-    response = await legacy(env?.PAGES_RESPONSE_R2, modelKey, now, staleMaximumAge);
-  } else {
-    const loadWorker = dependencies.loadWorkerR2Response || loadReadModelR2;
-    response = await loadWorker(env?.PAGES_RESPONSE_R2, modelKey, now, staleMaximumAge);
-    if (!response) response = await legacy(env?.PAGES_RESPONSE_R2, modelKey, now, staleMaximumAge);
-  }
+  const response = await loadR2(env?.PAGES_RESPONSE_R2, modelKey, now, staleMaximumAge);
   return responseIsStale(response, now, maximumAge) ? staleMaterializedResponse(response) : response;
+}
+async function loadLegacyKv(env, modelKey, now, maximumAge, dependencies) {
+  if (!LEGACY_KV_FALLBACK_KEYS.has(modelKey)) return null;
+  const loadKv = dependencies.loadResponse || (await loadResponseStoreModule()).loadMaterializedResponse;
+  const response = await loadKv(env?.PAGES_RESPONSE_KV, modelKey, now, maximumAge);
+  if (!response) return null;
+  const headers = new Headers(response.headers);
+  headers.set('x-api-source', 'legacy-kv');
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
 export async function runPagesResponseFetch(
   request,
   env,
-  contextOrDependencies = EMPTY_DEPENDENCIES,
+  _contextOrDependencies = EMPTY_DEPENDENCIES,
   injectedDependencies = EMPTY_DEPENDENCIES,
 ) {
-  const context = typeof contextOrDependencies?.waitUntil === 'function'
-    ? contextOrDependencies
-    : null;
-  const dependencies = context ? injectedDependencies : contextOrDependencies;
+  const dependencies = typeof _contextOrDependencies?.waitUntil === 'function'
+    ? injectedDependencies
+    : _contextOrDependencies;
   const url = new URL(request.url);
-  if (request.method !== 'GET' || url.pathname !== INTERNAL_RESPONSE_PATH) {
-    return new Response(null, { status: 404 });
-  }
+  if (request.method !== 'GET' || url.pathname !== INTERNAL_RESPONSE_PATH) return new Response(null, { status: 404 });
   const modelKey = String(url.searchParams.get('key') || '').trim();
   if (!modelKey) return new Response(null, { status: 400 });
   const now = dependencies.now?.() ?? Date.now();
   const maximumAge = PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS.has(modelKey)
     ? Number.MAX_SAFE_INTEGER
     : materializedResponseMaximumAge(modelKey, env);
-  const cache = edgeCache(dependencies);
-  const cacheKey = edgeCacheKey(request, dependencies);
   try {
-    const configuredEdgeMaximumAge = materializedEdgeCacheMaximumAge(env, maximumAge);
-    const edgeMaximumAge = modelKey === DASHBOARD_MODEL_KEY
-      ? Math.min(configuredEdgeMaximumAge, DASHBOARD_EDGE_CACHE_MAX_AGE_MS)
-      : modelKey.startsWith('history:') || modelKey === 'host-history:summary'
-        ? Math.min(configuredEdgeMaximumAge, HISTORY_EDGE_CACHE_MAX_AGE_MS)
-        : configuredEdgeMaximumAge;
-    const edgeResponse = await loadEdgeCachedResponse(cache, cacheKey, now, edgeMaximumAge, maximumAge);
-    if (edgeResponse) return edgeResponse;
-
-    let response;
+    let response = null;
     if (modelKey === TRACK_HISTORY_MODEL_KEY && url.searchParams.get('api') === '1') {
       const loadTrackHistoryApi = dependencies.loadTrackHistoryApiResponse
         || (await loadTrackHistoryApiModule()).loadTrackHistoryR2ApiResponse;
@@ -192,42 +104,18 @@ export async function runPagesResponseFetch(
         materializedStaleMaximumAge(env, maximumAge),
         dependencies.trackHistory || EMPTY_DEPENDENCIES,
       );
-    } else if (R2_ONLY_MODEL_KEYS.has(modelKey) || modelKey === TRACK_HISTORY_MODEL_KEY) {
-      response = await loadR2OnlyResponse(env, modelKey, now, maximumAge, dependencies);
-    } else if (modelKey === DASHBOARD_MODEL_KEY) {
-      const loadR2 = dependencies.loadR2Response || loadMaterializedR2Response;
-      response = await loadR2(env?.PAGES_RESPONSE_R2, modelKey, now, maximumAge);
-      if (!response) {
-        const loadKv = dependencies.loadResponse
-          || (await loadResponseStoreModule()).loadMaterializedResponse;
-        response = await loadKv(env?.PAGES_RESPONSE_KV, modelKey, now, maximumAge);
-      }
-    } else {
-      const loadKv = dependencies.loadResponse
-        || (await loadResponseStoreModule()).loadMaterializedResponse;
-      response = await loadKv(env?.PAGES_RESPONSE_KV, modelKey, now, maximumAge);
-      if (!response) {
-        const loadR2 = dependencies.loadR2Response || loadMaterializedR2Response;
-        response = await loadR2(env?.PAGES_RESPONSE_R2, modelKey, now, maximumAge);
-      }
+    } else if (PUBLIC_R2_MODEL_KEYS.has(modelKey)) {
+      response = await loadCanonicalR2(env, modelKey, now, maximumAge, dependencies);
+      if (!response) response = await loadLegacyKv(env, modelKey, now, maximumAge, dependencies);
     }
-    if (response && response.headers.get('x-materialized-stale') !== '1') {
-      await cacheResponse(cache, cacheKey, response, context, now);
-    }
-    return response || new Response(null, {
-      status: 404,
-      headers: { 'cache-control': 'no-store' },
-    });
+    return response || new Response(null, { status: 404, headers: { 'cache-control': 'no-store' } });
   } catch (error) {
     console.error(JSON.stringify({
       event: 'pages_response_storage_read_failed',
       model_key: modelKey,
       error: String(error?.message || error).slice(0, 500),
     }));
-    return new Response(null, {
-      status: 503,
-      headers: { 'cache-control': 'no-store' },
-    });
+    return new Response(null, { status: 503, headers: { 'cache-control': 'no-store' } });
   }
 }
 
