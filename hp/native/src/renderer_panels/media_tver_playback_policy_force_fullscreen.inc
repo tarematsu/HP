@@ -1,9 +1,14 @@
 LR"JS(
 (() => {
-  const entered = !!(
+  const isFullscreen = () => !!(
       document.fullscreenElement || document.webkitFullscreenElement ||
       document.msFullscreenElement);
+  const entered = isFullscreen();
   const state = window.__homePanelTverRuntime;
+  const post = message => {
+    try { window.chrome?.webview?.postMessage(message); }
+    catch (_) {}
+  };
 
   // Keep TVer's real fullscreen control available even when aggressive CSS
   // reduction or responsive player styles would otherwise hide it. This is
@@ -36,18 +41,59 @@ LR"JS(
 
   if (entered && state) state.fullscreenCornerTapAt = 0;
 
-  // Only escalate a click that the TVer runtime explicitly issued as its
-  // fullscreen corner tap. Questionnaire, Play, quality and ad-skip trusted
-  // clicks also pass through this verifier and must not trigger fullscreen.
   const fullscreenTapPending = !entered && state?.fullscreenCornerTapAt &&
       Date.now() - state.fullscreenCornerTapAt <= 3000;
   if (fullscreenTapPending) {
-    try { window.chrome?.webview?.postMessage('homepanel:tver-fullscreen-key'); }
-    catch (_) {}
+    const fullscreenTarget = () => {
+      const videos = Array.from(document.querySelectorAll('video'));
+      const video = videos.find(element => {
+        const rect = element.getBoundingClientRect?.();
+        if (!rect || rect.width <= 0 || rect.height <= 0) return false;
+        try {
+          const style = getComputedStyle(element);
+          return style.display !== 'none' && style.visibility !== 'hidden';
+        } catch (_) {
+          return true;
+        }
+      }) || videos[0] || null;
+      if (!video) return null;
+      return video.closest(
+          '[data-testid*="player" i],[class*="player" i],[id*="player" i]') ||
+          video.parentElement || video;
+    };
+    const requestBrowserFullscreen = () => {
+      const target = fullscreenTarget();
+      if (!target) return false;
+      const request = target.requestFullscreen || target.webkitRequestFullscreen ||
+          target.msRequestFullscreen;
+      if (typeof request !== 'function') return false;
+      try {
+        const pending = request.call(target);
+        if (pending && typeof pending.catch === 'function') pending.catch(() => {});
+        return true;
+      } catch (_) {
+        return false;
+      }
+    };
+
+    // This verifier runs immediately after the trusted CDP mouse release. Use
+    // that transient activation directly first; Runtime.evaluate(userGesture)
+    // and the trusted F key remain the delayed fallback if TVer rejects it.
+    if (!requestBrowserFullscreen()) {
+      post('homepanel:tver-fullscreen-key');
+    } else {
+      window.setTimeout(() => {
+        if (isFullscreen()) {
+          if (state) state.fullscreenCornerTapAt = 0;
+        } else {
+          post('homepanel:tver-fullscreen-key');
+        }
+        post('homepanel:tver-wake');
+      }, 600);
+    }
   }
 
-  try { window.chrome?.webview?.postMessage('homepanel:tver-wake'); }
-  catch (_) {}
+  post('homepanel:tver-wake');
   return entered;
 })()
 )JS"
