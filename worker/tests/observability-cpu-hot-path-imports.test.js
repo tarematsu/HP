@@ -42,10 +42,6 @@ const minuteEnrichment = readFileSync(
   new URL('../src/minute-enrichment-optimized-entry.js', import.meta.url),
   'utf8',
 );
-const pagesActions = readFileSync(
-  new URL('../scripts/run-pages-read-model-actions.mjs', import.meta.url),
-  'utf8',
-);
 
 test('live derive fallback keeps budget stages available and the full graph lazy', () => {
   for (const moduleName of [
@@ -117,22 +113,14 @@ test('runtime health read avoids the full runtime-state failure graph', () => {
   assert.doesNotMatch(runtimeStateRead, /collector-failure|sanitizeFailureDetail/);
 });
 
-test('serving-only Pages module keeps uncommon storage graphs lazy', () => {
+test('serving-only Pages module is R2-only and keeps track-history assembly lazy', () => {
   assert.match(pagesResponseFetch, /runPagesResponseFetch/);
   assert.match(pagesResponseFetch, /loadMaterializedR2Response/);
-  assert.match(pagesResponseFetch, /loadMaterializedResponse/);
   assert.match(pagesResponseFetch, /from '\.\/pages-response-r2\.js'/);
-  assert.doesNotMatch(pagesResponseFetch, /import\('\.\/pages-response-r2\.js'\)/);
-  assert.match(pagesResponseFetch, /import\('\.\/pages-response-store\.js'\)/);
+  assert.doesNotMatch(pagesResponseFetch, /pages-response-store|PAGES_RESPONSE_KV|loadMaterializedResponse/);
   assert.match(pagesResponseFetch, /import\('\.\/pages-track-history-r2-api\.js'\)/);
   assert.doesNotMatch(pagesResponseFetch, /from '\.\/pages-track-history-r2-api\.js'/);
   assert.doesNotMatch(pagesResponseFetch, /pages-read-model-dispatch|track-history-publication|dashboard\.js|PAGES_READ_MODEL_QUEUE/);
-});
-
-test('cached Pages reads do not clone response bodies before returning them', () => {
-  assert.equal((pagesResponseFetch.match(/\.clone\(\)/g) || []).length, 1);
-  assert.match(pagesResponseFetch, /const cachedResponse = response\.clone\(\)/);
-  assert.match(pagesResponseFetch, /cache\.put\(key, cachedResponse\)/);
 });
 
 test('minute enrichment is queue-only and does not preload Pages generation', () => {
@@ -141,13 +129,9 @@ test('minute enrichment is queue-only and does not preload Pages generation', ()
   assert.doesNotMatch(minuteEnrichment, /pagesModulePromise|pages-read-model-entry|runPagesReadModelCron|scheduled\s*:/);
 });
 
-test('Pages summary generation is loaded only by the bounded Actions runner', () => {
-  assert.match(pagesActions, /MATERIALIZED_API_VARIANTS/);
-  assert.match(pagesActions, /PAGES_READ_MODEL_DEADLINE_MS/);
-  assert.match(pagesActions, /dueVariantKeys/);
-  assert.match(pagesActions, /track-history-read-model-disabled/);
-  assert.doesNotMatch(pagesActions, /runSplitTrackHistoryCycleStep|pages-track-history/);
+test('runtime has no Pages generation scheduler', () => {
   assert.equal(JSON.parse(runtimeConfig).triggers, undefined);
+  assert.doesNotMatch(runtimeEntry, /pages-read-model-entry|runPagesReadModelCron|runCoreScheduled/);
 });
 
 test('Cloudflare Pipelines analytics is absent from runtime module graphs', () => {
