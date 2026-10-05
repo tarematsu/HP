@@ -59,7 +59,7 @@ try {
       catch (error) { apiResults.push({ path, error: error.message }); await route.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'snapshot unavailable' }) }); }
     });
     await page.goto(origin);
-    for (const mode of ['current', 'daily', 'weekly', 'monthly', 'played-tracks', 'likes', 'broadcasts', 'hinata', 'nogizaka', 'spotify', 'apple-music', 'amazon-music', 'youtube-music', 'kkbox', 'qq_music', 'kugou_music', 'ranking', 'followers', 'music-ranking', 'music-followers']) {
+    for (const mode of ['current', 'daily', 'weekly', 'monthly', 'played-tracks', 'likes', 'broadcasts', 'hinata', 'nogizaka', 'spotify', 'apple-music', 'amazon-music', 'youtube-music', 'kkbox', 'qq_music', 'kugou_music', 'ranking', 'followers']) {
       await page.evaluate(mode => { location.hash = mode; }, mode);
       await page.waitForFunction(() => [...document.querySelectorAll('.dashboard-view')].some(node => !node.hidden), { timeout: 10000 });
       await page.waitForTimeout(800);
@@ -74,6 +74,12 @@ try {
       assert.equal(await page.locator('main').count(), 1);
       assert.equal(await page.locator('#sourceTabs').isVisible(), width > 760, `${mode}: selector breakpoint`);
       assert.equal(await page.locator('#sourceSelect').isVisible(), width <= 760, `${mode}: native selector breakpoint`);
+      if (mode === 'spotify') {
+        const sourceLabels = width > 760
+          ? await page.locator('#sourceTabs button').allTextContents()
+          : await page.locator('#sourceSelect option').allTextContents();
+        assert.deepEqual(sourceLabels, ['Spotify', 'Apple Music', 'Amazon Music', 'YouTube Music', '🇹🇼KKBOX', '🇨🇳QQ音乐', '🇨🇳酷狗音乐']);
+      }
       if (live && ['daily', 'weekly', 'monthly'].includes(mode)) {
         assert.match(await page.locator('#tbody tr td').first().textContent(), /^\d{4}/, `${mode}: history data did not load`);
       }
