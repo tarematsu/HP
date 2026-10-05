@@ -11,21 +11,21 @@ const followersRuntime = readFileSync(new URL('../public/followers.js', import.m
 const followersModel = readFileSync(new URL('../public/followers-read-model.js', import.meta.url), 'utf8');
 const build = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 
-test('leaderboard uses one shell and runtime with source-specific read-model args', () => {
-  assert.equal((tabs.match(/leaderboard-shell\.js\?v=20261005\.2/g) || []).length, 2);
-  assert.equal((tabs.match(/leaderboard\.js\?v=20261005\.2/g) || []).length, 2);
+test('leaderboard uses one shared shell runtime and Stationhead route', () => {
+  assert.equal((tabs.match(/leaderboard-shell\.js\?v=20261005\.2/g) || []).length, 1);
+  assert.equal((tabs.match(/leaderboard\.js\?v=20261005\.2/g) || []).length, 1);
   assert.match(tabs, /ranking:[\s\S]*loadArgs: \{ source: 'stationhead' \}/);
-  assert.match(tabs, /'music-ranking':[\s\S]*loadArgs: \{ source: 'music-streaming' \}/);
+  assert.doesNotMatch(tabs, /music-ranking|source: 'music-streaming'/);
   assert.match(leaderboardShell, /id: 'leaderboardView'/);
   assert.match(leaderboardRuntime, /leaderboardReadModel\(source\)\.load/);
   assert.doesNotMatch(leaderboardRuntime, /sakuramankai|sakurazaka46jp|nogizaka46smej|amazon_rank|popularity_rank/);
 });
 
-test('follow uses one shell and runtime with source-specific read-model args', () => {
-  assert.equal((tabs.match(/followers-shell\.js\?v=20261005\.2/g) || []).length, 2);
-  assert.equal((tabs.match(/followers\.js\?v=20261005\.2/g) || []).length, 2);
+test('followers use one shared shell runtime and Stationhead route', () => {
+  assert.equal((tabs.match(/followers-shell\.js\?v=20261005\.2/g) || []).length, 1);
+  assert.equal((tabs.match(/followers\.js\?v=20261005\.2/g) || []).length, 1);
   assert.match(tabs, /followers:[\s\S]*loadArgs: \{ source: 'stationhead' \}/);
-  assert.match(tabs, /'music-followers':[\s\S]*loadArgs: \{ source: 'music-streaming' \}/);
+  assert.doesNotMatch(tabs, /music-followers|source: 'music-streaming'/);
   assert.match(followersShell, /id: 'followersView'/);
   assert.match(followersRuntime, /followersReadModel\(source\)\.load/);
   assert.doesNotMatch(followersRuntime, /sakuramankai|sakurazaka46jp|nogizaka46smej|STATIONHEAD_MEMBERSHIPS/);
@@ -49,7 +49,7 @@ test('Stationhead leaderboard preserves missing-gap and out-of-rank presentation
   assert.match(leaderboardRuntime, /appendLegendEntry\(legend, '欠測'/);
 });
 
-test('music streaming adapters reuse materialized public read models and never query D1', () => {
+test('aggregate adapters remain reusable without creating music streaming navigation entries', () => {
   assert.match(leaderboardModel, /loadMusicServiceReadModel\(service\)/);
   assert.match(leaderboardModel, /fetchJson\('\/api\/amazon-music'/);
   assert.match(leaderboardModel, /fetchJson\('\/api\/apple-music'/);
@@ -60,9 +60,10 @@ test('music streaming adapters reuse materialized public read models and never q
   }
 });
 
-test('shared feature styles are included in both section bundles', () => {
+test('aggregate feature styles are bundled only with Stationhead', () => {
   assert.match(build, /stationhead:[\s\S]*'followers\.css'[\s\S]*'leaderboard\.css'/);
-  assert.match(build, /subscriptions:[\s\S]*'followers\.css'[\s\S]*'leaderboard\.css'/);
+  const subscriptions = build.match(/subscriptions:\s*\[([\s\S]*?)\],/i)?.[1] || '';
+  assert.doesNotMatch(subscriptions, /followers\.css|leaderboard\.css/);
 });
 
 test('leaderboard no longer participates in the history router', () => {
