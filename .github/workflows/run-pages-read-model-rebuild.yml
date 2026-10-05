@@ -1,43 +1,10 @@
 name: Rebuild pages read models
 
 on:
-  schedule:
-    # Recovery only: scheduled-collection-jobs publishes changed history models
-    # every minute through Queue. Unchanged models are not rendered or uploaded.
-    - cron: '26 0 * * *'
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/run-pages-read-model-rebuild.yml'
-      - '.github/actions/cloudflare-context/action.yml'
-      - '.github/scripts/resolve-cloudflare-account.mjs'
-      - 'worker/scripts/run-pages-read-model-actions.mjs'
-      - 'worker/scripts/run-pages-read-model-revision-actions.mjs'
-      - 'worker/scripts/run-pages-history-read-model-actions.mjs'
-      - 'worker/scripts/publish-track-ranking-status-actions.mjs'
-      - 'worker/scripts/seed-pages-actions-raw.mjs'
-      - 'site/functions/lib/track-ranking.js'
-      - 'worker/scripts/remote-d1-adapter.mjs'
-      - 'worker/src/pages-response-**'
-      - 'worker/src/history-read-model-**'
-      - 'site/functions/api/history.js'
-      - 'site/functions/api/spotify-playcounts.js'
-      - 'site/functions/lib/api-contract.js'
-      - 'site/functions/lib/materialized-history.js'
-      - 'site/functions/lib/period-completeness.js'
-      - 'site/functions/api/host-history.js'
-      - 'database/other-migrations/053_read_model_revisions.sql'
-      - 'database/other-migrations/056_completed_read_model_revisions.sql'
-      - 'database/other-migrations/057_remove_monthly_read_model_revision.sql'
   workflow_dispatch:
     inputs:
-      force_all:
-        description: Force every history read-model variant instead of targeted revision keys
-        required: false
-        default: false
-        type: boolean
       due_keys:
-        description: Comma-separated history model keys to check and publish
+        description: Comma-separated read-model keys; empty rebuilds all history models
         required: false
         default: ''
         type: string
@@ -51,26 +18,18 @@ concurrency:
 
 jobs:
   rebuild:
-    name: Rebuild and publish due pages read models
+    name: Request Worker read-model rebuild
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: worker
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
-      FACTS_DATABASE_NAME: stationhead-minute
-      BUDDIES_DATABASE_NAME: stationhead-buddies
       OTHER_DATABASE_NAME: stationhead-other
-      PAGES_RESPONSE_BUCKET: sh-pages-responses
-      PAGES_READ_MODEL_DEADLINE_MS: '720000'
-      PAGES_READ_MODEL_FORCE_ALL: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.force_all) }}
-      PAGES_READ_MODEL_DUE_KEYS: ${{ github.event_name == 'workflow_dispatch' && inputs.due_keys || '' }}
-      PAGES_READ_MODEL_RETRY_OVERDUE: 'true'
+      PAGES_READ_MODEL_DUE_KEYS: ${{ inputs.due_keys }}
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.sha }}
       - name: Resolve Cloudflare account context
         uses: ./.github/actions/cloudflare-context
         with:
@@ -82,27 +41,5 @@ jobs:
           cache-dependency-path: worker/package-lock.json
       - name: Install Worker dependencies
         run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Remove retired monthly history read model
-        shell: bash
-        run: |
-          npx wrangler r2 object delete "$PAGES_RESPONSE_BUCKET/pages-response/actions-v2/686973746f72793a6d6f6e74686c79.json" --remote || true
-          npx wrangler r2 object delete "$PAGES_RESPONSE_BUCKET/pages-response/v1/history%3Amonthly.json" --remote || true
-      - name: Publish due pages read models
-        shell: bash
-        run: |
-          set -o pipefail
-          node scripts/run-pages-history-read-model-actions.mjs 2>&1 | tee pages-read-model-actions.log
-      - name: Publish compact track ranking to R2
-        run: node scripts/publish-track-ranking-status-actions.mjs
-      - name: Seed raw Pages read models
-        run: node scripts/seed-pages-actions-raw.mjs
-      - name: Upload pages read-model log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pages-read-model-${{ github.run_id }}-${{ github.run_attempt }}
-          path: worker/pages-read-model-actions.log
-          if-no-files-found: ignore
-          retention-days: 7
-      - name: Verify serving database
-        run: node scripts/verify-facts-live.mjs
+      - name: Request canonical Worker rebuild
+        run: node scripts/request-pages-read-model-rebuild-actions.mjs

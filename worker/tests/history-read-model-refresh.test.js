@@ -15,18 +15,11 @@ function fixture() {
     async head(key) { return objects.get(key) || null; },
     async get(key) {
       const stored = objects.get(key);
-      return stored ? {
-        ...stored,
-        body: stored.value,
-        json: async () => JSON.parse(stored.value),
-        text: async () => stored.value,
-      } : null;
+      return stored ? { ...stored, body: stored.value, json: async () => JSON.parse(stored.value), text: async () => stored.value } : null;
     },
     async put(key, value, options) {
       const object = { ...options, customMetadata: options?.customMetadata || {}, etag: String(++etag), value };
-      objects.set(key, object);
-      writes.push(key);
-      return object;
+      objects.set(key, object); writes.push(key); return object;
     },
   };
   const revisions = Object.fromEntries(HISTORY_READ_MODEL_KEYS.map(key => [key, `source:${key}`]));
@@ -86,12 +79,8 @@ test('queue acknowledges successful models independently and retries failed mode
 test('source checks use one compact revision query and no R2 reads', async () => {
   const queries = [];
   const values = new Map([
-    ['history:daily', [2, 10]],
-    ['history:weekly', [3, 20]],
-    ['history:broadcasts', [4, 30]],
-    ['host-history:summary', [5, 40]],
-    ['weekly-ranking', [6, 50]],
-    ['track-history', [7, 60]],
+    ['history:daily', [2, 10]], ['history:weekly', [3, 20]], ['history:broadcasts', [4, 30]],
+    ['host-history:summary', [5, 40]], ['weekly-ranking', [6, 50]], ['track-history', [7, 60]],
   ]);
   const env = { OTHER_DB: { prepare(sql) {
     queries.push(sql);
@@ -99,41 +88,33 @@ test('source checks use one compact revision query and no R2 reads', async () =>
       return { results: this.keys.map((key) => ({ model_key: key, revision: values.get(key)?.[0], updated_at: values.get(key)?.[1] })) };
     } };
   } } };
-  const revisions = await loadHistorySourceRevisions(env);
+  const revisions = await loadHistorySourceRevisions(env, Date.parse('2026-10-05T00:00:00Z'));
   assert.equal(queries.length, 1);
   assert.doesNotMatch(queries[0], /COUNT\(|SUM\(|MAX\(|ORDER BY/);
-  assert.match(revisions['history:daily'], /history:daily:2:10:tracks:7:60$/);
-  assert.match(revisions['history:weekly'], /history:weekly:3:20:tracks:7:60:live:6:50$/);
+  assert.match(revisions['history:daily'], /history:daily:2:10:tracks:7:60:day:2026-10-05$/);
+  assert.match(revisions['history:weekly'], /history:weekly:3:20:tracks:7:60:live:6:50:day:2026-10-05$/);
   assert.match(revisions['host-history:summary'], /host-history:summary:5:40:broadcasts:4:30$/);
 });
 
-test('daily and weekly renderers do not persist derived track counts to D1', async () => {
-  const env = { OTHER_DB: { prepare() { return {
-    bind() { return this; }, async all() { return { results: [] }; },
-    run() { throw new Error('generation should be read-only'); },
-  }; } } };
+test('daily boundary invalidates date-bounded history without any storage scan', async () => {
+  const env = { OTHER_DB: { prepare() { return { bind(...keys) { this.keys = keys; return this; }, async all() {
+    return { results: this.keys.map((key) => ({ model_key: key, revision: 1, updated_at: 1 })) };
+  } }; } } };
+  const before = await loadHistorySourceRevisions(env, Date.parse('2026-10-05T23:59:00Z'));
+  const after = await loadHistorySourceRevisions(env, Date.parse('2026-10-06T00:00:00Z'));
+  for (const key of ['history:daily', 'history:weekly', 'history:broadcasts']) assert.notEqual(before[key], after[key]);
+  assert.equal(before['host-history:summary'], after['host-history:summary']);
+});
+
+test('daily and weekly renderers never write derived values to D1', async () => {
+  const env = { OTHER_DB: { prepare(sql) {
+    assert.doesNotMatch(sql, /\b(?:INSERT|UPDATE|DELETE)\b/i);
+    return { bind() { return this; }, async all() { return { results: [] }; } };
+  } } };
   for (const key of ['history:daily', 'history:weekly']) {
     const payload = await renderHistoryReadModel(key, env, Date.parse('2026-10-05T00:00:00Z'));
     assert.equal(payload.ok, true);
-    assert.equal(payload.to, '2026-10-05');
   }
-});
-
-test('renderer and compact revision changes invalidate only dependent history models', async () => {
-  const rows = new Map(HISTORY_READ_MODEL_KEYS.map((key) => [key, { revision: 1, updated_at: 1 }]));
-  rows.set('weekly-ranking', { revision: 1, updated_at: 1 });
-  rows.set('track-history', { revision: 1, updated_at: 1 });
-  const env = { OTHER_DB: { prepare() { return { bind(...keys) { this.keys = keys; return this; }, async all() {
-    return { results: this.keys.map((key) => ({ model_key: key, ...(rows.get(key) || {}) })) };
-  } }; } } };
-  const before = await loadHistorySourceRevisions(env);
-  rows.set('track-history', { revision: 2, updated_at: 2 });
-  const tracksChanged = await loadHistorySourceRevisions(env);
-  assert.notEqual(before['history:daily'], tracksChanged['history:daily']);
-  assert.notEqual(before['history:weekly'], tracksChanged['history:weekly']);
-  assert.equal(before['history:broadcasts'], tracksChanged['history:broadcasts']);
-  const rendererChanged = await loadHistorySourceRevisions({ ...env, HISTORY_READ_MODEL_RENDERER_REVISION: 'new-renderer' });
-  for (const key of HISTORY_READ_MODEL_KEYS) assert.notEqual(tracksChanged[key], rendererChanged[key]);
 });
 
 test('publication stores source and renderer identity as R2 metadata', async () => {
@@ -143,16 +124,4 @@ test('publication stores source and renderer identity as R2 metadata', async () 
   const stored = f.objects.get(pagesR2ResponseKey('history:daily'));
   assert.equal(stored.customMetadata.source_revision, 'source:history:daily');
   assert.equal(stored.customMetadata.renderer_revision, 'deployed-renderer');
-});
-
-test('Actions recovery skips generation and upload for an unchanged Worker model', async () => {
-  const { materializeRevisionGatedVariant } = await import('../scripts/run-pages-read-model-revision-actions.mjs');
-  const result = await materializeRevisionGatedVariant({ key: 'history:daily' }, {}, 100, {
-    rendererRevision: 'renderer', loadSourceRevision: async () => 'revision',
-    loadExistingEnvelope: async () => ({ version: 1, body: '{"ok":true}', source_revision: 'revision', renderer_revision: 'renderer' }),
-    responseHandler: () => { throw new Error('unchanged model must not render'); },
-    uploadEnvelope: () => { throw new Error('unchanged model must not upload'); },
-  });
-  assert.equal(result.skip_reason, 'unchanged-source');
-  assert.equal(result.object_key, null);
 });

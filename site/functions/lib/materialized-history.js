@@ -133,29 +133,6 @@ export async function loadPeriodTrackCounts(env, mode, from, to) {
   return new Map();
 }
 
-async function persistClosedPeriodTrackCounts(db, table, rows, trackCounts, mode, now) {
-  if (!db?.prepare || !trackCounts?.size) return 0;
-  const currentKey = currentPeriodKey(mode, now);
-  const statements = [];
-  for (const row of rows) {
-    const key = String(row?.period_key || '');
-    if (!key || key >= currentKey || isKnownMissingPeriod(mode, key) || finiteNumber(row?.distinct_tracks) != null) continue;
-    const count = finiteNumber(trackCounts.get(key));
-    if (count == null) continue;
-    statements.push(db.prepare(`UPDATE ${table}
-      SET distinct_tracks=?,updated_at=?
-      WHERE period_key=? AND distinct_tracks IS NULL`)
-      .bind(count, now, key));
-  }
-  if (!statements.length) return 0;
-  if (typeof db.batch === 'function') {
-    await db.batch(statements);
-  } else {
-    for (const statement of statements) await statement.run();
-  }
-  return statements.length;
-}
-
 export async function loadMaterializedSummary(env, mode, from, to, now = Date.now()) {
   if (!env?.OTHER_DB) throw new Error('OTHER_DB binding missing');
   const table = SUMMARY_TABLES[mode];
@@ -191,9 +168,6 @@ export async function loadMaterializedSummary(env, mode, from, to, now = Date.no
   const trackCounts = shouldLoadTrackCounts
     ? await loadPeriodTrackCounts(env, mode, from, to)
     : new Map();
-  if (env.HISTORY_READ_MODEL_READ_ONLY !== true) {
-    await persistClosedPeriodTrackCounts(env.OTHER_DB, table, rows, trackCounts, mode, now);
-  }
 
   const dailyCoverage = await loadSummaryDailyCoverage(env.OTHER_DB, rows, mode);
   const completed = applySummaryCompleteness(rows, mode, now, dailyCoverage);
@@ -201,9 +175,7 @@ export async function loadMaterializedSummary(env, mode, from, to, now = Date.no
     const key = String(row?.period_key || '');
     const calculated = finiteNumber(trackCounts.get(key));
     if (key === currentKey && calculated != null) return { ...row, distinct_tracks: calculated };
-    if (finiteNumber(row?.distinct_tracks) == null && calculated != null) {
-      return { ...row, distinct_tracks: calculated };
-    }
+    if (finiteNumber(row?.distinct_tracks) == null && calculated != null) return { ...row, distinct_tracks: calculated };
     return row;
   });
   return {
@@ -223,9 +195,7 @@ export async function loadMaterializedSummary(env, mode, from, to, now = Date.no
 export async function onRequestGet({ request, env }) {
   const url = new URL(request.url);
   const mode = String(url.searchParams.get('mode') || 'weekly').trim().toLowerCase();
-  if (!Object.hasOwn(SUMMARY_TABLES, mode)) {
-    return publicHistory({ request, env });
-  }
+  if (!Object.hasOwn(SUMMARY_TABLES, mode)) return publicHistory({ request, env });
 
   const fromParam = url.searchParams.get('from');
   const toParam = url.searchParams.get('to');

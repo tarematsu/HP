@@ -16,9 +16,10 @@ export function historyRendererRevision(env) {
   return String(env?.HISTORY_READ_MODEL_RENDERER_REVISION || HISTORY_RENDERER_REVISION);
 }
 
-export async function loadHistorySourceRevisions(env) {
+export async function loadHistorySourceRevisions(env, now = Date.now()) {
   const revisions = await loadReadModelRevisions(env?.OTHER_DB, SOURCE_REVISION_KEYS);
   const renderer = historyRendererRevision(env);
+  const day = new Date(now).toISOString().slice(0, 10);
   const tracks = readModelRevisionToken(revisions, TRACK_HISTORY_REVISION_KEY);
   const broadcasts = readModelRevisionToken(revisions, 'history:broadcasts');
   return Object.fromEntries(HISTORY_READ_MODEL_KEYS.map((key) => {
@@ -26,6 +27,7 @@ export async function loadHistorySourceRevisions(env) {
     if (key === 'history:daily' || key === 'history:weekly') revision += `:tracks:${tracks}`;
     if (key === 'history:weekly') revision += `:live:${readModelRevisionToken(revisions, WEEKLY_LIVE_REVISION_KEY)}`;
     if (key === 'host-history:summary') revision += `:broadcasts:${broadcasts}`;
+    if (key.startsWith('history:')) revision += `:day:${day}`;
     return [key, revision];
   }));
 }

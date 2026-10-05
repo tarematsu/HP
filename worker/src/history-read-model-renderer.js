@@ -7,9 +7,7 @@ export async function renderHistoryReadModel(key, env, now = Date.now()) {
   const to = new Date(now).toISOString().slice(0, 10);
   if (key === 'history:daily' || key === 'history:weekly') {
     const mode = key.slice('history:'.length);
-    const readOnlyEnv = Object.create(env);
-    readOnlyEnv.HISTORY_READ_MODEL_READ_ONLY = true;
-    const summary = await loadMaterializedSummary(readOnlyEnv, mode, from, to, now);
+    const summary = await loadMaterializedSummary(env, mode, from, to, now);
     return { ok: true, mode, from, to, timezone: 'UTC', ...summary };
   }
   if (key === 'history:broadcasts') {
