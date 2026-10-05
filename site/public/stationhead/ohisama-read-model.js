@@ -1,9 +1,9 @@
 // ohisama API adapter and capabilities.
-import { cached, fetchJson } from './data-client.js';
+import { fetchJson } from './data-client.js';
 import { normalizeCurrent, normalizedDaily, historyMode, normalizePlayedRows, normalizeLikes } from './normalize.js';
 
 export function ohisamaModel() {
-  const all = cached(({ signal, force }) => fetchJson('/api/hinata', { signal, force }));
+  const all = (options = {}) => fetchJson('/api/hinata', options);
   let selectedHistoryMode = 'daily';
   return {
     source: 'ohisama',
@@ -26,8 +26,7 @@ export function ohisamaModel() {
     async loadPlayedPeriod(from, to, options) {
       const payload = await all(options);
       const rows = Array.isArray(payload?.played_history) ? payload.played_history : [];
-      return rows
-        .filter((row) => String(row?.period_key || '') >= from && String(row?.period_key || '') <= to)
+      return rows.filter((row) => String(row?.period_key || '') >= from && String(row?.period_key || '') <= to)
         .flatMap((row) => normalizePlayedRows(row?.tracks));
     },
     async loadLikes(options) {

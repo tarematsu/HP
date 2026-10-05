@@ -1,9 +1,8 @@
 // nogizaka API adapter and capabilities.
-import { cached, fetchJson } from './data-client.js';
+import { fetchJson } from './data-client.js';
 import { historyMode, normalizeBroadcasts } from './normalize.js';
 
 export function nogizakaModel() {
-  const broadcasts = cached(({ signal, force }) => fetchJson('/api/nogizaka-listening-party', { signal, force }));
   let selectedHistoryMode = 'daily';
   return {
     source: 'nogizaka',
@@ -15,6 +14,6 @@ export function nogizakaModel() {
     async loadPlayedIndex() { return []; },
     async loadPlayedPeriod() { return []; },
     async loadLikes() { return []; },
-    async loadBroadcasts(options) { return normalizeBroadcasts(await broadcasts(options)); },
+    async loadBroadcasts(options) { return normalizeBroadcasts(await fetchJson('/api/nogizaka-listening-party', options)); },
   };
 }

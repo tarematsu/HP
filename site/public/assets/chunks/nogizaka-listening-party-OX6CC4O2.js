@@ -1,1 +1,0 @@
-import{b as i}from"./chunk-SR5QOIAS.js";import"./chunk-RU6EW4IO.js";import"./chunk-UALR5SBB.js";import"./chunk-WP355LHJ.js";import"./chunk-54YYUO5B.js";import"./chunk-AUI62JIT.js";import"./chunk-H4MRTWWR.js";import"./chunk-UYTSKFUP.js";function t(a={}){return i("nogizakaListeningPartyView",a)}export{t as loadNogizakaListeningPartyView};
