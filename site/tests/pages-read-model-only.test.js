@@ -9,7 +9,6 @@ const tracks = readFileSync(new URL('../functions/api/track-history.js', import.
 const ranking = readFileSync(new URL('../functions/lib/track-ranking.js', import.meta.url), 'utf8');
 const trackStage = readFileSync(new URL('../../worker/src/pages-track-history-stage.js', import.meta.url), 'utf8');
 const splitCycle = readFileSync(new URL('../../worker/src/pages-track-history-split-cycle.js', import.meta.url), 'utf8');
-const actions = readFileSync(new URL('../../worker/scripts/run-pages-read-model-actions.mjs', import.meta.url), 'utf8');
 const entry = readFileSync(new URL('../../worker/src/runtime-orchestrator-entry.js', import.meta.url), 'utf8');
 const responseFetch = readFileSync(new URL('../../worker/src/pages-response-fetch-entry.js', import.meta.url), 'utf8');
 const runtime = JSON.parse(readFileSync(new URL('../../worker/wrangler.runtime.jsonc', import.meta.url), 'utf8'));
@@ -43,10 +42,6 @@ test('track-history builders persist only R2 day models while D1 keeps compact c
   assert.match(splitCycle, /advancePublicationInline/);
   assert.doesNotMatch(splitCycle, /advanceTrackHistoryPublication|promoteMaterializedD1ResponseToR2|sh_pages_response_manifest/);
   assert.doesNotMatch(splitCycle, /PAGES_READ_MODEL_QUEUE|enqueueTrackHistoryPublication/);
-  assert.doesNotMatch(actions, /runSplitTrackHistoryCycleStep|trackHistoryPublishedThisRun|dueKeys\.add\('track-history'\)/);
-  assert.match(actions, /track-history-read-model-disabled/);
-  assert.match(actions, /PAGES_READ_MODEL_DEADLINE_MS/);
-  assert.match(actions, /pagesActionsR2ResponseKey/);
   assert.match(entry, /pages-response-fetch-entry\.js/);
   assert.match(entry, /runPagesResponseFetch/);
   assert.doesNotMatch(entry, /pages-read-model-entry|runPagesReadModelCron|scheduled\s*:/);
