@@ -54,7 +54,7 @@ test('TVer ads prioritize Skip and only use fullscreen recovery when Skip is una
   assert.ok(ad >= 0 && skip > ad && fullscreen > skip);
 });
 
-test('TVer fullscreen requests are scoped to the native episode bridge', () => {
+test('TVer fullscreen reuses trusted click activation before native bridge fallback', () => {
   assert.match(wrapper, /homepanel:youtube-fullscreen-key/);
   assert.match(wrapper, /sourceContains\(L"youtube\.com\/watch"\)/);
   assert.match(wrapper, /homepanel:tver-fullscreen-key/);
@@ -67,5 +67,7 @@ test('TVer fullscreen requests are scoped to the native episode bridge', () => {
   assert.match(tverVerify, /homepanel:tver-wake/);
   assert.match(tverVerify, /fullscreenCornerTapAt = 0/);
   assert.match(tverVerify, /__homePanelTverFullscreenControlGuard/);
-  assert.doesNotMatch(tverVerify, /requestFullscreen|webkitRequestFullscreen/);
+  assert.match(tverVerify, /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/);
+  assert.match(tverVerify, /request\.call\(target\)/);
+  assert.match(tverVerify, /window\.setTimeout/);
 });

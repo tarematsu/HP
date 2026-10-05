@@ -32,8 +32,8 @@ test('TVer corner tap retries until real browser fullscreen is observed', () => 
   assert.match(runtime, /document\.fullscreenElement/);
 });
 
-test('TVer post-click fallback preserves real fullscreen controls and escalates natively', () => {
-  assert.match(fullscreen, /document\.fullscreenElement/);
+test('TVer post-click fallback consumes trusted activation before native escalation', () => {
+  assert.match(fullscreen, /const isFullscreen = \(\) =>/);
   assert.match(fullscreen, /state\.fullscreenCornerTapAt = 0/);
   assert.match(fullscreen, /__homePanelTverFullscreenControlGuard/);
   assert.match(fullscreen, /aria-label\*="全画面"/);
@@ -43,10 +43,12 @@ test('TVer post-click fallback preserves real fullscreen controls and escalates 
   assert.match(fullscreen, /pointer-events:auto!important/);
   assert.match(fullscreen, /const fullscreenTapPending/);
   assert.match(fullscreen, /Date\.now\(\) - state\.fullscreenCornerTapAt <= 3000/);
-  assert.match(fullscreen, /if \(fullscreenTapPending\)/);
+  assert.match(fullscreen, /const fullscreenTarget = \(\) =>/);
+  assert.match(fullscreen, /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/);
+  assert.match(fullscreen, /request\.call\(target\)/);
+  assert.match(fullscreen, /window\.setTimeout\(\(\) => \{/);
   assert.match(fullscreen, /homepanel:tver-fullscreen-key/);
   assert.match(fullscreen, /homepanel:tver-wake/);
-  assert.doesNotMatch(fullscreen, /requestFullscreen|webkitRequestFullscreen|request\.call/);
 });
 
 test('natural TVer completion has no wall-clock safety cap', () => {
