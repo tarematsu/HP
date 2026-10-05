@@ -14,7 +14,6 @@ const STATIONHEAD_COLORS = Object.freeze({
 const STATIONHEAD_MISSING_RANGES = Object.freeze([
   Object.freeze({ from: '2026-01-26', to: '2026-09-14', label: '欠測' }),
 ]);
-let cachedStationhead = null;
 
 function dateKey(value) {
   const text = String(value || '').trim();
@@ -116,18 +115,9 @@ function stationheadModel() {
   return {
     source: 'stationhead',
     async load({ force = false } = {}) {
-      if (force) cachedStationhead = null;
-      if (!cachedStationhead) {
-        const to = new Date().toISOString().slice(0, 10);
-        const request = loadDashboardJson(`/api/history?mode=ranking&from=2024-06-01&to=${to}&scope=featured&limit=5000`, { force })
-          .then(normalizeStationheadLeaderboard)
-          .catch((error) => {
-            if (cachedStationhead === request) cachedStationhead = null;
-            throw error;
-          });
-        cachedStationhead = request;
-      }
-      return cachedStationhead;
+      const to = new Date().toISOString().slice(0, 10);
+      const payload = await loadDashboardJson(`/api/history?mode=ranking&from=2024-06-01&to=${to}&scope=featured&limit=5000`, { force });
+      return normalizeStationheadLeaderboard(payload);
     },
   };
 }

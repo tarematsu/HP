@@ -50,3 +50,29 @@ test('cancelling one consumer preserves another consumer and the shared snapshot
     assert.equal(calls, 1);
   } finally { globalThis.fetch = original; }
 });
+
+test('settled snapshots expire without duplicating pending reads', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalNow = Date.now;
+  let now = 100;
+  let calls = 0;
+  let finish;
+  Date.now = () => now;
+  globalThis.fetch = () => { calls++; return new Promise(resolve => { finish = resolve; }); };
+  try {
+    const { loadDashboardJson } = await client();
+    const a = loadDashboardJson('/freshness');
+    now += 120_000;
+    const b = loadDashboardJson('/freshness');
+    assert.equal(calls, 1);
+    finish(response({ ok: true, revision: 1 }));
+    await Promise.all([a, b]);
+    now += 59_999;
+    assert.equal((await loadDashboardJson('/freshness')).revision, 1);
+    now++;
+    const refreshed = loadDashboardJson('/freshness');
+    assert.equal(calls, 2);
+    finish(response({ ok: true, revision: 2 }));
+    assert.equal((await refreshed).revision, 2);
+  } finally { globalThis.fetch = originalFetch; Date.now = originalNow; }
+});

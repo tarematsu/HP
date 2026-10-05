@@ -11,12 +11,11 @@ function fixture({ published = null, importStatus = 'imported', publishFailure =
       get: async key => key === sourceKey ? { json: async () => artifact } : published ? { json: async () => published } : null,
       put: async (_key, value) => { calls.push(['publish', JSON.parse(value)]); if (publishFailure) throw new Error('R2 unavailable'); },
     },
-    OTHER_DB: { prepare: () => ({ first: async () => ({ payload_json: '{}' }) }) },
+    OTHER_DB: { prepare: () => { throw new Error('must not reread generated model'); } },
   };
   const dependencies = {
     importArtifact: async () => { calls.push(['import']); return { status: importStatus }; },
-    materialize: async (_db, _now, options) => { calls.push(['materialize', options]); },
-    loadModel: async () => { calls.push(['load']); return { rows: [{ rank: 1 }] }; },
+    materialize: async (_db, _now, options) => { calls.push(['materialize', options]); return { model: { rows: [{ rank: 1 }] } }; },
   };
   return { env, dependencies, calls };
 }
@@ -24,9 +23,9 @@ test('receipt pipeline imports, forces same-week model regeneration, then publis
   const f = fixture();
   const result = await refreshStationheadLeaderboard(f.env, message, 200, f.dependencies);
   assert.equal(result.status, 'published');
-  assert.deepEqual(f.calls.map(c => c[0]), ['import', 'materialize', 'load', 'publish']);
-  assert.deepEqual(f.calls[1][1], { force: true });
-  assert.equal(f.calls[3][1].source_digest, 'current');
+  assert.deepEqual(f.calls.map(c => c[0]), ['import', 'materialize', 'publish']);
+  assert.deepEqual(f.calls[1][1], { force: true, initialize: false, includeModel: true });
+  assert.equal(f.calls[2][1].source_digest, 'current');
 });
 test('retry after committed import still regenerates and republishes', async () => {
   const f = fixture({ importStatus: 'unchanged' });

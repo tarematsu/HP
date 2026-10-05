@@ -230,8 +230,8 @@ async function runWriteScript(db, statements) {
   return null;
 }
 
-export async function materializeWeeklyRankingReadModel(db, now = Date.now(), { force = false } = {}) {
-  await ensureReadModelTable(db);
+export async function materializeWeeklyRankingReadModel(db, now = Date.now(), { force = false, initialize = true, includeModel = false } = {}) {
+  if (initialize) await ensureReadModelTable(db);
   const [rankingResult, fandomResult, weeklyResult, existing] = await Promise.all([
     db.prepare(`SELECT ranking_date,observed_at,ranking_type,rank,
       channel_name AS host_name,channel_alias AS host_alias,
@@ -247,7 +247,7 @@ export async function materializeWeeklyRankingReadModel(db, now = Date.now(), { 
       member_start,member_end,member_growth,likes_max,distinct_tracks,primary_host,
       quality_score,quality_flags
       FROM sh_weekly_summary ORDER BY period_key ASC`).all(),
-    db.prepare('SELECT source_max_ranking_date,payload_json,refreshed_at FROM sh_weekly_ranking_read_model WHERE id=1').first(),
+    force ? null : db.prepare('SELECT source_max_ranking_date,payload_json,refreshed_at FROM sh_weekly_ranking_read_model WHERE id=1').first(),
   ]);
 
   const model = buildWeeklyRankingReadModel(
@@ -306,6 +306,7 @@ export async function materializeWeeklyRankingReadModel(db, now = Date.now(), { 
     completed_row_count: model.completed_rows.length,
     payload_bytes: new TextEncoder().encode(serialized).length,
     chunk_count: chunks.length,
+    ...(includeModel ? { model } : {}),
   };
 }
 

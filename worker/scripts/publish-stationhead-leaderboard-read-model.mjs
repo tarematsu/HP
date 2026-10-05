@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import { loadWeeklyRankingReadModel } from '../../site/functions/lib/weekly-ranking-read-model.js';
+import { leaderboardPublication } from '../src/leaderboard-publication.js';
 import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 
@@ -11,7 +12,6 @@ const wranglerScript = resolve(workerRoot, 'node_modules/wrangler/bin/wrangler.j
 const databaseName = process.env.OTHER_DATABASE_NAME || 'stationhead-other';
 const responseBucket = process.env.PAGES_RESPONSE_BUCKET || 'sh-pages-responses';
 const MODEL_KEY = 'leaderboard';
-const CADENCE_SECONDS = 7 * 24 * 60 * 60;
 const READ_MODEL_SQL = `SELECT payload_json,source_max_ranking_date,refreshed_at
 FROM sh_weekly_ranking_read_model
 WHERE id=1`;
@@ -62,17 +62,7 @@ export async function publishStationheadLeaderboardReadModel({
   const updatedAt = Number(stored.refreshed_at) || Number(model.refreshed_at) || Date.now();
   const body = JSON.stringify(model);
   const key = pagesActionsR2ResponseKey(MODEL_KEY);
-  upload(key, {
-    version: 1,
-    updated_at: updatedAt,
-    cadence_seconds: CADENCE_SECONDS,
-    status: 200,
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-      'cache-control': 'public, max-age=300, s-maxage=900, stale-while-revalidate=3600',
-    },
-    body,
-  });
+  await upload(key, leaderboardPublication(model, updatedAt));
 
   return {
     ok: true,

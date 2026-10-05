@@ -19,7 +19,6 @@ const GROUP_COLORS = Object.freeze({
   hinatazaka46: '#9ecff3',
 });
 const FAN_DASHES = Object.freeze([[10, 6], [2, 5], [14, 4, 3, 4]]);
-let cachedPayload = null;
 
 function validDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
@@ -124,14 +123,7 @@ export function normalizeStationheadFollowers(payload = {}) {
 }
 
 async function stationheadPayload({ force = false } = {}) {
-  if (force) cachedPayload = null;
-  if (!cachedPayload) {
-    cachedPayload = loadDashboardJson('/api/followers', { force }).then(normalizeStationheadFollowers).catch((error) => {
-      cachedPayload = null;
-      throw error;
-    });
-  }
-  return cachedPayload;
+  return normalizeStationheadFollowers(await loadDashboardJson('/api/followers', { force }));
 }
 
 const model = { source: 'stationhead', load: stationheadPayload };

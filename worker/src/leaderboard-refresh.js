@@ -1,6 +1,6 @@
 import { importLeaderboardArtifact, STATIONHEAD_LEADERBOARD_LATEST_KEY } from './stationhead-leaderboard-worker.js';
 import { materializeWeeklyRankingReadModel } from './weekly-ranking-materializer.js';
-import { loadWeeklyRankingReadModel } from '../../site/functions/lib/weekly-ranking-read-model.js';
+import { leaderboardPublication } from './leaderboard-publication.js';
 import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
 
 const MODEL_KEY = pagesActionsR2ResponseKey('leaderboard');
@@ -18,16 +18,16 @@ export async function refreshStationheadLeaderboard(env, message = {}, now = Dat
   if (!['imported', 'unchanged'].includes(imported.status)) return imported;
   // Force regeneration even for corrections within the same ranking week, and
   // after a retry where D1 import succeeded but publication failed.
-  await (dependencies.materialize || materializeWeeklyRankingReadModel)(env.OTHER_DB, now, { force: true });
-  const stored = await env.OTHER_DB.prepare('SELECT payload_json,source_max_ranking_date,refreshed_at FROM sh_weekly_ranking_read_model WHERE id=1').first();
-  const model = await (dependencies.loadModel || loadWeeklyRankingReadModel)(env.OTHER_DB, stored);
+  const materialized = await (dependencies.materialize || materializeWeeklyRankingReadModel)(env.OTHER_DB, now, {
+    force: true, initialize: false, includeModel: true,
+  });
+  // Publish the model already in memory; avoid rereading its D1 pointer/chunks.
+  const model = materialized?.model;
   if (!model) throw new Error('weekly leaderboard model unavailable after materialization');
-  await env.PAGES_RESPONSE_R2.put(MODEL_KEY, JSON.stringify({
-    version: 1, updated_at: now, source_digest: artifact.digest,
-    source_received_at: Number(artifact.received_at || 0), cadence_seconds: 7 * 86400,
-    status: 200, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=300, s-maxage=900, stale-while-revalidate=3600' },
-    body: JSON.stringify(model),
-  }), { httpMetadata: { contentType: 'application/json; charset=utf-8' } });
+  await env.PAGES_RESPONSE_R2.put(MODEL_KEY, JSON.stringify(leaderboardPublication(model, now, {
+    source_digest: artifact.digest,
+    source_received_at: Number(artifact.received_at || 0),
+  })), { httpMetadata: { contentType: 'application/json; charset=utf-8' } });
   return { status: 'published', imported: imported.status, digest: artifact.digest, updated_at: now };
 }
 
