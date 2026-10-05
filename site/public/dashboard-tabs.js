@@ -1,167 +1,64 @@
 import { ensureDashboardSectionStyles } from './dashboard-styles.js?v=20261005.2';
-const HISTORY_MODES = new Set(['daily', 'weekly', 'monthly', 'broadcasts']);
+import { bindRovingTabs, syncRovingTabs } from './dashboard-roving-tabs.js';
+import {
+  HISTORY_MODES,
+  NAVIGATION,
+  VIEW_MODES,
+  navigationForMode,
+  sourceById,
+} from './dashboard-navigation-config.js';
+import { loadDashboardModuleOnce as loadOnce, showDashboardRuntimeError as showRuntimeError } from './dashboard-view-loader.js';
+
 const HISTORY_VIEW = {
   viewId: 'historyView',
   shell: () => import('/history-shell.js?v=20260930.1'),
 };
+const STATIONHEAD_PANELS = Object.freeze({
+  current: 'current',
+  'played-tracks': 'played-tracks',
+  likes: 'likes',
+});
 const LAZY_VIEWS = {
   hinata: {
-    viewId: 'hinataView',
-    shell: () => import('/hinata-shell.js?v=20261001.2'),
-    runtime: () => import('/hinata.js?v=20260930.5'),
-    loadExport: 'loadHinataView',
-    noticeId: 'hinataNotice',
-    errorLabel: 'hinata',
-    errorMessage: '日向坂データの初期化に失敗しました。再読み込みしてください。',
+    viewId: 'hinataView', shell: () => import('/hinata-shell.js?v=20261001.2'), runtime: () => import('/hinata.js?v=20260930.5'), loadExport: 'loadHinataView', noticeId: 'hinataNotice', errorLabel: 'hinata', errorMessage: '日向坂データの初期化に失敗しました。再読み込みしてください。',
   },
   ranking: {
-    viewId: 'leaderboardView',
-    shell: () => import('/leaderboard-shell.js?v=20261005.2'),
-    runtime: () => import('/leaderboard.js?v=20261005.2'),
-    loadExport: 'loadLeaderboardView',
-    loadArgs: { source: 'stationhead' },
-    noticeId: 'leaderboardNotice',
-    errorLabel: 'stationhead leaderboard',
-    errorMessage: 'リーダーボードデータの初期化に失敗しました。再読み込みしてください。',
+    viewId: 'leaderboardView', shell: () => import('/leaderboard-shell.js?v=20261005.2'), runtime: () => import('/leaderboard.js?v=20261005.2'), loadExport: 'loadLeaderboardView', loadArgs: { source: 'stationhead' }, noticeId: 'leaderboardNotice', errorLabel: 'stationhead leaderboard', errorMessage: 'リーダーボードデータの初期化に失敗しました。再読み込みしてください。',
   },
   followers: {
-    viewId: 'followersView',
-    shell: () => import('/followers-shell.js?v=20261005.2'),
-    runtime: () => import('/followers.js?v=20261005.2'),
-    loadExport: 'loadFollowersView',
-    loadArgs: { source: 'stationhead' },
-    noticeId: 'followersNotice',
-    errorLabel: 'followers',
-    errorMessage: 'フォロワーデータの初期化に失敗しました。再読み込みしてください。',
-  },
-  'played-tracks': {
-    viewId: 'playedTracksView',
-    shell: () => import('/played-tracks-shell.js?v=20260928.1'),
-    runtime: () => import('/played-tracks.js?v=20260927.2'),
-    noticeId: 'playedTracksNotice',
-    errorLabel: 'played tracks',
-    errorMessage: '再生履歴データの初期化に失敗しました。再読み込みしてください。',
+    viewId: 'followersView', shell: () => import('/followers-shell.js?v=20261005.2'), runtime: () => import('/followers.js?v=20261005.2'), loadExport: 'loadFollowersView', loadArgs: { source: 'stationhead' }, noticeId: 'followersNotice', errorLabel: 'followers', errorMessage: 'フォロワーデータの初期化に失敗しました。再読み込みしてください。',
   },
   spotify: {
-    viewId: 'spotifyView',
-    shell: () => import('/spotify-shell.js?v=20261004.1'),
-    runtime: () => import('/spotify.js?v=20261004.1'),
-    loadExport: 'loadSpotifyView',
-    noticeId: 'spotifyNotice',
-    errorLabel: 'spotify',
-    errorMessage: 'Spotify再生数の初期化に失敗しました。再読み込みしてください。',
+    viewId: 'spotifyView', shell: () => import('/spotify-shell.js?v=20261004.1'), runtime: () => import('/spotify.js?v=20261004.1'), loadExport: 'loadSpotifyView', noticeId: 'spotifyNotice', errorLabel: 'spotify', errorMessage: 'Spotify再生数の初期化に失敗しました。再読み込みしてください。',
   },
   'amazon-music': {
-    viewId: 'amazonMusicView',
-    shell: () => import('/amazon-music-shell.js?v=20261004.1'),
-    runtime: () => import('/amazon-music.js?v=20261004.1'),
-    loadExport: 'loadAmazonMusicView',
-    noticeId: 'amazonMusicNotice',
-    errorLabel: 'amazon music',
-    errorMessage: 'Amazon Musicデータの初期化に失敗しました。再読み込みしてください。',
+    viewId: 'amazonMusicView', shell: () => import('/amazon-music-shell.js?v=20261004.1'), runtime: () => import('/amazon-music.js?v=20261004.1'), loadExport: 'loadAmazonMusicView', noticeId: 'amazonMusicNotice', errorLabel: 'amazon music', errorMessage: 'Amazon Musicデータの初期化に失敗しました。再読み込みしてください。',
   },
   'apple-music': {
-    viewId: 'appleMusicView',
-    shell: () => import('/apple-music-shell.js?v=20261004.1'),
-    runtime: () => import('/apple-music.js?v=20261001.1'),
-    loadExport: 'loadAppleMusicView',
-    noticeId: 'appleMusicNotice',
-    errorLabel: 'apple music',
-    errorMessage: 'Apple Musicデータの初期化に失敗しました。再読み込みしてください。',
+    viewId: 'appleMusicView', shell: () => import('/apple-music-shell.js?v=20261004.1'), runtime: () => import('/apple-music.js?v=20261001.1'), loadExport: 'loadAppleMusicView', noticeId: 'appleMusicNotice', errorLabel: 'apple music', errorMessage: 'Apple Musicデータの初期化に失敗しました。再読み込みしてください。',
   },
   'youtube-music': {
-    viewId: 'youtubeMusicView',
-    shell: () => import('/youtube-music-shell.js?v=20261003.4'),
-    runtime: () => import('/youtube-music.js?v=20261004.2'),
-    loadExport: 'loadYoutubeMusicView',
-    noticeId: 'youtubeMusicNotice',
-    errorLabel: 'youtube music',
-    errorMessage: 'YouTube Musicデータの初期化に失敗しました。再読み込みしてください。',
+    viewId: 'youtubeMusicView', shell: () => import('/youtube-music-shell.js?v=20261003.4'), runtime: () => import('/youtube-music.js?v=20261004.2'), loadExport: 'loadYoutubeMusicView', noticeId: 'youtubeMusicNotice', errorLabel: 'youtube music', errorMessage: 'YouTube Musicデータの初期化に失敗しました。再読み込みしてください。',
   },
   kkbox: {
-    viewId: 'kkboxView',
-    shell: () => import('/kkbox-shell.js?v=20261004.1'),
-    runtime: () => import('/kkbox.js?v=20261004.1'),
-    loadExport: 'loadKkboxView',
-    noticeId: 'kkboxNotice',
-    errorLabel: 'kkbox',
-    errorMessage: 'KKBOXデータの初期化に失敗しました。再読み込みしてください。',
+    viewId: 'kkboxView', shell: () => import('/kkbox-shell.js?v=20261004.1'), runtime: () => import('/kkbox.js?v=20261004.1'), loadExport: 'loadKkboxView', noticeId: 'kkboxNotice', errorLabel: 'kkbox', errorMessage: 'KKBOXデータの初期化に失敗しました。再読み込みしてください。',
   },
   qq_music: {
-    viewId: 'qqMusicView',
-    shell: () => import('/qq-music-shell.js?v=20261004.1'),
-    runtime: () => import('/qq-music.js?v=20261004.1'),
-    loadExport: 'loadQqMusicView',
-    noticeId: 'qqMusicNotice',
-    errorLabel: 'qq music',
-    errorMessage: 'QQ音乐データの初期化に失敗しました。再読み込みしてください。',
+    viewId: 'qqMusicView', shell: () => import('/qq-music-shell.js?v=20261004.1'), runtime: () => import('/qq-music.js?v=20261004.1'), loadExport: 'loadQqMusicView', noticeId: 'qqMusicNotice', errorLabel: 'qq music', errorMessage: 'QQ音乐データの初期化に失敗しました。再読み込みしてください。',
   },
   kugou_music: {
-    viewId: 'kugouMusicView',
-    shell: () => import('/kugou-music-shell.js?v=20261004.1'),
-    runtime: () => import('/kugou-music.js?v=20261004.1'),
-    loadExport: 'loadKugouMusicView',
-    noticeId: 'kugouMusicNotice',
-    errorLabel: 'kugou music',
-    errorMessage: '酷狗音乐データの初期化に失敗しました。再読み込みしてください。',
+    viewId: 'kugouMusicView', shell: () => import('/kugou-music-shell.js?v=20261004.1'), runtime: () => import('/kugou-music.js?v=20261004.1'), loadExport: 'loadKugouMusicView', noticeId: 'kugouMusicNotice', errorLabel: 'kugou music', errorMessage: '酷狗音乐データの初期化に失敗しました。再読み込みしてください。',
   },
   nogizaka: {
-    viewId: 'nogizakaListeningPartyView',
-    shell: () => import('/nogizaka-listening-party-shell.js?v=20261003.1'),
-    runtime: () => import('/nogizaka-listening-party.js?v=20260930.1'),
-    loadExport: 'loadNogizakaListeningPartyView',
-    noticeId: 'nogizakaListeningPartyNotice',
-    errorLabel: 'nogizaka listening party',
-    errorMessage: '乃木坂公式リスパデータの初期化に失敗しました。再読み込みしてください。',
-  },
-  likes: {
-    viewId: 'likesView',
-    shell: () => import('/likes-shell.js?v=20260930.1'),
-    runtime: () => import('/history/history-likes.js?v=20260930.1'),
-    noticeId: 'likesNotice',
-    errorLabel: 'likes',
-    errorMessage: 'いいねデータの初期化に失敗しました。再読み込みしてください。',
+    viewId: 'nogizakaListeningPartyView', shell: () => import('/nogizaka-listening-party-shell.js?v=20261003.1'), runtime: () => import('/nogizaka-listening-party.js?v=20260930.1'), loadExport: 'loadNogizakaListeningPartyView', noticeId: 'nogizakaListeningPartyNotice', errorLabel: 'nogizaka listening party', errorMessage: '乃木坂公式リスパデータの初期化に失敗しました。再読み込みしてください。',
   },
 };
 
-const NAVIGATION = [
-  {
-    id: 'stationhead',
-    sources: [
-      { id: 'buddies', label: 'Buddies', defaultMode: 'current', modes: ['current', 'daily', 'weekly', 'monthly', 'played-tracks', 'likes', 'broadcasts'] },
-      { id: 'hinata', label: 'Ohisama', defaultMode: 'hinata', modes: ['hinata'] },
-      { id: 'nogizaka', label: 'Nogizaka', defaultMode: 'nogizaka', modes: ['nogizaka'] },
-      { id: 'ranking', label: 'リーダーボード', defaultMode: 'ranking', modes: ['ranking'] },
-      { id: 'followers', label: 'フォロワー', defaultMode: 'followers', modes: ['followers'] },
-    ],
-  },
-  {
-    id: 'subscriptions',
-    sources: [
-      { id: 'spotify', label: 'Spotify', defaultMode: 'spotify', modes: ['spotify'] },
-      { id: 'apple-music', label: 'Apple Music', defaultMode: 'apple-music', modes: ['apple-music'] },
-      { id: 'amazon-music', label: 'Amazon Music', defaultMode: 'amazon-music', modes: ['amazon-music'] },
-      { id: 'youtube-music', label: 'YouTube Music', defaultMode: 'youtube-music', modes: ['youtube-music'] },
-      { id: 'kkbox', label: '🇹🇼KKBOX', defaultMode: 'kkbox', modes: ['kkbox'] },
-      { id: 'qq_music', label: '🇨🇳QQ音乐', defaultMode: 'qq_music', modes: ['qq_music'] },
-      { id: 'kugou_music', label: '🇨🇳酷狗音乐', defaultMode: 'kugou_music', modes: ['kugou_music'] },
-    ],
-  },
-];
-const MODE_NAVIGATION = new Map();
-for (const section of NAVIGATION) {
-  for (const source of section.sources) {
-    for (const mode of source.modes) MODE_NAVIGATION.set(mode, { section, source });
-  }
-}
-const VIEW_MODES = new Set(['current', ...HISTORY_MODES, ...Object.keys(LAZY_VIEWS)]);
-const VIEW_IDS = ['currentView', 'historyView', ...Object.values(LAZY_VIEWS).map(({ viewId }) => viewId)];
-
-const tabs = document.getElementById('modeTabs');
+const VIEW_IDS = [...new Set(['currentView', HISTORY_VIEW.viewId, ...Object.values(LAZY_VIEWS).map(({ viewId }) => viewId)])];
 const sectionTabs = document.getElementById('sectionTabs');
 const sourceTabs = document.getElementById('sourceTabs');
+const functionTabs = document.getElementById('functionTabs');
 const skipLink = document.querySelector('.skip-link');
-const modulePromises = new Map();
 const lastSourceBySection = new Map(NAVIGATION.map((section) => [section.id, section.sources[0]?.id || '']));
 const lastModeBySource = new Map();
 let historyRuntimeMode = null;
@@ -170,10 +67,6 @@ let initialRouteReady = false;
 
 for (const section of NAVIGATION) {
   for (const source of section.sources) lastModeBySource.set(source.id, source.defaultMode);
-}
-
-function navigationForMode(mode) {
-  return MODE_NAVIGATION.get(mode) || MODE_NAVIGATION.get('current');
 }
 
 function ensureModeStyles(mode) {
@@ -192,12 +85,23 @@ function markRouteReady() {
   window.dispatchEvent(new Event('dashboard:route-ready'));
 }
 
-function routeModeForButton(button) {
-  return button?.dataset.mode || button?.dataset.view || '';
-}
-
-function visibleTabMode(mode) {
-  return mode === 'weekly' || mode === 'monthly' ? 'daily' : mode;
+function renderFunctionTabs(source, mode) {
+  if (!functionTabs) return;
+  functionTabs.replaceChildren();
+  const items = source?.functions || [];
+  functionTabs.hidden = items.length <= 1;
+  if (items.length <= 1) return;
+  for (const item of items) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.mode = item.mode;
+    button.textContent = item.label;
+    const selected = item.mode === mode;
+    button.classList.toggle('active', selected);
+    if (selected) button.setAttribute('aria-current', 'page');
+    functionTabs.append(button);
+  }
+  syncRovingTabs(functionTabs, functionTabs.querySelector('.active'));
 }
 
 function renderSourceTabs(section, activeSource) {
@@ -216,6 +120,8 @@ function renderSourceTabs(section, activeSource) {
   sourceTabs.classList.toggle('is-multiline', section.id === 'subscriptions');
   sourceTabs.replaceChildren(fragment);
   sourceTabs.hidden = false;
+  syncRovingTabs(sourceTabs, sourceTabs.querySelector('.active'));
+
   let select = document.getElementById('sourceSelect');
   if (!select) {
     const label = document.createElement('label');
@@ -240,11 +146,6 @@ function renderSourceTabs(section, activeSource) {
   }));
 }
 
-function syncModeTabs(source) {
-  if (!tabs) return;
-  tabs.hidden = Boolean(sectionTabs && sourceTabs) && source.id !== 'buddies';
-}
-
 function syncNavigation(mode) {
   if (!sectionTabs || !sourceTabs) return;
   const navigation = navigationForMode(mode);
@@ -257,19 +158,9 @@ function syncNavigation(mode) {
     button.classList.toggle('active', selected);
     button.setAttribute('aria-pressed', String(selected));
   });
+  syncRovingTabs(sectionTabs, sectionTabs.querySelector('.active'));
   renderSourceTabs(section, source);
-  syncModeTabs(source);
-}
-
-function updateTabs(mode) {
-  const selectedMode = visibleTabMode(mode);
-  tabs?.querySelectorAll('button').forEach((button) => {
-    const selected = routeModeForButton(button) === selectedMode;
-    button.classList.toggle('active', selected);
-    if (selected) button.setAttribute('aria-current', 'page');
-    else button.removeAttribute('aria-current');
-  });
-  syncNavigation(mode);
+  renderFunctionTabs(source, mode);
 }
 
 function updateLocation(mode, { replace = false } = {}) {
@@ -288,59 +179,38 @@ function showOnly(view) {
   }
 }
 
-function loadOnce(key, importer) {
-  if (!modulePromises.has(key)) {
-    const promise = importer().catch((error) => {
-      modulePromises.delete(key);
-      throw error;
-    });
-    modulePromises.set(key, promise);
-  }
-  return modulePromises.get(key);
-}
-
 function setRoute(mode, view, { updateUrl = true, replaceUrl = false } = {}) {
   activeMode = mode;
   document.getElementById('routeError')?.remove();
   showOnly(view);
-  updateTabs(mode);
+  syncNavigation(mode);
   if (updateUrl) updateLocation(mode, { replace: replaceUrl });
 }
 
-async function showCurrent(options = {}) {
-  setRoute('current', null, options);
+async function showStationheadPanel(mode, options = {}) {
+  const panel = STATIONHEAD_PANELS[mode];
+  if (!panel) return;
+  setRoute(mode, null, options);
   try {
-    await loadOnce('current:shell', () => import('/current-shell.js?v=20261005.2'));
-    if (activeMode !== 'current') return;
-    showOnly(document.getElementById('currentView'));
+    await Promise.all([
+      ensureModeStyles(mode),
+      loadOnce('current:shell', () => import('/current-shell.js?v=20261005.2')),
+    ]);
+    if (activeMode !== mode) return;
+    const view = document.getElementById('currentView');
+    showOnly(view);
     markRouteReady();
-    const runtime = await loadOnce('current:runtime', () => import('/stationhead-channel.js?v=20261005.2'));
-    if (activeMode === 'current') await runtime.loadStationheadChannelView('currentView');
+    const runtime = await loadOnce('current:runtime', () => import('/stationhead-channel.js?v=20261005.4'));
+    if (activeMode !== mode) return;
+    await runtime.selectStationheadChannelSection?.(view, panel);
+    if (activeMode === mode) await runtime.loadStationheadChannelView(view);
   } catch (error) {
-    if (activeMode !== 'current') return;
+    if (activeMode !== mode) return;
     markRouteReady();
-    console.error('Stationhead channel runtime failed to start', error);
-    const notice = document.querySelector('#currentView [data-role="notice"]');
-    if (notice) { notice.textContent = '画面の初期化に失敗しました。再読み込みしてください。'; notice.hidden = false; }
-    else showRuntimeError({ errorLabel: 'current', errorMessage: '画面の初期化に失敗しました。再読み込みしてください。' }, error);
+    showRuntimeError({ errorLabel: mode, errorMessage: '画面の初期化に失敗しました。再読み込みしてください。' }, error);
+  } finally {
+    releaseUnexpectedSkipLinkFocus();
   }
-}
-
-function showRuntimeError(config, error) {
-  console.error(`${config.errorLabel} runtime failed to start`, error);
-  const notice = document.getElementById(config.noticeId);
-  if (!notice) {
-    const error = document.createElement('p');
-    error.id = 'routeError';
-    error.className = 'notice error';
-    error.setAttribute('role', 'alert');
-    error.textContent = config.errorMessage;
-    document.querySelector('.dashboard-header')?.after(error);
-    return;
-  }
-  notice.textContent = config.errorMessage;
-  notice.classList.add('error');
-  notice.hidden = false;
 }
 
 async function showLazyView(mode, options = {}) {
@@ -348,10 +218,7 @@ async function showLazyView(mode, options = {}) {
   if (!config) return;
   setRoute(mode, null, options);
   try {
-    await Promise.all([
-      ensureModeStyles(mode),
-      loadOnce(`${mode}:shell`, config.shell),
-    ]);
+    await Promise.all([ensureModeStyles(mode), loadOnce(`${mode}:shell`, config.shell)]);
     if (activeMode !== mode) return;
     showOnly(document.getElementById(config.viewId));
     markRouteReady();
@@ -369,15 +236,12 @@ async function showLazyView(mode, options = {}) {
 
 async function showHistory(mode, { updateUrl = true, replaceUrl = false, syncRuntime = true } = {}) {
   if (!HISTORY_MODES.has(mode)) {
-    showCurrent({ updateUrl, replaceUrl });
+    void showStationheadPanel('current', { updateUrl, replaceUrl });
     return;
   }
   setRoute(mode, null, { updateUrl, replaceUrl });
   try {
-    await Promise.all([
-      ensureModeStyles(mode),
-      loadOnce('history:shell', HISTORY_VIEW.shell),
-    ]);
+    await Promise.all([ensureModeStyles(mode), loadOnce('history:shell', HISTORY_VIEW.shell)]);
     if (activeMode !== mode) return;
     if (mode === 'broadcasts') {
       await loadOnce('first-week:shell', () => import('/first-week-comparison-shell.js?v=20261002.2'));
@@ -386,9 +250,7 @@ async function showHistory(mode, { updateUrl = true, replaceUrl = false, syncRun
     }
     await loadOnce('history:runtime', () => import('/history/history-main.js?v=20261002.4'));
     if (activeMode !== mode) return;
-    if (syncRuntime && historyRuntimeMode !== mode) {
-      window.dispatchEvent(new CustomEvent('history:select-mode', { detail: { mode } }));
-    }
+    if (syncRuntime && historyRuntimeMode !== mode) window.dispatchEvent(new CustomEvent('history:select-mode', { detail: { mode } }));
     if (activeMode !== mode) return;
     historyRuntimeMode = mode;
     showOnly(document.getElementById(HISTORY_VIEW.viewId));
@@ -398,11 +260,7 @@ async function showHistory(mode, { updateUrl = true, replaceUrl = false, syncRun
     historyRuntimeMode = null;
     showOnly(document.getElementById(HISTORY_VIEW.viewId));
     markRouteReady();
-    showRuntimeError({
-      noticeId: 'notice',
-      errorLabel: 'history',
-      errorMessage: '過去データの初期化に失敗しました。再読み込みしてください。',
-    }, error);
+    showRuntimeError({ noticeId: 'notice', errorLabel: 'history', errorMessage: '過去データの初期化に失敗しました。再読み込みしてください。' }, error);
   } finally {
     releaseUnexpectedSkipLinkFocus();
   }
@@ -418,7 +276,7 @@ function modeFromLocation() {
 }
 
 function showMode(mode, options = {}) {
-  if (mode === 'current') showCurrent(options);
+  if (STATIONHEAD_PANELS[mode]) void showStationheadPanel(mode, options);
   else if (HISTORY_MODES.has(mode)) void showHistory(mode, options);
   else void showLazyView(mode, options);
 }
@@ -426,14 +284,7 @@ function showMode(mode, options = {}) {
 function activateMode(mode) {
   const targetMode = String(mode || '');
   if (!VIEW_MODES.has(targetMode)) return;
-  const buttonMode = visibleTabMode(targetMode);
-  const button = [...(tabs?.querySelectorAll('button') || [])].find((candidate) => routeModeForButton(candidate) === buttonMode);
-  if (button && targetMode === buttonMode) button.click();
-  else showMode(targetMode);
-}
-
-function sourceById(section, sourceId) {
-  return section?.sources.find((source) => source.id === sourceId) || section?.sources[0] || null;
+  showMode(targetMode);
 }
 
 function syncFromLocation() {
@@ -449,24 +300,21 @@ sectionTabs?.addEventListener('click', (event) => {
   const source = sourceById(section, lastSourceBySection.get(section.id));
   if (source) activateMode(lastModeBySource.get(source.id) || source.defaultMode);
 });
-
 sourceTabs?.addEventListener('click', (event) => {
   const button = event.target.closest('button[data-source]');
   if (!button || !sourceTabs.contains(button)) return;
   const source = sourceById(navigationForMode(activeMode)?.section, button.dataset.source);
   if (source) activateMode(lastModeBySource.get(source.id) || source.defaultMode);
 });
+functionTabs?.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-mode]');
+  if (!button || !functionTabs.contains(button)) return;
+  activateMode(button.dataset.mode);
+});
 
-tabs?.addEventListener('click', (event) => {
-  const button = event.target.closest('button');
-  if (!button || !tabs.contains(button)) return;
-  const mode = routeModeForButton(button);
-  if (!VIEW_MODES.has(mode)) return;
-  event.preventDefault();
-  if (HISTORY_MODES.has(mode)) void showHistory(mode, { syncRuntime: false });
-  else showMode(mode);
-}, { capture: true });
-
+bindRovingTabs(sectionTabs, (button) => button.click());
+bindRovingTabs(sourceTabs, (button) => button.click());
+bindRovingTabs(functionTabs, (button) => button.click());
 window.addEventListener('popstate', syncFromLocation);
 window.addEventListener('hashchange', syncFromLocation);
 
