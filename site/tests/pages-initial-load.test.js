@@ -1,25 +1,26 @@
+import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+const tabs = dashboardRouterSource();
 const readModel = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
 const dashboardEndpoint = readFileSync(new URL('../functions/api/dashboard.js', import.meta.url), 'utf8');
 const contract = readFileSync(new URL('../functions/lib/api-contract.js', import.meta.url), 'utf8');
 
 test('shared bootstrap keeps every non-current view and first-week comparison lazy', () => {
   for (const asset of [
-    'history-shell.js', 'first-week-comparison-shell.js', 'first-week-comparison.js', 'likes-shell.js',
-    'hinata-shell.js', 'followers-shell.js', 'played-tracks-shell.js', 'spotify-shell.js',
+    'history-shell.js', 'first-week-comparison-shell.js', 'first-week-comparison.js',
+    'hinata-shell.js', 'followers-shell.js', 'spotify-shell.js',
     'amazon-music-shell.js', 'apple-music-shell.js', 'nogizaka-listening-party-shell.js',
     'dashboard-chart-stability.js', 'dashboard-chart-comparison.js', 'dashboard-chart-detail.js',
     'dashboard-daily-summaries.js', 'dashboard-details-client.js', 'dashboard-client.js',
   ]) assert.doesNotMatch(entry, new RegExp(`^import ['\"](?:\\./|/)${asset.replaceAll('.', '\\.')}`, 'm'), asset);
 
   for (const asset of [
-    'history-shell.js', 'first-week-comparison-shell.js', 'first-week-comparison.js', 'likes-shell.js',
-    'hinata-shell.js', 'followers-shell.js', 'played-tracks-shell.js', 'spotify-shell.js',
+    'history-shell.js', 'first-week-comparison-shell.js', 'first-week-comparison.js',
+    'hinata-shell.js', 'followers-shell.js', 'spotify-shell.js',
     'amazon-music-shell.js', 'apple-music-shell.js',
   ]) assert.match(tabs, new RegExp(asset.replaceAll('.', '\\.')));
 

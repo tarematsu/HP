@@ -51,9 +51,10 @@ test('shared current chart detail selects the nearest direct five-minute count',
 });
 
 test('shared listening-party chart compares every returned event series', () => {
-  assert.match(runtime, /const series = \(Array\.isArray\(payload\?\.series\)/);
-  assert.match(runtime, /const allPoints = series\.flatMap\(\(item\) => item\.points\)/);
-  assert.match(runtime, /series\.forEach\(\(item, index\) => \{ context\.strokeStyle = colorFor\(index\)/);
-  assert.match(runtime, /span\.textContent = item\.name/);
+  assert.match(runtime, /function broadcastSeries\(payload\) \{ return \(Array\.isArray\(payload\?\.series\)/);
+  assert.match(runtime, /const allPoints = visible\.flatMap\(\(item\) => item\.points\)/);
+  assert.match(runtime, /visible\.forEach\(\(item\) => \{ context\.strokeStyle = item\.color/);
+  assert.match(runtime, /renderSeriesSelector/);
+  assert.match(runtime, /visibleSeries\(series, runtime\.hiddenBroadcastSeries\)/);
   assert.doesNotMatch(runtime, /payload\?\.series\) \? payload\.series\.find/);
 });

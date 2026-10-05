@@ -1,9 +1,12 @@
 name: Pages design browser checks
 on:
   pull_request:
-    paths: ['site/**', '.github/workflows/pages-design-browser-check.yml']
+    paths: ['site/**', 'package.json', 'package-lock.json', '.github/workflows/pages-design-browser-check.yml']
 permissions:
   contents: read
+concurrency:
+  group: pages-browser-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   browser:
     runs-on: ubuntu-latest
@@ -13,8 +16,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.54.0
-      - run: npm ci --no-audit --no-fund
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            site/package-lock.json
+      - run: npm ci --prefer-offline --no-audit --no-fund
+      - run: npm ci --prefer-offline --no-audit --no-fund
         working-directory: site
       - run: npm run assets:build
         working-directory: site

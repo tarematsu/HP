@@ -1,8 +1,9 @@
+import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+const tabs = dashboardRouterSource();
 const leaderboardShell = readFileSync(new URL('../public/leaderboard-shell.js', import.meta.url), 'utf8');
 const leaderboardRuntime = readFileSync(new URL('../public/leaderboard.js', import.meta.url), 'utf8');
 const leaderboardModel = readFileSync(new URL('../public/leaderboard-read-model.js', import.meta.url), 'utf8');
@@ -59,5 +60,5 @@ test('aggregate feature styles are bundled only with Stationhead', () => {
 
 test('leaderboard no longer participates in the history router', () => {
   assert.doesNotMatch(tabs, /const HISTORY_MODES = new Set\([^\n]*ranking/);
-  assert.match(tabs, /const HISTORY_MODES = new Set\(\['daily', 'weekly', 'monthly', 'broadcasts'\]\)/);
+  assert.match(tabs, /const HISTORY_MODES = Object\.freeze\(new Set\(\['daily', 'weekly', 'monthly', 'broadcasts'\]\)\)/);
 });

@@ -1,9 +1,10 @@
+import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-const route = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+const route = dashboardRouterSource();
 const shellWrapper = readFileSync(new URL('../public/hinata-shell.js', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');

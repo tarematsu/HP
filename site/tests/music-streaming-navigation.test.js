@@ -1,9 +1,10 @@
+import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+const tabs = dashboardRouterSource();
 const commonRuntime = readFileSync(new URL('../public/music-service-runtime-common.js', import.meta.url), 'utf8');
 const kkboxRuntime = readFileSync(new URL('../public/kkbox.js', import.meta.url), 'utf8');
 const qqRuntime = readFileSync(new URL('../public/qq-music.js', import.meta.url), 'utf8');
@@ -66,7 +67,7 @@ test('KKBOX QQ and Kugou are first-class lazy views like Spotify', () => {
     assert.match(tabs, new RegExp(runtime.replace('.', '\\.')));
     assert.match(tabs, new RegExp(`loadExport: '${loadExport}'`));
   }
-  assert.match(tabs, /const VIEW_MODES = new Set\(\['current', \.\.\.HISTORY_MODES, \.\.\.Object\.keys\(LAZY_VIEWS\)\]\)/);
+  assert.match(tabs, /const VIEW_MODES = Object\.freeze\(new Set\(modeNavigation\.keys\(\)\)\)/);
   assert.doesNotMatch(tabs, /REGIONAL_MUSIC|showRegionalMusicView|regionalMusicView|regional-music/);
 });
 
@@ -88,7 +89,8 @@ test('each streaming service has a direct public API contract', () => {
   assert.match(kugouApi, /musicServiceReadModelResponse\(env, 'kugou_music'\)/);
   assert.match(youtubeApi, /musicServiceReadModelResponse\(env, 'youtube_music'\)/);
   assert.match(readModelProxy, /music-service:\$\{serviceId\}/);
-  assert.match(readModelProxy, /read-only migration fallback/);
+  assert.match(readModelProxy, /status: 503/);
+  assert.doesNotMatch(readModelProxy, /OTHER_DB|\.prepare\(/);
 });
 
 test('KKBOX owns its shell runtime filters and charts', () => {

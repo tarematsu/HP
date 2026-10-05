@@ -1,10 +1,11 @@
+import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const mainPage = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const stationheadModel = readFileSync(new URL('../public/stationhead-channel-model.js', import.meta.url), 'utf8');
-const tabsClient = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+const tabsClient = dashboardRouterSource();
 const historyShell = readFileSync(new URL('../public/history-shell.js', import.meta.url), 'utf8');
 const likesShell = readFileSync(new URL('../public/likes-shell.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
@@ -24,12 +25,12 @@ const middleware = readFileSync(new URL('../functions/_middleware.js', import.me
 
 const INTERNAL_ARCHIVE_MODES = ['daily', 'weekly', 'monthly', 'broadcasts'];
 
-test('main dashboard exposes shared Buddies archive tabs while leaderboard stays a source route', () => {
+test('main dashboard exposes shared Buddies archive and leaderboard functions', () => {
   assert.match(stationheadModel, /value: 'history', label: '過去'/);
   assert.match(stationheadModel, /value: 'likes', label: 'いいね'/);
   assert.match(stationheadModel, /value: 'broadcasts', label: 'リスパ'/);
   assert.doesNotMatch(stationheadModel, /value: '(?:weekly|monthly|ranking|tracks)'/);
-  assert.match(tabsClient, /id: 'ranking', label: 'リーダーボード', defaultMode: 'ranking'/);
+  assert.match(tabsClient, /mode: 'ranking', label: 'リーダーボード'/);
   assert.match(tabsClient, /ranking:\s*\{[\s\S]*viewId: 'leaderboardView'/);
   assert.equal(existsSync(new URL('../public/history/index.html', import.meta.url)), false);
   assert.equal(existsSync(new URL('../public/history/likes/index.html', import.meta.url)), false);

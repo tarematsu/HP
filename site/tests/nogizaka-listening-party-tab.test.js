@@ -1,3 +1,4 @@
+import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -9,7 +10,7 @@ const shell = readFileSync(new URL('../public/stationhead-channel-shell.js', imp
 const runtime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
 const readModel = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
 const sharedCss = readFileSync(new URL('../public/dashboard-navigation.css', import.meta.url), 'utf8') + readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
-const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+const tabs = dashboardRouterSource();
 const api = readFileSync(new URL('../functions/api/nogizaka-listening-party.js', import.meta.url), 'utf8');
 const publisher = readFileSync(new URL('../../worker/src/nogizaka-pages-read-model.js', import.meta.url), 'utf8');
 

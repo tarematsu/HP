@@ -19,10 +19,11 @@
     "test:hp-cloud": "npm --prefix hp/cloud test",
     "check:hp-video": "npm --prefix hp/video run check",
     "test:hp-video": "npm --prefix hp/video test",
-    "test:all": "npm run test:js && npm run test:sql && npm run test:worker && npm run test:site && npm run test:hp-cloud && npm run test:hp-video"
+    "test:all": "npm run test:js && npm run test:sql && npm run test:worker && npm run test:site && npm run test:hp-cloud && npm run test:hp-video",
+    "check:ci": "node scripts/check-js-syntax.mjs scripts tests .github/scripts/ci worker/src worker/tests worker/scripts site/functions site/public site/scripts site/tests && npm --prefix site run assets:build && npm run test:js && npm run test:sql && node --test site/tests/*.test.js && npm run check:worker-bundle && npm run test:worker"
   },
   "devDependencies": {
-    "playwright": "^1.54.0"
+    "playwright": "1.54.0"
   },
   "description": "Stationhead and HomePanel monorepo"
 }

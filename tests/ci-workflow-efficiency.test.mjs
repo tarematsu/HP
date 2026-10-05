@@ -38,14 +38,17 @@ test('CI is one deterministic Stationhead checks job', () => {
   assert.doesNotMatch(ci, /actions\/upload-artifact/);
   assert.doesNotMatch(ci, /npm audit|npm run test:d1|npm run db:migrate/);
   assert.match(ci, /cache-dependency-path:[\s\S]*site\/package-lock\.json[\s\S]*worker\/package-lock\.json/);
-  assert.match(ci, /working-directory: site/);
-  assert.match(ci, /working-directory: worker/);
-  assert.match(ci, /node scripts\/check-js-syntax\.mjs scripts tests \.github\/scripts\/ci/);
-  assert.match(ci, /npm run test:js/);
-  assert.match(ci, /npm run test:sql/);
-  assert.match(ci, /node --test tests\/\*\.test\.js/);
-  assert.match(ci, /npm run check/);
-  assert.match(ci, /npm test/);
+  assert.match(ci, /npm ci --prefix site --prefer-offline/);
+  assert.match(ci, /npm ci --prefix worker --prefer-offline/);
+  assert.match(ci, /npm run check:ci/);
+  const rootPackage = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  const command = rootPackage.scripts['check:ci'];
+  for (const check of ['check-js-syntax.mjs', 'assets:build', 'test:js', 'test:sql', 'node --test site/tests/*.test.js', 'check:worker-bundle', 'test:worker']) {
+    assert.ok(command.includes(check), `${check} remains mandatory`);
+  }
+  assert.ok(command.includes('site/public') && command.includes('worker/src'));
+  assert.doesNotMatch(command, /test:d1|db:migrate/);
+
 });
 
 test('CI trigger paths stay inside the Stationhead boundary', () => {

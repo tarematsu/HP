@@ -1,3 +1,4 @@
+import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -12,7 +13,7 @@ const likesShell = readFileSync(new URL('../public/likes-shell.js', import.meta.
 const leaderboardShell = readFileSync(new URL('../public/leaderboard-shell.js', import.meta.url), 'utf8');
 const followersShell = readFileSync(new URL('../public/followers-shell.js', import.meta.url), 'utf8');
 const dashboardEntry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-const tabsClient = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+const tabsClient = dashboardRouterSource();
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const redirects = readFileSync(new URL('../public/_redirects', import.meta.url), 'utf8');
 
@@ -33,17 +34,17 @@ test('dashboard starts on the shared Buddies Stationhead view without duplicate 
     assert.match(stationheadShell, new RegExp(`data-stationhead-panel=\\"${section}\\"`));
   }
   assert.match(tabsClient, /id: 'buddies', label: 'Buddies', defaultMode: 'current'/);
-  assert.match(tabsClient, /id: 'ranking', label: 'リーダーボード'/);
+  assert.match(tabsClient, /mode: 'ranking', label: 'リーダーボード'/);
   assert.match(tabsClient, /id: 'spotify', label: 'Spotify'/);
   assert.match(page, /<nav class="dashboard-navigation" aria-label="統計メニュー">/);
-  for (const id of ['sectionTabs', 'sourceTabs', 'modeTabs']) assert.match(page, new RegExp(`id="${id}"`));
+  for (const id of ['sectionTabs', 'sourceTabs', 'functionTabs']) assert.match(page, new RegExp(`id="${id}"`));
   assert.doesNotMatch(page, /id="currentView"|id="historyView"|id="likesView"/);
 });
 
-test('leaderboard and followers are Stationhead source routes with shared views', () => {
+test('leaderboard and followers are Buddies functions with shared views', () => {
   assert.doesNotMatch(registry, /mode: 'ranking'|view: 'spotify'/);
-  assert.match(tabsClient, /id: 'ranking', label: 'リーダーボード', defaultMode: 'ranking'/);
-  assert.match(tabsClient, /id: 'followers', label: 'フォロワー', defaultMode: 'followers'/);
+  assert.match(tabsClient, /mode: 'ranking', label: 'リーダーボード'/);
+  assert.match(tabsClient, /mode: 'followers', label: 'フォロワー'/);
   assert.match(tabsClient, /ranking:\s*\{[\s\S]*viewId: 'leaderboardView'[\s\S]*source: 'stationhead'/);
   assert.match(tabsClient, /followers:\s*\{[\s\S]*viewId: 'followersView'[\s\S]*source: 'stationhead'/);
   assert.doesNotMatch(tabsClient, /music-ranking|music-followers|source: 'music-streaming'/);
@@ -73,9 +74,8 @@ test('archive and likes markup are owned by lazily loaded shared shell modules',
   assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20261005\.2'/);
   assert.doesNotMatch(dashboardEntry, /history-shell|likes-shell|leaderboard-shell|followers-shell/);
   assert.match(tabsClient, /shell: \(\) => import\('\/history-shell\.js\?v=20260930\.1'\)/);
-  assert.match(tabsClient, /shell: \(\) => import\('\/likes-shell\.js\?v=20260930\.1'\)/);
+  assert.match(tabsClient, /selectStationheadChannelSection/);
   assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=\d{8}\.\d+'\)/);
-  assert.match(tabsClient, /import\('\/history\/history-likes\.js\?v=20260930\.1'\)/);
   assert.match(historyEntry, /VALID_MODES/);
 });
 
@@ -89,8 +89,6 @@ test('feature tabs share one lazy route registry stylesheet loader and module ca
     ['hinata', 'hinata-shell.js', 'hinata.js'],
     ['ranking', 'leaderboard-shell.js', 'leaderboard.js'],
     ['followers', 'followers-shell.js', 'followers.js'],
-    ['played-tracks', 'played-tracks-shell.js', 'played-tracks.js'],
-    ['likes', 'likes-shell.js', 'history-likes.js'],
     ['spotify', 'spotify-shell.js', 'spotify.js'],
     ['amazon-music', 'amazon-music-shell.js', 'amazon-music.js'],
     ['apple-music', 'apple-music-shell.js', 'apple-music.js'],
@@ -146,7 +144,7 @@ test('route startup always releases unintended skip-link focus', () => {
 
 test('tab selection stays on the root document and never navigates to history pages', () => {
   assert.match(tabsClient, /mode === 'current' \? '\/' : `\/#\$\{mode\}`/);
-  assert.match(tabsClient, /event\.preventDefault\(\)/);
+  assert.match(tabsClient, /button\.type = 'button'/);
   assert.doesNotMatch(page, /href="\/history/);
   assert.doesNotMatch(tabsClient, /location\.(?:assign|replace)\([^)]*history/);
   assert.doesNotMatch(historyEntry, /legacyHistoryRoute|location\.replace/);

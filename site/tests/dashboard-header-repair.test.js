@@ -23,7 +23,7 @@ test('dashboard header starts in its final DOM shape before tabs and dashboard c
   assert.match(page, /<nav class="dashboard-navigation" aria-label="統計メニュー">/);
   assert.match(page, /id="sectionTabs" class="dashboard-section-tabs"/);
   assert.match(page, /id="sourceTabs" class="dashboard-source-tabs"/);
-  assert.match(page, /id="modeTabs" class="mode-tabs dashboard-tabs"/);
+  assert.match(page, /id="functionTabs" class="dashboard-function-tabs"/);
   assert.doesNotMatch(page, /id="description"|class="live-line"|class="app-launch"|class="dashboard-actions"/);
   assert.doesNotMatch(headerRepair, /description\.replaceWith|querySelector\('\.live-line'\)|querySelector\('\.app-launch'\)|actions\.replaceWith/);
 });

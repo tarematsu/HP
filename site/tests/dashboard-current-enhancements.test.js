@@ -1,3 +1,4 @@
+import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -13,8 +14,8 @@ const sharedLayout = readFileSync(new URL('../public/pages-layout.css', import.m
 const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 
 test('current Stationhead renderer and markup are shared instead of Buddies-specific', () => {
-  assert.match(readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8'), /stationhead-channel\.js\?v=/);
-  assert.match(readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8'), /async function showCurrent\(/);
+  assert.match(dashboardRouterSource(), /stationhead-channel\.js\?v=/);
+  assert.match(dashboardRouterSource(), /async function showStationheadPanel\(/);
   assert.match(readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8'), /import \{ fetchDashboard \}/);
   assert.match(currentShell, /mountStationheadChannelShell/);
   assert.match(currentShell, /stationheadModel = 'buddies'/);

@@ -27,7 +27,7 @@ test('KKBOX owns its chart history layout as a first-class music service', () =>
   assert.match(runtime, /OUT_OF_CHART_RANK = 101/);
   assert.match(runtime, /CHART_START_DATE = '2020-10-01'/);
   assert.match(runtime, /date >= CHART_START_DATE/);
-  assert.match(runtime, /const ordered = history\s+\.filter\(seriesSelected\)\s+\.filter\(artistVisible\)/);
+  assert.match(runtime, /const ordered = history\s*\.filter\(seriesSelected\)\s*\.filter\(artistVisible\)/);
   assert.doesNotMatch(runtime, /keyakizaka46/);
   assert.doesNotMatch(runtime, /hiragana_keyakizaka46/);
   assert.match(runtime, /loadMusicServiceReadModel\(SERVICE\)/);

@@ -1,3 +1,4 @@
+import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -78,7 +79,7 @@ test('API rejects missing minute database binding', async () => {
 test('dashboard embeds first-week comparison in the listening-party view and loads it on demand', () => {
   const stationheadModel = readFileSync(new URL('../public/stationhead-channel-model.js', import.meta.url), 'utf8');
   const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-  const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+  const tabs = dashboardRouterSource();
   const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
   const shell = readFileSync(new URL('../public/first-week-comparison-shell.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../public/first-week-comparison.js', import.meta.url), 'utf8');
@@ -125,7 +126,7 @@ test('first-week view exposes listener comparison only', () => {
 test('first-week comparison no longer adds any initial-entry module', () => {
   const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
   const stationheadModel = readFileSync(new URL('../public/stationhead-channel-model.js', import.meta.url), 'utf8');
-  const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+  const tabs = dashboardRouterSource();
   assert.doesNotMatch(entry, /first-week|dashboard-tab-order/);
   assert.match(stationheadModel, /value: 'broadcasts', label: 'リスパ'/);
   assert.doesNotMatch(stationheadModel, /view: 'spotify'/);

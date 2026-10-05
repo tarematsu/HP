@@ -1,9 +1,10 @@
+import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-const route = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+const route = dashboardRouterSource();
 const shell = readFileSync(new URL('../public/followers-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/followers.js', import.meta.url), 'utf8');
 const readModel = readFileSync(new URL('../public/followers-read-model.js', import.meta.url), 'utf8');
@@ -12,12 +13,11 @@ const workerConfig = readFileSync(new URL('../../worker/wrangler.sakurazaka46jp.
 
 const FIXED_HANDLES = ['sakuramankai', 'sakuramankai2', 'sakurazaka46jp', 'nogizaka46smej'];
 
-test('Stationhead and music streaming follow routes share one shell and runtime', () => {
+test('Stationhead followers use one lazy shell and runtime', () => {
   assert.doesNotMatch(entry, /followers-shell\.js/);
-  assert.match(route, /followers:\s*\{[\s\S]*viewId: 'followersView'[\s\S]*followers-shell\.js\?v=20261005\.2[\s\S]*followers\.js\?v=20261005\.2[\s\S]*source: 'stationhead'/);
-  assert.match(route, /'music-followers':\s*\{[\s\S]*viewId: 'followersView'[\s\S]*followers-shell\.js\?v=20261005\.2[\s\S]*followers\.js\?v=20261005\.2[\s\S]*source: 'music-streaming'/);
-  assert.match(route, /id: 'followers', label: 'フォロワー', defaultMode: 'followers'/);
-  assert.match(route, /id: 'music-followers', label: 'フォロー', defaultMode: 'music-followers'/);
+  assert.match(route, /followers:\s*\{[\s\S]*viewId: 'followersView'[\s\S]*source: 'stationhead'/);
+  assert.match(route, /mode: 'followers', label: 'フォロワー'/);
+  assert.doesNotMatch(route, /music-followers|source: 'music-streaming'/);
   assert.match(shell, /mountDashboardShell/);
   assert.match(shell, /id: 'followersView'/);
 });
@@ -61,14 +61,11 @@ test('shared follower runtime renders normalized accounts through the common Can
   assert.match(css, /followers-affiliation/);
 });
 
-test('music streaming follow adapter uses materialized service read models and never D1', () => {
-  for (const service of ['youtube_music', 'kkbox', 'qq_music', 'kugou_music']) {
-    assert.match(readModel, new RegExp(`'${service}'`));
+test('Stationhead follower adapter has no retired streaming aggregation or browser D1 path', () => {
+  assert.match(readModel, /loadDashboardJson\('\/api\/followers'/);
+  for (const source of [readModel, runtime]) {
+    assert.doesNotMatch(source, /loadMusicServiceReadModel|OTHER_DB|MINUTE_DB|\.prepare\(/);
   }
-  assert.match(readModel, /loadMusicServiceReadModel\(service\)/);
-  assert.match(readModel, /row\?\.followers/);
-  assert.doesNotMatch(readModel, /OTHER_DB|MINUTE_DB|\.prepare\(/);
-  assert.doesNotMatch(runtime, /OTHER_DB|MINUTE_DB|\.prepare\(/);
 });
 
 test('Stationhead follower adapter reads only the materialized public API', () => {

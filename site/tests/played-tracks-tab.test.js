@@ -1,3 +1,4 @@
+import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -7,7 +8,7 @@ const stationheadShell = readFileSync(new URL('../public/stationhead-channel-she
 const stationheadModel = readFileSync(new URL('../public/stationhead-channel-model.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/played-tracks.js', import.meta.url), 'utf8');
 const tableDom = readFileSync(new URL('../public/dashboard-table-dom.js', import.meta.url), 'utf8');
-const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+const tabs = dashboardRouterSource();
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/track-history.js', import.meta.url), 'utf8');
 const r2Api = readFileSync(new URL('../../worker/src/pages-track-history-r2-api.js', import.meta.url), 'utf8');
@@ -83,10 +84,9 @@ test('track history exposes a lightweight date index from the R2 day model', () 
   assert.doesNotMatch(r2Api, /sh_pages_track_history_daily_read_model/);
 });
 
-test('played tracks shell and runtime are both lazy behind the shared router', () => {
+test('played tracks uses the lazy shared Stationhead runtime behind the router', () => {
   assert.doesNotMatch(metrics, /^import .*played-tracks-shell/m);
   assert.match(metrics, /dashboard-tabs\.js\?v=20261005\.2/);
-  assert.match(tabs, /import\('\/played-tracks-shell\.js\?v=20260928\.1'\)/);
+  assert.match(tabs, /selectStationheadChannelSection/);
   assert.match(tabs, /'played-tracks'/);
-  assert.match(tabs, /import\('\/played-tracks\.js\?v=20260927\.2'\)/);
 });

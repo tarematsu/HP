@@ -1,10 +1,12 @@
+import { runInNewContext } from 'node:vm';
+import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const buildScript = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
-const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+const tabs = dashboardRouterSource();
 const styles = readFileSync(new URL('../public/dashboard-styles.js', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const common = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
@@ -34,12 +36,32 @@ test('dashboard HTML ships one core CSS and one JavaScript entry', () => {
   assert.doesNotMatch(html, /(?:app-lite|monochrome|dashboard-presentation|dashboard-metrics)\.(?:css|js)\?v=/);
 });
 
-test('route CSS uses the same deployment version and is loaded centrally', () => {
+test('route CSS uses the same deployment version and is loaded centrally', async () => {
   const version = assetVersion(html, 'assets/dashboard.min.css');
-  assert.match(styles, new RegExp(`const ASSET_VERSION = '${version.replace('.', '\\.')}'`));
+  assert.match(styles, /querySelector\('link\[href\*="\/assets\/dashboard\.min\.css"\]'/);
+  assert.match(styles, /searchParams\.get\('v'\)/);
+  assert.match(styles, /encodeURIComponent\(version\)/);
   assert.match(styles, /\/assets\/\$\{section\}\.min\.css/);
   assert.match(tabs, /ensureDashboardSectionStyles/);
   assert.match(tabs, /function ensureModeStyles\(mode\)/);
+  const links = [];
+  const context = {
+    URL,
+    location: { href: 'https://pages.test/' },
+    document: {
+      querySelector: () => ({ href: `https://pages.test/assets/dashboard.min.css?v=${version}` }),
+      createElement: () => ({ dataset: {}, addEventListener(event, callback) { if (event === 'load') this.loaded = callback; } }),
+      head: { append(link) { links.push(link); queueMicrotask(link.loaded); } },
+    },
+  };
+  runInNewContext(styles.replace(/^export /gm, ''), context);
+  for (const section of ['stationhead', 'subscriptions']) {
+    await context.ensureDashboardSectionStyles(section);
+    await context.ensureDashboardSectionStyles(section);
+  }
+  assert.deepEqual(links.map(link => link.href), [
+    `/assets/stationhead.min.css?v=${version}`, `/assets/subscriptions.min.css?v=${version}`,
+  ]);
   assert.match(styles, /document\.createElement\('link'\)/);
   assert.match(styles, /dataset\.dashboardSectionStyle/);
 });

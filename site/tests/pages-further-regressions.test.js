@@ -1,3 +1,4 @@
+import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -83,7 +84,7 @@ test('active Pages archive runtimes stay UTC except official-party display dates
   const dashboard = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
   const mainPage = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   const likesShell = readFileSync(new URL('../public/likes-shell.js', import.meta.url), 'utf8');
-  const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+  const tabs = dashboardRouterSource();
   const utcArchiveSources = [entry, dataClient, history, likes].join('\n');
 
   assert.match(entry, /history:runtime-ready/);
@@ -104,7 +105,7 @@ test('active Pages archive runtimes stay UTC except official-party display dates
   assert.match(broadcasts, /isTodayEvent/);
   assert.doesNotMatch(dashboard, /timeZone: 'UTC'|最終取得 .* UTC/);
   assert.match(likesShell, /id: 'likesView'/);
-  assert.match(tabs, /import\('\/history\/history-likes\.js\?v=20260930\.1'\)/);
+  assert.match(tabs, /selectStationheadChannelSection/);
   assert.doesNotMatch(mainPage, /href="\/history/);
   assert.doesNotMatch(utcArchiveSources, /Asia\/Tokyo|JST_OFFSET_MS|jstDate|todayJst|currentJstWeekRange|applyJstPreset/);
 });
