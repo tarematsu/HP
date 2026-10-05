@@ -93,32 +93,6 @@
   min-height: 20px;
   margin-bottom: 6px;
 }
-.chart-range-controls {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 2px;
-  max-width: 420px;
-  margin: 0 0 8px auto;
-}
-.chart-range-controls button {
-  min-height: 38px;
-  padding: 5px 8px;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  color: var(--muted);
-  font: inherit;
-  font-size: var(--dashboard-small-size);
-  cursor: pointer;
-}
-.chart-range-controls button.active {
-  background: var(--text);
-  color: var(--panel);
-  border-color: var(--text);
-}
-.chart-range-controls button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
 .scrollable-table {
   background: linear-gradient(to right, var(--panel) 0, transparent 12px) left center / 12px 100% no-repeat,
     linear-gradient(to left, var(--panel-2) 0, transparent 16px) right center / 16px 100% no-repeat;
@@ -143,14 +117,6 @@
   .series-selector-options {
     grid-template-columns: minmax(0, 1fr);
     max-height: 180px;
-  }
-  .chart-range-controls {
-    max-width: none;
-    margin-inline: 0;
-  }
-  .chart-range-controls button {
-    min-height: 44px;
-    padding-inline: 3px;
   }
   .official-party-table { min-width: 820px; }
   .daily-stats-table { min-width: 760px !important; }
