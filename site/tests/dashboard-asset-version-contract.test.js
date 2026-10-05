@@ -15,7 +15,7 @@ const rangeNavigator = readFileSync(new URL('../public/history/history-range-nav
 const currentChart = browserSource('stationhead-channel.js');
 const firstWeekChart = readFileSync(new URL('../public/first-week-comparison.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
-const rankingChart = readFileSync(new URL('../public/leaderboard.js', import.meta.url), 'utf8');
+const rankingChart = browserSource('leaderboard.js');
 
 function assetVersion(source, asset) {
   const escaped = asset.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

@@ -119,12 +119,13 @@ function stationheadModel() {
       if (force) cachedStationhead = null;
       if (!cachedStationhead) {
         const to = new Date().toISOString().slice(0, 10);
-        cachedStationhead = loadDashboardJson(`/api/history?mode=ranking&from=2024-06-01&to=${to}&scope=featured&limit=5000`, { force })
+        const request = loadDashboardJson(`/api/history?mode=ranking&from=2024-06-01&to=${to}&scope=featured&limit=5000`, { force })
           .then(normalizeStationheadLeaderboard)
           .catch((error) => {
-            cachedStationhead = null;
+            if (cachedStationhead === request) cachedStationhead = null;
             throw error;
           });
+        cachedStationhead = request;
       }
       return cachedStationhead;
     },

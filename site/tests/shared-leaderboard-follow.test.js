@@ -1,3 +1,4 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -5,7 +6,7 @@ import test from 'node:test';
 
 const tabs = dashboardRouterSource();
 const leaderboardShell = readFileSync(new URL('../public/leaderboard-shell.js', import.meta.url), 'utf8');
-const leaderboardRuntime = readFileSync(new URL('../public/leaderboard.js', import.meta.url), 'utf8');
+const leaderboardRuntime = browserSource('leaderboard.js');
 const leaderboardModel = readFileSync(new URL('../public/leaderboard-read-model.js', import.meta.url), 'utf8');
 const followersShell = readFileSync(new URL('../public/followers-shell.js', import.meta.url), 'utf8');
 const followersRuntime = readFileSync(new URL('../public/followers.js', import.meta.url), 'utf8');

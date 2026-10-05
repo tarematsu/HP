@@ -12,7 +12,7 @@ const historyLite = browserSource('history/history-lite.js');
 const historyDataClient = readFileSync(new URL('../public/history/history-data-client.js', import.meta.url), 'utf8');
 const axisLabels = readFileSync(new URL('../public/history/history-axis-labels.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
-const leaderboardRuntime = readFileSync(new URL('../public/leaderboard.js', import.meta.url), 'utf8');
+const leaderboardRuntime = browserSource('leaderboard.js');
 const leaderboardModel = readFileSync(new URL('../public/leaderboard-read-model.js', import.meta.url), 'utf8');
 
 test('dashboard payload parsing is owned by the fetch cache instead of the entry module', () => {

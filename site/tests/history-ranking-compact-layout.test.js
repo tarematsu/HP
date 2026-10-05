@@ -1,9 +1,10 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const shell = readFileSync(new URL('../public/leaderboard-shell.js', import.meta.url), 'utf8');
-const runtime = readFileSync(new URL('../public/leaderboard.js', import.meta.url), 'utf8');
+const runtime = browserSource('leaderboard.js');
 const readModel = readFileSync(new URL('../public/leaderboard-read-model.js', import.meta.url), 'utf8');
 const historyShell = readFileSync(new URL('../public/history-shell.js', import.meta.url), 'utf8');
 

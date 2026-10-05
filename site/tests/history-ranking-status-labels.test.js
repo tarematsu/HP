@@ -1,9 +1,10 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const tabsSource = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
-const leaderboardSource = readFileSync(new URL('../public/leaderboard.js', import.meta.url), 'utf8');
+const leaderboardSource = browserSource('leaderboard.js');
 const leaderboardModel = readFileSync(new URL('../public/leaderboard-read-model.js', import.meta.url), 'utf8');
 
 test('shared leaderboard model classifies the known collection gap and genuine out-of-rank weeks', () => {

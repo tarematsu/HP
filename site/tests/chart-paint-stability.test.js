@@ -12,7 +12,7 @@ const historyMain = readFileSync(new URL('../public/history/history-main.js', im
 const historyLite = browserSource('history/history-lite.js');
 const historyStability = readFileSync(new URL('../public/history/history-chart-stability.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
-const leaderboardRuntime = readFileSync(new URL('../public/leaderboard.js', import.meta.url), 'utf8');
+const leaderboardRuntime = browserSource('leaderboard.js');
 
 test('current Stationhead dashboard has one shared data adapter and Canvas runtime', () => {
   assert.match(readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8'), /stationhead-channel\.js\?v=/);

@@ -6,7 +6,7 @@ import test from 'node:test';
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const entry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const history = browserSource('history/history-lite.js');
-const leaderboard = readFileSync(new URL('../public/leaderboard.js', import.meta.url), 'utf8');
+const leaderboard = browserSource('leaderboard.js');
 const leaderboardReadModel = readFileSync(new URL('../public/leaderboard-read-model.js', import.meta.url), 'utf8');
 const leaderboardShell = readFileSync(new URL('../public/leaderboard-shell.js', import.meta.url), 'utf8');
 const historyShell = readFileSync(new URL('../public/history-shell.js', import.meta.url), 'utf8');

@@ -19,7 +19,7 @@ export function browserSource(file) {
       .map(match => match[1]).filter(path => path.startsWith('.') || path.startsWith('/'));
     return source + '\n' + dependencies.map(path => path.startsWith('/')
       ? new URL(`../../public${path}`, import.meta.url) : new URL(path, url))
-      .filter(dependency => (dependency.pathname.includes('/public/stationhead/') || dependency.pathname.includes('/public/history/')))
+      .filter(dependency => (dependency.pathname.includes('/public/stationhead/') || dependency.pathname.includes('/public/history/') || dependency.pathname.includes('/public/leaderboard/')))
       .map(read).join('\n');
   }
   return read(new URL(`../../public/${file}`, import.meta.url));

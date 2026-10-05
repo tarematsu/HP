@@ -71,7 +71,7 @@ test('history runtime is embedded and lazy while the shared leaderboard owns ran
   const entry = readFileSync(new URL('../site/public/history/history-main.js', import.meta.url), 'utf8');
   const runtime = browserSource('history/history-lite.js');
   const period = readFileSync(new URL('../site/public/history/history-period-chart.js', import.meta.url), 'utf8');
-  const leaderboard = readFileSync(new URL('../site/public/leaderboard.js', import.meta.url), 'utf8');
+  const leaderboard = browserSource('leaderboard.js');
   const leaderboardReadModel = readFileSync(new URL('../site/public/leaderboard-read-model.js', import.meta.url), 'utf8');
 
   assert.equal((html.match(/<script /g) || []).length, 1);
