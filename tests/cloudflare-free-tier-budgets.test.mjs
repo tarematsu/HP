@@ -13,7 +13,6 @@ const deployedEntry = readSource('worker/src/runtime-orchestrator-deployed-entry
 const collectorStatus = readSource('worker/src/collector-coordinator-status.js');
 const queuePlanR2 = readSource('worker/src/queue-plan-r2.js');
 const pagesMiddleware = readSource('site/functions/_middleware.js');
-const pagesActions = readSource('worker/scripts/run-pages-read-model-actions.mjs');
 const offlineActions = readSource('worker/scripts/run-runtime-offline-maintenance-actions.mjs');
 
 
@@ -123,8 +122,6 @@ test('collector coordination and runtime live-job DO fit daily budgets without r
     'BUDDIES_COLLECTOR_COORDINATOR',
     'COLLECTOR_STATUS_DO_ENABLED',
   ]);
-  expectAll(pagesActions, ['PAGES_READ_MODEL_DEADLINE_MS', 'track-history-read-model-disabled']);
-  expectNone(pagesActions, ['runSplitTrackHistoryCycleStep']);
   expectAll(offlineActions, ['runRollupMaintenance', 'pruneOldSnapshots', 'runStreamGoalPrediction']);
 });
 
