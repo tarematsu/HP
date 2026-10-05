@@ -99,7 +99,7 @@ test('collector, recovery, and runtime Wrangler configurations own disjoint pipe
   assert.match(preparedCollector, /INGEST_FINALIZE_QUEUE: \{ value: null/);
   assert.match(minuteProduction, /MINUTE_ENRICHMENT_QUEUE/);
   assert.match(minuteProduction, /runInlineLiveDerive/);
-  assert.equal(runtime.kv_namespaces[0].binding, 'PAGES_RESPONSE_KV');
+  assert.equal(runtime.kv_namespaces, undefined);
   assert.equal(runtime.r2_buckets[0].binding, 'PAGES_RESPONSE_R2');
   assert.match(source, /JSON\.parse/);
   assert.match(source, /normalizeSnapshot/);
