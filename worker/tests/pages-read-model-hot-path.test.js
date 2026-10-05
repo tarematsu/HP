@@ -4,16 +4,16 @@ import test from 'node:test';
 
 import { runPagesResponseFetch } from '../src/pages-response-fetch-entry.js';
 
-const runnerSource = readFileSync(
-  new URL('../scripts/run-pages-read-model-actions.mjs', import.meta.url),
-  'utf8',
-);
-const d1AdapterSource = readFileSync(
-  new URL('../scripts/remote-d1-adapter.mjs', import.meta.url),
-  'utf8',
-);
 const responseSource = readFileSync(
   new URL('../src/pages-response-fetch-entry.js', import.meta.url),
+  'utf8',
+);
+const refreshSource = readFileSync(
+  new URL('../src/history-read-model-refresh.js', import.meta.url),
+  'utf8',
+);
+const scheduledSource = readFileSync(
+  new URL('../src/scheduled-collection-jobs-entry.js', import.meta.url),
   'utf8',
 );
 const runtimeSource = readFileSync(
@@ -22,6 +22,10 @@ const runtimeSource = readFileSync(
 );
 const runtimeConfig = JSON.parse(readFileSync(
   new URL('../wrangler.runtime.jsonc', import.meta.url),
+  'utf8',
+));
+const scheduledConfig = JSON.parse(readFileSync(
+  new URL('../wrangler.scheduled-collection-jobs.jsonc', import.meta.url),
   'utf8',
 ));
 
@@ -55,23 +59,19 @@ test('missing materialized response returns a closed 404 without generating data
 });
 
 test('serving module stays independent from render and publication graphs', () => {
-  assert.match(responseSource, /loadMaterializedResponse/);
   assert.match(responseSource, /loadMaterializedR2Response/);
-  assert.match(responseSource, /loadEdgeCachedResponse/);
   assert.doesNotMatch(responseSource, /dashboard\.js|history\.js|host-history\.js/);
   assert.doesNotMatch(responseSource, /PAGES_READ_MODEL_QUEUE|track-history-publication|runSplitTrackHistoryCycleStep/);
 });
 
-test('Actions runner owns summary rendering, tier selection, D1 reads, and R2 publication', () => {
-  assert.match(runnerSource, /MATERIALIZED_API_VARIANTS/);
-  assert.match(runnerSource, /responseHandler/);
-  assert.match(runnerSource, /dueVariantKeys/);
-  assert.match(runnerSource, /createWranglerRemoteD1/);
-  assert.match(runnerSource, /track-history-read-model-disabled/);
-  assert.doesNotMatch(runnerSource, /runSplitTrackHistoryCycleStep|pages-track-history/);
-  assert.match(d1AdapterSource, /'d1', 'execute', database/);
-  assert.match(d1AdapterSource, /'--remote', '--yes', '--json'/);
-  assert.match(runnerSource, /r2', 'object', 'put'/);
+test('scheduled collection Worker owns revision detection, rendering, and publication', () => {
+  assert.match(refreshSource, /loadHistorySourceRevisions/);
+  assert.match(refreshSource, /renderHistoryReadModel/);
+  assert.match(refreshSource, /publishHistoryReadModel/);
+  assert.match(refreshSource, /HISTORY_READ_MODEL_QUEUE/);
+  assert.match(scheduledSource, /HISTORY_READ_MODEL_RECOVERY_CRON/);
+  assert.match(scheduledSource, /refreshLeaderboard[\s\S]*enqueueHistory/);
+  assert.equal(scheduledConfig.queues.consumers.some(({ queue }) => queue === 'pages-history-refresh'), true);
 });
 
 test('runtime configuration contains no Pages scheduler or read-model Queue', () => {
