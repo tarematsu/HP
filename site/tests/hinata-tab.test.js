@@ -1,3 +1,4 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -7,8 +8,8 @@ const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.me
 const route = dashboardRouterSource();
 const shellWrapper = readFileSync(new URL('../public/hinata-shell.js', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
-const runtime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
-const readModel = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
+const runtime = browserSource('stationhead-channel.js');
+const readModel = browserSource('stationhead-channel-read-model.js');
 const stationheadModel = readFileSync(new URL('../public/stationhead-channel-model.js', import.meta.url), 'utf8');
 const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/hinata.js', import.meta.url), 'utf8');

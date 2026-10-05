@@ -1,4 +1,4 @@
-import { mkdir, stat, rm, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, stat, rm, readFile, writeFile, readdir } from 'node:fs/promises';
 import { gzipSync } from 'node:zlib';
 import { dirname, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -114,6 +114,13 @@ const jsBuild = await build({
   metafile: true,
   plugins: [browserModuleResolver],
 });
+
+// Every shipped source module must belong to a real page entry's import graph.
+const bundledSources = new Set(Object.keys(jsBuild.metafile.inputs).map(path => resolve(path)));
+const orphanModules = (await readdir(publicRoot, { recursive: true }))
+  .filter(path => path.endsWith('.js') && !path.startsWith('assets/'))
+  .filter(path => !bundledSources.has(resolve(publicRoot, path)));
+if (orphanModules.length) throw new Error(`Unreferenced browser modules: ${orphanModules.join(', ')}`);
 
 const cssBuilds = await Promise.all(Object.entries(cssGroups).map(async ([name, files]) => [name, await buildCssBundle(name, files)]));
 const cssBuildMap = new Map(cssBuilds);

@@ -1,3 +1,4 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -5,18 +6,18 @@ import test from 'node:test';
 
 const currentShell = readFileSync(new URL('../public/current-shell.js', import.meta.url), 'utf8');
 const sharedShell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
-const stationheadRuntime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
+const stationheadRuntime = browserSource('stationhead-channel.js');
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const fetchCache = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/dashboard-current-enhancements.css', import.meta.url), 'utf8');
 const sharedLayout = readFileSync(new URL('../public/pages-layout.css', import.meta.url), 'utf8');
-const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+const history = browserSource('history/history-lite.js');
 
 test('current Stationhead renderer and markup are shared instead of Buddies-specific', () => {
   assert.match(dashboardRouterSource(), /stationhead-channel\.js\?v=/);
   assert.match(dashboardRouterSource(), /async function showStationheadPanel\(/);
-  assert.match(readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8'), /import \{ fetchDashboard \}/);
+  assert.match(browserSource('stationhead-channel-read-model.js'), /import \{ fetchDashboard \}/);
   assert.match(currentShell, /mountStationheadChannelShell/);
   assert.match(currentShell, /stationheadModel = 'buddies'/);
   assert.match(sharedShell, /metric\('オンライン', 'online', true\)/);

@@ -1,9 +1,10 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const registry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
+const registry = browserSource('dashboard-metrics.js');
 const stationheadModel = readFileSync(new URL('../public/stationhead-channel-model.js', import.meta.url), 'utf8');
 const stationheadShell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
 const tabsClient = dashboardRouterSource();
@@ -15,7 +16,7 @@ test('Buddies visible subtabs follow the shared Stationhead order', () => {
   const broadcasts = stationheadModel.indexOf("value: 'broadcasts', label: 'リスパ'");
   assert.ok(likes >= 0 && broadcasts > likes);
   assert.match(stationheadShell, /STATIONHEAD_CHANNEL_TABS\.map/);
-  assert.match(registry, /tabs\.replaceChildren\(\)/);
+  assert.doesNotMatch(registry, /dashboard-tab-registry|modeTabs/);
   assert.doesNotMatch(registry, /ranking|spotify|STATIONHEAD_CHANNEL_TABS/i);
   assert.match(tabsClient, /mode: 'ranking', label: 'リーダーボード'/);
 });

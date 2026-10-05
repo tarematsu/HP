@@ -1,3 +1,4 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -37,7 +38,7 @@ test('dashboard playback restores artwork from string and object Stationhead met
 
 test('artwork handling stays out of the initial entry and runs only with the current runtime', () => {
   const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-  const runtime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
+  const runtime = browserSource('stationhead-channel.js');
   assert.doesNotMatch(entry, /IMAGE_RETRY_DELAYS|installImageRetry|MutationObserver/);
   assert.match(runtime, /track\?\.thumbnail_url/);
   assert.match(runtime, /image\.removeAttribute\('src'\)/);
@@ -104,14 +105,7 @@ test('official stream fallback does not duplicate an existing minute-fact series
 });
 
 test('integrated likes UI contains no playback totals or weekly play merge', () => {
-  const shell = readFileSync(new URL('../public/likes-shell.js', import.meta.url), 'utf8');
-  const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-  const source = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
-  assert.match(shell, /id: 'likesView'/);
-  assert.match(shell, /id="likesRankingList"/);
-  assert.doesNotMatch([shell, page].join('\n'), /今週再生|再生曲|href="\/history/);
-  assert.doesNotMatch(source, /week_play_count|completeWeekPlayCount|attachWeeklyPlays|play_count_excluded/);
-  assert.match(source, /ranking_only=1/);
+  const likesPanel=browserSource('stationhead-channel-shell.js').split('data-stationhead-panel="likes"')[1].split('data-stationhead-panel="broadcasts"')[0]; assert.match(likesPanel,/likes-ranking|likes-tbody/); assert.doesNotMatch(likesPanel,/総再生回数|平均同接/); assert.doesNotMatch(browserSource('stationhead/likes.js'),/play_count|weekly_plays/);
 });
 
 function materializedRankingPayload(rankingSize = 0) {
@@ -205,7 +199,7 @@ test('normal track history forwards ranking=0 without any D1 ranking read', asyn
 
 test('history runtime uses direct data requests instead of global fetch guards or UI rewrite modules', () => {
   const entry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
-  const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+  const history = browserSource('history/history-lite.js');
   const dataClient = readFileSync(new URL('../public/history/history-data-client.js', import.meta.url), 'utf8');
   const broadcasts = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
   assert.doesNotMatch(entry, /history-request-guard|history-current-overlay|pages-ui-tweaks|pages-terminology|history-page-fixes|history-table-cleanup/);

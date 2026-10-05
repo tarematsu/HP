@@ -1,14 +1,15 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const dashboard = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-const channelRuntime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
-const channelReadModel = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
+const channelRuntime = browserSource('stationhead-channel.js');
+const channelReadModel = browserSource('stationhead-channel-read-model.js');
 const dashboardCache = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
 const paintGate = readFileSync(new URL('../public/chart-paint-gate.js', import.meta.url), 'utf8');
 const historyMain = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
-const historyLite = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+const historyLite = browserSource('history/history-lite.js');
 const historyStability = readFileSync(new URL('../public/history/history-chart-stability.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
 const leaderboardRuntime = readFileSync(new URL('../public/leaderboard.js', import.meta.url), 'utf8');

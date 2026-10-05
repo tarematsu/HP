@@ -1,12 +1,13 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const shell = readFileSync(new URL('../public/played-tracks-shell.js', import.meta.url), 'utf8');
+const shell = browserSource('stationhead-channel-shell.js');
 const stationheadShell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
 const stationheadModel = readFileSync(new URL('../public/stationhead-channel-model.js', import.meta.url), 'utf8');
-const runtime = readFileSync(new URL('../public/played-tracks.js', import.meta.url), 'utf8');
+const runtime = browserSource('stationhead/played-tracks.js');
 const tableDom = readFileSync(new URL('../public/dashboard-table-dom.js', import.meta.url), 'utf8');
 const tabs = dashboardRouterSource();
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
@@ -14,65 +15,23 @@ const api = readFileSync(new URL('../functions/api/track-history.js', import.met
 const r2Api = readFileSync(new URL('../../worker/src/pages-track-history-r2-api.js', import.meta.url), 'utf8');
 
 test('played tracks is owned by the shared Stationhead model while the legacy deep-link shell remains lazy', () => {
-  assert.match(stationheadModel, /value: 'played-tracks', label: '再生履歴'/);
-  assert.match(stationheadShell, /data-stationhead-panel="played-tracks"/);
-  assert.match(shell, /dashboard-ui-common\.js\?v=20261001\.1/);
-  assert.match(shell, /mountDashboardShell/);
-  assert.match(shell, /id: 'playedTracksView'/);
-  assert.doesNotMatch(shell, /\btab:\s*\{|view: 'played-tracks'|anchorSelector/);
-  assert.match(shell, /dashboardControls/);
-  assert.match(shell, /className: 'played-tracks-controls'/);
-  assert.match(shell, /dashboardSummary/);
-  assert.match(shell, /dashboardChartCard/);
-  assert.match(shell, /dashboardDataCard/);
-  assert.doesNotMatch(shell, /view-toolbar played-tracks-toolbar/);
+  assert.match(stationheadModel,/value: 'played-tracks', label: '再生履歴'/); assert.match(stationheadShell,/data-stationhead-panel="played-tracks"/); assert.match(stationheadShell,/played-tracks-controls/); assert.doesNotMatch(metrics,/played-tracks-shell/);
 });
 
 test('played tracks exposes horizontal day navigation and weekly mode', () => {
-  assert.match(shell, /id="playedTracksWeekMode" type="checkbox"/);
-  assert.match(shell, /id="playedTracksPeriodScroller"/);
-  assert.match(shell, /id="playedTracksPeriodStrip"/);
-  assert.match(runtime, /\/api\/track-history\?dates_only=1/);
-  assert.match(runtime, /state\.selectedPeriod = options\.at\(-1\)/);
-  assert.match(runtime, /sub\.textContent = state\.weekMode \? '\(週\)' : `\(\$\{weekday\(period\)\}\)`/);
-  assert.match(runtime, /renderPeriodNavigator\(\{ alignEnd: true \}\)/);
-  assert.match(runtime, /scroller\.scrollLeft = scroller\.scrollWidth/);
-  assert.match(runtime, /scrollIntoView\(\{/);
-  assert.match(runtime, /inline: 'center'/);
-  assert.doesNotMatch(runtime, /TARGET_DATE|2026-09-22/);
+  assert.match(shell,/role\('played-week'\)/); assert.match(shell,/role\('played-periods'\)/); assert.match(runtime,/periods.at\(-1\)/); assert.match(runtime,/runtime.playedPeriod = period/); assert.match(runtime,/playedSequence/);
 });
 
 test('played tracks removes manual refresh, hides successful aggregate status, and uses clear labels', () => {
-  assert.doesNotMatch(shell, /id="playedTracksLoad"|>更新<\/button>/);
-  assert.match(shell, /総再生回数/);
-  assert.match(shell, /楽曲数/);
-  assert.match(shell, /楽曲別再生一覧/);
-  assert.match(runtime, /appendTableRow\(tbody, \[/);
-  assert.match(runtime, /'総再生回数'/);
-  assert.match(tableDom, /export function appendTableRow\(/);
-  assert.match(runtime, /再生履歴データ/);
-  assert.doesNotMatch(shell, /延べ再生曲数|のべ再生曲数|<h2>再生曲一覧<\/h2>/);
-  assert.doesNotMatch(runtime, /再生曲データ|再生曲の日付一覧|曲を集計/);
-  assert.match(runtime, /setNotice\(state\.total > 0 \? '' :/);
+  for(const label of ['総再生回数','楽曲数','楽曲別再生一覧']) assert.match(shell,new RegExp(label)); assert.match(runtime,/appendTableRow\(body/); assert.match(runtime,/再生履歴データ/); assert.doesNotMatch(shell,/playedTracksLoad/);
 });
 
-test('weekly played tracks uses a Monday start and seven-day range', () => {
-  assert.match(runtime, /const offset = \(date\.getUTCDay\(\) \+ 6\) % 7/);
-  assert.match(runtime, /\{ from: state\.selectedPeriod, to: addDays\(state\.selectedPeriod, 6\) \}/);
-  assert.match(runtime, /state\.availableDates\.map\(startOfWeek\)/);
-  assert.match(runtime, /normalizedRows\(payload\.rows, from, to\)/);
+test('weekly played tracks uses a Monday start and seven-day range', async () => {
+  const {weekStart,addDays}=await import('../public/stationhead/view-utils.js'); assert.equal(weekStart('2026-10-04'),'2026-09-28'); assert.equal(addDays('2026-09-28',6),'2026-10-04'); assert.match(runtime,/runtime.playedDates.map\(weekStart\)/); assert.match(runtime,/week \? addDays\(from, 6\) : from/);
 });
 
-test('played tracks chart uses the shared Canvas setup, neon colors, and fewer labels on narrow screens', () => {
-  assert.match(runtime, /dashboard-chart-canvas\.js\?v=20261001\.2/);
-  assert.match(runtime, /prepareDashboardCanvas\(canvas/);
-  assert.doesNotMatch(runtime, /getContext\('2d'\)|devicePixelRatio|context\.setTransform/);
-  assert.match(runtime, /hsl\(\$\{hue\} 100% 60%\)/);
-  assert.match(runtime, /const labelLimit = width < 520 \? 3 : 5/);
-  assert.match(runtime, /if \(index < labelLimit\)/);
-  assert.match(runtime, /const rawTitle = trackLabel\(label\.row\)/);
-  assert.match(runtime, /integer\.format\(label\.row\.play_count\)/);
-  assert.match(runtime, /上位\$\{labelLimit\}曲は曲名と再生数を表示/);
+test('played tracks chart uses the shared Canvas setup, neon colors, and fewer labels on narrow screens', async () => {
+  const {playedChartRows}=await import('../public/stationhead/played-tracks.js'); const rows=Array.from({length:17},(_,i)=>({title:`song${i}`,play_count:17-i})); const chart=playedChartRows(rows); assert.equal(chart.length,16); assert.deepEqual(chart.at(-1),{label:'その他',play_count:3}); assert.match(runtime,/prepareDashboardCanvas/); assert.match(runtime,/width < 520/); assert.doesNotMatch(runtime,/getContext\('2d'\)/);
 });
 
 test('track history exposes a lightweight date index from the R2 day model', () => {

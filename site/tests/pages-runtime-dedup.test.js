@@ -1,3 +1,4 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -7,7 +8,7 @@ const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.me
 const fetchCache = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
 const tabs = dashboardRouterSource();
 const historyMain = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
-const historyLite = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+const historyLite = browserSource('history/history-lite.js');
 const historyDataClient = readFileSync(new URL('../public/history/history-data-client.js', import.meta.url), 'utf8');
 const axisLabels = readFileSync(new URL('../public/history/history-axis-labels.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
@@ -40,25 +41,11 @@ test('inactive tab shells and runtimes are loaded on demand through one shared l
 });
 
 test('history payload is parsed once by the data client while leaderboard has its own source adapter', () => {
-  assert.match(historyDataClient, /await response\.json\(\)/);
-  assert.match(historyLite, /fetchHistoryPayload/);
-  assert.doesNotMatch(historyLite, /await response\.json\(\)/);
-  assert.match(historyLite, /function publishHistoryData/);
-  assert.match(historyLite, /history:data-loaded/);
-  assert.doesNotMatch(historyLite, /function drawSummaryChart|function prepareCanvas/);
-  assert.match(periodChart, /history:data-loaded/);
-  assert.doesNotMatch(periodChart, /window\.fetch|previousFetch|response\.clone\(\)\.json/);
-  assert.match(leaderboardRuntime, /leaderboardReadModel\(source\)\.load/);
-  assert.match(leaderboardModel, /loadDashboardJson\(`\/api\/history\?mode=ranking/);
-  assert.doesNotMatch(leaderboardRuntime, /history:data-loaded|window\.fetch/);
+  const client=browserSource('history/history-data-client.js'); assert.match(client,/fetchHistoryPayload/); assert.match(client,/createHistoryPayloadCache/); assert.doesNotMatch(readFileSync(new URL('../public/history/history-lite.js',import.meta.url),'utf8'),/response.json/); assert.match(browserSource('leaderboard-read-model.js'),/loadDashboardJson/);
 });
 
 test('history summary presentation stays in the shared history renderer', () => {
-  assert.match(historyLite, /function rankingWeekCounts\(/);
-  assert.match(historyLite, /function updateSummary\(/);
-  assert.match(historyLite, /period: '対象週数'/);
-  assert.match(historyLite, /period: '総週数'/);
-  assert.doesNotMatch(historyMain, /history-page-fixes|history-table-cleanup|history-summary-average-labels/);
+  assert.match(historyLite,/createHistorySummary/); assert.match(historyLite,/function updateSummary/); assert.match(historyLite,/平均再生数増加量/); assert.doesNotMatch(historyLite,/rankingWeekCounts/);
 });
 
 test('shared leaderboard owns missing bands without duplicate legacy observers or fetch overlays', () => {

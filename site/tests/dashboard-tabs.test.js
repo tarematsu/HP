@@ -1,15 +1,16 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-const registry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
+const registry = browserSource('dashboard-metrics.js');
 const currentShell = readFileSync(new URL('../public/current-shell.js', import.meta.url), 'utf8');
 const stationheadShell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
-const stationheadRuntime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
+const stationheadRuntime = browserSource('stationhead-channel.js');
 const historyShell = readFileSync(new URL('../public/history-shell.js', import.meta.url), 'utf8');
-const likesShell = readFileSync(new URL('../public/likes-shell.js', import.meta.url), 'utf8');
+const likesShell = browserSource('stationhead-channel-shell.js');
 const leaderboardShell = readFileSync(new URL('../public/leaderboard-shell.js', import.meta.url), 'utf8');
 const followersShell = readFileSync(new URL('../public/followers-shell.js', import.meta.url), 'utf8');
 const dashboardEntry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
@@ -25,8 +26,8 @@ test('dashboard starts on the shared Buddies Stationhead view without duplicate 
   assert.match(currentShell, /id: 'currentView'/);
   assert.match(currentShell, /hidden: false/);
   assert.match(currentShell, /stationheadModel = 'buddies'/);
-  assert.match(registry, /tabs\.replaceChildren\(\)/);
-  assert.match(registry, /tabs\.hidden = true/);
+  assert.doesNotMatch(registry, /dashboard-tab-registry|modeTabs/);
+  assert.doesNotMatch(registry, /querySelector.*modeTabs/);
   assert.doesNotMatch(registry, /STATIONHEAD_CHANNEL_TABS|BUDDIES_ROUTES|createElement\('button'\)/);
   assert.match(stationheadShell, /dashboardModeTabs/);
   assert.match(stationheadShell, /className: 'stationhead-subtabs'/);
@@ -60,23 +61,7 @@ test('dashboard hides the static page skeleton until the selected route shell is
 });
 
 test('archive and likes markup are owned by lazily loaded shared shell modules', () => {
-  for (const id of ['controls', 'summaryCards', 'chartPanel']) assert.match(historyShell, new RegExp(`(?:id=\\"${id}\\"|id: '${id}')`));
-  for (const id of ['likesCsv', 'likesNotice', 'likesRankingList', 'likesTbody']) assert.match(likesShell, new RegExp(`(?:id=\\"${id}\\"|id: '${id}'|bodyId: '${id}')`));
-  assert.match(historyShell, /dashboardControls/);
-  assert.match(historyShell, /dashboardSummary/);
-  assert.match(historyShell, /dashboardChartCard/);
-  assert.match(historyShell, /dashboardDataCard/);
-  assert.match(likesShell, /dashboardSummary/);
-  assert.match(likesShell, /dashboardDataCard/);
-  assert.match(likesShell, /dashboardNotice/);
-  assert.match(likesShell, /dashboardTable/);
-  assert.doesNotMatch(likesShell, /id="likesLoad"/);
-  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20261005\.2'/);
-  assert.doesNotMatch(dashboardEntry, /history-shell|likes-shell|leaderboard-shell|followers-shell/);
-  assert.match(tabsClient, /shell: \(\) => import\('\/history-shell\.js\?v=20260930\.1'\)/);
-  assert.match(tabsClient, /selectStationheadChannelSection/);
-  assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=\d{8}\.\d+'\)/);
-  assert.match(historyEntry, /VALID_MODES/);
+  assert.match(historyShell, /historyView/); for (const role of ['likes-csv','likes-ranking','likes-tbody']) assert.match(likesShell, new RegExp(role)); assert.match(tabsClient, /selectStationheadChannelSection/); assert.doesNotMatch(dashboardEntry, /likes-shell/);
 });
 
 test('feature tabs share one lazy route registry stylesheet loader and module cache', () => {

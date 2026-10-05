@@ -1,3 +1,4 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -5,7 +6,7 @@ import test from 'node:test';
 
 const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const tabs = dashboardRouterSource();
-const readModel = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
+const readModel = browserSource('stationhead-channel-read-model.js');
 const dashboardEndpoint = readFileSync(new URL('../functions/api/dashboard.js', import.meta.url), 'utf8');
 const contract = readFileSync(new URL('../functions/lib/api-contract.js', import.meta.url), 'utf8');
 
@@ -30,7 +31,7 @@ test('shared bootstrap keeps every non-current view and first-week comparison la
 });
 
 test('Buddies cache is explicitly owned by the lazy read model, without global fetch replacement', () => {
-  const adapter = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
+  const adapter = browserSource('stationhead-channel-read-model.js');
   const cache = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
   assert.match(adapter, /import \{ fetchDashboard \}/);
   assert.match(adapter, /url.startsWith\('\/api\/dashboard\?'\) \? fetchDashboard : fetch/);

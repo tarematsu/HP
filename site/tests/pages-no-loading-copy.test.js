@@ -1,3 +1,4 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -6,9 +7,9 @@ import test from 'node:test';
 const publicSources = [
   '../public/index.html',
   '../public/history/history-lite.js',
-  '../public/history/history-likes.js',
+  '../public/stationhead/likes.js',
   '../public/history/history-chart-stability.js',
-  '../public/played-tracks.js',
+  '../public/stationhead/played-tracks.js',
   '../public/first-week-comparison.js',
   '../public/first-week-comparison-shell.js',
   '../public/stationhead-channel-shell.js',
@@ -19,7 +20,7 @@ const publicSources = [
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const tabs = dashboardRouterSource();
 const dashboardEntry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-const stationheadRuntime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
+const stationheadRuntime = browserSource('stationhead-channel.js');
 const currentShell = readFileSync(new URL('../public/current-shell.js', import.meta.url), 'utf8');
 const assetBuild = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
@@ -42,7 +43,7 @@ test('silent loading changes are cache busted through the bundled Pages entry', 
   assert.match(tabs, /spotify\.js\?v=20261004\.1/);
   assert.doesNotMatch(dashboardEntry, /first-week-comparison|legacy-listening-party-route|dashboard-tab-order|dashboard-details-client\.js/);
   assert.match(tabs, /current-shell\.js\?v=20261005\.2/);
-  assert.match(readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8'), /import \{ fetchDashboard \}/);
+  assert.match(browserSource('stationhead-channel-read-model.js'), /import \{ fetchDashboard \}/);
   assert.doesNotMatch(dashboardEntry, /stationhead-channel-style-loader/);
   assert.match(tabs, /stationhead-channel\.js\?v=\d{8}\.\d+/);
   assert.match(currentShell, /stationhead-channel-shell\.js\?v=\d{8}\.\d+/);

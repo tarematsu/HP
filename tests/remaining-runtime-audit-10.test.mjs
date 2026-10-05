@@ -1,3 +1,4 @@
+import { browserSource } from '../site/tests/helpers/dashboard-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -68,7 +69,7 @@ test('history runtime is embedded and lazy while the shared leaderboard owns ran
   const shell = readFileSync(new URL('../site/public/history-shell.js', import.meta.url), 'utf8');
   const tabs = readFileSync(new URL('../site/public/dashboard-tabs.js', import.meta.url), 'utf8');
   const entry = readFileSync(new URL('../site/public/history/history-main.js', import.meta.url), 'utf8');
-  const runtime = readFileSync(new URL('../site/public/history/history-lite.js', import.meta.url), 'utf8');
+  const runtime = browserSource('history/history-lite.js');
   const period = readFileSync(new URL('../site/public/history/history-period-chart.js', import.meta.url), 'utf8');
   const leaderboard = readFileSync(new URL('../site/public/leaderboard.js', import.meta.url), 'utf8');
   const leaderboardReadModel = readFileSync(new URL('../site/public/leaderboard-read-model.js', import.meta.url), 'utf8');
@@ -85,7 +86,7 @@ test('history runtime is embedded and lazy while the shared leaderboard owns ran
   assert.doesNotMatch(entry, /history-ranking-missing-gap/);
 
   assert.match(runtime, /const PAGE_SIZE = 200/);
-  assert.match(runtime, /sessionStorage\.getItem/);
+  assert.match(runtime, /storage\.getItem/);
   assert.match(runtime, /publishHistoryData/);
   assert.doesNotMatch(runtime, /prepareCanvas|drawSummaryChart|chartModel|history-broadcasts\.js/);
   assert.match(period, /history:data-loaded/);

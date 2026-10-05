@@ -1,16 +1,17 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-const currentRuntime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
-const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+const currentRuntime = browserSource('stationhead-channel.js');
+const history = browserSource('history/history-lite.js');
 const officialLive = readFileSync(new URL('../public/official-account-live.js', import.meta.url), 'utf8');
 const historySummary = readFileSync(new URL('../functions/lib/history-summary.js', import.meta.url), 'utf8');
 
 test('ranking session cache survives ordinary page startup', () => {
   assert.doesNotMatch(history, /sessionStorage\.removeItem\([^)]*ranking/);
-  assert.match(history, /sessionStorage\.getItem/);
+  assert.match(history, /storage\.getItem/);
 });
 
 test('current playback does not run metadata-repair or image MutationObservers', () => {

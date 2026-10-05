@@ -1,10 +1,11 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const stationheadModel = readFileSync(new URL('../public/stationhead-channel-model.js', import.meta.url), 'utf8');
-const stationheadRuntime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
+const stationheadRuntime = browserSource('stationhead-channel.js');
 const tabsClient = dashboardRouterSource();
 
 test('shared Stationhead subtabs switch local panels while aggregate views use the function router', () => {

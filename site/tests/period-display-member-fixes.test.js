@@ -1,3 +1,4 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -11,7 +12,7 @@ import { CURRENT_DAILY_MINUTE_SUMMARY_SQL } from '../functions/lib/current-minut
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const responsive = readFileSync(new URL('../public/dashboard-presentation.css', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
-const historyLite = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+const historyLite = browserSource('history/history-lite.js');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
 const persistenceMigration = readFileSync(
   new URL('../../database/other-migrations/024_persist_daily_member_growth.sql', import.meta.url),

@@ -1,14 +1,15 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+const history = browserSource('history/history-lite.js');
 const styles = readFileSync(new URL('../public/pages-layout.css', import.meta.url), 'utf8') + readFileSync(new URL('../public/dashboard-presentation.css', import.meta.url), 'utf8');
 const buildScript = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
-const runtime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
-const readModel = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
+const runtime = browserSource('stationhead-channel.js');
+const readModel = browserSource('stationhead-channel-read-model.js');
 
 test('shared static presentation is bundled into the initial dashboard stylesheet', () => {
   assert.match(html, /assets\/dashboard\.min\.css\?v=\d{8}\.\d+/);
@@ -23,14 +24,7 @@ test('shared static presentation is bundled into the initial dashboard styleshee
 });
 
 test('history summary metrics generate final labels and ranking counts directly', () => {
-  assert.match(history, /period: '総週数'/);
-  assert.match(history, /max: 'ランクイン週数'/);
-  assert.match(history, /stream: '圏外・欠測週数'/);
-  assert.match(history, /period: '対象週数'/);
-  assert.match(history, /max: '掲載ホスト数'/);
-  assert.match(history, /stream: '延べランクイン数'/);
-  assert.match(history, /member: '圏外・欠測数'/);
-  assert.match(history, /outWeeks: Math\.max\(0, totalWeeks - rankedWeeks\)/);
+  const summary = browserSource('history/history-summary.js'); for (const label of ['期間数','平均同接','平均再生数増加量','平均メンバー増加数']) assert.match(summary,new RegExp(label)); assert.doesNotMatch(history,/rankingWeekCounts|RANKING_COLUMNS/);
 });
 
 test('current playback uses queue read-model metadata without a second repair fetch', () => {

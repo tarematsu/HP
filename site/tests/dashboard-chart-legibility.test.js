@@ -1,3 +1,4 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -5,7 +6,7 @@ import test from 'node:test';
 const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 const firstWeek = readFileSync(new URL('../public/first-week-comparison.js', import.meta.url), 'utf8');
 const history = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
-const stationhead = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
+const stationhead = browserSource('stationhead-channel.js');
 
 test('fixed-viewBox SVG charts preserve the canonical physical chart typography on narrow screens', () => {
   assert.match(sharedCss, /--dashboard-axis-font-size:\s*11px/);

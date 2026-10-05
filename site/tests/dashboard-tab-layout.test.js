@@ -1,3 +1,4 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -5,14 +6,14 @@ import test from 'node:test';
 const navigation = readFileSync(new URL('../public/dashboard-navigation.css', import.meta.url), 'utf8');
 const layout = readFileSync(new URL('../public/pages-layout.css', import.meta.url), 'utf8');
 const mobile = readFileSync(new URL('../public/mobile-layout-refinements.css', import.meta.url), 'utf8');
-const registry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
+const registry = browserSource('dashboard-metrics.js');
 const stationheadShell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
-const stationheadRuntime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
-const stationheadReadModel = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
+const stationheadRuntime = browserSource('stationhead-channel.js');
+const stationheadReadModel = browserSource('stationhead-channel-read-model.js');
 const stationheadModel = readFileSync(new URL('../public/stationhead-channel-model.js', import.meta.url), 'utf8');
 
 test('all Stationhead channel tabs share one five-column layout source', () => {
-  assert.match(registry, /tabs\.replaceChildren\(\)/);
+  assert.doesNotMatch(registry, /dashboard-tab-registry|modeTabs/);
   assert.doesNotMatch(registry, /STATIONHEAD_CHANNEL_TABS|createElement\('button'\)/);
   assert.match(stationheadShell, /STATIONHEAD_CHANNEL_TABS\.map/);
   assert.match(stationheadShell, /className: 'stationhead-subtabs'/);

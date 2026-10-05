@@ -1,10 +1,11 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const shell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
 const controls = readFileSync(new URL('../public/stationhead-history-granularity.js', import.meta.url), 'utf8');
-const readModel = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
+const readModel = browserSource('stationhead-channel-read-model.js');
 const css = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 
 test('shared Stationhead history table switches daily and weekly read models', () => {

@@ -1,23 +1,19 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const entry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
-const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+const history = browserSource('history/history-lite.js');
 const styles = readFileSync(new URL('../public/history/history-lite.css', import.meta.url), 'utf8');
 const sharedLayout = readFileSync(new URL('../public/pages-layout.css', import.meta.url), 'utf8');
 
 test('leaderboard renderer defines only final visible single-host columns', () => {
-  assert.match(history, /const RANKING_COLUMNS = \[[\s\S]*\['ranking_date', '週'\][\s\S]*\['rank', '順位'\][\s\S]*\['host_name', 'ホスト'\][\s\S]*\['stationhead_channel_name', 'チャンネル'\][\s\S]*\['artist_name', 'アーティスト名'\][\s\S]*\['relation_label', '種別'\]/);
-  assert.doesNotMatch(history, /\['previous_rank', '前週順位'\]|\['rank_change', '前週比'\]|\['ranking_type', 'ランキング種別'\]|\['source_sheet', '順位データ出典'\]/);
-  assert.match(history, /classList\.toggle\('compact-columns', mode === 'ranking'\)/);
+  const source=browserSource('leaderboard-read-model.js'); for(const key of ['period','rank','host','channel','artist','relation']) assert.match(source,new RegExp(`key: '${key}'`)); assert.doesNotMatch(history,/RANKING_COLUMNS/);
 });
 
 test('mode-specific table classes are set by the root table renderer', () => {
-  assert.match(history, /function syncTableModeClass\(mode\)/);
-  assert.match(history, /classList\.toggle\('official-party-table', mode === 'broadcasts'\)/);
-  assert.match(history, /classList\.remove\('all-host-ranking-table'\)/);
-  assert.match(history, /syncTableModeClass\(mode\)/);
+  assert.match(history,/classList.toggle\('official-party-table', mode === 'broadcasts'\)/); assert.doesNotMatch(history,/mode === 'ranking'|all-host-ranking-table/);
 });
 
 test('history root renderer reuses shared empty-row and listening-party duration helpers', () => {
@@ -32,7 +28,7 @@ test('history transitions clear root state before the next mode renders', () => 
   assert.match(history, /state\.rows = \[\]/);
   assert.match(history, /state\.tableRows = \[\]/);
   assert.match(history, /el\('tbody'\)\.replaceChildren\(\)/);
-  assert.match(history, /state\.rankingMetadataByHost\.clear\(\)/);
+  assert.doesNotMatch(history, /rankingMetadataByHost/);
 });
 
 test('summary and pagination reset without loading copy', () => {

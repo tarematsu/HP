@@ -1,3 +1,4 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -9,7 +10,7 @@ const headerCss = readFileSync(new URL('../public/dashboard-presentation.css', i
 const sharedLayout = readFileSync(new URL('../public/pages-layout.css', import.meta.url), 'utf8');
 const mobileRefinements = readFileSync(new URL('../public/mobile-layout-refinements.css', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
-const historyClient = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+const historyClient = browserSource('history/history-lite.js');
 
 test('dashboard header starts in its final DOM shape before tabs and dashboard client startup', () => {
   const headerImport = dashboardEntry.match(/import '\.\/dashboard-header\.js\?v=[^']+'/)?.[0];

@@ -1,3 +1,4 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -10,8 +11,8 @@ const sharedRoute = dashboardRouterSource();
 const musicServiceShell = readFileSync(new URL('../public/music-service-shell.js', import.meta.url), 'utf8');
 const canvasChart = readFileSync(new URL('../public/dashboard-chart-canvas.js', import.meta.url), 'utf8');
 const stationheadShell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
-const stationheadRuntime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
-const stationheadReadModel = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
+const stationheadRuntime = browserSource('stationhead-channel.js');
+const stationheadReadModel = browserSource('stationhead-channel-read-model.js');
 const currentShell = readFileSync(new URL('../public/current-shell.js', import.meta.url), 'utf8');
 const hinataShell = readFileSync(new URL('../public/hinata-shell.js', import.meta.url), 'utf8');
 const nogizakaShell = readFileSync(new URL('../public/nogizaka-listening-party-shell.js', import.meta.url), 'utf8');
@@ -23,7 +24,7 @@ const tableDom = readFileSync(new URL('../public/dashboard-table-dom.js', import
 const historyToggle = readFileSync(new URL('../public/history/history-past-toggle-shell.js', import.meta.url), 'utf8');
 
 const runtimes = Object.fromEntries([
-  'amazon-music.js', 'apple-music.js', 'followers.js', 'spotify.js', 'played-tracks.js', 'first-week-comparison.js',
+  'amazon-music.js', 'apple-music.js', 'followers.js', 'spotify.js', 'first-week-comparison.js',
 ].map((file) => [file, readFileSync(new URL(`../public/${file}`, import.meta.url), 'utf8')]));
 
 test('dashboard exposes reusable presentation components in one shared module', () => {

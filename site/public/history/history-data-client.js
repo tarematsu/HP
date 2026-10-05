@@ -113,3 +113,38 @@ if (typeof globalThis.addEventListener === 'function' && typeof globalThis.docum
     notice.classList.remove('error');
   });
 }
+
+// Session caching shares the same API validation and daily overlay path.
+export function createHistoryPayloadCache(storage = globalThis.sessionStorage) {
+  const CACHE_PREFIX = 'sh.history.v3:';
+  const MAX_CACHE_CHARS = 1_500_000;
+  function cacheKey(url) {
+    return `${CACHE_PREFIX}${url}`;
+  }
+
+  function readCache(url, ttl) {
+    try {
+      const cached = JSON.parse(storage.getItem(cacheKey(url)) || 'null');
+      return cached && Date.now() - Number(cached.at || 0) < ttl ? cached.data : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeCache(url, data) {
+    try {
+      const encoded = JSON.stringify({ at: Date.now(), data });
+      if (encoded.length <= MAX_CACHE_CHARS) storage.setItem(cacheKey(url), encoded);
+    } catch {}
+  }
+
+  async function fetchJson(url, { ttl = 5 * 60_000, signal, force = false } = {}) {
+    if (force) storage.removeItem(cacheKey(url));
+    const cached = force ? null : readCache(url, ttl);
+    if (cached) return { data: cached, cached: true };
+    const data = await fetchHistoryPayload(url, { signal });
+    writeCache(url, data);
+    return { data, cached: false };
+  }
+  return fetchJson;
+}

@@ -1,8 +1,9 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+const history = browserSource('history/history-lite.js');
 const summaryRuntime = readFileSync(new URL('../public/history/history-broadcast-summary.js', import.meta.url), 'utf8');
 const main = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 

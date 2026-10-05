@@ -1,3 +1,4 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -6,7 +7,7 @@ const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf
 const theme = readFileSync(new URL('../public/monochrome.css', import.meta.url), 'utf8');
 const assetBuild = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
-const dashboardChart = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
+const dashboardChart = browserSource('stationhead-channel.js');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
 const rankingChart = readFileSync(new URL('../public/leaderboard.js', import.meta.url), 'utf8');
 const rankingModel = readFileSync(new URL('../public/leaderboard-read-model.js', import.meta.url), 'utf8');

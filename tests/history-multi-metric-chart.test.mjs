@@ -1,11 +1,9 @@
+import { browserSource } from '../site/tests/helpers/dashboard-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const historyClient = readFileSync(
-  new URL('../site/public/history/history-lite.js', import.meta.url),
-  'utf8',
-);
+const historyClient = browserSource('history/history-lite.js');
 const chart = readFileSync(
   new URL('../site/public/history/history-period-chart.js', import.meta.url),
   'utf8',

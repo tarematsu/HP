@@ -1,24 +1,25 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const currentShell = readFileSync(new URL('../public/current-shell.js', import.meta.url), 'utf8');
 const stationheadShell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
-const stationheadRuntime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
-const stationheadReadModel = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
+const stationheadRuntime = browserSource('stationhead-channel.js');
+const stationheadReadModel = browserSource('stationhead-channel-read-model.js');
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
-const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
-const likes = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
+const history = browserSource('history/history-lite.js');
+const likes = browserSource('stationhead/likes.js');
 
 const removedAssets = [
-  'app-playback.js', 'app-state.js', 'comment-velocity-chart.css', 'dashboard-current-enhancements.js',
+  'dashboard-tab-registry.js', 'likes-shell.js', 'played-tracks-shell.js', 'played-tracks.js', 'app-playback.js', 'app-state.js', 'comment-velocity-chart.css', 'dashboard-current-enhancements.js',
   'dashboard-current-metric-style.js', 'dashboard-display-guards.js', 'dashboard-dom-utils.js',
   'dashboard-history-cache.js', 'dashboard-interactive.css', 'dashboard-optimized.js', 'design-system.css',
   'eta-daypart.js', 'pages-terminology.js', 'pages-ui-tweaks.js', 'sh-ui-fixes.js', 'style-base.css', 'style.css',
 ];
 
 const removedHistoryAssets = [
-  'history.js', 'history-mode-selectors.js', 'history-default-range.js', 'history-global-fixes.js',
+  'history-likes.js', 'history-track-view.js', 'history.js', 'history-mode-selectors.js', 'history-default-range.js', 'history-global-fixes.js',
   'history-page-fixes.js', 'history-table-cleanup.js', 'history-summary-average-labels.js',
 ];
 

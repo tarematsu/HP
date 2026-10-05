@@ -1,3 +1,4 @@
+import { browserSource } from '../site/tests/helpers/dashboard-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
@@ -110,10 +111,7 @@ test('complete weekly and monthly summaries skip redundant boundary scans', () =
 });
 
 test('history runtime keeps table ownership consolidated while charts are mode-specific', () => {
-  const runtime = readFileSync(
-    new URL('../site/public/history/history-lite.js', import.meta.url),
-    'utf8',
-  );
+  const runtime = browserSource('history/history-lite.js');
   const html = readFileSync(new URL('../site/public/index.html', import.meta.url), 'utf8');
   const shell = readFileSync(new URL('../site/public/history-shell.js', import.meta.url), 'utf8');
   const tabs = readFileSync(new URL('../site/public/dashboard-tabs.js', import.meta.url), 'utf8');

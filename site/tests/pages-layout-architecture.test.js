@@ -1,3 +1,4 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -6,7 +7,7 @@ const layout = readFileSync(new URL('../public/pages-layout.css', import.meta.ur
 const spotify = readFileSync(new URL('../public/spotify.css', import.meta.url), 'utf8');
 const firstWeek = readFileSync(new URL('../public/first-week-comparison.css', import.meta.url), 'utf8');
 const playedTracks = readFileSync(new URL('../public/played-tracks.css', import.meta.url), 'utf8');
-const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+const history = browserSource('history/history-lite.js');
 const presentation = readFileSync(new URL('../public/pages-layout.css', import.meta.url), 'utf8');
 
 test('canonical layout does not target individual dashboard view IDs', () => {

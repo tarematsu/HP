@@ -1,3 +1,4 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -6,8 +7,8 @@ import { fileURLToPath } from 'node:url';
 
 const siteRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const text = (relativePath) => readFile(path.join(siteRoot, relativePath), 'utf8');
-const runtime = await text('public/stationhead-channel.js');
-const readModel = await text('public/stationhead-channel-read-model.js');
+const runtime = browserSource('stationhead-channel.js');
+const readModel = browserSource('stationhead-channel-read-model.js');
 
 test('dashboard entry installs the shared Stationhead renderer lazily', async () => {
   const entry = await text('public/dashboard-metrics.js');

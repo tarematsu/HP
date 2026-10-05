@@ -1,12 +1,13 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const stationheadShell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
-const likesShell = readFileSync(new URL('../public/likes-shell.js', import.meta.url), 'utf8');
+const likesShell = browserSource('stationhead-channel-shell.js');
 const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
-const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+const history = browserSource('history/history-lite.js');
 const sharedLayout = readFileSync(new URL('../public/pages-layout.css', import.meta.url), 'utf8');
 
 test('history no longer loads a post-render UI tweak runtime', () => {
@@ -25,11 +26,7 @@ test('shared current chart is statically before now playing without a redundant 
 });
 
 test('likes update control is removed and CSV stays in the song-table shared data card', () => {
-  assert.doesNotMatch(likesShell, /id="likesLoad"|class="like-actions"/);
-  const tablePanel = likesShell.slice(likesShell.indexOf("title: '楽曲別一覧'"));
-  assert.ok(tablePanel.length > 0);
-  assert.match(tablePanel, /id="likesCsv"/);
-  assert.match(likesShell, /dashboardDataCard/);
+  assert.match(likesShell,/role\('likes-csv'\)/); assert.match(likesShell,/role\('likes-tbody'\)/); assert.doesNotMatch(likesShell,/likesLoad|likesRefresh/);
 });
 
 test('mobile ranking metric layout is shared instead of scoped to the likes tab', () => {

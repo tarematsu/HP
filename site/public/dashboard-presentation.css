@@ -26,14 +26,6 @@ html.keyboard-navigation .skip-link:focus {
   transform: none;
 }
 
-#rankingWeeklyPanel {
-  display: none;
-}
-
-#likesRankingList .like-rank-item:nth-child(n + 11) {
-  display: none;
-}
-
 .chart-foot {
   display: none;
 }

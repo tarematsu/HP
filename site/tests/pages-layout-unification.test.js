@@ -1,3 +1,4 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -7,8 +8,8 @@ const css = readFileSync(new URL('../public/pages-layout.css', import.meta.url),
 const spotifyShell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
 const musicServiceShell = readFileSync(new URL('../public/music-service-shell.js', import.meta.url), 'utf8');
 const firstWeekShell = readFileSync(new URL('../public/first-week-comparison-shell.js', import.meta.url), 'utf8');
-const playedTracksShell = readFileSync(new URL('../public/played-tracks-shell.js', import.meta.url), 'utf8');
-const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+const playedTracksShell = browserSource('stationhead-channel-shell.js');
+const history = browserSource('history/history-lite.js');
 
 test('one canonical cross-view stylesheet owns dashboard layout and is bundled after feature refinements', () => {
   assert.match(buildScript, /'pages-layout\.css'/);
@@ -42,8 +43,8 @@ test('toolbars controls fitting tables charts and music sections use shared sema
   assert.match(css, /\.table-fit-mobile > table[\s\S]*table-layout:\s*auto/);
   assert.match(css, /\.chart-fit > :is\(svg, canvas\)/);
   assert.doesNotMatch(firstWeekShell, /view-toolbar first-week-toolbar|data-first-week-metric/);
-  assert.match(playedTracksShell, /dashboardControls/);
-  assert.match(playedTracksShell, /className: 'played-tracks-controls'/);
+  assert.match(playedTracksShell, /role\('played-week'\)/);
+  assert.match(playedTracksShell, /played-tracks-controls/);
   assert.doesNotMatch(playedTracksShell, /view-toolbar played-tracks-toolbar/);
   assert.match(spotifyShell, /musicServiceTable/);
   assert.match(spotifyShell, /wrapClassName: 'table-fit-mobile'/);
@@ -55,7 +56,7 @@ test('toolbars controls fitting tables charts and music sections use shared sema
 });
 
 test('history renderer assigns table meaning classes without injecting layout CSS', () => {
-  assert.match(history, /classList\.toggle\('compact-columns', mode === 'ranking'\)/);
+  assert.doesNotMatch(history, /RANKING_COLUMNS|mode === 'ranking'/);
   assert.match(history, /classList\.toggle\('official-party-table', mode === 'broadcasts'\)/);
   assert.doesNotMatch(history, /createElement\('style'\)|MOBILE_TABLE_STYLE_ID|installMobileTableWidthStyle/);
 });

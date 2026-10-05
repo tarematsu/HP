@@ -1,3 +1,4 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import { runInNewContext } from 'node:vm';
 import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
@@ -11,7 +12,7 @@ const styles = readFileSync(new URL('../public/dashboard-styles.js', import.meta
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const common = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
 const rangeNavigator = readFileSync(new URL('../public/history/history-range-navigator.js', import.meta.url), 'utf8');
-const currentChart = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
+const currentChart = browserSource('stationhead-channel.js');
 const firstWeekChart = readFileSync(new URL('../public/first-week-comparison.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
 const rankingChart = readFileSync(new URL('../public/leaderboard.js', import.meta.url), 'utf8');

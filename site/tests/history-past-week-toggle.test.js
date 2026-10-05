@@ -1,10 +1,11 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const stationheadModel = readFileSync(new URL('../public/stationhead-channel-model.js', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../public/history/history-past-toggle-shell.js', import.meta.url), 'utf8');
-const runtime = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+const runtime = browserSource('history/history-lite.js');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 
@@ -28,12 +29,5 @@ test('daily view replaces the CSV action with daily and weekly data controls', (
 });
 
 test('daily and weekly buttons swap only the data read model and keep daily route selected', () => {
-  assert.match(runtime, /return state\.mode === 'daily' && state\.pastWeekMode \? 'weekly' : state\.mode/);
-  assert.match(runtime, /const mode = dataMode\(\)/);
-  assert.match(runtime, /new URLSearchParams\(\{ mode, from, to \}\)/);
-  assert.match(runtime, /const selected = button\.dataset\.mode === state\.mode/);
-  assert.match(runtime, /toggle\.hidden = state\.mode !== 'daily'/);
-  assert.match(runtime, /setPastWeekMode\(Boolean\(event\.currentTarget\.checked\)\)/);
-  assert.match(runtime, /publishHistoryData\(mode, data, from, to, cached\)/);
-  assert.match(shell, /checkbox\.dispatchEvent\(new Event\('change'/);
+  assert.match(browserSource('history/history-lite.js'),/state.mode === 'daily' && state.pastWeekMode \? 'weekly' : state.mode/); assert.match(browserSource('history/history-lite.js'),/pastWeekMode/); assert.doesNotMatch(browserSource('history/history-lite.js'),/#modeTabs/);
 });

@@ -1,29 +1,30 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const currentShell = readFileSync(new URL('../public/current-shell.js', import.meta.url), 'utf8');
 const stationheadShell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
-const likesShell = readFileSync(new URL('../public/likes-shell.js', import.meta.url), 'utf8');
-const tabRegistry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
+const likesShell = browserSource('stationhead-channel-shell.js');
+const tabRegistry = browserSource('dashboard-metrics.js');
 const staticUi = [stationheadShell, likesShell, tabRegistry].join('\n');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
 const spotify = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
 const sakurazakaListeningPartyApi = readFileSync(new URL('../functions/api/sakurazaka46jp.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
-const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+const history = browserSource('history/history-lite.js');
 const ranking = readFileSync(new URL('../public/leaderboard-read-model.js', import.meta.url), 'utf8');
 const official = readFileSync(new URL('../public/history/history-broadcast-table.js', import.meta.url), 'utf8');
 const officialUi = readFileSync(new URL('../public/official-listening-party-ui.js', import.meta.url), 'utf8');
 const unofficial = readFileSync(new URL('../public/unofficial-listening-parties.js', import.meta.url), 'utf8');
-const likes = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
+const likes = browserSource('stationhead/likes.js');
 
 test('shared Stationhead and likes views use explicit user-facing metric names at their source', () => {
   for (const label of ['総再生数', '最終取得', '楽曲数', '楽曲別再生一覧', '最新いいね数', 'リスパ']) assert.match(staticUi, new RegExp(label));
   assert.doesNotMatch(stationheadShell, /合計いいね数|合計いいね数（前日比）|最大いいね数/);
-  assert.match(likesShell, /dashboardSummary/);
-  assert.match(likesShell, /className: 'likes-summary'/);
+  assert.match(likesShell, /summaryItem\('楽曲数', 'likes-count'\)/);
+  assert.match(likesShell, /summaryItem\('最終取得', 'likes-latest'\)/);
   assert.doesNotMatch(likesShell, /likes-summary[^\n]*style=/);
   assert.doesNotMatch(historyEntry, /pages-terminology/);
   assert.doesNotMatch(metrics, /pages-terminology/);
@@ -32,9 +33,9 @@ test('shared Stationhead and likes views use explicit user-facing metric names a
 test('history and shared leaderboard own their final user-facing terminology', () => {
   for (const label of [
     '取得記録数', 'メンバー数（開始）', 'メンバー数（終了）', 'メンバー増加数', '楽曲数',
-    '平均再生数増加量', '平均メンバー増加数', '圏外・欠測週数', '圏外・欠測数', '平均所要時間',
+    '平均再生数増加量', '平均メンバー増加数', '平均所要時間',
   ]) assert.match(history, new RegExp(label));
-  assert.match(history, /\['relation_label', '種別'\]/);
+  assert.doesNotMatch(history, /relation_label/);
   assert.match(ranking, /\{ key: 'relation', label: '種別' \}/);
   assert.match(ranking, /\{ key: 'channel', label: 'チャンネル' \}/);
   assert.match(ranking, /\{ key: 'artist', label: 'アーティスト名' \}/);
@@ -50,7 +51,7 @@ test('official and unofficial listening-party tables use event-specific column n
 test('likes runtime and CSV use the same likes terminology', () => {
   assert.match(likes, /最新いいね数/);
   assert.match(likes, /'最終取得'/);
-  assert.match(likes, /likesTotalLikes/);
+  assert.match(likes, /likes-count/);
   assert.doesNotMatch(likes, /likesTotalDelta/);
   assert.doesNotMatch(likes, /likesMaxLikes/);
   assert.doesNotMatch(likes, /metric\('最新いいね'/);

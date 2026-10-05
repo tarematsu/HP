@@ -1,3 +1,4 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -30,11 +31,11 @@ test('main page references only existing local static assets', async () => {
 
 test('dashboard skeleton and shared Stationhead shell keep accessibility, privacy and all channel sections', async () => {
   const html = await text('public/index.html');
-  const registry = await text('public/dashboard-tab-registry.js');
+  const registry = browserSource('dashboard-metrics.js');
   const currentShell = await text('public/current-shell.js');
   const stationheadShell = await text('public/stationhead-channel-shell.js');
   const historyShell = await text('public/history-shell.js');
-  const likesShell = await text('public/likes-shell.js');
+  const likesShell = browserSource('stationhead-channel-shell.js');
 
   assert.match(html, /<html lang="ja"(?:\s[^>]*)?>/);
   assert.match(html, /name="viewport"/);
@@ -53,10 +54,10 @@ test('dashboard skeleton and shared Stationhead shell keep accessibility, privac
   }
   assert.match(stationheadShell, /rel="noopener noreferrer"/);
   assert.doesNotMatch(stationheadShell, /goal-card|metricGoalCompact|streamGoal|goalEta/);
-  assert.match(registry, /tabs\.replaceChildren\(\)/);
-  assert.match(registry, /tabs\.hidden = true/);
+  assert.doesNotMatch(registry, /dashboard-tab-registry|modeTabs/);
+  assert.doesNotMatch(registry, /querySelector.*modeTabs/);
   assert.match(historyShell, /id: 'historyView'/);
-  assert.match(likesShell, /id: 'likesView'/);
+  assert.match(likesShell, /data-stationhead-panel="likes"/);
   assert.doesNotMatch(html, /href="\/history/);
   assert.doesNotMatch(html, /id="currentView"|id="historyView"|id="likesView"/);
 });
@@ -64,8 +65,8 @@ test('dashboard skeleton and shared Stationhead shell keep accessibility, privac
 test('dashboard current page renders online history and direct five-minute playback counts from one payload', async () => {
   const currentShell = await text('public/current-shell.js');
   const stationheadShell = await text('public/stationhead-channel-shell.js');
-  const stationheadRuntime = await text('public/stationhead-channel.js');
-  const stationheadReadModel = await text('public/stationhead-channel-read-model.js');
+  const stationheadRuntime = browserSource('stationhead-channel.js');
+  const stationheadReadModel = browserSource('stationhead-channel-read-model.js');
   const entry = await text('public/dashboard-metrics.js');
   const cache = await text('public/dashboard-fetch-cache.js');
 
@@ -79,7 +80,7 @@ test('dashboard current page renders online history and direct five-minute playb
   assert.doesNotMatch(stationheadRuntime, /comment_velocity|commentVelocity|コメント\/2分/);
   assert.match(stationheadReadModel, /fetchJson\('\/api\/dashboard\?history=0'/);
   assert.match(stationheadReadModel, /queue: Array\.isArray\(payload\?\.queue\) \? payload\.queue : \[\]/);
-  assert.match(await text('public/stationhead-channel-read-model.js'), /import \{ fetchDashboard \}/);
+  assert.match(browserSource('stationhead-channel-read-model.js'), /import \{ fetchDashboard \}/);
   assert.match(cache, /url\.searchParams\.set\('since'/);
   assert.match(cache, /queue_revision/);
   assert.doesNotMatch(entry, /dashboard-details-client\.js/);

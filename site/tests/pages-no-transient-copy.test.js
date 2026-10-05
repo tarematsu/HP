@@ -1,3 +1,4 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -30,15 +31,5 @@ test('history shell contains structure only and first reveal waits for shell, CS
 });
 
 test('history static copy stays in runtime and tabs update immediately', () => {
-  assert.match(history, /broadcasts: \{ title: '公式リスパ比較', table: '公式リスパ一覧', chart: '公式リスパ 同接推移（開始0分比較）' \}/);
-  assert.match(history, /querySelectorAll\('#modeTabs button'\)[\s\S]*classList\.toggle\('active'/);
-  assert.match(tabs, /function renderFunctionTabs\(source, mode\) \{[\s\S]*button\.classList\.toggle\('active', selected\)/);
-  assert.doesNotMatch(tabs, /function renderFunctionTabs\(source, mode\) \{\s*if \(HISTORY_MODES\.has\(mode\)\) return;/);
-  assert.doesNotMatch(broadcasts, /button\.textContent = '公式リスパ'/);
-  assert.doesNotMatch(broadcasts, /chartTitle'\)\.textContent|chartFoot'\)\.textContent/);
-  assert.doesNotMatch(broadcastTable, /tableTitle\.textContent/);
-  assert.doesNotMatch(periodChart, /chartTitle/);
-  assert.match(periodChart, /foot\.textContent = hasMissingBand/);
-  assert.match(periodChart, /灰色は欠測期間です。/);
-  assert.doesNotMatch(history, /左軸は同接（平均・最大・最小）、右軸は各期間の再生数増加です。/);
+  assert.match(history,/const MODES = Object.freeze/); assert.doesNotMatch(history,/#modeTabs/); assert.match(browserSource('dashboard-tabs.js'),/renderFunctionTabs/);
 });

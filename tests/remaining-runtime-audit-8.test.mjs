@@ -1,3 +1,4 @@
+import { browserSource } from '../site/tests/helpers/dashboard-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
@@ -25,14 +26,11 @@ test('active history endpoint owns ranking without a legacy implementation', () 
 });
 
 test('history client exposes only current canonical modes', () => {
-  const source = readFileSync(
-    new URL('../site/public/history/history-lite.js', import.meta.url),
-    'utf8',
-  );
+  const source = browserSource('history/history-lite.js');
 
-  for (const mode of ['daily', 'weekly', 'monthly', 'ranking', 'broadcasts']) {
+  for (const mode of ['daily', 'weekly', 'monthly', 'broadcasts']) {
     assert.match(source, new RegExp(`${mode}:`));
   }
-  assert.doesNotMatch(source, /tracks:|再生曲一覧|TRACK_COLUMNS|trackDate|trackWeekMode/);
+  assert.doesNotMatch(source, /\btracks:|再生曲一覧|TRACK_COLUMNS|trackDate|trackWeekMode/);
   assert.match(source, /CACHE_PREFIX = 'sh\.history\.v3:'/);
 });

@@ -13,7 +13,7 @@ import './history/history-table-gaps.js?v=20261002.1';
 
 const controls = dashboardControls({
   id: 'controls',
-  bodyHtml: '<div id="standardControls" class="control-group standard-controls"><div id="rangePresets" class="range-presets" aria-label="期間プリセット"><button type="button" data-days="30">1ヶ月</button><button type="button" data-days="180">半年</button><button type="button" data-days="365">1年</button><button type="button" data-days="all" class="active">全期間</button></div><input id="from" type="hidden" value="2024-05-01"><input id="to" type="hidden"></div><div id="rankingControls" hidden style="display:none"></div><button id="load" type="button" hidden aria-hidden="true" tabindex="-1"></button>',
+  bodyHtml: '<div id="standardControls" class="control-group standard-controls"><div id="rangePresets" class="range-presets" aria-label="期間プリセット"><button type="button" data-days="30">1ヶ月</button><button type="button" data-days="180">半年</button><button type="button" data-days="365">1年</button><button type="button" data-days="all" class="active">全期間</button></div><input id="from" type="hidden" value="2024-05-01"><input id="to" type="hidden"></div><button id="load" type="button" hidden aria-hidden="true" tabindex="-1"></button>',
 });
 
 const summary = dashboardSummary([
@@ -49,18 +49,12 @@ const data = dashboardDataCard({
   bodyHtml: `${dataTable}<button id="more" class="button more-button" type="button" hidden>さらに表示</button>`,
 });
 
-const rankingCompatibility = dashboardDataCard({
-  id: 'rankingWeeklyPanel',
-  bodyHtml: dashboardTable({ headId: 'rankingWeeklyThead', bodyId: 'rankingWeeklyTbody', numeric: false }),
-  hidden: true,
-});
-
 mountDashboardShell({
   view: {
     id: 'historyView',
     className: 'history-view',
     anchorId: 'currentView',
     position: 'afterend',
-    html: `<div id="guide" hidden aria-hidden="true"><p class="kicker"></p><h2 id="guideTitle"></h2><p id="guideText"></p></div>${controls}${dashboardNotice({ id: 'notice', hidden: false })}${summary}${chart}${data}${rankingCompatibility}`,
+    html: `<div id="guide" hidden aria-hidden="true"><p class="kicker"></p><h2 id="guideTitle"></h2><p id="guideText"></p></div>${controls}${dashboardNotice({ id: 'notice', hidden: false })}${summary}${chart}${data}`,
   },
 });

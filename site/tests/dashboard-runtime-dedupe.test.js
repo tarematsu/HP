@@ -1,3 +1,4 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -5,8 +6,8 @@ import { readFile } from 'node:fs/promises';
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 const [entry, runtime, readModel, fetchCache] = await Promise.all([
   read('../public/dashboard-metrics.js'),
-  read('../public/stationhead-channel.js'),
-  read('../public/stationhead-channel-read-model.js'),
+  browserSource('stationhead-channel.js'),
+  browserSource('stationhead-channel-read-model.js'),
   read('../public/dashboard-fetch-cache.js'),
 ]);
 

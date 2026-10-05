@@ -1,3 +1,4 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -47,8 +48,8 @@ test('hidden-tab dashboard cache has a bounded lifetime', () => {
 });
 
 test('shared Buddies adapter keeps the persisted dashboard delta cache instead of rereading 24h history', () => {
-  const entry = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
-  const adapter = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
+  const entry = browserSource('stationhead-channel-read-model.js');
+  const adapter = browserSource('stationhead-channel-read-model.js');
   const source = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
   assert.match(entry, /dashboard-fetch-cache\.js\?v=20260930\.1/);
   assert.match(adapter, /fetchJson\('\/api\/dashboard\?history=0'/);

@@ -1,3 +1,4 @@
+import { browserSource } from '../site/tests/helpers/dashboard-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -83,10 +84,7 @@ test('broadcast summary reports empty range and setup state in one query', () =>
 });
 
 test('history display layer uses current canonical modules only', () => {
-  const source = readFileSync(
-    new URL('../site/public/history/history-lite.js', import.meta.url),
-    'utf8',
-  );
+  const source = browserSource('history/history-lite.js');
   const entry = readFileSync(
     new URL('../site/public/history/history-main.js', import.meta.url),
     'utf8',
