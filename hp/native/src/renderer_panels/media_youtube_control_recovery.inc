@@ -228,7 +228,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
           'button,tp-yt-paper-button,[role="button"],[aria-label],[title]'))
           .filter(element => element.getClientRects().length && valid(element));
       const dialogText = text(root);
-      if (/(視聴を続けていますか|動画がまもなく一時停止されます|still watching|continue watching)/i
+      if (/(視聴を続けていますか|動画がまもなく一時停止されます|動画が一時停止されました[。.!！]?\s*続きを視聴しますか|still watching|continue watching)/i
           .test(dialogText)) {
         const keepWatching = controls.find(element =>
             /^(はい|yes|続ける|視聴を続ける|continue|continue watching)$/i
