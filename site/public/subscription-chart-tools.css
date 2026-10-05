@@ -1,0 +1,100 @@
+.series-selector {
+  margin: 2px 0 8px;
+  font-size: var(--dashboard-label-size);
+}
+.series-selector > summary {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--muted);
+}
+.series-selector-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 4px 10px;
+  max-height: 220px;
+  padding: 6px 0;
+  overflow-y: auto;
+}
+.series-selector-option {
+  display: grid;
+  grid-template-columns: 18px 10px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+}
+.series-selector-option input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--text);
+}
+.series-selector-option i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.series-selector-option span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.compact-series-legend {
+  min-height: 20px;
+  margin-bottom: 6px;
+}
+.chart-range-controls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2px;
+  max-width: 420px;
+  margin: 0 0 8px auto;
+}
+.chart-range-controls button {
+  min-height: 38px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--dashboard-small-size);
+  cursor: pointer;
+}
+.chart-range-controls button.active {
+  background: var(--text);
+  color: var(--panel);
+  border-color: var(--text);
+}
+.chart-range-controls button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.scrollable-table {
+  background: linear-gradient(to right, var(--panel) 0, transparent 12px) left center / 12px 100% no-repeat,
+    linear-gradient(to left, var(--panel-2) 0, transparent 16px) right center / 16px 100% no-repeat;
+}
+.sticky-first-column :is(th, td):first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--panel);
+  box-shadow: 1px 0 0 var(--line);
+}
+.sticky-first-column th:first-child {
+  z-index: 2;
+  background: var(--panel-2);
+}
+@media (max-width: 760px) {
+  .series-selector-options {
+    grid-template-columns: minmax(0, 1fr);
+    max-height: 180px;
+  }
+  .chart-range-controls {
+    max-width: none;
+    margin-inline: 0;
+  }
+  .chart-range-controls button {
+    min-height: 44px;
+    padding-inline: 3px;
+  }
+}
