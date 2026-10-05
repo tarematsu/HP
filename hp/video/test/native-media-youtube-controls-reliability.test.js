@@ -53,6 +53,8 @@ test('message dialogs close through the same trusted CDP action path', () => {
 test('continue-watching dialogs confirm yes through trusted input', () => {
   assert.match(runtime, /視聴を続けていますか/);
   assert.match(runtime, /動画がまもなく一時停止されます/);
+  assert.match(runtime, /動画が一時停止されました/);
+  assert.match(runtime, /続きを視聴しますか/);
   assert.match(runtime, /\^\(はい\|yes\|続ける\|視聴を続ける\|continue\|continue watching\)\$/i);
   assert.match(runtime, /return arm\(keepWatching, 'dialog-continue-watching', 1000\)/);
   assert.doesNotMatch(runtime, /keepWatching\.click\(\)/);
