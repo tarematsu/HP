@@ -1,9 +1,9 @@
 import {
   spotifyArtistChartSql,
+  spotifyMonthlyListenersSql,
   spotifyReadModelAll,
   spotifyTrendSql,
-} from '../../site/functions/api/spotify-playcounts.js';
-import { spotifyMonthlyListenersSql } from '../../site/functions/api/spotify-monthly-listeners.js';
+} from 'sh-shared/spotify-read-model.mjs';
 import { pagesR2ResponseKey, saveMaterializedR2Response } from './pages-response-r2.js';
 import { loadSpotifyLatestDetailRows } from './spotify-read-model-detail.js';
 
