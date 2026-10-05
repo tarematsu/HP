@@ -1,6 +1,6 @@
 import { handleInternalScheduled } from './internal-scheduled-dispatch.js';
 import { collectStationheadFollowers } from './stationhead-followers-worker.js';
-import { importStationheadLeaderboardFromR2 } from './stationhead-leaderboard-worker.js';
+import { refreshStationheadLeaderboard, consumeLeaderboardRefresh } from './leaderboard-refresh.js';
 
 export const STATIONHEAD_FOLLOWERS_CRON = '0 15 * * *';
 export const STATIONHEAD_LEADERBOARD_CRON = '17 12 * * 1';
@@ -17,7 +17,7 @@ export async function runScheduledCollectionJob(controller, env) {
     return result;
   }
   if (controller?.cron === STATIONHEAD_LEADERBOARD_CRON) {
-    const result = await importStationheadLeaderboardFromR2(env, scheduledAt);
+    const result = await refreshStationheadLeaderboard(env, {}, scheduledAt);
     console.log(JSON.stringify({ event: 'stationhead-leaderboard-import-complete', ...result }));
     return result;
   }
@@ -25,6 +25,7 @@ export async function runScheduledCollectionJob(controller, env) {
 }
 
 export default {
+  queue: consumeLeaderboardRefresh,
   async fetch(request, env) {
     const internal = await handleInternalScheduled(
       request,

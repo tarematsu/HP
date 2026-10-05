@@ -55,6 +55,10 @@ jobs:
         working-directory: hp
         run: npm ci --prefer-offline --no-audit --no-fund
 
+      - name: Ensure leaderboard refresh producer queue
+        working-directory: hp
+        run: node ../.github/scripts/ensure-leaderboard-refresh-queue.mjs
+
       - name: Enforce GitHub Actions-only Cloudflare deployment
         run: node .github/scripts/assert-actions-only-cloudflare.mjs
 

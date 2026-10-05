@@ -58,7 +58,7 @@ test('Pages leaderboard reads only the weekly materialized model', () => {
 
 test('weekly leaderboard producer reads only the three Sakamichi hosts', () => {
   const source = readFileSync(
-    new URL('../worker/scripts/materialize-weekly-ranking-read-model.mjs', import.meta.url),
+    new URL('../worker/src/weekly-ranking-materializer.js', import.meta.url),
     'utf8',
   );
   assert.match(source, /lower\(trim\(channel_name\)\) IN \('sakuramankai','sakurazaka46jp','nogizaka46smej'\)/);

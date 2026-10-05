@@ -143,7 +143,7 @@ test('D1 migration corrects sbuddies1819 idempotently', () => {
 
 test('Stationhead display names are keyed by host so official Sakurazaka is not mislabeled as Buddies', () => {
   const source = readFileSync(
-    new URL('../../worker/scripts/materialize-weekly-ranking-read-model.mjs', import.meta.url),
+    new URL('../../worker/src/weekly-ranking-materializer.js', import.meta.url),
     'utf8',
   );
   assert.match(source, /STATIONHEAD_CHANNEL_BY_HOST/);

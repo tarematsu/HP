@@ -115,6 +115,10 @@
       {
         "binding": "SPOTIFY_PLAYCOUNT_QUEUE",
         "queue": "stationhead-spotify-playcount"
+      },
+      {
+        "binding": "STATIONHEAD_LEADERBOARD_REFRESH_QUEUE",
+        "queue": "stationhead-leaderboard-refresh"
       }
     ],
     "consumers": [

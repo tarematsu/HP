@@ -29,6 +29,7 @@ mountDashboardShell({
     position: 'afterend',
     html: `
       ${meta}
+      <h2 id="leaderboardPageTitle" class="dashboard-view-title">Weekly Leaderboad</h2>
       ${dashboardNotice({ id: 'leaderboardNotice' })}
       ${dashboardChartCard({
         id: 'leaderboardChartPanel',

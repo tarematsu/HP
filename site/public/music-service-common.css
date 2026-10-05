@@ -3,25 +3,6 @@
   gap: 10px;
 }
 
-.music-service-meta {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 5px 16px;
-  margin: 0 2px;
-  color: var(--muted);
-  font-size: var(--dashboard-small-size);
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.music-service-meta strong,
-.music-service-meta time {
-  margin-left: 5px;
-  color: var(--text);
-  font-weight: 750;
-}
-
 .music-service-section {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -172,11 +153,6 @@
     gap: 8px;
   }
 
-  .music-service-meta {
-    justify-content: flex-start;
-    gap: 3px 12px;
-    text-align: left;
-  }
 
   .music-service-section > .section-head {
     align-items: flex-start;

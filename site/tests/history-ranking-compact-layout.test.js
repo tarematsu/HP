@@ -13,7 +13,7 @@ test('leaderboard uses QQ-style update metadata above chart and data', () => {
   assert.match(shell, /更新日時 <strong id="leaderboardUpdatedAt">-<\/strong>/);
   assert.match(shell, /更新周期 <strong id="leaderboardCadence">-<\/strong>/);
   assert.match(readModel, /updated_at: timestamp\(payload\?\.materialized_at\)/);
-  assert.match(readModel, /cadence: '毎週月曜日夜'/);
+  assert.match(readModel, /cadence: 'データ受信時'/);
   assert.match(runtime, /timeZone: 'Asia\/Tokyo'/);
   assert.match(runtime, /updated\.textContent = formatUpdatedAt\(payload\?\.updated_at\)/);
   assert.match(runtime, /cadence\.textContent = String\(payload\?\.cadence \|\| '-'\)/);

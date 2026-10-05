@@ -30,6 +30,7 @@ mountDashboardShell({
     position: 'afterend',
     html: `
       ${followersMeta}
+      <h2 id="followersPageTitle" class="dashboard-view-title">フォロワー数推移</h2>
       ${dashboardNotice({ id: 'followersNotice' })}
       ${dashboardChartCard({
         id: 'followersChartPanel',
