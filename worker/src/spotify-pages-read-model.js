@@ -4,7 +4,7 @@ import {
   spotifyTrendSql,
 } from '../../site/functions/api/spotify-playcounts.js';
 import { spotifyMonthlyListenersSql } from '../../site/functions/api/spotify-monthly-listeners.js';
-import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
+import { pagesR2ResponseKey, saveMaterializedR2Response } from './pages-response-r2.js';
 import { loadSpotifyLatestDetailRows } from './spotify-read-model-detail.js';
 
 export const SPOTIFY_READ_MODEL_KEY = 'spotify-playcounts';
@@ -15,27 +15,35 @@ const RESPONSE_HEADERS = Object.freeze({
   'x-content-type-options': 'nosniff',
   vary: 'accept-encoding',
 });
-const MAX_REFRESH_MARKERS = 32;
+const MAX_REFRESH_MARKERS = 12;
+const RENDERER_REVISION = 'spotify-event-v4';
 
 function rows(result) {
   return Array.isArray(result?.results) ? result.results : [];
 }
 
-async function existingEnvelope(r2, key) {
+function metadataObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+async function existingRecord(r2, key) {
   if (typeof r2?.get !== 'function') return null;
   const object = await r2.get(key);
   if (!object) return null;
   try {
-    return JSON.parse(await object.text());
+    return {
+      body: await object.text(),
+      metadata: metadataObject(object.customMetadata),
+    };
   } catch {
     return null;
   }
 }
 
-function envelopeModel(envelope) {
-  if (Number(envelope?.version) !== 1 || typeof envelope?.body !== 'string') return null;
+function recordModel(record) {
+  if (typeof record?.body !== 'string') return null;
   try {
-    const parsed = JSON.parse(envelope.body);
+    const parsed = JSON.parse(record.body);
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
   } catch {
     return null;
@@ -88,22 +96,27 @@ export function spotifyReadModelRefreshMarker(message = {}) {
   return null;
 }
 
-function envelopeRefreshMarkers(envelope) {
-  return Array.isArray(envelope?.refresh_markers)
-    ? envelope.refresh_markers.map((value) => String(value || '').trim()).filter(Boolean)
-    : [];
+function recordRefreshMarkers(record) {
+  try {
+    const values = JSON.parse(record?.metadata?.refresh_markers_json || '[]');
+    return Array.isArray(values)
+      ? values.map((value) => String(value || '').trim()).filter(Boolean)
+      : [];
+  } catch {
+    return [];
+  }
 }
 
-function refreshesCoveredByEnvelope(envelope, messages) {
-  if (!envelopeModel(envelope) || !messages.length) return false;
+function refreshesCoveredByRecord(record, messages) {
+  if (!recordModel(record) || !messages.length) return false;
   const markers = messages.map(spotifyReadModelRefreshMarker);
   if (markers.some((marker) => !marker)) return false;
-  const covered = new Set(envelopeRefreshMarkers(envelope));
+  const covered = new Set(recordRefreshMarkers(record));
   return markers.every((marker) => covered.has(marker));
 }
 
 function mergedRefreshMarkers(previous, messages) {
-  const markers = [...envelopeRefreshMarkers(previous)];
+  const markers = [...recordRefreshMarkers(previous)];
   for (const message of messages) {
     const marker = spotifyReadModelRefreshMarker(message);
     if (!marker) continue;
@@ -114,8 +127,8 @@ function mergedRefreshMarkers(previous, messages) {
   return markers.slice(-MAX_REFRESH_MARKERS);
 }
 
-function readModelResultFromEnvelope(envelope, key) {
-  const model = envelopeModel(envelope);
+function readModelResultFromRecord(record, key) {
+  const model = recordModel(record);
   if (!model) return null;
   const snapshots = groupSnapshotDates(model);
   const monthlyListenerRows = Array.isArray(model.monthly_listener_rows)
@@ -153,15 +166,15 @@ export async function publishSpotifyPagesReadModel(env, options = {}) {
   if (typeof r2?.get !== 'function' || typeof r2?.put !== 'function') {
     throw new Error('PAGES_RESPONSE_R2 binding is required for Spotify read-model refresh');
   }
-  const key = pagesActionsR2ResponseKey(SPOTIFY_READ_MODEL_KEY);
+  const key = pagesR2ResponseKey(SPOTIFY_READ_MODEL_KEY);
   if (!key) throw new Error('Spotify read-model R2 key is unavailable');
 
   const messages = refreshMessages(options.refreshMessages);
-  const previous = Object.hasOwn(options, 'previousEnvelope')
-    ? options.previousEnvelope
-    : await existingEnvelope(r2, key);
-  if (messages.length && refreshesCoveredByEnvelope(previous, messages)) {
-    return readModelResultFromEnvelope(previous, key);
+  const previous = Object.hasOwn(options, 'previousRecord')
+    ? options.previousRecord
+    : await existingRecord(r2, key);
+  if (messages.length && refreshesCoveredByRecord(previous, messages)) {
+    return readModelResultFromRecord(previous, key);
   }
 
   const db = env?.OTHER_DB;
@@ -182,10 +195,10 @@ export async function publishSpotifyPagesReadModel(env, options = {}) {
 
   const snapshots = groupSnapshotDates(model);
   const refreshMarkers = mergedRefreshMarkers(previous, messages);
-  const previousMarkers = envelopeRefreshMarkers(previous);
+  const previousMarkers = recordRefreshMarkers(previous);
   const markersChanged = JSON.stringify(refreshMarkers) !== JSON.stringify(previousMarkers);
 
-  if (Number(previous?.version) === 1 && previous?.body === body && !markersChanged) {
+  if (previous?.body === body && !markersChanged) {
     return {
       published: false,
       changed: false,
@@ -199,28 +212,29 @@ export async function publishSpotifyPagesReadModel(env, options = {}) {
   }
 
   const now = Number(options.now ?? Date.now());
-  const envelope = {
-    version: 1,
-    status: 200,
-    headers: RESPONSE_HEADERS,
-    updated_at: Number.isFinite(now) ? now : Date.now(),
-    cadence_seconds: 0,
-    source_revision: [
-      'spotify-event',
-      snapshots.sakurazaka46 ?? '',
-      snapshots.nogizaka46 ?? '',
-      snapshots.hinatazaka46 ?? '',
-      model.artist_chart?.latest_chart_date ?? '',
-      model.artist_chart?.latest_observed_at ?? '',
-      monthlyListenerRevision(monthlyListenerRows),
-    ].join(':'),
-    renderer_revision: 'spotify-event-v3',
-    refresh_markers: refreshMarkers,
+  const sourceRevision = [
+    'spotify-event',
+    snapshots.sakurazaka46 ?? '',
+    snapshots.nogizaka46 ?? '',
+    snapshots.hinatazaka46 ?? '',
+    model.artist_chart?.latest_chart_date ?? '',
+    model.artist_chart?.latest_observed_at ?? '',
+    monthlyListenerRevision(monthlyListenerRows),
+  ].join(':');
+  await saveMaterializedR2Response(
+    r2,
+    SPOTIFY_READ_MODEL_KEY,
     body,
-  };
-  await r2.put(key, JSON.stringify(envelope), {
-    httpMetadata: { contentType: 'application/json; charset=utf-8' },
-  });
+    200,
+    RESPONSE_HEADERS,
+    Number.isFinite(now) ? now : Date.now(),
+    0,
+    {
+      source_revision: sourceRevision,
+      renderer_revision: RENDERER_REVISION,
+      refresh_markers_json: JSON.stringify(refreshMarkers),
+    },
+  );
   return {
     published: true,
     changed: previous?.body !== body,
