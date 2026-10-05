@@ -11,10 +11,10 @@ const [entry, runtime, readModel, fetchCache] = await Promise.all([
   read('../public/dashboard-fetch-cache.js'),
 ]);
 
-test('dashboard cache is owned by the explicit fetch adapter', () => {
-  assert.match(fetchCache, /DASHBOARD_CACHE_KEY = 'sh\.dashboard\.v3'/);
-  assert.match(fetchCache, /localStorage\.getItem\(DASHBOARD_CACHE_KEY\)/);
-  assert.match(fetchCache, /localStorage\.setItem\(DASHBOARD_CACHE_KEY/);
+test('dashboard fetch adapter keeps only in-memory delta state', () => {
+  assert.doesNotMatch(fetchCache, /localStorage|sessionStorage|CacheStorage|caches\.open/);
+  assert.match(fetchCache, /const state = \{/);
+  assert.match(fetchCache, /latestObservedAt/);
   assert.match(readModel, /import \{ fetchDashboard \}/);
   assert.match(readModel, /url\.startsWith\('\/api\/dashboard\?'\) \? fetchDashboard : fetch/);
   assert.doesNotMatch(fetchCache, /window\.fetch\s*=/);
