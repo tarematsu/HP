@@ -3,7 +3,8 @@ import test from 'node:test';
 import { enqueueChangedHistoryModels, refreshHistoryReadModel, consumeHistoryRefresh } from '../src/history-read-model-refresh.js';
 import { HISTORY_READ_MODEL_KEYS, loadHistorySourceRevisions } from '../src/history-read-model-source.js';
 import { renderHistoryReadModel } from '../src/history-read-model-renderer.js';
-import { pagesActionsR2ResponseKey, loadMaterializedR2Response } from '../src/pages-response-r2.js';
+import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
+import { loadReadModelR2 } from '../src/read-model-r2.js';
 
 function fixture() {
   const objects = new Map();
@@ -14,11 +15,17 @@ function fixture() {
     async head(key) { return objects.get(key) || null; },
     async get(key) {
       const stored = objects.get(key);
-      return stored ? { ...stored, body: stored.value, json: async () => JSON.parse(stored.value), text: async () => stored.value } : null;
+      return stored ? {
+        ...stored,
+        body: stored.value,
+        json: async () => JSON.parse(stored.value),
+        text: async () => stored.value,
+      } : null;
     },
     async put(key, value, options) {
-      const object = { ...options, etag: String(++etag), value };
-      objects.set(key, object); writes.push(key);
+      const object = { ...options, customMetadata: options?.customMetadata || {}, etag: String(++etag), value };
+      objects.set(key, object);
+      writes.push(key);
       return object;
     },
   };
@@ -30,11 +37,12 @@ function fixture() {
     HISTORY_READ_MODEL_QUEUE: { async send(body) { sends.push(body); } },
   } };
 }
-const message = key => ({ version: 1, type: 'pages-history-refresh', key });
+const message = key => ({ version: 2, type: 'pages-history-refresh', key });
 
-test('publication covers all history keys and unchanged ticks do no writes or queue work', async () => {
+test('publication covers all history keys with one R2 object each and unchanged ticks do no work', async () => {
   const f = fixture();
   for (const key of HISTORY_READ_MODEL_KEYS) await refreshHistoryReadModel(f.env, message(key), 100, f.deps);
+  assert.deepEqual(new Set(f.writes), new Set(HISTORY_READ_MODEL_KEYS.map(pagesR2ResponseKey)));
   f.writes.length = 0;
   const result = await enqueueChangedHistoryModels(f.env, 200, f.deps);
   assert.equal(result.queued, 0);
@@ -49,12 +57,12 @@ test('duplicate and delayed queue messages render only the latest revision once'
   let rendered = 0;
   f.deps.render = async () => { rendered++; return { ok: true, rows: [{ revision: f.revisions['history:daily'] }] }; };
   f.revisions['history:daily'] = 'new';
-  const oldMessage = { ...message('history:daily'), source_revision: 'old' };
-  await refreshHistoryReadModel(f.env, oldMessage, 100, f.deps);
-  assert.equal((await refreshHistoryReadModel(f.env, oldMessage, 200, f.deps)).status, 'unchanged');
+  const delayed = { ...message('history:daily'), source_revision: 'old' };
+  await refreshHistoryReadModel(f.env, delayed, 100, f.deps);
+  assert.equal((await refreshHistoryReadModel(f.env, delayed, 200, f.deps)).status, 'unchanged');
   assert.equal(rendered, 1);
-  const response = await loadMaterializedR2Response(f.env.PAGES_RESPONSE_R2, 'history:daily', 200);
-  assert.equal(response.headers.get('x-api-source'), 'actions-r2-raw');
+  const response = await loadReadModelR2(f.env.PAGES_RESPONSE_R2, 'history:daily', 200);
+  assert.equal(response.headers.get('x-api-source'), 'worker-r2');
   assert.equal((await response.json()).rows[0].revision, 'new');
 });
 
@@ -63,23 +71,6 @@ test('a changing source is retried without publishing a stale generation', async
   f.deps.render = async () => { f.revisions['history:daily'] = 'changed'; return { ok: true }; };
   await assert.rejects(refreshHistoryReadModel(f.env, message('history:daily'), 100, f.deps), /source changed/);
   assert.deepEqual(f.writes, []);
-});
-
-test('failed raw publication repairs directly from the canonical envelope', async () => {
-  const f = fixture();
-  const put = f.env.PAGES_RESPONSE_R2.put;
-  let fail = true;
-  f.env.PAGES_RESPONSE_R2.put = async (...args) => {
-    if (args[0].includes('actions-raw-meta') && fail) throw new Error('metadata unavailable');
-    return put(...args);
-  };
-  await assert.rejects(refreshHistoryReadModel(f.env, message('history:daily'), 100, f.deps), /metadata unavailable/);
-  assert.equal((await enqueueChangedHistoryModels(f.env, 200, f.deps)).keys.includes('history:daily'), true);
-  fail = false;
-  f.deps.render = () => { throw new Error('must not reread history after committed generation'); };
-  const result = await refreshHistoryReadModel(f.env, message('history:daily'), 200, f.deps);
-  assert.equal(result.status, 'raw-repaired');
-  assert.equal((await refreshHistoryReadModel(f.env, message('history:daily'), 300, f.deps)).status, 'unchanged');
 });
 
 test('queue acknowledges successful models independently and retries failed models', async () => {
@@ -92,20 +83,28 @@ test('queue acknowledges successful models independently and retries failed mode
   assert.deepEqual(events, ['history:daily:retry', 'history:weekly:ack']);
 });
 
-test('source checks use four indexed revisions and one current week row', async () => {
+test('source checks use one compact revision query and no R2 reads', async () => {
   const queries = [];
+  const values = new Map([
+    ['history:daily', [2, 10]],
+    ['history:weekly', [3, 20]],
+    ['history:broadcasts', [4, 30]],
+    ['host-history:summary', [5, 40]],
+    ['weekly-ranking', [6, 50]],
+    ['track-history', [7, 60]],
+  ]);
   const env = { OTHER_DB: { prepare(sql) {
     queries.push(sql);
-    return { bind(...values) { this.values = values; return this; },
-      async all() { assert.deepEqual(this.values, HISTORY_READ_MODEL_KEYS); return { results: [{ model_key: 'history:broadcasts', revision: 2, updated_at: 10 }] }; },
-      async first() { return { updated_at: 20 }; },
-    };
+    return { bind(...keys) { this.keys = keys; return this; }, async all() {
+      return { results: this.keys.map((key) => ({ model_key: key, revision: values.get(key)?.[0], updated_at: values.get(key)?.[1] })) };
+    } };
   } } };
-  const revisions = await loadHistorySourceRevisions(env, Date.parse('2026-10-05T00:00:00Z'));
-  assert.equal(queries.length, 2);
-  assert.ok(queries.every(sql => !/COUNT\(|SUM\(|ORDER BY/.test(sql)));
-  assert.match(revisions['history:weekly'], /2026-10-05:20:tracks:0$/);
-  assert.match(revisions['host-history:summary'], /:2:10$/);
+  const revisions = await loadHistorySourceRevisions(env);
+  assert.equal(queries.length, 1);
+  assert.doesNotMatch(queries[0], /COUNT\(|SUM\(|MAX\(|ORDER BY/);
+  assert.match(revisions['history:daily'], /history:daily:2:10:tracks:7:60$/);
+  assert.match(revisions['history:weekly'], /history:weekly:3:20:tracks:7:60:live:6:50$/);
+  assert.match(revisions['host-history:summary'], /host-history:summary:5:40:broadcasts:4:30$/);
 });
 
 test('daily and weekly renderers do not persist derived track counts to D1', async () => {
@@ -120,41 +119,33 @@ test('daily and weekly renderers do not persist derived track counts to D1', asy
   }
 });
 
-test('UTC day boundaries and renderer changes invalidate the relevant history models', async () => {
-  const env = { OTHER_DB: { prepare() { return {
-    bind() { return this; }, async all() { return { results: [] }; }, async first() { return null; },
-  }; } } };
-  const before = await loadHistorySourceRevisions(env, Date.parse('2026-10-05T23:59:00Z'));
-  const after = await loadHistorySourceRevisions(env, Date.parse('2026-10-06T00:00:00Z'));
-  assert.notEqual(before['history:daily'], after['history:daily']);
-  assert.equal(before['host-history:summary'], after['host-history:summary']);
-  const changed = await loadHistorySourceRevisions({ ...env, HISTORY_READ_MODEL_RENDERER_REVISION: 'new-renderer' }, Date.parse('2026-10-06T00:00:00Z'));
-  for (const key of HISTORY_READ_MODEL_KEYS) assert.notEqual(after[key], changed[key]);
+test('renderer and compact revision changes invalidate only dependent history models', async () => {
+  const rows = new Map(HISTORY_READ_MODEL_KEYS.map((key) => [key, { revision: 1, updated_at: 1 }]));
+  rows.set('weekly-ranking', { revision: 1, updated_at: 1 });
+  rows.set('track-history', { revision: 1, updated_at: 1 });
+  const env = { OTHER_DB: { prepare() { return { bind(...keys) { this.keys = keys; return this; }, async all() {
+    return { results: this.keys.map((key) => ({ model_key: key, ...(rows.get(key) || {}) })) };
+  } }; } } };
+  const before = await loadHistorySourceRevisions(env);
+  rows.set('track-history', { revision: 2, updated_at: 2 });
+  const tracksChanged = await loadHistorySourceRevisions(env);
+  assert.notEqual(before['history:daily'], tracksChanged['history:daily']);
+  assert.notEqual(before['history:weekly'], tracksChanged['history:weekly']);
+  assert.equal(before['history:broadcasts'], tracksChanged['history:broadcasts']);
+  const rendererChanged = await loadHistorySourceRevisions({ ...env, HISTORY_READ_MODEL_RENDERER_REVISION: 'new-renderer' });
+  for (const key of HISTORY_READ_MODEL_KEYS) assert.notEqual(tracksChanged[key], rendererChanged[key]);
 });
 
-test('publication stores the renderer identity used by Actions recovery', async () => {
+test('publication stores source and renderer identity as R2 metadata', async () => {
   const f = fixture();
   f.env.HISTORY_READ_MODEL_RENDERER_REVISION = 'deployed-renderer';
   await refreshHistoryReadModel(f.env, message('history:daily'), 100, f.deps);
-  const stored = f.objects.get(pagesActionsR2ResponseKey('history:daily'));
-  assert.equal(JSON.parse(stored.value).renderer_revision, 'deployed-renderer');
+  const stored = f.objects.get(pagesR2ResponseKey('history:daily'));
+  assert.equal(stored.customMetadata.source_revision, 'source:history:daily');
+  assert.equal(stored.customMetadata.renderer_revision, 'deployed-renderer');
 });
 
-test('R2 track-count corrections invalidate daily and weekly without D1 writes', async () => {
-  const env = { OTHER_DB: { prepare() { return {
-    bind() { return this; }, async all() { return { results: [] }; }, async first() { return null; },
-  }; } } };
-  let updated = 1;
-  env.PAGES_RESPONSE_R2 = { get: async () => ({ json: async () => ({ updated_at: updated }) }) };
-  const before = await loadHistorySourceRevisions(env, 1791205200000);
-  updated = 2;
-  const after = await loadHistorySourceRevisions(env, 1791205200000);
-  assert.notEqual(before['history:daily'], after['history:daily']);
-  assert.notEqual(before['history:weekly'], after['history:weekly']);
-  assert.equal(before['history:broadcasts'], after['history:broadcasts']);
-});
-
-test('Actions recovery skips both generation and upload for an unchanged Worker model', async () => {
+test('Actions recovery skips generation and upload for an unchanged Worker model', async () => {
   const { materializeRevisionGatedVariant } = await import('../scripts/run-pages-read-model-revision-actions.mjs');
   const result = await materializeRevisionGatedVariant({ key: 'history:daily' }, {}, 100, {
     rendererRevision: 'renderer', loadSourceRevision: async () => 'revision',

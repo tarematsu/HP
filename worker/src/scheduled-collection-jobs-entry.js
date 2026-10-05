@@ -30,9 +30,9 @@ export async function runScheduledCollectionJob(controller, env) {
 
 export default {
   queue(batch, env) {
-    return batch.queue === 'pages-history-refresh'
-      ? consumeHistoryRefresh(batch, env)
-      : consumeLeaderboardRefresh(batch, env);
+    if (batch.queue === 'pages-history-refresh') return consumeHistoryRefresh(batch, env);
+    if (batch.queue === 'stationhead-leaderboard-refresh') return consumeLeaderboardRefresh(batch, env);
+    throw new Error(`unsupported collection queue: ${batch.queue || '(empty)'}`);
   },
   async fetch(request, env) {
     const internal = await handleInternalScheduled(
@@ -40,10 +40,8 @@ export default {
       env,
       runScheduledCollectionJob,
       HISTORY_READ_MODEL_CRON,
-  STATIONHEAD_FOLLOWERS_CRON,
       SCHEDULED_COLLECTION_JOB_CRONS,
     );
-    if (internal) return internal;
-    return new Response('Not found', { status: 404 });
+    return internal || new Response('Not found', { status: 404 });
   },
 };

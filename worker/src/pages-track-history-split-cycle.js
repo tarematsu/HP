@@ -14,6 +14,7 @@ import {
   TRACK_HISTORY_MODEL_KEY,
 } from './pages-track-history-response.js';
 import { saveMaterializedR2Response } from './pages-response-r2.js';
+import { bumpReadModelRevision } from './read-model-revision.js';
 import {
   finalizeTrackHistoryStatus,
   loadTrackHistoryStage,
@@ -22,9 +23,7 @@ import {
 } from './pages-track-history-stage.js';
 
 function disabled(value) {
-  return value === false
-    || value === 0
-    || /^(0|false|no|off)$/i.test(String(value ?? '').trim());
+  return value === false || value === 0 || /^(0|false|no|off)$/i.test(String(value ?? '').trim());
 }
 
 export function trackHistoryCycleEnabled(env) {
@@ -36,11 +35,7 @@ function disabledResult(timestamp) {
     skipped: true,
     reason: 'track-history-cycle-disabled',
     generated_at: timestamp,
-    task: {
-      kind: 'track-history-idle',
-      key: TRACK_HISTORY_STAGE_KEY,
-      disabled_by: 'PAGES_TRACK_HISTORY_CYCLE_ENABLED',
-    },
+    task: { kind: 'track-history-idle', key: TRACK_HISTORY_STAGE_KEY, disabled_by: 'PAGES_TRACK_HISTORY_CYCLE_ENABLED' },
     responses: [],
     failed: 0,
   };
@@ -50,11 +45,7 @@ function responseBase(timestamp, stage) {
   return {
     skipped: false,
     generated_at: timestamp,
-    stage: {
-      refresh_mode: stage.refresh_mode,
-      shards: stage.tasks.length,
-      published: stage.published === true,
-    },
+    stage: { refresh_mode: stage.refresh_mode, shards: stage.tasks.length, published: stage.published === true },
     responses: [],
     succeeded: 0,
     failed: 0,
@@ -66,40 +57,25 @@ function publicationCompleteResult(timestamp, stage, reason = 'track-history-cyc
     skipped: true,
     reason,
     generated_at: timestamp,
-    task: {
-      kind: 'track-history-idle',
-      key: TRACK_HISTORY_STAGE_KEY,
-      generation: stage.generation,
-    },
-    stage: {
-      refresh_mode: stage.refresh_mode,
-      shards: stage.tasks.length,
-      published: true,
-    },
+    task: { kind: 'track-history-idle', key: TRACK_HISTORY_STAGE_KEY, generation: stage.generation },
+    stage: { refresh_mode: stage.refresh_mode, shards: stage.tasks.length, published: true },
     responses: [],
     failed: 0,
   };
 }
 
 async function ensurePublication(env, stage, timestamp, dependencies) {
-  if (!env?.PAGES_RESPONSE_R2?.get || !env?.PAGES_RESPONSE_R2?.put) {
-    throw new Error('track-history R2 publication binding is missing');
-  }
+  if (!env?.PAGES_RESPONSE_R2?.get || !env?.PAGES_RESPONSE_R2?.put) throw new Error('track-history R2 publication binding is missing');
   if (!stage.publication) {
     const finalize = dependencies.finalizeStatus || finalizeTrackHistoryStatus;
     const create = dependencies.createPublication || createTrackHistoryPublication;
     const initialize = dependencies.initializePublication || initializeTrackHistoryPublication;
     const status = await finalize(env, stage, timestamp, dependencies);
-    stage.publication = await initialize(
-      env.MINUTE_DB,
-      create(stage, status, timestamp, env),
-      dependencies,
-    );
+    stage.publication = await initialize(env.MINUTE_DB, create(stage, status, timestamp, env), dependencies);
     stage.published = false;
     stage.published_at = null;
     stage.updated_at = timestamp;
-    const save = dependencies.saveStage || saveTrackHistoryStage;
-    await save(env.MINUTE_DB, stage, timestamp);
+    await (dependencies.saveStage || saveTrackHistoryStage)(env.MINUTE_DB, stage, timestamp);
   }
   if (!stage.publication.status_published) {
     const publication = stage.publication;
@@ -123,8 +99,7 @@ async function ensurePublication(env, stage, timestamp, dependencies) {
     );
     publication.status_published = true;
     stage.updated_at = timestamp;
-    const save = dependencies.saveStage || saveTrackHistoryStage;
-    await save(env.MINUTE_DB, stage, timestamp);
+    await (dependencies.saveStage || saveTrackHistoryStage)(env.MINUTE_DB, stage, timestamp);
   }
   return stage.publication;
 }
@@ -135,13 +110,11 @@ async function advancePublicationInline(env, stage, timestamp, dependencies) {
     stage.published = true;
     stage.published_at ||= timestamp;
     stage.updated_at = timestamp;
-    const save = dependencies.saveStage || saveTrackHistoryStage;
-    await save(env.MINUTE_DB, stage, timestamp);
+    await (dependencies.saveStage || saveTrackHistoryStage)(env.MINUTE_DB, stage, timestamp);
     return publicationCompleteResult(timestamp, stage, 'track-history-publication-recovered');
   }
 
-  const advance = dependencies.advanceR2Publication || advanceTrackHistoryR2Publication;
-  const result = await advance(
+  const result = await (dependencies.advanceR2Publication || advanceTrackHistoryR2Publication)(
     env.MINUTE_DB,
     env.PAGES_RESPONSE_R2,
     publication,
@@ -149,15 +122,14 @@ async function advancePublicationInline(env, stage, timestamp, dependencies) {
     materializedResponseCadenceSeconds(TRACK_HISTORY_MODEL_KEY),
     dependencies,
   );
-
   stage.publication = result.publication;
   stage.updated_at = timestamp;
   if (result.published) {
     stage.published = true;
     stage.published_at = timestamp;
   }
-  const save = dependencies.saveStage || saveTrackHistoryStage;
-  await save(env.MINUTE_DB, stage, timestamp);
+  await (dependencies.saveStage || saveTrackHistoryStage)(env.MINUTE_DB, stage, timestamp);
+  if (result.published) await bumpReadModelRevision(env.OTHER_DB, 'track-history', timestamp);
 
   return {
     ...responseBase(timestamp, stage),
@@ -186,26 +158,18 @@ export async function runSplitTrackHistoryCycleStep(env, now = Date.now(), depen
   if (!env?.BUDDIES_DB || !env?.MINUTE_DB || !env?.PAGES_RESPONSE_R2?.get || !env?.PAGES_RESPONSE_R2?.put) {
     throw new Error('track-history cycle step is missing BUDDIES_DB, MINUTE_DB, or PAGES_RESPONSE_R2');
   }
-
-  const load = dependencies.loadStage || loadTrackHistoryStage;
-  const stage = await load(env.MINUTE_DB);
+  const stage = await (dependencies.loadStage || loadTrackHistoryStage)(env.MINUTE_DB);
   const currentGeneration = Math.floor(timestamp / TRACK_HISTORY_CYCLE_MS) * TRACK_HISTORY_CYCLE_MS;
   if (!stage || (stage.published && Number(stage.generation) !== currentGeneration)) {
     return runTrackHistoryShardStep(env, timestamp, dependencies);
   }
-  if (stage.published && stage.publication) {
-    return publicationCompleteResult(timestamp, stage);
-  }
-
+  if (stage.published && stage.publication) return publicationCompleteResult(timestamp, stage);
   const nextTask = stage.tasks.find((task) => !stage.completed?.[task.id]);
   if (nextTask) {
     const cycleStart = Math.floor(timestamp / TRACK_HISTORY_CYCLE_MS) * TRACK_HISTORY_CYCLE_MS;
     const cycleMinute = Math.floor((timestamp - cycleStart) / 60_000);
-    if (cycleMinute < TRACK_HISTORY_ACTIVE_MINUTES) {
-      return runTrackHistoryShardStep(env, timestamp, dependencies);
-    }
+    if (cycleMinute < TRACK_HISTORY_ACTIVE_MINUTES) return runTrackHistoryShardStep(env, timestamp, dependencies);
     return runLateTrackHistoryShard(env, stage, timestamp, dependencies);
   }
-
   return advancePublicationInline(env, stage, timestamp, dependencies);
 }

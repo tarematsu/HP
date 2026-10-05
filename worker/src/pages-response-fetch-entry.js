@@ -3,11 +3,13 @@ import {
   materializedResponseMaximumAge,
 } from '../../site/functions/lib/api-contract.js';
 import { loadMaterializedR2Response } from './pages-response-r2.js';
+import { loadReadModelR2 } from './read-model-r2.js';
 
 const EMPTY_DEPENDENCIES = Object.freeze({});
 const INTERNAL_RESPONSE_PATH = '/_internal/pages-response';
 const DASHBOARD_MODEL_KEY = 'dashboard';
 const TRACK_HISTORY_MODEL_KEY = 'track-history';
+const FOLLOWERS_MODEL_KEY = 'followers';
 const DEFAULT_STALE_FALLBACK_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_EDGE_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
 const DASHBOARD_EDGE_CACHE_MAX_AGE_MS = 15 * 1000;
@@ -19,7 +21,7 @@ const PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS = new Set([
   'spotify-playlists',
   'nogizaka-listening-party',
   'regional-music',
-  'followers',
+  FOLLOWERS_MODEL_KEY,
   'leaderboard',
 ]);
 const R2_ONLY_MODEL_KEYS = new Set([
@@ -133,6 +135,20 @@ function cacheResponse(cache, key, response, context, now) {
   return context?.waitUntil ? null : write;
 }
 
+async function loadR2OnlyResponse(env, modelKey, now, maximumAge, dependencies) {
+  const staleMaximumAge = materializedStaleMaximumAge(env, maximumAge);
+  const legacy = dependencies.loadR2Response || loadMaterializedR2Response;
+  let response;
+  if (modelKey === FOLLOWERS_MODEL_KEY) {
+    response = await legacy(env?.PAGES_RESPONSE_R2, modelKey, now, staleMaximumAge);
+  } else {
+    const loadWorker = dependencies.loadWorkerR2Response || loadReadModelR2;
+    response = await loadWorker(env?.PAGES_RESPONSE_R2, modelKey, now, staleMaximumAge);
+    if (!response) response = await legacy(env?.PAGES_RESPONSE_R2, modelKey, now, staleMaximumAge);
+  }
+  return responseIsStale(response, now, maximumAge) ? staleMaterializedResponse(response) : response;
+}
+
 export async function runPagesResponseFetch(
   request,
   env,
@@ -176,21 +192,8 @@ export async function runPagesResponseFetch(
         materializedStaleMaximumAge(env, maximumAge),
         dependencies.trackHistory || EMPTY_DEPENDENCIES,
       );
-    } else if (R2_ONLY_MODEL_KEYS.has(modelKey)) {
-      const loadR2 = dependencies.loadR2Response || loadMaterializedR2Response;
-      const staleMaximumAge = materializedStaleMaximumAge(env, maximumAge);
-      response = await loadR2(env?.PAGES_RESPONSE_R2, modelKey, now, staleMaximumAge);
-      if (responseIsStale(response, now, maximumAge)) {
-        response = staleMaterializedResponse(response);
-      }
-    } else if (modelKey === TRACK_HISTORY_MODEL_KEY) {
-      const loadR2 = dependencies.loadR2Response || loadMaterializedR2Response;
-      response = await loadR2(
-        env?.PAGES_RESPONSE_R2,
-        modelKey,
-        now,
-        materializedStaleMaximumAge(env, maximumAge),
-      );
+    } else if (R2_ONLY_MODEL_KEYS.has(modelKey) || modelKey === TRACK_HISTORY_MODEL_KEY) {
+      response = await loadR2OnlyResponse(env, modelKey, now, maximumAge, dependencies);
     } else if (modelKey === DASHBOARD_MODEL_KEY) {
       const loadR2 = dependencies.loadR2Response || loadMaterializedR2Response;
       response = await loadR2(env?.PAGES_RESPONSE_R2, modelKey, now, maximumAge);

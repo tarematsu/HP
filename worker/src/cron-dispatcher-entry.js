@@ -1,8 +1,5 @@
 import { dispatchScheduledService } from './internal-scheduled-dispatch.js';
-import {
-  shouldDispatchSpotifyArtistChart,
-  shouldDispatchSpotifyPlaycount,
-} from './spotify-playcount-timing.js';
+import { shouldDispatchSpotifyArtistChart, shouldDispatchSpotifyPlaycount } from './spotify-playcount-timing.js';
 
 export const CRON_DISPATCHER_CRON = '* * * * *';
 export const NOGIZAKA_CRON = '* * * * *';
@@ -41,22 +38,17 @@ export function amazonMusicDue(timestamp) {
 async function dispatchHomePanel(env) {
   const scheduler = env?.HOMEPANEL_SCHEDULER_COORDINATOR;
   if (!scheduler?.getByName) throw new Error('HomePanel Durable Object binding unavailable: global');
-  const schedulerResponse = await scheduler.getByName('global').fetch(
-    'https://scheduler.internal/wake',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ names: ['radar'] }),
-    },
-  );
+  const schedulerResponse = await scheduler.getByName('global').fetch('https://scheduler.internal/wake', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ names: ['radar'] }),
+  });
   if (!schedulerResponse.ok) throw new Error(`HomePanel global dispatch failed (${schedulerResponse.status})`);
   try { await schedulerResponse.body?.cancel(); } catch {}
-
-  const targets = [
+  await Promise.all([
     [env?.HOMEPANEL_VIDEO_FEED_COORDINATOR, 'video-liveness', 'https://homepanel.internal/video-liveness-run'],
     [env?.HOMEPANEL_VIDEO_FEED_COORDINATOR, 'tver-feed-refresh', 'https://homepanel.internal/tver-feed-refresh-run'],
-  ];
-  await Promise.all(targets.map(async ([namespace, name, url]) => {
+  ].map(async ([namespace, name, url]) => {
     if (!namespace?.getByName) throw new Error(`HomePanel Durable Object binding unavailable: ${name}`);
     const response = await namespace.getByName(name).fetch(url, { method: 'POST' });
     if (!response.ok) throw new Error(`HomePanel ${name} dispatch failed (${response.status})`);
@@ -64,58 +56,47 @@ async function dispatchHomePanel(env) {
   }));
 }
 
-function addServiceTask(tasks, name, binding, cron, scheduledAt) {
-  tasks.push([name, dispatchScheduledService(binding, cron, scheduledAt)]);
-}
+const due = {
+  always: () => true,
+  ohisama: ({ minute }) => minute % 5 === 1,
+  spotifyPlaycount: (_parts, timestamp) => shouldDispatchSpotifyPlaycount(timestamp),
+  spotifyArtistChart: (_parts, timestamp) => shouldDispatchSpotifyArtistChart(timestamp),
+  amazon: (_parts, timestamp) => amazonMusicDue(timestamp),
+  playlists: ({ hour, minute }) => minute === 0 && [5, 17].includes(hour),
+  daily15: ({ hour, minute }) => hour === 15 && minute === 0,
+  kkbox: ({ day, hour, minute }) => day === 0 && hour === 15 && minute === 0,
+  qqWeekly: ({ day, hour, minute }) => day === 4 && hour === 9 && minute === 0,
+  kugou: ({ day, hour, minute }) => day >= 1 && day <= 5 && hour === 2 && minute === 30,
+  kugouAcg: ({ day, hour, minute }) => day === 3 && hour === 2 && minute === 40,
+  qqToplists: ({ day, hour, minute }) => day === 4 && hour >= 9 && hour <= 21 && minute === 30,
+  leaderboard: ({ day, hour, minute }) => day === 1 && hour === 12 && minute === 17,
+};
+
+const JOBS = Object.freeze([
+  ['pages-history', 'SCHEDULED_COLLECTION_JOBS', HISTORY_READ_MODEL_CRON, due.always],
+  ['nogizaka46smej', 'NOGIZAKA_SCHEDULED', NOGIZAKA_CRON, due.always],
+  ['ohisama', 'OHISAMA_SCHEDULED', OHISAMA_CRON, due.ohisama],
+  ['spotify-playcount', 'SPOTIFY_PLAYCOUNT_SCHEDULED', SPOTIFY_PLAYCOUNT_CRON, due.spotifyPlaycount],
+  ['spotify-artist-chart', 'SPOTIFY_PLAYCOUNT_SCHEDULED', SPOTIFY_ARTIST_CHART_CRON, due.spotifyArtistChart],
+  ['amazon-apple-music', 'AMAZON_MUSIC_SCHEDULED', AMAZON_MUSIC_CRON, due.amazon],
+  ['music-playlist-refresh', 'AMAZON_MUSIC_SCHEDULED', MUSIC_PLAYLIST_REFRESH_CRON, due.playlists],
+  ['youtube-music', 'REGIONAL_MUSIC_SCHEDULED', YOUTUBE_MUSIC_DAILY_CRON, due.daily15],
+  ['stationhead-followers', 'SCHEDULED_COLLECTION_JOBS', STATIONHEAD_FOLLOWERS_CRON, due.daily15],
+  ['kkbox', 'REGIONAL_MUSIC_SCHEDULED', KKBOX_WEEKLY_CRON, due.kkbox],
+  ['qq-music', 'REGIONAL_MUSIC_SCHEDULED', QQ_WEEKLY_CRON, due.qqWeekly],
+  ['kugou-music', 'REGIONAL_MUSIC_SCHEDULED', KUGOU_WEEKDAY_CRON, due.kugou],
+  ['kugou-acg', 'REGIONAL_MUSIC_SCHEDULED', KUGOU_ACG_WEEKLY_CRON, due.kugouAcg],
+  ['qq-toplists', 'REGIONAL_MUSIC_SCHEDULED', QQ_TOPLIST_POLL_CRON, due.qqToplists],
+  ['stationhead-leaderboard', 'SCHEDULED_COLLECTION_JOBS', STATIONHEAD_LEADERBOARD_CRON, due.leaderboard],
+]);
 
 export async function runCronDispatcher(controller, env) {
   const scheduledAt = scheduledTimestamp(controller);
-  const { day, hour, minute } = utcParts(scheduledAt);
-  const tasks = [];
-  addServiceTask(tasks, 'pages-history', env?.SCHEDULED_COLLECTION_JOBS, HISTORY_READ_MODEL_CRON, scheduledAt);
-  addServiceTask(tasks, 'nogizaka46smej', env?.NOGIZAKA_SCHEDULED, NOGIZAKA_CRON, scheduledAt);
-
-  // Buddies owns :00/:05/... independently. Keep Ohisama one minute later.
-  if (minute % 5 === 1) addServiceTask(tasks, 'ohisama', env?.OHISAMA_SCHEDULED, OHISAMA_CRON, scheduledAt);
-
-  if (shouldDispatchSpotifyPlaycount(scheduledAt)) {
-    addServiceTask(tasks, 'spotify-playcount', env?.SPOTIFY_PLAYCOUNT_SCHEDULED, SPOTIFY_PLAYCOUNT_CRON, scheduledAt);
-  }
-  if (shouldDispatchSpotifyArtistChart(scheduledAt)) {
-    addServiceTask(tasks, 'spotify-artist-chart', env?.SPOTIFY_PLAYCOUNT_SCHEDULED, SPOTIFY_ARTIST_CHART_CRON, scheduledAt);
-  }
-  if (amazonMusicDue(scheduledAt)) {
-    addServiceTask(tasks, 'amazon-apple-music', env?.AMAZON_MUSIC_SCHEDULED, AMAZON_MUSIC_CRON, scheduledAt);
-  }
-  if (minute === 0 && [5, 17].includes(hour)) {
-    addServiceTask(tasks, 'music-playlist-refresh', env?.AMAZON_MUSIC_SCHEDULED, MUSIC_PLAYLIST_REFRESH_CRON, scheduledAt);
-  }
-
-  if (hour === 15 && minute === 0) {
-    addServiceTask(tasks, 'youtube-music', env?.REGIONAL_MUSIC_SCHEDULED, YOUTUBE_MUSIC_DAILY_CRON, scheduledAt);
-    addServiceTask(tasks, 'stationhead-followers', env?.SCHEDULED_COLLECTION_JOBS, STATIONHEAD_FOLLOWERS_CRON, scheduledAt);
-  }
-  if (day === 0 && hour === 15 && minute === 0) {
-    addServiceTask(tasks, 'kkbox', env?.REGIONAL_MUSIC_SCHEDULED, KKBOX_WEEKLY_CRON, scheduledAt);
-  }
-  if (day === 4 && hour === 9 && minute === 0) {
-    addServiceTask(tasks, 'qq-music', env?.REGIONAL_MUSIC_SCHEDULED, QQ_WEEKLY_CRON, scheduledAt);
-  }
-  if (day >= 1 && day <= 5 && hour === 2 && minute === 30) {
-    addServiceTask(tasks, 'kugou-music', env?.REGIONAL_MUSIC_SCHEDULED, KUGOU_WEEKDAY_CRON, scheduledAt);
-  }
-  if (day === 3 && hour === 2 && minute === 40) {
-    addServiceTask(tasks, 'kugou-acg', env?.REGIONAL_MUSIC_SCHEDULED, KUGOU_ACG_WEEKLY_CRON, scheduledAt);
-  }
-  if (day === 4 && hour >= 9 && hour <= 21 && minute === 30) {
-    addServiceTask(tasks, 'qq-toplists', env?.REGIONAL_MUSIC_SCHEDULED, QQ_TOPLIST_POLL_CRON, scheduledAt);
-  }
-  if (day === 1 && hour === 12 && minute === 17) {
-    addServiceTask(tasks, 'stationhead-leaderboard', env?.SCHEDULED_COLLECTION_JOBS, STATIONHEAD_LEADERBOARD_CRON, scheduledAt);
-  }
-
-  if (minute === 0) tasks.push(['homepanel', dispatchHomePanel(env)]);
-
+  const parts = utcParts(scheduledAt);
+  const tasks = JOBS
+    .filter(([, , , isDue]) => isDue(parts, scheduledAt))
+    .map(([name, binding, cron]) => [name, dispatchScheduledService(env?.[binding], cron, scheduledAt)]);
+  if (parts.minute === 0) tasks.push(['homepanel', dispatchHomePanel(env)]);
   const settled = await Promise.allSettled(tasks.map(([, promise]) => promise));
   const failures = [];
   const results = {};
