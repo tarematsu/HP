@@ -23,8 +23,10 @@ import {
 } from './nogizaka-official-news-probe.js';
 import { materializeNogizakaRawMinute } from './nogizaka-raw-materializer.js';
 import { reconcileNogizakaReadModels } from './nogizaka-read-model.js';
+import { NOGIZAKA_CRON } from './scheduled-crons.js';
 
-export const NOGIZAKA_CRON = '* * * * *';
+export { NOGIZAKA_CRON };
+
 const JSON_QUEUE_SEND_OPTIONS = Object.freeze({ contentType: 'json' });
 const RETRY_60_SECONDS = Object.freeze({ delaySeconds: 60 });
 
