@@ -5,9 +5,13 @@ import { collectQqMusic } from './regional-music-qq.js';
 import { publishRegionalMusicReadModel } from './regional-music-read-model.js';
 import { regionalMusicSnapshotDate, saveRegionalCollectorState } from './regional-music-store.js';
 import { collectYouTubeMusic } from './regional-music-youtube-music.js';
+import {
+  REGIONAL_MUSIC_DAILY_CRON,
+  YOUTUBE_MUSIC_DAILY_CRON,
+} from './scheduled-crons.js';
 
-export const YOUTUBE_MUSIC_DAILY_CRON = '0 15 * * *';
-export const REGIONAL_MUSIC_DAILY_CRON = '0 21 * * *';
+export { REGIONAL_MUSIC_DAILY_CRON, YOUTUBE_MUSIC_DAILY_CRON };
+
 export const REGIONAL_MUSIC_COLLECTOR_CONCURRENCY = 4;
 export const REGIONAL_MUSIC_COLLECTOR_TIMEOUT_MS = 90_000;
 
@@ -253,8 +257,6 @@ async function ensureRegionalMusicAttemptRecorded(env, service, scheduledTime, r
 }
 
 export async function runRegionalMusicQueue(batch, env, fetchImpl = fetch, dependencies = {}) {
-  // Cloudflare passes ExecutionContext as the third queue-handler argument.
-  // Test callers may inject fetch explicitly; runtime context must use global fetch.
   if (typeof fetchImpl !== 'function') fetchImpl = fetch;
   const collectService = dependencies.collectService || collectRegionalMusicService;
   const publishReadModel = dependencies.publishReadModel || publishRegionalMusicReadModel;
@@ -299,7 +301,6 @@ export async function runRegionalMusicQueue(batch, env, fetchImpl = fetch, depen
       continue;
     }
     if (body.message_type === 'regional-music-publish') {
-      // Backward compatibility for already-enqueued one-off publish messages.
       const observedAt = Number(body.scheduled_at) || Date.now();
       const result = await publishReadModel(env, observedAt);
       console.log(JSON.stringify({ event: 'regional-music-read-model-legacy-complete', result }));
