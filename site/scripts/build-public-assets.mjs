@@ -46,9 +46,7 @@ const browserModuleResolver = {
       const clean = args.path.replace(/[?#].*$/, '');
       if (args.kind === 'entry-point' || clean.startsWith(publicRoot)) return null;
       if (!clean.startsWith('/') && !clean.startsWith('.')) return null;
-      const path = clean.startsWith('/')
-        ? resolve(publicRoot, `.${clean}`)
-        : resolve(args.resolveDir, clean);
+      const path = clean.startsWith('/') ? resolve(publicRoot, `.${clean}`) : resolve(args.resolveDir, clean);
       return { path };
     });
   },
@@ -68,26 +66,17 @@ function inputContributions(metafiles, limit = 20) {
   const bytes = new Map();
   for (const metafile of Array.isArray(metafiles) ? metafiles : [metafiles]) {
     for (const output of Object.values(metafile.outputs)) {
-      for (const [input, details] of Object.entries(output.inputs || {})) {
-        bytes.set(input, (bytes.get(input) || 0) + (details.bytesInOutput || 0));
-      }
+      for (const [input, details] of Object.entries(output.inputs || {})) bytes.set(input, (bytes.get(input) || 0) + (details.bytesInOutput || 0));
     }
   }
-  return [...bytes.entries()]
-    .map(([input, bytesInOutput]) => ({
-      input: input.startsWith(siteRoot) ? relative(siteRoot, input) : input,
-      bytes: bytesInOutput,
-    }))
-    .sort((a, b) => b.bytes - a.bytes)
-    .slice(0, limit);
+  return [...bytes.entries()].map(([input, bytesInOutput]) => ({ input: input.startsWith(siteRoot) ? relative(siteRoot, input) : input, bytes: bytesInOutput })).sort((a, b) => b.bytes - a.bytes).slice(0, limit);
 }
 
 async function buildCssBundle(name, files) {
   return build({
     stdin: {
       contents: '@layer base, features, layout;\n' + files.map((file) => {
-        const layer = name !== 'dashboard' ? 'features'
-          : ['pages-layout.css', 'dashboard-navigation.css', 'dashboard-ui-common.css', 'mobile-layout-refinements.css', 'dashboard-presentation.css'].includes(file) ? 'layout' : 'base';
+        const layer = name !== 'dashboard' ? 'features' : ['pages-layout.css', 'dashboard-navigation.css', 'dashboard-ui-common.css', 'mobile-layout-refinements.css', 'dashboard-presentation.css'].includes(file) ? 'layout' : 'base';
         return `@import "./public/${file}" layer(${layer});`;
       }).join('\n'),
       resolveDir: siteRoot,
@@ -104,7 +93,6 @@ async function buildCssBundle(name, files) {
   });
 }
 
-// Discard chunks from previous builds; deploy only the current module graph.
 await rm(resolve(assetsDir, 'chunks'), { recursive: true, force: true });
 await mkdir(assetsDir, { recursive: true });
 
@@ -125,30 +113,20 @@ const jsBuild = await build({
   plugins: [browserModuleResolver],
 });
 
-const cssBuilds = await Promise.all(Object.entries(cssGroups).map(async ([name, files]) => [
-  name,
-  await buildCssBundle(name, files),
-]));
+const cssBuilds = await Promise.all(Object.entries(cssGroups).map(async ([name, files]) => [name, await buildCssBundle(name, files)]));
 const cssBuildMap = new Map(cssBuilds);
-
 const jsOutputs = Object.entries(jsBuild.metafile.outputs);
 const initialOutputs = new Set();
 function collectInitial(path) {
   if (initialOutputs.has(path)) return;
   initialOutputs.add(path);
-  for (const dependency of jsBuild.metafile.outputs[path]?.imports || []) {
-    if (dependency.kind === 'import-statement' && !dependency.external) collectInitial(dependency.path);
-  }
+  for (const dependency of jsBuild.metafile.outputs[path]?.imports || []) if (dependency.kind === 'import-statement' && !dependency.external) collectInitial(dependency.path);
 }
 collectInitial(jsOutputs.find(([path]) => path.endsWith('/dashboard.min.js'))[0]);
 const initialJsBytes = [...initialOutputs].reduce((total, path) => total + jsBuild.metafile.outputs[path].bytes, 0);
 const totalJsBytes = jsOutputs.reduce((total, [, output]) => total + output.bytes, 0);
-
 const js = await stat(resolve(assetsDir, 'dashboard.min.js'));
-const cssSizes = Object.fromEntries(await Promise.all(Object.keys(cssGroups).map(async (name) => [
-  name,
-  (await stat(resolve(assetsDir, `${name}.min.css`))).size,
-])));
+const cssSizes = Object.fromEntries(await Promise.all(Object.keys(cssGroups).map(async (name) => [name, (await stat(resolve(assetsDir, `${name}.min.css`))).size])));
 const initialCssBytes = cssSizes.dashboard;
 const totalCssBytes = Object.values(cssSizes).reduce((total, size) => total + size, 0);
 
@@ -173,8 +151,6 @@ const routeModules = {
   hinata: ['hinata-shell.js', 'hinata.js'],
   nogizaka: ['nogizaka-listening-party-shell.js', 'nogizaka-listening-party.js'],
   history: ['history-shell.js', 'history/history-main.js'],
-  likes: ['likes-shell.js', 'history/history-likes.js'],
-  'played-tracks': ['played-tracks-shell.js', 'played-tracks.js'],
   spotify: ['spotify-shell.js', 'spotify.js'],
   'apple-music': ['apple-music-shell.js', 'apple-music.js'],
   'amazon-music': ['amazon-music-shell.js', 'amazon-music.js'],
@@ -190,9 +166,7 @@ function routeGraph(inputs, withBootstrap = true) {
   function visit(path) {
     if (outputs.has(path)) return;
     outputs.add(path);
-    for (const dependency of jsBuild.metafile.outputs[path]?.imports || []) {
-      if (!dependency.external) visit(dependency.path);
-    }
+    for (const dependency of jsBuild.metafile.outputs[path]?.imports || []) if (!dependency.external) visit(dependency.path);
   }
   for (const input of inputs) {
     const output = jsOutputs.find(([, details]) => details.entryPoint && resolve(details.entryPoint) === resolve(publicRoot, input));
@@ -201,9 +175,7 @@ function routeGraph(inputs, withBootstrap = true) {
   }
   return outputs;
 }
-report.route_js_graph_bytes = Object.fromEntries(Object.entries(routeModules).map(([route, inputs]) => [
-  route, [...routeGraph(inputs)].reduce((total, path) => total + jsBuild.metafile.outputs[path].bytes, 0),
-]));
+report.route_js_graph_bytes = Object.fromEntries(Object.entries(routeModules).map(([route, inputs]) => [route, [...routeGraph(inputs)].reduce((total, path) => total + jsBuild.metafile.outputs[path].bytes, 0)]));
 const allOutputPaths = [...jsOutputs.map(([path]) => path), ...Object.keys(cssGroups).map((name) => resolve(assetsDir, `${name}.min.css`))];
 const gzipSizes = new Map(await Promise.all(allOutputPaths.map(async (path) => [path, gzipSync(await readFile(path)).length])));
 report.gzip_estimate = {
@@ -213,23 +185,14 @@ report.gzip_estimate = {
 };
 report.html_bytes = (await stat(resolve(publicRoot, 'index.html'))).size;
 report.html_files = {};
-for (const file of ['index.html', 'sakurazaka46jp/index.html', 'nogizaka46smej/index.html']) {
-  report.html_files[file] = (await stat(resolve(publicRoot, file))).size;
-}
+for (const file of ['index.html', 'sakurazaka46jp/index.html', 'nogizaka46smej/index.html']) report.html_files[file] = (await stat(resolve(publicRoot, file))).size;
 report.standalone_entry_sources = {};
-for (const file of ['official-account-live.js', 'official-account-live.css', 'pages-theme.css']) {
-  report.standalone_entry_sources[file] = (await stat(resolve(publicRoot, file))).size;
-}
-report.dashboard_total_bytes = [...routeGraph(['dashboard-metrics.js'], false)]
-  .reduce((total, path) => total + jsBuild.metafile.outputs[path].bytes, 0) + cssSizes.dashboard + cssSizes.stationhead + cssSizes.subscriptions;
-report.official_route_bytes = [...routeGraph(['official-account-live.js'], false)]
-  .reduce((total, path) => total + jsBuild.metafile.outputs[path].bytes, 0) + cssSizes.official;
+for (const file of ['official-account-live.js', 'official-account-live.css', 'pages-theme.css']) report.standalone_entry_sources[file] = (await stat(resolve(publicRoot, file))).size;
+report.dashboard_total_bytes = [...routeGraph(['dashboard-metrics.js'], false)].reduce((total, path) => total + jsBuild.metafile.outputs[path].bytes, 0) + cssSizes.dashboard + cssSizes.stationhead + cssSizes.subscriptions;
+report.official_route_bytes = [...routeGraph(['official-account-live.js'], false)].reduce((total, path) => total + jsBuild.metafile.outputs[path].bytes, 0) + cssSizes.official;
 report.bundled_source_modules = Object.keys(jsBuild.metafile.inputs).sort();
-// These are build graph sizes and local gzip estimates, not production network measurements.
 const budgets = { initial_js_bytes: 25_000, css_bytes: 30_000, total_bytes: 310_000 };
-for (const [metric, limit] of Object.entries(budgets)) {
-  if (report[metric] > limit) throw new Error(`Pages asset budget exceeded: ${metric} ${report[metric]} > ${limit}`);
-}
+for (const [metric, limit] of Object.entries(budgets)) if (report[metric] > limit) throw new Error(`Pages asset budget exceeded: ${metric} ${report[metric]} > ${limit}`);
 await mkdir(resolve(siteRoot, 'artifacts'), { recursive: true });
 await writeFile(resolve(siteRoot, 'artifacts/pages-assets.json'), JSON.stringify(report, null, 2) + '\n');
 console.log(JSON.stringify(report));
