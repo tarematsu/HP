@@ -1,8 +1,6 @@
 import {
-  API_BROWSER_TTL_SECONDS,
   MATERIALIZED_API_VARIANTS,
   apiCacheTtlSeconds,
-  canonicalApiCacheRequest,
   edgeCacheableApiRequest,
   materializedApiKey,
 } from './lib/api-contract.js';
@@ -10,7 +8,6 @@ import {
 const MATERIALIZED_RETRY_TTL_SECONDS = 30;
 const MATERIALIZED_EDGE_TTL_MAX_SECONDS = 60;
 const DASHBOARD_EDGE_TTL_MAX_SECONDS = 15;
-const MATERIALIZED_CACHE_NAMESPACE = '20261006-1';
 const DASHBOARD_MODEL_KEY = 'dashboard';
 const TRACK_HISTORY_MODEL_KEY = 'track-history';
 const SUPPORTED_SHARED_VARY = new Set(['accept', 'accept-encoding']);
@@ -18,25 +15,6 @@ const SERVICE_MATERIALIZED_MODEL_KEYS = new Set([
   ...MATERIALIZED_API_VARIANTS.map(({ key }) => key),
   TRACK_HISTORY_MODEL_KEY,
 ]);
-
-function tagged(response, cacheState) {
-  const clone = response.clone();
-  const headers = new Headers(clone.headers);
-  headers.set('x-edge-cache', cacheState);
-  return new Response(clone.body, {
-    status: clone.status,
-    statusText: clone.statusText,
-    headers,
-  });
-}
-
-function materializedCacheRequest(request, modelKey) {
-  const canonical = canonicalApiCacheRequest(request);
-  if (!modelKey) return canonical;
-  const url = new URL(canonical.url);
-  url.searchParams.set('__materialized_cache_rev', MATERIALIZED_CACHE_NAMESPACE);
-  return new Request(url.toString(), { method: 'GET', headers: { accept: 'application/json' } });
-}
 
 async function serviceMaterializedResponse(context, modelKey, publicRequest) {
   const service = context.env?.PAGES_READ_MODEL_SERVICE;
@@ -68,61 +46,51 @@ function responseCacheTtl(origin, requestedTtl, modelKey, usedMaterialized, now)
   const remainingSeconds = Math.floor((updatedAt + cadenceSeconds * 1000 - now) / 1000);
   if (remainingSeconds <= 0) return MATERIALIZED_RETRY_TTL_SECONDS;
   const edgeMaximum = modelKey === DASHBOARD_MODEL_KEY ? DASHBOARD_EDGE_TTL_MAX_SECONDS : MATERIALIZED_EDGE_TTL_MAX_SECONDS;
-  return Math.max(1, Math.min(requestedTtl, Math.min(edgeMaximum, cadenceSeconds), remainingSeconds));
+  return Math.max(1, Math.min(requestedTtl, edgeMaximum, cadenceSeconds, remainingSeconds));
 }
-
 function varyTokens(headers) {
   return (headers.get('vary') || '').split(',').map((value) => value.trim().toLowerCase()).filter(Boolean);
 }
-
 function cacheableOrigin(origin) {
   if (!origin?.ok || origin.headers.has('set-cookie')) return false;
-  const cacheControl = origin.headers.get('cache-control') || '';
-  if (/\b(private|no-store|no-cache)\b/i.test(cacheControl)) return false;
+  if (/\b(private|no-store|no-cache)\b/i.test(origin.headers.get('cache-control') || '')) return false;
   const vary = varyTokens(origin.headers);
   if (vary.includes('*') || vary.some((value) => !SUPPORTED_SHARED_VARY.has(value))) return false;
   const contentType = origin.headers.get('content-type') || '';
   return !contentType || /^application\/json(?:\s*;|$)/i.test(contentType);
 }
-
 function sharedResponse(origin, ttlSeconds) {
   const headers = new Headers(origin.headers);
   const cacheable = cacheableOrigin(origin);
   if (cacheable) {
-    const browserTtl = Math.min(API_BROWSER_TTL_SECONDS, ttlSeconds);
-    headers.set('cache-control', `public, max-age=${browserTtl}, s-maxage=${ttlSeconds}, stale-while-revalidate=${ttlSeconds * 2}`);
+    // Do not keep API payloads in the browser cache. Shared HTTP caches may use
+    // the short TTL; the Worker/R2 object remains the sole application cache.
+    headers.set('cache-control', `public, max-age=0, s-maxage=${ttlSeconds}, stale-while-revalidate=${ttlSeconds * 2}`);
   }
   const vary = new Set(varyTokens(headers));
   vary.add('accept-encoding');
   headers.set('vary', [...vary].join(', '));
-  return { response: new Response(origin.body, { status: origin.status, statusText: origin.statusText, headers }), cacheable };
+  headers.set('x-edge-cache', 'HTTP');
+  return new Response(origin.body, { status: origin.status, statusText: origin.statusText, headers });
 }
-
 function materializedUnavailable(modelKey) {
   return new Response(JSON.stringify({ ok: false, error: 'materialized response unavailable', model_key: modelKey }), {
     status: 503,
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-      'cache-control': 'no-store',
-      'x-materialized-required': '1',
-    },
+    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-materialized-required': '1' },
   });
 }
-
 function realIsoDate(value) {
   const text = String(value || '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
   const time = Date.parse(`${text}T00:00:00Z`);
   return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === text;
 }
-
 function historyRangeError(message) {
   return new Response(JSON.stringify({ ok: false, error: message }), {
     status: 400,
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });
 }
-
 function historyRange(request, modelKey) {
   if (!String(modelKey || '').startsWith('history:')) return { requested: false };
   const url = new URL(request.url);
@@ -133,7 +101,6 @@ function historyRange(request, modelKey) {
   if (from && to && from > to) return { requested: true, error: 'from must not be after to' };
   return { requested: true, from, to };
 }
-
 function rowWithinHistoryRange(row, mode, range) {
   if (mode === 'broadcasts') {
     const timestamp = Number(row?.started_at);
@@ -145,8 +112,7 @@ function rowWithinHistoryRange(row, mode, range) {
   const key = String(row?.period_key || '');
   return (!range.from || key >= range.from) && (!range.to || key <= range.to);
 }
-
-async function applyHistoryRange(origin, request, modelKey, range) {
+async function applyHistoryRange(origin, modelKey, range) {
   if (!range.requested) return origin;
   if (range.error) return historyRangeError(range.error);
   const payload = await origin.clone().json().catch(() => null);
@@ -164,7 +130,6 @@ async function applyHistoryRange(origin, request, modelKey, range) {
     read_path: 'r2-materialized-range',
   }), { status: origin.status, statusText: origin.statusText, headers });
 }
-
 function materializedModelKeyForRequest(request) {
   const url = new URL(request.url);
   const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
@@ -178,10 +143,6 @@ export async function onRequest(context) {
   const modelKey = materializedModelKeyForRequest(request);
   const range = historyRange(request, modelKey);
   if (range.error) return historyRangeError(range.error);
-  const cache = caches.default;
-  const cacheKey = materializedCacheRequest(request, modelKey);
-  const hit = await cache.match(cacheKey);
-  if (hit) return tagged(hit, 'HIT');
 
   let origin;
   let usedMaterialized = false;
@@ -200,9 +161,7 @@ export async function onRequest(context) {
   } else {
     origin = await context.next();
   }
-  if (usedMaterialized) origin = await applyHistoryRange(origin, request, modelKey, range);
+  if (usedMaterialized) origin = await applyHistoryRange(origin, modelKey, range);
   const ttlSeconds = responseCacheTtl(origin, apiCacheTtlSeconds(request), modelKey, usedMaterialized, now);
-  const shared = sharedResponse(origin, ttlSeconds);
-  if (shared.cacheable) context.waitUntil(cache.put(cacheKey, shared.response.clone()));
-  return tagged(shared.response, shared.cacheable ? 'MISS' : 'BYPASS');
+  return sharedResponse(origin, ttlSeconds);
 }
