@@ -12,19 +12,22 @@ export const SCHEDULED_COLLECTION_JOB_CRONS = Object.freeze([
   STATIONHEAD_LEADERBOARD_CRON,
 ]);
 
-export async function runScheduledCollectionJob(controller, env) {
+export async function runScheduledCollectionJob(controller, env, dependencies = {}) {
   const scheduledAt = Number(controller?.scheduledTime) || Date.now();
+  const enqueueHistory = dependencies.enqueueHistory || enqueueChangedHistoryModels;
+  const collectFollowers = dependencies.collectFollowers || collectStationheadFollowers;
+  const refreshLeaderboard = dependencies.refreshLeaderboard || refreshStationheadLeaderboard;
   if (controller?.cron === HISTORY_READ_MODEL_RECOVERY_CRON) {
-    return enqueueChangedHistoryModels(env, scheduledAt);
+    return enqueueHistory(env, scheduledAt);
   }
   if (controller?.cron === STATIONHEAD_FOLLOWERS_CRON) {
-    const result = await collectStationheadFollowers(env, scheduledAt);
+    const result = await collectFollowers(env, scheduledAt);
     console.log(JSON.stringify({ event: 'stationhead-followers-complete', ...result }));
     return result;
   }
   if (controller?.cron === STATIONHEAD_LEADERBOARD_CRON) {
-    const result = await refreshStationheadLeaderboard(env, {}, scheduledAt);
-    const readModels = await enqueueChangedHistoryModels(env, scheduledAt);
+    const result = await refreshLeaderboard(env, {}, scheduledAt);
+    const readModels = await enqueueHistory(env, scheduledAt);
     console.log(JSON.stringify({ event: 'stationhead-leaderboard-import-complete', ...result, read_models_queued: readModels.queued }));
     return { ...result, read_models: readModels };
   }
