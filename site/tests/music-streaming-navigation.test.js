@@ -43,15 +43,14 @@ function quotedServicePattern(service) {
   return new RegExp(`['\\"]${service}['\\"]`);
 }
 
-test('music streaming navigation exposes one flat service registry plus shared aggregate views', () => {
+test('music streaming navigation exposes one flat service-only registry', () => {
   assert.doesNotMatch(html, /subscriptionSourceTabsTemplate|dashboard-source-row/);
   assert.match(tabs, /id: 'subscriptions'/);
   for (const service of visibleSubscriptionServices) assert.match(tabs, quotedServicePattern(service));
   for (const service of removedServices) assert.doesNotMatch(tabs, quotedServicePattern(service));
   assert.match(tabs, /id: 'qq_music', label: '🇨🇳QQ音乐'/);
   assert.match(tabs, /id: 'kugou_music', label: '🇨🇳酷狗音乐'/);
-  assert.match(tabs, /id: 'music-ranking', label: 'リーダーボード'/);
-  assert.match(tabs, /id: 'music-followers', label: 'フォロー'/);
+  assert.doesNotMatch(tabs, /music-ranking|music-followers/);
   assert.match(css, /\.dashboard-source-tabs\.is-multiline/);
   assert.doesNotMatch(css, /\.dashboard-source-row/);
 });
@@ -71,11 +70,10 @@ test('KKBOX QQ and Kugou are first-class lazy views like Spotify', () => {
   assert.doesNotMatch(tabs, /REGIONAL_MUSIC|showRegionalMusicView|regionalMusicView|regional-music/);
 });
 
-test('shared aggregate views use the same shell runtime with different read-model source args', () => {
-  assert.match(tabs, /'music-ranking':\s*\{[\s\S]*leaderboard-shell\.js[\s\S]*leaderboard\.js[\s\S]*source: 'music-streaming'/);
+test('Stationhead aggregate views stay outside the music streaming section', () => {
   assert.match(tabs, /ranking:\s*\{[\s\S]*leaderboard-shell\.js[\s\S]*leaderboard\.js[\s\S]*source: 'stationhead'/);
-  assert.match(tabs, /'music-followers':\s*\{[\s\S]*followers-shell\.js[\s\S]*followers\.js[\s\S]*source: 'music-streaming'/);
   assert.match(tabs, /followers:\s*\{[\s\S]*followers-shell\.js[\s\S]*followers\.js[\s\S]*source: 'stationhead'/);
+  assert.doesNotMatch(tabs, /source: 'music-streaming'/);
 });
 
 test('each streaming service has a direct public API contract', () => {
@@ -139,13 +137,14 @@ test('YouTube Music uses the same direct service read-model loader', () => {
   assert.match(youtubeShell, /musicServiceTable/);
 });
 
-test('shared service CSS owns chart presentation and the retired regional stylesheet is not bundled', () => {
+test('shared service CSS owns chart presentation and aggregate CSS is not bundled into subscriptions', () => {
   assert.match(musicCss, /\.music-service-rank-legend/);
   assert.match(musicCss, /\.music-service-rank-chart/);
   assert.match(musicCss, /\.music-service-history-table/);
   assert.doesNotMatch(musicCss, /regional/i);
   assert.doesNotMatch(build, /regional-music\.css/);
-  assert.match(build, /subscriptions:[\s\S]*'followers\.css'[\s\S]*'leaderboard\.css'/);
+  const subscriptions = build.match(/subscriptions:\s*\[([\s\S]*?)\],/i)?.[1] || '';
+  assert.doesNotMatch(subscriptions, /followers\.css|leaderboard\.css/);
 });
 
 test('dashboard navigation is bundled directly without a lazy loader workaround', () => {
