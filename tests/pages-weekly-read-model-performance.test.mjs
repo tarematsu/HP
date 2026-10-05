@@ -66,19 +66,20 @@ test('weekly leaderboard producer reads only the three Sakamichi hosts', () => {
   assert.match(source, /\['nogizaka46smej', '乃木坂46'\]/);
 });
 
-test('weekly leaderboard read model refresh is chained to import and uses a compact source revision', () => {
-  const workflow = readFileSync(
-    new URL('../.github/workflows/materialize-weekly-ranking-read-model.yml', import.meta.url),
+test('weekly leaderboard publication is Worker-owned and uses compact revision materialization', () => {
+  const worker = readFileSync(
+    new URL('../worker/src/leaderboard-refresh.js', import.meta.url),
     'utf8',
   );
   const gate = readFileSync(
     new URL('../worker/scripts/materialize-weekly-ranking-read-model-if-stale.mjs', import.meta.url),
     'utf8',
   );
-  assert.doesNotMatch(workflow, /cron:/);
-  assert.match(workflow, /workflow_run:/);
-  assert.match(workflow, /Stationhead leaderboard probe report/);
-  assert.match(workflow, /materialize-weekly-ranking-read-model-if-stale\.mjs/);
+  assert.match(worker, /materializeWeeklyRankingReadModel/);
+  assert.match(worker, /publishReadModelR2/);
+  assert.match(worker, /LEADERBOARD_REFRESH_TYPE/);
+  assert.match(worker, /consumeLeaderboardRefresh/);
+  assert.doesNotMatch(worker, /wrangler|r2 object put|publish-stationhead-leaderboard-read-model/);
   assert.match(gate, /sh_read_model_revision/);
   assert.match(gate, /sh_weekly_ranking_revision_state/);
   assert.doesNotMatch(gate, /MAX\(imported_at\)|MAX\(verified_at\)/);
