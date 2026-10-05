@@ -6,7 +6,6 @@ import { loadMaterializedR2Response } from './pages-response-r2.js';
 
 const EMPTY_DEPENDENCIES = Object.freeze({});
 const INTERNAL_RESPONSE_PATH = '/_internal/pages-response';
-const DASHBOARD_MODEL_KEY = 'dashboard';
 const TRACK_HISTORY_MODEL_KEY = 'track-history';
 const FOLLOWERS_MODEL_KEY = 'followers';
 const DEFAULT_STALE_FALLBACK_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -26,15 +25,8 @@ const PUBLIC_R2_MODEL_KEYS = new Set([
   ...PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS,
   TRACK_HISTORY_MODEL_KEY,
 ]);
-// Temporary migration fallback only. Normal publication and public reads use R2.
-const LEGACY_KV_FALLBACK_KEYS = new Set([DASHBOARD_MODEL_KEY]);
 
-let responseStoreModulePromise;
 let trackHistoryApiModulePromise;
-function loadResponseStoreModule() {
-  responseStoreModulePromise ||= import('./pages-response-store.js');
-  return responseStoreModulePromise;
-}
 function loadTrackHistoryApiModule() {
   trackHistoryApiModulePromise ||= import('./pages-track-history-r2-api.js');
   return trackHistoryApiModulePromise;
@@ -64,15 +56,6 @@ async function loadCanonicalR2(env, modelKey, now, maximumAge, dependencies) {
   const staleMaximumAge = materializedStaleMaximumAge(env, maximumAge);
   const response = await loadR2(env?.PAGES_RESPONSE_R2, modelKey, now, staleMaximumAge);
   return responseIsStale(response, now, maximumAge) ? staleMaterializedResponse(response) : response;
-}
-async function loadLegacyKv(env, modelKey, now, maximumAge, dependencies) {
-  if (!LEGACY_KV_FALLBACK_KEYS.has(modelKey)) return null;
-  const loadKv = dependencies.loadResponse || (await loadResponseStoreModule()).loadMaterializedResponse;
-  const response = await loadKv(env?.PAGES_RESPONSE_KV, modelKey, now, maximumAge);
-  if (!response) return null;
-  const headers = new Headers(response.headers);
-  headers.set('x-api-source', 'legacy-kv');
-  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
 export async function runPagesResponseFetch(
@@ -106,7 +89,6 @@ export async function runPagesResponseFetch(
       );
     } else if (PUBLIC_R2_MODEL_KEYS.has(modelKey)) {
       response = await loadCanonicalR2(env, modelKey, now, maximumAge, dependencies);
-      if (!response) response = await loadLegacyKv(env, modelKey, now, maximumAge, dependencies);
     }
     return response || new Response(null, { status: 404, headers: { 'cache-control': 'no-store' } });
   } catch (error) {
