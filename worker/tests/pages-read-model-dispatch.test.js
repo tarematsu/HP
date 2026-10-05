@@ -2,83 +2,43 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { dueVariantKeys } from '../scripts/run-pages-read-model-actions.mjs';
-
-const runner = readFileSync(
-  new URL('../scripts/run-pages-read-model-actions.mjs', import.meta.url),
-  'utf8',
-);
-const historyRunner = readFileSync(
-  new URL('../scripts/run-pages-history-read-model-actions.mjs', import.meta.url),
-  'utf8',
-);
 const workflow = readFileSync(
   new URL('../../.github/workflows/run-pages-read-model-rebuild.yml', import.meta.url),
   'utf8',
 );
-const runtime = JSON.parse(readFileSync(
-  new URL('../wrangler.runtime.jsonc', import.meta.url),
+const requestScript = readFileSync(
+  new URL('../scripts/request-pages-read-model-rebuild-actions.mjs', import.meta.url),
+  'utf8',
+);
+const scheduledEntry = readFileSync(
+  new URL('../src/scheduled-collection-jobs-entry.js', import.meta.url),
+  'utf8',
+);
+const scheduledConfig = JSON.parse(readFileSync(
+  new URL('../wrangler.scheduled-collection-jobs.jsonc', import.meta.url),
   'utf8',
 ));
-const cycleStart = Date.UTC(2026, 6, 18);
-const MINUTE = 60_000;
 
-const ALL_VARIANTS = [
-  'dashboard',
-  'history:daily',
-  'history:weekly',
-  'history:broadcasts',
-  'host-history:summary',
-  'spotify-playcounts',
-];
-
-const TWELVE_HOUR_VARIANTS = [
-  'dashboard',
-  'spotify-playcounts',
-];
-
-test('shared cadence metadata stays compatible while Spotify is excluded by history runner', () => {
-  assert.deepEqual([...dueVariantKeys(cycleStart + 26 * MINUTE)], ALL_VARIANTS);
-  assert.deepEqual([...dueVariantKeys(cycleStart + 55 * MINUTE)], ALL_VARIANTS);
-  assert.deepEqual([...dueVariantKeys(cycleStart + 56 * MINUTE)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(cycleStart + 86 * MINUTE)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(cycleStart + 386 * MINUTE)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(cycleStart + 746 * MINUTE)], TWELVE_HOUR_VARIANTS);
-  assert.doesNotMatch(runner, /PAGES_CYCLE_MINUTES|cycleSlotKey|pagesSixHourTask/);
+test('GitHub Actions read-model workflow is manual recovery only', () => {
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.doesNotMatch(workflow, /schedule:|workflow_run:|cron:/);
+  assert.match(workflow, /Request canonical Worker rebuild/);
+  assert.match(workflow, /request-pages-read-model-rebuild-actions\.mjs/);
+  assert.doesNotMatch(workflow, /run-pages-read-model-actions|run-pages-history-read-model-actions/);
+  assert.match(requestScript, /\/internal\/read-model\/rebuild/);
 });
 
-test('track-history read-model generation is absent from scheduled Actions', () => {
-  assert.match(runner, /export async function runPagesReadModelActions/);
-  assert.doesNotMatch(runner, /runSplitTrackHistoryCycleStep|DEFAULT_TRACK_HISTORY_STEPS|MAX_TRACK_HISTORY_STEPS/);
-  assert.doesNotMatch(runner, /trackHistoryPublishedThisRun|dueKeys\.add\('track-history'\)/);
-  assert.match(runner, /track-history-read-model-disabled/);
-  assert.doesNotMatch(workflow, /PAGES_READ_MODEL_MAX_STEPS|Rebuild track history|track-history generation/);
-});
-
-test('history rebuild is revision targeted and never budget gated', () => {
-  assert.doesNotMatch(workflow, /workflow_run:/);
-  assert.match(workflow, /cron: '26 0 \* \* \*'/);
-  assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/);
-  assert.match(workflow, /PAGES_READ_MODEL_FORCE_ALL/);
-  assert.match(workflow, /PAGES_READ_MODEL_DUE_KEYS/);
-  assert.match(workflow, /due_keys:/);
-  assert.match(workflow, /Publish due pages read models/);
-  assert.match(workflow, /run-pages-history-read-model-actions\.mjs/);
-  assert.doesNotMatch(workflow, /cloudflare-d1-write-guard\.mjs/);
-  assert.doesNotMatch(workflow, /PAGES_READ_MODEL_REUSE_ONLY/);
-  assert.doesNotMatch(workflow, /D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT/);
-  assert.doesNotMatch(workflow, /node scripts\/refresh-pages-dashboard-actions\.mjs/);
-  assert.doesNotMatch(workflow, /node scripts\/refresh-pages-realtime-actions\.mjs/);
-  assert.match(historyRunner, /variant\.key !== 'dashboard' && variant\.event_driven !== true/);
-  assert.match(historyRunner, /PAGES_READ_MODEL_DUE_KEYS/);
-  assert.doesNotMatch(historyRunner, /BUDGET_EXEMPT_HISTORY_KEYS/);
-  assert.doesNotMatch(historyRunner, /PAGES_READ_MODEL_REUSE_ONLY/);
-  assert.match(historyRunner, /reuseOnly: _ignoredReuseOnly/);
-  assert.match(historyRunner, /reuseOnlyKeys: _ignoredReuseOnlyKeys/);
-  assert.doesNotMatch(historyRunner, /SPOTIFY_MODEL_KEY/);
-  assert.match(workflow, /timeout-minutes: 15/);
-  assert.match(workflow, /cancel-in-progress: true/);
-  assert.equal(runtime.triggers, undefined);
-  assert.equal(runtime.queues.consumers.some(({ queue }) => queue.includes('read-model')), false);
-  assert.equal(runtime.queues.producers.some(({ binding }) => binding.includes('READ_MODEL')), false);
+test('normal history publication is Worker Queue driven with minute recovery', () => {
+  assert.match(scheduledEntry, /HISTORY_READ_MODEL_RECOVERY_CRON/);
+  assert.match(scheduledEntry, /enqueueChangedHistoryModels/);
+  assert.match(scheduledEntry, /refreshLeaderboard[\s\S]*enqueueHistory/);
+  assert.equal(
+    scheduledConfig.queues.producers.some(({ binding, queue }) =>
+      binding === 'HISTORY_READ_MODEL_QUEUE' && queue === 'pages-history-refresh'),
+    true,
+  );
+  assert.equal(
+    scheduledConfig.queues.consumers.some(({ queue }) => queue === 'pages-history-refresh'),
+    true,
+  );
 });
