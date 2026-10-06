@@ -11,6 +11,9 @@ const STATIONHEAD_COLORS = Object.freeze({
   sakurazaka46jp: '#d93f79',
   nogizaka46smej: '#812990',
 });
+const STATIONHEAD_CHANNEL_OVERRIDES = Object.freeze({
+  nogifan1ch: 'Nogizaka',
+});
 const STATIONHEAD_MISSING_RANGES = Object.freeze([
   Object.freeze({ from: '2026-01-26', to: '2026-09-14', label: '欠測' }),
 ]);
@@ -56,12 +59,13 @@ export function normalizeStationheadLeaderboard(payload = {}) {
     .map((row) => {
       const period = dateKey(row?.ranking_date);
       const rank = positiveRank(row?.rank);
+      const host = String(row?.host_name || '').trim();
       return {
         period,
         rank,
         rank_status: stationheadRankStatus(period, rank, row),
-        host: String(row?.host_name || '').trim(),
-        channel: String(row?.stationhead_channel_name || '').trim() || '-',
+        host,
+        channel: STATIONHEAD_CHANNEL_OVERRIDES[host.toLowerCase()] || String(row?.stationhead_channel_name || '').trim() || '-',
         artist: String(row?.artist_name || '').trim() || '-',
         relation: relationLabel(row),
       };
