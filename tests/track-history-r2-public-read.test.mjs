@@ -6,6 +6,7 @@ import { TRACK_HISTORY_DAY_INDEX_KEY, trackHistoryDayIndexKey } from '../worker/
 import { loadTrackHistoryR2ApiResponse } from '../worker/src/pages-track-history-r2-api.js';
 import { trackHistoryDayObjectKey } from '../worker/src/pages-track-history-r2-shards.js';
 import { pagesR2ResponseKey } from '../worker/src/pages-response-r2.js';
+import { stationheadLikesModelKey } from '../worker/src/stationhead-likes-read-model.js';
 
 class FakeR2 {
   constructor(entries = {}) {
@@ -136,6 +137,34 @@ test('Likes reads the canonical ranking model without requiring the full history
   assert.equal(response.status, 200);
   assert.equal((await response.json()).ranking[0].title, 'Song A');
   assert.deepEqual(calls, [statusKey]);
+});
+
+test('Ohisama likes use the source-scoped Stationhead likes model', async () => {
+  const calls = [];
+  const response = await loadTrackHistoryR2ApiResponse(
+    {},
+    new Request('https://internal/api/track-history?source=ohisama&ranking_only=1&ranking_limit=500'),
+    1_000,
+    Number.MAX_SAFE_INTEGER,
+    {
+      async loadLikesResponse(_r2, key) {
+        calls.push(key);
+        return new Response(JSON.stringify({
+          ok: true,
+          source: 'ohisama',
+          updated_at: 900,
+          ranking: [{ track_id: 1, title: 'Song H', artist: '日向坂46', like_count: 55, observed_at: 900 }],
+          ranking_summary: { track_count: 1, latest_observed_at: 900 },
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      },
+    },
+  );
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.source, 'ohisama');
+  assert.equal(payload.ranking[0].like_count, 55);
+  assert.equal(payload.read_path, 'r2-stationhead-likes-read-model');
+  assert.deepEqual(calls, [stationheadLikesModelKey('ohisama')]);
 });
 
 test('Pages middleware routes Track History to R2 and fail-closes instead of falling back to D1', () => {
