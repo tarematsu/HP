@@ -3,12 +3,14 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const playback = readFileSync(new URL('../src/ohisama-playback.js', import.meta.url), 'utf8');
+const identity = readFileSync(new URL('../src/stationhead-playback-identity.js', import.meta.url), 'utf8');
 const schema = readFileSync(new URL('../scripts/ohisama-schema.sql', import.meta.url), 'utf8');
 const deploy = readFileSync(new URL('../scripts/deploy-ohisama-collector.mjs', import.meta.url), 'utf8');
 const wrangler = JSON.parse(readFileSync(new URL('../wrangler.ohisama-collector.jsonc', import.meta.url), 'utf8'));
 
 test('Ohisama resolves playback through the central sh_tracks catalog', () => {
-  assert.match(playback, /resolveTracksBulk/);
+  assert.match(playback, /canonicalizeStationheadPlayback/);
+  assert.match(identity, /resolveTracksBulk/);
   assert.match(playback, /const catalogDb = env\?\.MINUTE_DB/);
   assert.match(playback, /Ohisama playback track_id is unresolved/);
   assert.match(playback, /event_key,played_at,period_key,station_id,track_id,track_key/);
