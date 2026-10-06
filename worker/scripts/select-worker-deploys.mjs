@@ -41,7 +41,6 @@ const deployScriptWorkers = new Map([
   ['worker/scripts/history-renderer-revision.mjs', scheduledCollectionJobsWorker],
   ['worker/scripts/deploy-cron-dispatcher.mjs', cronDispatcherWorker],
   ['worker/scripts/deploy-runtime.mjs', runtimeWorker],
-  ['worker/scripts/pages-response-kv-namespace.mjs', runtimeWorker],
   ['worker/scripts/verify-runtime-deployment.mjs', runtimeWorker],
   ['worker/scripts/deploy-sakurazaka46jp.mjs', 'sh-sakurazaka46jp'],
   ['worker/scripts/deploy-nogizaka46smej.mjs', 'sh-nogizaka46smej'],

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { SPOTIFY_PLAYCOUNT_CRON } from '../src/scheduled-crons.js';
+
 function config() {
   return JSON.parse(
     readFileSync(new URL('../wrangler.spotify-playcount.jsonc', import.meta.url), 'utf8'),
@@ -36,7 +38,8 @@ test('Spotify collector is isolated behind the shared scheduler and owns its eve
   const serviceEntry = readFileSync(new URL('../src/spotify-playcount-service-entry.js', import.meta.url), 'utf8');
   const scheduledQueue = readFileSync(new URL('../src/spotify-scheduled-queue.js', import.meta.url), 'utf8');
   const scheduledRun = readFileSync(new URL('../src/spotify-playcount-scheduled-run.js', import.meta.url), 'utf8');
-  assert.match(scheduledQueue, /SPOTIFY_PLAYCOUNT_CRON = '0 \* \* \* \*'/);
+  assert.equal(SPOTIFY_PLAYCOUNT_CRON, '0 * * * *');
+  assert.match(scheduledQueue, /from '.\/scheduled-crons\.js'/);
   assert.match(scheduledQueue, /runSpotifyScheduledWork/);
   assert.match(scheduledRun, /probeStaleSpotifyUpdate/);
   assert.match(scheduledRun, /spotify_stale_source_probe/);

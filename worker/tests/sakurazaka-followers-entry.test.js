@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { shouldDispatchSpotifyPlaycount } from '../src/spotify-playcount-timing.js';
+import { STATIONHEAD_FOLLOWERS_CRON } from '../src/scheduled-crons.js';
 
 const sakurazakaConfig = JSON.parse(readFileSync(new URL('../wrangler.sakurazaka46jp.jsonc', import.meta.url), 'utf8'));
 const sakurazakaEntry = readFileSync(new URL('../src/sakurazaka-followers-entry.js', import.meta.url), 'utf8');
@@ -32,7 +33,8 @@ test('Sakurazaka and Buddies each keep an independent collection cron', () => {
   assert.doesNotMatch(buddiesEntry, /isJstFollowerCollectionMinute/);
   assert.doesNotMatch(buddiesEntry, /collectStationheadDailyFollowersResilient/);
 
-  assert.match(collectionJobs, /STATIONHEAD_FOLLOWERS_CRON = '0 15 \* \* \*'/);
+  assert.equal(STATIONHEAD_FOLLOWERS_CRON, '0 15 * * *');
+  assert.match(collectionJobs, /STATIONHEAD_FOLLOWERS_CRON/);
   assert.match(collectionJobs, /collectStationheadFollowers/);
   assert.match(dispatcher, /stationhead-followers/);
 });

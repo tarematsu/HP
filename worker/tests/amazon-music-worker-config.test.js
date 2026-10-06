@@ -8,7 +8,7 @@ import {
   AMAZON_MUSIC_DAILY_SCAN_TARGET_RANK,
   shouldRestartAmazonDaily50k,
 } from '../src/amazon-music-daily-50k.js';
-import { amazonMusicDueTasks } from '../src/amazon-music-entry.js';
+import { AMAZON_MUSIC_CRON, amazonMusicDueTasks } from '../src/amazon-music-entry.js';
 import {
   MUSIC_PLAYLIST_QUEUE_TYPES,
   MUSIC_PLAYLIST_REFRESH_CRON,
@@ -84,7 +84,8 @@ test('playlist sweeps are Worker-owned and fan out through the bounded queue', a
 
 test('scheduled entry keeps collection orchestration out of the shared Cron dispatcher', () => {
   const source = readFileSync(new URL('../src/amazon-music-entry.js', import.meta.url), 'utf8');
-  assert.match(source, /AMAZON_MUSIC_CRON = '0,10,15,20,30,40,50 \* \* \* \*'/);
+  assert.equal(AMAZON_MUSIC_CRON, '0,10,15,20,30,40,50 * * * *');
+  assert.match(source, /from '.\/scheduled-crons\.js'/);
   assert.match(source, /startMusicPlaylistRefresh/);
   assert.match(source, /queue: runMusicPlaylistQueue/);
   assert.doesNotMatch(source, /AMAZON_MUSIC_TOP_SCAN_CRON/);

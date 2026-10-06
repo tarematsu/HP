@@ -5,7 +5,7 @@ import test from 'node:test';
 const source = readFileSync(new URL('../scripts/deploy-runtime.mjs', import.meta.url), 'utf8');
 
 test('core deployment verifies every migrated consumer and rolls back safely', () => {
-  assert.match(source, /preparePagesReadModelDeployConfig/);
+  assert.match(source, /queueOnlyRuntimeDeployConfig/);
   assert.match(source, /pauseQueue\(migration\.queue\)/);
   assert.match(source, /removeConsumer\(migration\.queue, migration\.oldScript\)/);
   assert.match(source, /restoreConsumer\(migration\)/);

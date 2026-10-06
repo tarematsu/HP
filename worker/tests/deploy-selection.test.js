@@ -37,12 +37,12 @@ test('domain modules select every Worker whose bundle imports them', () => {
   for (const path of [
     'worker/src/minute-enrichment-playback-stages.js',
     'worker/src/track-metadata-entry.js',
-    'worker/src/pages-response-store.js',
     'worker/src/minute-derive-entry.js',
     'worker/src/runtime-queue.js',
   ]) {
     assert.deepEqual(select([path]).workers, [RUNTIME], path);
   }
+  assert.deepEqual(select(['worker/src/pages-response-store.js']).workers, [REGIONAL, RUNTIME]);
   assert.deepEqual(select(['worker/src/buddies-collector-entry.js']).workers, [COLLECTOR]);
   assert.deepEqual(select(['worker/src/ohisama-collector-entry.js']).workers, [OHISAMA]);
   assert.deepEqual(select(['worker/src/buddies-recovery-entry.js']).workers, [RECOVERY]);
@@ -110,7 +110,6 @@ test('deployment support changes select the owning Worker', () => {
   assert.deepEqual(select(['worker/scripts/deploy-runtime.mjs']), {
     changed_paths: ['worker/scripts/deploy-runtime.mjs'], workers: [RUNTIME], commands: ['deploy:runtime'], diagnostics: [RUNTIME],
   });
-  assert.deepEqual(select(['worker/scripts/pages-response-kv-namespace.mjs']).workers, [RUNTIME]);
   assert.deepEqual(select(['worker/scripts/verify-runtime-deployment.mjs']).workers, [RUNTIME]);
   assert.deepEqual(select(['worker/scripts/deploy-sakurazaka46jp.mjs']).workers, [SAKURAZAKA]);
   assert.deepEqual(select(['worker/scripts/deploy-nogizaka46smej.mjs']).workers, [NOGIZAKA]);
