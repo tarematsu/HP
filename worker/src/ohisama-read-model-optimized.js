@@ -4,7 +4,7 @@ import {
   nextOhisamaDailySummary,
   ohisamaReadModelPayload,
   rollOhisamaHistory,
-} from './ohisama-read-model.js';
+} from './ohisama-read-model-core.js';
 import { pagesR2ResponseKey } from './pages-response-r2.js';
 
 const DAY_MS = 24 * 60 * 60_000;
