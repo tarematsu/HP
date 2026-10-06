@@ -5,12 +5,19 @@ import {
   ohisamaReadModelPayload,
   rollOhisamaHistory,
 } from './ohisama-read-model-core.js';
-import { pagesR2ResponseKey } from './pages-response-r2.js';
+import {
+  loadStationheadReadModelState,
+  saveStationheadReadModelHotState,
+  stationheadFiveMinuteBucket,
+  stationheadReadModelGapMode,
+  STATIONHEAD_READ_MODEL_INCREMENTAL_GAP_MS,
+  STATIONHEAD_READ_MODEL_RECOVERY_GAP_MS,
+} from './stationhead-read-model-state.js';
 
 const DAY_MS = 24 * 60 * 60_000;
 const FIVE_MINUTES_MS = 5 * 60_000;
-const INCREMENTAL_GAP_LIMIT_MS = 11 * 60_000;
-const RECOVERY_GAP_LIMIT_MS = DAY_MS;
+const INCREMENTAL_GAP_LIMIT_MS = STATIONHEAD_READ_MODEL_INCREMENTAL_GAP_MS;
+const RECOVERY_GAP_LIMIT_MS = STATIONHEAD_READ_MODEL_RECOVERY_GAP_MS;
 export const OHISAMA_READ_MODEL_HOT_STATE_KEY = 'stationhead/ohisama/read-model-hot-state.json';
 
 function finite(value) {
@@ -42,10 +49,6 @@ function weekKey(timestamp) {
   return new Date(weekStart(timestamp)).toISOString().slice(0, 10);
 }
 
-function fiveMinuteBucket(timestamp) {
-  return Math.floor(Number(timestamp) / FIVE_MINUTES_MS) * FIVE_MINUTES_MS;
-}
-
 function validPayload(payload) {
   return Boolean(payload
     && payload.model === OHISAMA_PAGES_MODEL_KEY
@@ -62,52 +65,26 @@ function upgradeLegacyPayload(payload) {
   };
 }
 
-async function readJsonObject(r2, key) {
-  if (!key || typeof r2?.get !== 'function') return null;
-  try {
-    const object = await r2.get(key);
-    if (!object) return null;
-    if (typeof object.json === 'function') return await object.json();
-    if (typeof object.text === 'function') return JSON.parse(await object.text());
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 async function loadExistingPayload(r2) {
-  const hot = await readJsonObject(r2, OHISAMA_READ_MODEL_HOT_STATE_KEY);
-  if (Number(hot?.version) === 1) {
-    const upgraded = upgradeLegacyPayload(hot?.payload);
-    if (upgraded) return upgraded;
-  }
-
-  const legacyKey = pagesR2ResponseKey(OHISAMA_PAGES_MODEL_KEY);
-  const legacyEnvelope = await readJsonObject(r2, legacyKey);
-  if (Number(legacyEnvelope?.version) !== 1) return null;
-  const legacyPayload = typeof legacyEnvelope?.body === 'string'
-    ? (() => { try { return JSON.parse(legacyEnvelope.body); } catch { return null; } })()
-    : legacyEnvelope?.body;
-  const upgraded = upgradeLegacyPayload(legacyPayload);
-  if (!upgraded || legacyPayload?.section_updated_at) return null;
-  return upgraded;
-}
-
-async function saveHotPayload(r2, payload, updatedAt) {
-  if (typeof r2?.put !== 'function') throw new Error('PAGES_RESPONSE_R2 binding is missing');
-  await r2.put(OHISAMA_READ_MODEL_HOT_STATE_KEY, JSON.stringify({
-    version: 1,
-    updated_at: updatedAt,
-    payload,
-  }), {
-    httpMetadata: { contentType: 'application/json; charset=utf-8' },
-    customMetadata: {
-      version: '1',
-      updated_at: String(updatedAt),
-      model_key: OHISAMA_PAGES_MODEL_KEY,
-    },
+  const loaded = await loadStationheadReadModelState(r2, {
+    hotKey: OHISAMA_READ_MODEL_HOT_STATE_KEY,
+    modelKey: OHISAMA_PAGES_MODEL_KEY,
+    upgrade: upgradeLegacyPayload,
+    acceptPublic: (payload) => !payload?.section_updated_at,
   });
+  return loaded.payload;
 }
+
+function saveHotPayload(r2, payload, updatedAt) {
+  return saveStationheadReadModelHotState(
+    r2,
+    OHISAMA_READ_MODEL_HOT_STATE_KEY,
+    payload,
+    updatedAt,
+    { modelKey: OHISAMA_PAGES_MODEL_KEY },
+  );
+}
+
 
 function lastHistoryObservedAt(payload) {
   const history = Array.isArray(payload?.history_24h) ? payload.history_24h : [];
@@ -385,7 +362,7 @@ async function applyObservation(payload, collection, observedAt, db) {
 
   const previousAt = lastHistoryObservedAt(payload);
   const sameBucket = previousAt != null
-    && fiveMinuteBucket(previousAt) === fiveMinuteBucket(observedAt);
+    && stationheadFiveMinuteBucket(previousAt) === stationheadFiveMinuteBucket(observedAt);
   const dailyRow = sameBucket
     ? existingCurrent
     : nextOhisamaDailySummary(existingCurrent, collection, observedAt);
@@ -443,14 +420,17 @@ export async function refreshOptimizedOhisamaReadModel(env, collection, now = Da
   const previousAt = lastHistoryObservedAt(existingPayload);
 
   if (existingPayload && previousAt != null && previousAt <= observedAt) {
-    const gap = observedAt - previousAt;
-    if (gap <= INCREMENTAL_GAP_LIMIT_MS) {
+    const gapMode = stationheadReadModelGapMode(previousAt, observedAt, {
+      incrementalGapMs: INCREMENTAL_GAP_LIMIT_MS,
+      recoveryGapMs: RECOVERY_GAP_LIMIT_MS,
+    });
+    if (gapMode === 'incremental') {
       const applied = await applyObservation(existingPayload, collection, observedAt, db);
       payload = applied.payload;
       dailyPersisted = applied.dailyPersisted;
       weeklyPersisted = applied.weeklyPersisted;
       mode = 'incremental';
-    } else if (gap <= RECOVERY_GAP_LIMIT_MS) {
+    } else if (gapMode === 'recovery') {
       let recovered = existingPayload;
       const rows = await loadGapRows(db, channelId, previousAt, observedAt);
       recoveryRows = rows.length;
