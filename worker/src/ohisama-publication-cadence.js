@@ -4,7 +4,6 @@ import { pagesR2ResponseKey } from './pages-response-r2.js';
 const MINUTE_MS = 60_000;
 export const OHISAMA_CURRENT_CADENCE_MS = 5 * MINUTE_MS;
 export const OHISAMA_HISTORY_CADENCE_MS = 24 * 60 * MINUTE_MS;
-export const OHISAMA_PLAYED_CADENCE_MS = 24 * 60 * MINUTE_MS;
 export const OHISAMA_LIKES_CADENCE_MS = 6 * 60 * MINUTE_MS;
 
 const OHISAMA_PAGES_KEY = pagesR2ResponseKey('hinata');
@@ -17,7 +16,6 @@ const DEFAULT_HEADERS = Object.freeze({
 const SECTION_CADENCE_MS = Object.freeze({
   current: OHISAMA_CURRENT_CADENCE_MS,
   history: OHISAMA_HISTORY_CADENCE_MS,
-  played_tracks: OHISAMA_PLAYED_CADENCE_MS,
   likes: OHISAMA_LIKES_CADENCE_MS,
 });
 
@@ -70,18 +68,6 @@ export function ohisamaSectionDue(previous, section, now = Date.now()) {
   return timestamp - previousAt >= cadence;
 }
 
-function mergePlayedHistory(existing, current, completed) {
-  const byKey = new Map();
-  for (const row of Array.isArray(existing) ? existing : []) {
-    if (row?.period_key) byKey.set(String(row.period_key), row);
-  }
-  if (completed?.period_key) byKey.set(String(completed.period_key), completed);
-  if (current?.period_key) byKey.set(String(current.period_key), current);
-  return [...byKey.values()]
-    .sort((left, right) => String(right.period_key || '').localeCompare(String(left.period_key || '')))
-    .slice(0, 90);
-}
-
 function preserved(previous, key, fallback) {
   return previous && Object.prototype.hasOwnProperty.call(previous, key)
     ? previous[key]
@@ -102,13 +88,10 @@ export function buildOhisamaCadencedPayload(
   if (timestamp == null) throw new Error('ohisama publication timestamp is invalid');
 
   const historyDue = ohisamaSectionDue(previousPayload, 'history', timestamp);
-  const playedDue = ohisamaSectionDue(previousPayload, 'played_tracks', timestamp);
   const likesDue = ohisamaSectionDue(previousPayload, 'likes', timestamp);
-  const playedRefreshed = playedDue && Boolean(playback?.daily || playback?.completed_day);
   const likesRefreshed = likesDue && Array.isArray(playback?.likes);
 
   const previousHistoryAt = previousSectionTimestamp(previousPayload, 'history', timestamp);
-  const previousPlayedAt = previousSectionTimestamp(previousPayload, 'played_tracks', timestamp);
   const previousLikesAt = previousSectionTimestamp(previousPayload, 'likes', timestamp);
 
   const next = {
@@ -128,17 +111,8 @@ export function buildOhisamaCadencedPayload(
     next.weekly = preserved(previousPayload, 'weekly', currentPayload.weekly || []);
   }
 
-  if (playedRefreshed) {
-    next.played_tracks = playback.daily || null;
-    next.played_history = mergePlayedHistory(
-      currentPayload.played_history || previousPayload?.played_history,
-      playback.daily,
-      playback.completed_day,
-    );
-  } else if (previousPayload) {
-    next.played_tracks = preserved(previousPayload, 'played_tracks', currentPayload.played_tracks || null);
-    next.played_history = preserved(previousPayload, 'played_history', currentPayload.played_history || []);
-  }
+  delete next.played_tracks;
+  delete next.played_history;
 
   if (likesRefreshed) {
     next.likes = playback.likes;
@@ -150,7 +124,6 @@ export function buildOhisamaCadencedPayload(
     ...(previousPayload?.section_updated_at || {}),
     current: timestamp,
     history: historyDue ? timestamp : previousHistoryAt,
-    played_tracks: playedRefreshed ? timestamp : previousPlayedAt,
     likes: likesRefreshed ? timestamp : previousLikesAt,
   };
 
@@ -159,7 +132,6 @@ export function buildOhisamaCadencedPayload(
     refreshed: {
       current: true,
       history: historyDue,
-      played_tracks: playedRefreshed,
       likes: likesRefreshed,
     },
   };
