@@ -1,4 +1,4 @@
-import { OHISAMA_PAGES_CADENCE_SECONDS } from './ohisama-read-model.js';
+import { OHISAMA_PAGES_CADENCE_SECONDS } from './ohisama-read-model-core.js';
 import { loadMaterializedR2Json, saveMaterializedR2Response } from './pages-response-r2.js';
 
 const MINUTE_MS = 60_000;
