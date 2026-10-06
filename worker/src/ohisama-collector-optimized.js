@@ -1,7 +1,6 @@
 import {
   API_BASE,
   DEFAULT_USER_AGENT,
-  STATIONHEAD_AUTH_PAGE_URL,
 } from './collector-config.js';
 import {
   OHISAMA_COLLECTOR_CRON,
@@ -11,6 +10,7 @@ import {
 } from './ohisama-collector-shared.js';
 import { guardedOhisamaAuthRefresh } from './ohisama-auth-refresh-guard.js';
 import { jwtExpiryMs, normalizeBearer } from './shared.js';
+import { acquireStationheadGuestSession } from './stationhead-guest-session.js';
 
 const STATE_ID = 'stationhead';
 const DEFAULT_AUTH_HANDLE = 'ilys';
@@ -32,16 +32,16 @@ function finite(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function collectorHeaders({ authToken, deviceUid }, env, { guest = false } = {}) {
+function collectorHeaders({ authToken, deviceUid }, env) {
   return {
     accept: 'application/json, text/plain, */*',
     'accept-language': 'ja,en-US;q=0.9,en;q=0.8',
-    authorization: guest && !authToken ? '' : `Bearer ${authToken}`,
+    authorization: `Bearer ${authToken}`,
     'app-platform': 'web',
     'app-version': env.STATIONHEAD_APP_VERSION || env.SH_APP_VERSION || '1.0.0',
     'content-type': 'application/json',
     origin: 'https://www.stationhead.com',
-    referer: guest ? STATIONHEAD_AUTH_PAGE_URL : 'https://www.stationhead.com/',
+    referer: 'https://www.stationhead.com/',
     'sth-device-uid': deviceUid,
     'user-agent': DEFAULT_USER_AGENT,
   };
@@ -168,46 +168,15 @@ async function persistAuthState(env, state, now = Date.now(), { forceD1 = false 
 
 async function acquireGuestSession(env, fetchImpl = fetch) {
   const now = Date.now();
-  const timeoutMs = positiveNumber(env.REQUEST_TIMEOUT_MS, DEFAULT_REQUEST_TIMEOUT_MS, 30_000);
   const authHandle = String(env.STATIONHEAD_AUTH_HANDLE || DEFAULT_AUTH_HANDLE).trim().toLowerCase()
     || DEFAULT_AUTH_HANDLE;
-  const deviceUid = crypto.randomUUID();
-  const tokenResponse = await fetchImpl(`${API_BASE}/web/token`, {
-    method: 'POST',
-    headers: collectorHeaders({ authToken: '', deviceUid }, env, { guest: true }),
-    body: '',
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  const authToken = normalizeBearer(tokenResponse.headers.get('authorization'));
-  if (!tokenResponse.ok || !authToken) {
-    throw new Error(`Stationhead guest token failed: ${tokenResponse.status}`);
-  }
-  const loginResponse = await fetchImpl(`${API_BASE}/web/guest/login`, {
-    method: 'POST',
-    headers: collectorHeaders({ authToken, deviceUid }, env, { guest: true }),
-    body: '',
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!loginResponse.ok) throw new Error(`Stationhead guest login failed: ${loginResponse.status}`);
-
-  const verifyResponse = await fetchImpl(
-    `${API_BASE}/station/handle/${encodeURIComponent(authHandle)}/guest`,
-    {
-      method: 'POST',
-      headers: collectorHeaders({ authToken, deviceUid }, env, { guest: true }),
-      body: '',
-      signal: AbortSignal.timeout(timeoutMs),
-    },
-  );
-  if (!verifyResponse.ok) {
-    throw new Error(`Stationhead ILYS auth verification failed: ${verifyResponse.status}`);
-  }
-  await verifyResponse.arrayBuffer().catch(() => {});
-
+  const session = await acquireStationheadGuestSession({
+    appVersion: env.STATIONHEAD_APP_VERSION || env.SH_APP_VERSION || '1.0.0',
+    requestTimeoutMs: positiveNumber(env.REQUEST_TIMEOUT_MS, DEFAULT_REQUEST_TIMEOUT_MS, 30_000),
+    verifyHandle: authHandle,
+  }, fetchImpl);
   const state = normalizeState({
-    authToken,
-    deviceUid,
-    tokenExpiresAt: jwtExpiryMs(authToken),
+    ...session,
     d1CheckpointAt: now,
   }, env);
   return persistAuthState(env, state, now, { forceD1: true });
