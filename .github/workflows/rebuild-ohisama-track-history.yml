@@ -1,12 +1,6 @@
 name: Rebuild Ohisama Track History
 
 on:
-  push:
-    branches:
-      - codex/pages-design-resource-layout
-    paths:
-      - '.github/workflows/rebuild-ohisama-track-history.yml'
-      - 'worker/scripts/rebuild-ohisama-track-history-actions.mjs'
   workflow_dispatch:
 
 permissions:
