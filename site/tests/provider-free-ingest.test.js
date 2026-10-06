@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const ingest = readFileSync(new URL('../functions/lib/ingest.js', import.meta.url), 'utf8');
+const ingest = readFileSync(new URL('../../packages/sh-shared/ingest.mjs', import.meta.url), 'utf8');
 const queueState = readFileSync(new URL('../functions/lib/queue-ingest-state.js', import.meta.url), 'utf8');
-const optimized = readFileSync(new URL('../functions/lib/d1-optimized-ingest.js', import.meta.url), 'utf8');
+const optimized = readFileSync(new URL('../../packages/sh-shared/d1-optimized-ingest.mjs', import.meta.url), 'utf8');
 
 test('active ingest modules contain no Apple compatibility fields or adapters', () => {
   for (const source of [ingest, queueState, optimized]) {
