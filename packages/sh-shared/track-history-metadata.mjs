@@ -1,5 +1,5 @@
-import { fetchSpotifyMetadataBatch } from './spotify-metadata.js';
-import { bestText, looksLikeId } from './track-history-text.js';
+import { fetchSpotifyMetadataBatch } from './spotify-metadata.mjs';
+import { bestText, looksLikeId } from './track-history-text.mjs';
 
 async function persistResolvedMetadata(env, resolved) {
   if (!resolved.size) return 0;
