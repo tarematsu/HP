@@ -26,7 +26,9 @@ test('native app schedules the next restart for 20:00 local time', () => {
 
 test('scheduled restart relaunch is tagged separately from manual restart', () => {
   assert.match(main, /--scheduled-restart/);
-  assert.match(main, /App app\(instance, HasCommandArgument\(L"--scheduled-restart"\)\)/);
+  assert.match(main, /HasCommandArgument\(L"--scheduled-restart"\) \|\|/);
+  assert.match(main, /HasCommandArgument\(L"--update-restart"\)/);
+  assert.match(main, /App app\(instance, postRestartClick\)/);
   assert.match(main, /result == hp::App::kScheduledRestartExitCode/);
   assert.match(main, /RelaunchSelf\(false, true\)/);
 });
