@@ -132,10 +132,13 @@ export function trackHistoryShardObjectKey(generation, range) {
   return `${SHARD_PREFIX}${generation}/${from}-${to}.json`;
 }
 
-export function trackHistoryDayObjectKey(day) {
+export function trackHistoryDayObjectKey(day, source = 'buddies') {
   const timestamp = dayTimestamp(day);
   if (timestamp == null) throw new Error('invalid track-history day');
-  return `${DAY_MODEL_PREFIX}${dayText(timestamp)}.json`;
+  const normalizedSource = String(source || 'buddies').trim().toLowerCase();
+  if (normalizedSource === 'buddies') return `${DAY_MODEL_PREFIX}${dayText(timestamp)}.json`;
+  if (normalizedSource === 'ohisama') return `${DAY_MODEL_PREFIX}ohisama/${dayText(timestamp)}.json`;
+  throw new Error(`unsupported track-history source: ${source}`);
 }
 
 export function trackHistoryDayShardRanges(range) {
@@ -195,7 +198,8 @@ export async function saveTrackHistoryDayReadModel(r2, range, rows, metadata = {
     throw new Error('track-history day read-model range is invalid');
   }
   const day = dayText(from);
-  const key = trackHistoryDayObjectKey(day);
+  const source = metadata.source || 'buddies';
+  const key = trackHistoryDayObjectKey(day, source);
   const sortedRows = [...(rows || [])].sort((left, right) => (
     Number(left?.first_played_at ?? left?.played_at ?? 0)
       - Number(right?.first_played_at ?? right?.played_at ?? 0)
@@ -213,12 +217,12 @@ export async function saveTrackHistoryDayReadModel(r2, range, rows, metadata = {
   }), {
     httpMetadata: { contentType: 'application/json; charset=utf-8' },
   });
-  await updateTrackHistoryDayIndex(r2, day, sortedRows.length > 0, updatedAt, sourceRowCount);
+  await updateTrackHistoryDayIndex(r2, day, sortedRows.length > 0, updatedAt, sourceRowCount, source);
   return { key, day, rows: sortedRows.length, plays: sourceRowCount };
 }
 
-export async function loadTrackHistoryDayReadModel(r2, day) {
-  const key = trackHistoryDayObjectKey(day);
+export async function loadTrackHistoryDayReadModel(r2, day, source = 'buddies') {
+  const key = trackHistoryDayObjectKey(day, source);
   const payload = await loadJsonObject(r2, key);
   if (!payload) return null;
   if (Number(payload?.version) !== DAY_MODEL_VERSION
@@ -231,8 +235,8 @@ export async function loadTrackHistoryDayReadModel(r2, day) {
 
 // Compatibility export only. D1 is no longer a fallback source for missing R2
 // days; deployment seeds R2 before migration 067 drops the old projection.
-export async function bootstrapTrackHistoryDayReadModel(_db, r2, day) {
-  const existing = await loadTrackHistoryDayReadModel(r2, day);
+export async function bootstrapTrackHistoryDayReadModel(_db, r2, day, source = 'buddies') {
+  const existing = await loadTrackHistoryDayReadModel(r2, day, source);
   if (existing) return existing;
   throw new Error(`track-history R2 day is missing: ${day}`);
 }
