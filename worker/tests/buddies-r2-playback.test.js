@@ -85,8 +85,8 @@ test('Buddies playback day changes at 09:00 JST', () => {
 test('prepared collector routes queue management to R2 playback mode instead of legacy queue ingest', () => {
   const source = readFileSync(new URL('../src/prepared-collector-runner.js', import.meta.url), 'utf8');
   assert.match(source, /stationheadPlaybackEnabled\(activeEnv\)/);
-  assert.match(source, /captureBuddiesPlayback\(activeEnv, queue, observedAt\)/);
-  assert.match(source, /if \(r2PlaybackMode\)[\s\S]*captureBuddiesPlayback[\s\S]*else \{[\s\S]*ingest\(activeEnv, 'queue'/);
+  assert.match(source, /stationheadPlaybackCapture\(config\.channelAlias\)/);
+  assert.match(source, /if \(r2PlaybackMode\)[\s\S]*playbackCapture\(activeEnv, queue, observedAt\)[\s\S]*else \{[\s\S]*ingest\(activeEnv, 'queue'/);
 });
 
 test('Buddies and Ohisama playback share canonical stationhead-minute track ids', () => {
