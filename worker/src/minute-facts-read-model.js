@@ -1,4 +1,4 @@
-import { canonicalizeTrackRows } from '../../site/functions/lib/canonical-track-rows.js';
+import { canonicalizeTrackRows } from '../../packages/sh-shared/canonical-track-rows.mjs';
 import { loadReadModelTrackMetadata as loadCanonicalTrackMetadata } from './read-model-metadata-indexed.js';
 
 export const MINUTE_FACT_QUEUE_RECEIPT_SCHEMA_SQL = `CREATE TABLE IF NOT EXISTS sh_minute_fact_queue_receipts (
