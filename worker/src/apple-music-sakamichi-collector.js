@@ -1,4 +1,4 @@
-import { canonicalizeTrackRows } from '../../site/functions/lib/canonical-track-rows.js';
+import { canonicalizeTrackRows } from '../../packages/sh-shared/canonical-track-rows.mjs';
 import {
   APPLE_MUSIC_ARTIST_ID,
   APPLE_MUSIC_PAGES_MODEL_KEY,
