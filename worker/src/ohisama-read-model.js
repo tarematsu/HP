@@ -1,4 +1,4 @@
-import { pagesR2ResponseKey } from './pages-response-r2.js';
+import { loadMaterializedR2Json, saveMaterializedR2Response } from './pages-response-r2.js';
 
 export const OHISAMA_PAGES_MODEL_KEY = 'hinata';
 export const OHISAMA_PAGES_CADENCE_SECONDS = 5 * 60;
@@ -362,22 +362,10 @@ async function loadDaily(db) {
 }
 
 async function loadExistingPayload(r2) {
-  const key = pagesR2ResponseKey(OHISAMA_PAGES_MODEL_KEY);
-  if (!key || typeof r2?.get !== 'function') return null;
-  try {
-    const object = await r2.get(key);
-    if (!object?.body) return null;
-    const envelope = await object.json();
-    if (Number(envelope?.version) !== 1) return null;
-    const payload = typeof envelope?.body === 'string'
-      ? JSON.parse(envelope.body)
-      : envelope?.body;
-    if (!payload || payload.model !== OHISAMA_PAGES_MODEL_KEY) return null;
-    if (!Array.isArray(payload.history_24h) || !Array.isArray(payload.daily)) return null;
-    return payload;
-  } catch {
-    return null;
-  }
+  const payload = await loadMaterializedR2Json(r2, OHISAMA_PAGES_MODEL_KEY).catch(() => null);
+  if (!payload || payload.model !== OHISAMA_PAGES_MODEL_KEY) return null;
+  if (!Array.isArray(payload.history_24h) || !Array.isArray(payload.daily)) return null;
+  return payload;
 }
 
 function canIncrementPayload(payload, observedAt) {
@@ -390,26 +378,18 @@ function canIncrementPayload(payload, observedAt) {
 
 async function publishPayload(r2, payload, updatedAt) {
   if (typeof r2?.put !== 'function') throw new Error('PAGES_RESPONSE_R2 binding is missing');
-  const key = pagesR2ResponseKey(OHISAMA_PAGES_MODEL_KEY);
-  if (!key) throw new Error('ohisama Pages read-model key is invalid');
-  const envelope = {
-    version: 1,
-    updated_at: updatedAt,
-    cadence_seconds: OHISAMA_PAGES_CADENCE_SECONDS,
-    status: 200,
-    headers: JSON_HEADERS,
-    body: JSON.stringify(payload),
-  };
-  await r2.put(key, JSON.stringify(envelope), {
-    httpMetadata: { contentType: 'application/json; charset=utf-8' },
-    customMetadata: {
-      version: '1',
-      model_key: OHISAMA_PAGES_MODEL_KEY,
-      updated_at: String(updatedAt),
-      cadence_seconds: String(OHISAMA_PAGES_CADENCE_SECONDS),
-    },
-  });
-  return key;
+  const saved = await saveMaterializedR2Response(
+    r2,
+    OHISAMA_PAGES_MODEL_KEY,
+    JSON.stringify(payload),
+    200,
+    JSON_HEADERS,
+    updatedAt,
+    OHISAMA_PAGES_CADENCE_SECONDS,
+    { model_key: OHISAMA_PAGES_MODEL_KEY },
+  );
+  if (!saved?.object_key) throw new Error('ohisama Pages read-model key is invalid');
+  return saved.object_key;
 }
 
 export async function refreshOhisamaReadModel(env, collection, now = Date.now()) {
