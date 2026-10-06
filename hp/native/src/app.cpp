@@ -505,8 +505,9 @@ void App::PerformPostRestartClick() {
   inputs[0].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
   inputs[1].type = INPUT_MOUSE;
   inputs[1].mi.dwFlags = MOUSEEVENTF_LEFTUP;
-  const UINT sent = SendInput(_countof(inputs), inputs, sizeof(INPUT));
-  if (sent == _countof(inputs)) {
+  constexpr UINT inputCount = static_cast<UINT>(_countof(inputs));
+  const UINT sent = SendInput(inputCount, inputs, sizeof(INPUT));
+  if (sent == inputCount) {
     logger_->Info(L"Post-restart dashboard click completed");
   } else {
     logger_->Warn(L"Post-restart dashboard click was not fully injected");
