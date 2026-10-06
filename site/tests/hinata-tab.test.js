@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { ROUTES, navigationForMode } from '../public/dashboard-navigation-config.js';
+
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const route = dashboardRouterSource();
 const shellWrapper = readFileSync(new URL('../public/hinata-shell.js', import.meta.url), 'utf8');
@@ -16,10 +18,13 @@ const api = readFileSync(new URL('../functions/api/hinata.js', import.meta.url),
 
 test('Pages keeps Ohisama behind the shared lazy dashboard route', () => {
   assert.doesNotMatch(metrics, /hinata-shell\.js/);
-  assert.match(route, /hinata:\s*\{/);
-  assert.match(route, /shell: \(\) => import\('\/hinata-shell\.js\?v=/);
-  assert.match(route, /id: 'hinata', label: 'Ohisama', defaultMode: 'hinata'/);
-  assert.match(route, /viewId: 'hinataView'/);
+  assert.equal(ROUTES.hinata.kind, 'lazy');
+  assert.equal(ROUTES.hinata.viewId, 'hinataView');
+  assert.equal(ROUTES.hinata.moduleId, 'hinata');
+  const navigation = navigationForMode('hinata');
+  assert.equal(navigation.source.id, 'hinata');
+  assert.equal(navigation.source.label, 'Ohisama');
+  assert.equal(navigation.source.defaultMode, 'hinata');
   assert.match(shellWrapper, /mountStationheadChannelShell/);
   assert.match(shellWrapper, /id: 'hinataView'/);
   assert.match(shellWrapper, /stationheadModel = 'ohisama'/);

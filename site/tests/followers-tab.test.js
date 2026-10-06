@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { ROUTES, navigationForMode } from '../public/dashboard-navigation-config.js';
+
 const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const route = dashboardRouterSource();
 const shell = readFileSync(new URL('../public/followers-shell.js', import.meta.url), 'utf8');
@@ -15,8 +17,11 @@ const FIXED_HANDLES = ['sakuramankai', 'sakuramankai2', 'sakurazaka46jp', 'nogiz
 
 test('Stationhead followers use one lazy shell and runtime', () => {
   assert.doesNotMatch(entry, /followers-shell\.js/);
-  assert.match(route, /followers:\s*\{[\s\S]*viewId: 'followersView'[\s\S]*source: 'stationhead'/);
-  assert.match(route, /mode: 'followers', label: 'フォロワー'/);
+  assert.equal(ROUTES.followers.kind, 'lazy');
+  assert.equal(ROUTES.followers.viewId, 'followersView');
+  assert.equal(ROUTES.followers.moduleId, 'followers');
+  assert.deepEqual(ROUTES.followers.loadArgs, { source: 'stationhead' });
+  assert.equal(navigationForMode('followers').item.label, 'フォロワー');
   assert.doesNotMatch(route, /music-followers|source: 'music-streaming'/);
   assert.match(shell, /mountDashboardShell/);
   assert.match(shell, /id: 'followersView'/);

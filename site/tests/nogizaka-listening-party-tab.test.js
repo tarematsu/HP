@@ -3,7 +3,8 @@ import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { formatNogizakaBroadcastContent } from '../functions/api/nogizaka-listening-party.js';
+import { formatNogizakaBroadcastContent } from '../../packages/sh-shared/index.mjs';
+import { ROUTES, navigationForMode } from '../public/dashboard-navigation-config.js';
 
 const shellWrapper = readFileSync(new URL('../public/nogizaka-listening-party-shell.js', import.meta.url), 'utf8');
 const runtimeWrapper = readFileSync(new URL('../public/nogizaka-listening-party.js', import.meta.url), 'utf8');
@@ -16,11 +17,14 @@ const api = readFileSync(new URL('../functions/api/nogizaka-listening-party.js',
 const publisher = readFileSync(new URL('../../worker/src/nogizaka-pages-read-model.js', import.meta.url), 'utf8');
 
 test('Nogizaka is a lazy source route mounted through the shared Stationhead shell', () => {
-  assert.match(tabs, /nogizaka:\s*\{/);
-  assert.match(tabs, /viewId: 'nogizakaListeningPartyView'/);
-  assert.match(tabs, /nogizaka-listening-party-shell\.js/);
-  assert.match(tabs, /loadNogizakaListeningPartyView/);
-  assert.match(tabs, /id: 'nogizaka', label: 'Nogizaka', defaultMode: 'nogizaka'/);
+  assert.equal(ROUTES.nogizaka.kind, 'lazy');
+  assert.equal(ROUTES.nogizaka.viewId, 'nogizakaListeningPartyView');
+  assert.equal(ROUTES.nogizaka.moduleId, 'nogizaka');
+  assert.equal(ROUTES.nogizaka.loadExport, 'loadNogizakaListeningPartyView');
+  const navigation = navigationForMode('nogizaka');
+  assert.equal(navigation.source.id, 'nogizaka');
+  assert.equal(navigation.source.label, 'Nogizaka');
+  assert.equal(navigation.source.defaultMode, 'nogizaka');
   assert.match(shellWrapper, /mountStationheadChannelShell/);
   assert.match(shellWrapper, /stationheadModel = 'nogizaka'/);
   assert.match(runtimeWrapper, /loadStationheadChannelView/);
@@ -79,6 +83,8 @@ test('Nogizaka producer builds the listening-party model from bounded D1 read mo
   assert.doesNotMatch(publisher, /sh_nogizaka_official_news_station_probes/);
   assert.match(publisher, /pagesR2ResponseKey\(NOGIZAKA_LISTENING_PARTY_MODEL_KEY\)/);
   assert.match(publisher, /broadcast_content: formatNogizakaBroadcastContent\(/);
+  assert.match(publisher, /packages\/sh-shared\/index\.mjs/);
+  assert.doesNotMatch(publisher, /site\/functions\/api/);
   assert.match(publisher, /rows,/);
   assert.match(publisher, /jstDayKey\(row\.started_at, day\)/);
   assert.match(publisher, /source = readSeries/);
