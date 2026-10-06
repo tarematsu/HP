@@ -10,6 +10,13 @@ import {
   transitionedStationheadTracks,
 } from './stationhead-playback-core.js';
 import { canonicalizeStationheadPlayback } from './stationhead-playback-identity.js';
+import {
+  loadStationheadPlaybackState,
+  runStationheadPlaybackStatements,
+  saveStationheadPlaybackState,
+  stationheadCompletedDailyStatement,
+  stationheadPlaybackPlayStatement,
+} from './stationhead-playback-store.js';
 export const OHISAMA_PLAYBACK_HOT_STATE_KEY = 'stationhead/ohisama/playback-state.json';
 
 function finite(value) {
@@ -113,58 +120,6 @@ export function transitionedOhisamaTracks(previousQueue = [], currentQueue = [],
   return transitionedStationheadTracks(previousQueue, currentQueue, options);
 }
 
-async function loadState(bucket) {
-  if (typeof bucket?.get !== 'function') return null;
-  try {
-    const object = await bucket.get(OHISAMA_PLAYBACK_HOT_STATE_KEY);
-    if (!object) return null;
-    const value = typeof object.json === 'function' ? await object.json() : JSON.parse(await object.text());
-    return [1, 2].includes(Number(value?.version)) ? value : null;
-  } catch {
-    return null;
-  }
-}
-
-async function saveState(bucket, state, observedAt) {
-  if (typeof bucket?.put !== 'function') return false;
-  await bucket.put(OHISAMA_PLAYBACK_HOT_STATE_KEY, JSON.stringify(state), {
-    httpMetadata: { contentType: 'application/json; charset=utf-8' },
-    customMetadata: { version: '2', updated_at: String(observedAt) },
-  });
-  return true;
-}
-
-function playStatement(db, stationId, track, observedAt) {
-  const playedAt = integer(track?.expected_start_at) ?? observedAt;
-  const trackId = integer(track?.track_id);
-  if (trackId == null) throw new Error('Ohisama playback track_id is unresolved');
-  return db.prepare(`INSERT OR IGNORE INTO sh_track_plays(
-      event_key,played_at,period_key,station_id,track_id,track_key
-    ) VALUES(?,?,?,?,?,?)`)
-    .bind(
-      track.event_key,
-      playedAt,
-      periodKey(playedAt),
-      stationId,
-      trackId,
-      track.track_key,
-    );
-}
-
-function completedDailyStatement(db, daily, observedAt) {
-  const row = playbackDailyPublic(daily);
-  return db.prepare(`INSERT INTO sh_track_daily_summary(
-      period_key,total_plays,unique_tracks,tracks_json,updated_at
-    ) VALUES(?,?,?,?,?)
-    ON CONFLICT(period_key) DO UPDATE SET
-      total_plays=excluded.total_plays,
-      unique_tracks=excluded.unique_tracks,
-      tracks_json=excluded.tracks_json,
-      updated_at=excluded.updated_at
-    WHERE excluded.updated_at>=sh_track_daily_summary.updated_at`)
-    .bind(row.period_key, row.total_plays, row.unique_tracks, JSON.stringify(row.tracks), observedAt);
-}
-
 function likeStatements(db, stationId, track, observedAt) {
   const count = integer(track?.bite_count);
   const trackId = integer(track?.track_id);
@@ -180,15 +135,6 @@ function likeStatements(db, stationId, track, observedAt) {
     .bind(stationId, trackId, track.track_key, track.spotify_id || null, track.isrc || null,
       track.title || null, track.artist || null, count, observedAt);
   return [current, observation];
-}
-
-async function runStatements(db, statements) {
-  if (!statements.length) return;
-  if (typeof db?.batch === 'function') {
-    await db.batch(statements);
-    return;
-  }
-  for (const statement of statements) await statement.run();
 }
 
 function trackHistoryDayRange(period) {
@@ -233,7 +179,7 @@ export async function captureOhisamaPlayback(env, channel, collection, observedA
 
   const stationId = integer(collection?.station_id);
   const playback = resolveOhisamaPlaybackWindow(channel, stationId, observedAt);
-  const previous = await loadState(bucket);
+  const previous = (await loadStationheadPlaybackState(bucket, OHISAMA_PLAYBACK_HOT_STATE_KEY)).state;
   const canonicalState = await canonicalizeStationheadPlayback(
     catalogDb,
     null,
@@ -261,17 +207,17 @@ export async function captureOhisamaPlayback(env, channel, collection, observedA
     const nextKey = periodKey(playedAt);
     if (daily?.period_key && daily.period_key !== nextKey) {
       completedDay = playbackDailyPublic(daily);
-      statements.push(completedDailyStatement(db, daily, observedAt));
+      statements.push(stationheadCompletedDailyStatement(db, daily, observedAt));
       daily = emptyPlaybackDaily(nextKey);
     }
     daily = recordPlaybackDailyTrack(daily, track, playedAt);
-    statements.push(playStatement(db, stationId, track, observedAt));
+    statements.push(stationheadPlaybackPlayStatement(db, stationId, track, observedAt, 'Ohisama'));
   }
 
   if (!daily?.period_key) daily = emptyPlaybackDaily(periodKey(observedAt));
   if (daily.period_key !== periodKey(observedAt) && !transitions.length) {
     completedDay = playbackDailyPublic(daily);
-    statements.push(completedDailyStatement(db, daily, observedAt));
+    statements.push(stationheadCompletedDailyStatement(db, daily, observedAt));
     daily = emptyPlaybackDaily(periodKey(observedAt));
   }
 
@@ -295,7 +241,7 @@ export async function captureOhisamaPlayback(env, channel, collection, observedA
     statements.push(...likeStatements(db, stationId, track, observedAt));
   }
 
-  await runStatements(db, statements);
+  await runStationheadPlaybackStatements(db, statements);
   if (completedDay?.period_key) {
     await publishOhisamaTrackHistoryDay(bucket, completedDay, observedAt);
   }
@@ -312,7 +258,7 @@ export async function captureOhisamaPlayback(env, channel, collection, observedA
     daily,
     likes,
   };
-  await saveState(bucket, state, observedAt).catch(() => false);
+  await saveStationheadPlaybackState(bucket, OHISAMA_PLAYBACK_HOT_STATE_KEY, state, observedAt);
 
   return {
     ...playback,
