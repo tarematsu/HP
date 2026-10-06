@@ -146,5 +146,5 @@ test('Buddies registers only a live-observed host and retries registry confirmat
   assert.equal(writes.length, 2);
   assert.match(writes[0].sql, /sh_stationhead_follower_targets/);
   assert.match(writes[0].sql, /live_confirmed_at/);
-  assert.deepEqual(writes[0].args, ['newhost', firstAt, firstAt]);
+  assert.deepEqual(writes[0].args, ['newhost', 2, firstAt, firstAt]);
 });
