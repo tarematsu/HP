@@ -1,5 +1,5 @@
 import { runOptimizedOhisamaCollectorScheduled } from './ohisama-collector-optimized.js';
-import { registerOhisamaFollowerTarget } from './ohisama-collector-entry.js';
+import { registerOhisamaFollowerTarget } from './ohisama-collector-shared.js';
 import { collectInitialStationheadFollowers } from './stationhead-initial-followers.js';
 import { cachedOhisamaFollowerMetadataRegistrar } from './ohisama-follower-target-cache.js';
 import { withOhisamaFollowerMembership } from './ohisama-follower-membership.js';
