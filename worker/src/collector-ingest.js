@@ -1,4 +1,4 @@
-import { ingestOptimizedBody } from '../../site/functions/lib/ingest.js';
+import { ingestOptimizedBody } from '../../packages/sh-shared/ingest.mjs';
 import { serializedQueueAnalysis } from './queue-analysis-transfer.js';
 import { savePreparedSnapshot } from './snapshot-analysis-transfer.js';
 
