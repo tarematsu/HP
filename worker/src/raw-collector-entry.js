@@ -3,6 +3,7 @@ import { API_BASE, configFromEnv, shHeaders } from './collector-config.js';
 import { sanitizeFailureDetail } from './collector-failure.js';
 import { jwtExpiryMs, normalizeBearer } from './shared.js';
 import { stationheadInitialFollowerRegistrar } from './stationhead-source-runtime.js';
+import { acquireStationheadGuestSession } from './stationhead-guest-session.js';
 
 const STATE_ID = 'stationhead';
 const RAW_COLLECTION_QUEUE_OPTIONS = Object.freeze({ contentType: 'json' });
@@ -108,39 +109,20 @@ async function finishAuthAttempt(env, error = null) {
     .bind(error, now, error, now, STATE_ID).run();
 }
 
-function guestHeaders(config, deviceUid, authToken = '') {
-  return {
-    ...shHeaders({ authToken, deviceUid }, config),
-    ...(authToken ? {} : { authorization: '' }),
-  };
-}
-
 async function acquireSession(env) {
   const cfg = authConfig(env);
   const collectionConfig = configFromEnv(env);
-  const deviceUid = crypto.randomUUID();
-  const tokenResponse = await fetch(`${API_BASE}/web/token`, {
-    method: 'POST',
-    headers: guestHeaders(collectionConfig, deviceUid),
-    body: '',
-    signal: AbortSignal.timeout(cfg.requestTimeoutMs),
+  const session = await acquireStationheadGuestSession({
+    appVersion: collectionConfig.appVersion,
+    requestTimeoutMs: cfg.requestTimeoutMs,
   });
-  const authToken = normalizeBearer(tokenResponse.headers.get('authorization'));
-  if (!tokenResponse.ok || !authToken) throw new Error(`guest token failed: ${tokenResponse.status}`);
-  const loginResponse = await fetch(`${API_BASE}/web/guest/login`, {
-    method: 'POST',
-    headers: guestHeaders(collectionConfig, deviceUid, authToken),
-    body: '',
-    signal: AbortSignal.timeout(cfg.requestTimeoutMs),
-  });
-  if (!loginResponse.ok) throw new Error(`guest login failed: ${loginResponse.status}`);
   const now = Date.now();
   await env.DB.prepare(`INSERT INTO sh_worker_collector_state(
       id,auth_token,device_uid,token_expires_at,updated_at
     ) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
       auth_token=excluded.auth_token,device_uid=excluded.device_uid,
       token_expires_at=excluded.token_expires_at,updated_at=excluded.updated_at`)
-    .bind(STATE_ID, authToken, deviceUid, jwtExpiryMs(authToken) || null, now).run();
+    .bind(STATE_ID, session.authToken, session.deviceUid, session.tokenExpiresAt, now).run();
   await finishAuthAttempt(env);
   return readAuthState(env, STATE_ID);
 }
