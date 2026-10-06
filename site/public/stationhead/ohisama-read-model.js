@@ -17,17 +17,17 @@ export function ohisamaModel() {
       return { daily: normalizedDaily(payload?.[mode]), mode };
     },
     async loadPlayedIndex(options) {
-      const payload = await all(options);
-      return (Array.isArray(payload?.played_history) ? payload.played_history : [])
-        .map((row) => String(row?.period_key || ''))
-        .filter((value, index, values) => value && values.indexOf(value) === index)
+      const payload = await fetchJson('/api/track-history?source=ohisama&dates_only=1', options);
+      return (Array.isArray(payload?.dates) ? payload.dates : [])
+        .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value)))
         .sort();
     },
     async loadPlayedPeriod(from, to, options) {
-      const payload = await all(options);
-      const rows = Array.isArray(payload?.played_history) ? payload.played_history : [];
-      return rows.filter((row) => String(row?.period_key || '') >= from && String(row?.period_key || '') <= to)
-        .flatMap((row) => normalizePlayedRows(row?.tracks));
+      const payload = await fetchJson(
+        `/api/track-history?source=ohisama&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=10000&ranking=0`,
+        options,
+      );
+      return normalizePlayedRows(payload.rows);
     },
     async loadLikes(options) {
       const payload = await all(options);
