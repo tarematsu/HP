@@ -1,4 +1,4 @@
-import { payloadHash } from '../../site/functions/lib/ingest-claim.js';
+import { payloadHash } from '../../packages/sh-shared/ingest-claim.mjs';
 import {
   stationheadPlaybackEnabled,
   stationheadPlaybackVisibleTracks,
