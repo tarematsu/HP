@@ -10,7 +10,7 @@ const shards = readFileSync(
 test('full track-history publication canonicalizes only published identities', () => {
   assert.match(
     shards,
-    /import \{ canonicalizeTrackRows \} from '\.\.\/\.\.\/site\/functions\/lib\/canonical-track-rows\.js';/,
+    /import \{ canonicalizeTrackRows \} from '\.\.\/\.\.\/packages\/sh-shared\/canonical-track-rows\.mjs';/,
   );
   assert.match(
     shards,
