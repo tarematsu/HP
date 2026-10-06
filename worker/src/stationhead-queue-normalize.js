@@ -13,6 +13,16 @@ export function stationheadQueueText(value, maximum = null) {
   return maximum == null ? parsed : parsed.slice(0, maximum);
 }
 
+export function stationheadQueueBoolean(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  if (typeof value === 'number') return Number.isFinite(value) ? (value === 0 ? 0 : 1) : null;
+  const normalized = String(value).trim().toLowerCase();
+  if (['true', '1', 'yes', 'on'].includes(normalized)) return 1;
+  if (['false', '0', 'no', 'off', ''].includes(normalized)) return 0;
+  return null;
+}
+
 export function normalizeStationheadQueueTrack(
   item,
   position,
@@ -107,7 +117,7 @@ export function stationheadQueueStructuralPayload(queue) {
     station_id: stationheadQueueNumber(queue.station_id),
     queue_id: stationheadQueueNumber(queue.queue_id),
     start_time: stationheadQueueNumber(queue.start_time),
-    is_paused: queue.is_paused == null ? null : Boolean(queue.is_paused),
+    is_paused: stationheadQueueBoolean(queue.is_paused),
     tracks: (Array.isArray(queue.tracks) ? queue.tracks : []).map((track) => ({
       position: stationheadQueueNumber(track.position),
       queue_track_id: stationheadQueueNumber(track.queue_track_id),
