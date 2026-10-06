@@ -7,7 +7,7 @@ import {
   fiveMinuteBucket,
   normalizeOhisamaSnapshot,
   registerOhisamaFollowerTarget,
-} from '../src/ohisama-collector-entry.js';
+} from '../src/ohisama-collector-shared.js';
 
 test('ohisama collector runs every five minutes', () => {
   assert.equal(OHISAMA_COLLECTOR_CRON, '*/5 * * * *');
@@ -138,7 +138,7 @@ test('ohisama follower target requires a handle observed during an active broadc
 });
 
 test('ohisama auth acquisition is fixed to ILYS while collection remains ohisama', () => {
-  const source = readFileSync(new URL('../src/ohisama-collector-entry.js', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/ohisama-collector-optimized.js', import.meta.url), 'utf8');
   assert.match(source, /DEFAULT_AUTH_HANDLE = 'ilys'/);
   assert.match(source, /STATIONHEAD_AUTH_PAGE_URL/);
   assert.match(source, /station\/handle\/\$\{encodeURIComponent\(authHandle\)\}\/guest/);
