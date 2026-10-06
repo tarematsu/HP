@@ -30,8 +30,12 @@ export function ohisamaModel() {
       return normalizePlayedRows(payload.rows);
     },
     async loadLikes(options) {
-      const payload = await all(options);
-      return normalizeLikes(payload.likes).filter((row) => !row.artist || row.artist.normalize('NFKC').includes('日向坂46'));
+      const payload = await fetchJson(
+        '/api/track-history?source=ohisama&ranking_only=1&ranking_limit=500',
+        options,
+      );
+      return normalizeLikes(payload.ranking)
+        .filter((row) => !row.artist || row.artist.normalize('NFKC').includes('日向坂46'));
     },
     async loadBroadcasts() { return { rows: [], series: [], collection_active: false }; },
   };
