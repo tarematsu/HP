@@ -11,7 +11,7 @@ import {
   normalizedTrackSpotifyId,
   observationTrackKey,
   planLikeChanges,
-} from '../../site/functions/lib/d1-lean-ingest.js';
+} from '../../packages/sh-shared/d1-lean-ingest.mjs';
 import { payloadHash } from '../../packages/sh-shared/ingest-claim.mjs';
 import { restoreQueueAnalysis } from './queue-analysis-transfer.js';
 
