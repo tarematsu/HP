@@ -1,4 +1,4 @@
-import { canonicalizeTrackRows } from '../../site/functions/lib/canonical-track-rows.js';
+import { canonicalizeTrackRows } from '../../packages/sh-shared/canonical-track-rows.mjs';
 import { pagesR2ResponseKey } from './pages-response-r2.js';
 
 export const SPOTIFY_PLAYLIST_PAGES_MODEL_KEY = 'spotify-playlists';
