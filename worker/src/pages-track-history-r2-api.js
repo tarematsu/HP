@@ -79,7 +79,7 @@ function validateParams(url) {
   return null;
 }
 
-async function playCountRows(r2, index, selectedDates, loadDay) {
+async function playCountRows(r2, index, selectedDates, loadDay, source) {
   const rows = [];
   let updatedAt = Number(index.updated_at) || 0;
   for (const day of selectedDates) {
@@ -189,7 +189,7 @@ export async function loadTrackHistoryR2ApiResponse(
 
   if (url.searchParams.get('counts_only') === '1') {
     try {
-      const counts = await playCountRows(r2, index, selectedDates, loadDay);
+      const counts = await playCountRows(r2, index, selectedDates, loadDay, source);
       return json({
         ok: true,
         mode: 'counts',
@@ -246,7 +246,7 @@ export async function loadTrackHistoryR2ApiResponse(
     source,
     rows,
     truncated,
-    likes_included: true,
+    likes_included: source === 'buddies',
     ranking_included: includeRanking,
     ranking: ranking.rows,
     ranking_limit: includeRanking ? ranking.rows.length : 0,
