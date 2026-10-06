@@ -31,7 +31,7 @@ for (const name of ['wrangler.regional-music.jsonc', 'wrangler.nogizaka46smej.js
       }
     } else {
       assert.equal(writes.length, 1);
-      const payload = JSON.parse(JSON.parse(writes[0].body).body);
+      const payload = JSON.parse(writes[0].body);
       assert.equal(payload.ok, true);
       assert.equal(payload.event, null);
       assert.equal(payload.row, null);
