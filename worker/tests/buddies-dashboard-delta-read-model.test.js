@@ -295,7 +295,6 @@ test('Buddies dashboard reuses playback hot-state canonical ids before D1 lookup
   assert.equal(result.mode, 'incremental');
   assert.equal(d1Reads, 0);
   assert.deepEqual(r2.gets, [BUDDIES_DASHBOARD_HOT_STATE_KEY, BUDDIES_PLAYBACK_HOT_STATE_KEY]);
-  const envelope = JSON.parse(r2.values.get(DASHBOARD_KEY));
-  const payload = JSON.parse(envelope.body);
+  const payload = JSON.parse(r2.values.get(DASHBOARD_KEY));
   assert.equal(payload.queue[0].track_id, 77);
 });
