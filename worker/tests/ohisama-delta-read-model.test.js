@@ -178,8 +178,7 @@ test('Ohisama public model can be published once from private hot payload', asyn
   assert.equal(result.published, true);
   assert.equal(r2.puts, 1);
   const raw = r2.values.get(pagesR2ResponseKey('hinata'));
-  const envelope = JSON.parse(raw);
-  const body = JSON.parse(envelope.body);
+  const body = JSON.parse(raw);
   assert.equal(body.latest.host_handle, 'host-a');
   assert.equal(body.section_updated_at.current, observedAt);
 });
