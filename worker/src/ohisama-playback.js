@@ -10,6 +10,7 @@ import {
   transitionedStationheadTracks,
 } from './stationhead-playback-core.js';
 import { canonicalizeStationheadPlayback } from './stationhead-playback-identity.js';
+import { publishStationheadLikesReadModel } from './stationhead-likes-read-model.js';
 import {
   loadStationheadPlaybackState,
   runStationheadPlaybackStatements,
@@ -242,6 +243,18 @@ export async function captureOhisamaPlayback(env, channel, collection, observedA
   }
 
   await runStationheadPlaybackStatements(db, statements);
+  const likesPublication = await publishStationheadLikesReadModel(
+    bucket,
+    'ohisama',
+    likes,
+    observedAt,
+  ).catch((error) => {
+    console.warn(JSON.stringify({
+      event: 'ohisama_likes_publication_failed',
+      error: String(error?.message || error).slice(0, 500),
+    }));
+    return { published: false, reason: 'error' };
+  });
   if (completedDay?.period_key) {
     await publishOhisamaTrackHistoryDay(bucket, completedDay, observedAt);
   }
@@ -268,6 +281,7 @@ export async function captureOhisamaPlayback(env, channel, collection, observedA
       .sort((left, right) => (integer(right.like_count) || 0) - (integer(left.like_count) || 0)),
     transitions_written: transitions.length,
     like_changes_written: statements.length - transitions.length - (completedDay ? 1 : 0),
+    likes_published: Boolean(likesPublication?.published),
   };
 }
 
