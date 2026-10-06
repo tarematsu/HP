@@ -1,5 +1,5 @@
 import { materializedResponseCadenceSeconds } from '../../site/functions/lib/api-contract.js';
-import { canonicalizeTrackRows } from '../../site/functions/lib/canonical-track-rows.js';
+import { canonicalizeTrackRows } from '../../packages/sh-shared/canonical-track-rows.mjs';
 import { saveMaterializedR2Response } from './pages-response-r2.js';
 import {
   attachPlaybackReadModelTrackMetadata,
