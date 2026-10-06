@@ -108,7 +108,7 @@ function captureLikesSignature(payload) {
 }
 
 export { saveLeanSnapshot };
-export { splitD1Batches } from './d1-batch.js';
+export { splitD1Batches } from './d1-batch.mjs';
 
 function chunks(values, size) {
   const result = [];
