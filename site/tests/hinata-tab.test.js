@@ -62,7 +62,8 @@ test('Ohisama frontend difference is isolated to the materialized read-model ada
   assert.match(readModel, /source: 'ohisama'/);
   assert.match(readModel, /capabilities: \['current', 'history', 'played-tracks', 'likes'\]/);
   assert.match(readModel, /payload\?\.queue/);
-  assert.match(readModel, /payload\?\.played_history/);
+  assert.match(readModel, /\/api\/track-history\?source=ohisama/);
+  assert.doesNotMatch(readModel, /payload\?\.played_history/);
   assert.match(readModel, /payload\.likes/);
   assert.match(readModel, /includes\('日向坂46'\)/);
   assert.doesNotMatch(runtime, /\/api\/hinata|日向坂46/);
