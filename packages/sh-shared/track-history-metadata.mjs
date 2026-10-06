@@ -1,0 +1,80 @@
+import { fetchSpotifyMetadataBatch } from './spotify-metadata.js';
+import { bestText, looksLikeId } from './track-history-text.js';
+
+async function persistResolvedMetadata(env, resolved) {
+  if (!resolved.size) return 0;
+  const now = Date.now();
+  const statements = [...resolved.entries()].map(([spotifyId, value]) => env.DB.prepare(`
+    INSERT INTO sh_track_metadata (
+      spotify_id,title,artist,display_title,spotify_url,fetched_at,raw_json
+    ) VALUES (?,?,?,?,?,?,?)
+    ON CONFLICT(spotify_id) DO UPDATE SET
+      title=CASE WHEN excluded.title IS NOT NULL AND excluded.title<>'' THEN excluded.title ELSE sh_track_metadata.title END,
+      artist=CASE WHEN excluded.artist IS NOT NULL AND excluded.artist<>'' THEN excluded.artist ELSE sh_track_metadata.artist END,
+      display_title=CASE WHEN excluded.display_title IS NOT NULL AND excluded.display_title<>'' THEN excluded.display_title ELSE sh_track_metadata.display_title END,
+      spotify_url=COALESCE(excluded.spotify_url,sh_track_metadata.spotify_url),
+      fetched_at=excluded.fetched_at,
+      raw_json=excluded.raw_json
+  `).bind(
+    spotifyId,
+    value.title || null,
+    value.artist || null,
+    value.title && value.artist ? `${value.title} — ${value.artist}` : value.title || null,
+    value.spotify_url || null,
+    now,
+    JSON.stringify({ source: 'spotify_oembed', spotify: value.raw || null }),
+  ));
+  await env.DB.batch(statements);
+  return statements.length;
+}
+
+function unresolvedSpotifyIds(rows, limit = 20) {
+  const ids = new Set();
+  for (const row of rows) {
+    const title = bestText(row.title, row.raw_title, row.display_title);
+    const artist = bestText(row.artist, row.raw_artist);
+    if ((!title || looksLikeId(title) || !artist || looksLikeId(artist)) && row.spotify_id) {
+      ids.add(row.spotify_id);
+      if (ids.size >= limit) break;
+    }
+  }
+  return [...ids];
+}
+
+async function resolveMissingMetadata(rows, env) {
+  const ids = unresolvedSpotifyIds(rows);
+  if (!ids.length) return { resolved: new Map(), persisted: 0 };
+
+  const resolved = await fetchSpotifyMetadataBatch(ids);
+
+  let persisted = 0;
+  try {
+    persisted = await persistResolvedMetadata(env, resolved);
+  } catch (error) {
+    console.error('track metadata D1 upsert failed', error);
+  }
+  return { resolved, persisted };
+}
+
+export async function refreshMissingMetadata(rows, env) {
+  const { persisted } = await resolveMissingMetadata(rows, env);
+  return persisted;
+}
+
+export async function enrichMissingRows(rows, env) {
+  const { resolved, persisted } = await resolveMissingMetadata(rows, env);
+  if (!resolved.size) return { rows, persisted };
+  return {
+    persisted,
+    rows: rows.map((row) => {
+      const value = resolved.get(row.spotify_id);
+      if (!value) return row;
+      return {
+        ...row,
+        title: bestText(row.title, row.raw_title, row.display_title, value.title),
+        artist: bestText(row.artist, row.raw_artist, value.artist),
+        spotify_url: row.spotify_url || value.spotify_url || null,
+      };
+    }),
+  };
+}
