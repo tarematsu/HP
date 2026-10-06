@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const buddies = readFileSync(new URL('../src/buddies-playback-state.js', import.meta.url), 'utf8');
 const ohisama = readFileSync(new URL('../src/ohisama-playback.js', import.meta.url), 'utf8');
+const playbackCore = readFileSync(new URL('../src/stationhead-playback-core.js', import.meta.url), 'utf8');
 const nogizaka = readFileSync(new URL('../src/nogizaka-raw-materializer.js', import.meta.url), 'utf8');
 const hostIngest = readFileSync(new URL('../../site/functions/lib/host-ingest.js', import.meta.url), 'utf8');
 const otherTables = readFileSync(new URL('../scripts/other-db-tables.mjs', import.meta.url), 'utf8');
@@ -43,7 +44,8 @@ test('Nogizaka opts into change-only like hashing without increasing other solo 
   assert.match(hostIngest, /dedupeKey: `solo:\$\{num\(data\.session_id\) \?\? 0\}:queue:/);
 });
 
-test('existing UTC day key remains unchanged, preserving the JST 09:00 boundary', () => {
-  assert.match(buddies, /Math\.floor\(Number\(timestamp\) \/ DAY_MS\) \* DAY_MS/);
-  assert.match(ohisama, /Math\.floor\(Number\(timestamp\) \/ DAY_MS\) \* DAY_MS/);
+test('shared playback UTC day key remains unchanged, preserving the JST 09:00 boundary', () => {
+  assert.match(playbackCore, /Math\.floor\(Number\(timestamp\) \/ DAY_MS\) \* DAY_MS/);
+  assert.match(buddies, /stationheadPlaybackPeriodKey/);
+  assert.match(ohisama, /stationheadPlaybackPeriodKey/);
 });
