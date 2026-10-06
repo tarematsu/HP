@@ -152,3 +152,23 @@ test('Stationhead display names are keyed by host so official Sakurazaka is not 
   assert.match(source, /\['sbuddies1819', 'ATIN'\]/);
   assert.doesNotMatch(source, /STATIONHEAD_CHANNEL_BY_ARTIST/);
 });
+
+
+test('nogifan1ch is classified as Nogizaka in leaderboard metadata', () => {
+  const migration = readFileSync(
+    new URL('../../database/other-migrations/070_nogifan1ch_nogizaka_affiliation.sql', import.meta.url),
+    'utf8',
+  );
+  const worker = readFileSync(
+    new URL('../../worker/src/weekly-ranking-materializer.js', import.meta.url),
+    'utf8',
+  );
+  const api = readFileSync(
+    new URL('../functions/lib/history-ranking.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(migration, /'nogifan1ch'[\s\S]*'乃木坂46'[\s\S]*'fandom'/);
+  assert.match(migration, /source_mask = \(source_mask \| 8\)/);
+  assert.match(worker, /\['nogifan1ch', 'Nogizaka'\]/);
+  assert.match(api, /\['nogifan1ch', 'Nogizaka'\]/);
+});
