@@ -91,13 +91,15 @@ test('prepared collector routes queue management to R2 playback mode instead of 
 
 test('Buddies and Ohisama playback share canonical stationhead-minute track ids', () => {
   const source = readFileSync(new URL('../src/buddies-playback-state.js', import.meta.url), 'utf8');
+  const identity = readFileSync(new URL('../src/stationhead-playback-identity.js', import.meta.url), 'utf8');
   const migration = readFileSync(
     new URL('../../database/buddies-migrations/020_r2_playback_events.sql', import.meta.url),
     'utf8',
   );
   const wrangler = readFileSync(new URL('../wrangler.buddies-collector.jsonc', import.meta.url), 'utf8');
-  assert.match(source, /resolveTracksBulk/);
-  assert.match(source, /MINUTE_DB binding is missing/);
+  assert.match(source, /canonicalizeStationheadPlayback/);
+  assert.match(identity, /resolveTracksBulk/);
+  assert.match(identity, /MINUTE_DB binding is missing/);
   assert.match(source, /version: 2/);
   assert.match(source, /track_id: trackId/);
   assert.match(migration, /track_id INTEGER NOT NULL/);
