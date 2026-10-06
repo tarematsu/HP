@@ -15,7 +15,8 @@ class Renderer;
 
 class App {
  public:
-  explicit App(HINSTANCE instance);
+  explicit App(HINSTANCE instance, bool postRestartClick = false);
+  static constexpr int kScheduledRestartExitCode = 43;
   ~App();
   int Run(int showCommand);
   static App* Current();
@@ -44,6 +45,7 @@ class App {
   void HandleStartupUpdateWake();
   void StopServices();
   void Tick();
+  void PerformPostRestartClick();
   void Draw();
   void ShowToast(std::wstring message, int64_t durationMs, bool invalidate = true);
   void ScheduleNextTick(uint32_t milliseconds);
@@ -94,6 +96,7 @@ class App {
   bool stationheadLeaderboardCollectorStarted_ = false;
   bool cloudStarted_ = false;
   bool startupUpdateScheduled_ = false;
+  bool postRestartClickPending_ = false;
   bool stationheadPlaybackFallbackActive_ = false;
   bool stationheadPlaybackNoNextTrackObserved_ = false;
   StationheadFallbackRevisionGate stationheadPlaybackFallbackRevision_;
@@ -101,6 +104,8 @@ class App {
   int64_t lastAirHistorySavedAt_ = 0;
   int64_t toastUntil_ = 0;
   int64_t nextAppTickAt_ = 0;
+  int64_t nextDailyRestartAt_ = 0;
+  int64_t postRestartClickAt_ = 0;
   bool airHistoryDirty_ = false;
   bool stationheadPlacementDirty_ = true;
   RECT placedBounds_{};
