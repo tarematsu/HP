@@ -11,6 +11,7 @@ const STATIONHEAD_CHANNEL_BY_HOST = new Map([
   ['sakuramankai', 'Buddies'],
   ['sakurazaka46jp', '櫻坂46'],
   ['nogizaka46smej', '乃木坂46'],
+  ['nogifan1ch', 'Nogizaka'],
   ['sbuddies1819', 'ATIN'],
   ['jo1andjam', 'JAM'],
   ['vote6tones', 'team SixTONES'],
