@@ -6,16 +6,16 @@ import {
   rawJson,
   readJsonBody,
   text,
-} from './api-utils.js';
+} from './api-utils.mjs';
 import { saveLeanHeartbeat, saveLeanQueue, saveLeanSnapshot } from './d1-optimized-ingest.mjs';
 import { withoutQueueItemLikeMirrors } from './d1-queue-like-write-filter.mjs';
 import { savePeriodBoundaryEvidence } from './period-boundary-preaggregate.mjs';
 import {
   markQueueReachability,
   saveQueueReachability,
-} from './queue-reachability.js';
+} from './queue-reachability.mjs';
 
-export * from './queue-ingest-state.js';
+export * from './queue-ingest-state.mjs';
 
 const SAKAMICHI_ARTIST_NAMES = new Map([
   ['sakurazaka46', '櫻坂46'],
