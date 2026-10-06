@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 
 import { HOST_SUMMARY_SQL, loadHostSummary } from '../site/functions/api/host-history.js';
+import { ROUTES } from '../site/public/dashboard-navigation-config.js';
 
 function hostDatabase() {
   const db = new DatabaseSync(':memory:');
@@ -78,8 +79,11 @@ test('history runtime is embedded and lazy while the shared leaderboard owns ran
   assert.equal((html.match(/<script /g) || []).length, 1);
   assert.match(shell, /id: 'historyView'/);
   assert.match(tabs, /import\('\/history\/history-main\.js\?v=\d{8}\.\d+'\)/);
-  assert.match(navigation, /ranking: lazy\([\s\S]*?import\('\/leaderboard\.js\?v=\d{8}\.\d+'\)/);
-  assert.doesNotMatch(tabs, /leaderboard\.js/);
+  assert.equal(ROUTES.ranking.kind, 'lazy');
+  assert.equal(ROUTES.ranking.moduleId, 'ranking');
+  assert.deepEqual(ROUTES.ranking.loadArgs, { source: 'stationhead' });
+  assert.match(tabs, /ranking: Object\.freeze\(\{[\s\S]*?import\('\/leaderboard\.js\?v=\d{8}\.\d+'\)/);
+  assert.doesNotMatch(navigation, /import\('\/leaderboard\.js/);
   assert.doesNotMatch(html, /href="\/history/);
   assert.match(entry, /function ensureHistoryModeRuntime/);
   assert.match(entry, /history-period-chart\.js/);
