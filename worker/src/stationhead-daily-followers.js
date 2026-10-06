@@ -63,6 +63,7 @@ function followerMembership(handleValue, sourceMaskValue) {
   const sourceMask = Number(sourceMaskValue || 0);
   if (handle === 'sakurazaka46jp') return { affiliation: '櫻坂46公式', group: 'sakurazaka46' };
   if (handle === 'nogizaka46smej') return { affiliation: '乃木坂46公式', group: 'nogizaka46' };
+  if (handle === 'nogifan1ch') return { affiliation: 'Nogizaka', group: 'nogizaka46' };
   if (handle === 'sakuramankai' || handle === 'sakuramankai2') {
     return { affiliation: 'Buddies', group: 'sakurazaka46' };
   }
