@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { ROUTES } from '../public/dashboard-navigation-config.js';
+
 const tabsSource = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const leaderboardSource = browserSource('leaderboard.js');
 const leaderboardModel = readFileSync(new URL('../public/leaderboard-read-model.js', import.meta.url), 'utf8');
@@ -22,7 +24,8 @@ test('shared leaderboard model omits missing and out-of-rank rows from the visib
 
 test('shared leaderboard replaces the history table-status lazy hook', () => {
   assert.doesNotMatch(tabsSource, /history-ranking-table-status|ranking-status/);
-  assert.match(tabsSource, /ranking:\s*\{[\s\S]*viewId: 'leaderboardView'[\s\S]*leaderboard\.js[\s\S]*source: 'stationhead'/);
+  assert.equal(ROUTES.ranking.viewId, 'leaderboardView');
+  assert.deepEqual(ROUTES.ranking.loadArgs, { source: 'stationhead' });
   assert.match(leaderboardSource, /leaderboardReadModel\(source\)\.load/);
   assert.match(leaderboardModel, /normalizeStationheadLeaderboard/);
   assert.doesNotMatch(leaderboardSource, /MutationObserver|queueMicrotask/);

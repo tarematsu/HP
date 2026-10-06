@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { ROUTES } from '../public/dashboard-navigation-config.js';
+
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const entry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const history = browserSource('history/history-lite.js');
@@ -16,7 +18,9 @@ const current = readFileSync(new URL('../functions/api/history-current.js', impo
 test('ranking is owned by the shared leaderboard with the fixed Sakamichi comparison', () => {
   assert.doesNotMatch(entry, /history-ranking-chart\.js|history-ranking-simplified\.js|history-ranking-all-host-table\.js/);
   assert.doesNotMatch(entry, /history-ranking-missing-gap/);
-  assert.match(tabs, /ranking:[\s\S]*viewId: 'leaderboardView'[\s\S]*runtime: \(\) => import\('\/leaderboard\.js\?v=\d{8}\.\d+'\)[\s\S]*source: 'stationhead'/);
+  assert.equal(ROUTES.ranking.viewId, 'leaderboardView');
+  assert.equal(ROUTES.ranking.moduleId, 'ranking');
+  assert.deepEqual(ROUTES.ranking.loadArgs, { source: 'stationhead' });
   assert.match(leaderboard, /leaderboardReadModel/);
   assert.match(leaderboardReadModel, /const STATIONHEAD_FEATURED = Object\.freeze\(\[[\s\S]*'sakuramankai'[\s\S]*'sakurazaka46jp'[\s\S]*'nogizaka46smej'/);
   assert.match(leaderboardReadModel, /sakuramankai: '#111111'/);

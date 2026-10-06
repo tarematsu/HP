@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { ROUTES } from '../public/dashboard-navigation-config.js';
+
 const mainPage = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const stationheadModel = readFileSync(new URL('../public/stationhead-channel-model.js', import.meta.url), 'utf8');
 const tabsClient = dashboardRouterSource();
@@ -32,7 +34,8 @@ test('main dashboard exposes shared Buddies archive and leaderboard functions', 
   assert.match(stationheadModel, /value: 'broadcasts', label: 'リスパ'/);
   assert.doesNotMatch(stationheadModel, /value: '(?:weekly|monthly|ranking|tracks)'/);
   assert.match(tabsClient, /mode: 'ranking', label: 'リーダーボード'/);
-  assert.match(tabsClient, /ranking:\s*\{[\s\S]*viewId: 'leaderboardView'/);
+  assert.equal(ROUTES.ranking.viewId, 'leaderboardView');
+  assert.deepEqual(ROUTES.ranking.loadArgs, { source: 'stationhead' });
   assert.equal(existsSync(new URL('../public/history/index.html', import.meta.url)), false);
   assert.equal(existsSync(new URL('../public/history/likes/index.html', import.meta.url)), false);
 });
@@ -140,7 +143,8 @@ test('Sakurazaka endpoint and comparison client share one canonical name and dir
 test('edge middleware materializes summaries while feature views stay lazy', () => {
   assert.match(middleware, /MATERIALIZED_API_VARIANTS/);
   assert.match(middleware, /SERVICE_MATERIALIZED_MODEL_KEYS/);
-  assert.match(middleware, /cache\.put/);
+  assert.match(middleware, /headers\.set\('x-edge-cache', 'HTTP'\)/);
+  assert.doesNotMatch(middleware, /caches\.default|cache\.put/);
   assert.match(middleware, /materializedApiKey/);
   assert.doesNotMatch(mainPage, /id="historyView"|id="likesView"|id="leaderboardView"|id="followersView"/);
 });

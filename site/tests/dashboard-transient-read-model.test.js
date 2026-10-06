@@ -11,5 +11,7 @@ test('dashboard retries transient materialized read-model outages without live D
   assert.match(fetchCache, /async function fetchDashboardWithRetry/);
   assert.match(fetchCache, /await waitForRetry\(delayMs, init\?\.signal\)/);
   assert.match(fetchCache, /if \(payload\?\.ok\) \{[\s\S]*clearTransientStatus\(\);[\s\S]*dispatchPayload\(payload, 'network'\);/);
-  assert.match(middleware, /const LIVE_PAGES_FALLBACK_MODEL_KEYS = new Set\(\)/);
+  assert.match(middleware, /SERVICE_MATERIALIZED_MODEL_KEYS/);
+  assert.match(middleware, /return materializedUnavailable\(modelKey\)/);
+  assert.doesNotMatch(middleware, /LIVE_PAGES_FALLBACK_MODEL_KEYS/);
 });
