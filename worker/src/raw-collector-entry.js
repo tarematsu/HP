@@ -361,12 +361,14 @@ export async function collectRawChannel(env, dependencies = {}) {
   const ingestResult = inlinePipeline
     ? await ingestInline(env, message, { inline: true })
     : await rawCollectionQueue.send(message, RAW_COLLECTION_QUEUE_OPTIONS);
-  if (config.channelAlias === 'buddies' && message.snapshot) {
-    await registerBuddiesInitialFollowerTarget(env, message.snapshot, observedAt, {
+  const registerInitialFollower = stationheadInitialFollowerRegistrar(config.channelAlias);
+  if (registerInitialFollower && message.snapshot) {
+    await registerInitialFollower(env, message.snapshot, observedAt, {
       auth_token: activeToken,
       device_uid: state.deviceUid,
     }).catch((error) => console.warn(JSON.stringify({
-      event: 'buddies_initial_followers_failed',
+      event: 'stationhead_initial_followers_failed',
+      channel_alias: config.channelAlias,
       error: String(error?.message || error).slice(0, 300),
     })));
   }
