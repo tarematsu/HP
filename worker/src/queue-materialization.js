@@ -1,4 +1,8 @@
 import { payloadHash } from '../../site/functions/lib/ingest-claim.js';
+import {
+  stationheadPlaybackEnabled,
+  stationheadPlaybackVisibleTracks,
+} from './stationhead-playback-config.js';
 
 const DEFAULT_INITIAL_TRACKS = 22;
 const DEFAULT_LOW_WATER_TRACKS = 5;
@@ -14,10 +18,6 @@ function integer(value) {
 function positiveInteger(value, fallback, maximum = MAX_TRACKS) {
   const parsed = integer(value);
   return parsed != null && parsed > 0 ? Math.min(parsed, maximum) : fallback;
-}
-
-function enabled(value) {
-  return value === true || value === 1 || /^(1|true|yes|on)$/i.test(String(value || ''));
 }
 
 function config(env = {}) {
@@ -251,12 +251,12 @@ async function hashMaterializedAnalysis(result) {
 
 export async function prepareMaterializedQueue(db, queue, analysis, env = {}) {
   if (!queue || !analysis?.structural_hash) return { queue, analysis };
-  if (enabled(env?.BUDDIES_R2_PLAYBACK_ENABLED)) {
+  if (stationheadPlaybackEnabled(env)) {
     return {
       queue: materializeCurrentPlaybackWindow(
         queue,
         Date.now(),
-        env?.BUDDIES_PLAYBACK_VISIBLE_TRACKS,
+        stationheadPlaybackVisibleTracks(env, DEFAULT_PLAYBACK_TRACKS),
       ),
       analysis: null,
     };
