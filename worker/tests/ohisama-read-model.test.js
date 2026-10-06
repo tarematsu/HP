@@ -9,7 +9,7 @@ import {
   normalizeOhisamaHistory,
   ohisamaReadModelPayload,
   rollOhisamaHistory,
-} from '../src/ohisama-read-model.js';
+} from '../src/ohisama-read-model-core.js';
 
 test('ohisama Pages model keeps the five-minute cadence', () => {
   assert.equal(OHISAMA_PAGES_MODEL_KEY, 'hinata');
