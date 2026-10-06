@@ -86,7 +86,7 @@ test('migration and metadata ingest enforce compact change-only writes', () => {
     new URL('../../database/buddies-migrations/011_period_boundary_evidence.sql', import.meta.url),
     'utf8',
   );
-  const ingest = readFileSync(new URL('../functions/lib/ingest.js', import.meta.url), 'utf8');
+  const ingest = readFileSync(new URL('../../packages/sh-shared/ingest.mjs', import.meta.url), 'utf8');
   assert.match(migration, /PRIMARY KEY \(mode, period_key, boundary_name\)/);
   assert.match(ingest, /savePeriodBoundaryEvidence/);
   assert.match(ingest, /ON CONFLICT\(spotify_id\) DO UPDATE SET/);
