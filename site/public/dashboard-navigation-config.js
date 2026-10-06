@@ -33,8 +33,8 @@ export const NAVIGATION = Object.freeze([
   },
 ]);
 
-const lazy = (viewId, shell, runtime, loadExport, noticeId, errorLabel, errorMessage, loadArgs) => Object.freeze({
-  kind: 'lazy', viewId, shell, runtime, loadExport, noticeId, errorLabel, errorMessage, ...(loadArgs ? { loadArgs } : {}),
+const lazy = (viewId, moduleId, loadExport, noticeId, errorLabel, errorMessage, loadArgs) => Object.freeze({
+  kind: 'lazy', viewId, moduleId, loadExport, noticeId, errorLabel, errorMessage, ...(loadArgs ? { loadArgs } : {}),
 });
 
 export const ROUTES = Object.freeze({
@@ -45,17 +45,17 @@ export const ROUTES = Object.freeze({
   weekly: Object.freeze({ kind: 'history', viewId: 'historyView' }),
   monthly: Object.freeze({ kind: 'history', viewId: 'historyView' }),
   broadcasts: Object.freeze({ kind: 'history', viewId: 'historyView', firstWeek: true }),
-  hinata: lazy('hinataView', () => import('/hinata-shell.js?v=20261001.2'), () => import('/hinata.js?v=20260930.5'), 'loadHinataView', 'hinataNotice', 'hinata', '日向坂データの初期化に失敗しました。再読み込みしてください。'),
-  ranking: lazy('leaderboardView', () => import('/leaderboard-shell.js?v=20261005.2'), () => import('/leaderboard.js?v=20261005.2'), 'loadLeaderboardView', 'leaderboardNotice', 'stationhead leaderboard', 'リーダーボードデータの初期化に失敗しました。再読み込みしてください。', { source: 'stationhead' }),
-  followers: lazy('followersView', () => import('/followers-shell.js?v=20261005.2'), () => import('/followers.js?v=20261005.2'), 'loadFollowersView', 'followersNotice', 'followers', 'フォロワーデータの初期化に失敗しました。再読み込みしてください。', { source: 'stationhead' }),
-  spotify: lazy('spotifyView', () => import('/spotify-shell.js?v=20261004.1'), () => import('/spotify.js?v=20261004.1'), 'loadSpotifyView', 'spotifyNotice', 'spotify', 'Spotify再生数の初期化に失敗しました。再読み込みしてください。'),
-  'amazon-music': lazy('amazonMusicView', () => import('/amazon-music-shell.js?v=20261004.1'), () => import('/amazon-music.js?v=20261004.1'), 'loadAmazonMusicView', 'amazonMusicNotice', 'amazon music', 'Amazon Musicデータの初期化に失敗しました。再読み込みしてください。'),
-  'apple-music': lazy('appleMusicView', () => import('/apple-music-shell.js?v=20261004.1'), () => import('/apple-music.js?v=20261001.1'), 'loadAppleMusicView', 'appleMusicNotice', 'apple music', 'Apple Musicデータの初期化に失敗しました。再読み込みしてください。'),
-  'youtube-music': lazy('youtubeMusicView', () => import('/youtube-music-shell.js?v=20261003.4'), () => import('/youtube-music.js?v=20261004.2'), 'loadYoutubeMusicView', 'youtubeMusicNotice', 'youtube music', 'YouTube Musicデータの初期化に失敗しました。再読み込みしてください。'),
-  kkbox: lazy('kkboxView', () => import('/kkbox-shell.js?v=20261004.1'), () => import('/kkbox.js?v=20261004.1'), 'loadKkboxView', 'kkboxNotice', 'kkbox', 'KKBOXデータの初期化に失敗しました。再読み込みしてください。'),
-  qq_music: lazy('qqMusicView', () => import('/qq-music-shell.js?v=20261004.1'), () => import('/qq-music.js?v=20261004.1'), 'loadQqMusicView', 'qqMusicNotice', 'qq music', 'QQ音乐データの初期化に失敗しました。再読み込みしてください。'),
-  kugou_music: lazy('kugouMusicView', () => import('/kugou-music-shell.js?v=20261004.1'), () => import('/kugou-music.js?v=20261004.1'), 'loadKugouMusicView', 'kugouMusicNotice', 'kugou music', '酷狗音乐データの初期化に失敗しました。再読み込みしてください。'),
-  nogizaka: lazy('nogizakaListeningPartyView', () => import('/nogizaka-listening-party-shell.js?v=20261003.1'), () => import('/nogizaka-listening-party.js?v=20260930.1'), 'loadNogizakaListeningPartyView', 'nogizakaListeningPartyNotice', 'nogizaka listening party', '乃木坂公式リスパデータの初期化に失敗しました。再読み込みしてください。'),
+  hinata: lazy('hinataView', 'hinata', 'loadHinataView', 'hinataNotice', 'hinata', '日向坂データの初期化に失敗しました。再読み込みしてください。'),
+  ranking: lazy('leaderboardView', 'ranking', 'loadLeaderboardView', 'leaderboardNotice', 'stationhead leaderboard', 'リーダーボードデータの初期化に失敗しました。再読み込みしてください。', { source: 'stationhead' }),
+  followers: lazy('followersView', 'followers', 'loadFollowersView', 'followersNotice', 'followers', 'フォロワーデータの初期化に失敗しました。再読み込みしてください。', { source: 'stationhead' }),
+  spotify: lazy('spotifyView', 'spotify', 'loadSpotifyView', 'spotifyNotice', 'spotify', 'Spotify再生数の初期化に失敗しました。再読み込みしてください。'),
+  'amazon-music': lazy('amazonMusicView', 'amazon-music', 'loadAmazonMusicView', 'amazonMusicNotice', 'amazon music', 'Amazon Musicデータの初期化に失敗しました。再読み込みしてください。'),
+  'apple-music': lazy('appleMusicView', 'apple-music', 'loadAppleMusicView', 'appleMusicNotice', 'apple music', 'Apple Musicデータの初期化に失敗しました。再読み込みしてください。'),
+  'youtube-music': lazy('youtubeMusicView', 'youtube-music', 'loadYoutubeMusicView', 'youtubeMusicNotice', 'youtube music', 'YouTube Musicデータの初期化に失敗しました。再読み込みしてください。'),
+  kkbox: lazy('kkboxView', 'kkbox', 'loadKkboxView', 'kkboxNotice', 'kkbox', 'KKBOXデータの初期化に失敗しました。再読み込みしてください。'),
+  qq_music: lazy('qqMusicView', 'qq_music', 'loadQqMusicView', 'qqMusicNotice', 'qq music', 'QQ音乐データの初期化に失敗しました。再読み込みしてください。'),
+  kugou_music: lazy('kugouMusicView', 'kugou_music', 'loadKugouMusicView', 'kugouMusicNotice', 'kugou music', '酷狗音乐データの初期化に失敗しました。再読み込みしてください。'),
+  nogizaka: lazy('nogizakaListeningPartyView', 'nogizaka', 'loadNogizakaListeningPartyView', 'nogizakaListeningPartyNotice', 'nogizaka listening party', '乃木坂公式リスパデータの初期化に失敗しました。再読み込みしてください。'),
 });
 
 const modeNavigation = new Map();

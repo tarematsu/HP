@@ -13,6 +13,59 @@ let historyRuntimeMode = null;
 let activeMode = 'current';
 let initialRouteReady = false;
 
+const DASHBOARD_ROUTE_MODULES = Object.freeze({
+  hinata: Object.freeze({
+    shell: () => import('/hinata-shell.js?v=20261001.2'),
+    runtime: () => import('/hinata.js?v=20260930.5'),
+  }),
+  ranking: Object.freeze({
+    shell: () => import('/leaderboard-shell.js?v=20261005.2'),
+    runtime: () => import('/leaderboard.js?v=20261005.2'),
+  }),
+  followers: Object.freeze({
+    shell: () => import('/followers-shell.js?v=20261005.2'),
+    runtime: () => import('/followers.js?v=20261005.2'),
+  }),
+  spotify: Object.freeze({
+    shell: () => import('/spotify-shell.js?v=20261004.1'),
+    runtime: () => import('/spotify.js?v=20261004.1'),
+  }),
+  'amazon-music': Object.freeze({
+    shell: () => import('/amazon-music-shell.js?v=20261004.1'),
+    runtime: () => import('/amazon-music.js?v=20261004.1'),
+  }),
+  'apple-music': Object.freeze({
+    shell: () => import('/apple-music-shell.js?v=20261004.1'),
+    runtime: () => import('/apple-music.js?v=20261001.1'),
+  }),
+  'youtube-music': Object.freeze({
+    shell: () => import('/youtube-music-shell.js?v=20261003.4'),
+    runtime: () => import('/youtube-music.js?v=20261004.2'),
+  }),
+  kkbox: Object.freeze({
+    shell: () => import('/kkbox-shell.js?v=20261004.1'),
+    runtime: () => import('/kkbox.js?v=20261004.1'),
+  }),
+  qq_music: Object.freeze({
+    shell: () => import('/qq-music-shell.js?v=20261004.1'),
+    runtime: () => import('/qq-music.js?v=20261004.1'),
+  }),
+  kugou_music: Object.freeze({
+    shell: () => import('/kugou-music-shell.js?v=20261004.1'),
+    runtime: () => import('/kugou-music.js?v=20261004.1'),
+  }),
+  nogizaka: Object.freeze({
+    shell: () => import('/nogizaka-listening-party-shell.js?v=20261003.1'),
+    runtime: () => import('/nogizaka-listening-party.js?v=20260930.1'),
+  }),
+});
+
+function lazyRouteModules(route) {
+  const modules = DASHBOARD_ROUTE_MODULES[route?.moduleId];
+  if (!modules) throw new Error(`missing dashboard route modules: ${route?.moduleId || 'unknown'}`);
+  return modules;
+}
+
 for (const section of NAVIGATION) for (const source of section.sources) lastModeBySource.set(source.id, source.defaultMode);
 
 function ensureModeStyles(mode) {
@@ -115,11 +168,12 @@ async function showStationheadPanel(mode, route, options = {}) {
 }
 async function showLazyView(mode, route, options = {}) {
   setRoute(mode, null, options);
+  const modules = lazyRouteModules(route);
   try {
-    await Promise.all([ensureModeStyles(mode), loadOnce(`${mode}:shell`, route.shell)]);
+    await Promise.all([ensureModeStyles(mode), loadOnce(`${mode}:shell`, modules.shell)]);
     if (activeMode !== mode) return;
     showOnly(document.getElementById(route.viewId)); markRouteReady();
-    const runtime = await loadOnce(`${mode}:runtime`, route.runtime);
+    const runtime = await loadOnce(`${mode}:runtime`, modules.runtime);
     if (activeMode !== mode) return;
     if (route.loadExport) await runtime[route.loadExport]?.(route.loadArgs || undefined);
   } catch (error) {

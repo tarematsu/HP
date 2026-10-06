@@ -1,4 +1,4 @@
-import { formatNogizakaBroadcastContent } from '../../site/functions/api/nogizaka-listening-party.js';
+import { formatNogizakaBroadcastContent } from '../../packages/sh-shared/index.mjs';
 import { pagesR2ResponseKey } from './pages-response-r2.js';
 
 export const NOGIZAKA_LISTENING_PARTY_MODEL_KEY = 'nogizaka-listening-party';

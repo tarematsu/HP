@@ -1,3 +1,6 @@
+import { formatNogizakaBroadcastContent } from '../../../packages/sh-shared/index.mjs';
+export { formatNogizakaBroadcastContent };
+
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'private, max-age=10, stale-while-revalidate=10',
@@ -8,21 +11,6 @@ const json = (data, status = 200) => new Response(JSON.stringify(data), {
   status,
   headers: status === 200 ? JSON_HEADERS : { ...JSON_HEADERS, 'cache-control': 'no-store' },
 });
-
-export function formatNogizakaBroadcastContent(event) {
-  const raw = String(event?.event_name || event?.title || '')
-    .replace(/[「」]/gu, ' ')
-    .replace(/\s+/gu, ' ')
-    .trim();
-  const underLive = raw.match(/(\d+(?:st|nd|rd|th))(?:SG)?\s*アンダーライブ/iu);
-  if (underLive) return `${underLive[1]} アンダーライブ セットリスト`;
-  const cleaned = raw
-    .replace(/\s*Stationhead\s*(?:リスニングパーティー|Listening Party)?.*$/iu, '')
-    .replace(/\s*リスニングパーティー.*$/u, '')
-    .replace(/\s*開催決定[！!。]?\s*$/u, '')
-    .trim();
-  return cleaned || '乃木坂46 公式リスパ';
-}
 
 function unavailable(status = 503) {
   return json({
