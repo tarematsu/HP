@@ -1,5 +1,5 @@
 import { formatNogizakaBroadcastContent } from '../../packages/sh-shared/index.mjs';
-import { pagesR2ResponseKey } from './pages-response-r2.js';
+import { saveMaterializedR2Response } from './pages-response-r2.js';
 
 export const NOGIZAKA_LISTENING_PARTY_MODEL_KEY = 'nogizaka-listening-party';
 export const NOGIZAKA_LISTENING_PARTY_CADENCE_SECONDS = 60;
@@ -247,29 +247,21 @@ export async function publishNogizakaListeningPartyReadModel(env, now = Date.now
   if (typeof r2?.put !== 'function') throw new Error('PAGES_RESPONSE_R2 binding is missing');
   const updatedAt = Number(now) || Date.now();
   const payload = await buildNogizakaListeningPartyReadModel(env, updatedAt);
-  const key = pagesR2ResponseKey(NOGIZAKA_LISTENING_PARTY_MODEL_KEY);
-  if (!key) throw new Error('Nogizaka listening-party Pages read-model key is invalid');
-  const envelope = {
-    version: 1,
-    updated_at: updatedAt,
-    cadence_seconds: NOGIZAKA_LISTENING_PARTY_CADENCE_SECONDS,
-    status: 200,
-    headers: JSON_HEADERS,
-    body: JSON.stringify(payload),
-  };
-  await r2.put(key, JSON.stringify(envelope), {
-    httpMetadata: { contentType: 'application/json; charset=utf-8' },
-    customMetadata: {
-      version: '1',
-      model_key: NOGIZAKA_LISTENING_PARTY_MODEL_KEY,
-      updated_at: String(updatedAt),
-      cadence_seconds: String(NOGIZAKA_LISTENING_PARTY_CADENCE_SECONDS),
-    },
-  });
+  const saved = await saveMaterializedR2Response(
+    r2,
+    NOGIZAKA_LISTENING_PARTY_MODEL_KEY,
+    JSON.stringify(payload),
+    200,
+    JSON_HEADERS,
+    updatedAt,
+    NOGIZAKA_LISTENING_PARTY_CADENCE_SECONDS,
+    { model_key: NOGIZAKA_LISTENING_PARTY_MODEL_KEY },
+  );
+  if (!saved?.object_key) throw new Error('Nogizaka listening-party Pages read-model key is invalid');
   return {
     published: true,
     model_key: NOGIZAKA_LISTENING_PARTY_MODEL_KEY,
-    object_key: key,
+    object_key: saved.object_key,
     collection_active: payload.collection_active,
     has_event: Boolean(payload.event),
     updated_at: updatedAt,
