@@ -7,7 +7,7 @@ const ohisama = readFileSync(new URL('../src/ohisama-playback.js', import.meta.u
 const playbackCore = readFileSync(new URL('../src/stationhead-playback-core.js', import.meta.url), 'utf8');
 const playbackStore = readFileSync(new URL('../src/stationhead-playback-store.js', import.meta.url), 'utf8');
 const nogizaka = readFileSync(new URL('../src/nogizaka-raw-materializer.js', import.meta.url), 'utf8');
-const hostIngest = readFileSync(new URL('../../site/functions/lib/host-ingest.js', import.meta.url), 'utf8');
+const hostIngest = readFileSync(new URL('../../packages/sh-shared/host-ingest.mjs', import.meta.url), 'utf8');
 const otherTables = readFileSync(new URL('../scripts/other-db-tables.mjs', import.meta.url), 'utf8');
 const migration = readFileSync(new URL(
   '../../database/other-migrations/068_nogizaka_history_storage_compaction.sql',
