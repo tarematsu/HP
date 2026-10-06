@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const pagesEntry = readFileSync(new URL('../src/ohisama-pages-entry.js', import.meta.url), 'utf8');
 const playback = readFileSync(new URL('../src/ohisama-playback.js', import.meta.url), 'utf8');
-const readModel = readFileSync(new URL('../src/ohisama-read-model.js', import.meta.url), 'utf8');
+const readModel = readFileSync(new URL('../src/ohisama-read-model-core.js', import.meta.url), 'utf8');
 const adapter = readFileSync(new URL('../../site/public/stationhead/ohisama-read-model.js', import.meta.url), 'utf8');
 const cadence = readFileSync(new URL('../src/ohisama-publication-cadence.js', import.meta.url), 'utf8');
 
