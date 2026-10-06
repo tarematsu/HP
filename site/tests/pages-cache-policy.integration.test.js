@@ -39,7 +39,7 @@ test('Pages edge cache respects an origin no-cache directive', async () => {
   });
 
   assert.equal(response.status, 200);
-  assert.equal(response.headers.get('x-edge-cache'), 'BYPASS');
+  assert.equal(response.headers.get('x-edge-cache'), 'HTTP');
   assert.equal(response.headers.get('cache-control'), 'public, no-cache');
   assert.equal(writes.length, 0);
 });
@@ -51,7 +51,7 @@ test('Pages edge cache does not store Vary wildcard responses', async () => {
   });
 
   assert.equal(response.status, 200);
-  assert.equal(response.headers.get('x-edge-cache'), 'BYPASS');
+  assert.equal(response.headers.get('x-edge-cache'), 'HTTP');
   assert.match(response.headers.get('vary') || '', /\*/);
   assert.equal(writes.length, 0);
 });
@@ -63,7 +63,7 @@ test('Pages edge cache does not collapse unsupported Vary dimensions', async () 
   });
 
   assert.equal(response.status, 200);
-  assert.equal(response.headers.get('x-edge-cache'), 'BYPASS');
+  assert.equal(response.headers.get('x-edge-cache'), 'HTTP');
   assert.equal(response.headers.get('vary'), 'origin, accept-encoding');
   assert.equal(writes.length, 0);
 });
@@ -75,8 +75,8 @@ test('Pages edge cache still stores ordinary public JSON responses', async () =>
   });
 
   assert.equal(response.status, 200);
-  assert.equal(response.headers.get('x-edge-cache'), 'MISS');
+  assert.equal(response.headers.get('x-edge-cache'), 'HTTP');
   assert.match(response.headers.get('cache-control') || '', /s-maxage=300/);
   assert.equal(response.headers.get('vary'), 'accept, accept-encoding');
-  assert.equal(writes.length, 1);
+  assert.equal(writes.length, 0);
 });

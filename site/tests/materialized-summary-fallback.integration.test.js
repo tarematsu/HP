@@ -154,10 +154,9 @@ test('history ranges are filtered before the materialized payload reaches the br
     assert.equal(data.to, '2026-06-30');
     assert.equal(data.read_path, 'r2-materialized-range');
     assert.deepEqual(data.rows.map((row) => row.period_key), ['2026-06-01', '2026-06-29']);
-    assert.ok(cachedRequest);
-    assert.match(cachedRequest.url, /from=2026-06-01/);
-    assert.match(cachedRequest.url, /to=2026-06-30/);
-    assert.ok(cachedResponse);
+    assert.equal(response.headers.get('x-edge-cache'), 'HTTP');
+    assert.equal(cachedRequest, null);
+    assert.equal(cachedResponse, null);
   } finally {
     globalThis.caches = originalCaches;
   }

@@ -18,7 +18,7 @@ class ThrowingDb {
   prepare() { throw new Error('D1 must not run when the KV service responds'); }
 }
 
-test('a cache miss serves compact materializations through the KV service before D1', async () => {
+test('a request serves compact materializations through the read-model service before D1', async () => {
   const originalCaches = globalThis.caches;
   globalThis.caches = { default: memoryCache() };
   const waits = [];
@@ -51,7 +51,7 @@ test('a cache miss serves compact materializations through the KV service before
       waitUntil(promise) { waits.push(promise); },
     });
     assert.equal(response.headers.get('x-api-source'), 'worker-kv');
-    assert.equal(response.headers.get('x-edge-cache'), 'MISS');
+    assert.equal(response.headers.get('x-edge-cache'), 'HTTP');
     assert.deepEqual(await response.json(), { source: 'kv' });
     assert.equal(serviceCalls, 1);
     assert.equal(liveCalls, 0);
@@ -95,7 +95,7 @@ test('track-history is served by the R2 read-model service without invoking the 
       waitUntil(promise) { waits.push(promise); },
     });
     assert.equal(response.status, 200);
-    assert.equal(response.headers.get('x-edge-cache'), 'MISS');
+    assert.equal(response.headers.get('x-edge-cache'), 'HTTP');
     assert.equal(response.headers.get('x-api-source'), 'track-history-r2-read-model');
     assert.deepEqual(await response.json(), { source: 'materialized' });
     assert.equal(serviceCalls, 1);
