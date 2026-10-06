@@ -8,7 +8,7 @@ import {
 import {
   queueStructuralPayload,
   saveLeanSnapshot,
-} from '../../site/functions/lib/d1-lean-ingest.js';
+} from '../../packages/sh-shared/d1-lean-ingest.mjs';
 import {
   restoreQueueAnalysis,
   serializedQueueAnalysis,
