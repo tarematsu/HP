@@ -1,6 +1,4 @@
-import { hydratePlaybackAggregates, hydratePlaybackTrackMetadata } from './playback-track-metadata.js';
 import { extractQueue } from './collector-payload.js';
-import { resolveTracksBulk } from './minute-facts-track-resolution.js';
 import { materializeCurrentPlaybackWindow } from './queue-materialization.js';
 import { saveTrackHistoryDayReadModel } from './pages-track-history-r2-shards.js';
 import {
@@ -11,6 +9,7 @@ import {
   stationheadPlaybackTrackKey,
   transitionedStationheadTracks,
 } from './stationhead-playback-core.js';
+import { canonicalizeStationheadPlayback } from './stationhead-playback-identity.js';
 export const OHISAMA_PLAYBACK_HOT_STATE_KEY = 'stationhead/ohisama/playback-state.json';
 
 function finite(value) {
@@ -135,126 +134,6 @@ async function saveState(bucket, state, observedAt) {
   return true;
 }
 
-function normalizedIdentitySource(track = {}) {
-  const key = text(track?.track_key);
-  return {
-    ...track,
-    track_key: key || trackKey(track),
-    isrc: text(track?.isrc)?.toUpperCase()
-      || (key?.startsWith('isrc:') ? key.slice('isrc:'.length).toUpperCase() : null),
-    spotify_id: text(track?.spotify_id)
-      || (key?.startsWith('spotify:') ? key.slice('spotify:'.length) : null),
-    stationhead_track_id: integer(track?.stationhead_track_id)
-      ?? (key?.startsWith('stationhead:') ? integer(key.slice('stationhead:'.length)) : null),
-  };
-}
-
-function collectIdentitySources(playback, previous) {
-  return [
-    ...(playback?.queue || []),
-    ...(previous?.queue || []),
-    ...Object.values(previous?.daily?.tracks || {}),
-    ...Object.values(previous?.likes || {}),
-  ].map(normalizedIdentitySource);
-}
-
-function canonicalIdMaps(sources) {
-  const byKey = new Map();
-  for (const source of sources) {
-    const trackId = integer(source?.track_id);
-    const key = text(source?.track_key) || trackKey(source);
-    if (trackId != null && key) byKey.set(key, trackId);
-  }
-  return { byKey };
-}
-
-function withCanonicalTrackId(track, byKey) {
-  const normalized = normalizedIdentitySource(track);
-  const currentId = integer(normalized.track_id);
-  if (currentId != null) return { ...normalized, track_id: currentId };
-  const resolved = byKey.get(normalized.track_key);
-  return resolved == null ? normalized : { ...normalized, track_id: resolved };
-}
-
-function canonicalizeDaily(daily, byKey) {
-  if (!daily?.period_key) return emptyPlaybackDaily('');
-  const tracks = {};
-  const unique = new Set();
-  let totalPlays = 0;
-  for (const source of Object.values(daily.tracks || {})) {
-    const track = withCanonicalTrackId(source, byKey);
-    const trackId = integer(track.track_id);
-    const count = Math.max(0, integer(source?.count) || 0);
-    if (trackId == null || count === 0) continue;
-    const key = String(trackId);
-    const previous = tracks[key] || {};
-    tracks[key] = {
-      track_id: trackId,
-      track_key: track.track_key || previous.track_key || null,
-      title: track.title || previous.title || null,
-      artist: track.artist || previous.artist || null,
-      spotify_id: track.spotify_id || previous.spotify_id || null,
-      count: (integer(previous.count) || 0) + count,
-    };
-    unique.add(key);
-    totalPlays += count;
-  }
-  return {
-    period_key: String(daily.period_key),
-    total_plays: totalPlays,
-    unique_track_ids: [...unique],
-    tracks,
-  };
-}
-
-function canonicalizeLikes(likes, byKey) {
-  const result = {};
-  for (const source of Object.values(likes || {})) {
-    const track = withCanonicalTrackId(source, byKey);
-    const trackId = integer(track.track_id);
-    if (trackId == null) continue;
-    const key = String(trackId);
-    const existing = result[key];
-    if (existing && (integer(existing.observed_at) || 0) > (integer(track.observed_at) || 0)) continue;
-    result[key] = { ...track, track_id: trackId };
-  }
-  return result;
-}
-
-async function applyCanonicalTrackIds(catalogDb, playback, previous, observedAt) {
-  if (!catalogDb?.prepare) throw new Error('MINUTE_DB binding is missing');
-  const sources = collectIdentitySources(playback, previous);
-  const { byKey } = canonicalIdMaps(sources);
-  const unresolvedByKey = new Map();
-  for (const source of sources) {
-    const key = text(source?.track_key) || trackKey(source);
-    if (!key || byKey.has(key)) continue;
-    if (!unresolvedByKey.has(key)) unresolvedByKey.set(key, source);
-  }
-  const unresolved = [...unresolvedByKey.values()];
-  if (unresolved.length) {
-    const resolved = await resolveTracksBulk(catalogDb, null, unresolved, observedAt, {
-      channelId: 'ohisama',
-      minuteAt: Math.floor(observedAt / 60_000) * 60_000,
-      queueTracks: playback?.queue?.length || 0,
-      revisionId: null,
-    });
-    for (const descriptor of resolved) {
-      const trackId = integer(descriptor?.trackId);
-      const key = text(descriptor?.track_key) || trackKey(descriptor);
-      if (trackId != null && key) byKey.set(key, trackId);
-    }
-  }
-  playback.queue = await hydratePlaybackTrackMetadata(
-    catalogDb,
-    (playback.queue || []).map((track) => withCanonicalTrackId(track, byKey)),
-    previous?.queue || [],
-  );
-  return hydratePlaybackAggregates(catalogDb,
-    canonicalizeDaily(previous?.daily, byKey),
-    canonicalizeLikes(previous?.likes, byKey), playback.queue);
-}
-
 function playStatement(db, stationId, track, observedAt) {
   const playedAt = integer(track?.expected_start_at) ?? observedAt;
   const trackId = integer(track?.track_id);
@@ -355,7 +234,15 @@ export async function captureOhisamaPlayback(env, channel, collection, observedA
   const stationId = integer(collection?.station_id);
   const playback = resolveOhisamaPlaybackWindow(channel, stationId, observedAt);
   const previous = await loadState(bucket);
-  const canonicalState = await applyCanonicalTrackIds(catalogDb, playback, previous, observedAt);
+  const canonicalState = await canonicalizeStationheadPlayback(
+    catalogDb,
+    null,
+    playback.queue,
+    previous,
+    observedAt,
+    { channelId: 'ohisama' },
+  );
+  playback.queue = canonicalState.tracks;
   const previousDaily = canonicalState.daily?.period_key
     ? canonicalState.daily
     : emptyPlaybackDaily(periodKey(observedAt));
