@@ -1,6 +1,7 @@
 import { loadTrackHistoryDayIndex } from './pages-track-history-day-index.js';
 import { loadTrackHistoryDayReadModel } from './pages-track-history-r2-shards.js';
 import { loadMaterializedR2Response } from './pages-response-r2.js';
+import { stationheadLikesModelKey } from './stationhead-likes-read-model.js';
 
 const TRACK_HISTORY_MODEL_KEY = 'track-history';
 const TRACK_HISTORY_RESPONSE_LIMIT = 20_000;
@@ -72,6 +73,17 @@ async function loadStatusPayload(r2, now, maximumAgeMs, dependencies) {
   return null;
 }
 
+async function loadSourceLikesPayload(r2, source, now, maximumAgeMs, dependencies) {
+  if (source === 'buddies') return loadStatusPayload(r2, now, maximumAgeMs, dependencies);
+  const modelKey = stationheadLikesModelKey(source);
+  if (!modelKey) return null;
+  const loadResponse = dependencies.loadLikesResponse || loadMaterializedR2Response;
+  const response = await loadResponse(r2, modelKey, now, maximumAgeMs);
+  if (!response?.ok) return null;
+  const payload = await response.json().catch(() => null);
+  return payload?.ok && Array.isArray(payload.ranking) ? payload : null;
+}
+
 function validateParams(url) {
   for (const key of url.searchParams.keys()) {
     if (!ALLOWED_PARAMS.has(key)) return key;
@@ -127,10 +139,7 @@ export async function loadTrackHistoryR2ApiResponse(
   }
   const rankingLimit = boundedInteger(url.searchParams.get('ranking_limit'), 200, 20, 500);
   if (url.searchParams.get('ranking_only') === '1') {
-    if (source !== 'buddies') {
-      return json({ ok: false, error: 'track-history ranking is unavailable for this source' }, 400, now);
-    }
-    const payload = await loadStatusPayload(r2, now, maximumAgeMs, dependencies);
+    const payload = await loadSourceLikesPayload(r2, source, now, maximumAgeMs, dependencies);
     if (!payload) return json({ ok: false, error: 'track-history ranking read model unavailable' }, 503, now);
     const ranking = rankingFromPayload(payload, rankingLimit);
     return json({
@@ -146,8 +155,11 @@ export async function loadTrackHistoryR2ApiResponse(
       ranking_scope: payload?.ranking_scope || 'all-time-latest-counter',
       generated_at: payload?.generated_at || ranking.summary.latest_observed_at || null,
       method: 'current_track_like_ranking',
-      read_path: 'r2-track-history-status-read-model',
-    }, 200, now, payload?.generated_at);
+      source,
+      read_path: source === 'buddies'
+        ? 'r2-track-history-status-read-model'
+        : 'r2-stationhead-likes-read-model',
+    }, 200, now, payload?.generated_at || payload?.updated_at);
   }
 
   const loadIndex = dependencies.loadIndex || loadTrackHistoryDayIndex;
