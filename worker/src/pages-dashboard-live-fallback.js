@@ -1,9 +1,8 @@
 import { directFiveMinuteStreamHistory } from '../../site/functions/lib/dashboard-chart-support.js';
-import { pagesR2ResponseKey } from './pages-response-r2.js';
+import { loadMaterializedR2Json, saveMaterializedR2Response } from './pages-response-r2.js';
 
 const FIVE_MINUTES_MS = 5 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
-const DASHBOARD_KEY = pagesR2ResponseKey('dashboard');
 const DASHBOARD_CADENCE_SECONDS = 5 * 60;
 const HOT_STATE_KEY = 'stationhead/buddies/dashboard-hot-state.json';
 
@@ -36,20 +35,11 @@ async function readJson(bucket, key) {
   return null;
 }
 
-function payloadFromEnvelope(envelope) {
-  if (Number(envelope?.version) !== 1) return null;
-  try {
-    const payload = typeof envelope?.body === 'string' ? JSON.parse(envelope.body) : envelope?.body;
-    return payload?.ok ? payload : null;
-  } catch {
-    return null;
-  }
-}
-
 async function loadBase(bucket) {
   const hot = await readJson(bucket, HOT_STATE_KEY);
   if (Number(hot?.version) === 1 && hot?.payload?.ok) return hot.payload;
-  return payloadFromEnvelope(await readJson(bucket, DASHBOARD_KEY));
+  const payload = await loadMaterializedR2Json(bucket, 'dashboard');
+  return payload?.ok ? payload : null;
 }
 
 function latestFrom(base, input, fact, observedAt) {
@@ -186,25 +176,19 @@ async function persist(bucket, payload, now) {
     httpMetadata: { contentType: 'application/json; charset=utf-8' },
     customMetadata: { version: '1', model_key: 'dashboard', updated_at: String(now) },
   });
-  await bucket.put(DASHBOARD_KEY, JSON.stringify({
-    version: 1,
-    status: 200,
-    headers: {
+  await saveMaterializedR2Response(
+    bucket,
+    'dashboard',
+    JSON.stringify(payload),
+    200,
+    {
       'content-type': 'application/json; charset=utf-8',
       'cache-control': 'no-store',
     },
-    updated_at: now,
-    cadence_seconds: DASHBOARD_CADENCE_SECONDS,
-    body: JSON.stringify(payload),
-  }), {
-    httpMetadata: { contentType: 'application/json; charset=utf-8' },
-    customMetadata: {
-      version: '1',
-      model_key: 'dashboard',
-      updated_at: String(now),
-      cadence_seconds: String(DASHBOARD_CADENCE_SECONDS),
-    },
-  });
+    now,
+    DASHBOARD_CADENCE_SECONDS,
+    { model_key: 'dashboard' },
+  );
   await purgeDashboardCache();
 }
 
