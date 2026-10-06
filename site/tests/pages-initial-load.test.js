@@ -34,7 +34,8 @@ test('Buddies cache is explicitly owned by the lazy read model, without global f
   const adapter = browserSource('stationhead-channel-read-model.js');
   const cache = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
   assert.match(adapter, /import \{ fetchDashboard \}/);
-  assert.match(adapter, /url.startsWith\('\/api\/dashboard\?'\) \? fetchDashboard : fetch/);
+  assert.match(adapter, /if \(!url\.startsWith\('\/api\/dashboard\?'\)\) return loadDashboardJson/);
+  assert.match(adapter, /const response = await fetchDashboard\(url/);
   assert.doesNotMatch(cache, /window\.fetch\s*=/);
   assert.doesNotMatch(entry, /dashboard-fetch-cache|^import.*current-shell/m);
 });

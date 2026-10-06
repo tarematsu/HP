@@ -3,7 +3,7 @@ import test from 'node:test';
 import { aggregatePlayed, loadPlayed, trackIdentity } from '../public/stationhead/played-tracks.js';
 globalThis.localStorage = { getItem: () => null, removeItem() {} };
 globalThis.window = { fetch: globalThis.fetch };
-const { cached } = await import('../public/stationhead/data-client.js');
+const { loadDashboardJson } = await import('../public/dashboard-data-client.js');
 import { weekStart } from '../public/stationhead/view-utils.js';
 
 function runtime(weekly = false) {
@@ -48,16 +48,33 @@ test('leaving the playback panel during an index request prevents subsequent per
 });
 
 test('concurrent reads share one request and a failed read can retry', async () => {
+  const originalFetch = globalThis.fetch;
   let calls = 0;
   let finish;
-  const load = cached(async () => { calls++; return new Promise(resolve => { finish = resolve; }); });
-  const first = load(); const second = load();
-  finish({ value: 42 });
-  assert.deepEqual(await Promise.all([first, second]), [{ value: 42 }, { value: 42 }]);
-  assert.equal(calls, 1);
-  assert.deepEqual(await load(), { value: 42 });
-  let attempts = 0;
-  const retry = cached(async () => { if (++attempts === 1) throw new Error('temporary'); return []; });
-  await assert.rejects(retry(), /temporary/);
-  assert.deepEqual(await retry(), []);
+  try {
+    globalThis.fetch = async () => {
+      calls += 1;
+      return new Promise(resolve => { finish = resolve; });
+    };
+    const url = '/api/test-shared-read-model-concurrency';
+    const first = loadDashboardJson(url);
+    const second = loadDashboardJson(url);
+    await Promise.resolve();
+    finish(Response.json({ ok: true, value: 42 }));
+    assert.deepEqual(await Promise.all([first, second]), [{ ok: true, value: 42 }, { ok: true, value: 42 }]);
+    assert.equal(calls, 1);
+    assert.deepEqual(await loadDashboardJson(url), { ok: true, value: 42 });
+
+    let attempts = 0;
+    globalThis.fetch = async () => {
+      attempts += 1;
+      if (attempts === 1) return Response.json({ ok: false, error: 'temporary' }, { status: 503 });
+      return Response.json({ ok: true, rows: [] });
+    };
+    const retryUrl = '/api/test-shared-read-model-retry';
+    await assert.rejects(loadDashboardJson(retryUrl), /temporary/);
+    assert.deepEqual(await loadDashboardJson(retryUrl), { ok: true, rows: [] });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

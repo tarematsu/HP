@@ -16,7 +16,8 @@ test('dashboard fetch adapter keeps only in-memory delta state', () => {
   assert.match(fetchCache, /const state = \{/);
   assert.match(fetchCache, /latestObservedAt/);
   assert.match(readModel, /import \{ fetchDashboard \}/);
-  assert.match(readModel, /url\.startsWith\('\/api\/dashboard\?'\) \? fetchDashboard : fetch/);
+  assert.match(readModel, /if \(!url\.startsWith\('\/api\/dashboard\?'\)\) return loadDashboardJson/);
+  assert.match(readModel, /const response = await fetchDashboard\(url/);
   assert.doesNotMatch(fetchCache, /window\.fetch\s*=/);
   assert.doesNotMatch(entry, /dashboard-fetch-cache|^import.*current-shell/m);
 });

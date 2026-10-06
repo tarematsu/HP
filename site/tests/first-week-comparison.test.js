@@ -13,6 +13,8 @@ import {
 } from '../functions/lib/first-week-comparison.js';
 import { onRequestGet } from '../functions/api/first-week-comparison.js';
 
+import { ROUTES } from '../public/dashboard-navigation-config.js';
+
 const byTitle = (title) => FIRST_WEEK_RELEASES.find((item) => item.title === title);
 const readModelMigration = readFileSync(
   new URL('../../database/facts-migrations/058_first_week_comparison_read_model.sql', import.meta.url),
@@ -88,7 +90,7 @@ test('dashboard embeds first-week comparison in the listening-party view and loa
   assert.match(stationheadModel, /value: 'broadcasts', label: 'リスパ'/);
   assert.doesNotMatch(entry, /first-week-comparison-shell|first-week-comparison\.js/);
   assert.match(entry, /dashboard-tabs\.js\?v=20261005\.2/);
-  assert.match(tabs, /mode === 'broadcasts'/);
+  assert.equal(ROUTES.broadcasts.firstWeek, true);
   assert.match(tabs, /loadOnce\('first-week:shell'[\s\S]*first-week-comparison-shell\.js/);
   assert.match(tabs, /loadOnce\('first-week:runtime'[\s\S]*first-week-comparison\.js/);
   assert.doesNotMatch(historyEntry, /first-week-comparison-shell|first-week-comparison\.js/);

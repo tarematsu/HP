@@ -26,8 +26,8 @@ test('history shell contains structure only and first reveal waits for shell, CS
   }
   assert.match(tabs, /setRoute\(mode, null, \{ updateUrl, replaceUrl \}\)/);
   assert.match(tabs, /ensureModeStyles\(mode\)/);
-  assert.match(tabs, /loadOnce\('history:shell', HISTORY_VIEW\.shell\)/);
-  assert.match(tabs, /await loadOnce\('history:runtime',[\s\S]*showOnly\(document\.getElementById\(HISTORY_VIEW\.viewId\)\);[\s\S]*markRouteReady\(\)/);
+  assert.match(tabs, /loadOnce\('history:shell', \(\) => import\('\/history-shell\.js\?v=20260930\.1'\)\)/);
+  assert.match(tabs, /await loadOnce\('history:runtime',[\s\S]*showOnly\(document\.getElementById\(route\.viewId\)\);[\s\S]*markRouteReady\(\)/);
 });
 
 test('history static copy stays in runtime and tabs update immediately', () => {
