@@ -3,9 +3,9 @@ import {
   loadTrackHistoryData,
   TRACK_HISTORY_SQL,
 } from '../../site/functions/lib/track-history-restored-handler.js';
-import { mergeTrackRows } from '../../site/functions/lib/track-history-merge.js';
-import { applyTrackPeriodCompleteness } from '../../site/functions/lib/period-completeness.js';
-import { attachCompactTrackLikes } from '../../site/functions/lib/track-likes.js';
+import { mergeTrackRows } from '../../packages/sh-shared/track-history-merge.mjs';
+import { applyTrackPeriodCompleteness } from '../../packages/sh-shared/period-completeness.mjs';
+import { attachCompactTrackLikes } from '../../packages/sh-shared/track-likes.mjs';
 import {
   trackHistoryResponsePrefix,
   trackHistoryResponseSuffix,
