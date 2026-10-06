@@ -6,6 +6,7 @@ on:
       - codex/pages-design-resource-layout
     paths:
       - '.github/workflows/audit-ohisama-playback-gaps.yml'
+      - 'worker/scripts/audit-ohisama-playback-actions.mjs'
   workflow_dispatch:
 
 permissions:
@@ -21,6 +22,7 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
       OHISAMA_DATABASE_NAME: stationhead-ohisama
+      BUDDIES_DATABASE_NAME: stationhead-buddies
       OHISAMA_PLAYBACK_AUDIT_START: '2026-10-01'
     steps:
       - uses: actions/checkout@v7
