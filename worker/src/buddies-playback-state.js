@@ -7,6 +7,13 @@ import {
   transitionedStationheadTracks,
 } from './stationhead-playback-core.js';
 import { canonicalizeStationheadPlayback } from './stationhead-playback-identity.js';
+import {
+  loadStationheadPlaybackState,
+  runStationheadPlaybackStatements,
+  saveStationheadPlaybackState,
+  stationheadCompletedDailyStatement,
+  stationheadPlaybackPlayStatement,
+} from './stationhead-playback-store.js';
 
 export const BUDDIES_PLAYBACK_HOT_STATE_KEY = 'stationhead/buddies/playback-state.json';
 
@@ -76,67 +83,6 @@ export function transitionedBuddiesTracks(previousQueue = [], currentQueue = [],
   return transitionedStationheadTracks(previousQueue, currentQueue, options);
 }
 
-async function loadState(bucket) {
-  if (typeof bucket?.get !== 'function') return { available: false, state: null };
-  try {
-    const object = await bucket.get(BUDDIES_PLAYBACK_HOT_STATE_KEY);
-    if (!object) return { available: true, state: null };
-    const value = typeof object.json === 'function'
-      ? await object.json()
-      : JSON.parse(await object.text());
-    return {
-      available: true,
-      state: [1, 2].includes(Number(value?.version)) ? value : null,
-    };
-  } catch {
-    return { available: false, state: null };
-  }
-}
-
-async function saveState(bucket, state, observedAt) {
-  if (typeof bucket?.put !== 'function') return false;
-  try {
-    await bucket.put(BUDDIES_PLAYBACK_HOT_STATE_KEY, JSON.stringify(state), {
-      httpMetadata: { contentType: 'application/json; charset=utf-8' },
-      customMetadata: { version: '2', updated_at: String(observedAt) },
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function playStatement(db, queue, track, observedAt) {
-  const playedAt = integer(track?.expected_start_at) ?? observedAt;
-  const trackId = integer(track?.track_id);
-  if (trackId == null) throw new Error('Buddies playback track_id is unresolved');
-  return db.prepare(`INSERT OR IGNORE INTO sh_track_plays(
-      event_key,played_at,period_key,station_id,track_id,track_key
-    ) VALUES(?,?,?,?,?,?)`)
-    .bind(
-      track.event_key,
-      playedAt,
-      buddiesPlaybackPeriodKey(playedAt),
-      integer(queue?.station_id),
-      trackId,
-      track.track_key,
-    );
-}
-
-function completedDailyStatement(db, daily, observedAt) {
-  const row = playbackDailyPublic(daily);
-  return db.prepare(`INSERT INTO sh_track_daily_summary(
-      period_key,total_plays,unique_tracks,tracks_json,updated_at
-    ) VALUES(?,?,?,?,?)
-    ON CONFLICT(period_key) DO UPDATE SET
-      total_plays=excluded.total_plays,
-      unique_tracks=excluded.unique_tracks,
-      tracks_json=excluded.tracks_json,
-      updated_at=excluded.updated_at
-    WHERE excluded.updated_at>=sh_track_daily_summary.updated_at`)
-    .bind(row.period_key, row.total_plays, row.unique_tracks, JSON.stringify(row.tracks), observedAt);
-}
-
 function likeStatements(db, queue, track, observedAt) {
   const count = integer(track?.bite_count);
   const trackId = integer(track?.track_id);
@@ -182,22 +128,13 @@ function likeStatements(db, queue, track, observedAt) {
   return [current, observation];
 }
 
-async function runStatements(db, statements) {
-  if (!statements.length) return;
-  if (typeof db?.batch === 'function') {
-    await db.batch(statements);
-    return;
-  }
-  for (const statement of statements) await statement.run();
-}
-
 export async function captureBuddiesPlayback(env, queue, observedAt = Date.now()) {
   const db = env?.DB || env?.BUDDIES_DB;
   const catalogDb = env?.MINUTE_DB;
   const bucket = env?.PAGES_RESPONSE_R2;
   if (!db?.prepare) throw new Error('Buddies D1 binding is missing');
   const currentQueue = normalizedQueue(queue);
-  const loaded = await loadState(bucket);
+  const loaded = await loadStationheadPlaybackState(bucket, BUDDIES_PLAYBACK_HOT_STATE_KEY);
   if (!loaded.available) {
     return {
       queue: currentQueue,
@@ -237,17 +174,17 @@ export async function captureBuddiesPlayback(env, queue, observedAt = Date.now()
     const nextKey = buddiesPlaybackPeriodKey(playedAt);
     if (daily?.period_key && daily.period_key !== nextKey) {
       completedDay = playbackDailyPublic(daily);
-      statements.push(completedDailyStatement(db, daily, observedAt));
+      statements.push(stationheadCompletedDailyStatement(db, daily, observedAt));
       daily = emptyPlaybackDaily(nextKey);
     }
     daily = recordPlaybackDailyTrack(daily, track, playedAt);
-    statements.push(playStatement(db, currentQueue, track, observedAt));
+    statements.push(stationheadPlaybackPlayStatement(db, currentQueue.station_id, track, observedAt, 'Buddies'));
   }
 
   if (!daily?.period_key) daily = emptyPlaybackDaily(buddiesPlaybackPeriodKey(observedAt));
   if (daily.period_key !== buddiesPlaybackPeriodKey(observedAt) && !transitions.length) {
     completedDay = playbackDailyPublic(daily);
-    statements.push(completedDailyStatement(db, daily, observedAt));
+    statements.push(stationheadCompletedDailyStatement(db, daily, observedAt));
     daily = emptyPlaybackDaily(buddiesPlaybackPeriodKey(observedAt));
   }
 
@@ -273,7 +210,7 @@ export async function captureBuddiesPlayback(env, queue, observedAt = Date.now()
     statements.push(...likeStatements(db, currentQueue, track, observedAt));
   }
 
-  await runStatements(db, statements);
+  await runStationheadPlaybackStatements(db, statements);
   const state = {
     version: 2,
     updated_at: observedAt,
@@ -283,7 +220,7 @@ export async function captureBuddiesPlayback(env, queue, observedAt = Date.now()
     daily,
     likes,
   };
-  const stateSaved = await saveState(bucket, state, observedAt);
+  const stateSaved = await saveStationheadPlaybackState(bucket, BUDDIES_PLAYBACK_HOT_STATE_KEY, state, observedAt);
   return {
     queue: currentQueue,
     daily: playbackDailyPublic(daily),
