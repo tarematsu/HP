@@ -16,7 +16,7 @@ test('Ohisama resolves playback through the central sh_tracks catalog', () => {
   assert.match(store, /playback track_id is unresolved/);
   assert.match(store, /event_key,played_at,period_key,station_id,track_id,track_key/);
   assert.match(playback, /station_id,track_id,track_key,spotify_id,isrc,title,artist,like_count,observed_at/);
-  assert.match(playback, /unique_track_ids/);
+  assert.match(identity, /unique_track_ids/);
 });
 
 test('Ohisama storage schema uses canonical track_id for new data', () => {
