@@ -1,4 +1,4 @@
-import { canonicalizeTrackRows } from '../../site/functions/lib/canonical-track-rows.js';
+import { canonicalizeTrackRows } from '../../packages/sh-shared/canonical-track-rows.mjs';
 import {
   attachTitleArtistIdentity,
   loadTitleArtistIdentityRows,
