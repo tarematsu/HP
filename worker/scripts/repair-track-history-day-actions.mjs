@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
-import { canonicalizeTrackRows } from '../../site/functions/lib/canonical-track-rows.js';
+import { canonicalizeTrackRows } from '../../packages/sh-shared/canonical-track-rows.mjs';
 import { mergeTrackRows } from '../../site/functions/lib/track-history-merge.js';
 import { applyTrackPeriodCompleteness } from '../../site/functions/lib/period-completeness.js';
 import { attachCompactTrackLikes } from '../../site/functions/lib/track-likes.js';
