@@ -1,10 +1,10 @@
 import { num } from '../../packages/sh-shared/api-utils.mjs';
-import { prepared, runPreparedD1Batches } from '../../site/functions/lib/d1-batch.js';
+import { prepared, runPreparedD1Batches } from '../../packages/sh-shared/d1-batch.mjs';
 import {
   analyzeQueueLikes,
   D1_BATCH_STATEMENT_LIMIT,
   D1_BATCH_VARIABLE_LIMIT,
-} from '../../site/functions/lib/d1-optimized-ingest.js';
+} from '../../packages/sh-shared/d1-optimized-ingest.mjs';
 import {
   normalizedTrackIsrc,
   normalizedTrackSpotifyId,
