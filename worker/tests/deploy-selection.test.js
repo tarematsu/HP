@@ -164,7 +164,7 @@ test('tests and unrelated verification scripts do not deploy Workers', () => {
 });
 
 test('shared package only redeploys importers while unresolved Worker source remains fail-safe', () => {
-  assert.equal(select(['packages/sh-shared/index.mjs']).workers.length, 7);
+  assert.equal(select(['packages/sh-shared/index.mjs']).workers.length, 8);
   assert.equal(select(['worker/src/deleted-runtime-module.js']).workers.length, 11);
 });
 
