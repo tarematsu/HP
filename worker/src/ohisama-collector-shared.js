@@ -1,6 +1,7 @@
 import { firstDefined } from './collector-config.js';
 import { OHISAMA_CRON } from './scheduled-crons.js';
 import { STATIONHEAD_FOLLOWER_SOURCE } from './stationhead-follower-membership.js';
+import { registerStationheadFollowerTarget } from './stationhead-follower-target.js';
 
 const FIVE_MINUTES_MS = 5 * 60_000;
 
@@ -95,23 +96,11 @@ export function normalizeOhisamaSnapshot(channel, expectedAlias = 'ohisama') {
   };
 }
 
-export async function registerOhisamaFollowerTarget(env, snapshot, observedAt) {
-  if (snapshot?.is_broadcasting !== 1 || !snapshot?.host_handle) return false;
-  if (typeof env?.OTHER_DB?.prepare !== 'function') return false;
-  const result = await env.OTHER_DB.prepare(`INSERT INTO sh_stationhead_follower_targets(
-      handle,source_mask,first_seen_at,live_confirmed_at
-    ) VALUES(?,?,?,?)
-    ON CONFLICT(handle) DO UPDATE SET
-      source_mask=(sh_stationhead_follower_targets.source_mask | excluded.source_mask),
-      live_confirmed_at=COALESCE(sh_stationhead_follower_targets.live_confirmed_at,excluded.live_confirmed_at)
-    WHERE (sh_stationhead_follower_targets.source_mask & excluded.source_mask)=0
-       OR sh_stationhead_follower_targets.live_confirmed_at IS NULL`)
-    .bind(
-      snapshot.host_handle,
-      STATIONHEAD_FOLLOWER_SOURCE.ohisama,
-      observedAt,
-      observedAt,
-    )
-    .run();
-  return Number(result?.meta?.changes || 0) > 0;
+export function registerOhisamaFollowerTarget(env, snapshot, observedAt) {
+  return registerStationheadFollowerTarget(
+    env,
+    snapshot,
+    observedAt,
+    STATIONHEAD_FOLLOWER_SOURCE.ohisama,
+  );
 }
