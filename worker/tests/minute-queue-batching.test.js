@@ -86,15 +86,17 @@ test('derive isolation composes with queue-only runtime and Actions-owned Pages 
     new URL('../../.github/scripts/audit-cloudflare-telemetry.py', import.meta.url),
     'utf8',
   );
-  const pagesKv = readFileSync(
-    new URL('../scripts/pages-response-kv-namespace.mjs', import.meta.url),
+  const pagesStore = readFileSync(
+    new URL('../src/pages-response-store.js', import.meta.url),
     'utf8',
   );
   const runtime = config('wrangler.runtime.jsonc');
   assert.match(audit, /STATELESS_CPU_BUDGET_MS = float\(os\.environ\.get\("CPU_BUDGET_MS", "10"\)\)/);
   assert.match(audit, /DURABLE_OBJECT_CPU_BUDGET_MS/);
   assert.match(audit, /current_events/);
-  assert.match(pagesKv, /NAMESPACE_PAGE_SIZE = 1000/);
+  assert.match(pagesStore, /loadMaterializedR2Response/);
+  assert.match(pagesStore, /LEGACY_ACTIONS_RESPONSE_KEY_PREFIX/);
+  assert.equal(existsSync(new URL('../scripts/pages-response-kv-namespace.mjs', import.meta.url)), false);
   const consumers = new Set(runtime.queues.consumers.map(({ queue }) => queue));
   for (const queue of [
     'stationhead-minute-enrichment',

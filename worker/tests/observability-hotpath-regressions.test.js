@@ -5,62 +5,31 @@ import test from 'node:test';
 import {
   CLAIM_MINUTE_FACT_JOBS_SQL,
 } from '../src/minute-facts-inbox.js';
-import { saveMaterializedResponse } from '../src/pages-response-store.js';
+import { saveMaterializedR2Response } from '../src/pages-response-r2.js';
 
 const dashboardCore = readFileSync(
   new URL('../../site/functions/lib/dashboard-core.js', import.meta.url),
   'utf8',
 );
 
-test('materialized HTTP failures retain sanitized dashboard error details', async () => {
-  let failure;
-  try {
-    await saveMaterializedResponse(
-      null,
-      null,
-      'dashboard',
-      Response.json({
-        ok: false,
-        error: 'DB binding missing; Bearer abcdefghijklmnopqrstuvwxyz123456',
-      }, { status: 500 }),
-      Date.now(),
-      300,
-    );
-  } catch (error) {
-    failure = error;
-  }
-  assert.match(String(failure?.message), /dashboard returned HTTP 500: DB binding missing/);
-  assert.match(String(failure?.message), /Bearer \[redacted\]/);
-  assert.doesNotMatch(String(failure?.message), /abcdefghijklmnopqrstuvwxyz123456/);
-});
-
-test('stale dashboard responses are explicit skips and never overwrite storage', async () => {
-  let puts = 0;
-  const response = Response.json({
-    ok: false,
-    code: 'MINUTE_FACTS_STALE',
-    error: 'minute facts read model is stale',
-  }, {
-    status: 503,
-    headers: {
-      'x-dashboard-facts-stale': '1',
-      'x-dashboard-facts-observed-at': '123456789',
-    },
-  });
-  const result = await saveMaterializedResponse(
-    null,
-    { async put() { puts += 1; } },
+test('materialized R2 writes use one raw response object with metadata', async () => {
+  const writes = [];
+  const result = await saveMaterializedR2Response(
+    { async put(key, body, options) { writes.push({ key, body, options }); } },
     'dashboard',
-    response,
-    Date.now(),
+    JSON.stringify({ ok: true }),
+    200,
+    { 'content-type': 'application/json; charset=utf-8' },
+    1234,
     300,
   );
-  assert.deepEqual(result, {
-    skipped: true,
-    reason: 'facts-stale',
-    facts_latest_observed_at: 123456789,
-  });
-  assert.equal(puts, 0);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].key, 'pages-response/v1/dashboard.json');
+  assert.equal(writes[0].body, '{"ok":true}');
+  assert.equal(writes[0].options.customMetadata.format, 'raw-response-v1');
+  assert.equal(writes[0].options.customMetadata.updated_at, '1234');
+  assert.equal(writes[0].options.customMetadata.cadence_seconds, '300');
+  assert.equal(result.chunks, 1);
 });
 
 test('dashboard stale handling refuses a masked legacy DB before fallback execution', () => {

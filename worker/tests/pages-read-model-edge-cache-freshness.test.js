@@ -12,7 +12,7 @@ function materialized(body, updatedAt) {
   return response;
 }
 
-test('materialized L1 cache is bypassed after one minute even when the model itself is still fresh', async () => {
+test('legacy injected L1 cache is ignored and canonical R2 is read directly', async () => {
   const now = Date.UTC(2026, 8, 19, 0, 0);
   let r2Reads = 0;
   let cacheWrites = 0;
@@ -29,12 +29,12 @@ test('materialized L1 cache is bypassed after one minute even when the model its
   });
 
   assert.equal(r2Reads, 1);
-  assert.equal(cacheWrites, 1);
+  assert.equal(cacheWrites, 0);
   assert.equal(response.headers.get('x-api-source'), null);
   assert.deepEqual(await response.json(), { source: 'new-r2' });
 });
 
-test('materialized L1 cache remains usable inside the five minute freshness window', async () => {
+test('legacy injected L1 cache is ignored even inside its former freshness window', async () => {
   const now = Date.UTC(2026, 8, 19, 0, 0);
   let r2Reads = 0;
   const response = await runPagesResponseFetch(request(), {}, {
@@ -49,12 +49,12 @@ test('materialized L1 cache remains usable inside the five minute freshness wind
     },
   });
 
-  assert.equal(r2Reads, 0);
-  assert.equal(response.headers.get('x-api-source'), 'edge-cache');
-  assert.deepEqual(await response.json(), { source: 'edge' });
+  assert.equal(r2Reads, 1);
+  assert.equal(response.headers.get('x-api-source'), null);
+  assert.deepEqual(await response.json(), { source: 'r2' });
 });
 
-test('unchanged older models are cached from the time R2 was checked', async () => {
+test('unchanged older models are read from R2 on each request without Worker L1 state', async () => {
   let now = Date.UTC(2026, 9, 2);
   const generatedAt = now - 3600_000;
   let saved;
@@ -73,12 +73,13 @@ test('unchanged older models are cached from the time R2 was checked', async () 
   await runPagesResponseFetch(request(), {}, dependencies);
   now += 40_000;
   const cached = await runPagesResponseFetch(request(), {}, dependencies);
-  assert.equal(reads, 1);
+  assert.equal(reads, 2);
   assert.equal(cached.headers.get('x-materialized-at'), String(generatedAt));
-  assert.equal(cached.headers.get('x-api-source'), 'edge-cache');
+  assert.equal(cached.headers.get('x-api-source'), null);
+  assert.deepEqual(await cached.json(), { value: 2 });
   now += 21_000;
   await runPagesResponseFetch(request(), {}, dependencies);
-  assert.equal(reads, 2);
+  assert.equal(reads, 3);
 });
 
 test('dashboard keeps its fifteen-second L1 freshness cap', async () => {

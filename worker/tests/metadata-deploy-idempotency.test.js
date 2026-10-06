@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { pruneRetiredWorkers } from '../scripts/cloudflare-workers.mjs';
@@ -109,11 +109,12 @@ test('core consolidation is validated against the strict 10 ms CPU contract', ()
   assert.match(audit, /not truncated and not missing/);
 });
 
-test('core consolidation composes with the paginated Pages KV deploy', () => {
-  const pagesKv = readFileSync(
-    new URL('../scripts/pages-response-kv-namespace.mjs', import.meta.url),
+test('core consolidation no longer depends on a Pages KV namespace deploy', () => {
+  const pagesStore = readFileSync(
+    new URL('../src/pages-response-store.js', import.meta.url),
     'utf8',
   );
-  assert.match(pagesKv, /page=\$\{page\}/);
-  assert.match(pagesKv, /NAMESPACE_PAGE_SIZE = 1000/);
+  assert.match(pagesStore, /loadMaterializedR2Response/);
+  assert.match(pagesStore, /LEGACY_ACTIONS_RESPONSE_KEY_PREFIX/);
+  assert.equal(existsSync(new URL('../scripts/pages-response-kv-namespace.mjs', import.meta.url)), false);
 });

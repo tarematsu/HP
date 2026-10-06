@@ -86,7 +86,7 @@ function environment(calls, rows = [summaryRow()], playCounts = { '2026-07-26': 
   };
 }
 
-test('Actions history renderer persists missing historical track totals in OTHER_DB', async () => {
+test('history renderer enriches missing historical track totals without D1 writes', async () => {
   const calls = [];
   const now = Date.parse('2026-07-28T01:00:00Z');
   const result = await loadMaterializedSummary(
@@ -101,9 +101,7 @@ test('Actions history renderer persists missing historical track totals in OTHER
     '2026-06-30', '2026-07-28', '2026-07-28', 801,
   ]);
   assert.equal(calls.filter((call) => call.source === 'r2').length, 1);
-  assert.deepEqual(calls.find((call) => call.source === 'other-update').bindings, [
-    17, now, '2026-07-26',
-  ]);
+  assert.equal(calls.filter((call) => call.source === 'other-update').length, 0);
   assert.equal(result.rows.length, 1);
   assert.equal(result.rows[0].period_complete, true);
   assert.equal(result.rows[0].distinct_tracks, 17);
@@ -184,7 +182,7 @@ test('materialized history response keeps the public payload shape without raw D
   assert.equal(payload.live_overlay_count, 0);
   assert.equal(payload.rows[0].distinct_tracks, 17);
   assert.equal(calls.filter((call) => call.source === 'r2').length, 1);
-  assert.equal(calls.filter((call) => call.source === 'other-update').length, 1);
+  assert.equal(calls.filter((call) => call.source === 'other-update').length, 0);
 });
 
 test('Worker generation enriches missing closed track totals without D1 writes', async () => {

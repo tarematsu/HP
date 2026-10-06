@@ -25,7 +25,9 @@ test('GitHub Actions read-model workflow is manual recovery only', () => {
   assert.match(workflow, /Request canonical Worker rebuild/);
   assert.match(workflow, /request-pages-read-model-rebuild-actions\.mjs/);
   assert.doesNotMatch(workflow, /run-pages-read-model-actions|run-pages-history-read-model-actions/);
-  assert.match(requestScript, /\/internal\/read-model\/rebuild/);
+  assert.match(requestScript, /sh_read_model_revision/);
+  assert.match(requestScript, /\[wrangler, 'd1', 'execute'/);
+  assert.doesNotMatch(requestScript, /\/internal\/read-model\/rebuild/);
 });
 
 test('normal history publication is Worker Queue driven with minute recovery', () => {
