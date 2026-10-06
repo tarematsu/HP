@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { HISTORY_MODES, ROUTES } from '../public/dashboard-navigation-config.js';
+
 const tabs = dashboardRouterSource();
 const leaderboardShell = readFileSync(new URL('../public/leaderboard-shell.js', import.meta.url), 'utf8');
 const leaderboardRuntime = browserSource('leaderboard.js');
@@ -16,7 +18,8 @@ const build = readFileSync(new URL('../scripts/build-public-assets.mjs', import.
 test('leaderboard uses one shared shell runtime and Stationhead read model', () => {
   assert.equal((tabs.match(/leaderboard-shell\.js\?v=20261005\.2/g) || []).length, 1);
   assert.equal((tabs.match(/leaderboard\.js\?v=20261005\.2/g) || []).length, 1);
-  assert.match(tabs, /ranking:[\s\S]*loadArgs: \{ source: 'stationhead' \}/);
+  assert.equal(ROUTES.ranking.kind, 'lazy');
+  assert.deepEqual(ROUTES.ranking.loadArgs, { source: 'stationhead' });
   assert.doesNotMatch(tabs, /music-ranking|source: 'music-streaming'/);
   assert.match(leaderboardShell, /id: 'leaderboardView'/);
   assert.match(leaderboardRuntime, /leaderboardReadModel\(source\)\.load/);
@@ -27,7 +30,8 @@ test('leaderboard uses one shared shell runtime and Stationhead read model', () 
 test('followers use one shared shell runtime and Stationhead read model', () => {
   assert.equal((tabs.match(/followers-shell\.js\?v=20261005\.2/g) || []).length, 1);
   assert.equal((tabs.match(/followers\.js\?v=20261005\.2/g) || []).length, 1);
-  assert.match(tabs, /followers:[\s\S]*loadArgs: \{ source: 'stationhead' \}/);
+  assert.equal(ROUTES.followers.kind, 'lazy');
+  assert.deepEqual(ROUTES.followers.loadArgs, { source: 'stationhead' });
   assert.doesNotMatch(tabs, /music-followers|source: 'music-streaming'/);
   assert.match(followersShell, /id: 'followersView'/);
   assert.match(followersRuntime, /followersReadModel\(source\)\.load/);
@@ -60,6 +64,7 @@ test('aggregate feature styles are bundled only with Stationhead', () => {
 });
 
 test('leaderboard no longer participates in the history router', () => {
-  assert.doesNotMatch(tabs, /const HISTORY_MODES = new Set\([^\n]*ranking/);
-  assert.match(tabs, /const HISTORY_MODES = Object\.freeze\(new Set\(\['daily', 'weekly', 'monthly', 'broadcasts'\]\)\)/);
+  assert.equal(HISTORY_MODES.has('ranking'), false);
+  assert.deepEqual([...HISTORY_MODES], ['daily', 'weekly', 'monthly', 'broadcasts']);
 });
+

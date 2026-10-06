@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { HISTORY_MODES, ROUTES } from '../public/dashboard-navigation-config.js';
+
 const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const registry = browserSource('dashboard-metrics.js');
 const currentShell = readFileSync(new URL('../public/current-shell.js', import.meta.url), 'utf8');
@@ -44,10 +46,10 @@ test('dashboard starts on the shared Buddies Stationhead view without duplicate 
 
 test('leaderboard and followers are Buddies functions with shared views', () => {
   assert.doesNotMatch(registry, /mode: 'ranking'|view: 'spotify'/);
-  assert.match(tabsClient, /mode: 'ranking', label: 'リーダーボード'/);
-  assert.match(tabsClient, /mode: 'followers', label: 'フォロワー'/);
-  assert.match(tabsClient, /ranking:\s*\{[\s\S]*viewId: 'leaderboardView'[\s\S]*source: 'stationhead'/);
-  assert.match(tabsClient, /followers:\s*\{[\s\S]*viewId: 'followersView'[\s\S]*source: 'stationhead'/);
+  assert.equal(ROUTES.ranking.viewId, 'leaderboardView');
+  assert.deepEqual(ROUTES.ranking.loadArgs, { source: 'stationhead' });
+  assert.equal(ROUTES.followers.viewId, 'followersView');
+  assert.deepEqual(ROUTES.followers.loadArgs, { source: 'stationhead' });
   assert.doesNotMatch(tabsClient, /music-ranking|music-followers|source: 'music-streaming'/);
   assert.match(leaderboardShell, /id: 'leaderboardView'/);
   assert.match(followersShell, /id: 'followersView'/);
@@ -65,24 +67,16 @@ test('archive and likes markup are owned by lazily loaded shared shell modules',
 });
 
 test('feature tabs share one lazy route registry stylesheet loader and module cache', () => {
-  assert.match(tabsClient, /const LAZY_VIEWS = \{/);
+  assert.match(tabsClient, /const DASHBOARD_ROUTE_MODULES = Object\.freeze\(\{/);
   assert.match(tabsClient, /const modulePromises = new Map\(\)/);
   assert.match(readFileSync(new URL('../public/dashboard-styles.js', import.meta.url), 'utf8'), /const stylePromises = new Map\(\)/);
   assert.match(tabsClient, /function ensureModeStyles\(mode\)/);
-  assert.match(tabsClient, /async function showLazyView\(mode, options = \{}\)/);
-  for (const [mode, shell, runtime] of [
-    ['hinata', 'hinata-shell.js', 'hinata.js'],
-    ['ranking', 'leaderboard-shell.js', 'leaderboard.js'],
-    ['followers', 'followers-shell.js', 'followers.js'],
-    ['spotify', 'spotify-shell.js', 'spotify.js'],
-    ['amazon-music', 'amazon-music-shell.js', 'amazon-music.js'],
-    ['apple-music', 'apple-music-shell.js', 'apple-music.js'],
-  ]) {
-    assert.match(tabsClient, new RegExp(`'${mode}'|${mode}:`));
-    assert.match(tabsClient, new RegExp(shell.replaceAll('.', '\\.')));
-    assert.match(tabsClient, new RegExp(runtime.replaceAll('.', '\\.')));
+  assert.match(tabsClient, /async function showLazyView\(mode, route, options = \{\}\)/);
+  for (const mode of ['hinata', 'ranking', 'followers', 'spotify', 'amazon-music', 'apple-music']) {
+    assert.equal(ROUTES[mode].kind, 'lazy');
+    assert.equal(ROUTES[mode].moduleId, mode);
   }
-  assert.match(tabsClient, /config\.loadExport\) await runtime\[config\.loadExport\]\?\.\(config\.loadArgs \|\| undefined\)/);
+  assert.match(tabsClient, /route\.loadExport\) await runtime\[route\.loadExport\]\?\.\(route\.loadArgs \|\| undefined\)/);
   assert.match(tabsClient, /ensureDashboardSectionStyles/);
 });
 
@@ -95,7 +89,7 @@ test('legacy listening-party hashes normalize to the shared broadcasts route onl
 
 test('first-week comparison loads only with the broadcasts route', () => {
   assert.doesNotMatch(dashboardEntry, /first-week-comparison-shell|first-week-comparison\.js/);
-  assert.match(tabsClient, /mode === 'broadcasts'/);
+  assert.equal(ROUTES.broadcasts.firstWeek, true);
   assert.match(tabsClient, /loadOnce\('first-week:shell'[\s\S]*first-week-comparison-shell\.js/);
   assert.match(tabsClient, /loadOnce\('first-week:runtime'[\s\S]*first-week-comparison\.js/);
   assert.doesNotMatch(historyEntry, /first-week-comparison-shell|first-week-comparison\.js/);
@@ -105,15 +99,16 @@ test('history no longer owns the leaderboard runtime', () => {
   assert.match(historyEntry, /const VALID_MODES = new Set\(\[\.\.\.SUMMARY_MODES, 'broadcasts'\]\)/);
   assert.doesNotMatch(historyEntry, /history-ranking-chart|history-ranking-simplified|mode === 'ranking'/);
   assert.doesNotMatch(tabsClient, /history-ranking-table-status/);
-  assert.doesNotMatch(tabsClient, /const HISTORY_MODES = new Set\([^\n]*ranking/);
-  assert.match(tabsClient, /ranking:\s*\{[\s\S]*leaderboard-shell\.js[\s\S]*leaderboard\.js/);
+  assert.equal(HISTORY_MODES.has('ranking'), false);
+  assert.equal(ROUTES.ranking.kind, 'lazy');
+  assert.equal(ROUTES.ranking.moduleId, 'ranking');
   assert.match(historyEntry, /history-broadcasts\.js\?v=20261001\.1/);
 });
 
 test('late async runtimes cannot reactivate a tab the user already left', () => {
   assert.match(tabsClient, /await Promise\.all\([\s\S]*loadOnce\(`\$\{mode\}:shell`[\s\S]*if \(activeMode !== mode\) return;/);
   assert.match(tabsClient, /const runtime = await loadOnce\(`\$\{mode\}:runtime`/);
-  assert.match(tabsClient, /if \(activeMode !== mode\) return;\s*if \(config\.loadExport\)/);
+  assert.match(tabsClient, /if \(activeMode !== mode\) return;\s*if \(route\.loadExport\)/);
   assert.match(tabsClient, /await loadOnce\('history:runtime'[\s\S]*if \(activeMode !== mode\) return;/);
   assert.match(tabsClient, /catch \(error\) \{\s*if \(activeMode !== mode\) return;/);
 });

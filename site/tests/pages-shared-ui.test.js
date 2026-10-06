@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { ROUTES, VIEW_IDS } from '../public/dashboard-navigation-config.js';
+
 const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
 const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 const navigationCss = readFileSync(new URL('../public/dashboard-navigation.css', import.meta.url), 'utf8');
@@ -103,8 +105,11 @@ test('Stationhead secondary CSS uses the shared lazy style loader directly', () 
 });
 
 test('Hinata and followers use the same lazy route registry as other tabs', () => {
-  for (const mode of ['hinata', 'followers']) assert.match(sharedRoute, new RegExp(`${mode}: \\{`));
-  assert.match(sharedRoute, /const VIEW_IDS = \[\.\.\.new Set\(\['currentView', HISTORY_VIEW\.viewId, \.\.\.Object\.values\(LAZY_VIEWS\)/);
+  for (const mode of ['hinata', 'followers']) {
+    assert.equal(ROUTES[mode].kind, 'lazy');
+    assert.equal(ROUTES[mode].moduleId, mode);
+    assert.equal(VIEW_IDS.includes(ROUTES[mode].viewId), true);
+  }
 });
 
 test('music-service shell remains the shared implementation for regional streaming services', () => {

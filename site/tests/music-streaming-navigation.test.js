@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { NAVIGATION, ROUTES, VIEW_MODES } from '../public/dashboard-navigation-config.js';
+
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const tabs = dashboardRouterSource();
 const commonRuntime = readFileSync(new URL('../public/music-service-runtime-common.js', import.meta.url), 'utf8');
@@ -58,22 +60,25 @@ test('music streaming navigation exposes one flat service-only registry', () => 
 
 test('KKBOX QQ and Kugou are first-class lazy views like Spotify', () => {
   const configs = [
-    ['kkbox', 'kkboxView', 'kkbox-shell.js', 'kkbox.js', 'loadKkboxView'],
-    ['qq_music', 'qqMusicView', 'qq-music-shell.js', 'qq-music.js', 'loadQqMusicView'],
-    ['kugou_music', 'kugouMusicView', 'kugou-music-shell.js', 'kugou-music.js', 'loadKugouMusicView'],
+    ['kkbox', 'kkboxView', 'loadKkboxView'],
+    ['qq_music', 'qqMusicView', 'loadQqMusicView'],
+    ['kugou_music', 'kugouMusicView', 'loadKugouMusicView'],
   ];
-  for (const [mode, viewId, shell, runtime, loadExport] of configs) {
-    assert.match(tabs, new RegExp(`${mode}: \\{[\\s\\S]*viewId: '${viewId}'[\\s\\S]*${shell.replace('.', '\\.')}`));
-    assert.match(tabs, new RegExp(runtime.replace('.', '\\.')));
-    assert.match(tabs, new RegExp(`loadExport: '${loadExport}'`));
+  for (const [mode, viewId, loadExport] of configs) {
+    assert.equal(ROUTES[mode].kind, 'lazy');
+    assert.equal(ROUTES[mode].viewId, viewId);
+    assert.equal(ROUTES[mode].moduleId, mode);
+    assert.equal(ROUTES[mode].loadExport, loadExport);
+    assert.equal(VIEW_MODES.has(mode), true);
   }
-  assert.match(tabs, /const VIEW_MODES = Object\.freeze\(new Set\(modeNavigation\.keys\(\)\)\)/);
   assert.doesNotMatch(tabs, /REGIONAL_MUSIC|showRegionalMusicView|regionalMusicView|regional-music/);
 });
 
 test('Stationhead aggregate views stay outside the music streaming section', () => {
-  assert.match(tabs, /ranking:\s*\{[\s\S]*leaderboard-shell\.js[\s\S]*leaderboard\.js[\s\S]*source: 'stationhead'/);
-  assert.match(tabs, /followers:\s*\{[\s\S]*followers-shell\.js[\s\S]*followers\.js[\s\S]*source: 'stationhead'/);
+  assert.deepEqual(ROUTES.ranking.loadArgs, { source: 'stationhead' });
+  assert.deepEqual(ROUTES.followers.loadArgs, { source: 'stationhead' });
+  const subscriptions = NAVIGATION.find((section) => section.id === 'subscriptions');
+  assert.equal(subscriptions.sources.some((source) => ['ranking', 'followers'].includes(source.id)), false);
   assert.doesNotMatch(tabs, /source: 'music-streaming'/);
 });
 
@@ -129,7 +134,9 @@ test('Kugou owns Japan and ACG chart history', () => {
 });
 
 test('YouTube Music uses the same direct service read-model loader', () => {
-  assert.match(tabs, /'youtube-music':[\s\S]*viewId: 'youtubeMusicView'/);
+  assert.equal(ROUTES['youtube-music'].kind, 'lazy');
+  assert.equal(ROUTES['youtube-music'].viewId, 'youtubeMusicView');
+  assert.equal(ROUTES['youtube-music'].moduleId, 'youtube-music');
   assert.match(youtubeRuntime, /loadMusicServiceReadModel\(SERVICE\)/);
   assert.match(youtubeRuntime, /const SERVICE = 'youtube_music'/);
   assert.match(youtubeRuntime, /monthly_audience/);

@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { ROUTES } from '../public/dashboard-navigation-config.js';
+
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const fetchCache = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
 const tabs = dashboardRouterSource();
@@ -23,14 +25,15 @@ test('dashboard payload parsing is owned by the fetch cache instead of the entry
 });
 
 test('inactive tab shells and runtimes are loaded on demand through one shared loader and never idle-prefetched', () => {
-  assert.match(tabs, /const LAZY_VIEWS = \{/);
+  assert.match(tabs, /const DASHBOARD_ROUTE_MODULES = Object\.freeze\(\{/);
   assert.match(tabs, /const modulePromises = new Map\(\)/);
   assert.match(readFileSync(new URL('../public/dashboard-styles.js', import.meta.url), 'utf8'), /const stylePromises = new Map\(\)/);
   assert.match(tabs, /function loadDashboardModuleOnce\(key, importer\)/);
-  assert.match(tabs, /shell: \(\) => import\('\/history-shell\.js\?v=20260930\.1'\)/);
+  assert.match(tabs, /loadOnce\('history:shell', \(\) => import\('\/history-shell\.js\?v=20260930\.1'\)\)/);
   assert.match(tabs, /import\('\/history\/history-main\.js\?v=\d{8}\.\d+'\)/);
   assert.match(tabs, /selectStationheadChannelSection/);
-  assert.match(tabs, /ranking:\s*\{[\s\S]*leaderboard-shell\.js[\s\S]*leaderboard\.js[\s\S]*source: 'stationhead'/);
+  assert.equal(ROUTES.ranking.viewId, 'leaderboardView');
+  assert.deepEqual(ROUTES.ranking.loadArgs, { source: 'stationhead' });
   assert.doesNotMatch(tabs, /history-ranking-table-status|ranking-status/);
   assert.doesNotMatch(tabs, /modulepreload|requestIdleCallback|scheduleRuntimePrefetch|loadRankingStatusRuntime|loadHistoryRuntime/);
   assert.match(historyMain, /function ensureHistoryModeRuntime/);
