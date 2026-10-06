@@ -1,4 +1,4 @@
-import { bool, num, rawJson } from '../../site/functions/lib/api-utils.js';
+import { bool, num, rawJson } from '../../packages/sh-shared/api-utils.mjs';
 import { prepared, runPreparedD1Batches } from '../../site/functions/lib/d1-batch.js';
 import {
   analyzeQueueLikes,
@@ -12,7 +12,7 @@ import {
   observationTrackKey,
   planLikeChanges,
 } from '../../site/functions/lib/d1-lean-ingest.js';
-import { payloadHash } from '../../site/functions/lib/ingest-claim.js';
+import { payloadHash } from '../../packages/sh-shared/ingest-claim.mjs';
 import { restoreQueueAnalysis } from './queue-analysis-transfer.js';
 
 export const QUEUE_STAGE_LIKES_WRITE = 'likes-write';
