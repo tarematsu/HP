@@ -5,7 +5,7 @@ import {
   normalizedTrackSpotifyId,
   queueItemsToWriteLean,
   queueStructuralPayload,
-} from '../../site/functions/lib/d1-lean-ingest.js';
+} from '../../packages/sh-shared/d1-lean-ingest.mjs';
 import { claimWrite, payloadHash, sourceIdentity } from '../../packages/sh-shared/ingest-claim.mjs';
 
 const QUERY_CHUNK = 80;
