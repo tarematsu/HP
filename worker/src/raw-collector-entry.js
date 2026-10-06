@@ -2,7 +2,7 @@ import { ensureAuthControlRow, readAuthState } from './auth-state.js';
 import { API_BASE, configFromEnv, shHeaders } from './collector-config.js';
 import { sanitizeFailureDetail } from './collector-failure.js';
 import { jwtExpiryMs, normalizeBearer } from './shared.js';
-import { registerBuddiesInitialFollowerTarget } from './stationhead-initial-followers.js';
+import { stationheadInitialFollowerRegistrar } from './stationhead-source-runtime.js';
 
 const STATE_ID = 'stationhead';
 const RAW_COLLECTION_QUEUE_OPTIONS = Object.freeze({ contentType: 'json' });
