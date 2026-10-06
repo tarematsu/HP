@@ -1,11 +1,11 @@
 import { execFileSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 import { STATIONHEAD_FOLLOWER_SOURCE, stationheadFollowerMembership } from '../src/stationhead-follower-membership.js';
+import { acquireStationheadGuestSession } from '../src/stationhead-guest-session.js';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 
 const workerRoot = resolve(import.meta.dirname, '..');
@@ -231,23 +231,11 @@ async function checkedFetch(fetchFn, url, options, label) {
 }
 
 export async function createStationheadGuestSession({ fetchFn = fetch, appVersion = '1.0.0' } = {}) {
-  const deviceUid = randomUUID();
-  const signal = AbortSignal.timeout(10_000);
-  const tokenResponse = await checkedFetch(fetchFn, `${API_BASE}/web/token`, {
-    method: 'POST',
-    headers: { ...browserHeaders(deviceUid, '', appVersion, `${WEB_BASE}/c/ilys`), 'content-type': 'application/json' },
-    body: '',
-    signal,
-  }, 'Stationhead guest token');
-  const token = String(tokenResponse.headers.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
-  if (!token) throw new Error('Stationhead guest token is missing');
-  await checkedFetch(fetchFn, `${API_BASE}/web/guest/login`, {
-    method: 'POST',
-    headers: { ...browserHeaders(deviceUid, token, appVersion, `${WEB_BASE}/c/ilys`), 'content-type': 'application/json' },
-    body: '',
-    signal: AbortSignal.timeout(10_000),
-  }, 'Stationhead guest login');
-  return { token, deviceUid };
+  const session = await acquireStationheadGuestSession({
+    appVersion,
+    requestTimeoutMs: 10_000,
+  }, fetchFn);
+  return { token: session.authToken, deviceUid: session.deviceUid };
 }
 
 async function fetchFollowerProfile(handle, session, { fetchFn = fetch, appVersion = '1.0.0' } = {}) {
