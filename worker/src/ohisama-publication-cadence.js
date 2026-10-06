@@ -4,7 +4,6 @@ import { loadMaterializedR2Json, saveMaterializedR2Response } from './pages-resp
 const MINUTE_MS = 60_000;
 export const OHISAMA_CURRENT_CADENCE_MS = 5 * MINUTE_MS;
 export const OHISAMA_HISTORY_CADENCE_MS = 24 * 60 * MINUTE_MS;
-export const OHISAMA_LIKES_CADENCE_MS = 6 * 60 * MINUTE_MS;
 
 const DEFAULT_HEADERS = Object.freeze({
   'content-type': 'application/json; charset=utf-8',
@@ -15,7 +14,6 @@ const DEFAULT_HEADERS = Object.freeze({
 const SECTION_CADENCE_MS = Object.freeze({
   current: OHISAMA_CURRENT_CADENCE_MS,
   history: OHISAMA_HISTORY_CADENCE_MS,
-  likes: OHISAMA_LIKES_CADENCE_MS,
 });
 
 function integer(value) {
@@ -67,11 +65,7 @@ export function buildOhisamaCadencedPayload(
   if (timestamp == null) throw new Error('ohisama publication timestamp is invalid');
 
   const historyDue = ohisamaSectionDue(previousPayload, 'history', timestamp);
-  const likesDue = ohisamaSectionDue(previousPayload, 'likes', timestamp);
-  const likesRefreshed = likesDue && Array.isArray(playback?.likes);
-
   const previousHistoryAt = previousSectionTimestamp(previousPayload, 'history', timestamp);
-  const previousLikesAt = previousSectionTimestamp(previousPayload, 'likes', timestamp);
 
   const next = {
     ...currentPayload,
@@ -93,17 +87,12 @@ export function buildOhisamaCadencedPayload(
   delete next.played_tracks;
   delete next.played_history;
 
-  if (likesRefreshed) {
-    next.likes = playback.likes;
-  } else if (previousPayload) {
-    next.likes = preserved(previousPayload, 'likes', currentPayload.likes || []);
-  }
+  delete next.likes;
 
   next.section_updated_at = {
     ...(previousPayload?.section_updated_at || {}),
     current: timestamp,
     history: historyDue ? timestamp : previousHistoryAt,
-    likes: likesRefreshed ? timestamp : previousLikesAt,
   };
 
   return {
@@ -111,7 +100,6 @@ export function buildOhisamaCadencedPayload(
     refreshed: {
       current: true,
       history: historyDue,
-      likes: likesRefreshed,
     },
   };
 }
