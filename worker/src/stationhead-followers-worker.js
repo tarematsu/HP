@@ -184,10 +184,6 @@ async function collectProfiles(targets, session, fetchFn, appVersion, concurrenc
   return output;
 }
 
-async function putJson(r2, key, value) {
-  await r2.put(key, JSON.stringify(value), { httpMetadata: { contentType: 'application/json; charset=utf-8' } });
-}
-
 export async function collectStationheadFollowers(env, scheduledAt = Date.now(), fetchFn = fetch) {
   if (!env?.OTHER_DB?.prepare) throw new Error('OTHER_DB binding is required');
   if (!env?.PAGES_RESPONSE_R2?.put) throw new Error('PAGES_RESPONSE_R2 binding is required');
