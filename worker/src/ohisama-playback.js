@@ -2,8 +2,15 @@ import { hydratePlaybackAggregates, hydratePlaybackTrackMetadata } from './playb
 import { extractQueue } from './collector-payload.js';
 import { resolveTracksBulk } from './minute-facts-track-resolution.js';
 import { pagesR2ResponseKey } from './pages-response-r2.js';
-
-const DAY_MS = 24 * 60 * 60_000;
+import { materializeCurrentPlaybackWindow } from './queue-materialization.js';
+import {
+  emptyPlaybackDaily,
+  playbackDailyPublic,
+  recordPlaybackDailyTrack,
+  stationheadPlaybackPeriodKey,
+  stationheadPlaybackTrackKey,
+  transitionedStationheadTracks,
+} from './stationhead-playback-core.js';
 export const OHISAMA_PLAYBACK_HOT_STATE_KEY = 'stationhead/ohisama/playback-state.json';
 const OHISAMA_PAGES_KEY = pagesR2ResponseKey('hinata');
 
@@ -24,19 +31,11 @@ function text(value, limit = 500) {
 }
 
 function periodKey(timestamp) {
-  return new Date(Math.floor(Number(timestamp) / DAY_MS) * DAY_MS).toISOString().slice(0, 10);
+  return stationheadPlaybackPeriodKey(timestamp);
 }
 
 function trackKey(track) {
-  const isrc = text(track?.isrc)?.toUpperCase();
-  if (isrc) return `isrc:${isrc}`;
-  const spotifyId = text(track?.spotify_id);
-  if (spotifyId) return `spotify:${spotifyId}`;
-  const stationheadId = integer(track?.stationhead_track_id);
-  if (stationheadId != null) return `stationhead:${stationheadId}`;
-  const title = text(track?.title || track?.display_title);
-  const artist = text(track?.artist);
-  return title ? `title:${title}\u0000${artist || ''}` : null;
+  return stationheadPlaybackTrackKey(track);
 }
 
 function publicTrack(track, eventKey, expectedStartAt, current = false) {
@@ -61,9 +60,9 @@ function publicTrack(track, eventKey, expectedStartAt, current = false) {
 }
 
 export function resolveOhisamaPlaybackWindow(channel, stationId, observedAt) {
-  const queue = extractQueue(channel, stationId);
-  const tracks = Array.isArray(queue?.tracks) ? queue.tracks : [];
-  if (!queue || !tracks.length) {
+  const sourceQueue = extractQueue(channel, stationId);
+  const tracks = Array.isArray(sourceQueue?.tracks) ? sourceQueue.tracks : [];
+  if (!sourceQueue || !tracks.length) {
     return {
       queue: [],
       queue_status: null,
@@ -71,46 +70,29 @@ export function resolveOhisamaPlaybackWindow(channel, stationId, observedAt) {
     };
   }
 
-  const startTime = finite(queue.start_time);
-  const paused = Boolean(queue.is_paused);
-  const starts = new Array(tracks.length).fill(startTime);
-  let cursor = startTime;
-  for (let index = 0; index < tracks.length; index += 1) {
-    starts[index] = cursor;
-    if (cursor != null) cursor += Math.max(0, finite(tracks[index]?.duration_ms) || 0);
-  }
-
-  let currentIndex = 0;
-  let progressMs = 0;
-  if (startTime != null) {
-    const elapsed = Math.max(0, observedAt - startTime);
-    let accumulated = 0;
-    for (let index = 0; index < tracks.length; index += 1) {
-      const duration = Math.max(0, finite(tracks[index]?.duration_ms) || 0);
-      if (elapsed < accumulated + duration || index === tracks.length - 1) {
-        currentIndex = index;
-        progressMs = duration ? Math.max(0, Math.min(duration, elapsed - accumulated)) : 0;
-        break;
-      }
-      accumulated += duration;
-    }
-  }
-
-  const visible = tracks.slice(currentIndex, currentIndex + 6).map((track, offset) => {
-    const sourceIndex = currentIndex + offset;
-    const identity = trackKey(track) || `position:${sourceIndex}`;
+  const queue = materializeCurrentPlaybackWindow(sourceQueue, observedAt, 6);
+  const sourceStart = integer(queue?.source_start_time ?? sourceQueue.start_time);
+  const paused = Boolean(queue?.is_paused);
+  const visible = (Array.isArray(queue?.tracks) ? queue.tracks : []).map((track, offset) => {
+    const position = integer(track?.position) ?? offset;
+    const identity = trackKey(track) || `position:${position}`;
     const eventKey = [
       queue.queue_id ?? '',
-      queue.start_time ?? '',
-      sourceIndex,
+      sourceStart ?? '',
+      position,
       track.queue_track_id ?? '',
       identity,
     ].join(':');
-    return publicTrack(track, eventKey, starts[sourceIndex], offset === 0);
+    return publicTrack(track, eventKey, track?.expected_start_at, offset === 0);
   });
   const current = visible[0] || null;
-  const anchorAt = current?.expected_start_at ?? observedAt - progressMs;
-  const remainingTotal = Math.max(0, tracks.length - currentIndex);
+  const duration = Math.max(0, integer(current?.duration_ms) || 0);
+  const currentStart = integer(current?.expected_start_at);
+  const progressMs = currentStart == null
+    ? 0
+    : Math.max(0, duration ? Math.min(duration, observedAt - currentStart) : 0);
+  const remainingTotal = Math.max(0, integer(queue?.total_track_count) || visible.length);
+  const currentPosition = integer(current?.position) ?? 0;
 
   return {
     queue: visible,
@@ -119,73 +101,18 @@ export function resolveOhisamaPlaybackWindow(channel, stationId, observedAt) {
       playing: visible.length > 0 && !paused,
       current_index: visible.length ? 0 : -1,
       progress_ms: progressMs,
-      anchor_at: anchorAt,
+      anchor_at: currentStart ?? observedAt - progressMs,
       total_items: remainingTotal,
       returned_items: visible.length,
       loaded_items: visible.length,
       has_more: remainingTotal > visible.length,
     },
-    queue_revision: `${queue.queue_id ?? ''}:${queue.start_time ?? ''}:${currentIndex}:${visible.length}`,
+    queue_revision: `${queue.queue_id ?? ''}:${sourceStart ?? ''}:${currentPosition}:${visible.length}`,
   };
 }
 
-function emptyDaily(key) {
-  return {
-    period_key: key,
-    total_plays: 0,
-    unique_track_ids: [],
-    tracks: {},
-  };
-}
-
-function dailyPublic(daily) {
-  const tracks = Object.values(daily?.tracks || {})
-    .map((entry) => ({ ...entry, track_id: integer(entry?.track_id), count: integer(entry?.count) || 0 }))
-    .filter((entry) => entry.track_id != null)
-    .sort((left, right) => right.count - left.count || String(left.title || '').localeCompare(String(right.title || ''), 'ja'));
-  return {
-    period_key: String(daily?.period_key || ''),
-    total_plays: integer(daily?.total_plays) || tracks.reduce((sum, entry) => sum + entry.count, 0),
-    unique_tracks: Array.isArray(daily?.unique_track_ids) ? daily.unique_track_ids.length : tracks.length,
-    tracks,
-  };
-}
-
-function recordDailyTrack(daily, track, playedAt) {
-  const trackId = integer(track?.track_id);
-  if (trackId == null) return daily;
-  const key = String(trackId);
-  const targetKey = periodKey(playedAt);
-  const active = daily?.period_key === targetKey ? daily : emptyDaily(targetKey);
-  const unique = new Set(Array.isArray(active.unique_track_ids) ? active.unique_track_ids.map(String) : []);
-  unique.add(key);
-  const tracks = { ...(active.tracks || {}) };
-  const previous = tracks[key] || {};
-  tracks[key] = {
-    track_id: trackId,
-    track_key: track?.track_key || previous.track_key || null,
-    title: track?.title || previous.title || null,
-    artist: track?.artist || previous.artist || null,
-    spotify_id: track?.spotify_id || previous.spotify_id || null,
-    count: (integer(previous.count) || 0) + 1,
-  };
-  return {
-    period_key: targetKey,
-    total_plays: (integer(active.total_plays) || 0) + 1,
-    unique_track_ids: [...unique],
-    tracks,
-  };
-}
-
-export function transitionedOhisamaTracks(previousQueue = [], currentQueue = []) {
-  const current = currentQueue[0] || null;
-  if (!current?.event_key) return [];
-  const previous = Array.isArray(previousQueue) ? previousQueue : [];
-  if (!previous.length) return [current];
-  if (previous[0]?.event_key === current.event_key) return [];
-  const index = previous.findIndex((track) => track?.event_key === current.event_key);
-  if (index > 0) return previous.slice(1, index + 1);
-  return [current];
+export function transitionedOhisamaTracks(previousQueue = [], currentQueue = [], options = {}) {
+  return transitionedStationheadTracks(previousQueue, currentQueue, options);
 }
 
 async function loadState(bucket) {
@@ -251,7 +178,7 @@ function withCanonicalTrackId(track, byKey) {
 }
 
 function canonicalizeDaily(daily, byKey) {
-  if (!daily?.period_key) return emptyDaily('');
+  if (!daily?.period_key) return emptyPlaybackDaily('');
   const tracks = {};
   const unique = new Set();
   let totalPlays = 0;
@@ -347,7 +274,7 @@ function playStatement(db, stationId, track, observedAt) {
 }
 
 function completedDailyStatement(db, daily, observedAt) {
-  const row = dailyPublic(daily);
+  const row = playbackDailyPublic(daily);
   return db.prepare(`INSERT INTO sh_track_daily_summary(
       period_key,total_plays,unique_tracks,tracks_json,updated_at
     ) VALUES(?,?,?,?,?)
@@ -399,29 +326,34 @@ export async function captureOhisamaPlayback(env, channel, collection, observedA
   const canonicalState = await applyCanonicalTrackIds(catalogDb, playback, previous, observedAt);
   const previousDaily = canonicalState.daily?.period_key
     ? canonicalState.daily
-    : emptyDaily(periodKey(observedAt));
+    : emptyPlaybackDaily(periodKey(observedAt));
   let daily = previousDaily;
   let completedDay = null;
   const statements = [];
-  const transitions = transitionedOhisamaTracks(previous?.queue, playback.queue);
+  const transitions = transitionedOhisamaTracks(previous?.queue, playback.queue, {
+    previousObservedAt: previous?.updated_at,
+    observedAt,
+    previousPaused: Boolean(previous?.queue_status?.is_paused),
+    currentPaused: Boolean(playback?.queue_status?.is_paused),
+  });
 
   for (const track of transitions) {
     const playedAt = integer(track?.expected_start_at) ?? observedAt;
     const nextKey = periodKey(playedAt);
     if (daily?.period_key && daily.period_key !== nextKey) {
-      completedDay = dailyPublic(daily);
+      completedDay = playbackDailyPublic(daily);
       statements.push(completedDailyStatement(db, daily, observedAt));
-      daily = emptyDaily(nextKey);
+      daily = emptyPlaybackDaily(nextKey);
     }
-    daily = recordDailyTrack(daily, track, playedAt);
+    daily = recordPlaybackDailyTrack(daily, track, playedAt);
     statements.push(playStatement(db, stationId, track, observedAt));
   }
 
-  if (!daily?.period_key) daily = emptyDaily(periodKey(observedAt));
+  if (!daily?.period_key) daily = emptyPlaybackDaily(periodKey(observedAt));
   if (daily.period_key !== periodKey(observedAt) && !transitions.length) {
-    completedDay = dailyPublic(daily);
+    completedDay = playbackDailyPublic(daily);
     statements.push(completedDailyStatement(db, daily, observedAt));
-    daily = emptyDaily(periodKey(observedAt));
+    daily = emptyPlaybackDaily(periodKey(observedAt));
   }
 
   const likes = canonicalState.likes;
@@ -459,7 +391,7 @@ export async function captureOhisamaPlayback(env, channel, collection, observedA
 
   return {
     ...playback,
-    daily: dailyPublic(daily),
+    daily: playbackDailyPublic(daily),
     completed_day: completedDay,
     likes: Object.values(likes)
       .sort((left, right) => (integer(right.like_count) || 0) - (integer(left.like_count) || 0)),
