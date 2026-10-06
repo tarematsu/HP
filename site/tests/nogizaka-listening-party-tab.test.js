@@ -14,6 +14,8 @@ const readModel = browserSource('stationhead-channel-read-model.js');
 const sharedCss = readFileSync(new URL('../public/dashboard-navigation.css', import.meta.url), 'utf8') + readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 const tabs = dashboardRouterSource();
 const api = readFileSync(new URL('../functions/api/nogizaka-listening-party.js', import.meta.url), 'utf8');
+const materializedProxy = readFileSync(new URL('../functions/lib/stationhead-materialized-proxy.js', import.meta.url), 'utf8');
+const sourceModels = readFileSync(new URL('../../packages/sh-shared/stationhead-read-models.mjs', import.meta.url), 'utf8');
 const publisher = readFileSync(new URL('../../worker/src/nogizaka-pages-read-model.js', import.meta.url), 'utf8');
 
 test('Nogizaka is a lazy source route mounted through the shared Stationhead shell', () => {
@@ -65,9 +67,12 @@ test('Nogizaka listening-party labels are reusable for future Under Live events'
   }), '43rd アンダーライブ セットリスト');
 });
 
-test('Nogizaka public API is materialized-read-model-only', () => {
-  assert.match(api, /PAGES_READ_MODEL_SERVICE/);
-  assert.match(api, /_internal\/pages-response\?key=nogizaka-listening-party/);
+test('Nogizaka public API is materialized-read-model-only through the shared Stationhead proxy', () => {
+  assert.match(api, /proxyStationheadMaterializedReadModel/);
+  assert.match(api, /'nogizaka'/);
+  assert.match(materializedProxy, /PAGES_READ_MODEL_SERVICE/);
+  assert.match(materializedProxy, /_internal\/pages-response/);
+  assert.match(sourceModels, /nogizaka: 'nogizaka-listening-party'/);
   assert.doesNotMatch(api, /OTHER_DB|\.prepare\(|sh_nogizaka_official_news_announcements|sh_official_broadcast_/);
   assert.match(readModel, /source: 'nogizaka'/);
 });
