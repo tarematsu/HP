@@ -1,5 +1,6 @@
-import { pagesR2ResponseKey } from './pages-response-r2.js';
+import { saveMaterializedR2Response } from './pages-response-r2.js';
 import { STATIONHEAD_FOLLOWER_SOURCE, stationheadFollowerMembership } from './stationhead-follower-membership.js';
+import { acquireStationheadGuestSession } from './stationhead-guest-session.js';
 
 const API_BASE = 'https://production1.stationhead.com';
 const WEB_BASE = 'https://www.stationhead.com';
@@ -155,28 +156,9 @@ async function checkedFetch(fetchFn, url, options, label) {
   return response;
 }
 
-async function guestSession(fetchFn, appVersion) {
-  const deviceUid = crypto.randomUUID();
-  const tokenResponse = await checkedFetch(fetchFn, `${API_BASE}/web/token`, {
-    method: 'POST',
-    headers: { ...browserHeaders(deviceUid, '', appVersion, `${WEB_BASE}/c/ilys`), 'content-type': 'application/json' },
-    body: '',
-    signal: AbortSignal.timeout(10_000),
-  }, 'Stationhead guest token');
-  const token = String(tokenResponse.headers.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
-  if (!token) throw new Error('Stationhead guest token is missing');
-  await checkedFetch(fetchFn, `${API_BASE}/web/guest/login`, {
-    method: 'POST',
-    headers: { ...browserHeaders(deviceUid, token, appVersion, `${WEB_BASE}/c/ilys`), 'content-type': 'application/json' },
-    body: '',
-    signal: AbortSignal.timeout(10_000),
-  }, 'Stationhead guest login');
-  return { token, deviceUid };
-}
-
 async function fetchProfile(handle, session, fetchFn, appVersion) {
   const response = await checkedFetch(fetchFn, `${PROFILE_BASE}${encodeURIComponent(handle)}`, {
-    headers: browserHeaders(session.deviceUid, session.token, appVersion),
+    headers: browserHeaders(session.deviceUid, session.authToken, appVersion),
     signal: AbortSignal.timeout(10_000),
   }, `Stationhead profile ${handle}`);
   const followers = nonNegativeInteger((await response.json())?.followers);
@@ -214,7 +196,10 @@ export async function collectStationheadFollowers(env, scheduledAt = Date.now(),
   const targetRows = await env.OTHER_DB.prepare('SELECT handle,source_mask FROM sh_stationhead_follower_targets ORDER BY handle').all();
   const { targets, ignored } = normalizeFollowerTargets(targetRows.results || []);
   const appVersion = String(env?.SH_APP_VERSION || '1.0.0');
-  const session = await guestSession(fetchFn, appVersion);
+  const session = await acquireStationheadGuestSession({
+    appVersion,
+    requestTimeoutMs: 10_000,
+  }, fetchFn);
   const collected = await collectProfiles(targets, session, fetchFn, appVersion);
   const failures = collected.filter((row) => !row.ok).map(({ handle, status, error }) => ({ handle, status, error }));
   const fixedFailures = failures.filter((row) => FIXED_FOLLOWER_HANDLES.includes(row.handle));
@@ -230,16 +215,18 @@ export async function collectStationheadFollowers(env, scheduledAt = Date.now(),
     .bind(date, now, collectedAt, JSON.stringify(followers), JSON.stringify(failures)).run();
   const history = await env.OTHER_DB.prepare('SELECT observed_date_jst,followers_json FROM sh_stationhead_daily_followers_v2 ORDER BY observed_date_jst ASC').all();
   const payload = buildFollowerReadModel({ historyRows: history.results || [], targets, latestDate: date, updatedAt: collectedAt, failures });
-  await putJson(env.PAGES_RESPONSE_R2, pagesR2ResponseKey('followers'), {
-    version: 1,
-    updated_at: collectedAt,
-    cadence_seconds: CADENCE_SECONDS,
-    status: 200,
-    headers: {
+  await saveMaterializedR2Response(
+    env.PAGES_RESPONSE_R2,
+    'followers',
+    JSON.stringify(payload),
+    200,
+    {
       'content-type': 'application/json; charset=utf-8',
       'cache-control': 'public, max-age=30, s-maxage=300, stale-while-revalidate=600',
     },
-    body: JSON.stringify(payload),
-  });
+    collectedAt,
+    CADENCE_SECONDS,
+    { model_key: 'followers' },
+  );
   return { ok: true, observed_date_jst: date, targets: targets.length, successes: Object.keys(followers).length, failures: failures.length, ignored_targets: ignored, updated_at: collectedAt };
 }
