@@ -5,7 +5,6 @@ import {
   OHISAMA_CURRENT_CADENCE_MS,
   OHISAMA_HISTORY_CADENCE_MS,
   OHISAMA_LIKES_CADENCE_MS,
-  OHISAMA_PLAYED_CADENCE_MS,
   buildOhisamaCadencedPayload,
 } from '../src/ohisama-publication-cadence.js';
 
@@ -28,7 +27,6 @@ function previousPayload() {
     section_updated_at: {
       current: START,
       history: START,
-      played_tracks: START,
       likes: START,
     },
   };
@@ -55,47 +53,42 @@ function playback() {
   };
 }
 
-test('Ohisama uses Buddies-equivalent subtab publication cadences', () => {
+test('Ohisama keeps current, history and likes cadences while playback moves to shared Track History', () => {
   assert.equal(OHISAMA_CURRENT_CADENCE_MS, 5 * 60_000);
   assert.equal(OHISAMA_HISTORY_CADENCE_MS, 24 * 60 * 60_000);
-  assert.equal(OHISAMA_PLAYED_CADENCE_MS, 24 * 60 * 60_000);
   assert.equal(OHISAMA_LIKES_CADENCE_MS, 6 * 60 * 60_000);
 });
 
-test('five-minute publication refreshes only current data before slow sections are due', () => {
+test('five-minute publication refreshes current data and removes duplicate playback-history fields', () => {
   const at = START + 5 * 60_000;
   const built = buildOhisamaCadencedPayload(currentPayload(at), previousPayload(), playback(), {}, at);
   assert.equal(built.payload.latest.online_member_count, 120);
   assert.equal(built.payload.queue[0].track_id, 2);
   assert.equal(built.payload.daily[0].stream_growth, 100);
-  assert.equal(built.payload.played_tracks.total_plays, 10);
+  assert.equal(built.payload.played_tracks, undefined);
+  assert.equal(built.payload.played_history, undefined);
   assert.equal(built.payload.likes[0].like_count, 10);
   assert.deepEqual(built.refreshed, {
     current: true,
     history: false,
-    played_tracks: false,
     likes: false,
   });
 });
 
-test('likes refresh at six hours while history and played tracks stay daily', () => {
+test('likes refresh at six hours while history stays daily', () => {
   const at = START + 6 * 60 * 60_000;
   const built = buildOhisamaCadencedPayload(currentPayload(at), previousPayload(), playback(), {}, at);
   assert.equal(built.payload.daily[0].stream_growth, 100);
-  assert.equal(built.payload.played_tracks.total_plays, 10);
   assert.equal(built.payload.likes[0].like_count, 20);
   assert.equal(built.refreshed.likes, true);
   assert.equal(built.refreshed.history, false);
-  assert.equal(built.refreshed.played_tracks, false);
 });
 
-test('history and played tracks refresh after 24 hours', () => {
+test('history refreshes after 24 hours', () => {
   const at = START + 24 * 60 * 60_000;
   const built = buildOhisamaCadencedPayload(currentPayload(at), previousPayload(), playback(), {}, at);
   assert.equal(built.payload.daily[0].stream_growth, 200);
-  assert.equal(built.payload.played_tracks.total_plays, 20);
   assert.equal(built.payload.likes[0].like_count, 20);
   assert.equal(built.refreshed.history, true);
-  assert.equal(built.refreshed.played_tracks, true);
   assert.equal(built.refreshed.likes, true);
 });
