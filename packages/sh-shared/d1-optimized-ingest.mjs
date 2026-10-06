@@ -9,7 +9,7 @@ import {
   queueStructuralPayload,
   resetSnapshotHashCacheForTests,
   saveLeanSnapshot,
-} from './d1-lean-ingest.js';
+} from './d1-lean-ingest.mjs';
 import { claimWrite, payloadHash, sourceIdentity } from './ingest-claim.mjs';
 
 const QUERY_CHUNK = 80;
