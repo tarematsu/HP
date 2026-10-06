@@ -5,14 +5,13 @@ import { dashboardGoalPredictions } from '../../site/functions/lib/dashboard-leg
 import { hydratePlaybackTrackMetadata } from './playback-track-metadata.js';
 import { trackNeedsHydration } from './track-metadata-quality.js';
 import { BUDDIES_PLAYBACK_HOT_STATE_KEY } from './buddies-playback-state.js';
-import { pagesR2ResponseKey } from './pages-response-r2.js';
+import { loadMaterializedR2Json, saveMaterializedR2Response } from './pages-response-r2.js';
 
 const FIVE_MINUTES_MS = 5 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
 const HOUR_MS = 60 * 60_000;
 const INCREMENTAL_GAP_LIMIT_MS = 11 * 60_000;
 const RECOVERY_GAP_LIMIT_MS = DAY_MS;
-const DASHBOARD_KEY = pagesR2ResponseKey('dashboard');
 const DASHBOARD_CADENCE_SECONDS = 5 * 60;
 export const BUDDIES_DASHBOARD_HOT_STATE_KEY = 'stationhead/buddies/dashboard-hot-state.json';
 
@@ -79,25 +78,14 @@ async function readJsonObject(bucket, key) {
   }
 }
 
-function payloadFromEnvelope(envelope) {
-  if (Number(envelope?.version) !== 1) return null;
-  try {
-    const payload = typeof envelope?.body === 'string' ? JSON.parse(envelope.body) : envelope?.body;
-    return payload?.ok ? payload : null;
-  } catch {
-    return null;
-  }
-}
-
 async function loadExistingState(bucket) {
   const hot = await readJsonObject(bucket, BUDDIES_DASHBOARD_HOT_STATE_KEY);
   if (Number(hot?.version) === 1 && hot?.payload?.ok) {
     return { payload: hot.payload, source: 'hot' };
   }
 
-  const envelope = await readJsonObject(bucket, DASHBOARD_KEY);
-  const payload = payloadFromEnvelope(envelope);
-  return payload ? { payload, source: 'public' } : { payload: null, source: 'none' };
+  const payload = await loadMaterializedR2Json(bucket, 'dashboard');
+  return payload?.ok ? { payload, source: 'public' } : { payload: null, source: 'none' };
 }
 
 async function saveHotState(bucket, payload, now) {
@@ -434,27 +422,20 @@ async function purgeDashboardEdgeCache() {
 }
 
 async function savePublicEnvelope(bucket, payload, now) {
-  if (typeof bucket?.put !== 'function' || !DASHBOARD_KEY) return false;
-  const envelope = {
-    version: 1,
-    status: 200,
-    headers: {
+  const saved = await saveMaterializedR2Response(
+    bucket,
+    'dashboard',
+    JSON.stringify(payload),
+    200,
+    {
       'content-type': 'application/json; charset=utf-8',
       'cache-control': 'no-store',
     },
-    updated_at: now,
-    cadence_seconds: DASHBOARD_CADENCE_SECONDS,
-    body: JSON.stringify(payload),
-  };
-  await bucket.put(DASHBOARD_KEY, JSON.stringify(envelope), {
-    httpMetadata: { contentType: 'application/json; charset=utf-8' },
-    customMetadata: {
-      version: '1',
-      model_key: 'dashboard',
-      updated_at: String(now),
-      cadence_seconds: String(DASHBOARD_CADENCE_SECONDS),
-    },
-  });
+    now,
+    DASHBOARD_CADENCE_SECONDS,
+    { model_key: 'dashboard' },
+  );
+  if (!saved) return false;
   await purgeDashboardEdgeCache();
   return true;
 }
