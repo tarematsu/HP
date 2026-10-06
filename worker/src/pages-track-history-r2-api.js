@@ -7,8 +7,13 @@ const TRACK_HISTORY_RESPONSE_LIMIT = 20_000;
 const TRACK_HISTORY_CACHE_SECONDS = 300;
 const ALLOWED_PARAMS = new Set([
   'key', 'api', 'from', 'to', 'limit', 'ranking', 'ranking_limit',
-  'ranking_only', 'latest', 'dates_only', 'counts_only',
+  'ranking_only', 'latest', 'dates_only', 'counts_only', 'source',
 ]);
+
+function trackHistorySource(value) {
+  const source = String(value || 'buddies').trim().toLowerCase();
+  return source === 'buddies' || source === 'ohisama' ? source : null;
+}
 
 function validDate(value) {
   const text = String(value || '');
@@ -83,7 +88,7 @@ async function playCountRows(r2, index, selectedDates, loadDay) {
       rows.push({ play_date: day, play_count: Math.trunc(indexed) });
       continue;
     }
-    const model = await loadDay(r2, day);
+    const model = await loadDay(r2, day, source);
     if (!model) throw new Error(`track-history R2 day missing: ${day}`);
     updatedAt = Math.max(updatedAt, Number(model.payload?.updated_at) || 0);
     const count = Number(model.payload?.source_row_count);
@@ -116,8 +121,15 @@ export async function loadTrackHistoryR2ApiResponse(
     return json({ ok: false, error: `unsupported track-history parameter: ${invalidParam}` }, 400, now);
   }
 
+  const source = trackHistorySource(url.searchParams.get('source'));
+  if (!source) {
+    return json({ ok: false, error: 'invalid track-history source' }, 400, now);
+  }
   const rankingLimit = boundedInteger(url.searchParams.get('ranking_limit'), 200, 20, 500);
   if (url.searchParams.get('ranking_only') === '1') {
+    if (source !== 'buddies') {
+      return json({ ok: false, error: 'track-history ranking is unavailable for this source' }, 400, now);
+    }
     const payload = await loadStatusPayload(r2, now, maximumAgeMs, dependencies);
     if (!payload) return json({ ok: false, error: 'track-history ranking read model unavailable' }, 503, now);
     const ranking = rankingFromPayload(payload, rankingLimit);
@@ -139,7 +151,7 @@ export async function loadTrackHistoryR2ApiResponse(
   }
 
   const loadIndex = dependencies.loadIndex || loadTrackHistoryDayIndex;
-  const index = await loadIndex(r2);
+  const index = await loadIndex(r2, source);
   if (!index) {
     return json({ ok: false, error: 'track-history R2 day index unavailable' }, 503, now);
   }
@@ -152,6 +164,7 @@ export async function loadTrackHistoryR2ApiResponse(
       timezone: 'UTC',
       dates,
       latest_date: dates.at(-1) || null,
+      source,
       read_path: 'r2-track-history-day-index',
     }, 200, now, index.updated_at);
   }
@@ -161,6 +174,7 @@ export async function loadTrackHistoryR2ApiResponse(
       ok: true,
       latest_date: dates.at(-1) || null,
       timezone: 'UTC',
+      source,
       read_path: 'r2-track-history-day-index',
     }, 200, now, index.updated_at);
   }
@@ -182,6 +196,7 @@ export async function loadTrackHistoryR2ApiResponse(
         from,
         to,
         timezone: 'UTC',
+        source,
         rows: counts.rows,
         read_path: 'r2-track-history-day-counts',
       }, 200, now, counts.updatedAt);
@@ -191,13 +206,13 @@ export async function loadTrackHistoryR2ApiResponse(
   }
 
   const limit = boundedInteger(url.searchParams.get('limit'), 10_000, 100, TRACK_HISTORY_RESPONSE_LIMIT);
-  const includeRanking = url.searchParams.get('ranking') !== '0';
+  const includeRanking = source === 'buddies' && url.searchParams.get('ranking') !== '0';
   const rows = [];
   let truncated = false;
   let readModelUpdatedAt = Number(index.updated_at) || 0;
 
   for (const day of selectedDates) {
-    const model = await loadDay(r2, day);
+    const model = await loadDay(r2, day, source);
     if (!model) {
       return json({ ok: false, error: `track-history R2 day missing: ${day}` }, 503, now, readModelUpdatedAt);
     }
@@ -228,6 +243,7 @@ export async function loadTrackHistoryR2ApiResponse(
     from,
     to,
     timezone: 'UTC',
+    source,
     rows,
     truncated,
     likes_included: true,
