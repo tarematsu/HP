@@ -126,8 +126,7 @@ test('Buddies dashboard fallback advances a stale current model without D1', asy
   assert.equal(result.mode, 'fallback');
   assert.equal(result.skipped, false);
   assert.deepEqual(r2.puts, [HOT_STATE_KEY, DASHBOARD_KEY]);
-  const envelope = JSON.parse(r2.values.get(DASHBOARD_KEY));
-  const payload = JSON.parse(envelope.body);
+  const payload = JSON.parse(r2.values.get(DASHBOARD_KEY));
   assert.equal(payload.latest_observed_at, observedAt);
   assert.equal(payload.latest.online_member_count, 125);
   assert.equal(payload.latest.current_stream_count, 5125);
