@@ -124,9 +124,6 @@ export async function loadTrackHistoryR2ApiResponse(
   maximumAgeMs = Number.MAX_SAFE_INTEGER,
   dependencies = {},
 ) {
-  if (typeof r2?.get !== 'function') {
-    return json({ ok: false, error: 'track-history R2 binding missing' }, 503, now);
-  }
   const url = new URL(request.url);
   const invalidParam = validateParams(url);
   if (invalidParam) {
