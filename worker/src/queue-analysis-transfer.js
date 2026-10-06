@@ -1,4 +1,4 @@
-import { payloadHash } from '../../site/functions/lib/ingest-claim.js';
+import { payloadHash } from '../../packages/sh-shared/ingest-claim.mjs';
 
 const QUEUE_STRUCTURAL_PAYLOAD = Symbol.for('stationhead.queue.structural-payload');
 const QUEUE_LIKE_ANALYSIS = Symbol.for('stationhead.queue.like-analysis');
