@@ -131,3 +131,18 @@ export function loadMaterializedR2Response(
 ) {
   return loadCanonicalResponse(r2, modelKey, now, maximumAgeMs);
 }
+
+export async function loadMaterializedR2Json(
+  r2,
+  modelKey,
+  now = Date.now(),
+  maximumAgeMs = Number.MAX_SAFE_INTEGER,
+) {
+  const response = await loadMaterializedR2Response(r2, modelKey, now, maximumAgeMs);
+  if (!response?.ok) return null;
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
