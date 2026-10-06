@@ -8,7 +8,7 @@ import {
   fiveMinuteBucket,
   normalizeOhisamaSnapshot,
   registerOhisamaFollowerTarget,
-} from './ohisama-collector-entry.js';
+} from './ohisama-collector-shared.js';
 import { guardedOhisamaAuthRefresh } from './ohisama-auth-refresh-guard.js';
 import { jwtExpiryMs, normalizeBearer } from './shared.js';
 
