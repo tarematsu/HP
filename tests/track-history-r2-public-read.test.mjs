@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { TRACK_HISTORY_DAY_INDEX_KEY } from '../worker/src/pages-track-history-day-index.js';
+import { TRACK_HISTORY_DAY_INDEX_KEY, trackHistoryDayIndexKey } from '../worker/src/pages-track-history-day-index.js';
 import { loadTrackHistoryR2ApiResponse } from '../worker/src/pages-track-history-r2-api.js';
 import { trackHistoryDayObjectKey } from '../worker/src/pages-track-history-r2-shards.js';
 import { pagesR2ResponseKey } from '../worker/src/pages-response-r2.js';
@@ -146,4 +146,37 @@ test('Pages middleware routes Track History to R2 and fail-closes instead of fal
   assert.match(source, /url\.searchParams\.set\('api', '1'\)/);
   assert.match(source, /return materializedUnavailable\(modelKey\);/);
   assert.doesNotMatch(source, /LIVE_PAGES_FALLBACK_MODEL_KEYS|x-materialized-fallback|pages_live_fallback_unavailable/);
+});
+
+
+test('Ohisama Track History uses the same API contract with source-scoped R2 days', async () => {
+  const indexKey = trackHistoryDayIndexKey('ohisama');
+  const dayKey = trackHistoryDayObjectKey('2026-10-02', 'ohisama');
+  const r2 = new FakeR2({
+    [indexKey]: {
+      version: 1,
+      updated_at: 300,
+      dates: ['2026-10-02'],
+      latest_date: '2026-10-02',
+      play_counts: { '2026-10-02': 319 },
+    },
+    [dayKey]: {
+      version: 1,
+      day: '2026-10-02',
+      updated_at: 300,
+      source_row_count: 319,
+      rows: [{ play_date: '2026-10-02', track_id: 1, title: 'A', artist: '日向坂46', play_count: 319 }],
+    },
+  });
+  const response = await loadTrackHistoryR2ApiResponse(
+    r2,
+    new Request('https://internal/api/track-history?source=ohisama&from=2026-10-02&to=2026-10-02&ranking=0'),
+    1_000,
+  );
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.source, 'ohisama');
+  assert.equal(payload.rows[0].play_count, 319);
+  assert.equal(payload.ranking_included, false);
+  assert.deepEqual(r2.gets, [indexKey, dayKey]);
 });
