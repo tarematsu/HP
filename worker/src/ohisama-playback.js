@@ -1,7 +1,6 @@
 import { hydratePlaybackAggregates, hydratePlaybackTrackMetadata } from './playback-track-metadata.js';
 import { extractQueue } from './collector-payload.js';
 import { resolveTracksBulk } from './minute-facts-track-resolution.js';
-import { pagesR2ResponseKey } from './pages-response-r2.js';
 import { materializeCurrentPlaybackWindow } from './queue-materialization.js';
 import { saveTrackHistoryDayReadModel } from './pages-track-history-r2-shards.js';
 import {
@@ -13,7 +12,6 @@ import {
   transitionedStationheadTracks,
 } from './stationhead-playback-core.js';
 export const OHISAMA_PLAYBACK_HOT_STATE_KEY = 'stationhead/ohisama/playback-state.json';
-const OHISAMA_PAGES_KEY = pagesR2ResponseKey('hinata');
 
 function finite(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -321,7 +319,7 @@ function trackHistoryDayRange(period) {
 }
 
 function trackHistoryRows(daily) {
-  const row = daily?.tracks ? daily : playbackDailyPublic(daily);
+  const row = Array.isArray(daily?.tracks) ? daily : playbackDailyPublic(daily);
   return (Array.isArray(row?.tracks) ? row.tracks : []).map((track) => ({
     play_date: row.period_key,
     track_id: integer(track?.track_id),
@@ -440,55 +438,3 @@ export async function captureOhisamaPlayback(env, channel, collection, observedA
   };
 }
 
-function mergePlayedHistory(existing, current, completed) {
-  const byKey = new Map();
-  for (const row of Array.isArray(existing) ? existing : []) {
-    if (row?.period_key) byKey.set(String(row.period_key), row);
-  }
-  if (completed?.period_key) byKey.set(String(completed.period_key), completed);
-  if (current?.period_key) byKey.set(String(current.period_key), current);
-  return [...byKey.values()]
-    .sort((left, right) => String(right.period_key || '').localeCompare(String(left.period_key || '')))
-    .slice(0, 90);
-}
-
-export async function mergeOhisamaPlaybackReadModel(env, playback, collection, observedAt = Date.now()) {
-  const bucket = env?.PAGES_RESPONSE_R2;
-  if (!OHISAMA_PAGES_KEY || typeof bucket?.get !== 'function' || typeof bucket?.put !== 'function') return false;
-  const object = await bucket.get(OHISAMA_PAGES_KEY);
-  if (!object) return false;
-  const envelope = await object.json();
-  if (Number(envelope?.version) !== 1) return false;
-  const payload = typeof envelope.body === 'string' ? JSON.parse(envelope.body) : envelope.body;
-  if (!payload || payload.model !== 'hinata') return false;
-
-  const next = {
-    ...payload,
-    updated_at: observedAt,
-    latest: {
-      ...(payload.latest || {}),
-      host_handle: collection?.host_handle || payload.latest?.host_handle || null,
-    },
-    queue: playback?.queue || [],
-    queue_status: playback?.queue_status || null,
-    queue_revision: playback?.queue_revision || '',
-    played_tracks: playback?.daily || null,
-    played_history: mergePlayedHistory(payload.played_history, playback?.daily, playback?.completed_day),
-    likes: Array.isArray(playback?.likes) ? playback.likes : [],
-  };
-  const nextEnvelope = {
-    ...envelope,
-    updated_at: observedAt,
-    body: JSON.stringify(next),
-  };
-  await bucket.put(OHISAMA_PAGES_KEY, JSON.stringify(nextEnvelope), {
-    httpMetadata: { contentType: 'application/json; charset=utf-8' },
-    customMetadata: {
-      version: '1',
-      model_key: 'hinata',
-      updated_at: String(observedAt),
-      cadence_seconds: '300',
-    },
-  });
-  return true;
-}
