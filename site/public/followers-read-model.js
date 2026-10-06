@@ -6,12 +6,14 @@ const STATIONHEAD_HANDLES = Object.freeze([
   'sakuramankai2',
   'sakurazaka46jp',
   'nogizaka46smej',
+  'nogifan1ch',
 ]);
 const STATIONHEAD_MEMBERSHIPS = Object.freeze({
   sakuramankai: Object.freeze({ affiliation: 'Buddies', group: 'sakurazaka46' }),
   sakuramankai2: Object.freeze({ affiliation: 'Buddies', group: 'sakurazaka46' }),
   sakurazaka46jp: Object.freeze({ affiliation: '櫻坂46公式', group: 'sakurazaka46' }),
   nogizaka46smej: Object.freeze({ affiliation: '乃木坂46公式', group: 'nogizaka46' }),
+  nogifan1ch: Object.freeze({ affiliation: 'Nogizaka', group: 'nogizaka46' }),
 });
 const GROUP_COLORS = Object.freeze({
   sakurazaka46: '#f3a6c8',
@@ -45,6 +47,7 @@ function offsetDate(value, days) {
 }
 
 function stationheadMembership(payload, row, handle) {
+  if (handle === 'nogifan1ch') return STATIONHEAD_MEMBERSHIPS.nogifan1ch;
   const fallback = STATIONHEAD_MEMBERSHIPS[handle] || {};
   const supplied = payload?.memberships?.[handle] || {};
   return {
