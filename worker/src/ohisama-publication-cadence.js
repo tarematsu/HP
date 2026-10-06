@@ -1,12 +1,11 @@
 import { OHISAMA_PAGES_CADENCE_SECONDS } from './ohisama-read-model.js';
-import { pagesR2ResponseKey } from './pages-response-r2.js';
+import { loadMaterializedR2Json, saveMaterializedR2Response } from './pages-response-r2.js';
 
 const MINUTE_MS = 60_000;
 export const OHISAMA_CURRENT_CADENCE_MS = 5 * MINUTE_MS;
 export const OHISAMA_HISTORY_CADENCE_MS = 24 * 60 * MINUTE_MS;
 export const OHISAMA_LIKES_CADENCE_MS = 6 * 60 * MINUTE_MS;
 
-const OHISAMA_PAGES_KEY = pagesR2ResponseKey('hinata');
 const DEFAULT_HEADERS = Object.freeze({
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'public, max-age=30, s-maxage=300, stale-while-revalidate=600',
@@ -24,29 +23,9 @@ function integer(value) {
   return Number.isFinite(number) ? Math.trunc(number) : null;
 }
 
-function bodyPayload(envelope) {
-  if (!envelope || Number(envelope.version) !== 1) return null;
-  try {
-    const payload = typeof envelope.body === 'string' ? JSON.parse(envelope.body) : envelope.body;
-    return payload?.model === 'hinata' ? payload : null;
-  } catch {
-    return null;
-  }
-}
-
-async function loadEnvelope(r2) {
-  if (!OHISAMA_PAGES_KEY || typeof r2?.get !== 'function') return null;
-  const object = await r2.get(OHISAMA_PAGES_KEY);
-  if (!object || typeof object.json !== 'function') return null;
-  try {
-    return await object.json();
-  } catch {
-    return null;
-  }
-}
-
 export async function loadOhisamaPublicationSnapshot(r2) {
-  return bodyPayload(await loadEnvelope(r2));
+  const payload = await loadMaterializedR2Json(r2, 'hinata').catch(() => null);
+  return payload?.model === 'hinata' ? payload : null;
 }
 
 function previousSectionTimestamp(previous, section, now) {
@@ -146,14 +125,13 @@ export async function mergeOhisamaPlaybackReadModelWithCadence(
   currentPayloadOverride = null,
 ) {
   const bucket = env?.PAGES_RESPONSE_R2;
-  if (!OHISAMA_PAGES_KEY || typeof bucket?.get !== 'function' || typeof bucket?.put !== 'function') {
+  if (typeof bucket?.get !== 'function' || typeof bucket?.put !== 'function') {
     return { published: false, refreshed: {} };
   }
 
-  const existingEnvelope = await loadEnvelope(bucket);
   const currentPayload = currentPayloadOverride?.model === 'hinata'
     ? currentPayloadOverride
-    : bodyPayload(existingEnvelope);
+    : await loadOhisamaPublicationSnapshot(bucket);
   if (!currentPayload) return { published: false, refreshed: {} };
 
   const built = buildOhisamaCadencedPayload(
@@ -163,24 +141,17 @@ export async function mergeOhisamaPlaybackReadModelWithCadence(
     collection,
     observedAt,
   );
-  const nextEnvelope = {
-    version: 1,
-    status: Number(existingEnvelope?.status) || 200,
-    headers: existingEnvelope?.headers || DEFAULT_HEADERS,
-    ...existingEnvelope,
-    updated_at: integer(observedAt),
-    cadence_seconds: OHISAMA_PAGES_CADENCE_SECONDS,
-    body: JSON.stringify(built.payload),
-  };
-  await bucket.put(OHISAMA_PAGES_KEY, JSON.stringify(nextEnvelope), {
-    httpMetadata: { contentType: 'application/json; charset=utf-8' },
-    customMetadata: {
-      version: '1',
-      model_key: 'hinata',
-      updated_at: String(integer(observedAt)),
-      cadence_seconds: String(OHISAMA_PAGES_CADENCE_SECONDS),
-    },
-  });
+  const saved = await saveMaterializedR2Response(
+    bucket,
+    'hinata',
+    JSON.stringify(built.payload),
+    200,
+    DEFAULT_HEADERS,
+    integer(observedAt),
+    OHISAMA_PAGES_CADENCE_SECONDS,
+    { model_key: 'hinata' },
+  );
+  if (!saved) return { published: false, refreshed: {} };
   return {
     published: true,
     refreshed: built.refreshed,
