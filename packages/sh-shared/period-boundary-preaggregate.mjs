@@ -2,7 +2,7 @@ import {
   currentPeriodKey,
   expectedPeriodBounds,
   periodBoundaryToleranceMs,
-} from './period-completeness.js';
+} from './period-completeness.mjs';
 
 const MODES = Object.freeze(['daily', 'weekly', 'monthly']);
 const PREAGGREGATE_STEP_MINUTES = 15;
