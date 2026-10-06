@@ -126,7 +126,7 @@ describe('YouTube playlist cloud startup', () => {
     expect(response.headers.get('location')).toBe(
       `https://www.youtube.com/watch?v=LmNoPqRsT12&list=${YOUTUBE_PLAYLIST_ID}`,
     );
-    expect(response.headers.get('x-homepanel-youtube-start')).toBe('cloud-stale-cache');
+    expect(response.headers.get('x-homepanel-youtube-start')).toBe('cloud-cache');
     expect(cache.match).toHaveBeenCalledTimes(1);
   });
 
