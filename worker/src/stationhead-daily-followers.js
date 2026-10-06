@@ -2,6 +2,7 @@ import {
   pagesR2ResponseKey,
   saveMaterializedR2Response,
 } from './pages-response-r2.js';
+import { STATIONHEAD_FOLLOWER_SOURCE, stationheadFollowerMembership } from './stationhead-follower-membership.js';
 
 const PROFILE_BASE = 'https://production1.stationhead.com/account/handle/';
 const AUTH_STATE_ID = 'stationhead';
@@ -9,10 +10,10 @@ const JST_OFFSET_MS = 9 * 60 * 60_000;
 const DEFAULT_TIMEOUT_MS = 8_000;
 const FOLLOWERS_READ_MODEL_KEY = 'followers';
 const FOLLOWERS_READ_MODEL_CADENCE_SECONDS = 24 * 60 * 60;
-const FOLLOWER_SOURCE_FIXED = 1;
-const FOLLOWER_SOURCE_BUDDIES = 2;
-const FOLLOWER_SOURCE_OHISAMA = 4;
-const FOLLOWER_SOURCE_NOGIZAKA = 8;
+const FOLLOWER_SOURCE_FIXED = STATIONHEAD_FOLLOWER_SOURCE.fixed;
+const FOLLOWER_SOURCE_BUDDIES = STATIONHEAD_FOLLOWER_SOURCE.buddies;
+const FOLLOWER_SOURCE_OHISAMA = STATIONHEAD_FOLLOWER_SOURCE.ohisama;
+const FOLLOWER_SOURCE_NOGIZAKA = STATIONHEAD_FOLLOWER_SOURCE.nogizaka;
 const JSON_HEADERS = Object.freeze({
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'public, max-age=30, s-maxage=300, stale-while-revalidate=600',
@@ -59,18 +60,7 @@ function orderedHandles(values) {
 }
 
 function followerMembership(handleValue, sourceMaskValue) {
-  const handle = normalizedHandle(handleValue);
-  const sourceMask = Number(sourceMaskValue || 0);
-  if (handle === 'sakurazaka46jp') return { affiliation: '櫻坂46公式', group: 'sakurazaka46' };
-  if (handle === 'nogizaka46smej') return { affiliation: '乃木坂46公式', group: 'nogizaka46' };
-  if (handle === 'nogifan1ch') return { affiliation: 'Nogizaka', group: 'nogizaka46' };
-  if (handle === 'sakuramankai' || handle === 'sakuramankai2') {
-    return { affiliation: 'Buddies', group: 'sakurazaka46' };
-  }
-  if (sourceMask & FOLLOWER_SOURCE_BUDDIES) return { affiliation: 'Buddies', group: 'sakurazaka46' };
-  if (sourceMask & FOLLOWER_SOURCE_OHISAMA) return { affiliation: 'Ohisama', group: 'hinatazaka46' };
-  if (sourceMask & FOLLOWER_SOURCE_NOGIZAKA) return { affiliation: 'Nogizaka', group: 'nogizaka46' };
-  return null;
+  return stationheadFollowerMembership(handleValue, sourceMaskValue);
 }
 
 function followerMemberships(handles, sourceMasks = {}) {
