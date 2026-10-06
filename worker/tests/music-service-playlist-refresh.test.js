@@ -19,7 +19,7 @@ test('Spotify and Apple Music playlist sweeps are dispatched at 02:00 and 14:00 
   assert.match(source, /minute === 0 && \[5, 17\]\.includes\(hour\)/);
   assert.match(source, /'music-playlist-refresh'/);
   assert.match(source, /'AMAZON_MUSIC_SCHEDULED'/);
-  assert.match(source, /MUSIC_PLAYLIST_REFRESH_CRON, scheduledAt/);
+  assert.match(source, /\['music-playlist-refresh', 'AMAZON_MUSIC_SCHEDULED', MUSIC_PLAYLIST_REFRESH_CRON, due\.playlists\]/);
 });
 
 test('playlist sweep entry bypasses the legacy Apple daily gate only for the full sweep', () => {
