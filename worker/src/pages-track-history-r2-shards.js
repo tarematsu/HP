@@ -2,7 +2,7 @@ import { canonicalizeTrackRows } from '../../packages/sh-shared/canonical-track-
 import {
   loadTrackHistoryData,
   TRACK_HISTORY_SQL,
-} from '../../site/functions/lib/track-history-restored-handler.js';
+} from '../../packages/sh-shared/track-history-restored-handler.mjs';
 import { mergeTrackRows } from '../../packages/sh-shared/track-history-merge.mjs';
 import { applyTrackPeriodCompleteness } from '../../packages/sh-shared/period-completeness.mjs';
 import { attachCompactTrackLikes } from '../../packages/sh-shared/track-likes.mjs';
