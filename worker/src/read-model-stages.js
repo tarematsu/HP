@@ -3,7 +3,7 @@ import {
   attachPlaybackReadModelTrackMetadata,
   loadPlaybackReadModelTrackMetadata,
 } from './read-model-stationhead-metadata.js';
-import { canonicalizeTrackRows } from '../../site/functions/lib/canonical-track-rows.js';
+import { canonicalizeTrackRows } from '../../packages/sh-shared/canonical-track-rows.mjs';
 import { queueNeedsPreservation } from './read-model-metadata-plan.js';
 import {
   sanitizeQueueTrackMetadata,
