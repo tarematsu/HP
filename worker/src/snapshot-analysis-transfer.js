@@ -95,7 +95,7 @@ export function restoreSnapshotAnalysis(snapshot, analysis) {
 }
 
 async function fallbackSnapshot(db, observedAt, data) {
-  const { saveLeanSnapshot } = await import('../../site/functions/lib/d1-lean-ingest.js');
+  const { saveLeanSnapshot } = await import('../../packages/sh-shared/d1-lean-ingest.mjs');
   return saveLeanSnapshot(db, observedAt, data);
 }
 
