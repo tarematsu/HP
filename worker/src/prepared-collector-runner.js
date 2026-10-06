@@ -16,6 +16,7 @@ import {
 } from './collector-state.js';
 import { recordQueueMaterialization } from './queue-materialization.js';
 import { jwtExpiryMs } from './shared.js';
+import { stationheadPlaybackEnabled } from './stationhead-playback-config.js';
 
 const RAW_D1_STATEMENT = Symbol('prepared-collector-raw-d1-statement');
 const PREPARED_COLLECTOR_FINALIZE = Symbol('prepared-collector-finalize');
@@ -247,7 +248,7 @@ export async function collectPreparedOnce(env, source = 'raw-collection-queue') 
       observedAt,
       metadataRetry,
     );
-    const r2PlaybackMode = enabled(activeEnv?.BUDDIES_R2_PLAYBACK_ENABLED);
+    const r2PlaybackMode = stationheadPlaybackEnabled(activeEnv);
 
     let snapshotResult = null;
     if (plan.snapshot) {
