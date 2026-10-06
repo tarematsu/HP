@@ -15,7 +15,6 @@ import {
   STATIONHEAD_READ_MODEL_RECOVERY_GAP_MS,
 } from './stationhead-read-model-state.js';
 
-const FIVE_MINUTES_MS = 5 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
 const HOUR_MS = 60 * 60_000;
 const INCREMENTAL_GAP_LIMIT_MS = STATIONHEAD_READ_MODEL_INCREMENTAL_GAP_MS;
@@ -42,11 +41,6 @@ function positiveInteger(value) {
 function normalizedText(value) {
   const result = String(value ?? '').trim();
   return result || null;
-}
-
-function stationheadFiveMinuteBucket(value) {
-  const timestamp = finite(value);
-  return timestamp == null ? null : Math.floor(timestamp / FIVE_MINUTES_MS) * FIVE_MINUTES_MS;
 }
 
 function jstCycleStart(now, cutoffHour) {
