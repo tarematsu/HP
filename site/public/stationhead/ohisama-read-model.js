@@ -30,11 +30,18 @@ export function ohisamaModel() {
       return normalizePlayedRows(payload.rows);
     },
     async loadLikes(options) {
-      const payload = await fetchJson(
-        '/api/track-history?source=ohisama&ranking_only=1&ranking_limit=500',
-        options,
-      );
-      return normalizeLikes(payload.ranking)
+      let rows;
+      try {
+        const payload = await fetchJson(
+          '/api/track-history?source=ohisama&ranking_only=1&ranking_limit=500',
+          options,
+        );
+        rows = payload.ranking;
+      } catch {
+        // Transitional compatibility for PR assets running against a pre-source API deployment.
+        rows = (await all(options)).likes;
+      }
+      return normalizeLikes(rows)
         .filter((row) => !row.artist || row.artist.normalize('NFKC').includes('日向坂46'));
     },
     async loadBroadcasts() { return { rows: [], series: [], collection_active: false }; },
