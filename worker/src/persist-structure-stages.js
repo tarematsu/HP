@@ -1,5 +1,5 @@
 import { bool, num, rawJson, text } from '../../packages/sh-shared/api-utils.mjs';
-import { prepared, runPreparedD1Batches } from '../../site/functions/lib/d1-batch.js';
+import { prepared, runPreparedD1Batches } from '../../packages/sh-shared/d1-batch.mjs';
 import {
   normalizedTrackIsrc,
   normalizedTrackSpotifyId,
