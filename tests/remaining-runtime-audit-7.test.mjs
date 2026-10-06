@@ -50,7 +50,7 @@ test('queue items and latest likes share one D1 read batch', async () => {
 });
 
 test('Stationhead comment velocity runtime is retired', () => {
-  const ingest = readFileSync(new URL('../site/functions/lib/ingest.js', import.meta.url), 'utf8');
+  const ingest = readFileSync(new URL('../packages/sh-shared/ingest.mjs', import.meta.url), 'utf8');
   assert.doesNotMatch(ingest, /saveCommentCounts|COMMENT_VELOCITY_UPDATE_SQL/);
 });
 
