@@ -38,6 +38,6 @@ test('scheduled relaunch performs one foreground click after startup', () => {
   assert.match(app, /SetCursorPos\(clickPoint\.x, clickPoint\.y\)/);
   assert.match(app, /MOUSEEVENTF_LEFTDOWN/);
   assert.match(app, /MOUSEEVENTF_LEFTUP/);
-  assert.match(app, /SendInput\(_countof\(inputs\), inputs, sizeof\(INPUT\)\)/);
+  assert.match(app, /const UINT sent = SendInput\(inputCount, inputs, sizeof\(INPUT\)\)/);
   assert.match(app, /postRestartClickPending_ = false/);
 });
