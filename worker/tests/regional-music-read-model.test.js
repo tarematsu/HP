@@ -239,7 +239,7 @@ test('unchanged legacy service source keeps its previous read-model update time 
     PAGES_RESPONSE_R2:{
       put(){throw new Error('must not write');},
       async get(key) {
-        if(key===existingKey) return {async json(){return structuredClone(existingEnvelope);}};
+        if(key===existingKey) return {body: true, async json(){return structuredClone(existingEnvelope);}};
         return null;
       },
     },

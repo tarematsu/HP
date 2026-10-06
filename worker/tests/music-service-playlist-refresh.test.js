@@ -18,7 +18,7 @@ test('Spotify and Apple Music playlist sweeps are dispatched at 02:00 and 14:00 
   assert.match(source, /MUSIC_PLAYLIST_REFRESH_CRON/);
   assert.match(source, /minute === 0 && \[5, 17\]\.includes\(hour\)/);
   assert.match(source, /'music-playlist-refresh'/);
-  assert.match(source, /env\?\.AMAZON_MUSIC_SCHEDULED/);
+  assert.match(source, /'AMAZON_MUSIC_SCHEDULED'/);
   assert.match(source, /MUSIC_PLAYLIST_REFRESH_CRON, scheduledAt/);
 });
 

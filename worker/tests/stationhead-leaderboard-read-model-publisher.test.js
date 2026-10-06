@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { publishStationheadLeaderboardReadModel } from '../scripts/publish-stationhead-leaderboard-read-model.mjs';
+import { leaderboardPublication } from '../src/leaderboard-publication.js';
+import { publishReadModelR2 } from '../src/read-model-r2.js';
 import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 
-test('leaderboard publishes to its own Actions R2 key independently of followers', async () => {
+test('leaderboard publishes to its own canonical R2 key independently of followers', async () => {
   const model = {
     version: 3,
     refreshed_at: 1_790_000_000_000,
@@ -14,31 +15,31 @@ test('leaderboard publishes to its own Actions R2 key independently of followers
     ranking_weeks: ['2026-09-28'],
     weekly_metrics: [],
   };
-  const stored = {
-    payload_json: JSON.stringify(model),
-    source_max_ranking_date: model.source_max_ranking_date,
-    refreshed_at: model.refreshed_at,
-  };
-  const db = {
-    prepare(sql) {
-      assert.match(sql, /sh_weekly_ranking_read_model/);
-      return { async first() { return stored; } };
+  const publication = leaderboardPublication(model, model.refreshed_at, {
+    source_digest: 'digest-1',
+  });
+  const writes = [];
+  const bucket = {
+    async put(key, body, options) {
+      writes.push({ key, body, options });
     },
   };
-  const writes = [];
 
-  const result = await publishStationheadLeaderboardReadModel({
-    db,
-    upload: (key, payload) => writes.push({ key, payload }),
+  const result = await publishReadModelR2(bucket, 'leaderboard', publication.body, {
+    status: publication.status,
+    headers: publication.headers,
+    updatedAt: publication.updated_at,
+    cadenceSeconds: publication.cadence_seconds,
+    metadata: { source_digest: publication.source_digest },
   });
 
   const leaderboardKey = pagesR2ResponseKey('leaderboard');
   assert.notEqual(leaderboardKey, pagesR2ResponseKey('followers'));
-  assert.equal(result.model_key, 'leaderboard');
   assert.equal(result.object_key, leaderboardKey);
   assert.equal(writes.length, 1);
   assert.equal(writes[0].key, leaderboardKey);
-  assert.equal(writes[0].payload.updated_at, model.refreshed_at);
-  assert.equal(writes[0].payload.cadence_seconds, 7 * 24 * 60 * 60);
-  assert.deepEqual(JSON.parse(writes[0].payload.body), model);
+  assert.deepEqual(JSON.parse(writes[0].body), model);
+  assert.equal(writes[0].options.customMetadata.updated_at, String(model.refreshed_at));
+  assert.equal(writes[0].options.customMetadata.cadence_seconds, String(7 * 24 * 60 * 60));
+  assert.equal(writes[0].options.customMetadata.source_digest, 'digest-1');
 });
