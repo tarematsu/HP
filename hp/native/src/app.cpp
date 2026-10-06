@@ -9,6 +9,9 @@ namespace {
 constexpr wchar_t kWindowClass[] = L"HomePanelNativeWindow";
 constexpr uint32_t kFastTickMs = 2000;
 constexpr uint32_t kMaxAppTimerMs = 24U * 60U * 60U * 1000U;
+constexpr int kDailyRestartLocalHour = 20;
+constexpr int64_t kDayMs = 24LL * 60LL * 60LL * 1000LL;
+constexpr int64_t kPostRestartClickDelayMs = 1'500;
 constexpr wchar_t kStationheadOzekiProfile[] = L"spotify-v2-6";
 constexpr std::array<const wchar_t*, 5> kStationheadPeerProfiles{
     L"spotify-v2-1",
@@ -25,9 +28,24 @@ uint32_t NextDelayFromDeadline(int64_t now, int64_t deadline, uint32_t fallbackM
   return static_cast<uint32_t>(std::clamp<int64_t>(delta, 1, fallbackMs));
 }
 
+int64_t MillisecondsUntilNextDailyRestart() {
+  SYSTEMTIME local{};
+  GetLocalTime(&local);
+  const int64_t nowOfDayMs =
+      (((static_cast<int64_t>(local.wHour) * 60 + local.wMinute) * 60 + local.wSecond) * 1000) +
+      local.wMilliseconds;
+  const int64_t targetMs = static_cast<int64_t>(kDailyRestartLocalHour) * 60 * 60 * 1000;
+  int64_t delayMs = targetMs - nowOfDayMs;
+  if (delayMs <= 0) delayMs += kDayMs;
+  return delayMs;
 }
 
-App::App(HINSTANCE instance) : instance_(instance) { current_ = this; }
+}
+
+App::App(HINSTANCE instance, bool postRestartClick)
+    : instance_(instance), postRestartClickPending_(postRestartClick) {
+  current_ = this;
+}
 
 App::~App() {
   StopServices();
@@ -143,6 +161,7 @@ void App::StartServices() {
       L"Six Stationhead windows prepared with existing spotify-v2-1 through spotify-v2-6 WebView2 profiles");
 
   startupAt_ = UnixMillis();
+  nextDailyRestartAt_ = startupAt_ + MillisecondsUntilNextDailyRestart();
 
   // Stage 1: initialize the native dashboard and YouTube/MV WebView immediately.
   // Every Stationhead window uses the former six media profiles and starts at a
@@ -166,6 +185,10 @@ void App::StartServices() {
   ShowWindow(window_, startupShowCommand_);
   UpdateWindow(window_);
   ScheduleNextTick(kFastTickMs);
+  if (postRestartClickPending_) {
+    postRestartClickAt_ = UnixMillis() + kPostRestartClickDelayMs;
+    ScheduleNextTick(static_cast<uint32_t>(kPostRestartClickDelayMs));
+  }
 
   const std::wstring deviceToken = LoadProtectedToken(dataDir_ / L"device-token.dat", L"HOMEPANEL_DEVICE_TOKEN");
   const std::wstring actionToken = LoadProtectedToken(dataDir_ / L"action-token.dat", L"HOMEPANEL_ACTION_TOKEN");
@@ -265,9 +288,22 @@ void App::StopServices() {
 }
 
 void App::Tick() {
-  if (!renderer_ || !sensors_ || !cloud_) return;
   const int64_t now = UnixMillis();
 
+  if (nextDailyRestartAt_ > 0 && now >= nextDailyRestartAt_) {
+    logger_->Info(L"Scheduled 20:00 local restart requested");
+    exitCode_ = kScheduledRestartExitCode;
+    DestroyWindow(window_);
+    return;
+  }
+
+  if (postRestartClickPending_ && postRestartClickAt_ > 0 && now >= postRestartClickAt_) {
+    PerformPostRestartClick();
+    postRestartClickPending_ = false;
+    postRestartClickAt_ = 0;
+  }
+
+  if (!renderer_ || !sensors_ || !cloud_) return;
   StartDeferredServices(now);
 
   std::array<StationheadStatus, kStationheadPeerCount> peerStatuses{};
@@ -402,7 +438,79 @@ void App::Tick() {
         nextTickMs,
         NextDelayFromDeadline(now, toastUntil_, kMaxAppTimerMs));
   }
+  if (nextDailyRestartAt_ > 0) {
+    nextTickMs = std::min(
+        nextTickMs,
+        NextDelayFromDeadline(now, nextDailyRestartAt_, kMaxAppTimerMs));
+  }
+  if (postRestartClickPending_ && postRestartClickAt_ > 0) {
+    nextTickMs = std::min(
+        nextTickMs,
+        NextDelayFromDeadline(now, postRestartClickAt_, kMaxAppTimerMs));
+  }
   ScheduleNextTick(nextTickMs);
+}
+
+void App::PerformPostRestartClick() {
+  if (!window_ || !IsWindow(window_)) return;
+
+  ShowWindow(window_, SW_SHOW);
+  SetForegroundWindow(window_);
+  SetActiveWindow(window_);
+  SetFocus(window_);
+
+  RECT client{};
+  if (!GetClientRect(window_, &client) || client.right <= client.left || client.bottom <= client.top) {
+    logger_->Warn(L"Post-restart focus applied, but click skipped because client bounds were unavailable");
+    return;
+  }
+
+  const LONG width = client.right - client.left;
+  const LONG height = client.bottom - client.top;
+  const std::array<POINT, 8> candidates{{
+      {4, 4},
+      {width - 5, 4},
+      {4, height - 5},
+      {width - 5, height - 5},
+      {width / 2, 4},
+      {4, height / 2},
+      {width - 5, height / 2},
+      {width / 2, height - 5},
+  }};
+
+  POINT clickPoint{4, 4};
+  bool foundDirectSurface = false;
+  for (POINT candidate : candidates) {
+    if (candidate.x < 0 || candidate.y < 0 || candidate.x >= width || candidate.y >= height) continue;
+    POINT screenPoint = candidate;
+    if (!ClientToScreen(window_, &screenPoint)) continue;
+    if (WindowFromPoint(screenPoint) == window_) {
+      clickPoint = screenPoint;
+      foundDirectSurface = true;
+      break;
+    }
+  }
+  if (!foundDirectSurface) {
+    clickPoint = POINT{4, 4};
+    if (!ClientToScreen(window_, &clickPoint)) return;
+  }
+
+  if (!SetCursorPos(clickPoint.x, clickPoint.y)) {
+    logger_->Warn(L"Post-restart focus applied, but cursor placement failed");
+    return;
+  }
+
+  INPUT inputs[2]{};
+  inputs[0].type = INPUT_MOUSE;
+  inputs[0].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+  inputs[1].type = INPUT_MOUSE;
+  inputs[1].mi.dwFlags = MOUSEEVENTF_LEFTUP;
+  const UINT sent = SendInput(_countof(inputs), inputs, sizeof(INPUT));
+  if (sent == _countof(inputs)) {
+    logger_->Info(L"Post-restart dashboard click completed");
+  } else {
+    logger_->Warn(L"Post-restart dashboard click was not fully injected");
+  }
 }
 
 void App::Draw() {
