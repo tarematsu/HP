@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { ROUTES, navigationForMode } from '../public/dashboard-navigation-config.js';
+import { normalizeStationheadFollowers } from '../public/followers-read-model.js';
 
 const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const route = dashboardRouterSource();
@@ -77,4 +78,17 @@ test('Stationhead follower adapter reads only the materialized public API', () =
   assert.match(readModel, /loadDashboardJson\('\/api\/followers'/);
   assert.doesNotMatch(route, /OTHER_DB|MINUTE_DB|\.prepare\(/);
   assert.match(workerConfig, /"binding": "PAGES_RESPONSE_R2"/);
+});
+
+
+test('nogifan1ch is always presented as Nogizaka even when an older payload says Buddies', () => {
+  const model = normalizeStationheadFollowers({
+    handles: ['nogifan1ch'],
+    rows: [{ date: '2026-10-06', nogifan1ch: 123 }],
+    accounts: [{ handle: 'nogifan1ch', followers: 123, affiliation: 'Buddies', group: 'sakurazaka46' }],
+    memberships: { nogifan1ch: { affiliation: 'Buddies', group: 'sakurazaka46' } },
+  });
+  const account = model.accounts.find((row) => row.id === 'nogifan1ch');
+  assert.equal(account?.affiliation, 'Nogizaka');
+  assert.equal(account?.group, 'nogizaka46');
 });
