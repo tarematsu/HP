@@ -130,6 +130,13 @@ export async function resolveYoutubePlaylistStart(dependencies = {}) {
   if (!dependencies.disableCache && cachedStart && cachedStart.expiresAt > now) {
     return { ...cachedStart.value, cached: true };
   }
+  if (!dependencies.disableCache) {
+    const persistent = await readPersistentCachedStart(dependencies);
+    if (persistent) {
+      cachedStart = { value: persistent, expiresAt: now + CACHE_TTL_MS };
+      return persistent;
+    }
+  }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), RESOLVE_TIMEOUT_MS);
