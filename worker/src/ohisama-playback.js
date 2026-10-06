@@ -331,7 +331,7 @@ function trackHistoryRows(daily) {
 }
 
 async function publishOhisamaTrackHistoryDay(bucket, daily, observedAt) {
-  const row = daily?.tracks ? daily : playbackDailyPublic(daily);
+  const row = Array.isArray(daily?.tracks) ? daily : playbackDailyPublic(daily);
   if (!row?.period_key) return null;
   return saveTrackHistoryDayReadModel(
     bucket,
