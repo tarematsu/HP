@@ -1,4 +1,3 @@
-import { captureBuddiesPlayback } from './buddies-playback-state.js';
 import { asCollectorFailure } from './collector-failure.js';
 import { configFromEnv } from './collector-config.js';
 import { ingest } from './collector-ingest.js';
@@ -17,6 +16,7 @@ import {
 import { recordQueueMaterialization } from './queue-materialization.js';
 import { jwtExpiryMs } from './shared.js';
 import { stationheadPlaybackEnabled } from './stationhead-playback-config.js';
+import { stationheadPlaybackCapture } from './stationhead-source-runtime.js';
 
 const RAW_D1_STATEMENT = Symbol('prepared-collector-raw-d1-statement');
 const PREPARED_COLLECTOR_FINALIZE = Symbol('prepared-collector-finalize');
@@ -248,7 +248,8 @@ export async function collectPreparedOnce(env, source = 'raw-collection-queue') 
       observedAt,
       metadataRetry,
     );
-    const r2PlaybackMode = stationheadPlaybackEnabled(activeEnv);
+    const playbackCapture = stationheadPlaybackCapture(config.channelAlias);
+    const r2PlaybackMode = stationheadPlaybackEnabled(activeEnv) && Boolean(playbackCapture);
 
     let snapshotResult = null;
     if (plan.snapshot) {
@@ -263,7 +264,7 @@ export async function collectPreparedOnce(env, source = 'raw-collection-queue') 
     if (plan.queue) {
       if (r2PlaybackMode) {
         stage = 'r2_playback_capture';
-        playbackResult = await captureBuddiesPlayback(activeEnv, queue, observedAt);
+        playbackResult = await playbackCapture(activeEnv, queue, observedAt);
       } else {
         stage = 'd1_write_queue';
         queueResult = await ingest(activeEnv, 'queue', queue, observedAt, {
