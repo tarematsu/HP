@@ -137,11 +137,14 @@ test('ohisama follower target requires a handle observed during an active broadc
   assert.equal(runs, 1);
 });
 
-test('ohisama auth acquisition is fixed to ILYS while collection remains ohisama', () => {
+test('ohisama auth acquisition uses shared guest session with the ILYS verification hook', () => {
   const source = readFileSync(new URL('../src/ohisama-collector-optimized.js', import.meta.url), 'utf8');
+  const guestSession = readFileSync(new URL('../src/stationhead-guest-session.js', import.meta.url), 'utf8');
   assert.match(source, /DEFAULT_AUTH_HANDLE = 'ilys'/);
-  assert.match(source, /STATIONHEAD_AUTH_PAGE_URL/);
-  assert.match(source, /station\/handle\/\$\{encodeURIComponent\(authHandle\)\}\/guest/);
+  assert.match(source, /acquireStationheadGuestSession/);
+  assert.match(source, /verifyHandle: authHandle/);
+  assert.match(guestSession, /STATIONHEAD_AUTH_PAGE_URL/);
+  assert.match(guestSession, /station\/handle\/\$\{encodeURIComponent\(handle\)\}\/guest/);
   assert.match(source, /env\.CHANNEL_ALIAS \|\| 'ohisama'/);
 });
 
