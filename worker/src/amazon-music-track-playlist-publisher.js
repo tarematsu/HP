@@ -1,5 +1,5 @@
 import { AMAZON_MUSIC_TRACK_PLAYLIST_MODEL_KEY } from './amazon-music-track-playlist-collector.js';
-import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
+import { pagesR2ResponseKey } from './pages-response-r2.js';
 
 export const AMAZON_MUSIC_TRACK_PLAYLIST_PAGES_MODEL_KEY = 'amazon-music-playlists';
 
@@ -30,7 +30,7 @@ export async function publishAmazonMusicTrackPlaylistModel(env, observedAt = Dat
   if (!model) return { published: false, reason: 'model-empty' };
 
   const now = Number(observedAt) || Date.now();
-  const key = pagesActionsR2ResponseKey(AMAZON_MUSIC_TRACK_PLAYLIST_PAGES_MODEL_KEY);
+  const key = pagesR2ResponseKey(AMAZON_MUSIC_TRACK_PLAYLIST_PAGES_MODEL_KEY);
   if (!key) throw new Error('Amazon Music playlist public read-model key is unavailable');
   const body = JSON.stringify({ ok: true, ...model });
   const envelope = {

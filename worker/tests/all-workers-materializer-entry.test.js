@@ -34,7 +34,8 @@ test('Pages history materialization is isolated in the scheduled collection Work
   const workflow = source('../../.github/workflows/run-pages-read-model-rebuild.yml');
   const scheduled = JSON.parse(source('../wrangler.scheduled-collection-jobs.jsonc'));
   const entry = source('../src/scheduled-collection-jobs-entry.js');
-  const responseStore = source('../src/pages-response-r2.js');
+  const responseR2 = source('../src/pages-response-r2.js');
+  const responseStore = source('../src/pages-response-store.js');
 
   assert.match(workflow, /workflow_dispatch:/);
   assert.doesNotMatch(workflow, /schedule:|workflow_run:|cron:/);
@@ -46,7 +47,9 @@ test('Pages history materialization is isolated in the scheduled collection Work
   assert.match(entry, /HISTORY_READ_MODEL_RECOVERY_CRON/);
   assert.match(entry, /refreshLeaderboard[\s\S]*enqueueHistory/);
 
-  assert.match(responseStore, /pages-response\/v1/);
+  assert.match(responseR2, /pages-response\/v1/);
+  assert.doesNotMatch(responseR2, /pages-response\/actions-v2|pagesActionsR2ResponseKey|saveMaterializedActionsR2Response/);
   assert.match(responseStore, /pages-response\/actions-v2/);
+  assert.match(responseStore, /loadMaterializedR2Response/);
   assert.doesNotMatch(responseStore, /pages-response\/actions-v1/);
 });

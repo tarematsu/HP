@@ -5,7 +5,7 @@ import test from 'node:test';
 import { TRACK_HISTORY_DAY_INDEX_KEY } from '../worker/src/pages-track-history-day-index.js';
 import { loadTrackHistoryR2ApiResponse } from '../worker/src/pages-track-history-r2-api.js';
 import { trackHistoryDayObjectKey } from '../worker/src/pages-track-history-r2-shards.js';
-import { pagesActionsR2ResponseKey } from '../worker/src/pages-response-r2.js';
+import { pagesR2ResponseKey } from '../worker/src/pages-response-r2.js';
 
 class FakeR2 {
   constructor(entries = {}) {
@@ -91,15 +91,29 @@ test('missing ranking model fails instead of reporting an empty ranking as succe
   assert.equal(response.status, 503);
   assert.equal((await response.json()).ok, false);
   assert.deepEqual(r2.gets, [
-    pagesActionsR2ResponseKey('track-history-status'),
-    'pages-response/v1/track-history-status.json',
-    'pages-response/v1/track-history.json',
+    pagesR2ResponseKey('track-history-status'),
+    pagesR2ResponseKey('track-history'),
   ]);
 });
 
-test('Likes reads ranking published by scheduled Actions without the full history object', async () => {
+test('regular Track History response also fails closed when its ranking model is missing', async () => {
+  const r2 = fakeR2();
+  const response = await loadTrackHistoryR2ApiResponse(
+    r2,
+    new Request('https://internal/api/track-history?from=2026-09-21&to=2026-09-22'),
+    1_000,
+  );
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).ok, false);
+  assert.deepEqual(r2.gets.slice(-2), [
+    pagesR2ResponseKey('track-history-status'),
+    pagesR2ResponseKey('track-history'),
+  ]);
+});
+
+test('Likes reads the canonical ranking model without requiring the full history object', async () => {
   const calls = [];
-  const statusKey = pagesActionsR2ResponseKey('track-history-status');
+  const statusKey = pagesR2ResponseKey('track-history-status');
   const response = await loadTrackHistoryR2ApiResponse({
     async get(key) {
       calls.push(key);
@@ -130,5 +144,6 @@ test('Pages middleware routes Track History to R2 and fail-closes instead of fal
   assert.match(source, /SERVICE_MATERIALIZED_MODEL_KEYS[\s\S]*TRACK_HISTORY_MODEL_KEY/);
   assert.match(source, /pathname === '\/api\/track-history' \? TRACK_HISTORY_MODEL_KEY/);
   assert.match(source, /url\.searchParams\.set\('api', '1'\)/);
-  assert.match(source, /const LIVE_PAGES_FALLBACK_MODEL_KEYS = new Set\(\)/);
+  assert.match(source, /return materializedUnavailable\(modelKey\);/);
+  assert.doesNotMatch(source, /LIVE_PAGES_FALLBACK_MODEL_KEYS|x-materialized-fallback|pages_live_fallback_unavailable/);
 });

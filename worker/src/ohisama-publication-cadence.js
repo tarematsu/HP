@@ -1,5 +1,5 @@
 import { OHISAMA_PAGES_CADENCE_SECONDS } from './ohisama-read-model.js';
-import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
+import { pagesR2ResponseKey } from './pages-response-r2.js';
 
 const MINUTE_MS = 60_000;
 export const OHISAMA_CURRENT_CADENCE_MS = 5 * MINUTE_MS;
@@ -7,7 +7,7 @@ export const OHISAMA_HISTORY_CADENCE_MS = 24 * 60 * MINUTE_MS;
 export const OHISAMA_PLAYED_CADENCE_MS = 24 * 60 * MINUTE_MS;
 export const OHISAMA_LIKES_CADENCE_MS = 6 * 60 * MINUTE_MS;
 
-const OHISAMA_PAGES_KEY = pagesActionsR2ResponseKey('hinata');
+const OHISAMA_PAGES_KEY = pagesR2ResponseKey('hinata');
 const DEFAULT_HEADERS = Object.freeze({
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'public, max-age=30, s-maxage=300, stale-while-revalidate=600',

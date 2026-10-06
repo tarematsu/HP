@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import { directFiveMinuteStreamHistory } from '../../site/functions/lib/dashboard-chart-support.js';
-import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 
 const FIVE_MINUTES_MS = 5 * 60_000;
@@ -12,7 +12,7 @@ const wranglerScript = resolve(workerRoot, 'node_modules/wrangler/bin/wrangler.j
 const responseBucket = process.env.PAGES_RESPONSE_BUCKET || 'sh-pages-responses';
 const factsDatabase = process.env.FACTS_DATABASE_NAME || 'stationhead-minute';
 const buddiesDatabase = process.env.BUDDIES_DATABASE_NAME || 'stationhead-buddies';
-const dashboardKey = pagesActionsR2ResponseKey('dashboard');
+const dashboardKey = pagesR2ResponseKey('dashboard');
 const hotStateKey = 'stationhead/buddies/dashboard-hot-state.json';
 
 function wrangler(args, options = {}) {

@@ -10,7 +10,7 @@ const dashboardReadModel = readFileSync(new URL('../../site/public/stationhead/b
 test('committed live minute facts immediately publish the current dashboard model', () => {
   assert.match(fastStore, /await timedStage\('upsert_minute_fact'/);
   assert.match(fastStore, /await publishCurrentDashboard\(env, input, fact\)/);
-  assert.match(publisher, /pagesActionsR2ResponseKey\('dashboard'\)/);
+  assert.match(publisher, /pagesR2ResponseKey\('dashboard'\)/);
   assert.match(publisher, /BUDDIES_DASHBOARD_HOT_STATE_KEY/);
   assert.match(publisher, /saveHotState\(bucket, payload, now\)/);
   assert.match(publisher, /savePublicEnvelope\(bucket, payload, now\)/);

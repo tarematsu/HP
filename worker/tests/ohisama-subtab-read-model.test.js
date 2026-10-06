@@ -20,7 +20,7 @@ test('Ohisama publishes every subtab from the single hinata materialized model',
   assert.match(readModel, /OHISAMA_PAGES_MODEL_KEY = 'hinata'/);
   assert.match(pagesEntry, /refreshOptimizedOhisamaReadModel/);
   assert.match(pagesEntry, /mergeOhisamaPlaybackReadModel/);
-  assert.match(playback, /pagesActionsR2ResponseKey\('hinata'\)/);
+  assert.match(playback, /pagesR2ResponseKey\('hinata'\)/);
 
   for (const field of SUBTAB_FIELDS) {
     assert.match(`${readModel}\n${playback}`, new RegExp(`\\b${field}\\b`), `missing read-model field ${field}`);
@@ -33,6 +33,6 @@ test('Ohisama publishes every subtab from the single hinata materialized model',
 });
 
 test('Ohisama subtab publication does not create separate per-tab D1 read paths', () => {
-  assert.doesNotMatch(playback, /pagesActionsR2ResponseKey\('hinata-(?:current|history|played-tracks|likes)'\)/);
+  assert.doesNotMatch(playback, /pagesR2ResponseKey\('hinata-(?:current|history|played-tracks|likes)'\)/);
   assert.doesNotMatch(pagesEntry, /track-history|dashboard-details/);
 });

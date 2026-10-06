@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { publishStationheadLeaderboardReadModel } from '../scripts/publish-stationhead-leaderboard-read-model.mjs';
-import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 
 test('leaderboard publishes to its own Actions R2 key independently of followers', async () => {
   const model = {
@@ -32,8 +32,8 @@ test('leaderboard publishes to its own Actions R2 key independently of followers
     upload: (key, payload) => writes.push({ key, payload }),
   });
 
-  const leaderboardKey = pagesActionsR2ResponseKey('leaderboard');
-  assert.notEqual(leaderboardKey, pagesActionsR2ResponseKey('followers'));
+  const leaderboardKey = pagesR2ResponseKey('leaderboard');
+  assert.notEqual(leaderboardKey, pagesR2ResponseKey('followers'));
   assert.equal(result.model_key, 'leaderboard');
   assert.equal(result.object_key, leaderboardKey);
   assert.equal(writes.length, 1);

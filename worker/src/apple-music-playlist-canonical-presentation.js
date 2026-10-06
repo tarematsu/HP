@@ -4,7 +4,7 @@ import {
   loadTitleArtistIdentityRows,
 } from './track-title-artist-identity.js';
 import { APPLE_MUSIC_PLAYLIST_PAGES_MODEL_KEY } from './apple-music-playlist-collector.js';
-import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
+import { pagesR2ResponseKey } from './pages-response-r2.js';
 
 const LATEST_KEY = 'apple-music/playlists/latest.json';
 const PRESENTATION_VERSION = 2;
@@ -172,7 +172,7 @@ function dueForRefresh(model, now, force) {
 
 async function publishModel(r2, model, observedAt) {
   const body = JSON.stringify({ ok: true, ...model });
-  const key = pagesActionsR2ResponseKey(APPLE_MUSIC_PLAYLIST_PAGES_MODEL_KEY);
+  const key = pagesR2ResponseKey(APPLE_MUSIC_PLAYLIST_PAGES_MODEL_KEY);
   if (!key) throw new Error('Apple Music playlist public read-model key is unavailable');
   const previousEnvelope = await getJson(r2, key);
   const sourceRevision = `apple-music-playlists:${model.scan_date}:${observedAt}:canonical-${PRESENTATION_VERSION}`;

@@ -3,10 +3,10 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { publishDashboardFallbackFromMinuteFact } from '../src/pages-dashboard-live-fallback.js';
-import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 
 const HOT_STATE_KEY = 'stationhead/buddies/dashboard-hot-state.json';
-const DASHBOARD_KEY = pagesActionsR2ResponseKey('dashboard');
+const DASHBOARD_KEY = pagesR2ResponseKey('dashboard');
 
 class FakeR2 {
   constructor(initial = new Map()) {

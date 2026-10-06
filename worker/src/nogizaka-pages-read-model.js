@@ -1,5 +1,5 @@
 import { formatNogizakaBroadcastContent } from '../../site/functions/api/nogizaka-listening-party.js';
-import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
+import { pagesR2ResponseKey } from './pages-response-r2.js';
 
 export const NOGIZAKA_LISTENING_PARTY_MODEL_KEY = 'nogizaka-listening-party';
 export const NOGIZAKA_LISTENING_PARTY_CADENCE_SECONDS = 60;
@@ -247,7 +247,7 @@ export async function publishNogizakaListeningPartyReadModel(env, now = Date.now
   if (typeof r2?.put !== 'function') throw new Error('PAGES_RESPONSE_R2 binding is missing');
   const updatedAt = Number(now) || Date.now();
   const payload = await buildNogizakaListeningPartyReadModel(env, updatedAt);
-  const key = pagesActionsR2ResponseKey(NOGIZAKA_LISTENING_PARTY_MODEL_KEY);
+  const key = pagesR2ResponseKey(NOGIZAKA_LISTENING_PARTY_MODEL_KEY);
   if (!key) throw new Error('Nogizaka listening-party Pages read-model key is invalid');
   const envelope = {
     version: 1,

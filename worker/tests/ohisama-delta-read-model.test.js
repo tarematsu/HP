@@ -6,7 +6,7 @@ import {
   refreshOptimizedOhisamaReadModel,
 } from '../src/ohisama-read-model-optimized.js';
 import { mergeOhisamaPlaybackReadModelWithCadence } from '../src/ohisama-publication-cadence.js';
-import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 
 class FakeR2 {
   constructor(initial = new Map()) {
@@ -177,7 +177,7 @@ test('Ohisama public model can be published once from private hot payload', asyn
 
   assert.equal(result.published, true);
   assert.equal(r2.puts, 1);
-  const raw = r2.values.get(pagesActionsR2ResponseKey('hinata'));
+  const raw = r2.values.get(pagesR2ResponseKey('hinata'));
   const envelope = JSON.parse(raw);
   const body = JSON.parse(envelope.body);
   assert.equal(body.latest.host_handle, 'host-a');

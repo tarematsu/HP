@@ -1,5 +1,5 @@
 import { canonicalizeTrackRows } from '../../site/functions/lib/canonical-track-rows.js';
-import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
+import { pagesR2ResponseKey } from './pages-response-r2.js';
 
 export const SPOTIFY_PLAYLIST_PAGES_MODEL_KEY = 'spotify-playlists';
 export const SPOTIFY_PLAYLIST_STATE_KEY = 'spotify/playlists/state.json';
@@ -413,7 +413,7 @@ async function publicModel(entries, env, observedAt, seedResults, scannedCount) 
 
 async function publishReadModel(r2, model, observedAt) {
   const body = JSON.stringify({ ok: true, ...model });
-  const objectKey = pagesActionsR2ResponseKey(SPOTIFY_PLAYLIST_PAGES_MODEL_KEY);
+  const objectKey = pagesR2ResponseKey(SPOTIFY_PLAYLIST_PAGES_MODEL_KEY);
   if (!objectKey) throw new Error('Spotify playlist public read-model key is unavailable');
   const envelope = {
     version: 1,

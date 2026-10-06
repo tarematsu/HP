@@ -23,7 +23,7 @@ test('repair layers use isolated lightweight, four-hour, and daily cadences', ()
   assert.equal(cron(dataRepair), '31 */4 * * *');
   assert.equal(cron(dailyDeep), '46 0 * * *');
   assert.equal(cron(metadata), '16 0 * * *');
-  assert.equal(cron(pages), '26 0 * * *');
+  assert.equal(cron(pages), '');
   assert.equal(cron(repair), '23 4 * * *');
 
   assert.match(runtime, /RUNTIME_MAINTENANCE_COLLECTOR_ID: other-cron/);
@@ -45,8 +45,8 @@ test('repair layers use isolated lightweight, four-hour, and daily cadences', ()
   assert.match(dailyDeep, /RUNTIME_MAINTENANCE_COLLECTOR_ID: daily-deep-repair-actions/);
   assert.match(dailyDeep, /RUNTIME_MAINTENANCE_SKIP_REBUILD: 'true'/);
   assert.match(dailyDeep, /publish-recent-daily-summaries-actions\.mjs/);
-  assert.match(dailyDeep, /detect-pages-read-model-revision-drift-actions\.mjs/);
-  assert.match(dailyDeep, /steps\.pages-revision-drift\.outputs\.due_keys != ''/);
+  assert.doesNotMatch(dailyDeep, /detect-pages-read-model-revision-drift-actions\.mjs/);
+  assert.doesNotMatch(dailyDeep, /pages-revision-drift|due_keys/);
 
   assert.doesNotMatch(runtime, /^\s*push:\s*$/m);
   assert.doesNotMatch(dataRepair, /^\s*push:\s*$/m);
@@ -66,12 +66,14 @@ test('repair layers use isolated lightweight, four-hour, and daily cadences', ()
   assert.match(repair, /repair-pages-summary-gaps\.mjs/);
 });
 
-test('Pages read models rerun when their Cloudflare account dependency changes', () => {
+test('Pages rebuild is manual recovery that delegates to the canonical Worker', () => {
   const pages = read('.github/workflows/run-pages-read-model-rebuild.yml');
 
-  assert.match(pages, /- '\.github\/actions\/cloudflare-context\/action\.yml'/);
-  assert.match(pages, /- '\.github\/scripts\/resolve-cloudflare-account\.mjs'/);
+  assert.match(pages, /workflow_dispatch:/);
+  assert.doesNotMatch(pages, /schedule:|cron:|^\s*push:\s*$/m);
   assert.match(pages, /uses: \.\/\.github\/actions\/cloudflare-context/);
+  assert.match(pages, /Request canonical Worker rebuild/);
+  assert.match(pages, /request-pages-read-model-rebuild-actions\.mjs/);
 });
 
 test('runtime maintenance freshness is diagnostic after the runner warning', () => {
@@ -91,15 +93,12 @@ test('heavy repair and deep repair health match their lower frequencies', () => 
   const dataRepair = WORKFLOW_HEALTH_BY_KEY.dataRepair;
   const dailyDeep = WORKFLOW_HEALTH_BY_KEY.dailyDeep;
   const metadata = WORKFLOW_HEALTH_BY_KEY.metadata;
-  const pages = WORKFLOW_HEALTH_BY_KEY.pages;
-
   assert.equal(dataRepair.cadenceMinutes, 240);
   assert.equal(dataRepair.staleAfterMinutes, 330);
   assert.equal(dailyDeep.cadenceMinutes, 1440);
   assert.equal(dailyDeep.staleAfterMinutes, 1500);
   assert.equal(metadata.cadenceMinutes, 1440);
   assert.equal(metadata.staleAfterMinutes, 1500);
-  assert.equal(pages.cadenceMinutes, 1440);
-  assert.equal(pages.staleAfterMinutes, 1500);
+  assert.equal(WORKFLOW_HEALTH_BY_KEY.pages, undefined);
   assert.equal(WORKFLOW_HEALTH_BY_KEY.localMinute, undefined);
 });

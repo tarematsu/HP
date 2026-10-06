@@ -77,7 +77,7 @@ test('weekly leaderboard publication is Worker-owned and uses compact revision m
   );
   assert.match(worker, /materializeWeeklyRankingReadModel/);
   assert.match(worker, /publishReadModelR2/);
-  assert.match(worker, /LEADERBOARD_REFRESH_TYPE/);
+  assert.match(worker, /message\.body\?\.type !== 'stationhead-leaderboard-refresh'/);
   assert.match(worker, /consumeLeaderboardRefresh/);
   assert.doesNotMatch(worker, /wrangler|r2 object put|publish-stationhead-leaderboard-read-model/);
   assert.match(gate, /sh_read_model_revision/);

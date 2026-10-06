@@ -6,7 +6,7 @@ import {
   checkAmazonUpdateAndQueue100k,
   continueQueuedAmazon100kScan,
 } from '../src/amazon-music-pipeline.js';
-import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 
 function jsonResponse(value, status = 200) {
   return {
@@ -125,7 +125,7 @@ test('queued 100k scan publishes discovered Sakurazaka ranks to the Pages read m
   assert.equal(result.complete, true);
   assert.equal(result.pages.sakurazaka_tracks_seen, 1);
 
-  const publicKey = pagesActionsR2ResponseKey('amazon-music');
+  const publicKey = pagesR2ResponseKey('amazon-music');
   const envelope = JSON.parse(r2.values.get(publicKey));
   const payload = JSON.parse(envelope.body);
   assert.equal(payload.ok, true);

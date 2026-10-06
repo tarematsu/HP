@@ -1,9 +1,9 @@
 import { directFiveMinuteStreamHistory } from '../../site/functions/lib/dashboard-chart-support.js';
-import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
+import { pagesR2ResponseKey } from './pages-response-r2.js';
 
 const FIVE_MINUTES_MS = 5 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
-const DASHBOARD_KEY = pagesActionsR2ResponseKey('dashboard');
+const DASHBOARD_KEY = pagesR2ResponseKey('dashboard');
 const DASHBOARD_CADENCE_SECONDS = 5 * 60;
 const HOT_STATE_KEY = 'stationhead/buddies/dashboard-hot-state.json';
 

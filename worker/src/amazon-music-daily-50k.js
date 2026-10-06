@@ -11,7 +11,7 @@ import {
 import { recordAmazonTop500Check } from './amazon-music-top500-history.js';
 import { resolveAmazonMusicTracks } from './amazon-music-track-identity.js';
 import { isAmazonMusicTitleTrack } from './amazon-music-title-tracks.js';
-import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
+import { pagesR2ResponseKey } from './pages-response-r2.js';
 
 export const AMAZON_MUSIC_DAILY_SCAN_TARGET_RANK = 50_000;
 export const AMAZON_MUSIC_DAILY_SCAN_PAGES_PER_RUN = 1_000;
@@ -302,7 +302,7 @@ async function publishCompletedScan(env, state, observedAt) {
 
   await saveGroupChanges(env?.MINUTE_DB, observedAt, previousTracks, tracks);
   await putJson(r2, AMAZON_MUSIC_READ_MODEL_KEY, model);
-  const objectKey = pagesActionsR2ResponseKey(AMAZON_MUSIC_PAGES_MODEL_KEY);
+  const objectKey = pagesR2ResponseKey(AMAZON_MUSIC_PAGES_MODEL_KEY);
   if (!objectKey) throw new Error('Amazon Music public read-model key is unavailable');
   await putJson(r2, objectKey, {
     version: 1,

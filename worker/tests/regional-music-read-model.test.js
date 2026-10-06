@@ -12,7 +12,7 @@ import {
   musicServicesReadModelPayload,
   musicServiceReadModelPayload,
 } from '../src/music-service-read-model.js';
-import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 import { QQ_JAPAN_HISTORY_VIEW_KEY } from '../src/qq-japan-chart-history-view.js';
 import { QQ_ANIME_HISTORY_INDEX_KEY, QQ_ANIME_HISTORY_VIEW_KEY } from '../src/qq-anime-chart-history-view.js';
 import { KKBOX_JAPANESE_HISTORY_VIEW_KEY } from '../src/kkbox-japanese-chart-history.js';
@@ -233,7 +233,7 @@ test('unchanged legacy service source keeps its previous read-model update time 
     body:JSON.stringify(existingPayload),
     updated_at:800,
   };
-  const existingKey=pagesActionsR2ResponseKey('regional-music:kkbox');
+  const existingKey=pagesR2ResponseKey('regional-music:kkbox');
   const result=await publishMusicServiceReadModel({
     OTHER_DB:{},
     PAGES_RESPONSE_R2:{

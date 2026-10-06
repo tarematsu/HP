@@ -3,7 +3,7 @@ import {
   APPLE_MUSIC_ARTIST_ID,
   APPLE_MUSIC_PAGES_MODEL_KEY,
 } from './apple-music-collector.js';
-import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
+import { pagesR2ResponseKey } from './pages-response-r2.js';
 
 const READ_MODEL_KEY = 'apple-music/read-model/latest.json';
 const ARTIST_PREFIX = `apple-music/artist/${APPLE_MUSIC_ARTIST_ID}/`;
@@ -77,7 +77,7 @@ function dueForRefresh(model, now, force) {
 
 async function publishModel(r2, model, observedAt) {
   const body = JSON.stringify({ ok: true, ...model });
-  const key = pagesActionsR2ResponseKey(APPLE_MUSIC_PAGES_MODEL_KEY);
+  const key = pagesR2ResponseKey(APPLE_MUSIC_PAGES_MODEL_KEY);
   if (!key) throw new Error('Apple Music public read-model key is unavailable');
   const previousEnvelope = await getJson(r2, key);
   const envelope = previousEnvelope && Number(previousEnvelope.version) === 1

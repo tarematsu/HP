@@ -22,12 +22,6 @@ export function pagesR2ResponseKey(modelKey) {
   return key ? `${R2_RESPONSE_KEY_PREFIX}${encodeURIComponent(key)}.json` : null;
 }
 
-// Deprecated source-compatibility aliases. They resolve only to the canonical
-// pages-response/v1 namespace; the legacy actions-v2 namespace is read only in
-// pages-response-store.js.
-export function pagesActionsR2ResponseKey(modelKey) {
-  return pagesR2ResponseKey(modelKey);
-}
 
 export async function saveMaterializedR2Response(
   r2,
@@ -63,28 +57,6 @@ export async function saveMaterializedR2Response(
     storage: 'r2',
     object_key: key,
   };
-}
-
-export function saveMaterializedActionsR2Response(
-  r2,
-  modelKey,
-  body,
-  status,
-  headers,
-  now,
-  cadenceSeconds,
-  metadata,
-) {
-  return saveMaterializedR2Response(
-    r2,
-    modelKey,
-    body,
-    status,
-    headers,
-    now,
-    cadenceSeconds,
-    metadata,
-  );
 }
 
 function responseFromEnvelope(envelope, now, maximumAgeMs, source) {

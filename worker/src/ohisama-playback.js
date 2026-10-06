@@ -1,11 +1,11 @@
 import { hydratePlaybackAggregates, hydratePlaybackTrackMetadata } from './playback-track-metadata.js';
 import { extractQueue } from './collector-payload.js';
 import { resolveTracksBulk } from './minute-facts-track-resolution.js';
-import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
+import { pagesR2ResponseKey } from './pages-response-r2.js';
 
 const DAY_MS = 24 * 60 * 60_000;
 export const OHISAMA_PLAYBACK_HOT_STATE_KEY = 'stationhead/ohisama/playback-state.json';
-const OHISAMA_PAGES_KEY = pagesActionsR2ResponseKey('hinata');
+const OHISAMA_PAGES_KEY = pagesR2ResponseKey('hinata');
 
 function finite(value) {
   if (value === null || value === undefined || value === '') return null;

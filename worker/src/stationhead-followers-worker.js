@@ -1,4 +1,4 @@
-import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
+import { pagesR2ResponseKey } from './pages-response-r2.js';
 
 const API_BASE = 'https://production1.stationhead.com';
 const WEB_BASE = 'https://www.stationhead.com';
@@ -235,7 +235,7 @@ export async function collectStationheadFollowers(env, scheduledAt = Date.now(),
     .bind(date, now, collectedAt, JSON.stringify(followers), JSON.stringify(failures)).run();
   const history = await env.OTHER_DB.prepare('SELECT observed_date_jst,followers_json FROM sh_stationhead_daily_followers_v2 ORDER BY observed_date_jst ASC').all();
   const payload = buildFollowerReadModel({ historyRows: history.results || [], targets, latestDate: date, updatedAt: collectedAt, failures });
-  await putJson(env.PAGES_RESPONSE_R2, pagesActionsR2ResponseKey('followers'), {
+  await putJson(env.PAGES_RESPONSE_R2, pagesR2ResponseKey('followers'), {
     version: 1,
     updated_at: collectedAt,
     cadence_seconds: CADENCE_SECONDS,

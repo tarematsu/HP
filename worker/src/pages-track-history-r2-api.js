@@ -215,6 +215,9 @@ export async function loadTrackHistoryR2ApiResponse(
   const metadata = includeRanking
     ? await loadStatusPayload(r2, now, maximumAgeMs, dependencies)
     : {};
+  if (includeRanking && !metadata) {
+    return json({ ok: false, error: 'track-history ranking read model unavailable' }, 503, now, readModelUpdatedAt);
+  }
   const ranking = includeRanking
     ? rankingFromPayload(metadata, rankingLimit)
     : { rows: [], summary: {}, truncated: false };

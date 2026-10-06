@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { canonicalizeAppleMusicPresentation } from '../src/apple-music-canonical-presentation.js';
 import { APPLE_MUSIC_PAGES_MODEL_KEY } from '../src/apple-music-collector.js';
-import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 
 const READ_MODEL_KEY = 'apple-music/read-model/latest.json';
 
@@ -139,7 +139,7 @@ test('Apple Music presentation uses canonical Japanese titles without changing r
   assert.equal(stored.canonical_presentation_version, 1);
   assert.equal(stored.canonical_presentation_checked_at, observedAt);
 
-  const publicKey = pagesActionsR2ResponseKey(APPLE_MUSIC_PAGES_MODEL_KEY);
+  const publicKey = pagesR2ResponseKey(APPLE_MUSIC_PAGES_MODEL_KEY);
   const envelope = JSON.parse(r2.values.get(publicKey));
   const publicModel = JSON.parse(envelope.body);
   assert.equal(publicModel.regions[0].tracks[0].title, '五月雨よ');

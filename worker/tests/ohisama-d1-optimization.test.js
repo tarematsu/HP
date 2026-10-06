@@ -9,9 +9,9 @@ import {
   refreshOptimizedOhisamaReadModel,
   rollupOhisamaWeekly,
 } from '../src/ohisama-read-model-optimized.js';
-import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 
-const HINATA_KEY = pagesActionsR2ResponseKey('hinata');
+const HINATA_KEY = pagesR2ResponseKey('hinata');
 
 class FakeR2 {
   constructor(initial = new Map()) {

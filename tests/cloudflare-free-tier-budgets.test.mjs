@@ -7,6 +7,7 @@ const script = readSource('.github/scripts/cloudflare_free_tier_audit.py');
 const runtime = JSON.parse(readSource('worker/wrangler.runtime.jsonc'));
 const collector = JSON.parse(readSource('worker/wrangler.buddies-collector.jsonc'));
 const responseFetch = readSource('worker/src/pages-response-fetch-entry.js');
+const responseStore = readSource('worker/src/pages-response-store.js');
 const coreEntry = readSource('worker/src/runtime-orchestrator-entry.js');
 const deployedEntry = readSource('worker/src/runtime-orchestrator-deployed-entry.js');
 const collectorStatus = readSource('worker/src/collector-coordinator-status.js');
@@ -128,15 +129,16 @@ test('collector coordination and runtime live-job DO fit daily budgets without r
 
 test('Pages serving uses R2 without materialized-response D1 or KV fallback', () => {
   expectNone(pagesMiddleware, ['sh_pages_response_manifest', 'sh_pages_response_chunks']);
-  expectAll(responseFetch, ['loadMaterializedR2Response']);
+  expectAll(responseFetch, ['loadMaterializedResponse', 'pages-response-store.js']);
   expectNone(responseFetch, [
-    'loadMaterializedResponse',
+    'loadMaterializedR2Response',
     'PAGES_RESPONSE_KV',
-    'pages-response-store',
     'sh_pages_response_manifest',
     'sh_pages_response_chunks',
     'runPagesReadModelCron',
   ]);
+  expectAll(responseStore, ['loadMaterializedR2Response', 'pages-response/actions-v2/']);
+  expectNone(responseStore, ['saveMaterializedR2Response', 'PAGES_RESPONSE_KV']);
   expectAll(queuePlanR2, ['operational/queue-plan/v1', 'await r2.delete']);
 
   const maximumDailyReadModelWrites = 17 + 24 * 60 / 15;

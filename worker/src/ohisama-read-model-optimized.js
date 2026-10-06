@@ -5,7 +5,7 @@ import {
   ohisamaReadModelPayload,
   rollOhisamaHistory,
 } from './ohisama-read-model.js';
-import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
+import { pagesR2ResponseKey } from './pages-response-r2.js';
 
 const DAY_MS = 24 * 60 * 60_000;
 const FIVE_MINUTES_MS = 5 * 60_000;
@@ -82,7 +82,7 @@ async function loadExistingPayload(r2) {
     if (upgraded) return upgraded;
   }
 
-  const legacyKey = pagesActionsR2ResponseKey(OHISAMA_PAGES_MODEL_KEY);
+  const legacyKey = pagesR2ResponseKey(OHISAMA_PAGES_MODEL_KEY);
   const legacyEnvelope = await readJsonObject(r2, legacyKey);
   if (Number(legacyEnvelope?.version) !== 1) return null;
   const legacyPayload = typeof legacyEnvelope?.body === 'string'

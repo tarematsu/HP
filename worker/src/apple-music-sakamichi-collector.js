@@ -8,7 +8,7 @@ import {
   normalizeAppleMusicTopSongs,
   resolveAppleMusicTrackIds,
 } from './apple-music-collector.js';
-import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
+import { pagesR2ResponseKey } from './pages-response-r2.js';
 
 export const APPLE_MUSIC_ARTISTS = Object.freeze([
   Object.freeze({ key: 'sakurazaka46', id: APPLE_MUSIC_ARTIST_ID, name: '櫻坂46' }),
@@ -285,7 +285,7 @@ async function publishCombinedModel(r2, primaryModel, secondaryModels, observedA
     observedAt,
   });
 
-  const publicKey = pagesActionsR2ResponseKey(APPLE_MUSIC_PAGES_MODEL_KEY);
+  const publicKey = pagesR2ResponseKey(APPLE_MUSIC_PAGES_MODEL_KEY);
   if (!publicKey) throw new Error('Apple Music public read-model key is unavailable');
   const previousEnvelope = await getJson(r2, publicKey);
   const body = JSON.stringify({ ok: true, ...combined });

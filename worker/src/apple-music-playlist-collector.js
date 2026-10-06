@@ -1,4 +1,4 @@
-import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
+import { pagesR2ResponseKey } from './pages-response-r2.js';
 
 export const APPLE_MUSIC_PLAYLIST_PAGES_MODEL_KEY = 'apple-music-playlists';
 
@@ -621,7 +621,7 @@ function publicModel(entries, appleModel, observedAt, seedResults, scannedCount)
 
 async function publishReadModel(r2, model, observedAt) {
   const body = JSON.stringify({ ok: true, ...model });
-  const objectKey = pagesActionsR2ResponseKey(APPLE_MUSIC_PLAYLIST_PAGES_MODEL_KEY);
+  const objectKey = pagesR2ResponseKey(APPLE_MUSIC_PLAYLIST_PAGES_MODEL_KEY);
   if (!objectKey) throw new Error('Apple Music playlist public read-model key is unavailable');
   const envelope = {
     version: 1,

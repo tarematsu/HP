@@ -26,7 +26,8 @@ test('dashboard delta-shaped requests are normalized to the R2 dashboard model',
   const canonical = new URL(canonicalApiCacheRequest(new Request(delta)).url);
   assert.equal(canonical.pathname, '/api/dashboard');
   assert.equal(canonical.search, '');
-  assert.match(middleware, /const LIVE_PAGES_FALLBACK_MODEL_KEYS = new Set\(\);/);
+  assert.match(middleware, /return materializedUnavailable\(modelKey\);/);
+  assert.doesNotMatch(middleware, /LIVE_PAGES_FALLBACK_MODEL_KEYS|x-materialized-fallback|pages_live_fallback_unavailable/);
   assert.match(middleware, /materialized response unavailable/);
 });
 

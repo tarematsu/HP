@@ -32,7 +32,7 @@ test('Nogizaka reconciliation preserves the existing finalized model pass after 
 
 test('Nogizaka publishes a producer-owned Pages read model to the shared R2 bucket', () => {
   assert.match(pagesModel, /NOGIZAKA_LISTENING_PARTY_MODEL_KEY = 'nogizaka-listening-party'/);
-  assert.match(pagesModel, /pagesActionsR2ResponseKey\(NOGIZAKA_LISTENING_PARTY_MODEL_KEY\)/);
+  assert.match(pagesModel, /pagesR2ResponseKey\(NOGIZAKA_LISTENING_PARTY_MODEL_KEY\)/);
   assert.match(pagesModel, /PAGES_RESPONSE_R2 binding is missing/);
   assert.match(pagesFetch, /'nogizaka-listening-party'/);
   const servingConfig = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));

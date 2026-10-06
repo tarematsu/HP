@@ -133,27 +133,6 @@ export async function recoverMaintenanceWorkflows({
     return { ok: true, dispatched, states, reason: `daily-deep-${states.dailyDeep.state}` };
   }
 
-  // Pages is normally revision-driven from the daily deep repair. The daily
-  // Pages run remains only as an independent recovery sweep.
-  if (shouldRecover(states.pages.state)) {
-    await dispatchWorkflow(
-      repository,
-      WORKFLOWS.pages,
-      token,
-      request,
-      { force_all: 'true' },
-    );
-    dispatched.push('pages');
-    return {
-      ok: true,
-      dispatched,
-      states,
-      reason: 'pages-recovered',
-    };
-  }
-  if (states.pages.state !== 'fresh') {
-    return { ok: true, dispatched, states, reason: `pages-${states.pages.state}` };
-  }
 
   // Metadata repair is a daily backlog/legacy safety net. Live unknown tracks
   // are enriched on the committed metadata path and do not depend on this job.

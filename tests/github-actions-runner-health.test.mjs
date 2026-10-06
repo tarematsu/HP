@@ -140,17 +140,15 @@ test('runner health queries main workflow runs and renders actionable links', as
 test('current runner target set covers recurring operational workflows and excludes manual-only rebuilds', () => {
   const byWorkflow = new Map(ACTIONS_RUNNER_TARGETS.map((entry) => [entry.workflow, entry]));
   for (const workflow of [
-    'run-pages-read-model-rebuild.yml',
     'run-runtime-offline-maintenance.yml',
     'run-track-metadata-repair.yml',
     'sh-observability.yml',
     'publish-github-deployment-health.yml',
     'publish-github-actions-runner-health.yml',
   ]) assert.ok(byWorkflow.has(workflow), workflow);
+  assert.equal(byWorkflow.has('run-pages-read-model-rebuild.yml'), false);
   assert.equal(byWorkflow.has('refresh-cloudflare-observability.yml'), false);
   assert.equal(byWorkflow.has('run-local-minute-facts-rebuild.yml'), false);
-  assert.equal(byWorkflow.get('run-pages-read-model-rebuild.yml').cadenceMinutes, 1440);
-  assert.ok(byWorkflow.get('run-pages-read-model-rebuild.yml').staleAfterMinutes >= 1440);
   assert.equal(byWorkflow.get('run-runtime-offline-maintenance.yml').ignoreExpectedWorkflowRunSkips, true);
   assert.equal(byWorkflow.get('run-track-metadata-repair.yml').ignoreExpectedWorkflowRunSkips, true);
   assert.equal(new Set(ACTIONS_RUNNER_TARGETS.map((entry) => entry.workflow)).size, ACTIONS_RUNNER_TARGETS.length);
@@ -215,13 +213,12 @@ test('lightweight workflow refreshes after operational workflows and synchronize
   const workflow = read('.github/workflows/publish-github-actions-runner-health.yml');
   for (const name of [
     'Unified Cloudflare Observability',
-    'Rebuild pages read models',
     'Run runtime offline maintenance',
     'Repair track metadata',
     'Run local minute facts rebuild',
     'Publish GitHub deployment health',
   ]) assert.match(workflow, new RegExp(name));
-  assert.doesNotMatch(workflow, /Refresh Cloudflare observability/);
+  assert.doesNotMatch(workflow, /Refresh Cloudflare observability|Rebuild pages read models/);
   assert.match(workflow, /github-actions-runner-health-current\.mjs/);
   assert.match(workflow, /observability-system-status\.mjs/);
   assert.match(workflow, /workflow_run:/);

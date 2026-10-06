@@ -5,14 +5,14 @@ import { dashboardGoalPredictions } from '../../site/functions/lib/dashboard-leg
 import { hydratePlaybackTrackMetadata } from './playback-track-metadata.js';
 import { trackNeedsHydration } from './track-metadata-quality.js';
 import { BUDDIES_PLAYBACK_HOT_STATE_KEY } from './buddies-playback-state.js';
-import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
+import { pagesR2ResponseKey } from './pages-response-r2.js';
 
 const FIVE_MINUTES_MS = 5 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
 const HOUR_MS = 60 * 60_000;
 const INCREMENTAL_GAP_LIMIT_MS = 11 * 60_000;
 const RECOVERY_GAP_LIMIT_MS = DAY_MS;
-const DASHBOARD_KEY = pagesActionsR2ResponseKey('dashboard');
+const DASHBOARD_KEY = pagesR2ResponseKey('dashboard');
 const DASHBOARD_CADENCE_SECONDS = 5 * 60;
 export const BUDDIES_DASHBOARD_HOT_STATE_KEY = 'stationhead/buddies/dashboard-hot-state.json';
 

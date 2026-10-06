@@ -29,3 +29,12 @@ worker/.weekly-ranking-pointer-*/
 worker/.stationhead-leaderboard-probe-*/
 site/artifacts/
 site/public/assets/
+
+hp/native/build/
+hp/native/build-*/
+hp/native/build-ci/
+hp/native/packages/
+hp/native/data/
+hp/cloud/node_modules/
+hp/cloud/.wrangler/
+hp/cloud/dist/

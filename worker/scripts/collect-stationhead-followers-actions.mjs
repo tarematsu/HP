@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 
 const workerRoot = resolve(import.meta.dirname, '..');
@@ -346,7 +346,7 @@ export async function collectStationheadFollowersActions({
     failures,
   });
   const body = JSON.stringify(payload);
-  upload(pagesActionsR2ResponseKey('followers'), {
+  upload(pagesR2ResponseKey('followers'), {
     version: 1,
     updated_at: collectedAt,
     cadence_seconds: CADENCE_SECONDS,

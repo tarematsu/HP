@@ -30,7 +30,6 @@ function runSpec(value) {
 }
 
 function requestFor({
-  pages = 10,
   runtime = 10,
   dataRepair = 10,
   dailyDeep = 10,
@@ -38,7 +37,7 @@ function requestFor({
   observability = 10,
 } = {}) {
   const calls = [];
-  const specs = { pages, runtime, dataRepair, dailyDeep, metadata, observability };
+  const specs = { runtime, dataRepair, dailyDeep, metadata, observability };
   const byFile = Object.fromEntries(Object.entries(WORKFLOWS).map(([key, definition]) => [definition.file, key]));
   return {
     calls,
@@ -65,7 +64,7 @@ test('generic recovery state preserves active and failed runs instead of retryin
 test('recovery policy leaves more than one watchdog interval before health stale', () => {
   assert.equal(RECOVERY_HEADROOM_MINUTES, 30);
   assert.equal(RECOVERY_WATCHDOG_INTERVAL_MINUTES, 15);
-  for (const key of ['pages', 'runtime', 'dataRepair', 'dailyDeep', 'metadata']) {
+  for (const key of ['runtime', 'dataRepair', 'dailyDeep', 'metadata']) {
     const definition = WORKFLOWS[key];
     assert.ok(definition.healthStaleAfterMs > definition.recoverAfterMs, key);
     assert.ok(
@@ -77,7 +76,7 @@ test('recovery policy leaves more than one watchdog interval before health stale
 });
 
 test('stale lightweight Runtime is recovered first', async () => {
-  const fixture = requestFor({ pages: 1490, runtime: 80, dataRepair: 320, dailyDeep: 1480, metadata: 1480 });
+  const fixture = requestFor({ runtime: 80, dataRepair: 320, dailyDeep: 1480, metadata: 1480 });
   const result = await recoverMaintenanceWorkflows({
     token: 'test-token', repository: 'tarematsu/HP', now, request: fixture.request,
   });
@@ -88,7 +87,7 @@ test('stale lightweight Runtime is recovered first', async () => {
 });
 
 test('stale four-hour data repair is recovered before daily deep repair', async () => {
-  const fixture = requestFor({ pages: 1490, runtime: 10, dataRepair: 310, dailyDeep: 1480, metadata: 1480 });
+  const fixture = requestFor({ runtime: 10, dataRepair: 310, dailyDeep: 1480, metadata: 1480 });
   const result = await recoverMaintenanceWorkflows({
     token: 'test-token', repository: 'tarematsu/HP', now, request: fixture.request,
   });
@@ -103,7 +102,7 @@ test('active or failed data repair blocks downstream recovery', async () => {
     { minutesAgo: 310, status: 'in_progress', conclusion: '' },
     { minutesAgo: 310, conclusion: 'failure' },
   ]) {
-    const fixture = requestFor({ pages: 1490, runtime: 10, dataRepair, dailyDeep: 1480, metadata: 1480 });
+    const fixture = requestFor({ runtime: 10, dataRepair, dailyDeep: 1480, metadata: 1480 });
     const result = await recoverMaintenanceWorkflows({
       token: 'test-token', repository: 'tarematsu/HP', now, request: fixture.request,
     });
@@ -112,8 +111,8 @@ test('active or failed data repair blocks downstream recovery', async () => {
   }
 });
 
-test('stale daily deep repair is recovered independently before Pages', async () => {
-  const fixture = requestFor({ pages: 1490, runtime: 10, dataRepair: 10, dailyDeep: 1480, metadata: 10 });
+test('stale daily deep repair is recovered independently before metadata repair', async () => {
+  const fixture = requestFor({ runtime: 10, dataRepair: 10, dailyDeep: 1480, metadata: 10 });
   const result = await recoverMaintenanceWorkflows({
     token: 'test-token', repository: 'tarematsu/HP', now, request: fixture.request,
   });
@@ -138,18 +137,8 @@ test('failed daily deep repair remains visible and blocks downstream recovery', 
   assert.equal(result.reason, 'daily-deep-failed');
 });
 
-test('stale daily Pages recovery sweep is fully regenerated after fresh repair layers', async () => {
-  const fixture = requestFor({ pages: 1480, runtime: 10, dataRepair: 10, dailyDeep: 10, metadata: 10 });
-  const result = await recoverMaintenanceWorkflows({
-    token: 'test-token', repository: 'tarematsu/HP', now, request: fixture.request,
-  });
-  assert.deepEqual(result.dispatched, ['pages']);
-  const posts = fixture.calls.filter((call) => call.options.method === 'POST');
-  assert.deepEqual(posts[0].options.body, { ref: 'main', inputs: { force_all: 'true' } });
-});
-
 test('fresh repair layers recover the daily metadata safety net only', async () => {
-  const fixture = requestFor({ pages: 5, runtime: 10, dataRepair: 10, dailyDeep: 10, metadata: 1480 });
+  const fixture = requestFor({ runtime: 10, dataRepair: 10, dailyDeep: 10, metadata: 1480 });
   const result = await recoverMaintenanceWorkflows({
     token: 'test-token', repository: 'tarematsu/HP', now, request: fixture.request,
   });
@@ -160,7 +149,7 @@ test('fresh repair layers recover the daily metadata safety net only', async () 
 
 test('fresh repair layers allow an older failed observability diagnostic to refresh', async () => {
   const fixture = requestFor({
-    pages: 5, runtime: 5, dataRepair: 5, dailyDeep: 5, metadata: 5,
+    runtime: 5, dataRepair: 5, dailyDeep: 5, metadata: 5,
     observability: { minutesAgo: 20, conclusion: 'failure' },
   });
   const result = await recoverMaintenanceWorkflows({
@@ -175,7 +164,6 @@ test('maintenance workflows expose bounded four-hour repair and isolated daily d
   const dataRepairWorkflow = read('.github/workflows/run-data-integrity-repair.yml');
   const dailyDeepWorkflow = read('.github/workflows/run-daily-deep-repair.yml');
   const metadataWorkflow = read('.github/workflows/run-track-metadata-repair.yml');
-  const pagesWorkflow = read('.github/workflows/run-pages-read-model-rebuild.yml');
 
   assert.match(watchdog, /- "Run data integrity repair"/);
   assert.match(watchdog, /- "Run daily deep repair"/);
@@ -199,7 +187,7 @@ test('maintenance workflows expose bounded four-hour repair and isolated daily d
   assert.match(dailyDeepWorkflow, /cron: '46 0 \* \* \*'/);
   assert.match(dailyDeepWorkflow, /RUNTIME_MAINTENANCE_COLLECTOR_ID: daily-deep-repair-actions/);
   assert.match(dailyDeepWorkflow, /publish-recent-daily-summaries-actions\.mjs/);
-  assert.match(dailyDeepWorkflow, /detect-pages-read-model-revision-drift-actions\.mjs/);
+  assert.doesNotMatch(dailyDeepWorkflow, /detect-pages-read-model-revision-drift-actions\.mjs|pages-revision-drift/);
   assert.match(dailyDeepWorkflow, /RUNTIME_MAINTENANCE_SKIP_REBUILD: 'true'/);
 
   assert.match(metadataWorkflow, /cron: '16 0 \* \* \*'/);
@@ -207,8 +195,6 @@ test('maintenance workflows expose bounded four-hour repair and isolated daily d
   assert.match(metadataWorkflow, /branches: \[main\]/);
   assert.match(metadataWorkflow, /worker\/scripts\/repair-playback-read-model-actions\.mjs/);
   assert.doesNotMatch(metadataWorkflow, /workflow_run:/);
-  assert.doesNotMatch(pagesWorkflow, /workflow_run:/);
-  assert.match(pagesWorkflow, /cron: '26 0 \* \* \*'/);
 });
 
 test('recovery watchdog is event-driven and budget-safe', () => {
@@ -220,5 +206,5 @@ test('recovery watchdog is event-driven and budget-safe', () => {
   assert.match(workflow, /actions: write/);
   assert.doesNotMatch(workflow, /CLOUDFLARE_(?:API_TOKEN|ACCOUNT_ID)|wrangler|d1 execute/i);
   assert.match(script, /RECOVERY_WORKFLOWS/);
-  assert.match(script, /force_all: 'true'/);
+  assert.doesNotMatch(script, /WORKFLOWS\.pages|states\.pages|force_all/);
 });

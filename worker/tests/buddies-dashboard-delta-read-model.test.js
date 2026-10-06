@@ -6,10 +6,10 @@ import {
   publishDashboardFromMinuteFact,
 } from '../src/pages-dashboard-live-publisher.js';
 import { BUDDIES_PLAYBACK_HOT_STATE_KEY } from '../src/buddies-playback-state.js';
-import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 
 const DAY_MS = 24 * 60 * 60_000;
-const DASHBOARD_KEY = pagesActionsR2ResponseKey('dashboard');
+const DASHBOARD_KEY = pagesR2ResponseKey('dashboard');
 
 class FakeR2 {
   constructor(initial = new Map()) {

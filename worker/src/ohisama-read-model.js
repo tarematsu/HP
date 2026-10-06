@@ -1,4 +1,4 @@
-import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
+import { pagesR2ResponseKey } from './pages-response-r2.js';
 
 export const OHISAMA_PAGES_MODEL_KEY = 'hinata';
 export const OHISAMA_PAGES_CADENCE_SECONDS = 5 * 60;
@@ -362,7 +362,7 @@ async function loadDaily(db) {
 }
 
 async function loadExistingPayload(r2) {
-  const key = pagesActionsR2ResponseKey(OHISAMA_PAGES_MODEL_KEY);
+  const key = pagesR2ResponseKey(OHISAMA_PAGES_MODEL_KEY);
   if (!key || typeof r2?.get !== 'function') return null;
   try {
     const object = await r2.get(key);
@@ -390,7 +390,7 @@ function canIncrementPayload(payload, observedAt) {
 
 async function publishPayload(r2, payload, updatedAt) {
   if (typeof r2?.put !== 'function') throw new Error('PAGES_RESPONSE_R2 binding is missing');
-  const key = pagesActionsR2ResponseKey(OHISAMA_PAGES_MODEL_KEY);
+  const key = pagesR2ResponseKey(OHISAMA_PAGES_MODEL_KEY);
   if (!key) throw new Error('ohisama Pages read-model key is invalid');
   const envelope = {
     version: 1,

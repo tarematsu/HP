@@ -115,9 +115,9 @@ test('runtime health read avoids the full runtime-state failure graph', () => {
 
 test('serving-only Pages module is R2-only and keeps track-history assembly lazy', () => {
   assert.match(pagesResponseFetch, /runPagesResponseFetch/);
-  assert.match(pagesResponseFetch, /loadMaterializedR2Response/);
-  assert.match(pagesResponseFetch, /from '\.\/pages-response-r2\.js'/);
-  assert.doesNotMatch(pagesResponseFetch, /pages-response-store|PAGES_RESPONSE_KV|loadMaterializedResponse/);
+  assert.match(pagesResponseFetch, /loadMaterializedResponse/);
+  assert.match(pagesResponseFetch, /from '\.\/pages-response-store\.js'/);
+  assert.doesNotMatch(pagesResponseFetch, /PAGES_RESPONSE_KV|loadMaterializedR2Response|from '\.\/pages-response-r2\.js'/);
   assert.match(pagesResponseFetch, /import\('\.\/pages-track-history-r2-api\.js'\)/);
   assert.doesNotMatch(pagesResponseFetch, /from '\.\/pages-track-history-r2-api\.js'/);
   assert.doesNotMatch(pagesResponseFetch, /pages-read-model-dispatch|track-history-publication|dashboard\.js|PAGES_READ_MODEL_QUEUE/);
