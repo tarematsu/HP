@@ -55,8 +55,8 @@ test('Buddies R2 mode bypasses D1 queue materialization reads', async () => {
     },
   };
   const result = await prepareMaterializedQueue(db, source, analysis, {
-    BUDDIES_R2_PLAYBACK_ENABLED: true,
-    BUDDIES_PLAYBACK_VISIBLE_TRACKS: 6,
+    STATIONHEAD_R2_PLAYBACK_ENABLED: true,
+    STATIONHEAD_PLAYBACK_VISIBLE_TRACKS: 6,
   });
   assert.equal(result.queue.tracks.length, 6);
   assert.equal(result.analysis, null);
@@ -84,7 +84,7 @@ test('Buddies playback day changes at 09:00 JST', () => {
 
 test('prepared collector routes queue management to R2 playback mode instead of legacy queue ingest', () => {
   const source = readFileSync(new URL('../src/prepared-collector-runner.js', import.meta.url), 'utf8');
-  assert.match(source, /BUDDIES_R2_PLAYBACK_ENABLED/);
+  assert.match(source, /stationheadPlaybackEnabled\(activeEnv\)/);
   assert.match(source, /captureBuddiesPlayback\(activeEnv, queue, observedAt\)/);
   assert.match(source, /if \(r2PlaybackMode\)[\s\S]*captureBuddiesPlayback[\s\S]*else \{[\s\S]*ingest\(activeEnv, 'queue'/);
 });
