@@ -1,7 +1,13 @@
 import { hydratePlaybackAggregates, hydratePlaybackTrackMetadata } from './playback-track-metadata.js';
 import { resolveTracksBulk } from './minute-facts-track-resolution.js';
-
-const DAY_MS = 24 * 60 * 60_000;
+import {
+  emptyPlaybackDaily,
+  playbackDailyPublic,
+  recordPlaybackDailyTrack,
+  stationheadPlaybackPeriodKey,
+  stationheadPlaybackTrackKey,
+  transitionedStationheadTracks,
+} from './stationhead-playback-core.js';
 
 export const BUDDIES_PLAYBACK_HOT_STATE_KEY = 'stationhead/buddies/playback-state.json';
 
@@ -22,19 +28,11 @@ function text(value, limit = 500) {
 }
 
 export function buddiesPlaybackPeriodKey(timestamp) {
-  return new Date(Math.floor(Number(timestamp) / DAY_MS) * DAY_MS).toISOString().slice(0, 10);
+  return stationheadPlaybackPeriodKey(timestamp);
 }
 
 export function buddiesTrackKey(track) {
-  const isrc = text(track?.isrc)?.toUpperCase();
-  if (isrc) return `isrc:${isrc}`;
-  const spotifyId = text(track?.spotify_id);
-  if (spotifyId) return `spotify:${spotifyId}`;
-  const stationheadId = integer(track?.stationhead_track_id);
-  if (stationheadId != null) return `stationhead:${stationheadId}`;
-  const title = text(track?.title || track?.display_title);
-  const artist = text(track?.artist);
-  return title ? `title:${title}\u0000${artist || ''}` : null;
+  return stationheadPlaybackTrackKey(track);
 }
 
 function playbackTrack(queue, track, fallbackIndex) {
@@ -75,70 +73,8 @@ function normalizedQueue(queue) {
   };
 }
 
-export function transitionedBuddiesTracks(previousQueue = [], currentQueue = []) {
-  const current = currentQueue[0] || null;
-  if (!current?.event_key) return [];
-  const previous = Array.isArray(previousQueue) ? previousQueue : [];
-  if (!previous.length) return [current];
-  if (previous[0]?.event_key === current.event_key) return [];
-  const index = previous.findIndex((track) => track?.event_key === current.event_key);
-  if (index > 0) return previous.slice(1, index + 1);
-  return [current];
-}
-
-function emptyDaily(periodKey) {
-  return {
-    period_key: periodKey,
-    total_plays: 0,
-    unique_track_ids: [],
-    tracks: {},
-  };
-}
-
-function dailyPublic(daily) {
-  const tracks = Object.values(daily?.tracks || {})
-    .map((entry) => ({
-      ...entry,
-      track_id: integer(entry?.track_id),
-      count: integer(entry?.count) || 0,
-    }))
-    .filter((entry) => entry.track_id != null)
-    .sort((left, right) => right.count - left.count
-      || String(left.title || '').localeCompare(String(right.title || ''), 'ja'));
-  return {
-    period_key: String(daily?.period_key || ''),
-    total_plays: integer(daily?.total_plays) || tracks.reduce((sum, entry) => sum + entry.count, 0),
-    unique_tracks: Array.isArray(daily?.unique_track_ids) ? daily.unique_track_ids.length : tracks.length,
-    tracks,
-  };
-}
-
-function recordDailyTrack(daily, track, playedAt) {
-  const trackId = integer(track?.track_id);
-  if (trackId == null) return daily;
-  const key = String(trackId);
-  const periodKey = buddiesPlaybackPeriodKey(playedAt);
-  const active = daily?.period_key === periodKey ? daily : emptyDaily(periodKey);
-  const unique = new Set(Array.isArray(active.unique_track_ids)
-    ? active.unique_track_ids.map(String)
-    : []);
-  unique.add(key);
-  const tracks = { ...(active.tracks || {}) };
-  const previous = tracks[key] || {};
-  tracks[key] = {
-    track_id: trackId,
-    track_key: track?.track_key || previous.track_key || null,
-    title: track?.title || previous.title || null,
-    artist: track?.artist || previous.artist || null,
-    spotify_id: track?.spotify_id || previous.spotify_id || null,
-    count: (integer(previous.count) || 0) + 1,
-  };
-  return {
-    period_key: periodKey,
-    total_plays: (integer(active.total_plays) || 0) + 1,
-    unique_track_ids: [...unique],
-    tracks,
-  };
+export function transitionedBuddiesTracks(previousQueue = [], currentQueue = [], options = {}) {
+  return transitionedStationheadTracks(previousQueue, currentQueue, options);
 }
 
 function normalizedIdentitySource(track = {}) {
@@ -184,7 +120,7 @@ function withCanonicalTrackId(track, byKey) {
 }
 
 function canonicalizeDaily(daily, byKey) {
-  if (!daily?.period_key) return emptyDaily('');
+  if (!daily?.period_key) return emptyPlaybackDaily('');
   const tracks = {};
   const unique = new Set();
   let totalPlays = 0;
@@ -310,7 +246,7 @@ function playStatement(db, queue, track, observedAt) {
 }
 
 function completedDailyStatement(db, daily, observedAt) {
-  const row = dailyPublic(daily);
+  const row = playbackDailyPublic(daily);
   return db.prepare(`INSERT INTO sh_track_daily_summary(
       period_key,total_plays,unique_tracks,tracks_json,updated_at
     ) VALUES(?,?,?,?,?)
@@ -400,28 +336,33 @@ export async function captureBuddiesPlayback(env, queue, observedAt = Date.now()
   const canonical = await applyCanonicalTrackIds(catalogDb, db, currentQueue, previous, observedAt);
   let daily = canonical.daily?.period_key
     ? canonical.daily
-    : emptyDaily(buddiesPlaybackPeriodKey(observedAt));
+    : emptyPlaybackDaily(buddiesPlaybackPeriodKey(observedAt));
   let completedDay = null;
   const statements = [];
-  const transitions = transitionedBuddiesTracks(previous?.queue, currentQueue.tracks);
+  const transitions = transitionedBuddiesTracks(previous?.queue, currentQueue.tracks, {
+    previousObservedAt: previous?.updated_at,
+    observedAt,
+    previousPaused: Boolean(previous?.queue_status?.is_paused),
+    currentPaused: currentQueue.is_paused,
+  });
 
   for (const track of transitions) {
     const playedAt = integer(track?.expected_start_at) ?? observedAt;
     const nextKey = buddiesPlaybackPeriodKey(playedAt);
     if (daily?.period_key && daily.period_key !== nextKey) {
-      completedDay = dailyPublic(daily);
+      completedDay = playbackDailyPublic(daily);
       statements.push(completedDailyStatement(db, daily, observedAt));
-      daily = emptyDaily(nextKey);
+      daily = emptyPlaybackDaily(nextKey);
     }
-    daily = recordDailyTrack(daily, track, playedAt);
+    daily = recordPlaybackDailyTrack(daily, track, playedAt);
     statements.push(playStatement(db, currentQueue, track, observedAt));
   }
 
-  if (!daily?.period_key) daily = emptyDaily(buddiesPlaybackPeriodKey(observedAt));
+  if (!daily?.period_key) daily = emptyPlaybackDaily(buddiesPlaybackPeriodKey(observedAt));
   if (daily.period_key !== buddiesPlaybackPeriodKey(observedAt) && !transitions.length) {
-    completedDay = dailyPublic(daily);
+    completedDay = playbackDailyPublic(daily);
     statements.push(completedDailyStatement(db, daily, observedAt));
-    daily = emptyDaily(buddiesPlaybackPeriodKey(observedAt));
+    daily = emptyPlaybackDaily(buddiesPlaybackPeriodKey(observedAt));
   }
 
   const likes = { ...(canonical.likes || {}) };
@@ -452,13 +393,14 @@ export async function captureBuddiesPlayback(env, queue, observedAt = Date.now()
     updated_at: observedAt,
     station_id: currentQueue.station_id,
     queue: currentQueue.tracks,
+    queue_status: { is_paused: currentQueue.is_paused },
     daily,
     likes,
   };
   const stateSaved = await saveState(bucket, state, observedAt);
   return {
     queue: currentQueue,
-    daily: dailyPublic(daily),
+    daily: playbackDailyPublic(daily),
     completed_day: completedDay,
     transitions_written: transitions.length,
     like_changes_written: likeChanges,
