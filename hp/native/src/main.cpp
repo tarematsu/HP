@@ -116,7 +116,10 @@ int WINAPI wWinMain(
     hp::PowerSavingController powerSavingController;
     powerSavingController.InstallForCurrentThread();
     {
-      hp::App app(instance, HasCommandArgument(L"--scheduled-restart"));
+      const bool postRestartClick =
+          HasCommandArgument(L"--scheduled-restart") ||
+          HasCommandArgument(L"--update-restart");
+      hp::App app(instance, postRestartClick);
       result = app.Run(showCommand);
     }
     powerSavingController.Uninstall();

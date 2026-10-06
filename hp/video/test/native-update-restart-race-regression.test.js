@@ -116,6 +116,16 @@ test('update download retries once before final failure recovery', () => {
   assert.match(download, /Sleep\(kUpdateRetryDelayMs\)/);
 });
 
+test('updater restart requests the same post-start click used by scheduled restart', () => {
+  const restart = section(
+    updaterSource,
+    'void RestartHomePanel(const fs::path& root)',
+    'void RestoreBackup(',
+  );
+  assert.match(restart, /QuotePath\(executable\) \+ L" --update-restart"/);
+  assert.match(restart, /CreateProcessW\(executable\.c_str\(\), buffer\.data\(\)/);
+});
+
 test('failure recovery does not wait on a HomePanel instance that is still healthy', () => {
   const restart = section(
     updaterSource,

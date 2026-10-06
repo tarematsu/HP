@@ -178,7 +178,7 @@ void RestartHomePanel(const fs::path& root) {
   }
 
   const fs::path executable = root / L"HomePanel.exe";
-  std::wstring command = QuotePath(executable);
+  std::wstring command = QuotePath(executable) + L" --update-restart";
   std::vector<wchar_t> buffer(command.begin(), command.end());
   buffer.push_back(L'\0');
   STARTUPINFOW startup{sizeof(startup)};
