@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { loadTrackHistoryDayIndex } from '../src/pages-track-history-day-index.js';
 import {
@@ -162,5 +163,8 @@ export async function rebuildOhisamaTrackHistory({
   };
 }
 
-const result = await rebuildOhisamaTrackHistory();
-console.log(JSON.stringify(result, null, 2));
+const invokedPath = process.argv[1] ? resolve(process.argv[1]) : '';
+if (invokedPath === fileURLToPath(import.meta.url)) {
+  const result = await rebuildOhisamaTrackHistory();
+  console.log(JSON.stringify(result, null, 2));
+}
