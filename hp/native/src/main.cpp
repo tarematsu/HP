@@ -21,12 +21,13 @@ bool HasCommandArgument(const wchar_t* expected) noexcept {
   return found;
 }
 
-bool RelaunchSelf(bool crashRestart = false) {
+bool RelaunchSelf(bool crashRestart = false, bool postRestartClick = false) {
   wchar_t executable[MAX_PATH * 4]{};
   if (!GetModuleFileNameW(nullptr, executable, _countof(executable))) return false;
 
   std::wstring command = L"\"" + std::wstring(executable) + L"\"";
   if (crashRestart) command += L" --crash-restart";
+  if (postRestartClick) command += L" --scheduled-restart";
   std::vector<wchar_t> commandBuffer(command.begin(), command.end());
   commandBuffer.push_back(L'\0');
   STARTUPINFOW startup{sizeof(startup)};
@@ -115,11 +116,15 @@ int WINAPI wWinMain(
     hp::PowerSavingController powerSavingController;
     powerSavingController.InstallForCurrentThread();
     {
-      hp::App app(instance);
+      hp::App app(instance, HasCommandArgument(L"--scheduled-restart"));
       result = app.Run(showCommand);
     }
     powerSavingController.Uninstall();
-    if (result == 42) result = RelaunchSelf() ? 0 : 1;
+    if (result == 42) {
+      result = RelaunchSelf() ? 0 : 1;
+    } else if (result == hp::App::kScheduledRestartExitCode) {
+      result = RelaunchSelf(false, true) ? 0 : 1;
+    }
   } catch (const std::exception& error) {
     ShowStartupFailure(hp::Utf8ToWide(error.what()));
   } catch (...) {
