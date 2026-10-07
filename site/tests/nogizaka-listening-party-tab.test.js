@@ -15,6 +15,7 @@ const sharedCss = readFileSync(new URL('../public/dashboard-navigation.css', imp
 const tabs = dashboardRouterSource();
 const api = readFileSync(new URL('../functions/api/nogizaka-listening-party.js', import.meta.url), 'utf8');
 const materializedProxy = readFileSync(new URL('../functions/lib/stationhead-materialized-proxy.js', import.meta.url), 'utf8');
+const readModelService = readFileSync(new URL('../functions/lib/pages-read-model-service.js', import.meta.url), 'utf8');
 const sourceModels = readFileSync(new URL('../../packages/sh-shared/stationhead-read-models.mjs', import.meta.url), 'utf8');
 const publisher = readFileSync(new URL('../../worker/src/nogizaka-pages-read-model.js', import.meta.url), 'utf8');
 
@@ -70,8 +71,9 @@ test('Nogizaka listening-party labels are reusable for future Under Live events'
 test('Nogizaka public API is materialized-read-model-only through the shared Stationhead proxy', () => {
   assert.match(api, /proxyStationheadMaterializedReadModel/);
   assert.match(api, /'nogizaka'/);
-  assert.match(materializedProxy, /PAGES_READ_MODEL_SERVICE/);
-  assert.match(materializedProxy, /_internal\/pages-response/);
+  assert.match(materializedProxy, /fetchPagesReadModel/);
+  assert.match(readModelService, /PAGES_READ_MODEL_SERVICE/);
+  assert.match(readModelService, /_internal\/pages-response/);
   assert.match(sourceModels, /nogizaka: 'nogizaka-listening-party'/);
   assert.doesNotMatch(api, /OTHER_DB|\.prepare\(|sh_nogizaka_official_news_announcements|sh_official_broadcast_/);
   assert.match(readModel, /source: 'nogizaka'/);
