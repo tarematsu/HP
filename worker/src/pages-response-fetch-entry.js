@@ -1,7 +1,7 @@
 import {
   MATERIALIZED_API_VARIANTS,
   materializedResponseMaximumAge,
-} from '../../site/functions/lib/api-contract.js';
+} from '../../packages/sh-shared/api-contract.mjs';
 import { loadMaterializedResponse } from './pages-response-store.js';
 import { normalizeFollowersResponse } from './stationhead-followers-response.js';
 
