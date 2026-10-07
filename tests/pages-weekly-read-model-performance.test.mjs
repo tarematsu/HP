@@ -46,14 +46,15 @@ test('weekly leaderboard read model materializes missing weeks and fandom metada
   assert.equal(gap.fandom_label, '櫻坂46(ファンダム)');
 });
 
-test('Pages leaderboard reads only the weekly materialized model', () => {
+test('Pages leaderboard reads only the R2 materialized model', () => {
   const source = readFileSync(
     new URL('../site/functions/lib/history-ranking.js', import.meta.url),
     'utf8',
   );
-  assert.match(source, /FROM sh_weekly_ranking_read_model/);
-  assert.match(source, /read_path: 'weekly-ranking-read-model'/);
-  assert.doesNotMatch(source, /FROM sh_channel_rankings|FROM sh_channel_fandoms|summaryLoader\s*\(/);
+  assert.match(source, /PAGES_READ_MODEL_SERVICE/);
+  assert.match(source, /url\.searchParams\.set\('key', LEADERBOARD_MODEL_KEY\)/);
+  assert.match(source, /read_path: 'leaderboard-r2-read-model'/);
+  assert.doesNotMatch(source, /FROM sh_weekly_ranking_read_model|FROM sh_channel_rankings|FROM sh_channel_fandoms|summaryLoader\s*\(/);
 });
 
 test('weekly leaderboard producer reads only the three Sakamichi hosts', () => {
