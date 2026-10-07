@@ -34,11 +34,6 @@ function summaryStateFor(db) {
   return state;
 }
 
-export async function loadHostSummary(db) {
-  const result = await db.prepare(HOST_SUMMARY_SQL).all();
-  return parseHostSummaryRows(result?.results || []);
-}
-
 export async function cachedHostSummary(db, now = Date.now()) {
   const state = summaryStateFor(db);
   if (state.hasValue && state.expiresAt > now) return state.value;
