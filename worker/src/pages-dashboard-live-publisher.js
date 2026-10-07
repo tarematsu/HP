@@ -1,9 +1,9 @@
 import { directFiveMinuteStreamHistory } from '../../packages/sh-shared/dashboard-chart-support.mjs';
 import { loadDashboardDailySummaries, utcDayStarts } from '../../packages/sh-shared/dashboard-daily-summaries.mjs';
 import { dashboardGoalPredictions } from '../../packages/sh-shared/dashboard-prediction.mjs';
+import { requireStationheadSourceProfile } from '../../packages/sh-shared/stationhead-source.mjs';
 import { hydratePlaybackTrackMetadata } from './playback-track-metadata.js';
 import { trackNeedsHydration } from './track-metadata-quality.js';
-import { BUDDIES_PLAYBACK_HOT_STATE_KEY } from './buddies-playback-state.js';
 import { saveMaterializedR2Response } from './pages-response-r2.js';
 import {
   loadStationheadReadModelState,
@@ -18,8 +18,11 @@ const DAY_MS = 24 * 60 * 60_000;
 const HOUR_MS = 60 * 60_000;
 const INCREMENTAL_GAP_LIMIT_MS = STATIONHEAD_READ_MODEL_INCREMENTAL_GAP_MS;
 const RECOVERY_GAP_LIMIT_MS = STATIONHEAD_READ_MODEL_RECOVERY_GAP_MS;
-const DASHBOARD_CADENCE_SECONDS = 5 * 60;
-export const BUDDIES_DASHBOARD_HOT_STATE_KEY = 'stationhead/buddies/dashboard-hot-state.json';
+const BUDDIES_PROFILE = requireStationheadSourceProfile('buddies');
+const DASHBOARD_MODEL_KEY = BUDDIES_PROFILE.modelKey;
+const DASHBOARD_CADENCE_SECONDS = BUDDIES_PROFILE.publicationCadenceSeconds;
+export const BUDDIES_DASHBOARD_HOT_STATE_KEY = BUDDIES_PROFILE.readModelHotKey;
+const BUDDIES_PLAYBACK_HOT_STATE_KEY = BUDDIES_PROFILE.playbackHotKey;
 
 function finite(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -69,7 +72,7 @@ function objectValue(value) {
 async function loadExistingState(bucket) {
   return loadStationheadReadModelState(bucket, {
     hotKey: BUDDIES_DASHBOARD_HOT_STATE_KEY,
-    modelKey: 'dashboard',
+    modelKey: DASHBOARD_MODEL_KEY,
     upgrade: (payload) => payload?.ok ? payload : null,
   });
 }
@@ -80,7 +83,7 @@ function saveHotState(bucket, payload, now) {
     BUDDIES_DASHBOARD_HOT_STATE_KEY,
     payload,
     now,
-    { modelKey: 'dashboard' },
+    { modelKey: DASHBOARD_MODEL_KEY },
   );
 }
 
@@ -453,7 +456,7 @@ async function purgeDashboardEdgeCache() {
 async function savePublicEnvelope(bucket, payload, now) {
   const saved = await saveMaterializedR2Response(
     bucket,
-    'dashboard',
+    DASHBOARD_MODEL_KEY,
     JSON.stringify(payload),
     200,
     {
