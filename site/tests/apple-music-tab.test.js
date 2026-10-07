@@ -9,6 +9,7 @@ import { onRequestGet as appleMusicApi } from '../functions/api/apple-music.js';
 const runtime = readFileSync(new URL('../public/apple-music.js', import.meta.url), 'utf8');
 const playlists = readFileSync(new URL('../public/music-service-playlists.js', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/apple-music.js', import.meta.url), 'utf8');
+const readModelService = readFileSync(new URL('../functions/lib/pages-read-model-service.js', import.meta.url), 'utf8');
 
 test('Apple Music stays lazy and uses the shared playlist runtime', () => {
   const route = ROUTES['apple-music'];
@@ -23,8 +24,10 @@ test('Apple Music stays lazy and uses the shared playlist runtime', () => {
 });
 
 test('Apple Music reads only the materialized read model', () => {
-  assert.match(api, /PAGES_READ_MODEL_SERVICE/);
-  assert.match(api, /_internal\/pages-response\?key=apple-music/);
+  assert.match(api, /proxyPagesReadModel/);
+  assert.match(api, /'apple-music'/);
+  assert.match(readModelService, /PAGES_READ_MODEL_SERVICE/);
+  assert.match(readModelService, /_internal\/pages-response/);
   assert.doesNotMatch(api, /OTHER_DB|MINUTE_DB|\.prepare\(/);
 });
 
