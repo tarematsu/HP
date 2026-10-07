@@ -465,7 +465,7 @@ async function savePublicEnvelope(bucket, payload, now) {
     },
     now,
     DASHBOARD_CADENCE_SECONDS,
-    { model_key: 'dashboard' },
+    { model_key: DASHBOARD_MODEL_KEY },
   );
   if (!saved) return false;
   await purgeDashboardEdgeCache();
