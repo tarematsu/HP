@@ -8,14 +8,14 @@ import {
   countSakurazakaMissingSummaries,
   mergeSakurazakaSeriesRows,
 } from '../functions/api/sakurazaka46jp.js';
-import { inferArtistFromDisplayTitle } from '../functions/lib/playback.js';
+import { trackDisplayTitleParts } from '../../worker/src/track-metadata-quality.js';
 import { aggregatePlayed } from '../public/stationhead/played-tracks.js';
 import { normalizePlayedRows } from '../public/stationhead/normalize.js';
 
-test('playback artist inference accepts artist-first and title-first display labels', () => {
-  assert.equal(inferArtistFromDisplayTitle('Song — Artist', 'Song'), 'Artist');
-  assert.equal(inferArtistFromDisplayTitle('Artist — Song', 'Song'), 'Artist');
-  assert.equal(inferArtistFromDisplayTitle('JPABCDEF123 — Song', 'Song'), null);
+test('track metadata parsing accepts artist-first and title-first display labels', () => {
+  assert.equal(trackDisplayTitleParts('Song — Artist', 'Song').artist, 'Artist');
+  assert.equal(trackDisplayTitleParts('Artist — Song', 'Song').artist, 'Artist');
+  assert.equal(trackDisplayTitleParts('JPABCDEF123 — Song', 'Song').artist, 'JPABCDEF123');
 });
 
 test('played tracks aggregate matching canonical songs across dates', () => {
