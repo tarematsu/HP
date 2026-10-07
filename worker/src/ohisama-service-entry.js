@@ -1,6 +1,6 @@
 import app, { runOhisamaPagesScheduled } from './ohisama-pages-entry.js';
 import { handleInternalScheduled } from './internal-scheduled-dispatch.js';
-import { OHISAMA_COLLECTOR_CRON, readOhisamaCollectorHealth } from './ohisama-collector-optimized.js';
+import { OHISAMA_COLLECTOR_CRON, readOhisamaCollectorHealth } from './ohisama-collector.js';
 
 export default {
   scheduled: app.scheduled,
