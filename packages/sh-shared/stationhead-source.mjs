@@ -12,6 +12,7 @@ const SOURCE_ALIASES = Object.freeze({
 export const STATIONHEAD_SOURCE_PROFILES = Object.freeze({
   buddies: Object.freeze({
     source: 'buddies',
+    collectionPriority: 0,
     channelAlias: 'buddies',
     dbBinding: 'BUDDIES_DB',
     modelKey: 'dashboard',
@@ -22,6 +23,8 @@ export const STATIONHEAD_SOURCE_PROFILES = Object.freeze({
   }),
   ohisama: Object.freeze({
     source: 'ohisama',
+    collectionPriority: 1,
+    priorityRetryKey: 'stationhead/ohisama/priority-retry.json',
     channelAlias: 'ohisama',
     dbBinding: 'OHISAMA_DB',
     modelKey: 'hinata',
@@ -32,6 +35,7 @@ export const STATIONHEAD_SOURCE_PROFILES = Object.freeze({
   }),
   nogizaka: Object.freeze({
     source: 'nogizaka',
+    collectionPriority: 2,
     channelAlias: 'nogizaka46smej',
     dbBinding: 'OTHER_DB',
     modelKey: 'nogizaka-listening-party',

@@ -9,6 +9,7 @@ import {
   mergeOhisamaPlaybackReadModelWithCadence,
 } from './ohisama-publication-cadence.js';
 import { refreshOhisamaReadModel } from './ohisama-read-model.js';
+import { coordinateOhisamaCollection, clearOhisamaPriorityRetry } from './stationhead-collection-priority.js';
 
 export const OHISAMA_FOLLOWER_EXCLUDED_HANDLES = Object.freeze(['46fm', 'buddy46']);
 const OHISAMA_FOLLOWER_EXCLUDED_HANDLE_SET = new Set(OHISAMA_FOLLOWER_EXCLUDED_HANDLES);
@@ -77,10 +78,13 @@ function capturingFetch(fetchImpl, onChannelPayload) {
 }
 
 export async function runOhisamaPagesScheduled(controller, env, ctx, dependencies = {}) {
+  const scheduledAt = Number(controller?.scheduledTime ?? dependencies.now?.() ?? Date.now());
+  const priority = await coordinateOhisamaCollection(env, scheduledAt, dependencies.priority || {});
+  if (priority.skipped) return { ...priority, collected: false };
   const registerFollowerTarget = ohisamaFollowerRegistrar(dependencies);
   let channelPayload = null;
   const fetchImpl = dependencies.fetch || fetch;
-  const result = await runOptimizedOhisamaCollectorScheduled(
+  const result = await runOhisamaCollectorScheduled(
     controller,
     env,
     ctx,
@@ -91,6 +95,7 @@ export async function runOhisamaPagesScheduled(controller, env, ctx, dependencie
     },
   );
   if (!result?.collected) return result;
+  await clearOhisamaPriorityRetry(env, scheduledAt).catch(() => {});
 
   const previousReadModel = await loadOhisamaPublicationSnapshot(env?.PAGES_RESPONSE_R2)
     .catch(() => null);
@@ -115,7 +120,7 @@ export async function runOhisamaPagesScheduled(controller, env, ctx, dependencie
   }
 
   try {
-    const generated = await refreshOptimizedOhisamaReadModel(env, result, result.observed_at);
+    const generated = await refreshOhisamaReadModel(env, result, result.observed_at);
     const { payload: currentReadModel, ...readModel } = generated;
     const publication = await mergeOhisamaPlaybackReadModelWithCadence(
       env,

@@ -78,7 +78,7 @@ async function dispatchHomePanel(env) {
 
 const due = {
   always: () => true,
-  ohisama: ({ minute }) => minute % 5 === 1,
+  ohisama: ({ minute }) => minute % 5 === 1 || minute % 5 === 2,
   spotifyPlaycount: (_parts, timestamp) => shouldDispatchSpotifyPlaycount(timestamp),
   spotifyArtistChart: (_parts, timestamp) => shouldDispatchSpotifyArtistChart(timestamp),
   amazon: (_parts, timestamp) => amazonMusicDue(timestamp),
@@ -96,6 +96,7 @@ const JOBS = Object.freeze([
   // Recovery only: the normal Stationhead leaderboard path reconciles revisions immediately after collection.
   ['pages-history-recovery', 'SCHEDULED_COLLECTION_JOBS', HISTORY_READ_MODEL_RECOVERY_CRON, due.always],
   ['nogizaka46smej', 'NOGIZAKA_SCHEDULED', NOGIZAKA_CRON, due.always],
+  // +2 minute is a retry probe only when the +1 slot deferred to Buddies.
   ['ohisama', 'OHISAMA_SCHEDULED', OHISAMA_CRON, due.ohisama],
   ['spotify-playcount', 'SPOTIFY_PLAYCOUNT_SCHEDULED', SPOTIFY_PLAYCOUNT_CRON, due.spotifyPlaycount],
   ['spotify-artist-chart', 'SPOTIFY_PLAYCOUNT_SCHEDULED', SPOTIFY_ARTIST_CHART_CRON, due.spotifyArtistChart],
