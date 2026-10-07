@@ -1,8 +1,10 @@
 import { formatNogizakaBroadcastContent } from '../../packages/sh-shared/index.mjs';
+import { requireStationheadSourceProfile } from '../../packages/sh-shared/stationhead-source.mjs';
 import { saveMaterializedR2Response } from './pages-response-r2.js';
 
-export const NOGIZAKA_LISTENING_PARTY_MODEL_KEY = 'nogizaka-listening-party';
-export const NOGIZAKA_LISTENING_PARTY_CADENCE_SECONDS = 60;
+const NOGIZAKA_PROFILE = requireStationheadSourceProfile('nogizaka');
+export const NOGIZAKA_LISTENING_PARTY_MODEL_KEY = NOGIZAKA_PROFILE.modelKey;
+export const NOGIZAKA_LISTENING_PARTY_CADENCE_SECONDS = NOGIZAKA_PROFILE.publicationCadenceSeconds;
 const HISTORY_LIMIT = 100;
 
 const JSON_HEADERS = Object.freeze({
