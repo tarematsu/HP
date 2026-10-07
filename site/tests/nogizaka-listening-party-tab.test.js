@@ -82,9 +82,10 @@ test('Nogizaka producer builds the listening-party model from bounded D1 read mo
   assert.match(publisher, /sh_nogizaka_official_news_announcements/);
   assert.match(publisher, /FROM sh_official_broadcast_summary AS s/);
   assert.match(publisher, /FROM sh_official_broadcast_series/);
-  assert.match(publisher, /WHERE s\.host_handle='nogizaka46smej'/);
+  assert.match(publisher, /WHERE s\.host_handle=\?/);
+  assert.match(publisher, /NOGIZAKA_HANDLE = NOGIZAKA_PROFILE\.channelAlias/);
   assert.match(publisher, /ORDER BY s\.started_at DESC/);
-  assert.match(publisher, /LIMIT \?`\)\.bind\(HISTORY_LIMIT\)\.all\(\)/);
+  assert.match(publisher, /LIMIT \?`\)\.bind\(NOGIZAKA_HANDLE, HISTORY_LIMIT\)\.all\(\)/);
   assert.doesNotMatch(publisher, /sh_nogizaka_official_news_station_probes/);
   assert.match(publisher, /saveMaterializedR2Response/);
   assert.match(publisher, /broadcast_content: formatNogizakaBroadcastContent\(/);
