@@ -2,6 +2,7 @@ import {
   spotifyMonthlyListenersSql,
   spotifyMonthlyListenersTrend,
 } from '../../../packages/sh-shared/spotify-read-model.mjs';
+import { fetchPagesReadModel } from '../lib/pages-read-model-service.js';
 
 export { spotifyMonthlyListenersSql, spotifyMonthlyListenersTrend };
 
@@ -11,8 +12,6 @@ const JSON_HEADERS = Object.freeze({
   'x-content-type-options': 'nosniff',
   vary: 'accept-encoding',
 });
-const SPOTIFY_READ_MODEL_URL = 'https://pages-read-model.internal/_internal/pages-response?key=spotify-playcounts';
-
 function json(data, status = 200, headers = {}) {
   return new Response(JSON.stringify(data), {
     status,
@@ -21,14 +20,7 @@ function json(data, status = 200, headers = {}) {
 }
 
 async function materializedMonthlyListenerRows(env) {
-  const service = env?.PAGES_READ_MODEL_SERVICE;
-  if (typeof service?.fetch !== 'function') {
-    throw new Error('PAGES_READ_MODEL_SERVICE binding missing');
-  }
-  const response = await service.fetch(new Request(SPOTIFY_READ_MODEL_URL, {
-    method: 'GET',
-    headers: { accept: 'application/json' },
-  }));
+  const response = await fetchPagesReadModel(env, 'spotify-playcounts');
   if (!response?.ok) {
     throw new Error(`Spotify read model returned HTTP ${response?.status || 503}`);
   }
