@@ -86,7 +86,7 @@ function restoreResponse(snapshot) {
   });
 }
 
-export async function cachedLegacyHistoryResponse(key, ttlMs, loader) {
+export async function cachedHistoryResponse(key, ttlMs, loader) {
   try {
     const snapshot = await cachedHistoryLoad(key, ttlMs, async () => {
       const response = await loader();
@@ -119,7 +119,6 @@ async function loadBroadcasts(env, from, to) {
 }
 
 export async function onRequestGet({ request, env }) {
-  if (!env.DB) return json({ ok: false, error: 'DB binding missing' }, 500, { 'cache-control': 'no-store' });
   const url = new URL(request.url);
   const mode = url.searchParams.get('mode') || 'weekly';
   const fromParam = url.searchParams.get('from');
@@ -138,6 +137,7 @@ export async function onRequestGet({ request, env }) {
       });
     }
     if (Object.hasOwn(SUMMARY_TABLES, mode)) {
+      if (!env.DB) return json({ ok: false, error: 'DB binding missing' }, 500, { 'cache-control': 'no-store' });
       const summary = await cachedHistoryLoad(
         `summary:v5:${mode}:${from}:${to}`,
         30000,
@@ -148,14 +148,16 @@ export async function onRequestGet({ request, env }) {
       });
     }
     if (mode === 'ranking') {
-      if (!env.OTHER_DB) return json({ ok: false, error: 'OTHER_DB binding missing' }, 500, { 'cache-control': 'no-store' });
-      return cachedLegacyHistoryResponse(
+      return cachedHistoryResponse(
         rankingCacheKey(url),
         30000,
-        () => loadRanking(url, env, loadSummaryWithLive),
+        () => loadRanking(url, env),
       );
     }
-    if (mode === 'broadcasts') return loadBroadcasts(env, from, to);
+    if (mode === 'broadcasts') {
+      if (!env.OTHER_DB) return json({ ok: false, error: 'OTHER_DB binding missing' }, 500, { 'cache-control': 'no-store' });
+      return loadBroadcasts(env, from, to);
+    }
     return json({ ok: false, error: `unsupported history mode: ${mode}` }, 400, { 'cache-control': 'no-store' });
   } catch (error) {
     return json({ ok: false, error: error?.message || 'history error' }, 500, { 'cache-control': 'no-store' });
