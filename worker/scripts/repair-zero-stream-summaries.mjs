@@ -1,4 +1,4 @@
-import { DAY_MS, utcWeeklyRange, utcMonthlyRange } from '../../site/functions/lib/time-buckets.js';
+import { DAY_MS, utcWeeklyRange, utcMonthlyRange } from '../../packages/sh-shared/time-buckets.mjs';
 
 // Legacy imports store the channel's cumulative streams in total_listens.
 // Live facts store streams in current_stream_count; total_listens is a different
