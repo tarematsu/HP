@@ -7,6 +7,11 @@ import {
 import { guardedOhisamaAuthRefresh } from './ohisama-auth-refresh-guard.js';
 import { jwtExpiryMs, normalizeBearer } from './shared.js';
 import { acquireStationheadGuestSession } from './stationhead-guest-session.js';
+import {
+  readStationheadCollectorD1State,
+  stationheadCollectorCheckpointStatement,
+  recordStationheadCollectorD1Failure,
+} from './stationhead-collector-state-d1.js';
 import { fetchStationheadChannelResponse } from './stationhead-collector-core.js';
 import {
   stationheadCheckpoint,
@@ -104,42 +109,12 @@ async function writeHotState(env, state, now = Date.now()) {
 }
 
 async function readD1State(env) {
-  const row = await env.OHISAMA_DB.prepare(`SELECT
-      auth_token,device_uid,token_expires_at,last_run_at,last_success_at,last_error,
-      last_channel_id,last_station_id,updated_at
-    FROM sh_worker_collector_state WHERE id=? LIMIT 1`)
-    .bind(STATE_ID)
-    .first();
+  const row = await readStationheadCollectorD1State(env.OHISAMA_DB, STATE_ID);
   return normalizeState(row || {}, env);
 }
 
-function collectorStateStatement(env, state, now, lastError = null) {
-  return env.OHISAMA_DB.prepare(`INSERT INTO sh_worker_collector_state(
-      id,auth_token,device_uid,token_expires_at,last_run_at,last_success_at,last_error,
-      last_channel_id,last_station_id,updated_at
-    ) VALUES(?,?,?,?,?,?,?,?,?,?)
-    ON CONFLICT(id) DO UPDATE SET
-      auth_token=excluded.auth_token,
-      device_uid=excluded.device_uid,
-      token_expires_at=excluded.token_expires_at,
-      last_run_at=excluded.last_run_at,
-      last_success_at=excluded.last_success_at,
-      last_error=excluded.last_error,
-      last_channel_id=excluded.last_channel_id,
-      last_station_id=excluded.last_station_id,
-      updated_at=excluded.updated_at`)
-    .bind(
-      STATE_ID,
-      state.authToken || null,
-      state.deviceUid || null,
-      state.tokenExpiresAt || null,
-      state.lastRunAt || null,
-      state.lastSuccessAt || null,
-      lastError,
-      state.lastChannelId || null,
-      state.lastStationId || null,
-      now,
-    );
+function collectorStateStatement(env, state, now) {
+  return stationheadCollectorCheckpointStatement(env.OHISAMA_DB, state, now, STATE_ID);
 }
 
 async function writeD1State(env, state, now = Date.now()) {
@@ -324,14 +299,7 @@ async function recordFailure(env, observedAt, error) {
   if (state) {
     await writeHotState(env, { ...state, lastRunAt: observedAt, lastError: detail }, observedAt).catch(() => false);
   }
-  await env.OHISAMA_DB.prepare(`INSERT INTO sh_worker_collector_state(
-      id,last_run_at,last_error,updated_at
-    ) VALUES(?,?,?,?)
-    ON CONFLICT(id) DO UPDATE SET
-      last_run_at=excluded.last_run_at,
-      last_error=excluded.last_error,
-      updated_at=excluded.updated_at`)
-    .bind(STATE_ID, observedAt, detail, observedAt).run().catch(() => {});
+  await recordStationheadCollectorD1Failure(env.OHISAMA_DB, observedAt, detail, STATE_ID).catch(() => {});
 }
 
 export async function readOhisamaCollectorHealth(env, now = Date.now()) {

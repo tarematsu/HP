@@ -4,6 +4,7 @@ import { sanitizeFailureDetail } from './collector-failure.js';
 import { jwtExpiryMs, normalizeBearer } from './shared.js';
 import { stationheadInitialFollowerRegistrar } from './stationhead-source-runtime.js';
 import { acquireStationheadGuestSession } from './stationhead-guest-session.js';
+import { persistStationheadCollectorD1Credentials } from './stationhead-collector-state-d1.js';
 import { claimStationheadAuthRefresh, finishStationheadAuthRefresh } from './stationhead-auth-control.js';
 import {
   fetchStationheadChannelResponse,
@@ -115,12 +116,7 @@ async function acquireSession(env) {
     requestTimeoutMs: cfg.requestTimeoutMs,
   });
   const now = Date.now();
-  await env.DB.prepare(`INSERT INTO sh_worker_collector_state(
-      id,auth_token,device_uid,token_expires_at,updated_at
-    ) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
-      auth_token=excluded.auth_token,device_uid=excluded.device_uid,
-      token_expires_at=excluded.token_expires_at,updated_at=excluded.updated_at`)
-    .bind(STATE_ID, session.authToken, session.deviceUid, session.tokenExpiresAt, now).run();
+  await persistStationheadCollectorD1Credentials(env.DB, session, now, STATE_ID);
   await finishAuthAttempt(env);
   return readAuthState(env, STATE_ID);
 }
