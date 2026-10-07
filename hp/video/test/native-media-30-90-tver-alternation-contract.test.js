@@ -23,10 +23,10 @@ const youtubeRuntime = readExpandedNativeSource(
 test('media cadence keeps zero to two two-minute X slots with variable YouTube and TVer durations', () => {
   assert.match(mediaBase, /kNativeMediaXPhaseMs = 2U \* 60U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaStartupXPhaseMs = 2U \* 60U \* 1000U/);
-  assert.match(mediaBase, /kNativeMediaYoutubeMinContentDurationMinutes = 45U/);
-  assert.match(mediaBase, /kNativeMediaYoutubeMaxContentDurationMinutes = 75U/);
-  assert.match(mediaBase, /kNativeMediaTverMinContentDurationMinutes = 45U/);
-  assert.match(mediaBase, /kNativeMediaTverMaxContentDurationMinutes = 75U/);
+  assert.match(mediaBase, /kNativeMediaYoutubeMinContentDurationMinutes = 49U/);
+  assert.match(mediaBase, /kNativeMediaYoutubeMaxContentDurationMinutes = 73U/);
+  assert.match(mediaBase, /kNativeMediaTverMinContentDurationMinutes = 49U/);
+  assert.match(mediaBase, /kNativeMediaTverMaxContentDurationMinutes = 73U/);
   assert.match(mediaBase, /NativeMediaCurrentYoutubeContentDurationMs\(\)/);
   assert.match(mediaBase, /NativeMediaCurrentTverContentDurationMs\(\)/);
   assert.match(mediaBase, /const UINT count = NativeMediaXRandomBelow\(3\)/);
