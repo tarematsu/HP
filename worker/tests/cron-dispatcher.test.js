@@ -71,11 +71,12 @@ test('generic dispatcher is the only shared Cron owner and has no data bindings'
   ]);
 });
 
-test('minute routing keeps Nogizaka shared and staggers Ohisama away from Buddies', async () => {
+test('minute routing staggers Ohisama and grants a bounded retry after Buddies', async () => {
   const calls = [];
   await runCronDispatcher({ scheduledTime: Date.UTC(2026, 9, 4, 10, 2) }, env(calls));
-  assert.deepEqual(calls.map(({ name }) => name), ['collection-jobs', 'nogizaka']);
+  assert.deepEqual(calls.map(({ name }) => name), ['collection-jobs', 'nogizaka', 'ohisama']);
   assert.equal(calls[0].body.cron, '* * * * *');
+  assert.equal(calls[2].body.cron, '*/5 * * * *');
 
   calls.length = 0;
   await runCronDispatcher({ scheduledTime: Date.UTC(2026, 9, 4, 10, 1) }, env(calls));

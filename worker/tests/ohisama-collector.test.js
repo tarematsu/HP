@@ -165,7 +165,9 @@ test('ohisama Worker config binds its own D1 and the canonical track catalog whi
     { binding: 'PAGES_RESPONSE_R2', bucket_name: 'sh-pages-responses' },
   ]);
   assert.equal(config.queues, undefined);
-  assert.equal(config.durable_objects, undefined);
+  assert.deepEqual(config.durable_objects?.bindings, [
+    { name: 'BUDDIES_COLLECTOR_COORDINATOR', class_name: 'BuddiesCollectorCoordinator', script_name: 'sh-buddies-collector' },
+  ]);
 
   const serviceEntry = readFileSync(new URL('../src/ohisama-service-entry.js', import.meta.url), 'utf8');
   assert.match(serviceEntry, /handleInternalScheduled/);
