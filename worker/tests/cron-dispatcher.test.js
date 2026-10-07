@@ -103,7 +103,8 @@ test('regional and Stationhead collection schedules are dispatched to target Wor
   calls.length = 0;
   // Monday 21:17 JST: weekly Stationhead leaderboard import.
   await runCronDispatcher({ scheduledTime: Date.UTC(2026, 9, 5, 12, 17) }, env(calls));
-  assert.deepEqual(calls.map(({ name }) => name), ['collection-jobs', 'nogizaka', 'collection-jobs']);
+  assert.deepEqual(calls.map(({ name }) => name), ['collection-jobs', 'nogizaka', 'ohisama', 'collection-jobs']);
+  assert.equal(calls[2].body.cron, '*/5 * * * *');
   assert.equal(calls.at(-1).body.cron, '17 12 * * 1');
 });
 
