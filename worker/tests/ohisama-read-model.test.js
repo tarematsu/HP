@@ -2,22 +2,23 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  OHISAMA_PAGES_CADENCE_SECONDS,
-  OHISAMA_PAGES_MODEL_KEY,
-  mergeOhisamaDailyRows,
-  nextOhisamaDailySummary,
-  normalizeOhisamaHistory,
-  ohisamaReadModelPayload,
-  rollOhisamaHistory,
-} from '../src/ohisama-read-model-core.js';
+  mergeStationheadDailyRows,
+  nextStationheadDailySummary,
+  normalizeStationheadHistory,
+  rollStationheadHistory,
+  stationheadAggregateReadModelPayload,
+} from '../../packages/sh-shared/stationhead-read-models.mjs';
+import { requireStationheadSourceProfile } from '../../packages/sh-shared/stationhead-source.mjs';
+
+const OHISAMA_PROFILE = requireStationheadSourceProfile('ohisama');
 
 test('ohisama Pages model keeps the five-minute cadence', () => {
-  assert.equal(OHISAMA_PAGES_MODEL_KEY, 'hinata');
-  assert.equal(OHISAMA_PAGES_CADENCE_SECONDS, 300);
+  assert.equal(OHISAMA_PROFILE.modelKey, 'hinata');
+  assert.equal(OHISAMA_PROFILE.publicationCadenceSeconds, 300);
 });
 
 test('ohisama history derives a normalized five-minute stream increase', () => {
-  const rows = normalizeOhisamaHistory([
+  const rows = normalizeStationheadHistory([
     {
       observed_at: 1_000_000,
       online_member_count: 100,
@@ -43,14 +44,14 @@ test('ohisama history derives a normalized five-minute stream increase', () => {
 });
 
 test('ohisama Pages never substitutes total_listens for the current stream count', () => {
-  const history = normalizeOhisamaHistory([
+  const history = normalizeStationheadHistory([
     { observed_at: 1_000_000, reported_total_listens: 5000 },
     { observed_at: 1_300_000, reported_total_listens: 5100 },
   ]);
   assert.equal(history[0].stream_count, null);
   assert.equal(history[1].stream_delta_5m, null);
 
-  const value = ohisamaReadModelPayload({
+  const value = stationheadAggregateReadModelPayload('ohisama', {
     observed_at: 1_300_000,
     channel_id: 46,
     reported_total_listens: 9999,
@@ -60,7 +61,7 @@ test('ohisama Pages never substitutes total_listens for the current stream count
 });
 
 test('ohisama Pages payload exposes only aggregate current, chart, and daily data', () => {
-  const value = ohisamaReadModelPayload({
+  const value = stationheadAggregateReadModelPayload('ohisama', {
     observed_at: 1_900_000,
     channel_id: 46,
     station_id: 99,
@@ -111,7 +112,7 @@ test('daily summary updates incrementally without changing the UTC day boundary'
     member_end: 2001,
     member_growth: 1,
   };
-  const next = nextOhisamaDailySummary(existing, {
+  const next = nextStationheadDailySummary(existing, {
     online_member_count: 130,
     total_member_count: 2003,
     reported_current_stream_count: 1090,
@@ -133,12 +134,12 @@ test('daily summary updates incrementally without changing the UTC day boundary'
 });
 
 test('UTC midnight starts a new daily summary, corresponding to JST 09:00', () => {
-  const before = nextOhisamaDailySummary(null, {
+  const before = nextStationheadDailySummary(null, {
     online_member_count: 80,
     total_member_count: 3000,
     reported_current_stream_count: 5000,
   }, Date.parse('2026-09-30T23:59:59Z'));
-  const after = nextOhisamaDailySummary(before, {
+  const after = nextStationheadDailySummary(before, {
     online_member_count: 90,
     total_member_count: 3001,
     reported_current_stream_count: 5010,
@@ -155,7 +156,7 @@ test('UTC midnight starts a new daily summary, corresponding to JST 09:00', () =
 });
 
 test('daily row merge replaces only the current UTC day and leaves past days fixed', () => {
-  const rows = mergeOhisamaDailyRows([
+  const rows = mergeStationheadDailyRows([
     { period_key: '2026-09-30', sample_count: 10, stream_growth: 100 },
     { period_key: '2026-09-29', sample_count: 288, stream_growth: 5000 },
   ], {
@@ -176,7 +177,7 @@ test('daily row merge replaces only the current UTC day and leaves past days fix
 
 test('rolling history appends one point, replaces the same five-minute bucket, and prunes over 24 hours', () => {
   const observedAt = Date.parse('2026-09-30T12:00:00Z');
-  const history = rollOhisamaHistory([
+  const history = rollStationheadHistory([
     {
       observed_at: observedAt - 24 * 60 * 60_000 - 1,
       online_member_count: 1,
