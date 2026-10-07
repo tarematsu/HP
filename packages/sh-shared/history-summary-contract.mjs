@@ -19,3 +19,15 @@ export function previousSummaryPeriodKey(mode, value) {
   date.setUTCDate(date.getUTCDate() - (mode === 'weekly' ? 7 : 1));
   return date.toISOString().slice(0, 10);
 }
+
+export function currentSummaryPeriodStart(mode, now = Date.now()) {
+  const date = new Date(now);
+  date.setUTCHours(0, 0, 0, 0);
+  if (mode === 'monthly') {
+    date.setUTCDate(1);
+  } else if (mode !== 'daily') {
+    const daysSinceMonday = (date.getUTCDay() + 6) % 7;
+    date.setUTCDate(date.getUTCDate() - daysSinceMonday);
+  }
+  return date.getTime();
+}
