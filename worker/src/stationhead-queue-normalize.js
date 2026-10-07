@@ -111,7 +111,7 @@ export function normalizeStationheadQueue(
   };
 }
 
-export function stationheadQueueStructuralPayload(queue) {
+export function stationheadQueueStructuralPayload(queue, { includeLikeCounts = false } = {}) {
   if (!queue) return null;
   return {
     station_id: stationheadQueueNumber(queue.station_id),
@@ -127,6 +127,7 @@ export function stationheadQueueStructuralPayload(queue) {
       isrc: stationheadQueueText(track.isrc),
       duration_ms: stationheadQueueNumber(track.duration_ms),
       preview_url: stationheadQueueText(track.preview_url),
+      ...(includeLikeCounts ? { bite_count: stationheadQueueNumber(track.bite_count) } : {}),
     })),
   };
 }
