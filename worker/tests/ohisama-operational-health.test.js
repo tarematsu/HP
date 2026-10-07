@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { readOhisamaCollectorHealth } from '../src/ohisama-collector-optimized.js';
+import { readOhisamaCollectorHealth } from '../src/ohisama-collector.js';
 
 class FakeR2 {
   constructor(value) { this.value = value; }
