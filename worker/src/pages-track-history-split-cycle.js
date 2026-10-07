@@ -1,4 +1,4 @@
-import { materializedResponseCadenceSeconds } from '../../site/functions/lib/api-contract.js';
+import { materializedResponseCadenceSeconds } from '../../packages/sh-shared/api-contract.mjs';
 import {
   runTrackHistoryCycleStep as runTrackHistoryShardStep,
   TRACK_HISTORY_ACTIVE_MINUTES,
