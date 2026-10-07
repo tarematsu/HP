@@ -83,6 +83,9 @@ function lastHistoryObservedAt(payload) {
   return integer(history.at(-1)?.observed_at);
 }
 
+const persistDailySummary = (db, row) => upsertStationheadPeriodSummary(db, 'daily', row);
+const persistWeeklySummary = (db, row) => upsertStationheadPeriodSummary(db, 'weekly', row);
+
 async function rebuildDaySummary(db, channelId, start, updatedAt) {
   const end = start + DAY_MS;
   const summary = await db.prepare(`WITH day_rows AS (
