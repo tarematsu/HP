@@ -17,8 +17,10 @@ test('monthly listener materializer reads the dedicated daily table', () => {
 
 test('public monthly listener API is storage-only and does not query D1', () => {
   const source = readFileSync(new URL('../functions/api/spotify-monthly-listeners.js', import.meta.url), 'utf8');
-  assert.match(source, /PAGES_READ_MODEL_SERVICE/);
-  assert.match(source, /_internal\/pages-response\?key=spotify-playcounts/);
+  const readModelService = readFileSync(new URL('../functions/lib/pages-read-model-service.js', import.meta.url), 'utf8');
+  assert.match(source, /fetchPagesReadModel\(env, 'spotify-playcounts'\)/);
+  assert.match(readModelService, /PAGES_READ_MODEL_SERVICE/);
+  assert.match(readModelService, /_internal\/pages-response/);
   assert.doesNotMatch(source, /OTHER_DB|\.prepare\(/);
   assert.doesNotMatch(source, /image\/svg\+xml|spotifyMonthlyListenersSvg|format === 'svg'/);
 });
