@@ -15,13 +15,21 @@ const main = readFileSync(
   'utf8',
 );
 
-test('native app schedules the next restart for 20:00 local time', () => {
-  assert.match(app, /constexpr int kDailyRestartLocalHour = 20;/);
-  assert.match(app, /GetLocalTime\(&local\)/);
-  assert.match(app, /nextDailyRestartAt_ = startupAt_ \+ MillisecondsUntilNextDailyRestart\(\)/);
-  assert.match(app, /now >= nextDailyRestartAt_/);
+test('native app schedules stable randomized restarts in both daily windows', () => {
+  assert.match(app, /\{6, 30\}/);
+  assert.match(app, /\{19, 30\}/);
+  assert.match(app, /kRestartWindowDurationMs = 30LL \* 60LL \* 1000LL/);
+  assert.match(app, /StableRestartHash\(const SYSTEMTIME& date, size_t windowIndex\)/);
+  assert.match(app, /GetComputerNameW\(computerName, &length\)/);
+  assert.match(app, /RestartTargetMillisecondsOfDay\(local, index\)/);
+  assert.match(app, /RestartTargetMillisecondsOfDay\(tomorrow, 0\)/);
+  assert.match(app, /nextScheduledRestartAt_ = startupAt_ \+ MillisecondsUntilNextRandomizedRestart\(\)/);
+  assert.match(app, /now >= nextScheduledRestartAt_/);
   assert.match(app, /exitCode_ = kScheduledRestartExitCode/);
   assert.match(appHeader, /kScheduledRestartExitCode = 43/);
+  assert.match(appHeader, /nextScheduledRestartAt_ = 0/);
+  assert.doesNotMatch(app, /kDailyRestartLocalHour/);
+  assert.doesNotMatch(app, /MillisecondsUntilNextDailyRestart/);
 });
 
 test('scheduled restart relaunch is tagged separately from manual restart', () => {
