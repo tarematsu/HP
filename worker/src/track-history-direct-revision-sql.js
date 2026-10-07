@@ -1,7 +1,7 @@
 import {
   loadTrackHistoryData,
   TRACK_HISTORY_SQL,
-} from '../../site/functions/lib/track-history-restored-handler.js';
+} from '../../packages/sh-shared/track-history-restored-handler.mjs';
 
 const DAY_MS = 86_400_000;
 const TRACK_HISTORY_QUEUE_LOOKBACK_MS = 2 * DAY_MS;
