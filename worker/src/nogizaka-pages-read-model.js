@@ -5,6 +5,7 @@ import { saveMaterializedR2Response } from './pages-response-r2.js';
 const NOGIZAKA_PROFILE = requireStationheadSourceProfile('nogizaka');
 export const NOGIZAKA_LISTENING_PARTY_MODEL_KEY = NOGIZAKA_PROFILE.modelKey;
 export const NOGIZAKA_LISTENING_PARTY_CADENCE_SECONDS = NOGIZAKA_PROFILE.publicationCadenceSeconds;
+const NOGIZAKA_HANDLE = NOGIZAKA_PROFILE.channelAlias;
 const HISTORY_LIMIT = 100;
 
 const JSON_HEADERS = Object.freeze({
@@ -60,9 +61,9 @@ async function loadHistory(db) {
     FROM sh_official_broadcast_summary AS s
     LEFT JOIN latest_sources AS latest ON latest.event_name=s.event_name
     LEFT JOIN sh_nogizaka_official_news_announcements AS a ON a.id=latest.id
-    WHERE s.host_handle='nogizaka46smej'
+    WHERE s.host_handle=?
     ORDER BY s.started_at DESC
-    LIMIT ?`).bind(HISTORY_LIMIT).all();
+    LIMIT ?`).bind(NOGIZAKA_HANDLE, HISTORY_LIMIT).all();
   return Array.isArray(result?.results) ? result.results : [];
 }
 
@@ -72,8 +73,8 @@ async function loadSummary(db, event) {
       event_name,started_at,ended_at,sample_count,listener_avg,listener_min,listener_max,
       likes_max,distinct_tracks,host_handle,refreshed_at
     FROM sh_official_broadcast_summary
-    WHERE host_handle='nogizaka46smej' AND event_name=?
-    ORDER BY started_at DESC LIMIT 1`).bind(event.event_name).first();
+    WHERE host_handle=? AND event_name=?
+    ORDER BY started_at DESC LIMIT 1`).bind(NOGIZAKA_HANDLE, event.event_name).first();
 }
 
 async function loadSeries(db, event) {
@@ -81,8 +82,8 @@ async function loadSeries(db, event) {
   return db.prepare(`SELECT
       event_name,started_at,points_json,source_ref,refreshed_at
     FROM sh_official_broadcast_series
-    WHERE host_handle='nogizaka46smej' AND event_name=?
-    LIMIT 1`).bind(event.event_name).first();
+    WHERE host_handle=? AND event_name=?
+    LIMIT 1`).bind(NOGIZAKA_HANDLE, event.event_name).first();
 }
 
 function materializedPoints(series) {
@@ -143,7 +144,7 @@ function summaryRow(summary) {
     estimated_streams: listenerAvg != null && distinctTracks != null
       ? Math.round(listenerAvg * distinctTracks)
       : null,
-    host_handle: 'nogizaka46smej',
+    host_handle: NOGIZAKA_HANDLE,
     broadcast_content: formatNogizakaBroadcastContent({
       event_name: summary.event_name,
       title: summary.source_title,
@@ -194,7 +195,7 @@ function buildPayload(event, summary, readSeries, history, generatedAt, day) {
       likes_max: finite(summary?.likes_max),
       distinct_tracks: distinctTracks,
       estimated_streams: estimatedStreams,
-      host_handle: 'nogizaka46smej',
+      host_handle: NOGIZAKA_HANDLE,
       broadcast_content: formatNogizakaBroadcastContent(rowEvent),
       source_url: event?.news_url || summary?.source_url || null,
       status: event?.status || 'ended',
@@ -214,7 +215,7 @@ function buildPayload(event, summary, readSeries, history, generatedAt, day) {
 
   return {
     ok: true,
-    handle: 'nogizaka46smej',
+    handle: NOGIZAKA_HANDLE,
     date: day,
     generated_at: generatedAt,
     collection_active: live,
