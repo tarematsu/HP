@@ -18,10 +18,11 @@ test('dashboard read model embeds chart details and completed daily summaries fo
   assert.match(dashboard, /loadDashboardDailySummaries/);
   assert.match(dashboard, /augmentDashboardChartData/);
   assert.match(dashboard, /daily_summaries/);
-  assert.match(dashboardDetails, /loadDashboardDailySummaries/);
+  assert.match(dashboardDetails, /PAGES_READ_MODEL_SERVICE/);
+  assert.match(dashboardDetails, /url\.searchParams\.set\('key', 'dashboard'\)/);
   assert.match(dashboardDetails, /daily_summaries/);
   assert.match(dailySummaries, /FROM sh_daily_summary/);
-  assert.doesNotMatch(dashboardDetails, /FROM sh_daily_summary/);
+  assert.doesNotMatch(dashboardDetails, /MINUTE_DB|OTHER_DB|\.prepare\(|FROM sh_/);
 });
 
 test('like ranking is read only through the worker R2 materialized service', () => {
