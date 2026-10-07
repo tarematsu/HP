@@ -1,3 +1,5 @@
+import { stationheadReadModelKey } from '../../../packages/sh-shared/stationhead-read-models.mjs';
+
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=600',
@@ -9,10 +11,11 @@ function json(data, status = 200, headers = JSON_HEADERS) {
 }
 
 async function loadDashboardReadModel(env) {
+  const modelKey = stationheadReadModelKey('buddies');
   const service = env?.PAGES_READ_MODEL_SERVICE;
   if (typeof service?.fetch !== 'function') return null;
   const url = new URL('https://pages-read-model.internal/_internal/pages-response');
-  url.searchParams.set('key', 'dashboard');
+  url.searchParams.set('key', modelKey);
   const response = await service.fetch(new Request(url, {
     method: 'GET',
     headers: { accept: 'application/json' },
