@@ -138,7 +138,7 @@ test('ohisama follower target requires a handle observed during an active broadc
 });
 
 test('ohisama auth acquisition uses shared guest session with the ILYS verification hook', () => {
-  const source = readFileSync(new URL('../src/ohisama-collector-optimized.js', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/ohisama-collector.js', import.meta.url), 'utf8');
   const guestSession = readFileSync(new URL('../src/stationhead-guest-session.js', import.meta.url), 'utf8');
   assert.match(source, /DEFAULT_AUTH_HANDLE = 'ilys'/);
   assert.match(source, /acquireStationheadGuestSession/);
