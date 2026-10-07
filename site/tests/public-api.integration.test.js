@@ -39,7 +39,7 @@ test('broadcast history reports setup-required only when no imported event exist
   assert.deepEqual(body.rows, []);
 });
 
-test('history endpoint restores the ranking leaderboard from the weekly read model', async () => {
+test('history endpoint restores the ranking leaderboard from the R2 read model', async () => {
   resetHistoryLoadCache();
   const model = {
     version: 1,
@@ -79,14 +79,20 @@ test('history endpoint restores the ranking leaderboard from the weekly read mod
     ],
     weekly_metrics: [],
   };
-  const otherDb = new FakeD1Database().route('first', /FROM sh_weekly_ranking_read_model/, {
-    payload_json: JSON.stringify(model),
-    source_max_ranking_date: model.source_max_ranking_date,
-    refreshed_at: model.refreshed_at,
-  });
+  const requests = [];
   const response = await historyGet({
     request: new Request('https://skrzk.test/api/history?mode=ranking&from=2026-07-01&to=2026-07-31'),
-    env: { DB: new FakeD1Database(), OTHER_DB: otherDb },
+    env: {
+      PAGES_READ_MODEL_SERVICE: {
+        async fetch(request) {
+          const url = new URL(request.url);
+          requests.push(url);
+          return Response.json(model, {
+            headers: { 'x-materialized-at': String(model.refreshed_at) },
+          });
+        },
+      },
+    },
   });
   const body = await responseJson(response);
   assert.equal(response.status, 200);
@@ -97,9 +103,9 @@ test('history endpoint restores the ranking leaderboard from the weekly read mod
   assert.equal(body.rows[0].rank, null);
   assert.equal(body.rows[0].is_out_of_rank, true);
   assert.equal(body.rows.find((row) => row.ranking_date === '2026-07-07' && row.host_name === 'sakuramankai').rank, 3);
-  assert.equal(otherDb.callsMatching(/FROM sh_weekly_ranking_read_model/).length, 1);
-  assert.equal(otherDb.callsMatching(/FROM sh_channel_rankings/).length, 0);
-  assert.equal(body.read_path, 'weekly-ranking-read-model');
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].searchParams.get('key'), 'leaderboard');
+  assert.equal(body.read_path, 'leaderboard-r2-read-model');
 });
 
 test('history rejects impossible dates before querying D1', async () => {
