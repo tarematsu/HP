@@ -11,7 +11,6 @@ import {
   PREDICTION_24H_SQL,
   publicLatest,
   compactQueueStatus,
-  onRequestGet as dashboardFromBuddiesDb,
 } from './dashboard-legacy.mjs';
 import { LATEST_QUEUE_WITH_ITEMS_SQL, parseLatestQueueRows } from '../lib/latest-queue.js';
 import { num } from '../lib/api-utils.js';
@@ -337,40 +336,23 @@ export async function onRequestGet(context) {
     });
     if (!factsAreFresh(facts.latest)) {
       const factsLatestObservedAt = Number(facts.latest?.observed_at || 0) || null;
-      if (!context.env?.DB) {
-        return new Response(JSON.stringify({
-          ok: false,
-          error: 'minute facts read model is stale; legacy DB fallback is disabled',
-          code: 'MINUTE_FACTS_STALE',
-          stale: true,
-          stale_reason: 'minute-facts-read-model-lag',
-          facts_latest_observed_at: factsLatestObservedAt,
-        }), {
-          status: 503,
-          headers: {
-            'content-type': 'application/json; charset=utf-8',
-            'cache-control': 'no-store',
-            'x-dashboard-facts-stale': '1',
-            ...(factsLatestObservedAt == null
-              ? {}
-              : { 'x-dashboard-facts-observed-at': String(factsLatestObservedAt) }),
-          },
-        });
-      }
-      // The buddies Worker is the real-time source. A delayed minute read model
-      // may use the legacy DB only when the caller explicitly provides it.
-      const fallback = await dashboardFromBuddiesDb(context);
-      if (!fallback.ok) return fallback;
-      const fallbackPayload = await fallback.json();
       return new Response(JSON.stringify({
-        ...fallbackPayload,
-        storage_source: 'buddies-db',
+        ok: false,
+        error: 'minute facts read model is stale',
+        code: 'MINUTE_FACTS_STALE',
         stale: true,
         stale_reason: 'minute-facts-read-model-lag',
         facts_latest_observed_at: factsLatestObservedAt,
       }), {
-        status: 200,
-        headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+        status: 503,
+        headers: {
+          'content-type': 'application/json; charset=utf-8',
+          'cache-control': 'no-store',
+          'x-dashboard-facts-stale': '1',
+          ...(factsLatestObservedAt == null
+            ? {}
+            : { 'x-dashboard-facts-observed-at': String(factsLatestObservedAt) }),
+        },
       });
     }
     const models = await loadPublicReadModels(context.env.MINUTE_DB, facts.latest.channel_id);
