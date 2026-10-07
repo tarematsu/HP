@@ -1,6 +1,6 @@
 import { loadMaterializedSummary } from '../../site/functions/lib/materialized-history.js';
 import { loadBroadcastPayload } from '../../site/functions/api/history.js';
-import { loadHostSummary } from '../../site/functions/api/host-history.js';
+import { loadHostSummary } from '../../packages/sh-shared/host-history-summary.mjs';
 
 export async function renderHistoryReadModel(key, env, now = Date.now()) {
   const from = '2024-06-01';
