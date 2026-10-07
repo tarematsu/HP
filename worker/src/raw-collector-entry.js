@@ -4,6 +4,7 @@ import { sanitizeFailureDetail } from './collector-failure.js';
 import { jwtExpiryMs, normalizeBearer } from './shared.js';
 import { stationheadInitialFollowerRegistrar } from './stationhead-source-runtime.js';
 import { acquireStationheadGuestSession } from './stationhead-guest-session.js';
+import { claimStationheadAuthRefresh, finishStationheadAuthRefresh } from './stationhead-auth-control.js';
 import {
   fetchStationheadChannelResponse,
   prepareStationheadChannelPayload,
@@ -98,19 +99,12 @@ function forgetSession(env) {
 
 async function claimAuthLock(env, cfg) {
   const now = Date.now();
-  const result = await env.DB.prepare(`UPDATE sh_worker_auth_control
-    SET lock_until=?,last_attempt_at=?,updated_at=?
-    WHERE id=? AND COALESCE(lock_until,0)<?`)
-    .bind(now + cfg.lockMs, now, now, STATE_ID, now).run();
-  return Number(result?.meta?.changes || 0) > 0;
+  return claimStationheadAuthRefresh(env.DB, { stateId: STATE_ID, now, lockMs: cfg.lockMs });
 }
 
 async function finishAuthAttempt(env, error = null) {
   const now = Date.now();
-  await env.DB.prepare(`UPDATE sh_worker_auth_control SET
-      last_success_at=CASE WHEN ? IS NULL THEN ? ELSE last_success_at END,
-      last_error=?,lock_until=0,updated_at=? WHERE id=?`)
-    .bind(error, now, error, now, STATE_ID).run();
+  await finishStationheadAuthRefresh(env.DB, { stateId: STATE_ID, now, error });
 }
 
 async function acquireSession(env) {

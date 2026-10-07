@@ -1,3 +1,6 @@
+import { AUTH_CONTROL_SCHEMA_SQL } from './auth-state.js';
+import { claimStationheadAuthRefresh, finishStationheadAuthRefresh } from './stationhead-auth-control.js';
+
 const AUTH_STATE_ID = 'stationhead';
 const DEFAULT_AUTH_LOCK_MS = 60_000;
 const DEFAULT_AUTH_COOLDOWN_MS = 5 * 60_000;
@@ -21,14 +24,7 @@ async function ensureAuthControlSchema(env) {
   if (typeof env?.OHISAMA_DB?.prepare !== 'function') {
     throw new Error('OHISAMA_DB binding is unavailable for auth refresh guard');
   }
-  await env.OHISAMA_DB.prepare(`CREATE TABLE IF NOT EXISTS sh_worker_auth_control (
-      id TEXT PRIMARY KEY,
-      last_attempt_at INTEGER,
-      last_success_at INTEGER,
-      last_error TEXT,
-      lock_until INTEGER NOT NULL DEFAULT 0,
-      updated_at INTEGER NOT NULL
-    )`).run();
+  await env.OHISAMA_DB.prepare(AUTH_CONTROL_SCHEMA_SQL).run();
   authControlSchemaReady = true;
 }
 
@@ -44,22 +40,11 @@ async function claimAuthRefresh(env, now) {
   const lockMs = positive(env?.AUTH_LOCK_MS, DEFAULT_AUTH_LOCK_MS);
   const cooldownMs = positive(env?.AUTH_REFRESH_COOLDOWN_MS, DEFAULT_AUTH_COOLDOWN_MS);
   await ensureAuthControlRow(env, now);
-  const result = await env.OHISAMA_DB.prepare(`UPDATE sh_worker_auth_control SET
-      lock_until=?,last_attempt_at=?,updated_at=?
-    WHERE id=?
-      AND COALESCE(lock_until,0)<?
-      AND COALESCE(last_attempt_at,0)<=?`)
-    .bind(now + lockMs, now, now, AUTH_STATE_ID, now, now - cooldownMs)
-    .run();
-  return Number(result?.meta?.changes || 0) > 0;
+  return claimStationheadAuthRefresh(env.OHISAMA_DB, { stateId: AUTH_STATE_ID, now, lockMs, cooldownMs });
 }
 
 async function finishAuthRefresh(env, error, now) {
-  await env.OHISAMA_DB.prepare(`UPDATE sh_worker_auth_control SET
-      last_success_at=CASE WHEN ? IS NULL THEN ? ELSE last_success_at END,
-      last_error=?,lock_until=0,updated_at=? WHERE id=?`)
-    .bind(error, now, error, now, AUTH_STATE_ID)
-    .run();
+  await finishStationheadAuthRefresh(env.OHISAMA_DB, { stateId: AUTH_STATE_ID, now, error });
 }
 
 async function waitForPeerRefresh(readState, previousToken, dependencies = {}) {
