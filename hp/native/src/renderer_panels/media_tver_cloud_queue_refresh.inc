@@ -5,7 +5,7 @@ constexpr ULONGLONG kNativeMediaTverCloudQueueRefreshMs =
 constexpr ULONGLONG kNativeMediaTverStartupTimeoutMs = 30ULL * 1000ULL;
 // Retained as the neutral/default duration for legacy contracts. Runtime X
 // boundary checks use the duration drawn for the current TVer phase.
-constexpr ULONGLONG kNativeMediaTverContentPhaseMs = 58ULL * 60ULL * 1000ULL;
+constexpr ULONGLONG kNativeMediaTverContentPhaseMs = 50ULL * 60ULL * 1000ULL;
 
 struct NativeMediaTverCloudQueueRefreshResult {
   std::wstring generatedAt;

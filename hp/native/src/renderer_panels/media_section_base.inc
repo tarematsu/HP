@@ -20,15 +20,15 @@ constexpr UINT kNativeMediaStartupXPhaseMs = 2U * 60U * 1000U;
 constexpr int kNativeMediaXQuietStartSecond = 1 * 60 * 60;
 constexpr int kNativeMediaXQuietEndSecond = 6 * 60 * 60;
 // Retained as the neutral/default duration for power saving and legacy contracts.
-// Every normal YouTube phase redraws its content duration in the 49-73 minute range.
+// Every normal YouTube phase redraws its content duration in the 50-60 minute range.
 constexpr UINT kNativeMediaYoutubeContentPhaseMs = 60U * 60U * 1000U;
-constexpr UINT kNativeMediaYoutubeMinContentDurationMinutes = 49U;
-constexpr UINT kNativeMediaYoutubeMaxContentDurationMinutes = 73U;
+constexpr UINT kNativeMediaYoutubeMinContentDurationMinutes = 50U;
+constexpr UINT kNativeMediaYoutubeMaxContentDurationMinutes = 60U;
 // Retained as the neutral/default duration for startup state and legacy contracts.
-// Every actual TVer phase redraws its content duration in the 49-73 minute range.
-constexpr UINT kNativeMediaTverContentDurationMs = 58U * 60U * 1000U;
-constexpr UINT kNativeMediaTverMinContentDurationMinutes = 49U;
-constexpr UINT kNativeMediaTverMaxContentDurationMinutes = 73U;
+// Every actual TVer phase redraws its content duration in the 45-55 minute range.
+constexpr UINT kNativeMediaTverContentDurationMs = 50U * 60U * 1000U;
+constexpr UINT kNativeMediaTverMinContentDurationMinutes = 45U;
+constexpr UINT kNativeMediaTverMaxContentDurationMinutes = 55U;
 constexpr UINT kNativeMediaYoutubePhaseMs =
     kNativeMediaYoutubeContentPhaseMs + kNativeMediaXPhaseMs;
 constexpr UINT kNativeMediaTverPhaseMs = kNativeMediaTverContentDurationMs;
