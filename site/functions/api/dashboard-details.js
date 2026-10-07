@@ -1,5 +1,5 @@
-import { augmentDashboardChartData } from '../lib/dashboard-chart-support.js';
-import { loadDashboardDailySummaries } from '../lib/dashboard-daily-summaries.js';
+import { augmentDashboardChartData } from '../../../packages/sh-shared/dashboard-chart-support.mjs';
+import { loadDashboardDailySummaries } from '../../../packages/sh-shared/dashboard-daily-summaries.mjs';
 
 const CURRENT_HISTORY_SQL = `SELECT
   bucket_at AS observed_at,
