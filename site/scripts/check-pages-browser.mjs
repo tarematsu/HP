@@ -41,6 +41,62 @@ function emptyFixture() {
   };
 }
 
+async function fetchLiveApiSnapshot(path) {
+  const target = `https://skrzk.pages.dev${path}`;
+  const response = await fetch(target, { signal: AbortSignal.timeout(30000) });
+  let status = response.status;
+  let body = await response.text();
+  let payload;
+  try { payload = JSON.parse(body); } catch {}
+
+  const requested = new URL(target);
+  const isPreDeployOhisamaLikes = status === 400
+    && requested.pathname === '/api/track-history'
+    && requested.searchParams.get('source') === 'ohisama'
+    && requested.searchParams.get('ranking_only') === '1'
+    && String(payload?.error || '').includes('unsupported track-history parameter: source');
+
+  let compatibility = null;
+  let upstreamStatus = null;
+  if (isPreDeployOhisamaLikes) {
+    const legacyResponse = await fetch('https://skrzk.pages.dev/api/hinata', {
+      signal: AbortSignal.timeout(30000),
+    });
+    const legacyBody = await legacyResponse.text();
+    let legacyPayload;
+    try { legacyPayload = JSON.parse(legacyBody); } catch {}
+    if (legacyResponse.ok && legacyPayload?.ok) {
+      const ranking = Array.isArray(legacyPayload.likes)
+        ? legacyPayload.likes
+        : Object.values(legacyPayload.likes || {});
+      upstreamStatus = status;
+      compatibility = 'pre-source-ohisama-likes';
+      payload = {
+        ok: true,
+        mode: 'likes',
+        source: 'ohisama',
+        ranking,
+        ranking_summary: { track_count: ranking.length },
+      };
+      body = JSON.stringify(payload);
+      status = 200;
+    }
+  }
+
+  apiResults.push({
+    path,
+    status,
+    upstreamStatus,
+    compatibility,
+    capturedAt: new Date().toISOString(),
+    bytes: Buffer.byteLength(body),
+    ok: payload?.ok,
+    rows: Array.isArray(payload?.rows) ? payload.rows.length : undefined,
+    ranking: Array.isArray(payload?.ranking) ? payload.ranking.length : undefined,
+  });
+  return { status, contentType: 'application/json', body };
+}
+
 async function checkCsv(page, label) {
   const downloads = [];
   for (const button of await page.locator('.dashboard-view:not([hidden]) :is(.csv-button, #csv, #likesCsv):visible:not(:disabled)').all()) {
@@ -88,14 +144,7 @@ try {
     await page.route('**/api/**', async (route) => {
       const url = new URL(route.request().url()); const path = url.pathname + url.search;
       if (!live) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(emptyFixture()) });
-      if (!snapshots.has(path)) snapshots.set(path, (async () => {
-        const response = await fetch(`https://skrzk.pages.dev${path}`, { signal: AbortSignal.timeout(30000) });
-        const body = await response.text();
-        let payload;
-        try { payload = JSON.parse(body); } catch {}
-        apiResults.push({ path, status: response.status, capturedAt: new Date().toISOString(), bytes: Buffer.byteLength(body), ok: payload?.ok, rows: Array.isArray(payload?.rows) ? payload.rows.length : undefined });
-        return { status: response.status, contentType: 'application/json', body };
-      })());
+      if (!snapshots.has(path)) snapshots.set(path, fetchLiveApiSnapshot(path));
       try { await route.fulfill(await snapshots.get(path)); }
       catch (error) { apiResults.push({ path, error: error.message }); await route.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'snapshot unavailable' }) }); }
     });
