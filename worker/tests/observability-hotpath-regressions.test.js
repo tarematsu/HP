@@ -7,8 +7,8 @@ import {
 } from '../src/minute-facts-inbox.js';
 import { saveMaterializedR2Response } from '../src/pages-response-r2.js';
 
-const dashboardCore = readFileSync(
-  new URL('../../site/functions/lib/dashboard-core.js', import.meta.url),
+const dashboardRoute = readFileSync(
+  new URL('../../site/functions/api/dashboard.js', import.meta.url),
   'utf8',
 );
 
@@ -32,11 +32,13 @@ test('materialized R2 writes use one raw response object with metadata', async (
   assert.equal(result.chunks, 1);
 });
 
-test('dashboard stale handling fails closed without a legacy DB fallback', () => {
-  assert.doesNotMatch(dashboardCore, /dashboardFromBuddiesDb|storage_source: 'buddies-db'/);
-  assert.match(dashboardCore, /status: 503/);
-  assert.match(dashboardCore, /'x-dashboard-facts-stale': '1'/);
-  assert.match(dashboardCore, /code: 'MINUTE_FACTS_STALE'/);
+test('dashboard public route is read-model-only and has no legacy D1 path', () => {
+  assert.match(dashboardRoute, /proxyStationheadMaterializedReadModel/);
+  assert.match(dashboardRoute, /'buddies'/);
+  assert.doesNotMatch(
+    dashboardRoute,
+    /MINUTE_DB|OTHER_DB|dashboardFromBuddiesDb|storage_source: 'buddies-db'|\.prepare\(/,
+  );
 });
 
 test('legacy D1 job claims use the due-first partial index', () => {
