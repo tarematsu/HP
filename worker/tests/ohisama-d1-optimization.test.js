@@ -3,12 +3,12 @@ import test from 'node:test';
 
 import {
   OHISAMA_AUTH_HOT_STATE_KEY,
-  runOptimizedOhisamaCollectorScheduled,
-} from '../src/ohisama-collector-optimized.js';
+  runOhisamaCollectorScheduled,
+} from '../src/ohisama-collector.js';
 import {
-  refreshOptimizedOhisamaReadModel,
+  refreshOhisamaReadModel,
   rollupOhisamaWeekly,
-} from '../src/ohisama-read-model-optimized.js';
+} from '../src/ohisama-read-model.js';
 import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 
 const HINATA_KEY = pagesR2ResponseKey('hinata');
@@ -130,7 +130,7 @@ test('Ohisama same-day read-model refresh stays entirely off D1', async () => {
     },
   };
 
-  const result = await refreshOptimizedOhisamaReadModel(env, {
+  const result = await refreshOhisamaReadModel(env, {
     observed_at: observedAt,
     channel_id: 46,
     station_id: 99,
@@ -192,7 +192,7 @@ test('Ohisama UTC day rollover persists completed daily and weekly summaries exa
     },
   };
 
-  const result = await refreshOptimizedOhisamaReadModel(env, {
+  const result = await refreshOhisamaReadModel(env, {
     observed_at: observedAt,
     channel_id: 46,
     station_id: 99,
@@ -261,7 +261,7 @@ test('Ohisama collector uses R2 auth hot state and skips the per-run D1 state wr
     },
   };
 
-  const result = await runOptimizedOhisamaCollectorScheduled(
+  const result = await runOhisamaCollectorScheduled(
     { cron: '*/5 * * * *' },
     env,
     {},
