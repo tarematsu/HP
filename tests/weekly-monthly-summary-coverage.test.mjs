@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
-import { loadMaterializedSummary } from '../site/functions/lib/materialized-history.js';
+import { loadMaterializedSummary } from '../packages/sh-shared/materialized-history-summary.mjs';
 import { applySummaryCompleteness, expectedPeriodBounds } from '../site/functions/lib/period-completeness.js';
 
 const DAY = 86_400_000;
