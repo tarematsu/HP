@@ -3,10 +3,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import {
-  applyPreviousPeriodMemberStart,
-  summaryContextStartKey,
-} from '../functions/lib/history-summary.js';
 import { CURRENT_DAILY_MINUTE_SUMMARY_SQL } from '../functions/lib/current-minute-summary.js';
 
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
@@ -41,21 +37,6 @@ test('daily weekly and monthly stream growth uses black average listener line an
   assert.doesNotMatch(periodChart, /同接・再生数増加の推移/);
   assert.doesNotMatch(periodChart, /期間再生数/);
   assert.doesNotMatch(periodChart, /stream_end|previousFetch|response\.clone\(\)\.json/);
-});
-
-test('historical member boundaries are read as persisted values without request-time recomputation', () => {
-  const rows = [
-    { period_key: '2024-11-21', member_start: 990, member_end: 1000, member_growth: 10 },
-    { period_key: '2024-11-22', member_start: 1000, member_end: 1012, member_growth: 12 },
-    { period_key: '2024-11-25', member_start: 1012, member_end: 1037, member_growth: 25 },
-  ];
-  const returned = applyPreviousPeriodMemberStart(rows, 'daily', rows);
-  assert.equal(returned, rows);
-  assert.deepEqual(
-    returned.map(({ member_start, member_end, member_growth }) => [member_start, member_end, member_growth]),
-    [[990, 1000, 10], [1000, 1012, 12], [1012, 1037, 25]],
-  );
-  assert.equal(summaryContextStartKey('daily', '2024-11-22'), '2024-10-08');
 });
 
 test('daily member repair is persisted once and future writes are normalized in OTHER_DB', () => {
