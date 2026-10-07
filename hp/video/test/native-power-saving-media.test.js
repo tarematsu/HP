@@ -93,10 +93,10 @@ int main() {
   tick += 20 * minute;
   gNativeMediaPowerSaving = false;
   h.ApplyPowerSavingMode();
-  assert(timers[kNativeMediaPhaseTimer] == 38 * minute);
-  assert(timers[kNativeMediaXStartTimer] == 38 * minute + 1000);
+  assert(timers[kNativeMediaPhaseTimer] == 30 * minute);
+  assert(timers[kNativeMediaXStartTimer] == 30 * minute + 1000);
 
-  tick += 38 * minute;
+  tick += 30 * minute;
   h.OnTimer(kNativeMediaXStartTimer); // TVer X timer is still one second early.
   assert(!h.xPhaseActive_ && h.navigations == 0);
   h.OnTimer(kNativeMediaPhaseTimer);
