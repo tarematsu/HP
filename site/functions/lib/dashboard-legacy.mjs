@@ -1,5 +1,26 @@
 import { num } from '../lib/api-utils.js';
 import {
+  ROUND_GOAL_STEP,
+  ROUND_GOAL_COUNT,
+  linearRegressionPrediction,
+  linearRegressionPredictionFromAggregate,
+  linearRegressionPredictions,
+  linearRegressionPredictionsFromAggregate,
+  dashboardGoalTargets,
+  dashboardGoalPredictions,
+} from '../../../packages/sh-shared/dashboard-prediction.mjs';
+
+export {
+  ROUND_GOAL_STEP,
+  ROUND_GOAL_COUNT,
+  linearRegressionPrediction,
+  linearRegressionPredictionFromAggregate,
+  linearRegressionPredictions,
+  linearRegressionPredictionsFromAggregate,
+  dashboardGoalTargets,
+  dashboardGoalPredictions,
+};
+import {
   computePlayback as computePlaybackWithAnchors,
   normalizePlaybackTrack,
   safeJson,
@@ -12,8 +33,6 @@ import {
   mergeFactsLatest,
 } from '../lib/dashboard-facts.js';
 
-export const ROUND_GOAL_STEP = 5_000_000;
-export const ROUND_GOAL_COUNT = 3;
 const COMMENT_VELOCITY_WINDOW_MS = 2 * 60_000;
 
 const json = (data, status = 200, cache = 'public, max-age=20, s-maxage=30, stale-while-revalidate=90') =>
@@ -95,131 +114,6 @@ export async function cachedHostMetric(db, metricColumn, hostScope, start, end, 
 
 export function resetHostMetricCache() {
   hostMetricCache.clear();
-}
-
-function linearRegressionModel(rows) {
-  const points = rows.map((r) => ({ t: num(r.observed_at), y: num(r.current_stream_count) }))
-    .filter((p) => p.t != null && p.y != null).sort((a, b) => a.t - b.t);
-  if (points.length < 5) return null;
-  const firstT = points[0].t;
-  const spanMs = points.at(-1).t - firstT;
-  if (spanMs < 15 * 60000) return null;
-  const xs = points.map((p) => (p.t - firstT) / 3600000);
-  const ys = points.map((p) => p.y);
-  const xMean = xs.reduce((a, b) => a + b, 0) / xs.length;
-  const yMean = ys.reduce((a, b) => a + b, 0) / ys.length;
-  let cov = 0; let varX = 0;
-  for (let i = 0; i < xs.length; i += 1) {
-    cov += (xs[i] - xMean) * (ys[i] - yMean);
-    varX += (xs[i] - xMean) ** 2;
-  }
-  if (varX <= 0) return null;
-  const ratePerHour = cov / varX;
-  if (!Number.isFinite(ratePerHour) || ratePerHour <= 0) return null;
-  return {
-    latest: points.at(-1).y,
-    ratePerHour,
-    sampleCount: points.length,
-    spanHours: spanMs / 3600000,
-  };
-}
-
-function predictionFromModel(model, goal, now) {
-  if (!model || !goal || goal <= 0) return null;
-  const remaining = Math.max(0, goal - model.latest);
-  return {
-    goal,
-    eta: remaining === 0 ? now : now + (remaining / model.ratePerHour) * 3600000,
-    rate_per_hour: model.ratePerHour,
-    remaining,
-    sample_count: model.sampleCount,
-    span_hours: model.spanHours,
-  };
-}
-
-export function linearRegressionPrediction(rows, goal, now = Date.now()) {
-  return predictionFromModel(linearRegressionModel(rows), goal, now);
-}
-
-function aggregateRegressionModel(row) {
-  const sampleCount = num(row?.sample_count);
-  const firstT = num(row?.first_t);
-  const lastT = num(row?.last_t);
-  const xMean = num(row?.x_mean);
-  const yMean = num(row?.y_mean);
-  const xyMean = num(row?.xy_mean);
-  const xxMean = num(row?.xx_mean);
-  const latest = num(row?.latest_y);
-  if (sampleCount == null || sampleCount < 5 || firstT == null || lastT == null || latest == null) return null;
-  const spanMs = lastT - firstT;
-  if (spanMs < 15 * 60000 || [xMean, yMean, xyMean, xxMean].some((value) => value == null)) return null;
-  const covariance = xyMean - xMean * yMean;
-  const variance = xxMean - xMean * xMean;
-  if (!Number.isFinite(variance) || variance <= 0) return null;
-  const ratePerHour = covariance / variance;
-  if (!Number.isFinite(ratePerHour) || ratePerHour <= 0) return null;
-  return {
-    latest,
-    ratePerHour,
-    sampleCount,
-    spanHours: spanMs / 3600000,
-  };
-}
-
-export function linearRegressionPredictionFromAggregate(row, goal, now = Date.now()) {
-  return predictionFromModel(aggregateRegressionModel(row), goal, now);
-}
-
-export function linearRegressionPredictions(rows, goals, now = Date.now()) {
-  const model = linearRegressionModel(rows);
-  return (Array.isArray(goals) ? goals : [])
-    .map((goal) => predictionFromModel(model, num(goal), now))
-    .filter(Boolean);
-}
-
-export function linearRegressionPredictionsFromAggregate(row, goals, now = Date.now()) {
-  const model = aggregateRegressionModel(row);
-  return (Array.isArray(goals) ? goals : [])
-    .map((goal) => predictionFromModel(model, num(goal), now))
-    .filter(Boolean);
-}
-
-export function dashboardGoalTargets(current, configuredGoal, {
-  step = ROUND_GOAL_STEP,
-  count = ROUND_GOAL_COUNT,
-} = {}) {
-  const currentValue = num(current);
-  const configured = num(configuredGoal);
-  const targets = new Set();
-  if (configured != null && configured > 0) targets.add(configured);
-  if (currentValue == null || currentValue < 0 || step <= 0 || count <= 0) {
-    return [...targets].sort((left, right) => left - right);
-  }
-
-  const firstRoundGoal = Math.floor(currentValue / step + 1) * step;
-  for (let index = 0; index < count; index += 1) {
-    targets.add(firstRoundGoal + index * step);
-  }
-  return [...targets].sort((left, right) => left - right);
-}
-
-export function dashboardGoalPredictions({
-  rows,
-  aggregate,
-  current,
-  configuredGoal,
-  now = Date.now(),
-  useAggregate = false,
-} = {}) {
-  const goals = dashboardGoalTargets(current, configuredGoal);
-  const predictions = useAggregate
-    ? linearRegressionPredictionsFromAggregate(aggregate, goals, now)
-    : linearRegressionPredictions(rows, goals, now);
-  const configured = num(configuredGoal);
-  return {
-    goalPrediction: predictions.find((prediction) => prediction.goal === configured) || null,
-    goalPredictions: predictions,
-  };
 }
 
 export function commentVelocityExpression(alias) {
