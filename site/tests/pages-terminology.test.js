@@ -21,7 +21,7 @@ const unofficial = readFileSync(new URL('../public/unofficial-listening-parties.
 const likes = browserSource('stationhead/likes.js');
 
 test('shared Stationhead and likes views use explicit user-facing metric names at their source', () => {
-  for (const label of ['総再生数', '最終取得', '楽曲数', '楽曲別再生一覧', '最新いいね数', 'リスパ']) assert.match(staticUi, new RegExp(label));
+  for (const label of ['総再生数', '最終取得', '楽曲数', '楽曲別再生一覧', 'いいね数', '確認時間', 'リスパ']) assert.match(staticUi, new RegExp(label));
   assert.doesNotMatch(stationheadShell, /合計いいね数|合計いいね数（前日比）|最大いいね数/);
   assert.match(likesShell, /summaryItem\('楽曲数', 'likes-count'\)/);
   assert.match(likesShell, /summaryItem\('最終取得', 'likes-latest'\)/);
@@ -49,8 +49,8 @@ test('official and unofficial listening-party tables use event-specific column n
 });
 
 test('likes runtime and CSV use the same likes terminology', () => {
-  assert.match(likes, /最新いいね数/);
-  assert.match(likes, /'最終取得'/);
+  assert.match(likes, /'いいね数'/);
+  assert.match(likes, /'確認時間'/);
   assert.match(likes, /likes-count/);
   assert.doesNotMatch(likes, /likesTotalDelta/);
   assert.doesNotMatch(likes, /likesMaxLikes/);
