@@ -8,7 +8,7 @@ import {
   loadDashboardDailySummaries,
   resetDashboardDailySummariesCache,
   utcDayStarts,
-} from '../functions/lib/dashboard-daily-summaries.js';
+} from '../../packages/sh-shared/dashboard-daily-summaries.mjs';
 import { FakeD1Database } from './helpers/fake-d1.js';
 
 const dayText = (value) => new Date(value).toISOString().slice(0, 10);
