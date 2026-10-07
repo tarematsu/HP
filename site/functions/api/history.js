@@ -1,10 +1,8 @@
 import { loadRanking } from '../lib/history-ranking.js';
 import {
   SUMMARY_TABLES,
-  combineSummaryRows,
-  liveSummarySql,
-  loadSummaryWithLive,
-} from '../lib/history-summary.js';
+} from '../../../packages/sh-shared/history-summary-contract.mjs';
+import { loadMaterializedSummary } from '../../../packages/sh-shared/materialized-history-summary.mjs';
 import { isRealIsoDate } from '../lib/api-utils.js';
 import {
   BROADCAST_READ_MODEL_SQL,
@@ -13,7 +11,6 @@ import {
   parseBroadcastSummaryRows,
 } from '../../../packages/sh-shared/broadcast-history.mjs';
 
-export { combineSummaryRows, liveSummarySql, loadSummaryWithLive };
 export { BROADCAST_READ_MODEL_SQL, BROADCAST_SUMMARY_SQL, loadBroadcastPayload, parseBroadcastSummaryRows };
 
 const JSON_HEADERS = {
@@ -137,11 +134,11 @@ export async function onRequestGet({ request, env }) {
       });
     }
     if (Object.hasOwn(SUMMARY_TABLES, mode)) {
-      if (!env.DB) return json({ ok: false, error: 'DB binding missing' }, 500, { 'cache-control': 'no-store' });
+      if (!env.OTHER_DB) return json({ ok: false, error: 'OTHER_DB binding missing' }, 500, { 'cache-control': 'no-store' });
       const summary = await cachedHistoryLoad(
-        `summary:v5:${mode}:${from}:${to}`,
+        `summary:v6:${mode}:${from}:${to}`,
         30000,
-        () => loadSummaryWithLive(env, mode, from, to),
+        () => loadMaterializedSummary(env, mode, from, to),
       );
       return json({ ok: true, mode, from, to, timezone: 'UTC', ...summary }, 200, {
         'cache-control': 'public, max-age=30, s-maxage=60, stale-while-revalidate=120',
