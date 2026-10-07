@@ -1,10 +1,13 @@
 import { directFiveMinuteStreamHistory } from '../../packages/sh-shared/dashboard-chart-support.mjs';
+import { requireStationheadSourceProfile } from '../../packages/sh-shared/stationhead-source.mjs';
 import { loadMaterializedR2Json, saveMaterializedR2Response } from './pages-response-r2.js';
 
 const FIVE_MINUTES_MS = 5 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
-const DASHBOARD_CADENCE_SECONDS = 5 * 60;
-const HOT_STATE_KEY = 'stationhead/buddies/dashboard-hot-state.json';
+const BUDDIES_PROFILE = requireStationheadSourceProfile('buddies');
+const DASHBOARD_MODEL_KEY = BUDDIES_PROFILE.modelKey;
+const DASHBOARD_CADENCE_SECONDS = BUDDIES_PROFILE.publicationCadenceSeconds;
+const HOT_STATE_KEY = BUDDIES_PROFILE.readModelHotKey;
 
 function finite(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -38,7 +41,7 @@ async function readJson(bucket, key) {
 async function loadBase(bucket) {
   const hot = await readJson(bucket, HOT_STATE_KEY);
   if (Number(hot?.version) === 1 && hot?.payload?.ok) return hot.payload;
-  const payload = await loadMaterializedR2Json(bucket, 'dashboard');
+  const payload = await loadMaterializedR2Json(bucket, DASHBOARD_MODEL_KEY);
   return payload?.ok ? payload : null;
 }
 
@@ -174,11 +177,11 @@ async function persist(bucket, payload, now) {
     payload,
   }), {
     httpMetadata: { contentType: 'application/json; charset=utf-8' },
-    customMetadata: { version: '1', model_key: 'dashboard', updated_at: String(now) },
+    customMetadata: { version: '1', model_key: DASHBOARD_MODEL_KEY, updated_at: String(now) },
   });
   await saveMaterializedR2Response(
     bucket,
-    'dashboard',
+    DASHBOARD_MODEL_KEY,
     JSON.stringify(payload),
     200,
     {
@@ -187,7 +190,7 @@ async function persist(bucket, payload, now) {
     },
     now,
     DASHBOARD_CADENCE_SECONDS,
-    { model_key: 'dashboard' },
+    { model_key: DASHBOARD_MODEL_KEY },
   );
   await purgeDashboardCache();
 }
