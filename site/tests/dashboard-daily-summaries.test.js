@@ -93,7 +93,7 @@ test('Worker embeds daily summaries while dashboard compatibility routes stay re
   assert.match(publisher, /loadDashboardDailySummaries/);
   assert.match(publisher, /refreshDailySummariesIfDue/);
   assert.match(publisher, /daily_summaries/);
-  assert.match(details, /PAGES_READ_MODEL_SERVICE/);
+  assert.match(details, /fetchPagesReadModel/);
   assert.match(details, /stationheadReadModelKey\('buddies'\)/);
   assert.match(details, /daily_summaries/);
   assert.doesNotMatch(details, /loadDashboardDailySummaries|MINUTE_DB|OTHER_DB|\.prepare\(/);
