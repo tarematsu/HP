@@ -95,9 +95,10 @@ const due = {
 const JOBS = Object.freeze([
   // Recovery only: the normal Stationhead leaderboard path reconciles revisions immediately after collection.
   ['pages-history-recovery', 'SCHEDULED_COLLECTION_JOBS', HISTORY_READ_MODEL_RECOVERY_CRON, due.always],
-  ['nogizaka46smej', 'NOGIZAKA_SCHEDULED', NOGIZAKA_CRON, due.always],
+  // Lower-priority Stationhead work is serialized only in overlapping slots.
   // +2 minute is a retry probe only when the +1 slot deferred to Buddies.
   ['ohisama', 'OHISAMA_SCHEDULED', OHISAMA_CRON, due.ohisama],
+  ['nogizaka46smej', 'NOGIZAKA_SCHEDULED', NOGIZAKA_CRON, due.always],
   ['spotify-playcount', 'SPOTIFY_PLAYCOUNT_SCHEDULED', SPOTIFY_PLAYCOUNT_CRON, due.spotifyPlaycount],
   ['spotify-artist-chart', 'SPOTIFY_PLAYCOUNT_SCHEDULED', SPOTIFY_ARTIST_CHART_CRON, due.spotifyArtistChart],
   ['amazon-apple-music', 'AMAZON_MUSIC_SCHEDULED', AMAZON_MUSIC_CRON, due.amazon],
@@ -115,9 +116,20 @@ const JOBS = Object.freeze([
 export async function runCronDispatcher(controller, env) {
   const scheduledAt = scheduledTimestamp(controller);
   const parts = utcParts(scheduledAt);
-  const tasks = JOBS
-    .filter(([, , , isDue]) => isDue(parts, scheduledAt))
-    .map(([name, binding, cron]) => [name, dispatchScheduledService(env?.[binding], cron, scheduledAt)]);
+  const jobs = JOBS.filter(([, , , isDue]) => isDue(parts, scheduledAt));
+  const ohisamaDue = jobs.some(([name]) => name === 'ohisama');
+  let ohisamaTask = null;
+  const tasks = jobs.map(([name, binding, cron]) => {
+    const dispatch = () => dispatchScheduledService(env?.[binding], cron, scheduledAt);
+    // Buddies is already prioritized by its Durable Object. When both lower
+    // sources are due, Nogizaka must not start ahead of Ohisama. Never block
+    // its dispatch if Ohisama fails: all failures are reported independently.
+    const task = name === 'nogizaka46smej' && ohisamaDue
+      ? ohisamaTask.catch(() => {}).then(dispatch)
+      : dispatch();
+    if (name === 'ohisama') ohisamaTask = task;
+    return [name, task];
+  });
   if (parts.minute === 0) tasks.push(['homepanel', dispatchHomePanel(env)]);
   const settled = await Promise.allSettled(tasks.map(([, promise]) => promise));
   const failures = [];
