@@ -3,10 +3,6 @@ import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 
-import {
-  FACTS_HISTORY_24H_SQL,
-  FACTS_PREDICTION_24H_SQL,
-} from '../../site/functions/lib/dashboard-facts.js';
 import { dashboardHistoryRollupStatement } from '../src/minute-facts-statement-plan.js';
 import {
   MINUTE_FACT_INBOX_STATS_SQL,
@@ -15,6 +11,10 @@ import {
 
 const migration = readFileSync(
   new URL('../../database/facts-migrations/034_dashboard_rollup_inbox_stats.sql', import.meta.url),
+  'utf8',
+);
+const publisher = readFileSync(
+  new URL('../src/pages-dashboard-live-publisher.js', import.meta.url),
   'utf8',
 );
 
@@ -110,37 +110,26 @@ test('each live five-minute fact materializes its own dashboard bucket idempoten
     minute_at: bucket,
   }).run();
 
-  const rows = sqlite.prepare(FACTS_HISTORY_24H_SQL).all(318);
-  const rollupRow = sqlite.prepare(`SELECT listener_count,total_listens,current_stream_count
-    FROM sh_dashboard_history_5m WHERE channel_id=? AND bucket_at=?`).get(318, bucket);
+  const rows = sqlite.prepare(`SELECT
+      listener_count,total_listens,current_stream_count
+    FROM sh_dashboard_history_5m
+    WHERE channel_id=?
+    ORDER BY bucket_at ASC`).all(318);
   assert.equal(first.meta.changes, 1);
   assert.equal(second.meta.changes, 0);
   assert.equal(rows.length, 1);
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM sh_dashboard_history_5m').get().count, 1);
   assert.equal(rows[0].listener_count, 14);
   assert.equal(rows[0].total_listens, 44);
-  assert.equal(rollupRow.current_stream_count, 120);
-  assert.equal(rows[0].comment_velocity, undefined);
-  assert.match(FACTS_HISTORY_24H_SQL, /FROM sh_dashboard_history_5m r/);
-  assert.doesNotMatch(FACTS_HISTORY_24H_SQL, /FROM sh_minute_facts AS f\s+WHERE f\.source_code=1[\s\S]*RANGE BETWEEN/);
+  assert.equal(rows[0].current_stream_count, 120);
 });
 
-test('24-hour prediction aggregate reads the rollup rather than raw minute facts', async () => {
-  const sqlite = database();
-  const base = Math.floor((Date.now() - 30 * 60_000) / 300_000) * 300_000;
-  for (let index = 0; index < 5; index += 1) {
-    const minuteAt = base + index * 300_000;
-    insertFact(sqlite, [318, minuteAt, minuteAt + 1_000, 1, null, null, null, null, 100 + index * 5, 0]);
-    sqlite.prepare(`INSERT INTO sh_dashboard_history_5m(
-      channel_id,bucket_at,fact_id,minute_at,observed_at,current_stream_count,comment_velocity
-    ) SELECT channel_id,?,id,minute_at,observed_at,reported_current_stream_count,0
-      FROM sh_minute_facts WHERE channel_id=? AND minute_at=?`).run(minuteAt, 318, minuteAt);
-  }
-
-  const aggregate = sqlite.prepare(FACTS_PREDICTION_24H_SQL).get();
-  assert.equal(aggregate.sample_count, 5);
-  assert.match(FACTS_PREDICTION_24H_SQL, /FROM sh_dashboard_history_5m r/);
-  assert.doesNotMatch(FACTS_PREDICTION_24H_SQL, /FROM sh_minute_facts\s+WHERE source_code=1[\s\S]*reported_current_stream_count/);
+test('dashboard prediction is derived from the materialized history in memory', () => {
+  assert.match(publisher, /const history = Array\.isArray\(payload\?\.history\)/);
+  assert.match(publisher, /dashboardGoalPredictions\(\{/);
+  assert.match(publisher, /rows: history/);
+  assert.match(publisher, /useAggregate: false/);
+  assert.doesNotMatch(publisher, /FACTS_PREDICTION_24H_SQL|FROM sh_dashboard_history_5m/);
 });
 
 test('persisted inbox counters follow insert, claim, completion, retry, and deletion transitions', async () => {
