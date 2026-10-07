@@ -4,7 +4,7 @@ import {
   utcDayStart,
   utcMonthlyRange,
   utcWeeklyRange,
-} from '../../site/functions/lib/time-buckets.js';
+} from '../../packages/sh-shared/time-buckets.mjs';
 import { minuteFactReconcileCandidates, reconcileMinuteFactsForDay } from './minute-facts-day-reconcile.js';
 
 const STATE_ID = 'rollup-retention-v1';
