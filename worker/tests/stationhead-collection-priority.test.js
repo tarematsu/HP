@@ -80,6 +80,7 @@ test('an unresolved Buddies run takes precedence at both slots; stale markers ne
   await coordinateOhisamaCollection(env, BASE + 60_000, { waitMs: 0 });
   const result = await coordinateOhisamaCollection(env, BASE + 120_000, { waitMs: 0 });
   assert.equal(result.reason, 'buddies-priority-retry-exhausted');
+  // The previous in-flight checkpoint is stale in the next cycle.
   assert.equal((await coordinateOhisamaCollection(env, BASE + 5 * 60_000 + 120_000)).skipped, true);
 });
 
@@ -95,4 +96,16 @@ test('Ohisama scheduled runner uses real collector and Read Model entry points',
   assert.match(source, /runOhisamaCollectorScheduled\(/);
   assert.match(source, /refreshOhisamaReadModel\(/);
   assert.doesNotMatch(source, /runOptimizedOhisamaCollectorScheduled|refreshOptimizedOhisamaReadModel/);
+});
+
+test('Ohisama remains available when Buddies has failed or deferred rather than actively competing', async () => {
+  const env = fakeEnv();
+  env.BUDDIES_COLLECTOR_COORDINATOR.getByName = () => ({
+    async fetch() {
+      return Response.json({ ready: false, status: 'deferred', minute_at: BASE, last_success_at: BASE - 300_000 });
+    },
+  });
+  assert.deepEqual(await coordinateOhisamaCollection(env, BASE + 60_000, { waitMs: 0 }),
+    { skipped: false, reason: 'buddies-not-in-flight' });
+  assert.equal(env.stored.size, 0);
 });

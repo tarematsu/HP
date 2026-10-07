@@ -58,6 +58,11 @@ export async function coordinateOhisamaCollection(env, scheduledAt, options = {}
   });
   if (!status) return { skipped: false, reason: 'buddies-status-unavailable' };
   if (status.ready) return { skipped: false, reason: 'buddies-complete' };
+  // A failed, deferred or stale Buddies run is not active contention. Let
+  // Ohisama continue rather than starving it whenever Buddies is unhealthy.
+  if (status.status !== 'running' || Number(status.minuteAt) < fiveMinuteStart) {
+    return { skipped: false, reason: 'buddies-not-in-flight' };
+  }
   if (offset === 1) await deferRetry(env?.PAGES_RESPONSE_R2, fiveMinuteStart, scheduledAt);
   return {
     skipped: true,

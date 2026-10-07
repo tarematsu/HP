@@ -80,7 +80,10 @@ function capturingFetch(fetchImpl, onChannelPayload) {
 export async function runOhisamaPagesScheduled(controller, env, ctx, dependencies = {}) {
   const scheduledAt = Number(controller?.scheduledTime ?? dependencies.now?.() ?? Date.now());
   const priority = await coordinateOhisamaCollection(env, scheduledAt, dependencies.priority || {});
-  if (priority.skipped) return { ...priority, collected: false };
+  if (priority.skipped) {
+    console.info(JSON.stringify({ event: 'ohisama_collection_yielded', scheduled_at: scheduledAt, reason: priority.reason }));
+    return { ...priority, collected: false };
+  }
   const registerFollowerTarget = ohisamaFollowerRegistrar(dependencies);
   let channelPayload = null;
   const fetchImpl = dependencies.fetch || fetch;
