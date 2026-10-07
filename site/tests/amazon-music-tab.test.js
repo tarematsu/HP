@@ -17,6 +17,7 @@ const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import
 const commonShell = readFileSync(new URL('../public/music-service-shell.js', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/amazon-music.js', import.meta.url), 'utf8');
 const playlistApi = readFileSync(new URL('../functions/api/amazon-music-playlists.js', import.meta.url), 'utf8');
+const readModelService = readFileSync(new URL('../functions/lib/pages-read-model-service.js', import.meta.url), 'utf8');
 
 test('Amazon Music is a dashboard route backed only by Worker materialized read models', () => {
   const route = ROUTES['amazon-music'];
@@ -29,9 +30,12 @@ test('Amazon Music is a dashboard route backed only by Worker materialized read 
   assert.match(shell, /dashboardChartHost/);
   assert.match(sharedUi, /class="\$\{joinClasses\('shared-svg-chart', className\)\}"/);
   assert.match(runtime, /loadDashboardJson\('\/api\/amazon-music'/);
-  assert.match(api, /PAGES_READ_MODEL_SERVICE/);
-  assert.match(api, /_internal\/pages-response\?key=amazon-music/);
-  assert.match(playlistApi, /_internal\/pages-response\?key=amazon-music-playlists/);
+  assert.match(api, /proxyPagesReadModel/);
+  assert.match(api, /'amazon-music'/);
+  assert.match(playlistApi, /proxyPagesReadModel/);
+  assert.match(playlistApi, /'amazon-music-playlists'/);
+  assert.match(readModelService, /PAGES_READ_MODEL_SERVICE/);
+  assert.match(readModelService, /_internal\/pages-response/);
   assert.doesNotMatch(api, /OTHER_DB|MINUTE_DB|\.prepare\(/);
   assert.doesNotMatch(playlistApi, /OTHER_DB|MINUTE_DB|\.prepare\(/);
   assert.doesNotMatch(runtime, /\/api\/history|\/api\/dashboard|OTHER_DB|MINUTE_DB/);
