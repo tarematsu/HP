@@ -32,11 +32,8 @@ test('materialized R2 writes use one raw response object with metadata', async (
   assert.equal(result.chunks, 1);
 });
 
-test('dashboard stale handling refuses a masked legacy DB before fallback execution', () => {
-  const maskedDbGuard = dashboardCore.indexOf('if (!context.env?.DB)');
-  const legacyFallback = dashboardCore.indexOf('dashboardFromBuddiesDb(context)', maskedDbGuard);
-  assert.ok(maskedDbGuard >= 0);
-  assert.ok(legacyFallback > maskedDbGuard);
+test('dashboard stale handling fails closed without a legacy DB fallback', () => {
+  assert.doesNotMatch(dashboardCore, /dashboardFromBuddiesDb|storage_source: 'buddies-db'/);
   assert.match(dashboardCore, /status: 503/);
   assert.match(dashboardCore, /'x-dashboard-facts-stale': '1'/);
   assert.match(dashboardCore, /code: 'MINUTE_FACTS_STALE'/);
