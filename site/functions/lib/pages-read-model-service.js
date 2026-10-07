@@ -33,3 +33,56 @@ export async function fetchPagesReadModel(env, modelKey, options = {}) {
     return null;
   }
 }
+
+const JSON_HEADERS = Object.freeze({
+  'content-type': 'application/json; charset=utf-8',
+  'x-content-type-options': 'nosniff',
+  vary: 'accept-encoding',
+});
+
+export function pagesReadModelJson(payload, status = 200, cacheControl = 'no-store') {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...JSON_HEADERS, 'cache-control': cacheControl },
+  });
+}
+
+export async function proxyPagesReadModel(
+  env,
+  modelKey,
+  {
+    cacheControl,
+    unavailableMessage = 'materialized read model unavailable',
+    missingBindingMessage = 'PAGES_READ_MODEL_SERVICE binding missing',
+    httpErrorPrefix = unavailableMessage,
+    coldStartPayload = null,
+  } = {},
+) {
+  if (typeof env?.PAGES_READ_MODEL_SERVICE?.fetch !== 'function') {
+    return pagesReadModelJson({ ok: false, error: missingBindingMessage }, 503);
+  }
+
+  const response = await fetchPagesReadModel(env, modelKey);
+  if (!response) return pagesReadModelJson({ ok: false, error: unavailableMessage }, 503);
+  if (response.status === 404 && coldStartPayload) {
+    return pagesReadModelJson(coldStartPayload, 200);
+  }
+  if (!response.ok) {
+    return pagesReadModelJson({
+      ok: false,
+      error: `${httpErrorPrefix} returned HTTP ${response.status || 503}`,
+    }, 503);
+  }
+
+  const headers = new Headers(response.headers);
+  headers.delete('content-length');
+  headers.set('content-type', JSON_HEADERS['content-type']);
+  headers.set('cache-control', cacheControl || 'no-store');
+  headers.set('x-content-type-options', JSON_HEADERS['x-content-type-options']);
+  headers.set('vary', JSON_HEADERS.vary);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
