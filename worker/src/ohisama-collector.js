@@ -12,13 +12,14 @@ import {
   stationheadCheckpoint,
   stationheadOperationalHealth,
 } from '../../packages/sh-shared/stationhead-operational-state.mjs';
+import { requireStationheadSourceProfile } from '../../packages/sh-shared/stationhead-source.mjs';
 
 const STATE_ID = 'stationhead';
 const DEFAULT_AUTH_HANDLE = 'ilys';
 const DEFAULT_REQUEST_TIMEOUT_MS = 8_000;
 const DEFAULT_REFRESH_BEFORE_MS = 60 * 60_000;
 const DEFAULT_D1_STATE_CHECKPOINT_MS = 60 * 60_000;
-export const OHISAMA_AUTH_HOT_STATE_KEY = 'stationhead/ohisama/collector-state.json';
+export const OHISAMA_AUTH_HOT_STATE_KEY = requireStationheadSourceProfile('ohisama').collectorStateHotKey;
 
 export { OHISAMA_COLLECTOR_CRON };
 
