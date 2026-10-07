@@ -10,6 +10,9 @@ import {
   stationheadAggregateReadModelPayload,
   stationheadReadModelGapMode,
   stationheadReadModelKey,
+  stationheadUtcDayStart,
+  stationheadUtcDayKey,
+  stationheadUtcWeekKey,
 } from '../../packages/sh-shared/stationhead-read-models.mjs';
 import { STATIONHEAD_SOURCE_PROFILES } from '../../packages/sh-shared/stationhead-source.mjs';
 
@@ -63,4 +66,14 @@ test('Stationhead read-model gap policy is source-independent', () => {
   assert.equal(stationheadReadModelGapMode(now, now + 300_000), 'incremental');
   assert.equal(stationheadReadModelGapMode(now, now + 30 * 60_000), 'recovery');
   assert.equal(stationheadReadModelGapMode(now, now + 2 * 24 * 60 * 60_000), 'bootstrap');
+});
+
+test('Stationhead UTC daily and Monday-based weekly boundaries are shared across sources', () => {
+  const sunday = Date.parse('2026-10-04T23:59:59Z');
+  const monday = Date.parse('2026-10-05T00:00:00Z');
+  assert.equal(stationheadUtcDayKey(sunday), '2026-10-04');
+  assert.equal(stationheadUtcDayStart(sunday), Date.parse('2026-10-04T00:00:00Z'));
+  assert.equal(stationheadUtcDayKey(monday), '2026-10-05');
+  assert.equal(stationheadUtcWeekKey(sunday), '2026-09-28');
+  assert.equal(stationheadUtcWeekKey(monday), '2026-10-05');
 });

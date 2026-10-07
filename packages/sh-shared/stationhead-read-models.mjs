@@ -35,6 +35,12 @@ function weekStart(timestamp) {
   return start - ((date.getUTCDay() + 6) % 7) * DAY_MS;
 }
 
+// Shared UTC boundaries for source-scoped daily/weekly rollups.
+export { dayStart as stationheadUtcDayStart, periodKey as stationheadUtcDayKey };
+export function stationheadUtcWeekKey(timestamp) {
+  return new Date(weekStart(timestamp)).toISOString().slice(0, 10);
+}
+
 function minDefined(previous, next) {
   if (next == null) return previous;
   if (previous == null) return next;
@@ -222,7 +228,7 @@ export function rollupStationheadWeekly(dailyRows = [], updatedAt = Date.now()) 
         : null);
     if (start == null) continue;
     const startOfWeek = weekStart(start);
-    const key = new Date(startOfWeek).toISOString().slice(0, 10);
+    const key = stationheadUtcWeekKey(startOfWeek);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(row);
   }

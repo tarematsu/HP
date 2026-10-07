@@ -4,6 +4,9 @@ import {
   rollStationheadHistory,
   rollupStationheadWeekly,
   stationheadAggregateReadModelPayload,
+  stationheadUtcDayStart as dayStart,
+  stationheadUtcDayKey as periodKey,
+  stationheadUtcWeekKey as weekKey,
 } from '../../packages/sh-shared/stationhead-read-models.mjs';
 import { requireStationheadSourceProfile } from '../../packages/sh-shared/stationhead-source.mjs';
 import { loadStationheadMinuteFactGapRows } from './stationhead-minute-facts-reader.js';
@@ -23,7 +26,6 @@ export const OHISAMA_PAGES_MODEL_KEY = OHISAMA_PROFILE.modelKey;
 export const OHISAMA_PAGES_CADENCE_SECONDS = OHISAMA_PROFILE.publicationCadenceSeconds;
 
 const DAY_MS = 24 * 60 * 60_000;
-const FIVE_MINUTES_MS = 5 * 60_000;
 const INCREMENTAL_GAP_LIMIT_MS = STATIONHEAD_READ_MODEL_INCREMENTAL_GAP_MS;
 const RECOVERY_GAP_LIMIT_MS = STATIONHEAD_READ_MODEL_RECOVERY_GAP_MS;
 export const OHISAMA_READ_MODEL_HOT_STATE_KEY = OHISAMA_PROFILE.readModelHotKey;
@@ -37,24 +39,6 @@ function finite(value) {
 function integer(value) {
   const number = finite(value);
   return number == null ? null : Math.trunc(number);
-}
-
-function dayStart(timestamp) {
-  return Math.floor(Number(timestamp) / DAY_MS) * DAY_MS;
-}
-
-function periodKey(timestamp) {
-  return new Date(dayStart(timestamp)).toISOString().slice(0, 10);
-}
-
-function weekStart(timestamp) {
-  const start = dayStart(timestamp);
-  const date = new Date(start);
-  return start - ((date.getUTCDay() + 6) % 7) * DAY_MS;
-}
-
-function weekKey(timestamp) {
-  return new Date(weekStart(timestamp)).toISOString().slice(0, 10);
 }
 
 function validPayload(payload) {
@@ -98,18 +82,6 @@ function lastHistoryObservedAt(payload) {
   const history = Array.isArray(payload?.history_24h) ? payload.history_24h : [];
   return integer(history.at(-1)?.observed_at);
 }
-
-function summaryBoundary(rows, key, direction) {
-  const ordered = direction === 'start' ? rows : [...rows].reverse();
-  for (const row of ordered) {
-    const value = integer(row?.[key]);
-    if (value != null) return value;
-  }
-  return null;
-}
-
-const persistDailySummary = (db, row) => upsertStationheadPeriodSummary(db, 'daily', row);
-const persistWeeklySummary = (db, row) => upsertStationheadPeriodSummary(db, 'weekly', row);
 
 async function rebuildDaySummary(db, channelId, start, updatedAt) {
   const end = start + DAY_MS;
