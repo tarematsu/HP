@@ -37,7 +37,7 @@ test('dashboard hot path is event-driven from the committed minute fact', () => 
   assert.match(fastStore, /upsert_minute_fact/);
   assert.match(fastStore, /publishCurrentDashboard/);
   assert.match(livePublisher, /publishDashboardFromMinuteFact/);
-  assert.match(livePublisher, /saveMaterializedR2Response/);
+  assert.match(livePublisher, /publishStationheadReadModel/);
   assert.doesNotMatch(livePublisher, /api\.github\.com|workflow.*dispatch/i);
 });
 
