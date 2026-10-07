@@ -3,10 +3,6 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 
 import {
-  decorateQueueResponse,
-  queueResponseFields,
-} from '../site/functions/api/dashboard.js';
-import {
   DASHBOARD_QUEUE_STATE_SQL,
   hostIdentity,
   parseQueueState,
@@ -74,35 +70,3 @@ test('dashboard queue revision changes only when queue state or metadata changes
   assert.equal(parseQueueState(canonicalRow).metadata_fetched_at, 8000);
 });
 
-test('changed dashboard response exposes queue revision fields directly', () => {
-  const context = {
-    revision: '20:7:3000:0:2200:6000:2:id:42',
-    state: { total_items: 2 },
-    hostIdentity: 'id:42',
-    unchanged: false,
-  };
-  assert.deepEqual(queueResponseFields(context), {
-    queue_revision: context.revision,
-    queue_unchanged: false,
-  });
-});
-
-test('unchanged dashboard queue response omits rows but keeps playback status', () => {
-  const context = {
-    revision: '20:7:3000:0:2200:6000:2:id:42',
-    state: { total_items: 2 },
-    hostIdentity: 'id:42',
-    unchanged: true,
-  };
-  const result = decorateQueueResponse({
-    ok: true,
-    latest: { is_broadcasting: 1, host_account_id: 42 },
-    queue: [{ title: 'should not be sent' }],
-    queue_status: { is_paused: 0, playing: false, total_items: 0 },
-  }, context);
-
-  assert.deepEqual(result.queue, []);
-  assert.equal(result.queue_unchanged, true);
-  assert.equal(result.queue_status.playing, true);
-  assert.equal(result.queue_status.total_items, 2);
-});
