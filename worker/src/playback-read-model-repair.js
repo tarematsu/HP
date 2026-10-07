@@ -1,4 +1,4 @@
-import { materializedResponseCadenceSeconds } from '../../site/functions/lib/api-contract.js';
+import { materializedResponseCadenceSeconds } from '../../packages/sh-shared/api-contract.mjs';
 import { canonicalizeTrackRows } from '../../packages/sh-shared/canonical-track-rows.mjs';
 import { saveMaterializedR2Response } from './pages-response-r2.js';
 import {
