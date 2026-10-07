@@ -16,6 +16,7 @@ const stationheadModel = readFileSync(new URL('../public/stationhead-channel-mod
 const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/hinata.js', import.meta.url), 'utf8');
 const materializedProxy = readFileSync(new URL('../functions/lib/stationhead-materialized-proxy.js', import.meta.url), 'utf8');
+const readModelService = readFileSync(new URL('../functions/lib/pages-read-model-service.js', import.meta.url), 'utf8');
 const sourceModels = readFileSync(new URL('../../packages/sh-shared/stationhead-read-models.mjs', import.meta.url), 'utf8');
 
 test('Pages keeps Ohisama behind the shared lazy dashboard route', () => {
@@ -75,8 +76,9 @@ test('Ohisama frontend difference is isolated to the materialized read-model ada
 test('Hinata public API remains read-model-only through the shared Stationhead proxy', () => {
   assert.match(api, /proxyStationheadMaterializedReadModel/);
   assert.match(api, /'ohisama'/);
-  assert.match(materializedProxy, /PAGES_READ_MODEL_SERVICE/);
-  assert.match(materializedProxy, /_internal\/pages-response/);
+  assert.match(materializedProxy, /fetchPagesReadModel/);
+  assert.match(readModelService, /PAGES_READ_MODEL_SERVICE/);
+  assert.match(readModelService, /_internal\/pages-response/);
   assert.match(sourceModels, /ohisama: 'hinata'/);
   assert.doesNotMatch(api, /\.prepare\(|OHISAMA_DB|MINUTE_DB|OTHER_DB/);
 });
