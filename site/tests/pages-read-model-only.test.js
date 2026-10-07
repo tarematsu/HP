@@ -4,9 +4,9 @@ import test from 'node:test';
 
 const dashboard = readFileSync(new URL('../functions/api/dashboard.js', import.meta.url), 'utf8');
 const dashboardDetails = readFileSync(new URL('../functions/api/dashboard-details.js', import.meta.url), 'utf8');
-const dailySummaries = readFileSync(new URL('../functions/lib/dashboard-daily-summaries.js', import.meta.url), 'utf8');
+const dailySummaries = readFileSync(new URL('../../packages/sh-shared/dashboard-daily-summaries.mjs', import.meta.url), 'utf8');
 const tracks = readFileSync(new URL('../functions/api/track-history.js', import.meta.url), 'utf8');
-const ranking = readFileSync(new URL('../functions/lib/track-ranking.js', import.meta.url), 'utf8');
+const ranking = readFileSync(new URL('../../packages/sh-shared/track-ranking.mjs', import.meta.url), 'utf8');
 const trackStage = readFileSync(new URL('../../worker/src/pages-track-history-stage.js', import.meta.url), 'utf8');
 const splitCycle = readFileSync(new URL('../../worker/src/pages-track-history-split-cycle.js', import.meta.url), 'utf8');
 const entry = readFileSync(new URL('../../worker/src/runtime-orchestrator-entry.js', import.meta.url), 'utf8');
