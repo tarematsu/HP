@@ -46,6 +46,30 @@ test('source-scoped likes read model writes canonical R2 only at its cadence', a
   assert.equal(second.published, false);
   assert.equal(second.reason, 'cadence');
   assert.equal(r2.puts.length, 1);
+
+  const changed = {
+    '1': { track_id: 1, title: 'A', artist: '日向坂46', like_count: 21, observed_at: 3_000 },
+  };
+  const third = await publishStationheadLikesReadModel(r2, 'ohisama', changed, 3_000, { cadenceMs: 6 * 60 * 60_000 });
+  assert.equal(third.published, true);
+  assert.equal(third.reason, 'updated');
+  assert.equal(r2.puts.length, 2);
+  assert.equal(third.payload.ranking[0].like_count, 21);
+});
+
+test('source-scoped likes read model replaces an empty ranking immediately', async () => {
+  const r2 = new FakeR2();
+  const empty = await publishStationheadLikesReadModel(r2, 'ohisama', {}, 1_000, { cadenceMs: 6 * 60 * 60_000 });
+  assert.equal(empty.published, true);
+  assert.equal(empty.payload.ranking.length, 0);
+
+  const populated = await publishStationheadLikesReadModel(r2, 'ohisama', {
+    '7': { track_id: 7, title: 'New', artist: '日向坂46', like_count: 4, observed_at: 2_000 },
+  }, 2_000, { cadenceMs: 6 * 60 * 60_000 });
+  assert.equal(populated.published, true);
+  assert.equal(populated.reason, 'updated');
+  assert.equal(populated.payload.ranking.length, 1);
+  assert.equal(r2.puts.length, 2);
 });
 
 function expectKey(modelKey) {
