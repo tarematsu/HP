@@ -8,7 +8,7 @@ const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta
 const tabs = dashboardRouterSource();
 const readModel = browserSource('stationhead-channel-read-model.js');
 const dashboardEndpoint = readFileSync(new URL('../functions/api/dashboard.js', import.meta.url), 'utf8');
-const contract = readFileSync(new URL('../functions/lib/api-contract.js', import.meta.url), 'utf8');
+const contract = readFileSync(new URL('../../packages/sh-shared/api-contract.mjs', import.meta.url), 'utf8');
 
 test('shared bootstrap keeps every non-current view and first-week comparison lazy', () => {
   for (const asset of [
