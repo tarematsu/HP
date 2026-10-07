@@ -52,7 +52,7 @@ async function checkCsv(page, label) {
     await download.saveAs(target);
     const csv = await readFile(target, 'utf8');
     assert.ok(csv.trim().length > 0, 'CSV is empty');
-    if (live) assert.ok(csv.trim().split(/\r?\n/).length > 1, 'CSV contains only headers');
+    if (live) assert.ok(csv.trim().split(/\r?\n/).length > 1, `${label}: ${download.suggestedFilename()} CSV contains only headers`);
     downloads.push({ name: download.suggestedFilename(), bytes: Buffer.byteLength(csv) });
   }
   return downloads;
