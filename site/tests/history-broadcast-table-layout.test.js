@@ -6,7 +6,7 @@ const entry = readFileSync(new URL('../public/history/history-main.js', import.m
 const table = readFileSync(new URL('../public/history/history-broadcast-table.js', import.meta.url), 'utf8');
 const partyUi = readFileSync(new URL('../public/official-listening-party-ui.js', import.meta.url), 'utf8');
 const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
-const historyApi = readFileSync(new URL('../functions/api/history.js', import.meta.url), 'utf8');
+const historyApi = readFileSync(new URL('../../packages/sh-shared/broadcast-history.mjs', import.meta.url), 'utf8');
 
 test('official listening party table uses the shared read-model column contract', () => {
   assert.match(entry, /history-broadcast-table\.js\?v=20261001\.1/);
