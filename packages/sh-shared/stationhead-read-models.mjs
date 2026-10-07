@@ -1,4 +1,4 @@
-import { stationheadSourceProfile } from './stationhead-source.mjs';
+import { STATIONHEAD_SOURCE_PROFILES, stationheadSourceProfile } from './stationhead-source.mjs';
 
 const DAY_MS = 24 * 60 * 60_000;
 const FIVE_MINUTES_MS = 5 * 60_000;
@@ -6,11 +6,9 @@ const FIVE_MINUTES_MS = 5 * 60_000;
 export const STATIONHEAD_READ_MODEL_INCREMENTAL_GAP_MS = 11 * 60_000;
 export const STATIONHEAD_READ_MODEL_RECOVERY_GAP_MS = DAY_MS;
 
-export const STATIONHEAD_READ_MODEL_KEYS = Object.freeze({
-  buddies: 'dashboard',
-  ohisama: 'hinata',
-  nogizaka: 'nogizaka-listening-party',
-});
+export const STATIONHEAD_READ_MODEL_KEYS = Object.freeze(Object.fromEntries(
+  Object.entries(STATIONHEAD_SOURCE_PROFILES).map(([source, profile]) => [source, profile.modelKey]),
+));
 
 function finite(value) {
   if (value === null || value === undefined || value === '') return null;

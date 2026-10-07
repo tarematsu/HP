@@ -52,6 +52,6 @@ test('playback, likes and CSV rendering live only in the shared runtime', () => 
   assert.match(runtime, /className = 'like-rank-content'/);
   assert.match(runtime, /className = 'like-rank-metrics'/);
   assert.match(runtime, /downloadCsv/);
-  assert.match(readModel, /includes\('日向坂46'\)/);
-  assert.match(readModel, /includes\('櫻坂46'\)/);
+  assert.match(readModel, /createStationheadTrackHistoryClient\('ohisama', '日向坂46', fetchJson\)/);
+  assert.match(readModel, /createStationheadTrackHistoryClient\('buddies', '櫻坂46', fetchJson\)/);
 });

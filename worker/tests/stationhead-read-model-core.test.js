@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  STATIONHEAD_READ_MODEL_KEYS,
   mergeStationheadDailyRows,
   nextStationheadDailySummary,
   rollStationheadHistory,
@@ -10,8 +11,11 @@ import {
   stationheadReadModelGapMode,
   stationheadReadModelKey,
 } from '../../packages/sh-shared/stationhead-read-models.mjs';
+import { STATIONHEAD_SOURCE_PROFILES } from '../../packages/sh-shared/stationhead-source.mjs';
 
 test('Stationhead source-scoped read-model core resolves all public model keys', () => {
+  assert.deepEqual(STATIONHEAD_READ_MODEL_KEYS,
+    Object.fromEntries(Object.entries(STATIONHEAD_SOURCE_PROFILES).map(([source, profile]) => [source, profile.modelKey])));
   assert.equal(stationheadReadModelKey('buddies'), 'dashboard');
   assert.equal(stationheadReadModelKey('ohisama'), 'hinata');
   assert.equal(stationheadReadModelKey('nogizaka46smej'), 'nogizaka-listening-party');

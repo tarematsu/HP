@@ -1,9 +1,11 @@
 // buddies API adapter and capabilities.
 import { fetchJson, todayUtc } from './data-client.js';
-import { normalizeCurrent, normalizedDaily, historyMode, normalizePlayedRows, normalizeLikes, normalizeBroadcasts } from './normalize.js';
+import { createStationheadTrackHistoryClient } from './track-history-client.js';
+import { normalizeCurrent, normalizedDaily, historyMode, normalizeBroadcasts } from './normalize.js';
 
 export function buddiesModel() {
   let selectedHistoryMode = 'daily';
+  const tracks = createStationheadTrackHistoryClient('buddies', '櫻坂46', fetchJson);
   return {
     source: 'buddies',
     meta: { station_url: 'https://stationhead.com/c/buddies', artist_filter: '櫻坂46' },
@@ -17,18 +19,9 @@ export function buddiesModel() {
       const payload = await fetchJson(`/api/history?mode=${mode}&from=2024-06-01&to=${todayUtc()}`, { signal, force });
       return { daily: normalizedDaily(payload.rows), mode };
     },
-    async loadPlayedIndex({ signal = null, force = false } = {}) {
-      const payload = await fetchJson('/api/track-history?dates_only=1', { signal, force });
-      return (Array.isArray(payload?.dates) ? payload.dates : []).filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value))).sort();
-    },
-    async loadPlayedPeriod(from, to, { signal, force } = {}) {
-      const payload = await fetchJson(`/api/track-history?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=10000&ranking=0`, { signal, force });
-      return normalizePlayedRows(payload.rows);
-    },
-    async loadLikes({ signal = null, force = false } = {}) {
-      const payload = await fetchJson('/api/track-history?ranking_only=1&ranking_limit=500', { signal, force });
-      return normalizeLikes(payload.ranking).filter((row) => !row.artist || row.artist.normalize('NFKC').includes('櫻坂46'));
-    },
+    loadPlayedIndex: tracks.loadIndex,
+    loadPlayedPeriod: tracks.loadPeriod,
+    loadLikes: tracks.loadLikes,
     async loadBroadcasts({ signal = null, force = false } = {}) {
       const summary = await fetchJson(`/api/history?mode=broadcasts&from=2024-06-01&to=${todayUtc()}`, { signal, force });
       const normalized = normalizeBroadcasts(summary);
