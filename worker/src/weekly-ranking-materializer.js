@@ -1,3 +1,7 @@
+import {
+  stationheadChannelNameForHost,
+  stationheadRankingHostKey as hostKey,
+} from '../../packages/sh-shared/stationhead-ranking-hosts.mjs';
 const DAY_MS = 86_400_000;
 export const WEEKLY_RANKING_MODEL_VERSION = 3;
 const MODEL_VERSION = WEEKLY_RANKING_MODEL_VERSION;
@@ -5,24 +9,6 @@ const CHUNK_STORAGE = 'chunked-json-v1';
 // D1 limits each SQL statement to 100,000 bytes. Keep source chunks well below
 // that so SQL quoting/escaping cannot push an INSERT over the statement limit.
 const CHUNK_MAX_BYTES = 40_000;
-const STATIONHEAD_CHANNEL_BY_HOST = new Map([
-  ['sakuramankai', 'Buddies'],
-  ['sakurazaka46jp', '櫻坂46'],
-  ['nogizaka46smej', '乃木坂46'],
-  ['nogifan1ch', 'Nogizaka'],
-  ['sbuddies1819', 'ATIN'],
-  ['jo1andjam', 'JAM'],
-  ['vote6tones', 'team SixTONES'],
-  ['befirst', 'BESTY'],
-  ['straykids', 'STAYS'],
-  ['k_p_official', 'Tiara'],
-  ['rosehq', 'numberoneHQ'],
-]);
-
-function hostKey(value) {
-  return String(value || '').trim().toLowerCase();
-}
-
 function validDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
 }
@@ -54,7 +40,7 @@ function decorateRows(rows, fandomRows) {
     metadata.set(key, {
       artist_name: artistName,
       fandom_type: correctedSbuddies ? 'fandom' : row.relation_type === 'official' ? 'official' : 'fandom',
-      stationhead_channel_name: STATIONHEAD_CHANNEL_BY_HOST.get(key) || null,
+      stationhead_channel_name: stationheadChannelNameForHost(key),
     });
   }
   return (rows || []).map((row) => {
@@ -69,7 +55,7 @@ function decorateRows(rows, fandomRows) {
       decorated.artist_name = null;
       decorated.fandom_type = null;
       decorated.fandom_label = null;
-      decorated.stationhead_channel_name = STATIONHEAD_CHANNEL_BY_HOST.get(hostKey(row.host_name)) || null;
+      decorated.stationhead_channel_name = stationheadChannelNameForHost(row.host_name);
     }
     return decorated;
   });
