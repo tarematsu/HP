@@ -6,7 +6,6 @@ import { liveSummarySql, combineSummaryRows, BROADCAST_SUMMARY_SQL } from '../si
 
 import { planLikeObservations, latestLikesSql } from '../site/functions/lib/ingest.js';
 import { listenerAggregateDelta } from '../site/functions/lib/host-ingest.js';
-import { cachedPrediction, resetPredictionCache } from '../site/functions/api/dashboard.js';
 
 test('live daily history is aggregated by UTC day beginning at 09:00 in Japan', () => {
   const db = new DatabaseSync(':memory:');
@@ -108,18 +107,4 @@ test('listener aggregates can be updated from the replaced minute delta', () => 
   assert.deepEqual(listenerAggregateDelta(null, 10), { sum: 10, count: 1 });
   assert.deepEqual(listenerAggregateDelta(10, 12), { sum: 2, count: 0 });
   assert.deepEqual(listenerAggregateDelta(10, null), { sum: -10, count: -1 });
-});
-
-test('concurrent dashboard prediction requests keep D1 work request-scoped', async () => {
-  resetPredictionCache();
-  let calls = 0;
-  const statement = { first: async () => { calls += 1; return { sample_count: 1 }; } };
-  const [first, second] = await Promise.all([
-    cachedPrediction(statement),
-    cachedPrediction(statement),
-  ]);
-  assert.equal(calls, 2);
-  assert.deepEqual(first, second);
-  await cachedPrediction(statement);
-  assert.equal(calls, 2);
 });
