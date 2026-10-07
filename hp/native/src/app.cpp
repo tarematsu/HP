@@ -9,8 +9,19 @@ namespace {
 constexpr wchar_t kWindowClass[] = L"HomePanelNativeWindow";
 constexpr uint32_t kFastTickMs = 2000;
 constexpr uint32_t kMaxAppTimerMs = 24U * 60U * 60U * 1000U;
-constexpr int kDailyRestartLocalHour = 20;
+struct RestartWindow {
+  int startHour;
+  int startMinute;
+};
+
+constexpr std::array<RestartWindow, 2> kRestartWindows{{
+    {6, 30},
+    {19, 30},
+}};
+constexpr int64_t kRestartWindowDurationMs = 30LL * 60LL * 1000LL;
 constexpr int64_t kDayMs = 24LL * 60LL * 60LL * 1000LL;
+constexpr uint64_t kRestartHashOffset = 1469598103934665603ULL;
+constexpr uint64_t kRestartHashPrime = 1099511628211ULL;
 constexpr int64_t kPostRestartClickDelayMs = 1'500;
 constexpr wchar_t kStationheadOzekiProfile[] = L"spotify-v2-6";
 constexpr std::array<const wchar_t*, 5> kStationheadPeerProfiles{
@@ -28,16 +39,77 @@ uint32_t NextDelayFromDeadline(int64_t now, int64_t deadline, uint32_t fallbackM
   return static_cast<uint32_t>(std::clamp<int64_t>(delta, 1, fallbackMs));
 }
 
-int64_t MillisecondsUntilNextDailyRestart() {
+int64_t LocalMillisecondsOfDay(const SYSTEMTIME& value) {
+  return (((static_cast<int64_t>(value.wHour) * 60 + value.wMinute) * 60 + value.wSecond) * 1000) +
+      value.wMilliseconds;
+}
+
+void MixRestartHash(uint64_t& hash, uint64_t value) {
+  for (int byte = 0; byte < 8; ++byte) {
+    hash ^= value & 0xff;
+    hash *= kRestartHashPrime;
+    value >>= 8;
+  }
+}
+
+uint64_t StableRestartHash(const SYSTEMTIME& date, size_t windowIndex) {
+  uint64_t hash = kRestartHashOffset;
+  MixRestartHash(hash, date.wYear);
+  MixRestartHash(hash, date.wMonth);
+  MixRestartHash(hash, date.wDay);
+  MixRestartHash(hash, windowIndex);
+
+  wchar_t computerName[MAX_COMPUTERNAME_LENGTH + 1]{};
+  DWORD length = _countof(computerName);
+  if (GetComputerNameW(computerName, &length)) {
+    for (DWORD index = 0; index < length; ++index) {
+      MixRestartHash(hash, static_cast<uint64_t>(computerName[index]));
+    }
+  }
+  return hash;
+}
+
+int64_t RestartTargetMillisecondsOfDay(const SYSTEMTIME& date, size_t windowIndex) {
+  const RestartWindow& window = kRestartWindows[windowIndex];
+  const int64_t startMs =
+      (static_cast<int64_t>(window.startHour) * 60 + window.startMinute) * 60 * 1000;
+  const int64_t jitterMs = static_cast<int64_t>(
+      StableRestartHash(date, windowIndex) % static_cast<uint64_t>(kRestartWindowDurationMs));
+  return startMs + jitterMs;
+}
+
+SYSTEMTIME NextCalendarDay(SYSTEMTIME date) {
+  date.wHour = 0;
+  date.wMinute = 0;
+  date.wSecond = 0;
+  date.wMilliseconds = 0;
+
+  FILETIME fileTime{};
+  if (!SystemTimeToFileTime(&date, &fileTime)) return date;
+  ULARGE_INTEGER ticks{};
+  ticks.LowPart = fileTime.dwLowDateTime;
+  ticks.HighPart = fileTime.dwHighDateTime;
+  ticks.QuadPart += 24ULL * 60ULL * 60ULL * 10'000'000ULL;
+  fileTime.dwLowDateTime = ticks.LowPart;
+  fileTime.dwHighDateTime = ticks.HighPart;
+
+  SYSTEMTIME next = date;
+  if (!FileTimeToSystemTime(&fileTime, &next)) return date;
+  return next;
+}
+
+int64_t MillisecondsUntilNextRandomizedRestart() {
   SYSTEMTIME local{};
   GetLocalTime(&local);
-  const int64_t nowOfDayMs =
-      (((static_cast<int64_t>(local.wHour) * 60 + local.wMinute) * 60 + local.wSecond) * 1000) +
-      local.wMilliseconds;
-  const int64_t targetMs = static_cast<int64_t>(kDailyRestartLocalHour) * 60 * 60 * 1000;
-  int64_t delayMs = targetMs - nowOfDayMs;
-  if (delayMs <= 0) delayMs += kDayMs;
-  return delayMs;
+  const int64_t nowOfDayMs = LocalMillisecondsOfDay(local);
+
+  for (size_t index = 0; index < kRestartWindows.size(); ++index) {
+    const int64_t targetMs = RestartTargetMillisecondsOfDay(local, index);
+    if (targetMs >= nowOfDayMs) return targetMs - nowOfDayMs;
+  }
+
+  const SYSTEMTIME tomorrow = NextCalendarDay(local);
+  return kDayMs - nowOfDayMs + RestartTargetMillisecondsOfDay(tomorrow, 0);
 }
 
 }
@@ -161,7 +233,7 @@ void App::StartServices() {
       L"Six Stationhead windows prepared with existing spotify-v2-1 through spotify-v2-6 WebView2 profiles");
 
   startupAt_ = UnixMillis();
-  nextDailyRestartAt_ = startupAt_ + MillisecondsUntilNextDailyRestart();
+  nextScheduledRestartAt_ = startupAt_ + MillisecondsUntilNextRandomizedRestart();
 
   // Stage 1: initialize the native dashboard and YouTube/MV WebView immediately.
   // Every Stationhead window uses the former six media profiles and starts at a
@@ -290,8 +362,8 @@ void App::StopServices() {
 void App::Tick() {
   const int64_t now = UnixMillis();
 
-  if (nextDailyRestartAt_ > 0 && now >= nextDailyRestartAt_) {
-    logger_->Info(L"Scheduled 20:00 local restart requested");
+  if (nextScheduledRestartAt_ > 0 && now >= nextScheduledRestartAt_) {
+    logger_->Info(L"Scheduled randomized local restart requested");
     exitCode_ = kScheduledRestartExitCode;
     DestroyWindow(window_);
     return;
@@ -438,10 +510,10 @@ void App::Tick() {
         nextTickMs,
         NextDelayFromDeadline(now, toastUntil_, kMaxAppTimerMs));
   }
-  if (nextDailyRestartAt_ > 0) {
+  if (nextScheduledRestartAt_ > 0) {
     nextTickMs = std::min(
         nextTickMs,
-        NextDelayFromDeadline(now, nextDailyRestartAt_, kMaxAppTimerMs));
+        NextDelayFromDeadline(now, nextScheduledRestartAt_, kMaxAppTimerMs));
   }
   if (postRestartClickPending_ && postRestartClickAt_ > 0) {
     nextTickMs = std::min(
