@@ -1,4 +1,5 @@
 import { stationheadReadModelKey } from '../../../packages/sh-shared/stationhead-read-models.mjs';
+import { fetchPagesReadModel } from './pages-read-model-service.js';
 
 const JSON_CONTENT_TYPE = 'application/json; charset=utf-8';
 
@@ -23,20 +24,8 @@ export async function proxyStationheadMaterializedReadModel(
 ) {
   const modelKey = stationheadReadModelKey(source);
   if (!modelKey) return unavailable(unavailableError);
-  const service = env?.PAGES_READ_MODEL_SERVICE;
-  if (typeof service?.fetch !== 'function') return unavailable(unavailableError);
+  const response = await fetchPagesReadModel(env, modelKey);
 
-  const url = new URL('https://pages-read-model.internal/_internal/pages-response');
-  url.searchParams.set('key', modelKey);
-  let response;
-  try {
-    response = await service.fetch(new Request(url, {
-      method: 'GET',
-      headers: { accept: 'application/json' },
-    }));
-  } catch {
-    return unavailable(unavailableError);
-  }
   if (!response?.ok) return unavailable(unavailableError, mapFailureStatus(response?.status));
 
   const headers = new Headers(response.headers);
