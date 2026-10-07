@@ -19,3 +19,13 @@ test('official listening party graph reuses the shared chart palette and guide-l
   assert.match(broadcasts, /cssColor\('--muted'/);
   assert.doesNotMatch(broadcasts, /#ffffff18|#aaa3b5|hsla\(/);
 });
+
+
+test('like list keeps only rank, track, like count and checked time columns', () => {
+  const shell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
+  assert.match(shell, /<th>順位<\/th><th>曲名<\/th><th>いいね数<\/th><th>確認時間<\/th>/);
+  assert.doesNotMatch(shell, /<th>アーティスト<\/th><th>最新いいね数<\/th><th>最終取得<\/th>/);
+  assert.match(likes, /appendEmptyTableRow\(body, 'いいねデータがありません。', 4\)/);
+  assert.match(likes, /appendTableRow\(body, \[index \+ 1, row\.title \|\| '曲名不明', numberText\(row\.like_count\),/);
+  assert.match(likes, /\[\['順位', '曲名', 'いいね数', '確認時間'\]/);
+});
