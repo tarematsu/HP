@@ -31,7 +31,16 @@ test('domain modules select every Worker whose bundle imports them', () => {
     'site/functions/lib/d1-lean-ingest.js',
     'site/functions/lib/d1-optimized-ingest.js',
   ]) {
-    assert.deepEqual(select([path]).workers, BUDDIES_RUNTIME_WORKERS, path);
+    assert.deepEqual(select([path]).workers, [], `Pages compatibility-only re-export: ${path}`);
+  }
+  for (const path of [
+    'packages/sh-shared/d1-lean-ingest.mjs',
+    'packages/sh-shared/d1-optimized-ingest.mjs',
+  ]) {
+    const selected = select([path]).workers;
+    for (const worker of BUDDIES_RUNTIME_WORKERS) {
+      assert.ok(selected.includes(worker), `${path} must redeploy ${worker}`);
+    }
   }
   assert.deepEqual(select(['worker/src/persist-structure-stages.js']).workers, [RECOVERY, COLLECTOR]);
   for (const path of [
