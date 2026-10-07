@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const publisher = readFileSync(new URL('../src/pages-dashboard-live-publisher.js', import.meta.url), 'utf8');
 const readModelState = readFileSync(new URL('../src/stationhead-read-model-state.js', import.meta.url), 'utf8');
+const factReader = readFileSync(new URL('../src/stationhead-minute-facts-reader.js', import.meta.url), 'utf8');
 const sharedReadModel = readFileSync(new URL('../../packages/sh-shared/stationhead-read-models.mjs', import.meta.url), 'utf8');
 const fastStore = readFileSync(new URL('../src/minute-facts-fast-store.js', import.meta.url), 'utf8');
 const dashboardEntry = readFileSync(new URL('../../site/public/dashboard-metrics.js', import.meta.url), 'utf8');
@@ -12,7 +13,8 @@ const dashboardReadModel = readFileSync(new URL('../../site/public/stationhead/b
 test('committed live minute facts immediately publish the current dashboard model', () => {
   assert.match(fastStore, /await timedStage\('upsert_minute_fact'/);
   assert.match(fastStore, /await publishCurrentDashboard\(env, input, fact\)/);
-  assert.match(publisher, /saveMaterializedR2Response/);
+  assert.match(publisher, /publishStationheadReadModel\(bucket, 'buddies'/);
+  assert.match(readModelState, /saveMaterializedR2Response/);
   assert.match(publisher, /BUDDIES_DASHBOARD_HOT_STATE_KEY/);
   assert.match(publisher, /saveHotState\(bucket, payload, now\)/);
   assert.match(publisher, /savePublicEnvelope\(bucket, payload, now\)/);
@@ -25,7 +27,8 @@ test('steady-state live publication is differential and reads D1 only for bounde
   assert.match(publisher, /STATIONHEAD_READ_MODEL_RECOVERY_GAP_MS/);
   assert.match(sharedReadModel, /STATIONHEAD_READ_MODEL_INCREMENTAL_GAP_MS = 11 \* 60_000/);
   assert.match(sharedReadModel, /STATIONHEAD_READ_MODEL_RECOVERY_GAP_MS = DAY_MS/);
-  assert.match(publisher, /minute_at>\? AND minute_at<\?/);
+  assert.match(publisher, /loadStationheadMinuteFactGapRows\(env\?\.MINUTE_DB, 'buddies'/);
+  assert.match(factReader, /minute_at>\? AND minute_at<\?/);
   assert.match(publisher, /mode = 'recovery'/);
   assert.match(publisher, /mode = 'bootstrap'/);
   assert.match(publisher, /loadExistingState\(bucket\)/);

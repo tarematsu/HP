@@ -7,6 +7,7 @@ const dashboardDetails = readFileSync(new URL('../functions/api/dashboard-detail
 const stationheadProxy = readFileSync(new URL('../functions/lib/stationhead-materialized-proxy.js', import.meta.url), 'utf8');
 const readModelService = readFileSync(new URL('../functions/lib/pages-read-model-service.js', import.meta.url), 'utf8');
 const publisher = readFileSync(new URL('../../worker/src/pages-dashboard-live-publisher.js', import.meta.url), 'utf8');
+const stationheadState = readFileSync(new URL('../../worker/src/stationhead-read-model-state.js', import.meta.url), 'utf8');
 const sourceProfile = readFileSync(new URL('../../packages/sh-shared/stationhead-source.mjs', import.meta.url), 'utf8');
 
 test('Pages dashboard boundary is materialized-service only', () => {
@@ -20,7 +21,8 @@ test('Pages dashboard boundary is materialized-service only', () => {
 });
 
 test('Worker owns dashboard generation and R2 publication', () => {
-  assert.match(publisher, /saveMaterializedR2Response/);
+  assert.match(publisher, /publishStationheadReadModel\(bucket, 'buddies'/);
+  assert.match(stationheadState, /saveMaterializedR2Response/);
   assert.match(publisher, /loadDashboardDailySummaries/);
   assert.match(publisher, /directFiveMinuteStreamHistory/);
   assert.match(publisher, /dashboardGoalPredictions/);
