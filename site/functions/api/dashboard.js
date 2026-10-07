@@ -1,27 +1,16 @@
 import { onRequestGet as dashboardCore } from '../lib/dashboard-core.js';
-import { augmentDashboardChartData } from '../lib/dashboard-chart-support.js';
-import { loadDashboardDailySummaries } from '../lib/dashboard-daily-summaries.js';
+import { augmentDashboardChartData } from '../../../packages/sh-shared/dashboard-chart-support.mjs';
+import { loadDashboardDailySummaries } from '../../../packages/sh-shared/dashboard-daily-summaries.mjs';
 
 export * from '../lib/dashboard-core.js';
 
-function factsOnlyDashboardContext(context) {
-  const env = Object.create(context.env || null);
-  // dashboard-core still contains a rollout-era DB fallback. The public and
-  // materialization entry point deliberately masks that binding so stale facts
-  // fail closed instead of executing the legacy multi-million-row query.
-  Object.defineProperty(env, 'DB', {
-    value: null,
-    enumerable: true,
-    configurable: true,
-  });
+function dashboardCoreContext(context) {
   const url = new URL(context.request.url);
-  // The current-tab materializer loads the canonical 5-minute history once
-  // below, including current_stream_count. Avoid the older duplicate history
-  // read inside dashboard-core.
+  // The materializer adds the canonical chart history below, so the core only
+  // needs current metrics and queue state here.
   url.searchParams.set('history', '0');
   return {
     ...context,
-    env,
     request: new Request(url, context.request),
   };
 }
@@ -36,7 +25,7 @@ async function dailySummaries(env, now) {
 }
 
 export async function onRequestGet(context) {
-  const coreResponse = await dashboardCore(factsOnlyDashboardContext(context));
+  const coreResponse = await dashboardCore(dashboardCoreContext(context));
   if (!coreResponse.ok) return coreResponse;
   const payload = await coreResponse.json();
   if (!payload?.ok) return new Response(JSON.stringify(payload), {
