@@ -24,7 +24,7 @@ function fakeEnv() {
             assert.equal(data.action, 'status');
             assert.equal(data.minimumSuccessAt, BASE);
             calls.push(data);
-            return Response.json({ ready, status: ready ? 'completed' : 'running',
+            return Response.json({ ready, status: ready ? 'completed' : 'running', minute_at: BASE,
               last_success_at: ready ? BASE : BASE - 300_000 });
           },
         };
