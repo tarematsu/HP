@@ -59,8 +59,8 @@ uint64_t StableRestartHash(const SYSTEMTIME& date, size_t windowIndex) {
   MixRestartHash(hash, date.wDay);
   MixRestartHash(hash, windowIndex);
 
-  wchar_t computerName[MAX_COMPUTERNAME_LENGTH + 1]{};
-  DWORD length = _countof(computerName);
+  wchar_t computerName[256]{};
+  DWORD length = static_cast<DWORD>(_countof(computerName));
   if (GetComputerNameW(computerName, &length)) {
     for (DWORD index = 0; index < length; ++index) {
       MixRestartHash(hash, static_cast<uint64_t>(computerName[index]));
