@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const publisher = readFileSync(new URL('../src/pages-dashboard-live-publisher.js', import.meta.url), 'utf8');
 const readModelState = readFileSync(new URL('../src/stationhead-read-model-state.js', import.meta.url), 'utf8');
+const sharedReadModel = readFileSync(new URL('../../packages/sh-shared/stationhead-read-models.mjs', import.meta.url), 'utf8');
 const fastStore = readFileSync(new URL('../src/minute-facts-fast-store.js', import.meta.url), 'utf8');
 const dashboardEntry = readFileSync(new URL('../../site/public/dashboard-metrics.js', import.meta.url), 'utf8');
 const dashboardReadModel = readFileSync(new URL('../../site/public/stationhead/buddies-read-model.js', import.meta.url), 'utf8');
@@ -22,8 +23,8 @@ test('steady-state live publication is differential and reads D1 only for bounde
   assert.doesNotMatch(publisher, /FULL_REFRESH_MS|6 \* 60 \* 60_000/);
   assert.match(publisher, /STATIONHEAD_READ_MODEL_INCREMENTAL_GAP_MS/);
   assert.match(publisher, /STATIONHEAD_READ_MODEL_RECOVERY_GAP_MS/);
-  assert.match(readModelState, /STATIONHEAD_READ_MODEL_INCREMENTAL_GAP_MS = 11 \* 60_000/);
-  assert.match(readModelState, /STATIONHEAD_READ_MODEL_RECOVERY_GAP_MS = DAY_MS/);
+  assert.match(sharedReadModel, /STATIONHEAD_READ_MODEL_INCREMENTAL_GAP_MS = 11 \* 60_000/);
+  assert.match(sharedReadModel, /STATIONHEAD_READ_MODEL_RECOVERY_GAP_MS = DAY_MS/);
   assert.match(publisher, /minute_at>\? AND minute_at<\?/);
   assert.match(publisher, /mode = 'recovery'/);
   assert.match(publisher, /mode = 'bootstrap'/);
