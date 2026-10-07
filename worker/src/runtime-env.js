@@ -1,3 +1,4 @@
+import { requireStationheadSourceProfile } from '../../packages/sh-shared/stationhead-source.mjs';
 import { collectorCachedDb } from './collector-d1-cache.js';
 
 export const MINUTE_PIPELINE_QUEUE_NAMES = Object.freeze([
@@ -30,12 +31,18 @@ function withCollectorReadCache(env) {
   return active;
 }
 
+export function stationheadSourceEnv(env, sourceValue, { collectorCache = false } = {}) {
+  const profile = requireStationheadSourceProfile(sourceValue);
+  const active = withDatabaseAlias(env, profile.dbBinding);
+  return collectorCache ? withCollectorReadCache(active) : active;
+}
+
 export function rawCollectorEnv(env) {
-  return withCollectorReadCache(withDatabaseAlias(env, 'BUDDIES_DB'));
+  return stationheadSourceEnv(env, 'buddies', { collectorCache: true });
 }
 
 export function minutePipelineEnv(env) {
-  return withDatabaseAlias(env, 'BUDDIES_DB');
+  return stationheadSourceEnv(env, 'buddies');
 }
 
 export function isMinutePipelineBatch(batch) {

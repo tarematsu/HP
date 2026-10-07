@@ -1,9 +1,13 @@
 import { ensureAuthControlRow, readAuthState } from './auth-state.js';
-import { API_BASE, configFromEnv, shHeaders } from './collector-config.js';
+import { configFromEnv } from './collector-config.js';
 import { sanitizeFailureDetail } from './collector-failure.js';
 import { jwtExpiryMs, normalizeBearer } from './shared.js';
 import { stationheadInitialFollowerRegistrar } from './stationhead-source-runtime.js';
 import { acquireStationheadGuestSession } from './stationhead-guest-session.js';
+import {
+  fetchStationheadChannelResponse,
+  prepareStationheadChannelPayload,
+} from './stationhead-collector-core.js';
 
 const STATE_ID = 'stationhead';
 const RAW_COLLECTION_QUEUE_OPTIONS = Object.freeze({ contentType: 'json' });
@@ -195,8 +199,7 @@ async function directPreparedMessage(base, body, config, env) {
   }
   let stage = 'load-preparation-modules';
   try {
-    const [payload, queueAnalysis, materialization, snapshotAnalysis] = await Promise.all([
-      import('./collector-payload.js'),
+    const [queueAnalysis, materialization, snapshotAnalysis] = await Promise.all([
       import('./queue-analysis-transfer.js'),
       import('./queue-materialization.js'),
       import('./snapshot-analysis-transfer.js'),
@@ -205,14 +208,14 @@ async function directPreparedMessage(base, body, config, env) {
       channelId: base.auth?.collectorChannelId ?? null,
       stationId: base.auth?.collectorStationId ?? null,
     };
-    stage = 'validate-channel';
-    payload.validateChannelPayload(channel, config.channelAlias);
-    stage = 'extract-identifiers';
-    payload.extractIds(channel, state);
     stage = 'normalize-snapshot';
-    const snapshot = payload.normalizeSnapshot(channel, state, config);
-    stage = 'extract-queue';
-    const fullQueue = payload.extractQueue(channel, state.stationId);
+    const prepared = prepareStationheadChannelPayload(
+      channel,
+      config.channelAlias,
+      state,
+    );
+    const snapshot = prepared.snapshot;
+    const fullQueue = prepared.queue;
     stage = 'analyze-payload';
     const [preparedSnapshot, preparedQueue] = await Promise.all([
       snapshotAnalysisDue(env, base.observed_at)
@@ -291,13 +294,12 @@ export async function collectRawChannel(env, dependencies = {}) {
   const inlinePreparation = inlinePipeline || (!env.DB && dependencies.inlinePreparation !== false);
   const config = inlinePreparation ? configFromEnv(env) : collectorRequestConfig(env);
   const observedAt = Date.now();
-  const response = await (dependencies.fetch || fetch)(
-    `${API_BASE}/channels/alias/${encodeURIComponent(config.channelAlias)}`,
-    {
-      headers: shHeaders(state, config),
-      signal: AbortSignal.timeout(config.requestTimeoutMs),
-    },
+  const request = await fetchStationheadChannelResponse(
+    state,
+    config,
+    dependencies.fetch || fetch,
   );
+  const { response } = request;
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) forgetSession(env);
     throw new Error(`Stationhead API ${response.status}: channel`);
@@ -305,7 +307,7 @@ export async function collectRawChannel(env, dependencies = {}) {
 
   const body = await response.text();
   const payloadBytes = messageEncoder.encode(body).byteLength;
-  const refreshed = normalizeBearer(response.headers.get('authorization'));
+  const refreshed = request.refreshedAuthToken;
   const persistCredentials = !state.collectorUpdatedAt
     || Boolean(refreshed && refreshed !== state.authToken);
   const activeToken = refreshed || state.authToken;

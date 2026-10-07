@@ -1,8 +1,4 @@
 import {
-  API_BASE,
-  DEFAULT_USER_AGENT,
-} from './collector-config.js';
-import {
   OHISAMA_COLLECTOR_CRON,
   fiveMinuteBucket,
   normalizeOhisamaSnapshot,
@@ -11,6 +7,7 @@ import {
 import { guardedOhisamaAuthRefresh } from './ohisama-auth-refresh-guard.js';
 import { jwtExpiryMs, normalizeBearer } from './shared.js';
 import { acquireStationheadGuestSession } from './stationhead-guest-session.js';
+import { fetchStationheadChannelResponse } from './stationhead-collector-core.js';
 
 const STATE_ID = 'stationhead';
 const DEFAULT_AUTH_HANDLE = 'ilys';
@@ -30,21 +27,6 @@ function positiveNumber(value, fallback, maximum = Number.MAX_SAFE_INTEGER) {
 function finite(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function collectorHeaders({ authToken, deviceUid }, env) {
-  return {
-    accept: 'application/json, text/plain, */*',
-    'accept-language': 'ja,en-US;q=0.9,en;q=0.8',
-    authorization: `Bearer ${authToken}`,
-    'app-platform': 'web',
-    'app-version': env.STATIONHEAD_APP_VERSION || env.SH_APP_VERSION || '1.0.0',
-    'content-type': 'application/json',
-    origin: 'https://www.stationhead.com',
-    referer: 'https://www.stationhead.com/',
-    'sth-device-uid': deviceUid,
-    'user-agent': DEFAULT_USER_AGENT,
-  };
 }
 
 function normalizeState(value = {}, env = {}) {
@@ -214,17 +196,23 @@ async function requestChannel(env, dependencies = {}) {
   let state = await ensureSession(env, dependencies);
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const response = await fetchImpl(`${API_BASE}/channels/alias/${encodeURIComponent(alias)}`, {
-      headers: collectorHeaders(state, env),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+    const request = await fetchStationheadChannelResponse(
+      state,
+      {
+        channelAlias: alias,
+        appVersion: env.STATIONHEAD_APP_VERSION || env.SH_APP_VERSION || '1.0.0',
+        requestTimeoutMs: timeoutMs,
+      },
+      fetchImpl,
+    );
+    const { response } = request;
     if ((response.status === 401 || response.status === 403) && attempt === 0) {
       state = await refreshGuestSession(env, dependencies, state.authToken || '');
       continue;
     }
     if (!response.ok) throw new Error(`Stationhead API ${response.status}: channel`);
 
-    const refreshed = normalizeBearer(response.headers.get('authorization'));
+    const refreshed = request.refreshedAuthToken;
     if (refreshed && refreshed !== state.authToken) {
       state = normalizeState({
         ...state,
