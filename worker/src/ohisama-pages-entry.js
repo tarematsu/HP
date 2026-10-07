@@ -1,4 +1,4 @@
-import { runOptimizedOhisamaCollectorScheduled } from './ohisama-collector-optimized.js';
+import { runOhisamaCollectorScheduled } from './ohisama-collector.js';
 import { registerOhisamaFollowerTarget } from './ohisama-collector-shared.js';
 import { collectInitialStationheadFollowers } from './stationhead-initial-followers.js';
 import { cachedOhisamaFollowerMetadataRegistrar } from './ohisama-follower-target-cache.js';
@@ -8,7 +8,7 @@ import {
   loadOhisamaPublicationSnapshot,
   mergeOhisamaPlaybackReadModelWithCadence,
 } from './ohisama-publication-cadence.js';
-import { refreshOptimizedOhisamaReadModel } from './ohisama-read-model-optimized.js';
+import { refreshOhisamaReadModel } from './ohisama-read-model.js';
 
 export const OHISAMA_FOLLOWER_EXCLUDED_HANDLES = Object.freeze(['46fm', 'buddy46']);
 const OHISAMA_FOLLOWER_EXCLUDED_HANDLE_SET = new Set(OHISAMA_FOLLOWER_EXCLUDED_HANDLES);
