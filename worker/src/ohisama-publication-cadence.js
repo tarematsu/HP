@@ -1,6 +1,8 @@
-import { OHISAMA_PAGES_CADENCE_SECONDS } from './ohisama-read-model-core.js';
+import { requireStationheadSourceProfile } from '../../packages/sh-shared/stationhead-source.mjs';
 import { loadMaterializedR2Json, saveMaterializedR2Response } from './pages-response-r2.js';
 
+const OHISAMA_PROFILE = requireStationheadSourceProfile('ohisama');
+const OHISAMA_PAGES_CADENCE_SECONDS = OHISAMA_PROFILE.publicationCadenceSeconds;
 const MINUTE_MS = 60_000;
 export const OHISAMA_CURRENT_CADENCE_MS = 5 * MINUTE_MS;
 export const OHISAMA_HISTORY_CADENCE_MS = 24 * 60 * MINUTE_MS;
