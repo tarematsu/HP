@@ -102,8 +102,8 @@ test('collector, recovery, and runtime Wrangler configurations own disjoint pipe
   assert.equal(runtime.kv_namespaces, undefined);
   assert.equal(runtime.r2_buckets[0].binding, 'PAGES_RESPONSE_R2');
   assert.match(source, /JSON\.parse/);
-  assert.match(source, /normalizeSnapshot/);
-  assert.match(source, /extractQueue/);
+  assert.match(source, /prepareStationheadChannelPayload/);
+  assert.match(source, /fetchStationheadChannelResponse/);
   assert.doesNotMatch(source, /response\.json|readModelPresentation|handoffMinuteFactJob/);
 
   assert.equal(runtime.vars.PAGES_RESPONSE_EDGE_CACHE_MAX_AGE_MS, 300000);
