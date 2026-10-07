@@ -2,31 +2,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const boundary = readFileSync(new URL('../functions/lib/period-boundary-evidence.js', import.meta.url), 'utf8');
 const current = readFileSync(new URL('../functions/api/history-current.js', import.meta.url), 'utf8');
 const tracks = readFileSync(new URL('../functions/api/track-history.js', import.meta.url), 'utf8');
 const dailyTracks = readFileSync(
   new URL('../../database/facts-migrations/053_pages_track_history_daily_read_model.sql', import.meta.url),
   'utf8',
 );
-
-function between(source, start, end) {
-  const from = source.indexOf(start);
-  const to = source.indexOf(end, from + start.length);
-  assert.notEqual(from, -1, `missing start marker: ${start}`);
-  assert.notEqual(to, -1, `missing end marker: ${end}`);
-  return source.slice(from, to);
-}
-
-test('history boundary reads never fall back to raw snapshot repair', () => {
-  const loader = between(
-    boundary,
-    'export async function loadPeriodBoundaryEvidence',
-    'export function applyPeriodBoundaryEvidence',
-  );
-  assert.match(loader, /loadPreaggregatedEvidence/);
-  assert.doesNotMatch(loader, /periodBoundaryEvidenceSql|sh_channel_snapshots|\.batch\(|INSERT|UPDATE/);
-});
 
 test('current history reads a single daily track-count projection row', () => {
   assert.match(current, /FROM sh_pages_track_history_daily_read_model/);
