@@ -24,7 +24,7 @@ const DAY_MS = 24 * 60 * 60_000;
 const FIVE_MINUTES_MS = 5 * 60_000;
 const INCREMENTAL_GAP_LIMIT_MS = STATIONHEAD_READ_MODEL_INCREMENTAL_GAP_MS;
 const RECOVERY_GAP_LIMIT_MS = STATIONHEAD_READ_MODEL_RECOVERY_GAP_MS;
-export const OHISAMA_READ_MODEL_HOT_STATE_KEY = 'stationhead/ohisama/read-model-hot-state.json';
+export const OHISAMA_READ_MODEL_HOT_STATE_KEY = OHISAMA_PROFILE.readModelHotKey;
 
 function finite(value) {
   if (value === null || value === undefined || value === '') return null;
