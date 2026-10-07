@@ -104,7 +104,7 @@ class App {
   int64_t lastAirHistorySavedAt_ = 0;
   int64_t toastUntil_ = 0;
   int64_t nextAppTickAt_ = 0;
-  int64_t nextDailyRestartAt_ = 0;
+  int64_t nextScheduledRestartAt_ = 0;
   int64_t postRestartClickAt_ = 0;
   bool airHistoryDirty_ = false;
   bool stationheadPlacementDirty_ = true;
