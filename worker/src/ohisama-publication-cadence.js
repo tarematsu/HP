@@ -2,6 +2,7 @@ import { requireStationheadSourceProfile } from '../../packages/sh-shared/statio
 import { loadMaterializedR2Json, saveMaterializedR2Response } from './pages-response-r2.js';
 
 const OHISAMA_PROFILE = requireStationheadSourceProfile('ohisama');
+const OHISAMA_MODEL_KEY = OHISAMA_PROFILE.modelKey;
 const OHISAMA_PAGES_CADENCE_SECONDS = OHISAMA_PROFILE.publicationCadenceSeconds;
 const MINUTE_MS = 60_000;
 export const OHISAMA_CURRENT_CADENCE_MS = 5 * MINUTE_MS;
@@ -24,8 +25,8 @@ function integer(value) {
 }
 
 export async function loadOhisamaPublicationSnapshot(r2) {
-  const payload = await loadMaterializedR2Json(r2, 'hinata').catch(() => null);
-  return payload?.model === 'hinata' ? payload : null;
+  const payload = await loadMaterializedR2Json(r2, OHISAMA_MODEL_KEY).catch(() => null);
+  return payload?.model === OHISAMA_MODEL_KEY ? payload : null;
 }
 
 function previousSectionTimestamp(previous, section, now) {
@@ -60,7 +61,7 @@ export function buildOhisamaCadencedPayload(
   collection,
   observedAt = Date.now(),
 ) {
-  if (!currentPayload || currentPayload.model !== 'hinata') {
+  if (!currentPayload || currentPayload.model !== OHISAMA_MODEL_KEY) {
     throw new Error('ohisama current read model is missing');
   }
   const timestamp = integer(observedAt);
@@ -119,7 +120,7 @@ export async function mergeOhisamaPlaybackReadModelWithCadence(
     return { published: false, refreshed: {} };
   }
 
-  const currentPayload = currentPayloadOverride?.model === 'hinata'
+  const currentPayload = currentPayloadOverride?.model === OHISAMA_MODEL_KEY
     ? currentPayloadOverride
     : await loadOhisamaPublicationSnapshot(bucket);
   if (!currentPayload) return { published: false, refreshed: {} };
@@ -133,13 +134,13 @@ export async function mergeOhisamaPlaybackReadModelWithCadence(
   );
   const saved = await saveMaterializedR2Response(
     bucket,
-    'hinata',
+    OHISAMA_MODEL_KEY,
     JSON.stringify(built.payload),
     200,
     DEFAULT_HEADERS,
     integer(observedAt),
     OHISAMA_PAGES_CADENCE_SECONDS,
-    { model_key: 'hinata' },
+    { model_key: OHISAMA_MODEL_KEY },
   );
   if (!saved) return { published: false, refreshed: {} };
   return {
