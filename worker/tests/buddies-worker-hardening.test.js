@@ -302,7 +302,7 @@ test('prepared-message fallback exposes reason and stage without changing Queue 
 
   assert.equal(result.message_version, 2);
   assert.equal(result.prepared_fallback, 1);
-  assert.equal(result.prepared_fallback_stage, 'validate-channel');
+  assert.equal(result.prepared_fallback_stage, 'normalize-snapshot');
   assert.equal(Object.hasOwn(received, 'preparation_fallback'), true);
   assert.equal(JSON.stringify(received).includes('preparation_fallback'), false);
 });
