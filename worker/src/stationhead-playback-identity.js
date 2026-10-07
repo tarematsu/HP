@@ -168,3 +168,29 @@ export async function canonicalizeStationheadPlayback(
     likes: aggregates.likes,
   };
 }
+
+
+export async function canonicalizeStationheadQueueTracks(
+  catalogDb,
+  tracks,
+  observedAt = Date.now(),
+  {
+    metadataDb = null,
+    previousTracks = [],
+    channelId = 'stationhead',
+  } = {},
+) {
+  const canonical = await canonicalizeStationheadPlayback(
+    catalogDb,
+    metadataDb,
+    tracks,
+    {
+      queue: Array.isArray(previousTracks) ? previousTracks : [],
+      daily: emptyPlaybackDaily(''),
+      likes: {},
+    },
+    observedAt,
+    { channelId },
+  );
+  return canonical.tracks;
+}
