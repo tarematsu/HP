@@ -2,7 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
-import { utcMonthlyRange, utcWeeklyRange } from '../../site/functions/lib/time-buckets.js';
+import { utcMonthlyRange, utcWeeklyRange } from '../../packages/sh-shared/time-buckets.mjs';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 
 const DAY_MS = 86_400_000;

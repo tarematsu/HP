@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import { directFiveMinuteStreamHistory } from '../../site/functions/lib/dashboard-chart-support.js';
+import { directFiveMinuteStreamHistory } from '../../packages/sh-shared/dashboard-chart-support.mjs';
 import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 

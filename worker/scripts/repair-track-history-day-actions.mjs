@@ -2,9 +2,9 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
 import { canonicalizeTrackRows } from '../../packages/sh-shared/canonical-track-rows.mjs';
-import { mergeTrackRows } from '../../site/functions/lib/track-history-merge.js';
-import { applyTrackPeriodCompleteness } from '../../site/functions/lib/period-completeness.js';
-import { attachCompactTrackLikes } from '../../site/functions/lib/track-likes.js';
+import { mergeTrackRows } from '../../packages/sh-shared/track-history-merge.mjs';
+import { applyTrackPeriodCompleteness } from '../../packages/sh-shared/period-completeness.mjs';
+import { attachCompactTrackLikes } from '../../packages/sh-shared/track-likes.mjs';
 import { PLAYBACK_EVENT_HISTORY_SQL } from '../src/pages-track-history-r2-shards.js';
 import { loadDirectRevisionTrackHistoryData } from '../src/track-history-direct-revision-sql.js';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
