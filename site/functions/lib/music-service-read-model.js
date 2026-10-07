@@ -1,3 +1,5 @@
+import { fetchPagesReadModel } from './pages-read-model-service.js';
+
 const CACHE_CONTROL = 'public, max-age=30, s-maxage=300, stale-while-revalidate=600';
 
 function unavailable(service) {
@@ -5,16 +7,6 @@ function unavailable(service) {
     status: 503,
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });
-}
-
-async function fetchMaterialized(service, key) {
-  const url = new URL('https://pages-read-model.internal/_internal/pages-response');
-  url.searchParams.set('key', key);
-  try {
-    return await service.fetch(new Request(url, { method: 'GET', headers: { accept: 'application/json' } }));
-  } catch {
-    return null;
-  }
 }
 
 function basePayload(payload) {
@@ -86,11 +78,8 @@ async function compactResponse(response, serviceId) {
 }
 
 export async function musicServiceReadModelResponse(env, serviceId) {
-  const service = env?.PAGES_READ_MODEL_SERVICE;
-  if (typeof service?.fetch !== 'function') return unavailable(serviceId);
-
-  let response = await fetchMaterialized(service, `music-service:${serviceId}`);
-  if (!response?.ok) response = await fetchMaterialized(service, `regional-music:${serviceId}`);
+  let response = await fetchPagesReadModel(env, `music-service:${serviceId}`);
+  if (!response?.ok) response = await fetchPagesReadModel(env, `regional-music:${serviceId}`);
   if (!response?.ok) return unavailable(serviceId);
 
   response = await compactResponse(response, serviceId);
