@@ -7,7 +7,7 @@ const likes = browserSource('stationhead/likes.js');
 const broadcasts = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
 const table = readFileSync(new URL('../public/history/history-broadcast-table.js', import.meta.url), 'utf8');
 const partyUi = readFileSync(new URL('../public/official-listening-party-ui.js', import.meta.url), 'utf8');
-const historyApi = readFileSync(new URL('../functions/api/history.js', import.meta.url), 'utf8');
+const historyApi = readFileSync(new URL('../../packages/sh-shared/broadcast-history.mjs', import.meta.url), 'utf8');
 const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
 
 test('like ranking removes the redundant top-ten/cache status line after loading', () => {
