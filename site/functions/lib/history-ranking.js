@@ -1,3 +1,7 @@
+import {
+  stationheadChannelNameForHost,
+  stationheadRankingHostKey as hostKey,
+} from '../../../packages/sh-shared/stationhead-ranking-hosts.mjs';
 import { fetchPagesReadModel } from './pages-read-model-service.js';
 
 const JSON_HEADERS = {
@@ -7,28 +11,11 @@ const JSON_HEADERS = {
 
 const LEADERBOARD_MODEL_KEY = 'leaderboard';
 const FEATURED_HOSTS = ['sakuramankai', 'sakurazaka46jp', 'nogizaka46smej'];
-const STATIONHEAD_CHANNEL_BY_HOST = new Map([
-  ['sakuramankai', 'Buddies'],
-  ['sakurazaka46jp', '櫻坂46'],
-  ['nogizaka46smej', '乃木坂46'],
-  ['nogifan1ch', 'Nogizaka'],
-  ['sbuddies1819', 'ATIN'],
-  ['jo1andjam', 'JAM'],
-  ['vote6tones', 'team SixTONES'],
-  ['befirst', 'BESTY'],
-  ['straykids', 'STAYS'],
-  ['k_p_official', 'Tiara'],
-  ['rosehq', 'numberoneHQ'],
-]);
 const json = (data, status = 200, headers = {}) =>
   new Response(JSON.stringify(data), { status, headers: { ...JSON_HEADERS, ...headers } });
 
 function safeText(value, max = 100) {
   return String(value || '').trim().slice(0, max);
-}
-
-function hostKey(value) {
-  return String(value || '').trim().toLowerCase();
 }
 
 function finiteNumber(value) {
@@ -49,7 +36,7 @@ function validRank(value) {
 function correctKnownHostMetadata(row) {
   const next = { ...row };
   const key = hostKey(next.host_name);
-  const channel = STATIONHEAD_CHANNEL_BY_HOST.get(key);
+  const channel = stationheadChannelNameForHost(key);
   if (channel) next.stationhead_channel_name = channel;
   if (key === 'sbuddies1819') {
     next.artist_name = 'SB19';
