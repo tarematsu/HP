@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 function sourceFiles(root) {
@@ -15,8 +16,8 @@ function sourceFiles(root) {
 
 test('Worker runtime and maintenance scripts never import Pages implementation modules', () => {
   const roots = [
-    new URL('../src/', import.meta.url),
-    new URL('../scripts/', import.meta.url),
+    fileURLToPath(new URL('../src/', import.meta.url)),
+    fileURLToPath(new URL('../scripts/', import.meta.url)),
   ];
   const violations = [];
   for (const root of roots) {
