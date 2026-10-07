@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { formatNogizakaBroadcastContent } from '../../packages/sh-shared/index.mjs';
 import { ROUTES, navigationForMode } from '../public/dashboard-navigation-config.js';
+import { stationheadReadModelKey } from '../../packages/sh-shared/stationhead-read-models.mjs';
 
 const shellWrapper = readFileSync(new URL('../public/nogizaka-listening-party-shell.js', import.meta.url), 'utf8');
 const runtimeWrapper = readFileSync(new URL('../public/nogizaka-listening-party.js', import.meta.url), 'utf8');
@@ -16,7 +17,6 @@ const tabs = dashboardRouterSource();
 const api = readFileSync(new URL('../functions/api/nogizaka-listening-party.js', import.meta.url), 'utf8');
 const materializedProxy = readFileSync(new URL('../functions/lib/stationhead-materialized-proxy.js', import.meta.url), 'utf8');
 const readModelService = readFileSync(new URL('../functions/lib/pages-read-model-service.js', import.meta.url), 'utf8');
-const sourceModels = readFileSync(new URL('../../packages/sh-shared/stationhead-read-models.mjs', import.meta.url), 'utf8');
 const publisher = readFileSync(new URL('../../worker/src/nogizaka-pages-read-model.js', import.meta.url), 'utf8');
 
 test('Nogizaka is a lazy source route mounted through the shared Stationhead shell', () => {
@@ -74,7 +74,7 @@ test('Nogizaka public API is materialized-read-model-only through the shared Sta
   assert.match(materializedProxy, /fetchPagesReadModel/);
   assert.match(readModelService, /PAGES_READ_MODEL_SERVICE/);
   assert.match(readModelService, /_internal\/pages-response/);
-  assert.match(sourceModels, /nogizaka: 'nogizaka-listening-party'/);
+  assert.equal(stationheadReadModelKey('nogizaka'), 'nogizaka-listening-party');
   assert.doesNotMatch(api, /OTHER_DB|\.prepare\(|sh_nogizaka_official_news_announcements|sh_official_broadcast_/);
   assert.match(readModel, /source: 'nogizaka'/);
 });

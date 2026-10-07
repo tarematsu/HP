@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { ROUTES, navigationForMode } from '../public/dashboard-navigation-config.js';
+import { stationheadReadModelKey } from '../../packages/sh-shared/stationhead-read-models.mjs';
 
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const route = dashboardRouterSource();
@@ -17,7 +18,6 @@ const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import
 const api = readFileSync(new URL('../functions/api/hinata.js', import.meta.url), 'utf8');
 const materializedProxy = readFileSync(new URL('../functions/lib/stationhead-materialized-proxy.js', import.meta.url), 'utf8');
 const readModelService = readFileSync(new URL('../functions/lib/pages-read-model-service.js', import.meta.url), 'utf8');
-const sourceModels = readFileSync(new URL('../../packages/sh-shared/stationhead-read-models.mjs', import.meta.url), 'utf8');
 
 test('Pages keeps Ohisama behind the shared lazy dashboard route', () => {
   assert.doesNotMatch(metrics, /hinata-shell\.js/);
@@ -65,11 +65,11 @@ test('Ohisama frontend difference is isolated to the materialized read-model ada
   assert.match(readModel, /source: 'ohisama'/);
   assert.match(readModel, /capabilities: \['current', 'history', 'played-tracks', 'likes'\]/);
   assert.match(readModel, /payload\?\.queue/);
-  assert.match(readModel, /\/api\/track-history\?source=ohisama/);
+  assert.match(readModel, /createStationheadTrackHistoryClient\('ohisama', '日向坂46', fetchJson\)/);
   assert.doesNotMatch(readModel, /payload\?\.played_history/);
-  assert.match(readModel, /source=ohisama&ranking_only=1&ranking_limit=500/);
+  assert.match(readModel, /endpoint\('ranking_only=1&ranking_limit=500'\)/);
   assert.doesNotMatch(readModel, /payload\.likes/);
-  assert.match(readModel, /includes\('日向坂46'\)/);
+  assert.match(readModel, /row\.artist\.normalize\('NFKC'\)\.includes\(normalizedArtist\)/);
   assert.doesNotMatch(runtime, /\/api\/hinata|日向坂46/);
 });
 
@@ -79,6 +79,6 @@ test('Hinata public API remains read-model-only through the shared Stationhead p
   assert.match(materializedProxy, /fetchPagesReadModel/);
   assert.match(readModelService, /PAGES_READ_MODEL_SERVICE/);
   assert.match(readModelService, /_internal\/pages-response/);
-  assert.match(sourceModels, /ohisama: 'hinata'/);
+  assert.equal(stationheadReadModelKey('ohisama'), 'hinata');
   assert.doesNotMatch(api, /\.prepare\(|OHISAMA_DB|MINUTE_DB|OTHER_DB/);
 });
