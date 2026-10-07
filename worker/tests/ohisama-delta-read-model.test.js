@@ -3,8 +3,8 @@ import test from 'node:test';
 
 import {
   OHISAMA_READ_MODEL_HOT_STATE_KEY,
-  refreshOptimizedOhisamaReadModel,
-} from '../src/ohisama-read-model-optimized.js';
+  refreshOhisamaReadModel,
+} from '../src/ohisama-read-model.js';
 import { mergeOhisamaPlaybackReadModelWithCadence } from '../src/ohisama-publication-cadence.js';
 import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 
@@ -113,7 +113,7 @@ test('Ohisama recovery reads only the missing D1 interval', async () => {
     },
   };
 
-  const result = await refreshOptimizedOhisamaReadModel(env, {
+  const result = await refreshOhisamaReadModel(env, {
     observed_at: observedAt,
     channel_id: 46,
     station_id: 99,
@@ -144,7 +144,7 @@ test('Ohisama retry inside one five-minute bucket does not double-count daily sa
     },
   };
 
-  const result = await refreshOptimizedOhisamaReadModel(env, {
+  const result = await refreshOhisamaReadModel(env, {
     observed_at: observedAt,
     channel_id: 46,
     station_id: 99,
