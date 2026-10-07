@@ -1,3 +1,5 @@
+import { fetchPagesReadModel } from './pages-read-model-service.js';
+
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'public, max-age=300, s-maxage=900, stale-while-revalidate=3600',
@@ -182,26 +184,9 @@ function matchingHostKeys(rows, search) {
 }
 
 async function loadLeaderboardReadModel(env) {
-  const service = env?.PAGES_READ_MODEL_SERVICE;
-  if (typeof service?.fetch !== 'function') return null;
-  const url = new URL('https://pages-read-model.internal/_internal/pages-response');
-  url.searchParams.set('key', LEADERBOARD_MODEL_KEY);
-  let response;
-  try {
-    response = await service.fetch(new Request(url, {
-      method: 'GET',
-      headers: { accept: 'application/json' },
-    }));
-  } catch {
-    return null;
-  }
+  const response = await fetchPagesReadModel(env, LEADERBOARD_MODEL_KEY);
   if (!response?.ok) return null;
-  let model;
-  try {
-    model = await response.json();
-  } catch {
-    return null;
-  }
+  const model = await response.json().catch(() => null);
   if (!model || typeof model !== 'object' || Array.isArray(model)) return null;
   return {
     model,
