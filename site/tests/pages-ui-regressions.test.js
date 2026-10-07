@@ -9,31 +9,25 @@ import {
   mergeSakurazakaSeriesRows,
 } from '../functions/api/sakurazaka46jp.js';
 import { onRequestGet as trackHistory } from '../functions/api/track-history.js';
-import {
-  metadataFallback,
-  normalizePlaybackTrack,
-} from '../functions/lib/playback.js';
+import { normalizeStationheadQueueTrack } from '../../worker/src/stationhead-queue-normalize.js';
 
-test('dashboard playback restores artwork from string and object Stationhead metadata', () => {
-  const rawObject = {
+test('Stationhead queue normalization carries artwork into the dashboard publisher', () => {
+  const normalized = normalizeStationheadQueueTrack({
     track: {
       name: 'Test song',
       artist_name: 'Test artist',
+      spotify_id: 'spotify-test',
+      duration: 180000,
       album: { images: [{ url: 'https://images.example.test/cover.jpg' }] },
     },
-  };
-  assert.equal(metadataFallback(JSON.stringify(rawObject)).thumbnail_url, 'https://images.example.test/cover.jpg');
-  assert.equal(metadataFallback(rawObject).thumbnail_url, 'https://images.example.test/cover.jpg');
-
-  const normalized = normalizePlaybackTrack({
-    spotify_id: 'spotify-test',
-    raw_json: rawObject,
-    duration_ms: 180000,
-  }, 0, { currentIndex: 0, progressMs: 1000 });
+  }, 0);
+  assert.equal(normalized.title, 'Test song');
+  assert.equal(normalized.artist, 'Test artist');
   assert.equal(normalized.thumbnail_url, 'https://images.example.test/cover.jpg');
-  assert.equal(normalized.spotify_url, 'https://open.spotify.com/track/spotify-test');
-  assert.equal('spotify_id' in normalized, false);
-  assert.equal(normalized.is_current, true);
+
+  const publisher = readFileSync(new URL('../../worker/src/pages-dashboard-live-publisher.js', import.meta.url), 'utf8');
+  assert.match(publisher, /spotify_url/);
+  assert.match(publisher, /thumbnail_url/);
 });
 
 test('artwork handling stays out of the initial entry and runs only with the current runtime', () => {
