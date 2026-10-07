@@ -12,6 +12,7 @@ const tableDom = readFileSync(new URL('../public/dashboard-table-dom.js', import
 const tabs = dashboardRouterSource();
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/track-history.js', import.meta.url), 'utf8');
+const readModelService = readFileSync(new URL('../functions/lib/pages-read-model-service.js', import.meta.url), 'utf8');
 const r2Api = readFileSync(new URL('../../worker/src/pages-track-history-r2-api.js', import.meta.url), 'utf8');
 
 test('played tracks is owned by the shared Stationhead model while the legacy deep-link shell remains lazy', () => {
@@ -35,8 +36,11 @@ test('played tracks chart uses the shared Canvas setup, neon colors, and fewer l
 });
 
 test('track history exposes a lightweight date index from the R2 day model', () => {
-  assert.match(api, /PAGES_READ_MODEL_SERVICE/);
-  assert.match(api, /url\.searchParams\.append\(name, value\)/);
+  assert.match(api, /fetchPagesReadModel/);
+  assert.match(api, /api: true/);
+  assert.match(api, /params: publicUrl\.searchParams/);
+  assert.match(readModelService, /PAGES_READ_MODEL_SERVICE/);
+  assert.match(readModelService, /url\.searchParams\.append\(name, value\)/);
   assert.match(r2Api, /url\.searchParams\.get\('dates_only'\) === '1'/);
   assert.match(r2Api, /loadTrackHistoryDayIndex/);
   assert.match(r2Api, /latest_date: dates\.at\(-1\) \|\| null/);
