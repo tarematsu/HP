@@ -26,7 +26,7 @@ constexpr UINT kNativeMediaYoutubeMinContentDurationMinutes = 50U;
 constexpr UINT kNativeMediaYoutubeMaxContentDurationMinutes = 60U;
 // Retained as the neutral/default duration for startup state and legacy contracts.
 // Every actual TVer phase redraws its content duration in the 45-55 minute range.
-constexpr UINT kNativeMediaTverContentDurationMs = 58U * 60U * 1000U;
+constexpr UINT kNativeMediaTverContentDurationMs = 50U * 60U * 1000U;
 constexpr UINT kNativeMediaTverMinContentDurationMinutes = 45U;
 constexpr UINT kNativeMediaTverMaxContentDurationMinutes = 55U;
 constexpr UINT kNativeMediaYoutubePhaseMs =
