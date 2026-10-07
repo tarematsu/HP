@@ -92,7 +92,7 @@ test('dashboard materializer embeds daily summaries and the compatibility detail
   assert.match(route, /augmentDashboardChartData/);
   assert.match(route, /daily_summaries/);
   assert.match(details, /PAGES_READ_MODEL_SERVICE/);
-  assert.match(details, /url\.searchParams\.set\('key', 'dashboard'\)/);
+  assert.match(details, /stationheadReadModelKey\('buddies'\)/);
   assert.match(details, /daily_summaries/);
   assert.doesNotMatch(details, /loadDashboardDailySummaries|MINUTE_DB|OTHER_DB|\.prepare\(/);
   assert.match(core, /loadFactsDashboard/);
