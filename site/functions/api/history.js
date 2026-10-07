@@ -105,7 +105,9 @@ export async function cachedLegacyHistoryResponse(key, ttlMs, loader) {
   }
 }
 
-const todayUtcString = () => new Date().toISOString().slice(0, 10);\n\nasync function loadBroadcasts(env, from, to) {
+const todayUtcString = () => new Date().toISOString().slice(0, 10);
+
+async function loadBroadcasts(env, from, to) {
   const payload = await cachedHistoryLoad(
     `broadcasts:v10:${from}:${to}`,
     30000,
