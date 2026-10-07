@@ -1,4 +1,5 @@
 import './fetch-guard.js';
+import { stationheadOperationalHealth } from '../../packages/sh-shared/stationhead-operational-state.mjs';
 import {
   OFFICIAL_NEWS_STAGE_MESSAGE,
   officialNewsStageTask,
@@ -173,10 +174,30 @@ export async function nogizakaHealth(env) {
   const derived = component(derivedResult, 'raw_materializer', degraded);
   const news = component(newsResult, 'official_news', degraded);
   const ok = degraded.length === 0;
+  const lastObservedAt = Number(raw?.observed_at || derived?.last_observed_at || 0) || null;
+  const lastSuccessAt = Number(news?.last_success_at || lastObservedAt || 0) || null;
+  const operational = stationheadOperationalHealth({
+    source: 'nogizaka',
+    ok,
+    observedAt: Number(news?.updated_at || lastObservedAt || Date.now()),
+    lastRunAt: lastObservedAt,
+    lastSuccessAt,
+    checkpoint: {
+      kind: 'official-news/raw-materializer',
+      at: Number(derived?.last_observed_at || lastObservedAt || 0) || null,
+      status: ok ? 'ok' : 'degraded',
+    },
+    error: news?.last_error
+      ? { code: 'OFFICIAL_NEWS_ERROR', stage: 'official-news', message: news.last_error, at: news.updated_at }
+      : degraded.length
+        ? { code: 'HEALTH_COMPONENT_ERROR', stage: degraded[0], message: degraded.join(','), at: Date.now() }
+        : null,
+  });
   return Response.json({
     ok,
     worker: 'sh-nogizaka46smej',
     handle,
+    operational,
     raw_collection: raw,
     raw_materializer: derived,
     official_news: news,

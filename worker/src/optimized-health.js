@@ -1,5 +1,6 @@
 import { readAuthState } from './auth-state.js';
 import { jsonResponse as json } from './shared.js';
+import { stationheadOperationalHealth } from '../../packages/sh-shared/stationhead-operational-state.mjs';
 
 const STATE_ID = 'buddy46';
 
@@ -52,5 +53,22 @@ export async function readOptimizedHealth(env) {
     station_id: latest?.station_id || null,
     updated_at: collector?.updated_at || latest?.observed_at || null,
   };
-  return json({ ...base, ...authHealth(state) });
+  const operational = stationheadOperationalHealth({
+    source: 'buddies',
+    ok: !collector?.last_error_present,
+    observedAt: base.updated_at,
+    lastRunAt: base.last_run_at,
+    lastSuccessAt: base.last_success_at,
+    checkpoint: {
+      kind: 'minute-read-model',
+      at: base.updated_at,
+      status: collector?.last_error_present ? 'error' : 'ok',
+    },
+    error: collector?.last_error_present
+      ? { code: 'COLLECTOR_FAILURE_PRESENT', stage: 'collector', message: 'present', at: base.updated_at }
+      : state?.lastError
+        ? { code: 'AUTH_ERROR', stage: 'auth', message: state.lastError, at: state.lastAttemptAt }
+        : null,
+  });
+  return json({ ...base, operational, ...authHealth(state) });
 }
