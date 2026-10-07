@@ -12,7 +12,7 @@ import {
   loadFactsDashboard,
   mergeFactsLatest,
 } from '../functions/lib/dashboard-facts.js';
-import { resetDashboardDailySummariesCache } from '../functions/lib/dashboard-daily-summaries.js';
+import { resetDashboardDailySummariesCache } from '../../packages/sh-shared/dashboard-daily-summaries.mjs';
 import { FakeD1Database, responseJson } from './helpers/fake-d1.js';
 
 const dayText = (value) => new Date(value).toISOString().slice(0, 10);
