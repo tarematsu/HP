@@ -45,13 +45,15 @@ export async function publishStationheadLikesReadModel(
   const modelKey = stationheadLikesModelKey(source);
   if (!modelKey || typeof r2?.put !== 'function') return { published: false, reason: 'r2-unavailable' };
   const now = integer(observedAt) ?? Date.now();
+  const ranking = stationheadLikeRanking(likes);
   const existing = await loadMaterializedR2Json(r2, modelKey).catch(() => null);
   const previousAt = integer(existing?.updated_at);
-  if (previousAt != null && now >= previousAt && now - previousAt < cadenceMs) {
+  const unchanged = JSON.stringify(Array.isArray(existing?.ranking) ? existing.ranking : [])
+    === JSON.stringify(ranking);
+  if (unchanged && previousAt != null && now >= previousAt && now - previousAt < cadenceMs) {
     return { published: false, reason: 'cadence', payload: existing };
   }
 
-  const ranking = stationheadLikeRanking(likes);
   const latestObservedAt = ranking.reduce(
     (maximum, row) => Math.max(maximum, integer(row.observed_at) || 0),
     0,
