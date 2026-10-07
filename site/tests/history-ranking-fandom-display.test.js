@@ -37,7 +37,7 @@ function rankingRows({ withFandom = true } = {}) {
   ];
 }
 
-function dbFor({ withFandom = true } = {}) {
+function serviceFor({ withFandom = true } = {}) {
   const rows = rankingRows({ withFandom });
   const gapMetadata = withFandom ? {
     artist_name: '櫻坂46',
@@ -77,17 +77,12 @@ function dbFor({ withFandom = true } = {}) {
     weekly_metrics: [],
   };
   return {
-    prepare(sql) {
-      assert.match(sql, /FROM sh_weekly_ranking_read_model/);
-      return {
-        async first() {
-          return {
-            payload_json: JSON.stringify(model),
-            source_max_ranking_date: model.source_max_ranking_date,
-            refreshed_at: model.refreshed_at,
-          };
-        },
-      };
+    async fetch(request) {
+      const url = new URL(request.url);
+      assert.equal(url.searchParams.get('key'), 'leaderboard');
+      return Response.json(model, {
+        headers: { 'x-materialized-at': String(model.refreshed_at) },
+      });
     },
   };
 }
@@ -97,7 +92,7 @@ function request() {
 }
 
 test('ranking API keeps artist relation and Stationhead channel metadata across gap rows and host summaries', async () => {
-  const response = await loadRanking(request(), { OTHER_DB: dbFor() });
+  const response = await loadRanking(request(), { PAGES_READ_MODEL_SERVICE: serviceFor() });
   const data = await response.json();
 
   assert.equal(data.rows.length, 3);
@@ -110,7 +105,7 @@ test('ranking API keeps artist relation and Stationhead channel metadata across 
 });
 
 test('ranking data remains available when the materialized model has no fandom metadata', async () => {
-  const response = await loadRanking(request(), { OTHER_DB: dbFor({ withFandom: false }) });
+  const response = await loadRanking(request(), { PAGES_READ_MODEL_SERVICE: serviceFor({ withFandom: false }) });
   const data = await response.json();
 
   assert.equal(data.ok, true);
