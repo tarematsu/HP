@@ -62,9 +62,14 @@ test('weekly leaderboard producer reads only the three Sakamichi hosts', () => {
     new URL('../worker/src/weekly-ranking-materializer.js', import.meta.url),
     'utf8',
   );
+  const hosts = readFileSync(
+    new URL('../packages/sh-shared/stationhead-ranking-hosts.mjs', import.meta.url),
+    'utf8',
+  );
   assert.match(source, /lower\(trim\(channel_name\)\) IN \('sakuramankai','sakurazaka46jp','nogizaka46smej'\)/);
   assert.match(source, /lower\(trim\(host_name\)\) IN \('sakuramankai','sakurazaka46jp','nogizaka46smej'\)/);
-  assert.match(source, /\['nogizaka46smej', '乃木坂46'\]/);
+  assert.match(source, /stationheadChannelNameForHost/);
+  assert.match(hosts, /\['nogizaka46smej', '乃木坂46'\]/);
 });
 
 test('weekly leaderboard publication is Worker-owned and uses compact revision materialization', () => {
