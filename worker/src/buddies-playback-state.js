@@ -1,3 +1,4 @@
+import { requireStationheadSourceProfile } from '../../packages/sh-shared/stationhead-source.mjs';
 import {
   emptyPlaybackDaily,
   playbackDailyPublic,
@@ -15,7 +16,7 @@ import {
   stationheadPlaybackPlayStatement,
 } from './stationhead-playback-store.js';
 
-export const BUDDIES_PLAYBACK_HOT_STATE_KEY = 'stationhead/buddies/playback-state.json';
+export const BUDDIES_PLAYBACK_HOT_STATE_KEY = requireStationheadSourceProfile('buddies').playbackHotKey;
 
 function finite(value) {
   if (value === null || value === undefined || value === '') return null;
