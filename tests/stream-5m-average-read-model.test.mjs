@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { directFiveMinuteStreamHistory } from '../site/functions/lib/dashboard-chart-support.js';
+import { directFiveMinuteStreamHistory } from '../packages/sh-shared/dashboard-chart-support.mjs';
 
 const descriptor = JSON.parse(readFileSync(
   new URL('../database/facts-db.json', import.meta.url),
