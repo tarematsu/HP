@@ -12,7 +12,7 @@ const leaderboard = browserSource('leaderboard.js');
 const leaderboardReadModel = readFileSync(new URL('../public/leaderboard-read-model.js', import.meta.url), 'utf8');
 const leaderboardShell = readFileSync(new URL('../public/leaderboard-shell.js', import.meta.url), 'utf8');
 const historyShell = readFileSync(new URL('../public/history-shell.js', import.meta.url), 'utf8');
-const materialized = readFileSync(new URL('../functions/lib/materialized-history.js', import.meta.url), 'utf8');
+const materialized = readFileSync(new URL('../../packages/sh-shared/materialized-history-summary.mjs', import.meta.url), 'utf8');
 const current = readFileSync(new URL('../functions/api/history-current.js', import.meta.url), 'utf8');
 
 test('ranking is owned by the shared leaderboard with the fixed Sakamichi comparison', () => {
