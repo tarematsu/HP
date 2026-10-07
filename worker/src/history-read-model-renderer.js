@@ -1,5 +1,5 @@
 import { loadMaterializedSummary } from '../../site/functions/lib/materialized-history.js';
-import { loadBroadcastPayload } from '../../site/functions/api/history.js';
+import { loadBroadcastPayload } from '../../packages/sh-shared/broadcast-history.mjs';
 import { loadHostSummary } from '../../packages/sh-shared/host-history-summary.mjs';
 
 export async function renderHistoryReadModel(key, env, now = Date.now()) {
