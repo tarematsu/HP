@@ -1,73 +1,70 @@
-import { augmentDashboardChartData } from '../../../packages/sh-shared/dashboard-chart-support.mjs';
-import { loadDashboardDailySummaries } from '../../../packages/sh-shared/dashboard-daily-summaries.mjs';
-
-const CURRENT_HISTORY_SQL = `SELECT
-  bucket_at AS observed_at,
-  online_member_count,
-  current_stream_count
-FROM sh_dashboard_history_5m
-WHERE channel_id=? AND bucket_at>=?
-ORDER BY bucket_at ASC
-LIMIT 300`;
-
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=600',
   vary: 'accept-encoding',
 };
 
-async function currentHistory(db, channelId, now) {
-  if (!db) return [];
-  const result = await db.prepare(CURRENT_HISTORY_SQL)
-    .bind(channelId, now - 24 * 60 * 60 * 1000)
-    .all();
-  return result?.results || [];
+function json(data, status = 200, headers = JSON_HEADERS) {
+  return new Response(JSON.stringify(data), { status, headers });
 }
 
-async function dailySummaries(env, now) {
-  try {
-    return await loadDashboardDailySummaries(env?.OTHER_DB, now);
-  } catch (error) {
-    console.error(error);
-    return loadDashboardDailySummaries(null, now);
-  }
+async function loadDashboardReadModel(env) {
+  const service = env?.PAGES_READ_MODEL_SERVICE;
+  if (typeof service?.fetch !== 'function') return null;
+  const url = new URL('https://pages-read-model.internal/_internal/pages-response');
+  url.searchParams.set('key', 'dashboard');
+  const response = await service.fetch(new Request(url, {
+    method: 'GET',
+    headers: { accept: 'application/json' },
+  }));
+  if (!response?.ok) return null;
+  const payload = await response.json().catch(() => null);
+  return payload?.ok ? payload : null;
 }
 
 export async function onRequestGet(context) {
   const url = new URL(context.request.url);
   const channelId = Number(url.searchParams.get('channel_id'));
   if (!Number.isFinite(channelId) || channelId <= 0) {
-    return new Response(JSON.stringify({ ok: false, error: 'channel_id is required' }), {
-      status: 400,
-      headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+    return json({ ok: false, error: 'channel_id is required' }, 400, {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
     });
   }
 
-  const now = Date.now();
   try {
-    const [history, summaries] = await Promise.all([
-      currentHistory(context.env?.MINUTE_DB, channelId, now),
-      dailySummaries(context.env, now),
-    ]);
-    const chartPayload = await augmentDashboardChartData(
-      context.env,
-      { ok: true, latest: { channel_id: channelId }, history },
-      now,
-    );
-    return new Response(JSON.stringify({
+    const payload = await loadDashboardReadModel(context.env);
+    if (!payload) {
+      return json({ ok: false, error: 'dashboard materialized response unavailable' }, 503, {
+        'content-type': 'application/json; charset=utf-8',
+        'cache-control': 'no-store',
+      });
+    }
+    const modelChannelId = Number(payload?.latest?.channel_id);
+    if (Number.isFinite(modelChannelId) && modelChannelId !== channelId) {
+      return json({ ok: false, error: 'dashboard channel is unavailable' }, 404, {
+        'content-type': 'application/json; charset=utf-8',
+        'cache-control': 'no-store',
+      });
+    }
+    return json({
       ok: true,
-      generated_at: now,
+      generated_at: payload.generated_at ?? Date.now(),
       channel_id: channelId,
-      history,
-      previous_day_history: chartPayload.previous_day_history || [],
-      stream_5m_history: chartPayload.stream_5m_history || [],
-      daily_summaries: summaries,
-    }), { status: 200, headers: JSON_HEADERS });
+      history: Array.isArray(payload.history) ? payload.history : [],
+      previous_day_history: Array.isArray(payload.previous_day_history)
+        ? payload.previous_day_history
+        : [],
+      stream_5m_history: Array.isArray(payload.stream_5m_history)
+        ? payload.stream_5m_history
+        : [],
+      daily_summaries: payload.daily_summaries ?? null,
+    });
   } catch (error) {
     console.error(error);
-    return new Response(JSON.stringify({ ok: false, error: error?.message || 'dashboard details error' }), {
-      status: 500,
-      headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+    return json({ ok: false, error: error?.message || 'dashboard details error' }, 500, {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
     });
   }
 }
