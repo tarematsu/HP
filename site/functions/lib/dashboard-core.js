@@ -11,7 +11,7 @@ import {
   PREDICTION_24H_SQL,
   publicLatest,
   compactQueueStatus,
-} from './dashboard-legacy.mjs';
+} from './dashboard-support.mjs';
 import { LATEST_QUEUE_WITH_ITEMS_SQL, parseLatestQueueRows } from '../lib/latest-queue.js';
 import { num } from '../lib/api-utils.js';
 import { computePlayback, normalizePlaybackTrack } from '../lib/playback.js';
