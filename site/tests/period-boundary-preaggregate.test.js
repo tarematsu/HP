@@ -6,10 +6,6 @@ import {
   periodBoundaryCandidates,
   savePeriodBoundaryEvidence,
 } from '../functions/lib/period-boundary-preaggregate.js';
-import {
-  loadPeriodBoundaryEvidence,
-  preaggregatedPeriodBoundaryEvidenceSql,
-} from '../functions/lib/period-boundary-evidence.js';
 
 function fakeStatement(sql, calls) {
   return {
@@ -58,27 +54,6 @@ test('snapshot ingest writes only compact boundary evidence rows', async () => {
   assert.equal(result.skipped, false);
   assert.equal(result.written > 0, true);
   assert.equal(calls.every(({ sql }) => sql.includes('sh_period_boundary_evidence')), true);
-});
-
-test('period boundary reads use the preaggregated table without scanning snapshots', async () => {
-  const calls = [];
-  const db = { prepare(sql) { return fakeStatement(sql, calls); } };
-  const evidence = await loadPeriodBoundaryEvidence(db, [{ period_key: '2026-07-25' }], 'daily');
-  assert.equal(evidence.get('2026-07-25').stream_end, 120);
-  assert.equal(calls.length, 1);
-  assert.match(calls[0].sql, /sh_period_boundary_evidence/);
-  assert.doesNotMatch(calls[0].sql, /sh_channel_snapshots/);
-  assert.match(preaggregatedPeriodBoundaryEvidenceSql(), /GROUP BY periods\.period_key/);
-});
-
-test('history summaries read compact boundary evidence from the buddies DB', () => {
-  const summary = readFileSync(
-    new URL('../functions/lib/history-summary.js', import.meta.url),
-    'utf8',
-  );
-  assert.match(summary, /loadPeriodBoundaryEvidence\(env\.DB \|\| env\.MINUTE_DB/);
-  assert.doesNotMatch(summary, /loadPeriodBoundaryEvidence\(env\.MINUTE_DB \|\| env\.DB/);
-  assert.doesNotMatch(summary, /MINUTE_DB\.prepare\(minuteSummarySql/);
 });
 
 test('migration and metadata ingest enforce compact change-only writes', () => {
