@@ -12,10 +12,7 @@ import {
   loadFactsDashboard,
   mergeFactsLatest,
 } from '../functions/lib/dashboard-facts.js';
-import { resetDashboardDailySummariesCache } from '../../packages/sh-shared/dashboard-daily-summaries.mjs';
 import { FakeD1Database, responseJson } from './helpers/fake-d1.js';
-
-const dayText = (value) => new Date(value).toISOString().slice(0, 10);
 
 test('facts dashboard SQL preserves the unified dashboard response contract', () => {
   assert.match(FACTS_LATEST_SQL, /FROM sh_minute_facts AS f/);
@@ -84,137 +81,70 @@ test('persisted prediction state suppresses the per-request aggregate scan', asy
   assert.equal(db.callsMatching(/reported_current_stream_count AS current_stream_count/).length, 1);
 });
 
-test('dashboard materializes complete current-tab charts and daily summaries in one model', async () => {
-  resetDashboardDailySummariesCache();
-  const now = Date.now();
-  const currentDay = Math.floor(now / 86_400_000) * 86_400_000;
-  const db = new FakeD1Database()
-    .route('first', 'FROM sh_channel_snapshots AS snapshots ORDER BY', {
-      id: 1,
-      observed_at: now - 1_000,
+test('dashboard and dashboard-details serve the same materialized Worker model without D1 reads', async () => {
+  const payload = {
+    ok: true,
+    generated_at: Date.now(),
+    metrics_source: 'minute-facts',
+    storage_source: 'minute-facts',
+    latest_observed_at: Date.now() - 2_000,
+    latest: {
       channel_id: 318,
-      channel_alias: 'buddies',
       channel_name: 'Buddies',
-      station_id: 3328626,
-      online_member_count: 4,
-      total_member_count: 5,
-      total_listens: 6,
+      online_member_count: 167,
+      current_stream_count: 49_127_261,
       stream_goal: 50_000_000,
-      current_stream_count: 7,
-      raw_json: '{}',
-    })
-    .route('all', 'WITH latest_station AS', { results: [] });
-  const history = [
-    {
-      observed_at: now - 902_000,
-      listener_count: 145,
-      online_member_count: 155,
-      total_member_count: 30_599,
-      total_listens: 790_320,
-      current_stream_count: 49_127_225,
     },
-    {
-      observed_at: now - 602_000,
-      listener_count: 148,
-      online_member_count: 158,
-      total_member_count: 30_599,
-      total_listens: 790_335,
-      current_stream_count: 49_127_238,
-    },
-    {
-      observed_at: now - 302_000,
-      listener_count: 150,
-      online_member_count: 160,
-      total_member_count: 30_599,
-      total_listens: 790_350,
-      current_stream_count: 49_127_250,
-    },
-    {
-      observed_at: now - 2_000,
-      listener_count: 155,
-      online_member_count: 167,
-      total_member_count: 30_599,
-      total_listens: 790_366,
-      current_stream_count: 49_127_261,
-    },
-  ];
-  const facts = new FakeD1Database()
-    .route('first', 'FROM sh_minute_facts AS f INDEXED BY idx_sh_minute_facts_live_minute', {
-      id: 10,
-      observed_at: now - 2_000,
-      channel_id: 318,
-      station_id: 3328626,
-      host_id: 1,
-      online_member_count: 167,
-      total_member_count: 30_599,
-      total_listens: 790_366,
-      current_stream_count: 49_127_261,
-      host_handle: 'sakuramankai',
-    })
-    .route('all', 'FROM sh_dashboard_history_5m AS r', { results: history })
-    .route('first', 'FROM sh_channel_read_model', {
-      channel_id: 318,
-      observed_at: now - 2_000,
-      presentation_json: JSON.stringify({
-        channel_name: 'Buddies',
-        channel_alias: 'buddies',
-        stream_goal: 50_000_000,
-      }),
-    })
-    .route('first', 'FROM sh_queue_read_model_current', null)
-    .route('first', 'FROM sh_total_member_daily d', {
-      observed_at: now - 86_400_000,
-      total_member_count: 30_500,
-    })
-    .route('first', 'f.reported_total_listens AS total_listens', {
-      observed_at: now - 86_400_000,
-      total_listens: 790_000,
-    });
-  const other = new FakeD1Database().route('all', 'FROM sh_daily_summary', {
-    results: [
-      { period_key: dayText(currentDay - 2 * 86_400_000), member_growth: 7, stream_growth: 40 },
-      { period_key: dayText(currentDay - 86_400_000), member_growth: 11, stream_growth: 55 },
+    history: [
+      { observed_at: Date.now() - 302_000, online_member_count: 160, current_stream_count: 49_127_250 },
+      { observed_at: Date.now() - 2_000, online_member_count: 167, current_stream_count: 49_127_261 },
     ],
-  });
+    previous_day_history: [{ observed_at: Date.now() - 86_400_000, online_member_count: 140 }],
+    stream_5m_history: [{ observed_at: Date.now() - 2_000, stream_delta: 11 }],
+    daily_change: { total_member_count: 99, total_listens: 366 },
+    daily_summaries: { yesterday: { member_growth: 11, stream_growth: 55 } },
+    queue: [],
+    queue_status: null,
+    queue_revision: '',
+  };
+  let reads = 0;
+  const service = {
+    async fetch(request) {
+      reads += 1;
+      const requested = new URL(request.url);
+      assert.equal(requested.pathname, '/_internal/pages-response');
+      assert.equal(requested.searchParams.get('key'), 'dashboard');
+      return Response.json(payload);
+    },
+  };
 
   const response = await dashboardGet({
     request: new Request('https://skrzk.test/api/dashboard'),
-    env: { DB: db, MINUTE_DB: facts, OTHER_DB: other },
+    env: {
+      PAGES_READ_MODEL_SERVICE: service,
+      MINUTE_DB: { prepare() { throw new Error('dashboard must not read MINUTE_DB'); } },
+      OTHER_DB: { prepare() { throw new Error('dashboard must not read OTHER_DB'); } },
+    },
   });
-  const payload = await responseJson(response);
+  const body = await responseJson(response);
   assert.equal(response.status, 200);
-  assert.equal(payload.metrics_source, 'facts-db');
-  assert.equal(payload.latest.channel_name, 'Buddies');
-  assert.equal(payload.latest.online_member_count, 167);
-  assert.equal(payload.latest.current_stream_count, 49_127_261);
-  assert.equal(payload.latest.stream_goal, 50_000_000);
-  assert.equal(payload.history.at(-1).online_member_count, 167);
-  assert.equal(payload.stream_5m_history.at(-1).stream_delta, 12);
-  assert.equal(payload.daily_change.total_member_count, 99);
-  assert.equal(payload.daily_change.total_listens, 366);
-  assert.equal(payload.daily_summaries.yesterday.member_growth, 11);
-  assert.equal(payload.daily_summaries.yesterday.stream_growth, 55);
-  assert.equal(other.callsMatching(/FROM sh_daily_summary/).length, 1);
+  assert.equal(body.latest.channel_name, 'Buddies');
+  assert.equal(body.latest.online_member_count, 167);
+  assert.equal(body.daily_summaries.yesterday.stream_growth, 55);
 
   const detailsResponse = await dashboardDetailsGet({
     request: new Request('https://skrzk.test/api/dashboard-details?channel_id=318'),
     env: {
-      PAGES_READ_MODEL_SERVICE: {
-        async fetch(request) {
-          const requested = new URL(request.url);
-          assert.equal(requested.searchParams.get('key'), 'dashboard');
-          return Response.json(payload);
-        },
-      },
+      PAGES_READ_MODEL_SERVICE: service,
+      MINUTE_DB: { prepare() { throw new Error('dashboard details must not read MINUTE_DB'); } },
+      OTHER_DB: { prepare() { throw new Error('dashboard details must not read OTHER_DB'); } },
     },
   });
   const details = await responseJson(detailsResponse);
   assert.equal(detailsResponse.status, 200);
   assert.equal(details.channel_id, 318);
   assert.equal(details.history.at(-1).online_member_count, 167);
-  assert.equal(details.stream_5m_history.at(-1).stream_delta, 12);
+  assert.equal(details.stream_5m_history.at(-1).stream_delta, 11);
   assert.equal(details.daily_summaries.yesterday.member_growth, 11);
-  assert.equal(other.callsMatching(/FROM sh_daily_summary/).length, 1);
-  assert.equal(other.callsMatching(/FROM sh_comment_velocity_samples/).length, 0);
-  assert.equal(db.callsMatching(/snapshots\.observed_at >=/).length, 0);
+  assert.equal(reads, 2);
 });
