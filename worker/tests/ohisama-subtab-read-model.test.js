@@ -8,6 +8,7 @@ const readModel = readFileSync(new URL('../src/ohisama-read-model.js', import.me
 const sharedReadModel = readFileSync(new URL('../../packages/sh-shared/stationhead-read-models.mjs', import.meta.url), 'utf8');
 const sourceProfile = readFileSync(new URL('../../packages/sh-shared/stationhead-source.mjs', import.meta.url), 'utf8');
 const adapter = readFileSync(new URL('../../site/public/stationhead/ohisama-read-model.js', import.meta.url), 'utf8');
+const trackHistoryClient = readFileSync(new URL('../../site/public/stationhead/track-history-client.js', import.meta.url), 'utf8');
 const cadence = readFileSync(new URL('../src/ohisama-publication-cadence.js', import.meta.url), 'utf8');
 
 test('Ohisama keeps current/history in hinata and shares Track History for playback and likes', () => {
@@ -24,9 +25,11 @@ test('Ohisama keeps current/history in hinata and shares Track History for playb
   assert.match(cadence, /delete next\.likes;/);
   assert.doesNotMatch(cadence, /next\.likes\s*=|preserved\(previousPayload, 'likes'/);
 
-  assert.match(adapter, /\/api\/track-history\?source=ohisama&dates_only=1/);
-  assert.match(adapter, /source=ohisama&from=/);
-  assert.match(adapter, /source=ohisama&ranking_only=1&ranking_limit=500/);
+  assert.match(adapter, /createStationheadTrackHistoryClient\('ohisama', '日向坂46', fetchJson\)/);
+  assert.match(trackHistoryClient, /source=\$\{encodeURIComponent\(source\)\}&/);
+  assert.match(trackHistoryClient, /endpoint\('dates_only=1'\)/);
+  assert.match(trackHistoryClient, /endpoint\(`from=/);
+  assert.match(trackHistoryClient, /endpoint\('ranking_only=1&ranking_limit=500'\)/);
   assert.doesNotMatch(adapter, /payload\?\.played_history|payload\.likes/);
   assert.doesNotMatch(playback, /mergePlayedHistory|played_history/);
 });
