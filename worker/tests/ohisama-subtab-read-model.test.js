@@ -18,7 +18,8 @@ test('Ohisama keeps current/history in hinata and shares Track History for playb
   for (const field of ['latest', 'history_24h', 'daily', 'queue', 'queue_status']) {
     assert.match(`${readModel}\n${pagesEntry}\n${cadence}`, new RegExp(`\\b${field}\\b`), `missing read-model field ${field}`);
   }
-  assert.doesNotMatch(cadence, /next\.likes|preserved\(previousPayload, 'likes'/);
+  assert.match(cadence, /delete next\.likes;/);
+  assert.doesNotMatch(cadence, /next\.likes\s*=|preserved\(previousPayload, 'likes'/);
 
   assert.match(adapter, /\/api\/track-history\?source=ohisama&dates_only=1/);
   assert.match(adapter, /source=ohisama&from=/);
