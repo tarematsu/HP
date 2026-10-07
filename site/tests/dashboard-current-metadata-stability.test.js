@@ -6,7 +6,7 @@ const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const buildScript = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
-const historyApi = readFileSync(new URL('../functions/api/history.js', import.meta.url), 'utf8');
+const historyApi = readFileSync(new URL('../../packages/sh-shared/broadcast-history.mjs', import.meta.url), 'utf8');
 const presentation = readFileSync(new URL('../public/pages-layout.css', import.meta.url), 'utf8');
 const officialCopyUrl = new URL('../public/official-listening-party-copy.js', import.meta.url);
 
@@ -25,7 +25,7 @@ test('dashboard does not supplement queue metadata in the browser', () => {
   assert.doesNotMatch(metrics, /restoreKnownMetadata|const known = new Map/);
 });
 
-test('2025 year-end listening party copy comes from the history API source', () => {
+test('2025 year-end listening party copy comes from the shared broadcast read model', () => {
   assert.equal(existsSync(officialCopyUrl), false);
   assert.doesNotMatch(metrics, /official-listening-party-copy\.js/);
   assert.doesNotMatch(historyEntry, /official-listening-party-copy\.js/);
