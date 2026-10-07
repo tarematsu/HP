@@ -1,7 +1,6 @@
-import { onRequestGet as renderDashboard } from '../../site/functions/api/dashboard.js';
-import { directFiveMinuteStreamHistory } from '../../site/functions/lib/dashboard-chart-support.js';
-import { loadDashboardDailySummaries, utcDayStarts } from '../../site/functions/lib/dashboard-daily-summaries.js';
-import { dashboardGoalPredictions } from '../../site/functions/lib/dashboard-legacy.mjs';
+import { directFiveMinuteStreamHistory } from '../../packages/sh-shared/dashboard-chart-support.mjs';
+import { loadDashboardDailySummaries, utcDayStarts } from '../../packages/sh-shared/dashboard-daily-summaries.mjs';
+import { dashboardGoalPredictions } from '../../packages/sh-shared/dashboard-prediction.mjs';
 import { hydratePlaybackTrackMetadata } from './playback-track-metadata.js';
 import { trackNeedsHydration } from './track-metadata-quality.js';
 import { BUDDIES_PLAYBACK_HOT_STATE_KEY } from './buddies-playback-state.js';
@@ -267,19 +266,68 @@ function playbackQueue(queue, now) {
   };
 }
 
-async function fullyRender(env, now) {
-  const response = await renderDashboard({
-    request: new Request('https://pages-live.invalid/api/dashboard', {
-      method: 'GET',
-      headers: { accept: 'application/json' },
-    }),
-    env,
-  });
-  const text = await response.text();
-  if (!response.ok) throw new Error(`dashboard bootstrap render failed: HTTP ${response.status} ${text.slice(0, 200)}`);
-  const payload = JSON.parse(text);
-  if (!payload?.ok) throw new Error('dashboard bootstrap render returned an invalid payload');
-  return payload;
+function emptyDashboardPayload(now) {
+  return {
+    ok: true,
+    generated_at: now,
+    metrics_source: 'minute-facts',
+    storage_source: 'minute-facts',
+    delta: false,
+    history_deferred: false,
+    latest_observed_at: null,
+    latest: {},
+    history: [],
+    previous_day_history: [],
+    stream_5m_history: [],
+    daily_change: {
+      host_account_id: null,
+      host_handle: null,
+      member_baseline_observed_at: null,
+      listens_baseline_observed_at: null,
+      member_cutoff_hour_jst: 16,
+      listens_cutoff_hour_jst: 9,
+      total_member_count: null,
+      total_listens: null,
+    },
+    daily_summaries: null,
+    goal_prediction: null,
+    goal_predictions: [],
+    queue: [],
+    queue_status: null,
+    queue_revision: '',
+    queue_unchanged: false,
+  };
+}
+
+async function bootstrapDashboard(env, seed, channelId, currentMinute, now) {
+  const sameChannel = seed?.ok
+    && integer(seed?.latest?.channel_id) != null
+    && integer(seed.latest.channel_id) === integer(channelId);
+  const baseSeed = sameChannel ? seed : null;
+  let base = {
+    ...emptyDashboardPayload(now),
+    ...(baseSeed || {}),
+    history: [],
+    previous_day_history: [],
+    queue: [],
+    queue_status: null,
+    queue_revision: '',
+    queue_unchanged: false,
+  };
+  if (!env?.MINUTE_DB?.prepare || channelId == null || currentMinute == null) return base;
+
+  const rows = await loadGapRows(
+    env.MINUTE_DB,
+    channelId,
+    currentMinute - 2 * DAY_MS - 1,
+    currentMinute,
+  );
+  for (const row of rows) {
+    const rowAt = integer(row?.observed_at ?? row?.minute_at);
+    if (rowAt == null) continue;
+    base = applyObservation(base, null, row, rowAt, { updateQueue: false });
+  }
+  return base;
 }
 
 function observationSnapshot(fact) {
@@ -512,7 +560,7 @@ export async function publishDashboardFromMinuteFact(env, input, fact, options =
       mode = 'recovery';
     }
   } else {
-    base = await fullyRender(env, now);
+    base = await bootstrapDashboard(env, base, channelId, currentMinute, now);
     const cycles = cycleState(now);
     base = {
       ...base,

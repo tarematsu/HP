@@ -5,6 +5,7 @@ import {
   ohisamaReadModelPayload,
   rollOhisamaHistory,
 } from './ohisama-read-model-core.js';
+import { rollupStationheadWeekly } from '../../packages/sh-shared/stationhead-read-models.mjs';
 import {
   loadStationheadReadModelState,
   saveStationheadReadModelHotState,
@@ -101,65 +102,7 @@ function summaryBoundary(rows, key, direction) {
 }
 
 export function rollupOhisamaWeekly(dailyRows = [], updatedAt = Date.now()) {
-  const groups = new Map();
-  for (const row of Array.isArray(dailyRows) ? dailyRows : []) {
-    const start = integer(row?.period_start)
-      ?? (/^\d{4}-\d{2}-\d{2}$/.test(String(row?.period_key || ''))
-        ? Date.parse(`${row.period_key}T00:00:00Z`)
-        : null);
-    if (start == null) continue;
-    const key = weekKey(start);
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(row);
-  }
-
-  const weekly = [];
-  for (const [key, sourceRows] of groups.entries()) {
-    const rows = [...sourceRows].sort((left, right) => {
-      const leftStart = integer(left?.period_start) ?? Date.parse(`${left?.period_key}T00:00:00Z`);
-      const rightStart = integer(right?.period_start) ?? Date.parse(`${right?.period_key}T00:00:00Z`);
-      return leftStart - rightStart;
-    });
-    const sampleCount = rows.reduce((sum, row) => sum + Math.max(0, integer(row?.sample_count) ?? 0), 0);
-    const averageWeight = rows.reduce((sum, row) => {
-      const count = Math.max(0, integer(row?.sample_count) ?? 0);
-      return finite(row?.listener_avg) == null ? sum : sum + count;
-    }, 0);
-    const weightedAverage = averageWeight > 0
-      ? rows.reduce((sum, row) => {
-        const value = finite(row?.listener_avg);
-        const count = Math.max(0, integer(row?.sample_count) ?? 0);
-        return value == null ? sum : sum + value * count;
-      }, 0) / averageWeight
-      : null;
-    const listenerMins = rows.map((row) => integer(row?.listener_min)).filter((value) => value != null);
-    const listenerMaxs = rows.map((row) => integer(row?.listener_max)).filter((value) => value != null);
-    const streamStart = summaryBoundary(rows, 'stream_start', 'start');
-    const streamEnd = summaryBoundary(rows, 'stream_end', 'end');
-    const memberStart = summaryBoundary(rows, 'member_start', 'start');
-    const memberEnd = summaryBoundary(rows, 'member_end', 'end');
-    const periodStarts = rows.map((row) => integer(row?.period_start)).filter((value) => value != null);
-    const periodEnds = rows.map((row) => integer(row?.period_end)).filter((value) => value != null);
-    weekly.push({
-      period_key: key,
-      period_start: periodStarts.length ? Math.min(...periodStarts) : weekStart(Date.parse(`${key}T00:00:00Z`)),
-      period_end: periodEnds.length ? Math.max(...periodEnds) : weekStart(Date.parse(`${key}T00:00:00Z`)) + 7 * DAY_MS,
-      sample_count: sampleCount,
-      listener_avg: weightedAverage,
-      listener_min: listenerMins.length ? Math.min(...listenerMins) : null,
-      listener_max: listenerMaxs.length ? Math.max(...listenerMaxs) : null,
-      stream_start: streamStart,
-      stream_end: streamEnd,
-      stream_growth: streamStart == null || streamEnd == null || streamEnd < streamStart
-        ? null
-        : streamEnd - streamStart,
-      member_start: memberStart,
-      member_end: memberEnd,
-      member_growth: memberStart == null || memberEnd == null ? null : memberEnd - memberStart,
-      updated_at: integer(updatedAt),
-    });
-  }
-  return weekly.sort((left, right) => right.period_key.localeCompare(left.period_key));
+  return rollupStationheadWeekly(dailyRows, updatedAt);
 }
 
 async function persistDailySummary(db, row) {

@@ -1,4 +1,4 @@
-import { directFiveMinuteStreamHistory } from '../../site/functions/lib/dashboard-chart-support.js';
+import { directFiveMinuteStreamHistory } from '../../packages/sh-shared/dashboard-chart-support.mjs';
 import { loadMaterializedR2Json, saveMaterializedR2Response } from './pages-response-r2.js';
 
 const FIVE_MINUTES_MS = 5 * 60_000;
