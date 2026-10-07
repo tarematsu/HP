@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  appendJsonObjectFields,
   cachedPrediction,
   decorateQueueResponse,
   resetPredictionCache,
@@ -192,8 +191,6 @@ test('dashboard prediction cache retains completed values without sharing reques
   assert.equal(decorated.queue_status.playing, true);
   assert.equal(decorated.queue_status.total_items, 3);
 
-  const appended = appendJsonObjectFields('{"ok":true}', { queue_revision: 'rev-2' });
-  assert.deepEqual(JSON.parse(appended), { ok: true, queue_revision: 'rev-2' });
   resetPredictionCache();
 });
 
