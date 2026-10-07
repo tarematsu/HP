@@ -196,12 +196,17 @@ test('dashboard materializes complete current-tab charts and daily summaries in 
   assert.equal(payload.daily_summaries.yesterday.stream_growth, 55);
   assert.equal(other.callsMatching(/FROM sh_daily_summary/).length, 1);
 
-  const detailFacts = new FakeD1Database()
-    .route('all', 'FROM sh_dashboard_history_5m', { results: history })
-    .route('all', 'FROM sh_dashboard_history_5m AS r', { results: history });
   const detailsResponse = await dashboardDetailsGet({
     request: new Request('https://skrzk.test/api/dashboard-details?channel_id=318'),
-    env: { MINUTE_DB: detailFacts, OTHER_DB: other },
+    env: {
+      PAGES_READ_MODEL_SERVICE: {
+        async fetch(request) {
+          const requested = new URL(request.url);
+          assert.equal(requested.searchParams.get('key'), 'dashboard');
+          return Response.json(payload);
+        },
+      },
+    },
   });
   const details = await responseJson(detailsResponse);
   assert.equal(detailsResponse.status, 200);
