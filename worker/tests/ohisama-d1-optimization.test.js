@@ -5,10 +5,8 @@ import {
   OHISAMA_AUTH_HOT_STATE_KEY,
   runOhisamaCollectorScheduled,
 } from '../src/ohisama-collector.js';
-import {
-  refreshOhisamaReadModel,
-  rollupOhisamaWeekly,
-} from '../src/ohisama-read-model.js';
+import { refreshOhisamaReadModel } from '../src/ohisama-read-model.js';
+import { rollupStationheadWeekly } from '../../packages/sh-shared/stationhead-read-models.mjs';
 import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 
 const HINATA_KEY = pagesR2ResponseKey('hinata');
@@ -79,7 +77,7 @@ test('Ohisama weekly rollup uses Monday UTC boundaries and Buddies-style weighte
     },
   ];
 
-  const weekly = rollupOhisamaWeekly(rows, updatedAt);
+  const weekly = rollupStationheadWeekly(rows, updatedAt);
   assert.equal(weekly.length, 1);
   assert.equal(weekly[0].period_key, '2026-09-28');
   assert.equal(weekly[0].sample_count, 400);
