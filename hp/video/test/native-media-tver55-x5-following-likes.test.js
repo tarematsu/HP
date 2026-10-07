@@ -60,9 +60,9 @@ test('the first X slot is a YouTube prefix at startup and after TVer', () => {
   assert.match(xRuntime, /location\.assign\(youtubeStart\)/);
 });
 
-test('YouTube draws one stable 45-75 minute content duration and can hand off to X', () => {
-  assert.match(mediaBase, /kNativeMediaYoutubeMinContentDurationMinutes = 45U/);
-  assert.match(mediaBase, /kNativeMediaYoutubeMaxContentDurationMinutes = 75U/);
+test('YouTube draws one stable 49-73 minute content duration and can hand off to X', () => {
+  assert.match(mediaBase, /kNativeMediaYoutubeMinContentDurationMinutes = 49U/);
+  assert.match(mediaBase, /kNativeMediaYoutubeMaxContentDurationMinutes = 73U/);
   assert.match(mediaBase, /const UINT youtubeMinuteSpan =[\s\S]*YoutubeMaxContentDurationMinutes -[\s\S]*YoutubeMinContentDurationMinutes \+ 1U/);
   assert.match(mediaBase, /NativeMediaXRandomBelow\(youtubeMinuteSpan\)/);
   assert.match(mediaBase, /plan\.youtubeContentDurationMs = youtubeMinutes \* 60U \* 1000U/);
@@ -75,9 +75,9 @@ test('YouTube draws one stable 45-75 minute content duration and can hand off to
   assert.match(host, /Navigate\(L"https:\/\/x\.com\/home"\)/);
 });
 
-test('TVer keeps its 45-75 minute playback phase uninterrupted by X', () => {
-  assert.match(mediaBase, /kNativeMediaTverMinContentDurationMinutes = 45U/);
-  assert.match(mediaBase, /kNativeMediaTverMaxContentDurationMinutes = 75U/);
+test('TVer keeps its 49-73 minute playback phase uninterrupted by X', () => {
+  assert.match(mediaBase, /kNativeMediaTverMinContentDurationMinutes = 49U/);
+  assert.match(mediaBase, /kNativeMediaTverMaxContentDurationMinutes = 73U/);
   assert.match(mediaBase, /const UINT tverMinuteSpan =[\s\S]*TverMaxContentDurationMinutes -[\s\S]*TverMinContentDurationMinutes \+ 1U/);
   assert.match(mediaBase, /NativeMediaXRandomBelow\(tverMinuteSpan\)/);
   assert.match(mediaBase, /plan\.tverContentDurationMs = tverMinutes \* 60U \* 1000U/);
