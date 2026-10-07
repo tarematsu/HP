@@ -51,8 +51,8 @@ test('Pages leaderboard reads only the R2 materialized model', () => {
     new URL('../site/functions/lib/history-ranking.js', import.meta.url),
     'utf8',
   );
-  assert.match(source, /PAGES_READ_MODEL_SERVICE/);
-  assert.match(source, /url\.searchParams\.set\('key', LEADERBOARD_MODEL_KEY\)/);
+  assert.match(source, /fetchPagesReadModel/);
+  assert.match(source, /fetchPagesReadModel\(env, LEADERBOARD_MODEL_KEY\)/);
   assert.match(source, /read_path: 'leaderboard-r2-read-model'/);
   assert.doesNotMatch(source, /FROM sh_weekly_ranking_read_model|FROM sh_channel_rankings|FROM sh_channel_fandoms|summaryLoader\s*\(/);
 });
