@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const current = readFileSync(new URL('../functions/api/history-current.js', import.meta.url), 'utf8');
 const tracks = readFileSync(new URL('../functions/api/track-history.js', import.meta.url), 'utf8');
+const readModelService = readFileSync(new URL('../functions/lib/pages-read-model-service.js', import.meta.url), 'utf8');
 const dailyTracks = readFileSync(
   new URL('../../database/facts-migrations/053_pages_track_history_daily_read_model.sql', import.meta.url),
   'utf8',
@@ -19,9 +20,11 @@ test('current history reads a single daily track-count projection row', () => {
 });
 
 test('track-history public requests proxy only to the R2 materialized service', () => {
-  assert.match(tracks, /PAGES_READ_MODEL_SERVICE/);
-  assert.match(tracks, /url\.searchParams\.set\('key', TRACK_HISTORY_MODEL_KEY\)/);
-  assert.match(tracks, /url\.searchParams\.set\('api', '1'\)/);
+  assert.match(tracks, /fetchPagesReadModel\(env, TRACK_HISTORY_MODEL_KEY/);
+  assert.match(tracks, /api: true/);
+  assert.match(readModelService, /PAGES_READ_MODEL_SERVICE/);
+  assert.match(readModelService, /url\.searchParams\.set\('key', modelKey\)/);
+  assert.match(readModelService, /if \(api\) url\.searchParams\.set\('api', '1'\)/);
   assert.doesNotMatch(tracks, /MINUTE_DB|\.prepare\(|TRACK_RANKING_SQL|TRACK_RANKING_SUMMARY_SQL|sh_track_ranking_current|MAX\(play_date\)|FROM sh_tracks/);
 });
 
