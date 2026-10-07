@@ -1,11 +1,11 @@
 import {
-  OHISAMA_PAGES_MODEL_KEY,
-  mergeOhisamaDailyRows,
-  nextOhisamaDailySummary,
-  ohisamaReadModelPayload,
-  rollOhisamaHistory,
-} from './ohisama-read-model-core.js';
-import { rollupStationheadWeekly } from '../../packages/sh-shared/stationhead-read-models.mjs';
+  mergeStationheadDailyRows,
+  nextStationheadDailySummary,
+  rollStationheadHistory,
+  rollupStationheadWeekly,
+  stationheadAggregateReadModelPayload,
+} from '../../packages/sh-shared/stationhead-read-models.mjs';
+import { requireStationheadSourceProfile } from '../../packages/sh-shared/stationhead-source.mjs';
 import {
   loadStationheadReadModelState,
   saveStationheadReadModelHotState,
@@ -14,6 +14,11 @@ import {
   STATIONHEAD_READ_MODEL_INCREMENTAL_GAP_MS,
   STATIONHEAD_READ_MODEL_RECOVERY_GAP_MS,
 } from './stationhead-read-model-state.js';
+
+const OHISAMA_SOURCE = 'ohisama';
+const OHISAMA_PROFILE = requireStationheadSourceProfile(OHISAMA_SOURCE);
+export const OHISAMA_PAGES_MODEL_KEY = OHISAMA_PROFILE.modelKey;
+export const OHISAMA_PAGES_CADENCE_SECONDS = OHISAMA_PROFILE.publicationCadenceSeconds;
 
 const DAY_MS = 24 * 60 * 60_000;
 const FIVE_MINUTES_MS = 5 * 60_000;
@@ -62,7 +67,7 @@ function upgradeLegacyPayload(payload) {
   if (Array.isArray(payload.weekly)) return payload;
   return {
     ...payload,
-    weekly: rollupOhisamaWeekly(payload.daily, integer(payload.updated_at) ?? Date.now()),
+    weekly: rollupStationheadWeekly(payload.daily, integer(payload.updated_at) ?? Date.now()),
   };
 }
 
@@ -99,10 +104,6 @@ function summaryBoundary(rows, key, direction) {
     if (value != null) return value;
   }
   return null;
-}
-
-export function rollupOhisamaWeekly(dailyRows = [], updatedAt = Date.now()) {
-  return rollupStationheadWeekly(dailyRows, updatedAt);
 }
 
 async function persistDailySummary(db, row) {
@@ -297,7 +298,7 @@ async function applyObservation(payload, collection, observedAt, db) {
     const completed = completedRowAtRollover(payload, observedAt);
     if (completed) {
       dailyPersisted = await persistDailySummary(db, completed);
-      const completedWeek = rollupOhisamaWeekly(payload.daily, observedAt)
+      const completedWeek = rollupStationheadWeekly(payload.daily, observedAt)
         .find((row) => row.period_key === weekKey(integer(completed.period_start)));
       if (completedWeek) weeklyPersisted = await persistWeeklySummary(db, completedWeek);
     }
@@ -308,17 +309,17 @@ async function applyObservation(payload, collection, observedAt, db) {
     && stationheadFiveMinuteBucket(previousAt) === stationheadFiveMinuteBucket(observedAt);
   const dailyRow = sameBucket
     ? existingCurrent
-    : nextOhisamaDailySummary(existingCurrent, collection, observedAt);
-  const daily = dailyRow ? mergeOhisamaDailyRows(payload.daily, dailyRow) : payload.daily;
+    : nextStationheadDailySummary(existingCurrent, collection, observedAt);
+  const daily = dailyRow ? mergeStationheadDailyRows(payload.daily, dailyRow) : payload.daily;
 
   return {
     payload: {
       ...payload,
       updated_at: observedAt,
-      latest: ohisamaReadModelPayload(collection, [], [], observedAt).latest,
-      history_24h: rollOhisamaHistory(payload.history_24h, collection, observedAt),
+      latest: stationheadAggregateReadModelPayload(OHISAMA_SOURCE, collection, [], [], observedAt).latest,
+      history_24h: rollStationheadHistory(payload.history_24h, collection, observedAt),
       daily,
-      weekly: rollupOhisamaWeekly(daily, observedAt),
+      weekly: rollupStationheadWeekly(daily, observedAt),
     },
     dailyPersisted,
     weeklyPersisted,
@@ -337,12 +338,12 @@ async function bootstrapPayload(db, collection, channelId, observedAt) {
     rebuildDaySummary(db, channelId, currentStart, observedAt),
   ]);
   const dailyRows = currentDaily
-    ? mergeOhisamaDailyRows(completedDaily, currentDaily)
+    ? mergeStationheadDailyRows(completedDaily, currentDaily)
     : completedDaily;
-  const weeklyRows = rollupOhisamaWeekly(dailyRows, observedAt);
+  const weeklyRows = rollupStationheadWeekly(dailyRows, observedAt);
   for (const row of weeklyRows) await persistWeeklySummary(db, row);
   return {
-    ...ohisamaReadModelPayload(collection, historyRows, dailyRows, observedAt),
+    ...stationheadAggregateReadModelPayload(OHISAMA_SOURCE, collection, historyRows, dailyRows, observedAt),
     weekly: weeklyRows,
   };
 }
