@@ -105,7 +105,7 @@ test('regional and Stationhead collection schedules are dispatched to target Wor
   await runCronDispatcher({ scheduledTime: Date.UTC(2026, 9, 5, 12, 17) }, env(calls));
   assert.deepEqual(calls.map(({ name }) => name), ['collection-jobs', 'ohisama', 'collection-jobs', 'nogizaka']);
   assert.equal(calls[1].body.cron, '*/5 * * * *');
-  assert.equal(calls.at(-1).body.cron, '17 12 * * 1');
+  assert.equal(calls[2].body.cron, '17 12 * * 1');
 });
 
 test('hourly HomePanel watchdog forces radar due without restoring a HomePanel Worker Cron', async () => {
