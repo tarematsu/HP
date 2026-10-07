@@ -8,6 +8,7 @@ const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta
 const tabs = dashboardRouterSource();
 const readModel = browserSource('stationhead-channel-read-model.js');
 const dashboardEndpoint = readFileSync(new URL('../functions/api/dashboard.js', import.meta.url), 'utf8');
+const dashboardPublisher = readFileSync(new URL('../../worker/src/pages-dashboard-live-publisher.js', import.meta.url), 'utf8');
 const contract = readFileSync(new URL('../../packages/sh-shared/api-contract.mjs', import.meta.url), 'utf8');
 
 test('shared bootstrap keeps every non-current view and first-week comparison lazy', () => {
@@ -40,10 +41,12 @@ test('Buddies cache is explicitly owned by the lazy read model, without global f
   assert.doesNotMatch(entry, /dashboard-fetch-cache|^import.*current-shell/m);
 });
 
-test('dashboard materializer contains chart details and avoids a secondary browser D1 path', () => {
+test('dashboard is Worker-materialized and avoids a secondary browser or Pages D1 path', () => {
   assert.match(contract, /key: 'dashboard', url: '\/api\/dashboard\?history=0'/);
-  assert.match(dashboardEndpoint, /augmentDashboardChartData/);
-  assert.match(dashboardEndpoint, /daily_summaries/);
+  assert.match(dashboardEndpoint, /proxyStationheadMaterializedReadModel/);
+  assert.doesNotMatch(dashboardEndpoint, /MINUTE_DB|OTHER_DB|\.prepare\(/);
+  assert.match(dashboardPublisher, /directFiveMinuteStreamHistory/);
+  assert.match(dashboardPublisher, /daily_summaries/);
   assert.doesNotMatch(entry, /dashboard-details-client\.js/);
   assert.doesNotMatch(readModel, /\/api\/dashboard-details|dashboard:details/);
 });
