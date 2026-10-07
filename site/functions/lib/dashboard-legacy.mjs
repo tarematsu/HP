@@ -1,4 +1,3 @@
-import { num } from '../lib/api-utils.js';
 import {
   ROUND_GOAL_STEP,
   ROUND_GOAL_COUNT,
@@ -20,42 +19,7 @@ export {
   dashboardGoalTargets,
   dashboardGoalPredictions,
 };
-import {
-  computePlayback as computePlaybackWithAnchors,
-  normalizePlaybackTrack,
-  safeJson,
-} from '../lib/playback.js';
-import { LATEST_QUEUE_WITH_ITEMS_SQL, parseLatestQueueRows } from '../lib/latest-queue.js';
-import {
-  factsAreFresh,
-  loadFactsBaseline,
-  loadFactsDashboard,
-  mergeFactsLatest,
-} from '../lib/dashboard-facts.js';
-
 const COMMENT_VELOCITY_WINDOW_MS = 2 * 60_000;
-
-const json = (data, status = 200, cache = 'public, max-age=20, s-maxage=30, stale-while-revalidate=90') =>
-  new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-      'cache-control': cache,
-      'vary': 'accept-encoding',
-    },
-  });
-
-function jstDayRange(now = Date.now(), cutoffHour = 0) {
-  const shifted = new Date(now + 9 * 3600000);
-  let currentStart = Date.UTC(
-    shifted.getUTCFullYear(),
-    shifted.getUTCMonth(),
-    shifted.getUTCDate(),
-    cutoffHour,
-  ) - 9 * 3600000;
-  if (now < currentStart) currentStart -= 86400000;
-  return { previousStart: currentStart - 86400000, currentStart };
-}
 
 export function hostScopeFromSnapshot(snapshot) {
   const hostAccountIdRaw = snapshot?.host_account_id;
@@ -125,14 +89,6 @@ export function commentVelocityExpression(alias) {
       AND counts.bucket_start<=${alias}.observed_at
   ),${alias}.comment_velocity,0)`;
 }
-
-const LATEST_SQL = `SELECT
-  snapshots.id,snapshots.observed_at,snapshots.channel_id,snapshots.channel_alias,snapshots.channel_name,snapshots.station_id,
-  snapshots.is_launched,snapshots.is_broadcasting,snapshots.chat_status,snapshots.listener_count,snapshots.online_member_count,
-  snapshots.total_member_count,snapshots.guest_count,snapshots.total_listens,snapshots.stream_goal,snapshots.current_stream_count,
-  snapshots.host_account_id,snapshots.host_handle,snapshots.broadcast_start_time,
-  ${commentVelocityExpression('snapshots')} AS comment_velocity,snapshots.raw_json
-FROM sh_channel_snapshots AS snapshots ORDER BY snapshots.observed_at DESC,snapshots.id DESC LIMIT 1`;
 
 function historyBucketSql(whereClause) {
   return `WITH ranked AS (
@@ -232,130 +188,4 @@ export function compactQueueStatus(latestQueue, latest, playback, totalItems, lo
     loaded_items: loadedItems,
     has_more: loadedItems < totalItems,
   };
-}
-
-export async function onRequestGet({ request, env }) {
-  const db = env.DB;
-  if (!db) return json({ ok: false, error: 'DB binding missing' }, 500, 'no-store');
-  try {
-    const url = new URL(request.url);
-    const since = Math.max(0, Number(url.searchParams.get('since')) || 0);
-    const includeHistory = url.searchParams.get('history') !== '0';
-    const initial = since <= 0;
-    const listensRange = jstDayRange(Date.now(), 9);
-    const memberRange = jstDayRange(Date.now(), 16);
-
-    const factsPromise = env.MINUTE_DB
-      ? loadFactsDashboard(env.MINUTE_DB, { since, includeHistory }).catch((error) => {
-        console.error(JSON.stringify({ event: 'dashboard_facts_read_failed', error: String(error?.message || error) }));
-        return null;
-      })
-      : Promise.resolve(null);
-    const [snapshotLatest, queueResult, loadedFacts] = await Promise.all([
-      db.prepare(LATEST_SQL).first(),
-      db.prepare(LATEST_QUEUE_WITH_ITEMS_SQL).all(),
-      factsPromise,
-    ]);
-    const facts = factsAreFresh(loadedFacts?.latest) ? loadedFacts : null;
-    let latest = mergeFactsLatest(snapshotLatest, facts?.latest);
-    let history = facts?.history || null;
-    let predictionResult = facts?.prediction ?? null;
-    if (!facts) {
-      const historyStatement = !includeHistory
-        ? null
-        : initial
-          ? db.prepare(HISTORY_24H_SQL)
-          : db.prepare(HISTORY_SINCE_SQL).bind(since);
-      const fallbackPrediction = initial && includeHistory ? null : db.prepare(PREDICTION_24H_SQL);
-      const [historyResult, fallbackPredictionResult] = await Promise.all([
-        historyStatement ? historyStatement.all() : Promise.resolve({ results: [] }),
-        fallbackPrediction ? fallbackPrediction.first() : Promise.resolve(null),
-      ]);
-      history = historyResult.results || [];
-      predictionResult = fallbackPredictionResult;
-    }
-
-    const hostScope = hostScopeFromSnapshot(latest);
-    let previousMembers;
-    let previousListens;
-    if (facts) {
-      [previousMembers, previousListens] = await Promise.all([
-        loadFactsBaseline(env.MINUTE_DB, 'total_member_count', facts.latest?.host_id, memberRange.previousStart, memberRange.currentStart),
-        loadFactsBaseline(env.MINUTE_DB, 'total_listens', facts.latest?.host_id, listensRange.previousStart, listensRange.currentStart),
-      ]).catch(async (error) => {
-        console.error(JSON.stringify({ event: 'dashboard_facts_baseline_failed', error: String(error?.message || error) }));
-        return Promise.all([
-          cachedHostMetric(db, 'total_member_count', hostScope, memberRange.previousStart, memberRange.currentStart),
-          cachedHostMetric(db, 'total_listens', hostScope, listensRange.previousStart, listensRange.currentStart),
-        ]);
-      });
-    } else {
-      [previousMembers, previousListens] = await Promise.all([
-        cachedHostMetric(db, 'total_member_count', hostScope, memberRange.previousStart, memberRange.currentStart),
-        cachedHostMetric(db, 'total_listens', hostScope, listensRange.previousStart, listensRange.currentStart),
-      ]);
-    }
-
-    const { latestQueue, queue } = parseLatestQueueRows(queueResult.results || []);
-
-    const generatedAt = Date.now();
-    const playback = computePlaybackWithAnchors(queue, generatedAt);
-    const enrichedQueue = queue.map((track, index) => (
-      normalizePlaybackTrack(track, index, playback)
-    ));
-
-    const channel = safeJson(latest?.raw_json, {}) || {};
-    const station = channel.current_station || {};
-    const sourceQueue = station.queue || channel.queue || {};
-    const registeredItems = Math.max(
-      queue.length,
-      num(sourceQueue.total_track_count ?? sourceQueue.total_items) ?? queue.length,
-    );
-    const owner = station.owner || {};
-    const streaming = station.streaming_party || {};
-    const goal = latest?.stream_goal ?? streaming.stream_goal ?? null;
-    const current = num(
-      latest?.current_stream_count
-      ?? streaming.current_stream_count
-      ?? latest?.total_listens,
-    );
-    const { goalPrediction, goalPredictions } = dashboardGoalPredictions({
-      rows: history,
-      aggregate: predictionResult,
-      current,
-      configuredGoal: num(goal),
-      now: generatedAt,
-      useAggregate: !(initial && includeHistory),
-    });
-
-    return json({
-      ok: true,
-      generated_at: generatedAt,
-      metrics_source: facts ? 'facts-db' : 'buddies-db',
-      delta: !initial,
-      history_deferred: initial && !includeHistory,
-      latest_observed_at: latest?.observed_at || since,
-      latest: publicLatest(latest, channel, station, owner, goal),
-      history,
-      daily_change: latest ? {
-        host_account_id: latest.host_account_id ?? null,
-        host_handle: latest.host_handle ?? null,
-        member_baseline_observed_at: previousMembers?.observed_at || null,
-        listens_baseline_observed_at: previousListens?.observed_at || null,
-        member_cutoff_hour_jst: 16,
-        listens_cutoff_hour_jst: 9,
-        total_member_count: previousMembers && num(latest.total_member_count) != null && num(previousMembers.total_member_count) != null
-          ? num(latest.total_member_count) - num(previousMembers.total_member_count) : null,
-        total_listens: previousListens && num(latest.total_listens) != null && num(previousListens.total_listens) != null
-          ? num(latest.total_listens) - num(previousListens.total_listens) : null,
-      } : null,
-      goal_prediction: goalPrediction,
-      goal_predictions: goalPredictions,
-      queue: enrichedQueue,
-      queue_status: compactQueueStatus(latestQueue, latest, playback, registeredItems, queue.length),
-    });
-  } catch (error) {
-    console.error(error);
-    return json({ ok: false, error: error?.message || 'dashboard error' }, 500, 'no-store');
-  }
 }
