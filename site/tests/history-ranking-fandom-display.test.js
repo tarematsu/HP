@@ -5,6 +5,8 @@ import test from 'node:test';
 
 import { loadRanking } from '../functions/lib/history-ranking.js';
 
+const rankingHosts = readFileSync(new URL('../../packages/sh-shared/stationhead-ranking-hosts.mjs', import.meta.url), 'utf8');
+
 function rankingRows({ withFandom = true } = {}) {
   const metadata = withFandom ? {
     artist_name: '櫻坂46',
@@ -136,24 +138,7 @@ test('D1 migration corrects sbuddies1819 idempotently', () => {
   assert.match(correction, /ON CONFLICT\(host_name\) DO UPDATE/);
 });
 
-test('Stationhead display names are keyed by host so official Sakurazaka is not mislabeled as Buddies', () => {
-  const source = readFileSync(
-    new URL('../../worker/src/weekly-ranking-materializer.js', import.meta.url),
-    'utf8',
-  );
-  assert.match(source, /STATIONHEAD_CHANNEL_BY_HOST/);
-  assert.match(source, /\['sakuramankai', 'Buddies'\]/);
-  assert.match(source, /\['sakurazaka46jp', '櫻坂46'\]/);
-  assert.match(source, /\['sbuddies1819', 'ATIN'\]/);
-  assert.doesNotMatch(source, /STATIONHEAD_CHANNEL_BY_ARTIST/);
-});
-
-
-test('nogifan1ch is classified as Nogizaka in leaderboard metadata', () => {
-  const migration = readFileSync(
-    new URL('../../database/other-migrations/070_nogifan1ch_nogizaka_affiliation.sql', import.meta.url),
-    'utf8',
-  );
+test('Stationhead display names are keyed once in the shared ranking host metadata', () => {
   const worker = readFileSync(
     new URL('../../worker/src/weekly-ranking-materializer.js', import.meta.url),
     'utf8',
@@ -162,8 +147,21 @@ test('nogifan1ch is classified as Nogizaka in leaderboard metadata', () => {
     new URL('../functions/lib/history-ranking.js', import.meta.url),
     'utf8',
   );
+  assert.match(rankingHosts, /\['sakuramankai', 'Buddies'\]/);
+  assert.match(rankingHosts, /\['sakurazaka46jp', '櫻坂46'\]/);
+  assert.match(rankingHosts, /\['sbuddies1819', 'ATIN'\]/);
+  assert.match(worker, /stationheadChannelNameForHost/);
+  assert.match(api, /stationheadChannelNameForHost/);
+  assert.doesNotMatch(worker, /STATIONHEAD_CHANNEL_BY_ARTIST/);
+});
+
+
+test('nogifan1ch is classified as Nogizaka in leaderboard metadata', () => {
+  const migration = readFileSync(
+    new URL('../../database/other-migrations/070_nogifan1ch_nogizaka_affiliation.sql', import.meta.url),
+    'utf8',
+  );
   assert.match(migration, /'nogifan1ch'[\s\S]*'乃木坂46'[\s\S]*'fandom'/);
   assert.match(migration, /source_mask = \(source_mask \| 8\)/);
-  assert.match(worker, /\['nogifan1ch', 'Nogizaka'\]/);
-  assert.match(api, /\['nogifan1ch', 'Nogizaka'\]/);
+  assert.match(rankingHosts, /\['nogifan1ch', 'Nogizaka'\]/);
 });
