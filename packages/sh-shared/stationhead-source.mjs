@@ -18,6 +18,7 @@ export const STATIONHEAD_SOURCE_PROFILES = Object.freeze({
     publicationCadenceSeconds: 300,
     playbackHotKey: 'stationhead/buddies/playback-state.json',
     readModelHotKey: 'stationhead/buddies/dashboard-hot-state.json',
+    collectorStateHotKey: null,
   }),
   ohisama: Object.freeze({
     source: 'ohisama',
@@ -27,6 +28,7 @@ export const STATIONHEAD_SOURCE_PROFILES = Object.freeze({
     publicationCadenceSeconds: 300,
     playbackHotKey: 'stationhead/ohisama/playback-state.json',
     readModelHotKey: 'stationhead/ohisama/read-model-hot-state.json',
+    collectorStateHotKey: 'stationhead/ohisama/collector-state.json',
   }),
   nogizaka: Object.freeze({
     source: 'nogizaka',
@@ -36,6 +38,7 @@ export const STATIONHEAD_SOURCE_PROFILES = Object.freeze({
     publicationCadenceSeconds: 60,
     playbackHotKey: 'stationhead/nogizaka/playback-state.json',
     readModelHotKey: 'stationhead/nogizaka/read-model-hot-state.json',
+    collectorStateHotKey: null,
   }),
 });
 
