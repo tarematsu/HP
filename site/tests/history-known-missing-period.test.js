@@ -8,11 +8,11 @@ import {
 } from '../functions/lib/known-history-gap.js';
 
 const materializedSource = readFileSync(
-  new URL('../functions/lib/materialized-history.js', import.meta.url),
+  new URL('../../packages/sh-shared/materialized-history-summary.mjs', import.meta.url),
   'utf8',
 );
 const gapSource = readFileSync(
-  new URL('../functions/lib/known-history-gap.js', import.meta.url),
+  new URL('../../packages/sh-shared/known-history-gap.mjs', import.meta.url),
   'utf8',
 );
 const chartSource = readFileSync(
