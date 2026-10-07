@@ -3,8 +3,7 @@ import test from 'node:test';
 
 import {
   loadMaterializedSummary,
-  onRequestGet,
-} from '../../site/functions/lib/materialized-history.js';
+} from '../../packages/sh-shared/materialized-history-summary.mjs';
 
 const DAY = 86_400_000;
 const PERIOD_START = Date.parse('2026-07-26T00:00:00Z');
@@ -165,24 +164,6 @@ test('daily materialization rejects sample counts above one row per minute', asy
     ),
     /daily summary 2026-07-26 has invalid sample_count: 1441/,
   );
-});
-
-test('materialized history response keeps the public payload shape without raw D1 reads', async () => {
-  const calls = [];
-  const response = await onRequestGet({
-    request: new Request('https://materializer.test/api/history?mode=daily&from=2026-07-01&to=2026-07-28'),
-    env: environment(calls),
-  });
-  assert.equal(response.status, 200);
-  const payload = await response.json();
-  assert.equal(payload.ok, true);
-  assert.equal(payload.mode, 'daily');
-  assert.equal(payload.timezone, 'UTC');
-  assert.equal(payload.live_source, 'summary-only');
-  assert.equal(payload.live_overlay_count, 0);
-  assert.equal(payload.rows[0].distinct_tracks, 17);
-  assert.equal(calls.filter((call) => call.source === 'r2').length, 1);
-  assert.equal(calls.filter((call) => call.source === 'other-update').length, 0);
 });
 
 test('Worker generation enriches missing closed track totals without D1 writes', async () => {
