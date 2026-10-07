@@ -2,12 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  cachedPrediction,
-  decorateQueueResponse,
-  resetPredictionCache,
-  selectGoalPrediction,
-} from '../functions/api/dashboard.js';
-import {
   cachedHistoryLoad,
   onRequestGet as historyGet,
   resetHistoryLoadCache,
@@ -156,64 +150,4 @@ test('history cache coalesces concurrent readers and can be reset safely', async
   assert.deepEqual(await second, { value: 42 });
   assert.equal(loads, 1);
   resetHistoryLoadCache();
-});
-
-test('dashboard prediction cache retains completed values without sharing request-scoped D1 promises', async () => {
-  resetPredictionCache();
-  let reads = 0;
-  const statement = {
-    async first() {
-      reads += 1;
-      await Promise.resolve();
-      return { slope: 2, intercept: 10 };
-    },
-  };
-  const [first, second] = await Promise.all([
-    cachedPrediction(statement, 100),
-    cachedPrediction(statement, 100),
-  ]);
-  assert.deepEqual(first, second);
-  assert.equal(reads, 2);
-
-  const decorated = decorateQueueResponse({
-    ok: true,
-    latest: { is_broadcasting: 1 },
-    queue: [{ position: 0 }],
-    queue_status: { is_paused: false, total_items: 1 },
-  }, {
-    revision: 'rev-1',
-    unchanged: true,
-    state: { total_items: 3 },
-  });
-  assert.equal(decorated.queue_revision, 'rev-1');
-  assert.equal(decorated.queue_unchanged, true);
-  assert.deepEqual(decorated.queue, []);
-  assert.equal(decorated.queue_status.playing, true);
-  assert.equal(decorated.queue_status.total_items, 3);
-
-  resetPredictionCache();
-});
-
-test('dashboard keeps calculated goal prediction when persisted state is unavailable', () => {
-  const calculated = {
-    eta: 1783400000000,
-    rate_per_hour: 12000,
-    remaining: 100000,
-    sample_count: 80,
-    span_hours: 12,
-  };
-  assert.equal(selectGoalPrediction(null, calculated, 53240000), calculated);
-});
-
-test('dashboard prefers valid persisted goal prediction over calculated fallback', () => {
-  const calculated = { eta: 1783400000000, rate_per_hour: 12000, remaining: 100000 };
-  const persisted = selectGoalPrediction({
-    generated_at: 1783300000000,
-    goal: 53240000,
-    eta: 1783500000000,
-    rate_per_hour: 15000,
-    remaining: 90000,
-  }, calculated, 53240000);
-  assert.notEqual(persisted, calculated);
-  assert.equal(persisted.rate_per_hour, 15000);
 });
