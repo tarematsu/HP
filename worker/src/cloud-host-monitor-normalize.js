@@ -69,5 +69,5 @@ export async function digest(value) {
 }
 
 export async function queueHash(queue) {
-  return digest(stationheadQueueStructuralPayload(queue));
+  return digest(stationheadQueueStructuralPayload(queue, { includeLikeCounts: true }));
 }
