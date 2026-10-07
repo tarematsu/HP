@@ -1,3 +1,4 @@
+import { requireStationheadSourceProfile } from '../../packages/sh-shared/stationhead-source.mjs';
 import { extractQueue } from './collector-payload.js';
 import { materializeCurrentPlaybackWindow } from './queue-materialization.js';
 import { saveTrackHistoryDayReadModel } from './pages-track-history-r2-shards.js';
@@ -18,7 +19,7 @@ import {
   stationheadCompletedDailyStatement,
   stationheadPlaybackPlayStatement,
 } from './stationhead-playback-store.js';
-export const OHISAMA_PLAYBACK_HOT_STATE_KEY = 'stationhead/ohisama/playback-state.json';
+export const OHISAMA_PLAYBACK_HOT_STATE_KEY = requireStationheadSourceProfile('ohisama').playbackHotKey;
 
 function finite(value) {
   if (value === null || value === undefined || value === '') return null;
