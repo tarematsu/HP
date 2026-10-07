@@ -7,7 +7,7 @@ const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.me
 const currentRuntime = browserSource('stationhead-channel.js');
 const history = browserSource('history/history-lite.js');
 const officialLive = readFileSync(new URL('../public/official-account-live.js', import.meta.url), 'utf8');
-const historySummary = readFileSync(new URL('../functions/lib/history-summary.js', import.meta.url), 'utf8');
+const historyApi = readFileSync(new URL('../functions/api/history.js', import.meta.url), 'utf8');
 
 test('ranking session cache survives ordinary page startup', () => {
   assert.doesNotMatch(history, /sessionStorage\.removeItem\([^)]*ranking/);
@@ -28,9 +28,7 @@ test('official realtime polling pauses while the page is hidden', () => {
   assert.match(officialLive, /if \(!document\.hidden\) refreshTimer = setTimeout\(refresh, delay\)/);
 });
 
-test('history summary reads never persist repairs during a Pages request', () => {
-  assert.doesNotMatch(historySummary, /persistCompletedBoundaryRepairs/);
-  assert.doesNotMatch(historySummary, /summary_boundary_repair_persist_failed/);
-  assert.doesNotMatch(historySummary, /UPDATE\s+\$\{table\}/);
-  assert.doesNotMatch(historySummary, /\.run\(\)/);
+test('history summary requests reuse the shared materialized summary without repair writes', () => {
+  assert.match(historyApi, /loadMaterializedSummary/);
+  assert.doesNotMatch(historyApi, /persistCompletedBoundaryRepairs|summary_boundary_repair_persist_failed|UPDATE\s+|\.run\(\)/);
 });
