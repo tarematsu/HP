@@ -1,9 +1,9 @@
 import { requireStationheadSourceProfile } from '../../packages/sh-shared/stationhead-source.mjs';
-import { loadMaterializedR2Json, saveMaterializedR2Response } from './pages-response-r2.js';
+import { loadMaterializedR2Json } from './pages-response-r2.js';
+import { publishStationheadReadModel } from './stationhead-read-model-state.js';
 
 const OHISAMA_PROFILE = requireStationheadSourceProfile('ohisama');
 const OHISAMA_MODEL_KEY = OHISAMA_PROFILE.modelKey;
-const OHISAMA_PAGES_CADENCE_SECONDS = OHISAMA_PROFILE.publicationCadenceSeconds;
 const MINUTE_MS = 60_000;
 export const OHISAMA_CURRENT_CADENCE_MS = 5 * MINUTE_MS;
 export const OHISAMA_HISTORY_CADENCE_MS = 24 * 60 * MINUTE_MS;
@@ -132,16 +132,9 @@ export async function mergeOhisamaPlaybackReadModelWithCadence(
     collection,
     observedAt,
   );
-  const saved = await saveMaterializedR2Response(
-    bucket,
-    OHISAMA_MODEL_KEY,
-    JSON.stringify(built.payload),
-    200,
-    DEFAULT_HEADERS,
-    integer(observedAt),
-    OHISAMA_PAGES_CADENCE_SECONDS,
-    { model_key: OHISAMA_MODEL_KEY },
-  );
+  const saved = await publishStationheadReadModel(bucket, 'ohisama', built.payload, integer(observedAt), {
+    headers: DEFAULT_HEADERS,
+  });
   if (!saved) return { published: false, refreshed: {} };
   return {
     published: true,

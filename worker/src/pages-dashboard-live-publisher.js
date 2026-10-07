@@ -4,9 +4,10 @@ import { dashboardGoalPredictions } from '../../packages/sh-shared/dashboard-pre
 import { requireStationheadSourceProfile } from '../../packages/sh-shared/stationhead-source.mjs';
 import { hydratePlaybackTrackMetadata } from './playback-track-metadata.js';
 import { trackNeedsHydration } from './track-metadata-quality.js';
-import { saveMaterializedR2Response } from './pages-response-r2.js';
+import { loadStationheadMinuteFactGapRows } from './stationhead-minute-facts-reader.js';
 import {
   loadStationheadReadModelState,
+  publishStationheadReadModel,
   readStationheadJsonObject,
   saveStationheadReadModelHotState,
   stationheadFiveMinuteBucket,
@@ -20,7 +21,6 @@ const INCREMENTAL_GAP_LIMIT_MS = STATIONHEAD_READ_MODEL_INCREMENTAL_GAP_MS;
 const RECOVERY_GAP_LIMIT_MS = STATIONHEAD_READ_MODEL_RECOVERY_GAP_MS;
 const BUDDIES_PROFILE = requireStationheadSourceProfile('buddies');
 const DASHBOARD_MODEL_KEY = BUDDIES_PROFILE.modelKey;
-const DASHBOARD_CADENCE_SECONDS = BUDDIES_PROFILE.publicationCadenceSeconds;
 export const BUDDIES_DASHBOARD_HOT_STATE_KEY = BUDDIES_PROFILE.readModelHotKey;
 const BUDDIES_PLAYBACK_HOT_STATE_KEY = BUDDIES_PROFILE.playbackHotKey;
 
@@ -420,20 +420,6 @@ async function refreshDailySummariesIfDue(env, payload, now) {
   }
 }
 
-async function loadGapRows(db, channelId, afterMinute, beforeMinute) {
-  if (!db?.prepare) throw new Error('MINUTE_DB binding is missing for dashboard recovery');
-  const result = await db.prepare(`SELECT
-      channel_id,station_id,minute_at,observed_at,is_broadcasting,
-      listener_count,online_member_count,total_member_count,guest_count,
-      reported_total_listens,reported_current_stream_count,broadcast_start_time
-    FROM sh_minute_facts
-    WHERE channel_id=? AND minute_at>? AND minute_at<?
-    ORDER BY minute_at ASC,id ASC`)
-    .bind(channelId, afterMinute, beforeMinute)
-    .all();
-  return Array.isArray(result?.results) ? result.results : [];
-}
-
 function needsBootstrap(payload, channelId, currentMinute) {
   if (!payload?.ok) return true;
   if (integer(payload?.latest?.channel_id) !== integer(channelId)) return true;
@@ -454,19 +440,12 @@ async function purgeDashboardEdgeCache() {
 }
 
 async function savePublicEnvelope(bucket, payload, now) {
-  const saved = await saveMaterializedR2Response(
-    bucket,
-    DASHBOARD_MODEL_KEY,
-    JSON.stringify(payload),
-    200,
-    {
+  const saved = await publishStationheadReadModel(bucket, 'buddies', payload, now, {
+    headers: {
       'content-type': 'application/json; charset=utf-8',
       'cache-control': 'no-store',
     },
-    now,
-    DASHBOARD_CADENCE_SECONDS,
-    { model_key: DASHBOARD_MODEL_KEY },
-  );
+  });
   if (!saved) return false;
   await purgeDashboardEdgeCache();
   return true;
@@ -553,7 +532,7 @@ export async function publishDashboardFromMinuteFact(env, input, fact, options =
 
     const gap = currentMinute != null && existingMinute != null ? currentMinute - existingMinute : null;
     if (gap != null && gap > INCREMENTAL_GAP_LIMIT_MS && gap <= RECOVERY_GAP_LIMIT_MS) {
-      const rows = await loadGapRows(env?.MINUTE_DB, channelId, existingMinute, currentMinute);
+      const rows = await loadStationheadMinuteFactGapRows(env?.MINUTE_DB, 'buddies', channelId, existingMinute, currentMinute);
       recoveryRows = rows.length;
       for (const row of rows) {
         const rowAt = integer(row?.observed_at ?? row?.minute_at);

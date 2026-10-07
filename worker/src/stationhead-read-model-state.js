@@ -6,7 +6,7 @@ import {
   stationheadReadModelKey,
 } from '../../packages/sh-shared/stationhead-read-models.mjs';
 import { stationheadSourceProfile } from '../../packages/sh-shared/stationhead-source.mjs';
-import { loadMaterializedR2Json } from './pages-response-r2.js';
+import { loadMaterializedR2Json, saveMaterializedR2Response } from './pages-response-r2.js';
 
 export {
   STATIONHEAD_READ_MODEL_INCREMENTAL_GAP_MS,
@@ -85,4 +85,15 @@ export async function saveStationheadReadModelHotState(
     },
   });
   return true;
+}
+
+/** One source-scoped public R2 writer for both Stationhead dashboards. */
+export async function publishStationheadReadModel(bucket, sourceValue, payload, updatedAt, { headers = {}, metadata = {} } = {}) {
+  const profile = stationheadSourceProfile(sourceValue);
+  if (!profile) throw new Error(`unsupported Stationhead source: ${String(sourceValue || '<empty>')}`);
+  return saveMaterializedR2Response(
+    bucket, profile.modelKey, JSON.stringify(payload), 200, headers,
+    updatedAt, profile.publicationCadenceSeconds,
+    { ...metadata, model_key: profile.modelKey },
+  );
 }

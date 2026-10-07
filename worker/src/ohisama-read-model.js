@@ -6,6 +6,8 @@ import {
   stationheadAggregateReadModelPayload,
 } from '../../packages/sh-shared/stationhead-read-models.mjs';
 import { requireStationheadSourceProfile } from '../../packages/sh-shared/stationhead-source.mjs';
+import { loadStationheadMinuteFactGapRows } from './stationhead-minute-facts-reader.js';
+import { upsertStationheadPeriodSummary } from './stationhead-period-summary-store.js';
 import {
   loadStationheadReadModelState,
   saveStationheadReadModelHotState,
@@ -106,91 +108,8 @@ function summaryBoundary(rows, key, direction) {
   return null;
 }
 
-async function persistDailySummary(db, row) {
-  if (!row?.period_key) return false;
-  await db.prepare(`INSERT INTO sh_daily_summary(
-      period_key,period_start,period_end,sample_count,
-      listener_avg,listener_min,listener_max,
-      stream_start,stream_end,stream_growth,
-      member_start,member_end,member_growth,updated_at
-    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-    ON CONFLICT(period_key) DO UPDATE SET
-      period_start=excluded.period_start,
-      period_end=excluded.period_end,
-      sample_count=excluded.sample_count,
-      listener_avg=excluded.listener_avg,
-      listener_min=excluded.listener_min,
-      listener_max=excluded.listener_max,
-      stream_start=excluded.stream_start,
-      stream_end=excluded.stream_end,
-      stream_growth=excluded.stream_growth,
-      member_start=excluded.member_start,
-      member_end=excluded.member_end,
-      member_growth=excluded.member_growth,
-      updated_at=excluded.updated_at
-    WHERE excluded.updated_at>sh_daily_summary.updated_at`)
-    .bind(
-      row.period_key,
-      row.period_start,
-      row.period_end,
-      row.sample_count,
-      row.listener_avg,
-      row.listener_min,
-      row.listener_max,
-      row.stream_start,
-      row.stream_end,
-      row.stream_growth,
-      row.member_start,
-      row.member_end,
-      row.member_growth,
-      row.updated_at ?? row.period_end,
-    )
-    .run();
-  return true;
-}
-
-async function persistWeeklySummary(db, row) {
-  if (!row?.period_key) return false;
-  await db.prepare(`INSERT INTO sh_weekly_summary(
-      period_key,period_start,period_end,sample_count,
-      listener_avg,listener_min,listener_max,
-      stream_start,stream_end,stream_growth,
-      member_start,member_end,member_growth,updated_at
-    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-    ON CONFLICT(period_key) DO UPDATE SET
-      period_start=excluded.period_start,
-      period_end=excluded.period_end,
-      sample_count=excluded.sample_count,
-      listener_avg=excluded.listener_avg,
-      listener_min=excluded.listener_min,
-      listener_max=excluded.listener_max,
-      stream_start=excluded.stream_start,
-      stream_end=excluded.stream_end,
-      stream_growth=excluded.stream_growth,
-      member_start=excluded.member_start,
-      member_end=excluded.member_end,
-      member_growth=excluded.member_growth,
-      updated_at=excluded.updated_at
-    WHERE excluded.updated_at>=sh_weekly_summary.updated_at`)
-    .bind(
-      row.period_key,
-      row.period_start,
-      row.period_end,
-      row.sample_count,
-      row.listener_avg,
-      row.listener_min,
-      row.listener_max,
-      row.stream_start,
-      row.stream_end,
-      row.stream_growth,
-      row.member_start,
-      row.member_end,
-      row.member_growth,
-      row.updated_at ?? row.period_end,
-    )
-    .run();
-  return true;
-}
+const persistDailySummary = (db, row) => upsertStationheadPeriodSummary(db, 'daily', row);
+const persistWeeklySummary = (db, row) => upsertStationheadPeriodSummary(db, 'weekly', row);
 
 async function rebuildDaySummary(db, channelId, start, updatedAt) {
   const end = start + DAY_MS;
@@ -247,18 +166,6 @@ async function loadHistory(db, channelId, observedAt) {
     WHERE channel_id=? AND observed_at>=? AND observed_at<=?
     ORDER BY observed_at ASC,id ASC`)
     .bind(channelId, observedAt - DAY_MS, observedAt)
-    .all();
-  return result?.results || [];
-}
-
-async function loadGapRows(db, channelId, afterObservedAt, beforeObservedAt) {
-  const result = await db.prepare(`SELECT
-      channel_id,station_id,is_broadcasting,observed_at,
-      online_member_count,total_member_count,reported_current_stream_count
-    FROM sh_minute_facts
-    WHERE channel_id=? AND observed_at>? AND observed_at<?
-    ORDER BY observed_at ASC,id ASC`)
-    .bind(channelId, afterObservedAt, beforeObservedAt)
     .all();
   return result?.results || [];
 }
@@ -376,7 +283,7 @@ export async function refreshOhisamaReadModel(env, collection, now = Date.now())
       mode = 'incremental';
     } else if (gapMode === 'recovery') {
       let recovered = existingPayload;
-      const rows = await loadGapRows(db, channelId, previousAt, observedAt);
+      const rows = await loadStationheadMinuteFactGapRows(db, OHISAMA_SOURCE, channelId, previousAt, observedAt);
       recoveryRows = rows.length;
       for (const row of rows) {
         const rowAt = integer(row?.observed_at);
