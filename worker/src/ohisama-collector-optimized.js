@@ -8,6 +8,10 @@ import { guardedOhisamaAuthRefresh } from './ohisama-auth-refresh-guard.js';
 import { jwtExpiryMs, normalizeBearer } from './shared.js';
 import { acquireStationheadGuestSession } from './stationhead-guest-session.js';
 import { fetchStationheadChannelResponse } from './stationhead-collector-core.js';
+import {
+  stationheadCheckpoint,
+  stationheadOperationalHealth,
+} from '../../packages/sh-shared/stationhead-operational-state.mjs';
 
 const STATE_ID = 'stationhead';
 const DEFAULT_AUTH_HANDLE = 'ilys';
@@ -42,6 +46,7 @@ function normalizeState(value = {}, env = {}) {
     tokenExpiresAt: finite(value.tokenExpiresAt ?? value.token_expires_at) || jwtExpiryMs(authToken),
     lastRunAt: finite(value.lastRunAt ?? value.last_run_at),
     lastSuccessAt: finite(value.lastSuccessAt ?? value.last_success_at),
+    lastError: String(value.lastError ?? value.last_error ?? '').trim() || null,
     lastChannelId: finite(value.lastChannelId ?? value.last_channel_id),
     lastStationId: finite(value.lastStationId ?? value.last_station_id),
     d1CheckpointAt: finite(value.d1CheckpointAt ?? value.d1_checkpoint_at ?? value.updated_at),
@@ -75,9 +80,16 @@ async function writeHotState(env, state, now = Date.now()) {
       tokenExpiresAt: state.tokenExpiresAt || null,
       lastRunAt: state.lastRunAt || null,
       lastSuccessAt: state.lastSuccessAt || null,
+      lastError: state.lastError || null,
       lastChannelId: state.lastChannelId || null,
       lastStationId: state.lastStationId || null,
       d1CheckpointAt: state.d1CheckpointAt || null,
+      checkpoint: stationheadCheckpoint({
+        source: 'ohisama',
+        kind: 'collector-state',
+        at: state.d1CheckpointAt || state.lastRunAt || now,
+        status: state.lastError ? 'error' : state.lastSuccessAt ? 'ok' : 'unknown',
+      }),
       updatedAt: now,
     };
     await bucket.put(OHISAMA_AUTH_HOT_STATE_KEY, JSON.stringify(body), {
@@ -92,7 +104,7 @@ async function writeHotState(env, state, now = Date.now()) {
 
 async function readD1State(env) {
   const row = await env.OHISAMA_DB.prepare(`SELECT
-      auth_token,device_uid,token_expires_at,last_run_at,last_success_at,
+      auth_token,device_uid,token_expires_at,last_run_at,last_success_at,last_error,
       last_channel_id,last_station_id,updated_at
     FROM sh_worker_collector_state WHERE id=? LIMIT 1`)
     .bind(STATE_ID)
@@ -284,6 +296,7 @@ async function persistSnapshot(env, snapshot, state, observedAt) {
     ...state,
     lastRunAt: observedAt,
     lastSuccessAt: observedAt,
+    lastError: null,
     lastChannelId: snapshot.channel_id,
     lastStationId: snapshot.station_id,
     d1CheckpointAt: checkpointDue ? observedAt : state.d1CheckpointAt,
@@ -308,7 +321,7 @@ async function recordFailure(env, observedAt, error) {
   const detail = String(error?.message || error).slice(0, 800);
   const state = await readHotState(env).catch(() => null);
   if (state) {
-    await writeHotState(env, { ...state, lastRunAt: observedAt }, observedAt).catch(() => false);
+    await writeHotState(env, { ...state, lastRunAt: observedAt, lastError: detail }, observedAt).catch(() => false);
   }
   await env.OHISAMA_DB.prepare(`INSERT INTO sh_worker_collector_state(
       id,last_run_at,last_error,updated_at
@@ -318,6 +331,38 @@ async function recordFailure(env, observedAt, error) {
       last_error=excluded.last_error,
       updated_at=excluded.updated_at`)
     .bind(STATE_ID, observedAt, detail, observedAt).run().catch(() => {});
+}
+
+export async function readOhisamaCollectorHealth(env, now = Date.now()) {
+  let state = await readHotState(env).catch(() => null);
+  if (!state && env?.OHISAMA_DB?.prepare) {
+    state = await readD1State(env).catch(() => null);
+  }
+  const observedAt = Number(now);
+  const lastRunAt = finite(state?.lastRunAt);
+  const lastSuccessAt = finite(state?.lastSuccessAt);
+  const error = state?.lastError
+    ? {
+      code: 'COLLECTOR_ERROR',
+      stage: 'collector',
+      message: state.lastError,
+      at: lastRunAt || observedAt,
+    }
+    : null;
+  return stationheadOperationalHealth({
+    source: 'ohisama',
+    ok: Boolean(lastSuccessAt) && !error,
+    observedAt,
+    lastRunAt,
+    lastSuccessAt,
+    checkpoint: stationheadCheckpoint({
+      source: 'ohisama',
+      kind: 'collector-state',
+      at: finite(state?.d1CheckpointAt) ?? lastRunAt,
+      status: error ? 'error' : lastSuccessAt ? 'ok' : 'unknown',
+    }),
+    error,
+  });
 }
 
 export async function runOptimizedOhisamaCollectorScheduled(

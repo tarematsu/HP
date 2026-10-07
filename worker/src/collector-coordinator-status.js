@@ -1,3 +1,5 @@
+import { stationheadCheckpoint } from '../../packages/sh-shared/stationhead-operational-state.mjs';
+
 const COORDINATOR_NAME = 'scheduled-v1';
 const COORDINATOR_URL = 'https://buddies-collector-coordinator.internal/status';
 const MINUTE_MS = 60_000;
@@ -81,6 +83,13 @@ export async function waitForCollectorCoordinator(env = {}, scheduledAt = Date.n
       minuteAt: status?.minute_at == null ? null : Number(status.minute_at),
       status: status?.status || null,
       source: 'durable-object',
+      checkpoint: stationheadCheckpoint({
+        source: 'buddies',
+        kind: 'collector-coordinator',
+        at: Number(status?.last_success_at || status?.minute_at || targetMinute),
+        status: status?.ready === true ? 'ok' : 'degraded',
+        cursor: status?.minute_at == null ? null : String(status.minute_at),
+      }),
     };
   } catch (error) {
     console.warn(JSON.stringify({
@@ -123,6 +132,15 @@ export async function collectorReadyForMaintenance(env = {}, scheduledAt = Date.
       lastRunAt,
       lastSuccessAt,
       source: 'd1-fallback',
+      checkpoint: stationheadCheckpoint({
+        source: 'buddies',
+        kind: 'collector-state',
+        at: lastRunAt || targetMinute,
+        status: lastRunAt >= freshnessFloor && lastSuccessAt >= freshnessFloor && !row?.last_error
+          ? 'ok'
+          : 'degraded',
+        cursor: String(targetMinute),
+      }),
     };
   } catch (error) {
     if (/no such table|no such column/i.test(String(error?.message || error))) {
