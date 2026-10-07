@@ -1,3 +1,4 @@
+import { requireStationheadSourceProfile } from '../../packages/sh-shared/stationhead-source.mjs';
 import { pagesR2ResponseKey } from './pages-response-r2.js';
 import {
   fetchStationheadFollowerProfile,
@@ -19,7 +20,7 @@ export async function collectInitialStationheadFollowers(env, handleValue, obser
 
   let session = options.session;
   if (!session) {
-    const hot = await env.PAGES_RESPONSE_R2.get('stationhead/ohisama/collector-state.json');
+    const hot = await env.PAGES_RESPONSE_R2.get(requireStationheadSourceProfile('ohisama').collectorStateHotKey);
     const state = hot ? await hot.json() : null;
     session = { auth_token: state?.authToken, device_uid: state?.deviceUid };
   }
