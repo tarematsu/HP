@@ -47,7 +47,7 @@ function completeRows(actualRows) {
   return completed;
 }
 
-function dbFor(actualRows) {
+function serviceFor(actualRows) {
   const model = {
     version: 1,
     refreshed_at: 1_790_000_000_000,
@@ -58,17 +58,12 @@ function dbFor(actualRows) {
     weekly_metrics: [],
   };
   return {
-    prepare(sql) {
-      assert.match(sql, /FROM sh_weekly_ranking_read_model/);
-      return {
-        async first() {
-          return {
-            payload_json: JSON.stringify(model),
-            source_max_ranking_date: model.source_max_ranking_date,
-            refreshed_at: model.refreshed_at,
-          };
-        },
-      };
+    async fetch(request) {
+      const url = new URL(request.url);
+      assert.equal(url.searchParams.get('key'), 'leaderboard');
+      return Response.json(model, {
+        headers: { 'x-materialized-at': String(model.refreshed_at) },
+      });
     },
   };
 }
@@ -87,7 +82,7 @@ test('all-host scope excludes featured Sakamichi hosts and orders the remaining 
     { ranking_date: '2026-02-09', ranking_type: '週間リーダーボード', rank: 4, host_name: 'beta' },
     { ranking_date: '2026-02-09', ranking_type: '週間リーダーボード', rank: 6, host_name: 'gamma' },
   ];
-  const response = await loadRanking(request('&scope=all'), { OTHER_DB: dbFor(actualRows) });
+  const response = await loadRanking(request('&scope=all'), { PAGES_READ_MODEL_SERVICE: serviceFor(actualRows) });
   const data = await response.json();
 
   assert.equal(data.scope, 'all');
@@ -104,7 +99,7 @@ test('all-host scope excludes featured Sakamichi hosts and orders the remaining 
   assert.equal(data.ranking_summary.host_count, 3);
   assert.equal(data.ranking_summary.ranked_entry_count, 4);
   assert.equal(data.ranking_summary.out_of_rank_count, 1);
-  assert.equal(data.read_path, 'weekly-ranking-read-model');
+  assert.equal(data.read_path, 'leaderboard-r2-read-model');
 });
 
 test('featured scope returns the three Sakamichi hosts', async () => {
@@ -114,7 +109,7 @@ test('featured scope returns the three Sakamichi hosts', async () => {
     { ranking_date: '2026-02-09', ranking_type: '週間リーダーボード', rank: 3, host_name: 'nogizaka46smej' },
     { ranking_date: '2026-02-09', ranking_type: '週間リーダーボード', rank: 4, host_name: 'alpha' },
   ];
-  const response = await loadRanking(request('&scope=featured'), { OTHER_DB: dbFor(actualRows) });
+  const response = await loadRanking(request('&scope=featured'), { PAGES_READ_MODEL_SERVICE: serviceFor(actualRows) });
   const data = await response.json();
   assert.deepEqual(data.chart_hosts, ['sakuramankai', 'sakurazaka46jp', 'nogizaka46smej']);
   assert.deepEqual([...new Set(data.rows.map((row) => row.host_name))].sort(), ['nogizaka46smej', 'sakuramankai', 'sakurazaka46jp']);
@@ -126,7 +121,7 @@ test('host ranking counts each leaderboard week once even if duplicate rows exis
     { ranking_date: '2026-01-26', ranking_type: '週間リーダーボード', rank: 3, host_name: 'alpha' },
     { ranking_date: '2026-02-09', ranking_type: '週間リーダーボード', rank: 7, host_name: 'alpha' },
   ];
-  const response = await loadRanking(request('&scope=all'), { OTHER_DB: dbFor(actualRows) });
+  const response = await loadRanking(request('&scope=all'), { PAGES_READ_MODEL_SERVICE: serviceFor(actualRows) });
   const data = await response.json();
   assert.deepEqual(data.host_rankings[0], {
     position: 1,
@@ -142,7 +137,7 @@ test('one searched host gets a chart timeline only from its first leaderboard ap
   const actualRows = [
     { ranking_date: '2026-02-09', ranking_type: '週間リーダーボード', rank: 3, host_name: 'beta' },
   ];
-  const response = await loadRanking(request('&scope=all&host=beta'), { OTHER_DB: dbFor(actualRows) });
+  const response = await loadRanking(request('&scope=all&host=beta'), { PAGES_READ_MODEL_SERVICE: serviceFor(actualRows) });
   const data = await response.json();
 
   assert.deepEqual(data.chart_hosts, ['beta']);
@@ -157,7 +152,7 @@ test('searched host fills missing weeks after first appearance but never before 
     { ranking_date: '2026-01-26', ranking_type: '週間リーダーボード', rank: 1, host_name: 'alpha' },
     { ranking_date: '2026-02-09', ranking_type: '週間リーダーボード', rank: 2, host_name: 'alpha' },
   ];
-  const response = await loadRanking(request('&scope=all&host=alpha'), { OTHER_DB: dbFor(actualRows) });
+  const response = await loadRanking(request('&scope=all&host=alpha'), { PAGES_READ_MODEL_SERVICE: serviceFor(actualRows) });
   const data = await response.json();
 
   assert.deepEqual(data.chart_hosts, ['alpha']);
