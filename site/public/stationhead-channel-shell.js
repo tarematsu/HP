@@ -46,7 +46,7 @@ function likesPanel() {
   return `<section class="stationhead-channel-panel" data-stationhead-panel="likes" hidden>
     <section class="summary-cards" aria-label="いいね集計概要">${summaryItem('楽曲数', 'likes-count')}${summaryItem('最終取得', 'likes-latest')}</section>
     <section class="card data-panel"><div class="section-head"><div><p class="kicker">TOP 10</p><h2>いいねランキング</h2></div></div><ol class="like-ranking-list" ${role('likes-ranking')}></ol></section>
-    <section class="card data-panel"><div class="section-head"><div><p class="kicker">DATA</p><h2>いいね一覧</h2></div><button type="button" class="csv-button" ${role('likes-csv')}>CSV</button></div><div class="table-wrap scrollable-table"><table class="shared-numeric-table sticky-first-column"><thead><tr><th>順位</th><th>曲名</th><th>アーティスト</th><th>最新いいね数</th><th>最終取得</th></tr></thead><tbody ${role('likes-tbody')}></tbody></table></div></section>
+    <section class="card data-panel"><div class="section-head"><div><p class="kicker">DATA</p><h2>いいね一覧</h2></div><button type="button" class="csv-button" ${role('likes-csv')}>CSV</button></div><div class="table-wrap scrollable-table"><table class="shared-numeric-table sticky-first-column"><thead><tr><th>順位</th><th>曲名</th><th>いいね数</th><th>確認時間</th></tr></thead><tbody ${role('likes-tbody')}></tbody></table></div></section>
   </section>`;
 }
 
