@@ -8,7 +8,7 @@ import {
   loadDashboardDailySummaries,
   resetDashboardDailySummariesCache,
   utcDayStarts,
-} from '../functions/lib/dashboard-daily-summaries.js';
+} from '../../packages/sh-shared/dashboard-daily-summaries.mjs';
 import { FakeD1Database } from './helpers/fake-d1.js';
 
 const dayText = (value) => new Date(value).toISOString().slice(0, 10);
@@ -83,17 +83,18 @@ test('dashboard daily summary loader uses one cached OTHER_DB read', async () =>
   assert.match(DAILY_SUMMARY_SQL, /listener_avg/);
 });
 
-test('dashboard materializer embeds daily summaries while the details route remains a rollout fallback', () => {
+test('Worker embeds daily summaries while dashboard compatibility routes stay read-model-only', () => {
   const route = readFileSync(new URL('../functions/api/dashboard.js', import.meta.url), 'utf8');
   const details = readFileSync(new URL('../functions/api/dashboard-details.js', import.meta.url), 'utf8');
-  const core = readFileSync(new URL('../functions/lib/dashboard-core.js', import.meta.url), 'utf8');
-  assert.match(route, /dashboardCore/);
-  assert.match(route, /loadDashboardDailySummaries/);
-  assert.match(route, /augmentDashboardChartData/);
-  assert.match(route, /daily_summaries/);
-  assert.match(details, /loadDashboardDailySummaries/);
+  const publisher = readFileSync(new URL('../../worker/src/pages-dashboard-live-publisher.js', import.meta.url), 'utf8');
+  assert.match(route, /proxyStationheadMaterializedReadModel/);
+  assert.match(route, /'buddies'/);
+  assert.doesNotMatch(route, /loadDashboardDailySummaries|MINUTE_DB|OTHER_DB|\.prepare\(/);
+  assert.match(publisher, /loadDashboardDailySummaries/);
+  assert.match(publisher, /refreshDailySummariesIfDue/);
+  assert.match(publisher, /daily_summaries/);
+  assert.match(details, /fetchPagesReadModel/);
+  assert.match(details, /stationheadReadModelKey\('buddies'\)/);
   assert.match(details, /daily_summaries/);
-  assert.doesNotMatch(details, /FROM sh_daily_summary/);
-  assert.match(core, /loadFactsDashboard/);
-  assert.doesNotMatch(core, /loadDashboardDailySummaries/);
+  assert.doesNotMatch(details, /loadDashboardDailySummaries|MINUTE_DB|OTHER_DB|\.prepare\(/);
 });

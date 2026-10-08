@@ -1,7 +1,5 @@
-import {
-  pagesActionsR2ResponseKey,
-  saveMaterializedActionsR2Response,
-} from './pages-response-r2.js';
+import { saveMaterializedR2Response } from './pages-response-r2.js';
+import { loadMaterializedResponse } from './pages-response-store.js';
 import {
   REGIONAL_MUSIC_SERVICES as MUSIC_SERVICE_DEFINITIONS,
   regionalMusicService as musicServiceDefinition,
@@ -410,12 +408,12 @@ async function r2Json(r2, key) {
 }
 
 async function materializedPayloadAtKey(r2, modelKey, serviceId) {
-  const envelope = await r2Json(r2, pagesActionsR2ResponseKey(modelKey));
-  if (Number(envelope?.version) !== 1 || typeof envelope?.body !== 'string') return null;
+  const response = await loadMaterializedResponse(r2, modelKey);
+  if (!response?.ok) return null;
   try {
-    const payload = JSON.parse(envelope.body);
+    const payload = await response.json();
     if (!payload || payload.service !== serviceId) return null;
-    return { envelope, payload };
+    return { response, payload };
   } catch {
     return null;
   }
@@ -501,7 +499,7 @@ export async function publishMusicServiceReadModels(
   for (const service of selected) musicServiceReadModelKey(service);
   if (!selected.length) return { storage:'r2-split', models:0, written:0, skipped:0, results:[] };
 
-  const save = dependencies.saveR2Response || saveMaterializedActionsR2Response;
+  const save = dependencies.saveR2Response || saveMaterializedR2Response;
   const collectorSnapshots = new Map();
   if (typeof r2.get === 'function') {
     await Promise.all(selected.map(async (service) => {
@@ -546,7 +544,9 @@ export async function publishMusicServiceReadModels(
       results.push({
         service,
         model_key:modelKey,
-        updated_at:Number(existing.payload.updated_at) || Number(existing.envelope.updated_at) || 0,
+        updated_at:Number(existing.payload.updated_at)
+          || Number(existing.response?.headers?.get('x-materialized-at'))
+          || 0,
         source_updated_at:payload.source_updated_at,
         skipped:true,
         artists:existing.payload.artists?.length || 0,

@@ -10,7 +10,7 @@ import {
   extractSpotifyPlaylistLinks,
   parseSpotifyPlaylistEmbed,
 } from '../src/spotify-playlist-collector.js';
-import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 
 const PLAYLIST_ID = '1234567890ABCDEFGHIJKL';
 const TRACK_ID = '0123456789ABCDEFGHIJKL';
@@ -178,7 +178,7 @@ test('Spotify playlist collection publishes canonical tracks from public embed p
   assert.equal(latest.playlists[0].tracks[0].track_id, 42);
   assert.equal(latest.playlists[0].tracks[0].title, '五月雨よ');
 
-  const publicKey = pagesActionsR2ResponseKey(SPOTIFY_PLAYLIST_PAGES_MODEL_KEY);
+  const publicKey = pagesR2ResponseKey(SPOTIFY_PLAYLIST_PAGES_MODEL_KEY);
   const envelope = JSON.parse(r2.values.get(publicKey));
   const payload = JSON.parse(envelope.body);
   assert.equal(payload.artist_id, '0Ti7MfCiVVQAK8zLSiqlto');

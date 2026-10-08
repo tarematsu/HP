@@ -66,25 +66,30 @@ function stableBody(body: string): unknown {
   return body;
 }
 function contentIdentity(deviceId: string, records: StationheadLeaderboardProbeRecord[]): string {
-  return JSON.stringify({ version: 1, device_id: deviceId, records: records.map(({ observed_at: _observedAt, body, ...record }) => ({ ...record, body: stableBody(body) })) });
+  return JSON.stringify({ version: 1, device_id: deviceId, records: records.map(({ observed_at, body, ...record }) => {
+    const week = new Date(observed_at + 9 * 60 * 60_000);
+    week.setUTCHours(0, 0, 0, 0);
+    week.setUTCDate(week.getUTCDate() - ((week.getUTCDay() + 6) % 7));
+    return { ...record, ranking_week: week.toISOString().slice(0, 10), body: stableBody(body) };
+  }) });
 }
 export async function applyStationheadLeaderboardProbeInput(value: unknown, env: Env, deviceId: string): Promise<StationheadLeaderboardProbeResult> {
   if (!env.DATA_BUCKET) return { status: 503, body: { error: "probe storage unavailable" } };
+  if (!env.STATIONHEAD_LEADERBOARD_REFRESH_QUEUE) return { status: 503, body: { error: "leaderboard refresh queue unavailable" } };
   const receivedAt = Date.now(); const records = normalizeStationheadLeaderboardProbe(value, receivedAt);
   if (!records) return { status: 400, body: { error: "invalid leaderboard probe" } };
   const digest = await sha256Hex(contentIdentity(deviceId, records));
   const historyKey = `${HISTORY_PREFIX}${digest.slice(0, 32)}.json`;
   const previous = await env.DATA_BUCKET.head(LATEST_KEY);
-  if (previous?.customMetadata?.contentDigest === digest) {
-    return { status: 200, body: { accepted: records.length, stored: false, unchanged: true, reported: true, delivery: "r2-pull", historyKey } };
+  if (previous?.customMetadata?.contentDigest === digest && previous.customMetadata.refreshQueued === "1") {
+    return { status: 200, body: { accepted: records.length, stored: false, unchanged: true, reported: true, delivery: "queue", historyKey } };
   }
   const serialized = JSON.stringify({ version: 1, device_id: deviceId, received_at: receivedAt, digest, records });
   const options = { httpMetadata: { contentType: "application/json; charset=utf-8" }, customMetadata: { contentDigest: digest } };
-  await Promise.all([
-    env.DATA_BUCKET.put(historyKey, serialized, options),
-    env.DATA_BUCKET.put(LATEST_KEY, serialized, options),
-  ]);
-  return { status: 200, body: { accepted: records.length, stored: true, unchanged: false, reported: true, delivery: "r2-pull", historyKey } };
+  await env.DATA_BUCKET.put(historyKey, serialized, options);
+  await env.STATIONHEAD_LEADERBOARD_REFRESH_QUEUE.send({ version: 1, type: "stationhead-leaderboard-refresh", history_key: historyKey, digest });
+  await env.DATA_BUCKET.put(LATEST_KEY, serialized, { ...options, customMetadata: { ...options.customMetadata, refreshQueued: "1" } });
+  return { status: 200, body: { accepted: records.length, stored: true, unchanged: false, reported: true, delivery: "queue", historyKey } };
 }
 
 export async function stationheadLeaderboardLatestProbeResponse(env: Env): Promise<Response> {

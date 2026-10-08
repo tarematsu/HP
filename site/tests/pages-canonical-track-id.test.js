@@ -1,3 +1,4 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -5,10 +6,9 @@ import { readFileSync } from 'node:fs';
 import { canonicalTrackKey } from '../functions/lib/canonical-track-rows.js';
 import { mergeTrackRows } from '../functions/lib/track-history-merge.js';
 import { attachCompactTrackLikes } from '../functions/lib/track-likes.js';
-import { normalizePlaybackTrack } from '../functions/lib/playback.js';
 import { FIRST_WEEK_READ_MODEL_SQL } from '../functions/lib/first-week-comparison.js';
 
-const playedTracks = readFileSync(new URL('../public/played-tracks.js', import.meta.url), 'utf8');
+const playedTracks = browserSource('stationhead/played-tracks.js');
 const appleMusic = readFileSync(new URL('../public/apple-music.js', import.meta.url), 'utf8');
 const amazonMusic = readFileSync(new URL('../public/amazon-music.js', import.meta.url), 'utf8');
 const spotifyApi = readFileSync(new URL('../functions/api/spotify-playcounts.js', import.meta.url), 'utf8');
@@ -71,40 +71,14 @@ test('likes attach by sh_tracks.id even when provider ids differ', () => {
   assert.equal(rows[0].like_count, 88);
 });
 
-test('current playback payload exposes sh_tracks.id', () => {
-  const row = normalizePlaybackTrack({
-    track_id: 91,
-    spotify_id: 'spotify-91',
-    title: 'Song',
-    artist: '櫻坂46',
-    duration_ms: 180000,
-  }, 0, { currentIndex: 0, progressMs: 5000 });
-  assert.equal(row.track_id, 91);
-  assert.equal(row.is_current, true);
+test('current dashboard publication exposes sh_tracks.id without provider identity fields', () => {
+  assert.match(dashboardPublisher, /const trackId = positiveInteger\(track\?\.track_id\)/);
+  assert.match(dashboardPublisher, /track_id: trackId/);
+  assert.match(dashboardPublisher, /spotify_url/);
 });
 
-test('Pages song-bearing surfaces keep canonical identity except provider-specific Amazon rank variants', () => {
-  assert.match(playedTracks, /Number\(row\?\.track_id\)/);
-  assert.ok(
-    playedTracks.indexOf('Number(row?.track_id)') < playedTracks.indexOf("String(row?.spotify_id"),
-    'played-tracks must prefer track_id before Spotify ID',
-  );
-
-  assert.match(appleMusic, /track\?\.track_id/);
-  assert.match(appleMusic, /return `track:\$\{trackId\}`/);
-
-  assert.match(amazonMusic, /track\?\.amazon_music_id/);
-  assert.match(amazonMusic, /track\?\.track_id/);
-  assert.ok(
-    amazonMusic.indexOf('track?.amazon_music_id') < amazonMusic.indexOf('track?.track_id'),
-    'Amazon ranking must keep provider catalog tracks separate before canonical fallback',
-  );
-
-  assert.match(spotifyApi, /ref\.track_id/);
-  assert.match(spotifyApi, /AS spotify_track_id/);
-  assert.match(spotifyApi, /track_id: integer\(row\.track_id\)/);
-  assert.match(FIRST_WEEK_READ_MODEL_SQL, /release_date_jst,track_id,point_count/);
-  assert.match(dashboardPublisher, /hydratePlaybackTrackMetadata\(env\?\.MINUTE_DB, tracks\)/);
+test('Pages song-bearing surfaces keep canonical identity except provider-specific Amazon rank variants', async () => {
+  const { trackIdentity }=await import('../public/stationhead/played-tracks.js'); assert.equal(trackIdentity({track_id:42,spotify_id:'provider'}),'track:42'); assert.equal(trackIdentity({spotify_id:'provider'}),'spotify:provider'); assert.match(browserSource('stationhead/normalize.js'),/track_id/);
 });
 
 test('MINUTE compatibility views retain canonical track_id for Pages materialization', () => {

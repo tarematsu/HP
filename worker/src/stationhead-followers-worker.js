@@ -1,14 +1,16 @@
-import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
+import { saveMaterializedR2Response } from './pages-response-r2.js';
+import { STATIONHEAD_FOLLOWER_SOURCE, stationheadFollowerMembership } from './stationhead-follower-membership.js';
+import { acquireStationheadGuestSession } from './stationhead-guest-session.js';
 
 const API_BASE = 'https://production1.stationhead.com';
 const WEB_BASE = 'https://www.stationhead.com';
 const PROFILE_BASE = `${API_BASE}/account/handle/`;
 const JST_OFFSET_MS = 9 * 60 * 60_000;
 const CADENCE_SECONDS = 24 * 60 * 60;
-const SOURCE_FIXED = 1;
-const SOURCE_BUDDIES = 2;
-const SOURCE_OHISAMA = 4;
-const SOURCE_NOGIZAKA = 8;
+const SOURCE_FIXED = STATIONHEAD_FOLLOWER_SOURCE.fixed;
+const SOURCE_BUDDIES = STATIONHEAD_FOLLOWER_SOURCE.buddies;
+const SOURCE_OHISAMA = STATIONHEAD_FOLLOWER_SOURCE.ohisama;
+const SOURCE_NOGIZAKA = STATIONHEAD_FOLLOWER_SOURCE.nogizaka;
 const HANDLE_RE = /^[a-z0-9._-]{1,64}$/;
 const EXCLUDED_HANDLES = new Set(['46fm', 'buddy46']);
 
@@ -72,13 +74,7 @@ function nonNegativeInteger(value) {
 }
 
 function membership(handle, sourceMask) {
-  if (handle === 'sakurazaka46jp') return { affiliation: '櫻坂46公式', group: 'sakurazaka46' };
-  if (handle === 'nogizaka46smej') return { affiliation: '乃木坂46公式', group: 'nogizaka46' };
-  if (handle === 'sakuramankai' || handle === 'sakuramankai2') return { affiliation: 'Buddies', group: 'sakurazaka46' };
-  if (sourceMask & SOURCE_BUDDIES) return { affiliation: 'Buddies', group: 'sakurazaka46' };
-  if (sourceMask & SOURCE_OHISAMA) return { affiliation: 'Ohisama', group: 'hinatazaka46' };
-  if (sourceMask & SOURCE_NOGIZAKA) return { affiliation: 'Nogizaka', group: 'nogizaka46' };
-  return null;
+  return stationheadFollowerMembership(handle, sourceMask);
 }
 
 function parsedFollowerJson(value) {
@@ -160,28 +156,9 @@ async function checkedFetch(fetchFn, url, options, label) {
   return response;
 }
 
-async function guestSession(fetchFn, appVersion) {
-  const deviceUid = crypto.randomUUID();
-  const tokenResponse = await checkedFetch(fetchFn, `${API_BASE}/web/token`, {
-    method: 'POST',
-    headers: { ...browserHeaders(deviceUid, '', appVersion, `${WEB_BASE}/c/ilys`), 'content-type': 'application/json' },
-    body: '',
-    signal: AbortSignal.timeout(10_000),
-  }, 'Stationhead guest token');
-  const token = String(tokenResponse.headers.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
-  if (!token) throw new Error('Stationhead guest token is missing');
-  await checkedFetch(fetchFn, `${API_BASE}/web/guest/login`, {
-    method: 'POST',
-    headers: { ...browserHeaders(deviceUid, token, appVersion, `${WEB_BASE}/c/ilys`), 'content-type': 'application/json' },
-    body: '',
-    signal: AbortSignal.timeout(10_000),
-  }, 'Stationhead guest login');
-  return { token, deviceUid };
-}
-
 async function fetchProfile(handle, session, fetchFn, appVersion) {
   const response = await checkedFetch(fetchFn, `${PROFILE_BASE}${encodeURIComponent(handle)}`, {
-    headers: browserHeaders(session.deviceUid, session.token, appVersion),
+    headers: browserHeaders(session.deviceUid, session.authToken, appVersion),
     signal: AbortSignal.timeout(10_000),
   }, `Stationhead profile ${handle}`);
   const followers = nonNegativeInteger((await response.json())?.followers);
@@ -207,10 +184,6 @@ async function collectProfiles(targets, session, fetchFn, appVersion, concurrenc
   return output;
 }
 
-async function putJson(r2, key, value) {
-  await r2.put(key, JSON.stringify(value), { httpMetadata: { contentType: 'application/json; charset=utf-8' } });
-}
-
 export async function collectStationheadFollowers(env, scheduledAt = Date.now(), fetchFn = fetch) {
   if (!env?.OTHER_DB?.prepare) throw new Error('OTHER_DB binding is required');
   if (!env?.PAGES_RESPONSE_R2?.put) throw new Error('PAGES_RESPONSE_R2 binding is required');
@@ -219,7 +192,10 @@ export async function collectStationheadFollowers(env, scheduledAt = Date.now(),
   const targetRows = await env.OTHER_DB.prepare('SELECT handle,source_mask FROM sh_stationhead_follower_targets ORDER BY handle').all();
   const { targets, ignored } = normalizeFollowerTargets(targetRows.results || []);
   const appVersion = String(env?.SH_APP_VERSION || '1.0.0');
-  const session = await guestSession(fetchFn, appVersion);
+  const session = await acquireStationheadGuestSession({
+    appVersion,
+    requestTimeoutMs: 10_000,
+  }, fetchFn);
   const collected = await collectProfiles(targets, session, fetchFn, appVersion);
   const failures = collected.filter((row) => !row.ok).map(({ handle, status, error }) => ({ handle, status, error }));
   const fixedFailures = failures.filter((row) => FIXED_FOLLOWER_HANDLES.includes(row.handle));
@@ -235,16 +211,18 @@ export async function collectStationheadFollowers(env, scheduledAt = Date.now(),
     .bind(date, now, collectedAt, JSON.stringify(followers), JSON.stringify(failures)).run();
   const history = await env.OTHER_DB.prepare('SELECT observed_date_jst,followers_json FROM sh_stationhead_daily_followers_v2 ORDER BY observed_date_jst ASC').all();
   const payload = buildFollowerReadModel({ historyRows: history.results || [], targets, latestDate: date, updatedAt: collectedAt, failures });
-  await putJson(env.PAGES_RESPONSE_R2, pagesActionsR2ResponseKey('followers'), {
-    version: 1,
-    updated_at: collectedAt,
-    cadence_seconds: CADENCE_SECONDS,
-    status: 200,
-    headers: {
+  await saveMaterializedR2Response(
+    env.PAGES_RESPONSE_R2,
+    'followers',
+    JSON.stringify(payload),
+    200,
+    {
       'content-type': 'application/json; charset=utf-8',
       'cache-control': 'public, max-age=30, s-maxage=300, stale-while-revalidate=600',
     },
-    body: JSON.stringify(payload),
-  });
+    collectedAt,
+    CADENCE_SECONDS,
+    { model_key: 'followers' },
+  );
   return { ok: true, observed_date_jst: date, targets: targets.length, successes: Object.keys(followers).length, failures: failures.length, ignored_targets: ignored, updated_at: collectedAt };
 }

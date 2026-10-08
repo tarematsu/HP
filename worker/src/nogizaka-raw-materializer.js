@@ -1,4 +1,4 @@
-import { persistHostEvent } from '../../site/functions/lib/host-ingest.js';
+import { persistHostEvent } from '../../packages/sh-shared/host-ingest.mjs';
 import {
   finite,
   identity,
@@ -6,7 +6,7 @@ import {
   normalizeQueue,
   queueHash,
 } from './cloud-host-monitor-normalize.js';
-import { resolveMissingSpotifyPresentation } from './playback-track-metadata.js';
+import { canonicalizeStationheadQueueTracks } from './stationhead-playback-identity.js';
 
 const SOURCE_SCOPE = 'nogizaka46smej_solo';
 const DEFAULT_HANDLE = 'nogizaka46smej';
@@ -255,9 +255,12 @@ export async function materializeNogizakaRawMinute(env, now = Date.now()) {
 
   let queue = normalizeQueue(station, observedAt);
   if (active && queue?.tracks?.length && env?.MINUTE_DB?.prepare) {
-    const tracks = await resolveMissingSpotifyPresentation(env.MINUTE_DB, queue.tracks, {
-      requestTimeoutMs: positive(env.REQUEST_TIMEOUT_MS, 8_000),
-    });
+    const tracks = await canonicalizeStationheadQueueTracks(
+      env.MINUTE_DB,
+      queue.tracks,
+      observedAt,
+      { channelId: 'nogizaka' },
+    );
     if (tracks !== queue.tracks) queue = { ...queue, tracks };
   }
   await saveStationMinute(env, Number(session.id), handle, station, main, queue, observedAt);

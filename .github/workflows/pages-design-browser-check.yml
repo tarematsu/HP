@@ -1,0 +1,35 @@
+name: Pages design browser checks
+on:
+  pull_request:
+    paths: ['site/**', 'package.json', 'package-lock.json', '.github/workflows/pages-design-browser-check.yml']
+permissions:
+  contents: read
+concurrency:
+  group: pages-browser-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            site/package-lock.json
+      - run: npm ci --prefer-offline --no-audit --no-fund
+      - run: npm ci --prefer-offline --no-audit --no-fund
+        working-directory: site
+      - run: npm run assets:build
+        working-directory: site
+      - run: npx playwright install --with-deps chromium
+      - run: node site/scripts/check-pages-browser.mjs
+      - run: node site/scripts/check-pages-browser.mjs --live
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pages-design-browser
+          path: site/artifacts/

@@ -1,3 +1,5 @@
+import { browserSource } from './helpers/dashboard-source.js';
+import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -5,7 +7,7 @@ import test from 'node:test';
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const html = read('../public/index.html');
 const header = read('../public/dashboard-header.js');
-const tabs = read('../public/dashboard-tabs.js');
+const tabs = dashboardRouterSource();
 const shell = read('../public/history-shell.js');
 const history = read('../public/history/history-lite.js');
 const periodChart = read('../public/history/history-period-chart.js');
@@ -24,20 +26,10 @@ test('history shell contains structure only and first reveal waits for shell, CS
   }
   assert.match(tabs, /setRoute\(mode, null, \{ updateUrl, replaceUrl \}\)/);
   assert.match(tabs, /ensureModeStyles\(mode\)/);
-  assert.match(tabs, /loadOnce\('history:shell', HISTORY_VIEW\.shell\)/);
-  assert.match(tabs, /await loadOnce\('history:runtime',[\s\S]*showOnly\(document\.getElementById\(HISTORY_VIEW\.viewId\)\);[\s\S]*markRouteReady\(\)/);
+  assert.match(tabs, /loadOnce\('history:shell', \(\) => import\('\/history-shell\.js\?v=20260930\.1'\)\)/);
+  assert.match(tabs, /await loadOnce\('history:runtime',[\s\S]*showOnly\(document\.getElementById\(route\.viewId\)\);[\s\S]*markRouteReady\(\)/);
 });
 
 test('history static copy stays in runtime and tabs update immediately', () => {
-  assert.match(history, /broadcasts: \{ title: '公式リスパ比較', table: '公式リスパ一覧', chart: '公式リスパ 同接推移（開始0分比較）' \}/);
-  assert.match(history, /querySelectorAll\('#modeTabs button'\)[\s\S]*classList\.toggle\('active'/);
-  assert.match(tabs, /function updateTabs\(mode\) \{[\s\S]*button\.classList\.toggle\('active', selected\)/);
-  assert.doesNotMatch(tabs, /function updateTabs\(mode\) \{\s*if \(HISTORY_MODES\.has\(mode\)\) return;/);
-  assert.doesNotMatch(broadcasts, /button\.textContent = '公式リスパ'/);
-  assert.doesNotMatch(broadcasts, /chartTitle'\)\.textContent|chartFoot'\)\.textContent/);
-  assert.doesNotMatch(broadcastTable, /tableTitle\.textContent/);
-  assert.doesNotMatch(periodChart, /chartTitle/);
-  assert.match(periodChart, /foot\.textContent = hasMissingBand/);
-  assert.match(periodChart, /灰色は欠測期間です。/);
-  assert.doesNotMatch(history, /左軸は同接（平均・最大・最小）、右軸は各期間の再生数増加です。/);
+  assert.match(history,/const MODES = Object.freeze/); assert.doesNotMatch(history,/#modeTabs/); assert.match(browserSource('dashboard-tabs.js'),/renderFunctionTabs/);
 });

@@ -1,18 +1,34 @@
-import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
+import {
+  mergeStationheadDailyRows,
+  nextStationheadDailySummary,
+  rollStationheadHistory,
+  rollupStationheadWeekly,
+  stationheadAggregateReadModelPayload,
+  stationheadUtcDayStart as dayStart,
+  stationheadUtcDayKey as periodKey,
+  stationheadUtcWeekKey as weekKey,
+} from '../../packages/sh-shared/stationhead-read-models.mjs';
+import { requireStationheadSourceProfile } from '../../packages/sh-shared/stationhead-source.mjs';
+import { loadStationheadMinuteFactGapRows } from './stationhead-minute-facts-reader.js';
+import { upsertStationheadPeriodSummary } from './stationhead-period-summary-store.js';
+import {
+  loadStationheadReadModelState,
+  saveStationheadReadModelHotState,
+  stationheadFiveMinuteBucket,
+  stationheadReadModelGapMode,
+  STATIONHEAD_READ_MODEL_INCREMENTAL_GAP_MS,
+  STATIONHEAD_READ_MODEL_RECOVERY_GAP_MS,
+} from './stationhead-read-model-state.js';
 
-export const OHISAMA_PAGES_MODEL_KEY = 'hinata';
-export const OHISAMA_PAGES_CADENCE_SECONDS = 5 * 60;
+const OHISAMA_SOURCE = 'ohisama';
+const OHISAMA_PROFILE = requireStationheadSourceProfile(OHISAMA_SOURCE);
+export const OHISAMA_PAGES_MODEL_KEY = OHISAMA_PROFILE.modelKey;
+export const OHISAMA_PAGES_CADENCE_SECONDS = OHISAMA_PROFILE.publicationCadenceSeconds;
 
 const DAY_MS = 24 * 60 * 60_000;
-const FIVE_MINUTES_MS = 5 * 60_000;
-const HISTORY_WINDOW_MS = DAY_MS;
-const INCREMENTAL_GAP_LIMIT_MS = 2 * FIVE_MINUTES_MS + 60_000;
-const JSON_HEADERS = Object.freeze({
-  'content-type': 'application/json; charset=utf-8',
-  'cache-control': 'public, max-age=30, s-maxage=300, stale-while-revalidate=600',
-  'x-content-type-options': 'nosniff',
-  vary: 'accept-encoding',
-});
+const INCREMENTAL_GAP_LIMIT_MS = STATIONHEAD_READ_MODEL_INCREMENTAL_GAP_MS;
+const RECOVERY_GAP_LIMIT_MS = STATIONHEAD_READ_MODEL_RECOVERY_GAP_MS;
+export const OHISAMA_READ_MODEL_HOT_STATE_KEY = OHISAMA_PROFILE.readModelHotKey;
 
 function finite(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -25,254 +41,52 @@ function integer(value) {
   return number == null ? null : Math.trunc(number);
 }
 
-function streamValue(row) {
-  return finite(row?.reported_current_stream_count);
+function validPayload(payload) {
+  return Boolean(payload
+    && payload.model === OHISAMA_PAGES_MODEL_KEY
+    && Array.isArray(payload.history_24h)
+    && Array.isArray(payload.daily));
 }
 
-function dayStart(timestamp) {
-  return Math.floor(Number(timestamp) / DAY_MS) * DAY_MS;
-}
-
-function periodKey(timestamp) {
-  return new Date(dayStart(timestamp)).toISOString().slice(0, 10);
-}
-
-function fiveMinuteBucket(timestamp) {
-  return Math.floor(Number(timestamp) / FIVE_MINUTES_MS) * FIVE_MINUTES_MS;
-}
-
-function minDefined(previous, next) {
-  if (next == null) return previous;
-  if (previous == null) return next;
-  return Math.min(previous, next);
-}
-
-function maxDefined(previous, next) {
-  if (next == null) return previous;
-  if (previous == null) return next;
-  return Math.max(previous, next);
-}
-
-function normalizedHistoryPoint(row) {
+function upgradeLegacyPayload(payload) {
+  if (!validPayload(payload)) return null;
+  if (Array.isArray(payload.weekly)) return payload;
   return {
-    observed_at: integer(row?.observed_at),
-    online_member_count: integer(row?.online_member_count),
-    total_member_count: integer(row?.total_member_count),
-    stream_count: finite(row?.stream_count ?? row?.reported_current_stream_count),
-    stream_delta_5m: finite(row?.stream_delta_5m),
+    ...payload,
+    weekly: rollupStationheadWeekly(payload.daily, integer(payload.updated_at) ?? Date.now()),
   };
 }
 
-export function normalizeOhisamaHistory(rows = []) {
-  const normalized = (Array.isArray(rows) ? rows : [])
-    .map((row) => ({
-      observed_at: integer(row?.observed_at),
-      online_member_count: integer(row?.online_member_count),
-      total_member_count: integer(row?.total_member_count),
-      stream_count: streamValue(row),
-    }))
-    .filter((row) => row.observed_at != null)
-    .sort((left, right) => left.observed_at - right.observed_at);
-
-  return normalized.map((row, index) => {
-    const previous = normalized[index - 1];
-    let streamDelta = null;
-    if (previous && row.stream_count != null && previous.stream_count != null) {
-      const elapsed = row.observed_at - previous.observed_at;
-      const delta = row.stream_count - previous.stream_count;
-      if (elapsed > 0 && delta >= 0) {
-        streamDelta = delta * FIVE_MINUTES_MS / elapsed;
-      }
-    }
-    return {
-      observed_at: row.observed_at,
-      online_member_count: row.online_member_count,
-      total_member_count: row.total_member_count,
-      stream_count: row.stream_count,
-      stream_delta_5m: streamDelta == null ? null : Math.round(streamDelta * 10) / 10,
-    };
+async function loadExistingPayload(r2) {
+  const loaded = await loadStationheadReadModelState(r2, {
+    hotKey: OHISAMA_READ_MODEL_HOT_STATE_KEY,
+    modelKey: OHISAMA_PAGES_MODEL_KEY,
+    upgrade: upgradeLegacyPayload,
+    acceptPublic: (payload) => !payload?.section_updated_at,
   });
+  return loaded.payload;
 }
 
-export function normalizeOhisamaDaily(rows = []) {
-  return (Array.isArray(rows) ? rows : []).map((row) => ({
-    period_key: String(row?.period_key || ''),
-    period_start: integer(row?.period_start),
-    period_end: integer(row?.period_end),
-    sample_count: integer(row?.sample_count) ?? 0,
-    listener_avg: finite(row?.listener_avg),
-    listener_min: integer(row?.listener_min),
-    listener_max: integer(row?.listener_max),
-    stream_start: integer(row?.stream_start),
-    stream_end: integer(row?.stream_end),
-    stream_growth: integer(row?.stream_growth),
-    member_start: integer(row?.member_start),
-    member_end: integer(row?.member_end),
-    member_growth: integer(row?.member_growth),
-  }));
-}
-
-function buildPayload(collection, historyRows, dailyRows, updatedAt) {
-  const streamCount = finite(collection?.reported_current_stream_count);
-  return {
-    ok: true,
-    model: OHISAMA_PAGES_MODEL_KEY,
-    channel_alias: 'ohisama',
-    timezone: 'UTC',
-    updated_at: integer(updatedAt),
-    latest: {
-      observed_at: integer(collection?.observed_at ?? updatedAt),
-      channel_id: integer(collection?.channel_id),
-      station_id: integer(collection?.station_id),
-      is_broadcasting: integer(collection?.is_broadcasting),
-      online_member_count: integer(collection?.online_member_count),
-      total_member_count: integer(collection?.total_member_count),
-      total_stream_count: streamCount == null ? null : Math.trunc(streamCount),
-    },
-    history_24h: historyRows,
-    daily: dailyRows,
-  };
-}
-
-export function ohisamaReadModelPayload(collection, historyRows = [], dailyRows = [], updatedAt = Date.now()) {
-  return buildPayload(
-    collection,
-    normalizeOhisamaHistory(historyRows),
-    normalizeOhisamaDaily(dailyRows),
+function saveHotPayload(r2, payload, updatedAt) {
+  return saveStationheadReadModelHotState(
+    r2,
+    OHISAMA_READ_MODEL_HOT_STATE_KEY,
+    payload,
     updatedAt,
+    { modelKey: OHISAMA_PAGES_MODEL_KEY },
   );
 }
 
-export function nextOhisamaDailySummary(existing, collection, observedAt) {
-  const start = dayStart(observedAt);
-  const end = start + DAY_MS;
-  const key = periodKey(start);
-  const current = existing && String(existing.period_key || '') === key ? existing : null;
 
-  const previousSamples = integer(current?.sample_count) ?? 0;
-  const online = integer(collection?.online_member_count);
-  const hasOnline = online != null;
-  const sampleCount = previousSamples + (hasOnline ? 1 : 0);
-  const previousAverage = finite(current?.listener_avg);
-  let listenerAvg = previousAverage;
-  if (hasOnline) {
-    listenerAvg = previousAverage == null || previousSamples < 1
-      ? online
-      : ((previousAverage * previousSamples) + online) / (previousSamples + 1);
-  }
-
-  const stream = integer(collection?.reported_current_stream_count);
-  const previousStreamStart = integer(current?.stream_start);
-  const previousStreamEnd = integer(current?.stream_end);
-  const streamStart = previousStreamStart ?? stream;
-  const streamEnd = stream ?? previousStreamEnd;
-
-  const members = integer(collection?.total_member_count);
-  const previousMemberStart = integer(current?.member_start);
-  const previousMemberEnd = integer(current?.member_end);
-  const memberStart = previousMemberStart ?? members;
-  const memberEnd = members ?? previousMemberEnd;
-
-  return {
-    period_key: key,
-    period_start: start,
-    period_end: end,
-    sample_count: sampleCount,
-    listener_avg: listenerAvg,
-    listener_min: minDefined(integer(current?.listener_min), online),
-    listener_max: maxDefined(integer(current?.listener_max), online),
-    stream_start: streamStart,
-    stream_end: streamEnd,
-    stream_growth: streamStart == null || streamEnd == null ? null : streamEnd - streamStart,
-    member_start: memberStart,
-    member_end: memberEnd,
-    member_growth: memberStart == null || memberEnd == null ? null : memberEnd - memberStart,
-    updated_at: integer(observedAt),
-  };
+function lastHistoryObservedAt(payload) {
+  const history = Array.isArray(payload?.history_24h) ? payload.history_24h : [];
+  return integer(history.at(-1)?.observed_at);
 }
 
-export function rollOhisamaHistory(existingRows = [], collection, observedAt) {
-  const cutoff = observedAt - HISTORY_WINDOW_MS;
-  const bucket = fiveMinuteBucket(observedAt);
-  const rows = (Array.isArray(existingRows) ? existingRows : [])
-    .map(normalizedHistoryPoint)
-    .filter((row) => row.observed_at != null
-      && row.observed_at >= cutoff
-      && row.observed_at < observedAt
-      && fiveMinuteBucket(row.observed_at) !== bucket)
-    .sort((left, right) => left.observed_at - right.observed_at);
+const persistDailySummary = (db, row) => upsertStationheadPeriodSummary(db, 'daily', row);
+const persistWeeklySummary = (db, row) => upsertStationheadPeriodSummary(db, 'weekly', row);
 
-  const point = {
-    observed_at: integer(collection?.observed_at ?? observedAt),
-    online_member_count: integer(collection?.online_member_count),
-    total_member_count: integer(collection?.total_member_count),
-    stream_count: finite(collection?.reported_current_stream_count),
-    stream_delta_5m: null,
-  };
-  const previous = rows.at(-1);
-  if (previous && point.stream_count != null && previous.stream_count != null) {
-    const elapsed = point.observed_at - previous.observed_at;
-    const delta = point.stream_count - previous.stream_count;
-    if (elapsed > 0 && delta >= 0) {
-      point.stream_delta_5m = Math.round((delta * FIVE_MINUTES_MS / elapsed) * 10) / 10;
-    }
-  }
-  return [...rows, point];
-}
-
-export function mergeOhisamaDailyRows(existingRows = [], currentRow) {
-  const normalizedCurrent = normalizeOhisamaDaily([currentRow])[0];
-  if (!normalizedCurrent?.period_key) return normalizeOhisamaDaily(existingRows);
-  return [
-    normalizedCurrent,
-    ...normalizeOhisamaDaily(existingRows)
-      .filter((row) => row.period_key && row.period_key !== normalizedCurrent.period_key),
-  ].sort((left, right) => right.period_key.localeCompare(left.period_key));
-}
-
-async function persistDailySummary(db, row) {
-  await db.prepare(`INSERT INTO sh_daily_summary(
-      period_key,period_start,period_end,sample_count,
-      listener_avg,listener_min,listener_max,
-      stream_start,stream_end,stream_growth,
-      member_start,member_end,member_growth,updated_at
-    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-    ON CONFLICT(period_key) DO UPDATE SET
-      period_start=excluded.period_start,
-      period_end=excluded.period_end,
-      sample_count=excluded.sample_count,
-      listener_avg=excluded.listener_avg,
-      listener_min=excluded.listener_min,
-      listener_max=excluded.listener_max,
-      stream_start=excluded.stream_start,
-      stream_end=excluded.stream_end,
-      stream_growth=excluded.stream_growth,
-      member_start=excluded.member_start,
-      member_end=excluded.member_end,
-      member_growth=excluded.member_growth,
-      updated_at=excluded.updated_at`)
-    .bind(
-      row.period_key,
-      row.period_start,
-      row.period_end,
-      row.sample_count,
-      row.listener_avg,
-      row.listener_min,
-      row.listener_max,
-      row.stream_start,
-      row.stream_end,
-      row.stream_growth,
-      row.member_start,
-      row.member_end,
-      row.member_growth,
-      row.updated_at,
-    )
-    .run();
-  return row;
-}
-
-async function rebuildDailySummary(db, channelId, observedAt) {
-  const start = dayStart(observedAt);
+async function rebuildDaySummary(db, channelId, start, updatedAt) {
   const end = start + DAY_MS;
   const summary = await db.prepare(`WITH day_rows AS (
       SELECT
@@ -284,6 +98,7 @@ async function rebuildDailySummary(db, channelId, observedAt) {
       WHERE channel_id=? AND minute_at>=? AND minute_at<?
     )
     SELECT
+      COUNT(*) AS row_count,
       COUNT(online_member_count) AS sample_count,
       AVG(online_member_count) AS listener_avg,
       MIN(online_member_count) AS listener_min,
@@ -295,47 +110,28 @@ async function rebuildDailySummary(db, channelId, observedAt) {
     FROM day_rows`)
     .bind(channelId, start, end)
     .first();
+  if (!summary || Number(summary.row_count || 0) < 1) return null;
 
-  const streamStart = integer(summary?.stream_start);
-  const streamEnd = integer(summary?.stream_end);
-  const memberStart = integer(summary?.member_start);
-  const memberEnd = integer(summary?.member_end);
+  const streamStart = integer(summary.stream_start);
+  const streamEnd = integer(summary.stream_end);
+  const memberStart = integer(summary.member_start);
+  const memberEnd = integer(summary.member_end);
   return {
     period_key: periodKey(start),
     period_start: start,
     period_end: end,
-    sample_count: integer(summary?.sample_count) ?? 0,
-    listener_avg: finite(summary?.listener_avg),
-    listener_min: integer(summary?.listener_min),
-    listener_max: integer(summary?.listener_max),
+    sample_count: integer(summary.sample_count) ?? 0,
+    listener_avg: finite(summary.listener_avg),
+    listener_min: integer(summary.listener_min),
+    listener_max: integer(summary.listener_max),
     stream_start: streamStart,
     stream_end: streamEnd,
     stream_growth: streamStart == null || streamEnd == null ? null : streamEnd - streamStart,
     member_start: memberStart,
     member_end: memberEnd,
     member_growth: memberStart == null || memberEnd == null ? null : memberEnd - memberStart,
-    updated_at: observedAt,
+    updated_at: integer(updatedAt),
   };
-}
-
-async function updateDailySummaryIncremental(db, collection, observedAt) {
-  const key = periodKey(observedAt);
-  const existing = await db.prepare(`SELECT
-      period_key,period_start,period_end,sample_count,
-      listener_avg,listener_min,listener_max,
-      stream_start,stream_end,stream_growth,
-      member_start,member_end,member_growth,updated_at
-    FROM sh_daily_summary
-    WHERE period_key=? LIMIT 1`)
-    .bind(key)
-    .first();
-
-  const duplicateBucket = existing?.updated_at != null
-    && fiveMinuteBucket(existing.updated_at) === fiveMinuteBucket(observedAt);
-  const row = duplicateBucket
-    ? await rebuildDailySummary(db, integer(collection?.channel_id), observedAt)
-    : nextOhisamaDailySummary(existing, collection, observedAt);
-  return persistDailySummary(db, row);
 }
 
 async function loadHistory(db, channelId, observedAt) {
@@ -344,72 +140,94 @@ async function loadHistory(db, channelId, observedAt) {
     FROM sh_minute_facts
     WHERE channel_id=? AND observed_at>=? AND observed_at<=?
     ORDER BY observed_at ASC,id ASC`)
-    .bind(channelId, observedAt - HISTORY_WINDOW_MS, observedAt)
+    .bind(channelId, observedAt - DAY_MS, observedAt)
     .all();
   return result?.results || [];
 }
 
-async function loadDaily(db) {
+async function loadCompletedDaily(db, currentDayStart) {
   const result = await db.prepare(`SELECT
       period_key,period_start,period_end,sample_count,
       listener_avg,listener_min,listener_max,
       stream_start,stream_end,stream_growth,
       member_start,member_end,member_growth
     FROM sh_daily_summary
+    WHERE period_start<?
     ORDER BY period_key DESC`)
+    .bind(currentDayStart)
     .all();
   return result?.results || [];
 }
 
-async function loadExistingPayload(r2) {
-  const key = pagesActionsR2ResponseKey(OHISAMA_PAGES_MODEL_KEY);
-  if (!key || typeof r2?.get !== 'function') return null;
-  try {
-    const object = await r2.get(key);
-    if (!object?.body) return null;
-    const envelope = await object.json();
-    if (Number(envelope?.version) !== 1) return null;
-    const payload = typeof envelope?.body === 'string'
-      ? JSON.parse(envelope.body)
-      : envelope?.body;
-    if (!payload || payload.model !== OHISAMA_PAGES_MODEL_KEY) return null;
-    if (!Array.isArray(payload.history_24h) || !Array.isArray(payload.daily)) return null;
-    return payload;
-  } catch {
-    return null;
+function payloadCurrentDaily(payload, observedAt) {
+  const key = periodKey(observedAt);
+  return (Array.isArray(payload?.daily) ? payload.daily : [])
+    .find((row) => String(row?.period_key || '') === key) || null;
+}
+
+function completedRowAtRollover(payload, observedAt) {
+  const currentStart = dayStart(observedAt);
+  return (Array.isArray(payload?.daily) ? payload.daily : [])
+    .filter((row) => integer(row?.period_start) != null && integer(row.period_start) < currentStart)
+    .sort((left, right) => integer(right.period_start) - integer(left.period_start))[0] || null;
+}
+
+async function applyObservation(payload, collection, observedAt, db) {
+  const existingCurrent = payloadCurrentDaily(payload, observedAt);
+  let dailyPersisted = false;
+  let weeklyPersisted = false;
+  if (!existingCurrent) {
+    const completed = completedRowAtRollover(payload, observedAt);
+    if (completed) {
+      dailyPersisted = await persistDailySummary(db, completed);
+      const completedWeek = rollupStationheadWeekly(payload.daily, observedAt)
+        .find((row) => row.period_key === weekKey(integer(completed.period_start)));
+      if (completedWeek) weeklyPersisted = await persistWeeklySummary(db, completedWeek);
+    }
   }
-}
 
-function canIncrementPayload(payload, observedAt) {
-  if (!payload) return false;
-  const history = Array.isArray(payload.history_24h) ? payload.history_24h : [];
-  const lastObservedAt = integer(history.at(-1)?.observed_at);
-  if (lastObservedAt == null || lastObservedAt > observedAt) return false;
-  return observedAt - lastObservedAt <= INCREMENTAL_GAP_LIMIT_MS;
-}
+  const previousAt = lastHistoryObservedAt(payload);
+  const sameBucket = previousAt != null
+    && stationheadFiveMinuteBucket(previousAt) === stationheadFiveMinuteBucket(observedAt);
+  const dailyRow = sameBucket
+    ? existingCurrent
+    : nextStationheadDailySummary(existingCurrent, collection, observedAt);
+  const daily = dailyRow ? mergeStationheadDailyRows(payload.daily, dailyRow) : payload.daily;
 
-async function publishPayload(r2, payload, updatedAt) {
-  if (typeof r2?.put !== 'function') throw new Error('PAGES_RESPONSE_R2 binding is missing');
-  const key = pagesActionsR2ResponseKey(OHISAMA_PAGES_MODEL_KEY);
-  if (!key) throw new Error('ohisama Pages read-model key is invalid');
-  const envelope = {
-    version: 1,
-    updated_at: updatedAt,
-    cadence_seconds: OHISAMA_PAGES_CADENCE_SECONDS,
-    status: 200,
-    headers: JSON_HEADERS,
-    body: JSON.stringify(payload),
-  };
-  await r2.put(key, JSON.stringify(envelope), {
-    httpMetadata: { contentType: 'application/json; charset=utf-8' },
-    customMetadata: {
-      version: '1',
-      model_key: OHISAMA_PAGES_MODEL_KEY,
-      updated_at: String(updatedAt),
-      cadence_seconds: String(OHISAMA_PAGES_CADENCE_SECONDS),
+  return {
+    payload: {
+      ...payload,
+      updated_at: observedAt,
+      latest: stationheadAggregateReadModelPayload(OHISAMA_SOURCE, collection, [], [], observedAt).latest,
+      history_24h: rollStationheadHistory(payload.history_24h, collection, observedAt),
+      daily,
+      weekly: rollupStationheadWeekly(daily, observedAt),
     },
-  });
-  return key;
+    dailyPersisted,
+    weeklyPersisted,
+  };
+}
+
+async function bootstrapPayload(db, collection, channelId, observedAt) {
+  const currentStart = dayStart(observedAt);
+  const previousStart = currentStart - DAY_MS;
+  const previous = await rebuildDaySummary(db, channelId, previousStart, currentStart);
+  if (previous) await persistDailySummary(db, previous);
+
+  const [historyRows, completedDaily, currentDaily] = await Promise.all([
+    loadHistory(db, channelId, observedAt),
+    loadCompletedDaily(db, currentStart),
+    rebuildDaySummary(db, channelId, currentStart, observedAt),
+  ]);
+  const dailyRows = currentDaily
+    ? mergeStationheadDailyRows(completedDaily, currentDaily)
+    : completedDaily;
+  const weeklyRows = rollupStationheadWeekly(dailyRows, observedAt);
+  for (const row of weeklyRows) await persistWeeklySummary(db, row);
+  return {
+    ...stationheadAggregateReadModelPayload(OHISAMA_SOURCE, collection, historyRows, dailyRows, observedAt),
+    weekly: weeklyRows,
+  };
 }
 
 export async function refreshOhisamaReadModel(env, collection, now = Date.now()) {
@@ -419,36 +237,80 @@ export async function refreshOhisamaReadModel(env, collection, now = Date.now())
   const observedAt = integer(collection?.observed_at ?? now);
   if (channelId == null || observedAt == null) throw new Error('ohisama collection identity is missing');
 
-  const dailyRow = await updateDailySummaryIncremental(db, collection, observedAt);
   const existingPayload = await loadExistingPayload(env?.PAGES_RESPONSE_R2);
-
   let payload;
-  let mode;
-  if (canIncrementPayload(existingPayload, observedAt)) {
-    payload = buildPayload(
-      collection,
-      rollOhisamaHistory(existingPayload.history_24h, collection, observedAt),
-      mergeOhisamaDailyRows(existingPayload.daily, dailyRow),
-      observedAt,
-    );
-    mode = 'incremental';
-  } else {
-    const [historyRows, dailyRows] = await Promise.all([
-      loadHistory(db, channelId, observedAt),
-      loadDaily(db),
-    ]);
-    payload = ohisamaReadModelPayload(collection, historyRows, dailyRows, observedAt);
-    mode = 'bootstrap';
+  let mode = 'bootstrap';
+  let dailyPersisted = false;
+  let weeklyPersisted = false;
+  let recoveryRows = 0;
+  const previousAt = lastHistoryObservedAt(existingPayload);
+  const latestStateAt = integer(existingPayload?.updated_at);
+  if (Math.max(previousAt ?? -Infinity, latestStateAt ?? -Infinity) > observedAt) {
+    // A delayed five-minute run must not replace a newer private model.
+    return {
+      published: false,
+      skipped: true,
+      reason: 'stale-observation',
+      mode: 'stale',
+      model_key: OHISAMA_PAGES_MODEL_KEY,
+      updated_at: Math.max(previousAt ?? -Infinity, latestStateAt ?? -Infinity),
+      payload: existingPayload,
+    };
   }
 
-  const objectKey = await publishPayload(env?.PAGES_RESPONSE_R2, payload, observedAt);
+  if (existingPayload && previousAt != null && previousAt <= observedAt) {
+    const gapMode = stationheadReadModelGapMode(previousAt, observedAt, {
+      incrementalGapMs: INCREMENTAL_GAP_LIMIT_MS,
+      recoveryGapMs: RECOVERY_GAP_LIMIT_MS,
+    });
+    if (gapMode === 'incremental') {
+      const applied = await applyObservation(existingPayload, collection, observedAt, db);
+      payload = applied.payload;
+      dailyPersisted = applied.dailyPersisted;
+      weeklyPersisted = applied.weeklyPersisted;
+      mode = 'incremental';
+    } else if (gapMode === 'recovery') {
+      let recovered = existingPayload;
+      const rows = await loadStationheadMinuteFactGapRows(db, OHISAMA_SOURCE, channelId, previousAt, observedAt);
+      recoveryRows = rows.length;
+      for (const row of rows) {
+        const rowAt = integer(row?.observed_at);
+        if (rowAt == null) continue;
+        const applied = await applyObservation(recovered, row, rowAt, db);
+        recovered = applied.payload;
+        dailyPersisted = dailyPersisted || applied.dailyPersisted;
+        weeklyPersisted = weeklyPersisted || applied.weeklyPersisted;
+      }
+      const applied = await applyObservation(recovered, collection, observedAt, db);
+      payload = applied.payload;
+      dailyPersisted = dailyPersisted || applied.dailyPersisted;
+      weeklyPersisted = weeklyPersisted || applied.weeklyPersisted;
+      mode = 'recovery';
+    }
+  }
+
+  if (!payload) {
+    payload = await bootstrapPayload(db, collection, channelId, observedAt);
+    weeklyPersisted = payload.weekly.length > 0;
+  }
+
+  await saveHotPayload(env?.PAGES_RESPONSE_R2, payload, observedAt);
   return {
     published: true,
     mode,
     model_key: OHISAMA_PAGES_MODEL_KEY,
-    object_key: objectKey,
+    hot_state_key: OHISAMA_READ_MODEL_HOT_STATE_KEY,
     history_rows: payload.history_24h.length,
     daily_rows: payload.daily.length,
+    weekly_rows: payload.weekly.length,
+    daily_persisted: dailyPersisted,
+    weekly_persisted: weeklyPersisted,
+    recovery_rows: recoveryRows,
     updated_at: observedAt,
+    payload,
   };
 }
+
+export default {
+  refreshOhisamaReadModel,
+};

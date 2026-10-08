@@ -23,7 +23,13 @@
     "AUTH_REFRESH_BEFORE_MS": 3600000,
     "AUTH_REFRESH_COOLDOWN_MS": 300000,
     "AUTH_LOCK_MS": 60000,
-    "OHISAMA_D1_STATE_CHECKPOINT_MS": 3600000
+    "OHISAMA_D1_STATE_CHECKPOINT_MS": 3600000,
+    "STATIONHEAD_SECONDARY_PRIORITY_WAIT_MS": 12000
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "BUDDIES_COLLECTOR_COORDINATOR", "class_name": "BuddiesCollectorCoordinator", "script_name": "sh-buddies-collector" }
+    ]
   },
   "r2_buckets": [
     { "binding": "PAGES_RESPONSE_R2", "bucket_name": "sh-pages-responses" }

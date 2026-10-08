@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -13,7 +13,6 @@ import {
   RETIRED_WORKER_NAMES,
   pruneRetiredWorkers,
 } from './cloudflare-workers.mjs';
-import { preparePagesReadModelDeployConfig } from './pages-response-kv-namespace.mjs';
 import {
   queueOnlyRuntimeDeployConfig,
   readActiveRuntimeVersionIds,
@@ -24,6 +23,7 @@ const workerRoot = fileURLToPath(new URL('..', import.meta.url));
 const configName = 'wrangler.runtime.jsonc';
 const config = JSON.parse(readFileSync(new URL(`../${configName}`, import.meta.url), 'utf8'));
 const runtimeScript = config.name;
+const deployConfigPath = `${workerRoot}/.wrangler.runtime.deploy-${process.pid}.jsonc`;
 const DEFERRED_RETIREMENT_WORKERS = new Set(['sh-minute-enrichment']);
 const previousScriptByQueue = new Map([
   ['stationhead-raw-collection', 'sh-buddies-ingest'],
@@ -42,10 +42,11 @@ const migrations = Object.freeze(config.queues.consumers.map((consumer) => Objec
   maxConcurrency: consumer.max_concurrency,
 })));
 
-const deploy = await preparePagesReadModelDeployConfig(workerRoot, {
-  sourcePath: `${workerRoot}/${configName}`,
-  temporaryPath: `${workerRoot}/.wrangler.runtime.deploy-${process.pid}.jsonc`,
-});
+writeFileSync(
+  deployConfigPath,
+  `${JSON.stringify(queueOnlyRuntimeDeployConfig(config), null, 2)}\n`,
+  'utf8',
+);
 const paused = new Set();
 const removed = new Set();
 let previousConsumers = new Set();
@@ -54,13 +55,6 @@ let previousRuntimeVersionIds = new Set();
 let deploymentVerification = null;
 
 try {
-  const temporaryConfig = JSON.parse(readFileSync(deploy.configPath, 'utf8'));
-  writeFileSync(
-    deploy.configPath,
-    `${JSON.stringify(queueOnlyRuntimeDeployConfig(temporaryConfig), null, 2)}\n`,
-    'utf8',
-  );
-
   previousRuntimeVersionIds = await readActiveRuntimeVersionIds({ scriptName: runtimeScript });
   previousConsumers = new Set(
     migrations
@@ -79,7 +73,7 @@ try {
     removed.add(migration.queue);
   }
 
-  runWrangler(['deploy', '--config', deploy.configPath], { capture: true, mirror: true });
+  runWrangler(['deploy', '--config', deployConfigPath], { capture: true, mirror: true });
 
   for (const { queue, oldScript } of migrations) {
     if (!hasConsumer(queue, runtimeScript)) {
@@ -120,7 +114,9 @@ try {
   }
   throw error;
 } finally {
-  deploy.cleanup();
+  try { unlinkSync(deployConfigPath); } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
 }
 
 // `sh-minute-enrichment` remains alive until Pages successfully switches its
@@ -137,6 +133,5 @@ console.log(JSON.stringify({
   retired_scripts: immediatelyRetiredWorkers,
   deferred_retired_scripts: [...DEFERRED_RETIREMENT_WORKERS],
   queues: migrations.map(({ queue }) => queue),
-  pages_response_kv_namespace: deploy.namespace.id,
   deployment_verification: deploymentVerification,
 }));

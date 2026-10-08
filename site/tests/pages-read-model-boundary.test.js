@@ -2,110 +2,36 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import {
-  CHANNEL_READ_MODEL_SQL,
-  COLLECTOR_READ_MODEL_SQL,
-  QUEUE_READ_MODEL_SQL,
-  presentationFromRow,
-  queueFromReadModel,
-} from '../functions/lib/public-read-model.js';
-import { normalizePlaybackTrack } from '../functions/lib/playback.js';
+const dashboard = readFileSync(new URL('../functions/api/dashboard.js', import.meta.url), 'utf8');
+const dashboardDetails = readFileSync(new URL('../functions/api/dashboard-details.js', import.meta.url), 'utf8');
+const stationheadProxy = readFileSync(new URL('../functions/lib/stationhead-materialized-proxy.js', import.meta.url), 'utf8');
+const readModelService = readFileSync(new URL('../functions/lib/pages-read-model-service.js', import.meta.url), 'utf8');
+const publisher = readFileSync(new URL('../../worker/src/pages-dashboard-live-publisher.js', import.meta.url), 'utf8');
+const stationheadState = readFileSync(new URL('../../worker/src/stationhead-read-model-state.js', import.meta.url), 'utf8');
+const sourceProfile = readFileSync(new URL('../../packages/sh-shared/stationhead-source.mjs', import.meta.url), 'utf8');
 
-test('FACTS read-model SQL never references the private buddies tables', () => {
-  for (const sql of [CHANNEL_READ_MODEL_SQL, QUEUE_READ_MODEL_SQL, COLLECTOR_READ_MODEL_SQL]) {
-    assert.doesNotMatch(sql, /sh_channel_snapshots|sh_queue_items|sh_track_metadata|sh_worker_collector_state/);
-  }
+test('Pages dashboard boundary is materialized-service only', () => {
+  assert.match(dashboard, /proxyStationheadMaterializedReadModel/);
+  assert.match(stationheadProxy, /fetchPagesReadModel/);
+  assert.match(stationheadProxy, /stationheadReadModelKey/);
+  assert.match(readModelService, /PAGES_READ_MODEL_SERVICE/);
+  assert.match(readModelService, /_internal\/pages-response/);
+  assert.doesNotMatch(dashboard, /MINUTE_DB|OTHER_DB|DB|\.prepare\(/);
+  assert.doesNotMatch(dashboardDetails, /MINUTE_DB|OTHER_DB|\.prepare\(|FROM sh_/);
 });
 
-test('Pages uses the current buddies database for live reads', () => {
-  const config = JSON.parse(readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
-  assert.equal(config.d1_databases.some(({ database_name }) => database_name === 'stationhead-buddies'), true);
-  assert.equal(config.d1_databases.some(({ database_id }) => database_id === 'f361aae0-05f0-42bc-8784-77100e80133d'), true);
+test('Worker owns dashboard generation and R2 publication', () => {
+  assert.match(publisher, /publishStationheadReadModel\(bucket, 'buddies'/);
+  assert.match(stationheadState, /saveMaterializedR2Response/);
+  assert.match(publisher, /loadDashboardDailySummaries/);
+  assert.match(publisher, /directFiveMinuteStreamHistory/);
+  assert.match(publisher, /dashboardGoalPredictions/);
+  assert.match(publisher, /DASHBOARD_MODEL_KEY/);
 });
 
-test('queue read model accepts both an array and an object envelope', () => {
-  const base = { station_id: 3, queue_id: 4, start_time: 5, observed_at: 6, is_paused: 0 };
-  const direct = queueFromReadModel({ ...base, queue_json: '[{"title":"A"}]' });
-  const enveloped = queueFromReadModel({ ...base, queue_json: '{"queue":[{"title":"B"}]}' });
-  assert.equal(direct.queue[0].title, 'A');
-  assert.equal(enveloped.queue[0].title, 'B');
-  assert.equal(direct.queue[0].station_id, 3);
-  assert.equal(direct.latestQueue.start_time, 5);
-  assert.equal(direct.registeredItems, 1);
-  const partiallyMaterialized = queueFromReadModel({
-    ...base,
-    queue_json: '{"total_track_count":22,"materialized_track_count":2,"tracks":[{"title":"A"},{"title":"B"}]}',
-  });
-  assert.equal(partiallyMaterialized.queue.length, 2);
-  assert.equal(partiallyMaterialized.registeredItems, 22);
-});
-
-test('Pages prefers the materialized queue window while preserving total registration count', () => {
-  const row = queueFromReadModel({
-    station_id: 3,
-    queue_id: 4,
-    start_time: 5,
-    observed_at: 6,
-    is_paused: 0,
-    queue_json: JSON.stringify({
-      total_track_count: 4,
-      materialized_track_count: 2,
-      tracks: [
-        { position: 0, title: 'A', thumbnail_url: 'https://example.test/a.jpg' },
-        { position: 1, title: 'B', thumbnail_url: 'https://example.test/b.jpg' },
-      ],
-      presentation_tracks: [
-        { position: 0, title: 'A' },
-        { position: 1, title: 'B' },
-        { position: 2, title: 'C' },
-        { position: 3, title: 'D' },
-      ],
-    }),
-  });
-  assert.deepEqual(row.queue.map(({ title }) => title), ['A', 'B']);
-  assert.deepEqual(row.queue.map(({ thumbnail_url }) => thumbnail_url), [
-    'https://example.test/a.jpg',
-    'https://example.test/b.jpg',
-  ]);
-  assert.equal(row.registeredItems, 4);
-});
-
-test('queue read model falls back to presentation tracks when materialized tracks are unavailable', () => {
-  const row = queueFromReadModel({
-    station_id: 3,
-    queue_id: 4,
-    start_time: 5,
-    observed_at: 6,
-    is_paused: 0,
-    queue_json: JSON.stringify({
-      total_track_count: 2,
-      presentation_tracks: [
-        { position: 0, title: 'A' },
-        { position: 1, title: 'B' },
-      ],
-    }),
-  });
-  assert.deepEqual(row.queue.map(({ title }) => title), ['A', 'B']);
-  assert.equal(row.registeredItems, 2);
-});
-
-test('queue read-model presentation fields survive playback normalization', () => {
-  const { queue } = queueFromReadModel({
-    station_id: 3,
-    queue_id: 4,
-    start_time: 5,
-    observed_at: 6,
-    is_paused: 0,
-    queue_json: JSON.stringify([{ title: 'Song', artist: 'Artist', thumbnail_url: 'https://example.test/a.jpg' }]),
-  });
-  assert.deepEqual(normalizePlaybackTrack(queue[0], 0, { currentIndex: -1, progressMs: 0 }), {
-    title: 'Song',
-    artist: 'Artist',
-    thumbnail_url: 'https://example.test/a.jpg',
-    duration_ms: 0,
-  });
-});
-
-test('presentation read model rejects malformed JSON without failing the page', () => {
-  assert.deepEqual(presentationFromRow({ presentation_json: '{bad' }), {});
+test('Stationhead source profile owns the public dashboard model identity', () => {
+  assert.match(sourceProfile, /buddies:[\s\S]*modelKey: 'dashboard'/);
+  assert.match(sourceProfile, /buddies:[\s\S]*publicationCadenceSeconds: 300/);
+  assert.match(dashboard, /'buddies'/);
+  assert.match(dashboardDetails, /stationheadReadModelKey\('buddies'\)/);
 });

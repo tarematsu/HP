@@ -45,7 +45,7 @@ async function pageStatus(url) {
   const response = await fetch(url, { headers: { 'cache-control': 'no-cache' } });
   const body = await response.text();
   const sharedShell = body.includes('data-handle="sakurazaka46jp"')
-    && body.includes('/official-account-live.js');
+    && (body.includes('/assets/official-account-live.min.js') || body.includes('/official-account-live.js'));
   const legacyShell = body.includes('<h1>sakurazaka46jp</h1>');
   return {
     status: response.status,

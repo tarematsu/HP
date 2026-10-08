@@ -1,9 +1,12 @@
+import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { NAVIGATION, ROUTES, VIEW_MODES } from '../public/dashboard-navigation-config.js';
+
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+const tabs = dashboardRouterSource();
 const commonRuntime = readFileSync(new URL('../public/music-service-runtime-common.js', import.meta.url), 'utf8');
 const kkboxRuntime = readFileSync(new URL('../public/kkbox.js', import.meta.url), 'utf8');
 const qqRuntime = readFileSync(new URL('../public/qq-music.js', import.meta.url), 'utf8');
@@ -43,39 +46,40 @@ function quotedServicePattern(service) {
   return new RegExp(`['\\"]${service}['\\"]`);
 }
 
-test('music streaming navigation exposes one flat service registry plus shared aggregate views', () => {
+test('music streaming navigation exposes one flat service-only registry', () => {
   assert.doesNotMatch(html, /subscriptionSourceTabsTemplate|dashboard-source-row/);
   assert.match(tabs, /id: 'subscriptions'/);
   for (const service of visibleSubscriptionServices) assert.match(tabs, quotedServicePattern(service));
   for (const service of removedServices) assert.doesNotMatch(tabs, quotedServicePattern(service));
   assert.match(tabs, /id: 'qq_music', label: '🇨🇳QQ音乐'/);
   assert.match(tabs, /id: 'kugou_music', label: '🇨🇳酷狗音乐'/);
-  assert.match(tabs, /id: 'music-ranking', label: 'リーダーボード'/);
-  assert.match(tabs, /id: 'music-followers', label: 'フォロー'/);
+  assert.doesNotMatch(tabs, /music-ranking|music-followers/);
   assert.match(css, /\.dashboard-source-tabs\.is-multiline/);
   assert.doesNotMatch(css, /\.dashboard-source-row/);
 });
 
 test('KKBOX QQ and Kugou are first-class lazy views like Spotify', () => {
   const configs = [
-    ['kkbox', 'kkboxView', 'kkbox-shell.js', 'kkbox.js', 'loadKkboxView'],
-    ['qq_music', 'qqMusicView', 'qq-music-shell.js', 'qq-music.js', 'loadQqMusicView'],
-    ['kugou_music', 'kugouMusicView', 'kugou-music-shell.js', 'kugou-music.js', 'loadKugouMusicView'],
+    ['kkbox', 'kkboxView', 'loadKkboxView'],
+    ['qq_music', 'qqMusicView', 'loadQqMusicView'],
+    ['kugou_music', 'kugouMusicView', 'loadKugouMusicView'],
   ];
-  for (const [mode, viewId, shell, runtime, loadExport] of configs) {
-    assert.match(tabs, new RegExp(`${mode}: \\{[\\s\\S]*viewId: '${viewId}'[\\s\\S]*${shell.replace('.', '\\.')}`));
-    assert.match(tabs, new RegExp(runtime.replace('.', '\\.')));
-    assert.match(tabs, new RegExp(`loadExport: '${loadExport}'`));
+  for (const [mode, viewId, loadExport] of configs) {
+    assert.equal(ROUTES[mode].kind, 'lazy');
+    assert.equal(ROUTES[mode].viewId, viewId);
+    assert.equal(ROUTES[mode].moduleId, mode);
+    assert.equal(ROUTES[mode].loadExport, loadExport);
+    assert.equal(VIEW_MODES.has(mode), true);
   }
-  assert.match(tabs, /const VIEW_MODES = new Set\(\['current', \.\.\.HISTORY_MODES, \.\.\.Object\.keys\(LAZY_VIEWS\)\]\)/);
   assert.doesNotMatch(tabs, /REGIONAL_MUSIC|showRegionalMusicView|regionalMusicView|regional-music/);
 });
 
-test('shared aggregate views use the same shell runtime with different read-model source args', () => {
-  assert.match(tabs, /'music-ranking':\s*\{[\s\S]*leaderboard-shell\.js[\s\S]*leaderboard\.js[\s\S]*source: 'music-streaming'/);
-  assert.match(tabs, /ranking:\s*\{[\s\S]*leaderboard-shell\.js[\s\S]*leaderboard\.js[\s\S]*source: 'stationhead'/);
-  assert.match(tabs, /'music-followers':\s*\{[\s\S]*followers-shell\.js[\s\S]*followers\.js[\s\S]*source: 'music-streaming'/);
-  assert.match(tabs, /followers:\s*\{[\s\S]*followers-shell\.js[\s\S]*followers\.js[\s\S]*source: 'stationhead'/);
+test('Stationhead aggregate views stay outside the music streaming section', () => {
+  assert.deepEqual(ROUTES.ranking.loadArgs, { source: 'stationhead' });
+  assert.deepEqual(ROUTES.followers.loadArgs, { source: 'stationhead' });
+  const subscriptions = NAVIGATION.find((section) => section.id === 'subscriptions');
+  assert.equal(subscriptions.sources.some((source) => ['ranking', 'followers'].includes(source.id)), false);
+  assert.doesNotMatch(tabs, /source: 'music-streaming'/);
 });
 
 test('each streaming service has a direct public API contract', () => {
@@ -90,7 +94,8 @@ test('each streaming service has a direct public API contract', () => {
   assert.match(kugouApi, /musicServiceReadModelResponse\(env, 'kugou_music'\)/);
   assert.match(youtubeApi, /musicServiceReadModelResponse\(env, 'youtube_music'\)/);
   assert.match(readModelProxy, /music-service:\$\{serviceId\}/);
-  assert.match(readModelProxy, /read-only migration fallback/);
+  assert.match(readModelProxy, /status: 503/);
+  assert.doesNotMatch(readModelProxy, /OTHER_DB|\.prepare\(/);
 });
 
 test('KKBOX owns its shell runtime filters and charts', () => {
@@ -129,7 +134,9 @@ test('Kugou owns Japan and ACG chart history', () => {
 });
 
 test('YouTube Music uses the same direct service read-model loader', () => {
-  assert.match(tabs, /'youtube-music':[\s\S]*viewId: 'youtubeMusicView'/);
+  assert.equal(ROUTES['youtube-music'].kind, 'lazy');
+  assert.equal(ROUTES['youtube-music'].viewId, 'youtubeMusicView');
+  assert.equal(ROUTES['youtube-music'].moduleId, 'youtube-music');
   assert.match(youtubeRuntime, /loadMusicServiceReadModel\(SERVICE\)/);
   assert.match(youtubeRuntime, /const SERVICE = 'youtube_music'/);
   assert.match(youtubeRuntime, /monthly_audience/);
@@ -139,16 +146,17 @@ test('YouTube Music uses the same direct service read-model loader', () => {
   assert.match(youtubeShell, /musicServiceTable/);
 });
 
-test('shared service CSS owns chart presentation and the retired regional stylesheet is not bundled', () => {
+test('shared service CSS owns chart presentation and aggregate CSS is not bundled into subscriptions', () => {
   assert.match(musicCss, /\.music-service-rank-legend/);
   assert.match(musicCss, /\.music-service-rank-chart/);
   assert.match(musicCss, /\.music-service-history-table/);
   assert.doesNotMatch(musicCss, /regional/i);
   assert.doesNotMatch(build, /regional-music\.css/);
-  assert.match(build, /subscriptions:[\s\S]*'followers\.css'[\s\S]*'leaderboard\.css'/);
+  const subscriptions = build.match(/subscriptions:\s*\[([\s\S]*?)\],/i)?.[1] || '';
+  assert.doesNotMatch(subscriptions, /followers\.css|leaderboard\.css/);
 });
 
 test('dashboard navigation is bundled directly without a lazy loader workaround', () => {
-  assert.match(entry, /dashboard-tabs\.js\?v=20261005\.1/);
+  assert.match(entry, /dashboard-tabs\.js\?v=20261005\.2/);
   assert.doesNotMatch(build, /dashboard-tabs-loader|args\.path === '\.\/dashboard-tabs\.js/);
 });

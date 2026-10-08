@@ -16,7 +16,7 @@ import {
   regionalSnapshotKey,
 } from '../src/regional-music-r2-snapshot.js';
 import { saveRegionalCollectorState } from '../src/regional-music-store.js';
-import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 import {
   qqJapanToplistCycleKey,
   qqJapanToplistFingerprint,
@@ -173,7 +173,7 @@ async function main() {
   const wranglerScript = join(root, 'node_modules/wrangler/bin/wrangler.js');
   const r2 = createWranglerRemoteR2({ bucket, cwd:root, wranglerScript });
   const minuteDb = createWranglerRemoteD1({ database:minuteDatabase, cwd:root, wranglerScript });
-  const published = await r2.get(pagesActionsR2ResponseKey('regional-music'));
+  const published = await r2.get(pagesR2ResponseKey('regional-music'));
   const envelope = published ? await published.json() : null;
   const legacy = envelope?.body ? JSON.parse(envelope.body) : null;
   const load = async (key) => {

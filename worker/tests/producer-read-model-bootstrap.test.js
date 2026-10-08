@@ -18,7 +18,7 @@ for (const name of ['wrangler.regional-music.jsonc', 'wrangler.nogizaka46smej.js
 
     if (name.includes('regional')) {
       assert.equal(writes.length, REGIONAL_MUSIC_READ_MODEL_SERVICES.length);
-      const payloads = writes.map(({ body }) => JSON.parse(JSON.parse(body).body));
+      const payloads = writes.map(({ body }) => JSON.parse(body));
       assert.deepEqual(
         payloads.map(({ service }) => service).sort(),
         [...REGIONAL_MUSIC_READ_MODEL_SERVICES].sort(),
@@ -31,7 +31,7 @@ for (const name of ['wrangler.regional-music.jsonc', 'wrangler.nogizaka46smej.js
       }
     } else {
       assert.equal(writes.length, 1);
-      const payload = JSON.parse(JSON.parse(writes[0].body).body);
+      const payload = JSON.parse(writes[0].body);
       assert.equal(payload.ok, true);
       assert.equal(payload.event, null);
       assert.equal(payload.row, null);

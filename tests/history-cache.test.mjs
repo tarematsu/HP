@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   cachedHistoryLoad,
-  cachedLegacyHistoryResponse,
+  cachedHistoryResponse,
   resetHistoryLoadCache,
 } from '../site/functions/api/history.js';
 
@@ -44,7 +44,7 @@ test('history cache retries after a failed load', async () => {
   assert.deepEqual(value, { rows: [] });
 });
 
-test('ranking responses share one legacy load without reusing Response bodies', async () => {
+test('ranking responses share one cached load without reusing Response bodies', async () => {
   resetHistoryLoadCache();
   let calls = 0;
   const loader = async () => {
@@ -56,15 +56,15 @@ test('ranking responses share one legacy load without reusing Response bodies', 
   };
 
   const [first, second] = await Promise.all([
-    cachedLegacyHistoryResponse('ranking:featured', 60000, loader),
-    cachedLegacyHistoryResponse('ranking:featured', 60000, loader),
+    cachedHistoryResponse('ranking:featured', 60000, loader),
+    cachedHistoryResponse('ranking:featured', 60000, loader),
   ]);
   assert.equal(calls, 1);
   assert.notStrictEqual(first, second);
   assert.deepEqual(await first.json(), { ok: true, rows: [{ rank: 1 }] });
   assert.deepEqual(await second.json(), { ok: true, rows: [{ rank: 1 }] });
 
-  const third = await cachedLegacyHistoryResponse('ranking:featured', 60000, loader);
+  const third = await cachedHistoryResponse('ranking:featured', 60000, loader);
   assert.equal(calls, 1);
   assert.deepEqual(await third.json(), { ok: true, rows: [{ rank: 1 }] });
 });
@@ -76,7 +76,7 @@ test('failed ranking responses are returned but not cached', async () => {
     calls += 1;
     return new Response(JSON.stringify({ ok: false }), { status: 500 });
   };
-  assert.equal((await cachedLegacyHistoryResponse('ranking:error', 60000, loader)).status, 500);
-  assert.equal((await cachedLegacyHistoryResponse('ranking:error', 60000, loader)).status, 500);
+  assert.equal((await cachedHistoryResponse('ranking:error', 60000, loader)).status, 500);
+  assert.equal((await cachedHistoryResponse('ranking:error', 60000, loader)).status, 500);
   assert.equal(calls, 2);
 });

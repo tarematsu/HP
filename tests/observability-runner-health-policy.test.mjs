@@ -26,15 +26,13 @@ function successfulRun(minutesAgo) {
   };
 }
 
-test('central health policy follows the daily Pages recovery sweep', () => {
-  const pages = WORKFLOW_HEALTH_BY_KEY.pages;
+test('central health policy excludes manual Pages rebuilds and tracks recurring runtime work', () => {
   const runtime = WORKFLOW_HEALTH_BY_KEY.runtime;
 
-  assert.equal(pages.cadenceMinutes, 1440);
-  assert.equal(pages.staleAfterMinutes, 1500);
+  assert.equal(WORKFLOW_HEALTH_BY_KEY.pages, undefined);
   assert.equal(runtime.staleAfterMinutes, 75);
-  assert.equal(evaluateActionsRunnerHealth(pages, [successfulRun(1490)], { now: NOW }).health, 'healthy');
-  assert.equal(evaluateActionsRunnerHealth(pages, [successfulRun(1501)], { now: NOW }).health, 'stale');
+  assert.equal(evaluateActionsRunnerHealth(runtime, [successfulRun(60)], { now: NOW }).health, 'healthy');
+  assert.equal(evaluateActionsRunnerHealth(runtime, [successfulRun(76)], { now: NOW }).health, 'stale');
   assert.equal(WORKFLOW_HEALTH_BY_KEY.localMinute, undefined);
 });
 
@@ -43,7 +41,7 @@ test('recovery thresholds are derived from health thresholds with watchdog headr
   assert.equal(RECOVERY_WATCHDOG_INTERVAL_MINUTES, 15);
   assert.ok(RECOVERY_HEADROOM_MINUTES > RECOVERY_WATCHDOG_INTERVAL_MINUTES);
 
-  for (const key of ['pages', 'runtime', 'metadata']) {
+  for (const key of ['runtime', 'metadata']) {
     const policy = WORKFLOW_HEALTH_BY_KEY[key];
     const recovery = RECOVERY_WORKFLOWS[key];
     assert.equal(
@@ -60,8 +58,8 @@ test('runner target policy is frozen, unique, and sourced from the shared policy
   assert.ok(Object.isFrozen(ACTIONS_RUNNER_TARGETS));
   assert.equal(new Set(ACTIONS_RUNNER_TARGETS.map((target) => target.workflow)).size, ACTIONS_RUNNER_TARGETS.length);
   assert.equal(
-    ACTIONS_RUNNER_TARGETS.find((target) => target.workflow === WORKFLOW_HEALTH_BY_KEY.pages.workflow)?.staleAfterMinutes,
-    WORKFLOW_HEALTH_BY_KEY.pages.staleAfterMinutes,
+    ACTIONS_RUNNER_TARGETS.some((target) => target.workflow === 'run-pages-read-model-rebuild.yml'),
+    false,
   );
   assert.equal(
     ACTIONS_RUNNER_TARGETS.some((target) => target.workflow === 'run-local-minute-facts-rebuild.yml'),

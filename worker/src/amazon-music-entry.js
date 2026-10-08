@@ -17,8 +17,10 @@ import {
   persistAmazonMusicModelToOther,
   persistAppleMusicModelToOther,
 } from './music-service-other-store.js';
+import { AMAZON_MUSIC_CRON } from './scheduled-crons.js';
 
-export const AMAZON_MUSIC_CRON = '0,10,15,20,30,40,50 * * * *';
+export { AMAZON_MUSIC_CRON };
+
 export const AMAZON_MUSIC_ALLOWED_CRONS = Object.freeze([
   AMAZON_MUSIC_CRON,
   MUSIC_PLAYLIST_REFRESH_CRON,

@@ -1,20 +1,28 @@
-import { onRequestGet as renderDashboard } from '../../site/functions/api/dashboard.js';
-import { directFiveMinuteStreamHistory } from '../../site/functions/lib/dashboard-chart-support.js';
-import { loadDashboardDailySummaries, utcDayStarts } from '../../site/functions/lib/dashboard-daily-summaries.js';
-import { dashboardGoalPredictions } from '../../site/functions/lib/dashboard-legacy.mjs';
+import { directFiveMinuteStreamHistory } from '../../packages/sh-shared/dashboard-chart-support.mjs';
+import { loadDashboardDailySummaries, utcDayStarts } from '../../packages/sh-shared/dashboard-daily-summaries.mjs';
+import { dashboardGoalPredictions } from '../../packages/sh-shared/dashboard-prediction.mjs';
+import { requireStationheadSourceProfile } from '../../packages/sh-shared/stationhead-source.mjs';
 import { hydratePlaybackTrackMetadata } from './playback-track-metadata.js';
 import { trackNeedsHydration } from './track-metadata-quality.js';
-import { BUDDIES_PLAYBACK_HOT_STATE_KEY } from './buddies-playback-state.js';
-import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
+import { loadStationheadMinuteFactGapRows } from './stationhead-minute-facts-reader.js';
+import {
+  loadStationheadReadModelState,
+  publishStationheadReadModel,
+  readStationheadJsonObject,
+  saveStationheadReadModelHotState,
+  stationheadFiveMinuteBucket,
+  STATIONHEAD_READ_MODEL_INCREMENTAL_GAP_MS,
+  STATIONHEAD_READ_MODEL_RECOVERY_GAP_MS,
+} from './stationhead-read-model-state.js';
 
-const FIVE_MINUTES_MS = 5 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
 const HOUR_MS = 60 * 60_000;
-const INCREMENTAL_GAP_LIMIT_MS = 11 * 60_000;
-const RECOVERY_GAP_LIMIT_MS = DAY_MS;
-const DASHBOARD_KEY = pagesActionsR2ResponseKey('dashboard');
-const DASHBOARD_CADENCE_SECONDS = 5 * 60;
-export const BUDDIES_DASHBOARD_HOT_STATE_KEY = 'stationhead/buddies/dashboard-hot-state.json';
+const INCREMENTAL_GAP_LIMIT_MS = STATIONHEAD_READ_MODEL_INCREMENTAL_GAP_MS;
+const RECOVERY_GAP_LIMIT_MS = STATIONHEAD_READ_MODEL_RECOVERY_GAP_MS;
+const BUDDIES_PROFILE = requireStationheadSourceProfile('buddies');
+const DASHBOARD_MODEL_KEY = BUDDIES_PROFILE.modelKey;
+export const BUDDIES_DASHBOARD_HOT_STATE_KEY = BUDDIES_PROFILE.readModelHotKey;
+const BUDDIES_PLAYBACK_HOT_STATE_KEY = BUDDIES_PROFILE.playbackHotKey;
 
 function finite(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -35,11 +43,6 @@ function positiveInteger(value) {
 function normalizedText(value) {
   const result = String(value ?? '').trim();
   return result || null;
-}
-
-function bucketAt(value) {
-  const timestamp = finite(value);
-  return timestamp == null ? null : Math.floor(timestamp / FIVE_MINUTES_MS) * FIVE_MINUTES_MS;
 }
 
 function jstCycleStart(now, cutoffHour) {
@@ -66,56 +69,24 @@ function objectValue(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
 }
 
-async function readJsonObject(bucket, key) {
-  if (!key || typeof bucket?.get !== 'function') return null;
-  try {
-    const object = await bucket.get(key);
-    if (!object) return null;
-    if (typeof object.json === 'function') return await object.json();
-    if (typeof object.text === 'function') return JSON.parse(await object.text());
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function payloadFromEnvelope(envelope) {
-  if (Number(envelope?.version) !== 1) return null;
-  try {
-    const payload = typeof envelope?.body === 'string' ? JSON.parse(envelope.body) : envelope?.body;
-    return payload?.ok ? payload : null;
-  } catch {
-    return null;
-  }
-}
-
 async function loadExistingState(bucket) {
-  const hot = await readJsonObject(bucket, BUDDIES_DASHBOARD_HOT_STATE_KEY);
-  if (Number(hot?.version) === 1 && hot?.payload?.ok) {
-    return { payload: hot.payload, source: 'hot' };
-  }
-
-  const envelope = await readJsonObject(bucket, DASHBOARD_KEY);
-  const payload = payloadFromEnvelope(envelope);
-  return payload ? { payload, source: 'public' } : { payload: null, source: 'none' };
-}
-
-async function saveHotState(bucket, payload, now) {
-  if (typeof bucket?.put !== 'function') return false;
-  await bucket.put(BUDDIES_DASHBOARD_HOT_STATE_KEY, JSON.stringify({
-    version: 1,
-    updated_at: now,
-    payload,
-  }), {
-    httpMetadata: { contentType: 'application/json; charset=utf-8' },
-    customMetadata: {
-      version: '1',
-      model_key: 'dashboard',
-      updated_at: String(now),
-    },
+  return loadStationheadReadModelState(bucket, {
+    hotKey: BUDDIES_DASHBOARD_HOT_STATE_KEY,
+    modelKey: DASHBOARD_MODEL_KEY,
+    upgrade: (payload) => payload?.ok ? payload : null,
   });
-  return true;
 }
+
+function saveHotState(bucket, payload, now) {
+  return saveStationheadReadModelHotState(
+    bucket,
+    BUDDIES_DASHBOARD_HOT_STATE_KEY,
+    payload,
+    now,
+    { modelKey: DASHBOARD_MODEL_KEY },
+  );
+}
+
 
 function snapshotLatest(existing, snapshot, observedAt) {
   const next = { ...(existing || {}) };
@@ -146,7 +117,7 @@ function snapshotLatest(existing, snapshot, observedAt) {
 }
 
 function historyRow(fact, snapshot) {
-  const point = bucketAt(fact?.minute_at ?? fact?.observed_at);
+  const point = stationheadFiveMinuteBucket(fact?.minute_at ?? fact?.observed_at);
   if (point == null) return null;
   return {
     observed_at: point,
@@ -164,7 +135,7 @@ function normalizeHistory(rows, currentBucket) {
   const byBucket = new Map();
   const floor = currentBucket - DAY_MS;
   for (const row of Array.isArray(rows) ? rows : []) {
-    const point = bucketAt(row?.observed_at);
+    const point = stationheadFiveMinuteBucket(row?.observed_at);
     if (point == null || point < floor || point > currentBucket) continue;
     byBucket.set(point, { ...row, observed_at: point });
   }
@@ -184,7 +155,7 @@ function normalizePreviousDay(rows, evictedRows, currentBucket) {
   const upper = currentBucket - DAY_MS;
   const byBucket = new Map();
   for (const row of [...(Array.isArray(rows) ? rows : []), ...(evictedRows || [])]) {
-    const point = bucketAt(row?.observed_at);
+    const point = stationheadFiveMinuteBucket(row?.observed_at);
     if (point == null || point < lower || point > upper) continue;
     byBucket.set(point, {
       observed_at: point,
@@ -298,19 +269,68 @@ function playbackQueue(queue, now) {
   };
 }
 
-async function fullyRender(env, now) {
-  const response = await renderDashboard({
-    request: new Request('https://pages-live.invalid/api/dashboard', {
-      method: 'GET',
-      headers: { accept: 'application/json' },
-    }),
-    env,
-  });
-  const text = await response.text();
-  if (!response.ok) throw new Error(`dashboard bootstrap render failed: HTTP ${response.status} ${text.slice(0, 200)}`);
-  const payload = JSON.parse(text);
-  if (!payload?.ok) throw new Error('dashboard bootstrap render returned an invalid payload');
-  return payload;
+function emptyDashboardPayload(now) {
+  return {
+    ok: true,
+    generated_at: now,
+    metrics_source: 'minute-facts',
+    storage_source: 'minute-facts',
+    delta: false,
+    history_deferred: false,
+    latest_observed_at: null,
+    latest: {},
+    history: [],
+    previous_day_history: [],
+    stream_5m_history: [],
+    daily_change: {
+      host_account_id: null,
+      host_handle: null,
+      member_baseline_observed_at: null,
+      listens_baseline_observed_at: null,
+      member_cutoff_hour_jst: 16,
+      listens_cutoff_hour_jst: 9,
+      total_member_count: null,
+      total_listens: null,
+    },
+    daily_summaries: null,
+    goal_prediction: null,
+    goal_predictions: [],
+    queue: [],
+    queue_status: null,
+    queue_revision: '',
+    queue_unchanged: false,
+  };
+}
+
+async function bootstrapDashboard(env, seed, channelId, currentMinute, now) {
+  const sameChannel = seed?.ok
+    && integer(seed?.latest?.channel_id) != null
+    && integer(seed.latest.channel_id) === integer(channelId);
+  const baseSeed = sameChannel ? seed : null;
+  let base = {
+    ...emptyDashboardPayload(now),
+    ...(baseSeed || {}),
+    history: [],
+    previous_day_history: [],
+    queue: [],
+    queue_status: null,
+    queue_revision: '',
+    queue_unchanged: false,
+  };
+  if (!env?.MINUTE_DB?.prepare || channelId == null || currentMinute == null) return base;
+
+  const rows = await loadGapRows(
+    env.MINUTE_DB,
+    channelId,
+    currentMinute - 2 * DAY_MS - 1,
+    currentMinute,
+  );
+  for (const row of rows) {
+    const rowAt = integer(row?.observed_at ?? row?.minute_at);
+    if (rowAt == null) continue;
+    base = applyObservation(base, null, row, rowAt, { updateQueue: false });
+  }
+  return base;
 }
 
 function observationSnapshot(fact) {
@@ -332,10 +352,10 @@ function applyObservation(base, input, fact, observedAt, { updateQueue = false }
   const snapshot = input?.snapshot || observationSnapshot(fact);
   const oldLatest = objectValue(base?.latest) || {};
   const latest = snapshotLatest(oldLatest, snapshot, integer(fact?.observed_at) ?? observedAt);
-  const currentBucket = bucketAt(fact?.minute_at ?? fact?.observed_at ?? observedAt) ?? bucketAt(observedAt);
+  const currentBucket = stationheadFiveMinuteBucket(fact?.minute_at ?? fact?.observed_at ?? observedAt) ?? stationheadFiveMinuteBucket(observedAt);
   const oldHistory = Array.isArray(base?.history) ? base.history : [];
   const evicted = oldHistory.filter((row) => {
-    const point = bucketAt(row?.observed_at);
+    const point = stationheadFiveMinuteBucket(row?.observed_at);
     return point != null && point < currentBucket - DAY_MS;
   });
   const history = mergeCurrentHistory(oldHistory, historyRow(fact, snapshot), currentBucket);
@@ -400,24 +420,10 @@ async function refreshDailySummariesIfDue(env, payload, now) {
   }
 }
 
-async function loadGapRows(db, channelId, afterMinute, beforeMinute) {
-  if (!db?.prepare) throw new Error('MINUTE_DB binding is missing for dashboard recovery');
-  const result = await db.prepare(`SELECT
-      channel_id,station_id,minute_at,observed_at,is_broadcasting,
-      listener_count,online_member_count,total_member_count,guest_count,
-      reported_total_listens,reported_current_stream_count,broadcast_start_time
-    FROM sh_minute_facts
-    WHERE channel_id=? AND minute_at>? AND minute_at<?
-    ORDER BY minute_at ASC,id ASC`)
-    .bind(channelId, afterMinute, beforeMinute)
-    .all();
-  return Array.isArray(result?.results) ? result.results : [];
-}
-
 function needsBootstrap(payload, channelId, currentMinute) {
   if (!payload?.ok) return true;
   if (integer(payload?.latest?.channel_id) !== integer(channelId)) return true;
-  const previousMinute = bucketAt(payload?._live_source_minute_at ?? payload?.latest_observed_at);
+  const previousMinute = stationheadFiveMinuteBucket(payload?._live_source_minute_at ?? payload?.latest_observed_at);
   if (previousMinute == null || currentMinute == null) return true;
   return currentMinute - previousMinute > RECOVERY_GAP_LIMIT_MS || currentMinute < previousMinute;
 }
@@ -434,27 +440,13 @@ async function purgeDashboardEdgeCache() {
 }
 
 async function savePublicEnvelope(bucket, payload, now) {
-  if (typeof bucket?.put !== 'function' || !DASHBOARD_KEY) return false;
-  const envelope = {
-    version: 1,
-    status: 200,
+  const saved = await publishStationheadReadModel(bucket, 'buddies', payload, now, {
     headers: {
       'content-type': 'application/json; charset=utf-8',
       'cache-control': 'no-store',
     },
-    updated_at: now,
-    cadence_seconds: DASHBOARD_CADENCE_SECONDS,
-    body: JSON.stringify(payload),
-  };
-  await bucket.put(DASHBOARD_KEY, JSON.stringify(envelope), {
-    httpMetadata: { contentType: 'application/json; charset=utf-8' },
-    customMetadata: {
-      version: '1',
-      model_key: 'dashboard',
-      updated_at: String(now),
-      cadence_seconds: String(DASHBOARD_CADENCE_SECONDS),
-    },
   });
+  if (!saved) return false;
   await purgeDashboardEdgeCache();
   return true;
 }
@@ -474,7 +466,7 @@ async function seedCanonicalIdsFromPlaybackState(bucket, input) {
   const tracks = Array.isArray(input?.queue?.tracks) ? input.queue.tracks : [];
   if (!tracks.length) return input;
   if (tracks.every((track) => positiveInteger(track?.track_id) != null && !trackNeedsHydration(track))) return input;
-  const state = await readJsonObject(bucket, BUDDIES_PLAYBACK_HOT_STATE_KEY);
+  const state = await readStationheadJsonObject(bucket, BUDDIES_PLAYBACK_HOT_STATE_KEY);
   if (![1, 2].includes(Number(state?.version)) || !Array.isArray(state?.queue)) return input;
   const byAlias = new Map();
   for (const track of state.queue) {
@@ -519,7 +511,7 @@ export async function publishDashboardFromMinuteFact(env, input, fact, options =
   }
 
   const now = Number(options.now?.() ?? Date.now());
-  const currentMinute = bucketAt(fact?.minute_at ?? fact?.observed_at);
+  const currentMinute = stationheadFiveMinuteBucket(fact?.minute_at ?? fact?.observed_at);
   const channelId = integer(fact?.channel_id ?? input?.snapshot?.channel_id);
   const existing = await loadExistingState(bucket);
   let base = existing.payload;
@@ -527,7 +519,7 @@ export async function publishDashboardFromMinuteFact(env, input, fact, options =
   let recoveryRows = 0;
 
   if (base && !needsBootstrap(base, channelId, currentMinute)) {
-    const existingMinute = bucketAt(base?._live_source_minute_at ?? base?.latest_observed_at);
+    const existingMinute = stationheadFiveMinuteBucket(base?._live_source_minute_at ?? base?.latest_observed_at);
     if (currentMinute != null && existingMinute != null && existingMinute >= currentMinute) {
       if (existing.source === 'public') await saveHotState(bucket, base, now);
       return {
@@ -540,7 +532,7 @@ export async function publishDashboardFromMinuteFact(env, input, fact, options =
 
     const gap = currentMinute != null && existingMinute != null ? currentMinute - existingMinute : null;
     if (gap != null && gap > INCREMENTAL_GAP_LIMIT_MS && gap <= RECOVERY_GAP_LIMIT_MS) {
-      const rows = await loadGapRows(env?.MINUTE_DB, channelId, existingMinute, currentMinute);
+      const rows = await loadStationheadMinuteFactGapRows(env?.MINUTE_DB, 'buddies', channelId, existingMinute, currentMinute);
       recoveryRows = rows.length;
       for (const row of rows) {
         const rowAt = integer(row?.observed_at ?? row?.minute_at);
@@ -550,7 +542,7 @@ export async function publishDashboardFromMinuteFact(env, input, fact, options =
       mode = 'recovery';
     }
   } else {
-    base = await fullyRender(env, now);
+    base = await bootstrapDashboard(env, base, channelId, currentMinute, now);
     const cycles = cycleState(now);
     base = {
       ...base,

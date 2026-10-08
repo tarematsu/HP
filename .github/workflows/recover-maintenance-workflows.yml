@@ -5,7 +5,6 @@ on:
     workflows:
       - "Publish GitHub Actions runner health"
       - "Unified Cloudflare Observability"
-      - "Rebuild pages read models"
       - "Run runtime offline maintenance"
       - "Run data integrity repair"
       - "Run daily deep repair"
@@ -17,7 +16,6 @@ on:
       - '.github/workflows/recover-maintenance-workflows.yml'
       - '.github/scripts/recover-maintenance-workflows.mjs'
       - '.github/scripts/workflow-health-policy.mjs'
-      - '.github/workflows/run-pages-read-model-rebuild.yml'
       - '.github/workflows/run-runtime-offline-maintenance.yml'
       - '.github/workflows/run-data-integrity-repair.yml'
       - '.github/workflows/run-daily-deep-repair.yml'

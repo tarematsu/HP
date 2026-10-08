@@ -1,3 +1,4 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -9,7 +10,7 @@ const headerCss = readFileSync(new URL('../public/dashboard-presentation.css', i
 const sharedLayout = readFileSync(new URL('../public/pages-layout.css', import.meta.url), 'utf8');
 const mobileRefinements = readFileSync(new URL('../public/mobile-layout-refinements.css', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
-const historyClient = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+const historyClient = browserSource('history/history-lite.js');
 
 test('dashboard header starts in its final DOM shape before tabs and dashboard client startup', () => {
   const headerImport = dashboardEntry.match(/import '\.\/dashboard-header\.js\?v=[^']+'/)?.[0];
@@ -23,7 +24,7 @@ test('dashboard header starts in its final DOM shape before tabs and dashboard c
   assert.match(page, /<nav class="dashboard-navigation" aria-label="統計メニュー">/);
   assert.match(page, /id="sectionTabs" class="dashboard-section-tabs"/);
   assert.match(page, /id="sourceTabs" class="dashboard-source-tabs"/);
-  assert.match(page, /id="modeTabs" class="mode-tabs dashboard-tabs"/);
+  assert.match(page, /id="functionTabs" class="dashboard-function-tabs"/);
   assert.doesNotMatch(page, /id="description"|class="live-line"|class="app-launch"|class="dashboard-actions"/);
   assert.doesNotMatch(headerRepair, /description\.replaceWith|querySelector\('\.live-line'\)|querySelector\('\.app-launch'\)|actions\.replaceWith/);
 });
@@ -35,8 +36,8 @@ test('header and metrics use the canonical layout without obsolete flex bases', 
 });
 
 test('mobile dashboard begins with navigation instead of the channel heading', () => {
-  assert.match(mobileRefinements, /@media \(max-width: 760px\)[\s\S]*\.top-card\.dashboard-header > \.channel\s*\{[\s\S]*display:\s*none !important/);
-  assert.match(mobileRefinements, /@media \(max-width: 760px\)[\s\S]*\.top-card\.dashboard-header\s*\{[\s\S]*padding-top:\s*0 !important/);
+  assert.match(mobileRefinements, /@media \(max-width: 760px\)[\s\S]*\.top-card\.dashboard-header > \.channel\s*\{[\s\S]*display:\s*none/);
+  assert.match(mobileRefinements, /@media \(max-width: 760px\)[\s\S]*\.top-card\.dashboard-header\s*\{[\s\S]*padding-top:\s*0/);
 });
 
 test('navigation and summaries are finalized generically by the shared layout', () => {

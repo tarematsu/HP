@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from 'node:fs';
 
 const dashboardHtml = readFileSync(new URL('../site/public/index.html', import.meta.url), 'utf8');
 const historyShell = readFileSync(new URL('../site/public/history-shell.js', import.meta.url), 'utf8');
-const likesShell = readFileSync(new URL('../site/public/likes-shell.js', import.meta.url), 'utf8');
+const likesShell = readFileSync(new URL('../site/public/stationhead-channel-shell.js', import.meta.url), 'utf8');
 const stationheadModel = readFileSync(new URL('../site/public/stationhead-channel-model.js', import.meta.url), 'utf8');
 const dashboardUi = [dashboardHtml, historyShell, likesShell, stationheadModel].join('\n');
 
@@ -12,7 +12,7 @@ test('integrated archive views remain valid UTF-8 HTML instead of byte-pair moji
   assert.match(dashboardHtml, /^<!doctype html>\s*<html\b[^>]*\blang="ja"[^>]*>/i);
   assert.match(dashboardHtml, /<meta charset="utf-8">/i);
   assert.match(historyShell, /id: 'historyView'/);
-  assert.match(likesShell, /id: 'likesView'/);
+  assert.match(likesShell, /data-stationhead-panel="likes"/);
   assert.match(stationheadModel, /value: 'history', label: '過去'/);
   assert.doesNotMatch(dashboardUi, /mode: 'tracks'|>再生曲|href="\/history/);
   assert.equal(existsSync(new URL('../site/public/history/index.html', import.meta.url)), false);

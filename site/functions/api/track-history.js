@@ -1,3 +1,5 @@
+import { fetchPagesReadModel } from '../lib/pages-read-model-service.js';
+
 const TRACK_HISTORY_MODEL_KEY = 'track-history';
 
 function unavailable() {
@@ -14,27 +16,11 @@ function unavailable() {
 }
 
 export async function onRequestGet({ request, env }) {
-  const service = env?.PAGES_READ_MODEL_SERVICE;
-  if (typeof service?.fetch !== 'function') return unavailable();
-
   const publicUrl = new URL(request.url);
-  const url = new URL('https://pages-read-model.internal/_internal/pages-response');
-  url.searchParams.set('key', TRACK_HISTORY_MODEL_KEY);
-  url.searchParams.set('api', '1');
-  for (const [name, value] of publicUrl.searchParams.entries()) {
-    if (name === 'v' || name === 'key' || name === 'api') continue;
-    url.searchParams.append(name, value);
-  }
-
-  let response;
-  try {
-    response = await service.fetch(new Request(url, {
-      method: 'GET',
-      headers: { accept: 'application/json' },
-    }));
-  } catch {
-    return unavailable();
-  }
+  const response = await fetchPagesReadModel(env, TRACK_HISTORY_MODEL_KEY, {
+    api: true,
+    params: publicUrl.searchParams,
+  });
   if (!response) return unavailable();
 
   const headers = new Headers(response.headers);

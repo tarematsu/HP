@@ -11,7 +11,7 @@ function uncachedEdge() {
   };
 }
 
-async function assertConcurrentMissesStayRequestLocal(handler, url) {
+async function assertConcurrentMissesStayRequestLocal(handler, url, expectedState = 'MISS') {
   const previousCaches = globalThis.caches;
   globalThis.caches = { default: uncachedEdge() };
   const releases = [];
@@ -37,8 +37,8 @@ async function assertConcurrentMissesStayRequestLocal(handler, url) {
     releases[0]();
     releases[1]();
     const [first, second] = await Promise.all([firstPromise, secondPromise]);
-    assert.equal(first.headers.get('x-edge-cache'), 'MISS');
-    assert.equal(second.headers.get('x-edge-cache'), 'MISS');
+    assert.equal(first.headers.get('x-edge-cache'), expectedState);
+    assert.equal(second.headers.get('x-edge-cache'), expectedState);
     assert.deepEqual(await first.json(), { build: 1 });
     assert.deepEqual(await second.json(), { build: 2 });
   } finally {
@@ -50,6 +50,7 @@ test('root Pages cache keeps Sakurazaka response misses request-local', async ()
   await assertConcurrentMissesStayRequestLocal(
     rootMiddleware,
     'https://skrzk.test/api/sakurazaka46jp?from=2026-01-01&to=2026-01-02',
+    'HTTP',
   );
 });
 

@@ -68,7 +68,6 @@ test('service shells retain only data-specific section definitions', () => {
 test('all music subscription presentation uses one responsive layout contract', () => {
   for (const selector of [
     '.music-service-view.is-chart-compact',
-    '.music-service-meta',
     '.music-service-section',
     '.music-service-filter.mode-tabs',
     '.music-service-table :is(th, td)',
@@ -80,7 +79,10 @@ test('all music subscription presentation uses one responsive layout contract', 
     assert.ok(commonCss.includes(selector), selector);
   }
   assert.match(commonCss, /@media \(max-width: 760px\)/);
-  assert.doesNotMatch(commonCss, /regional/i);
+  const shared = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
+  assert.match(shared, /:is\(\.music-service-meta, \.regional-chart-meta\)/);
+  assert.match(shared, /font-size: var\(--dashboard-small-size\)/);
+  assert.doesNotMatch(commonCss, /\.music-service-meta/);
 });
 
 test('all service filters use the shared filter primitive', () => {
@@ -93,9 +95,7 @@ test('all service filters use the shared filter primitive', () => {
 });
 
 test('playlist detail stays lazy and renders inside shared sections', () => {
-  assert.match(amazon, /function playlistModuleUrl\(\)/);
-  assert.match(amazon, /\['\/music-service-playlists\.js', 'v=20261004\.1'\]\.join\('\?'\)/);
-  assert.match(amazon, /import\(playlistModuleUrl\(\)\)/);
+  assert.match(amazon, /import\('\.\/music-service-playlists\.js\?v=20261005\.2'\)/);
   assert.match(amazon, /loadMusicServicePlaylists\?\.\('amazon'\)/);
   assert.match(amazon, /id=\"amazonPlaylistMount\"/);
   assert.match(apple, /id=\"applePlaylistMount\"/);

@@ -1,13 +1,19 @@
 import { ensureAuthControlRow, readAuthState } from './auth-state.js';
-import { API_BASE, configFromEnv, shHeaders } from './collector-config.js';
+import { configFromEnv, snapshotPersistenceDue } from './collector-config.js';
 import { sanitizeFailureDetail } from './collector-failure.js';
 import { jwtExpiryMs, normalizeBearer } from './shared.js';
-import { registerBuddiesInitialFollowerTarget } from './stationhead-initial-followers.js';
+import { stationheadInitialFollowerRegistrar } from './stationhead-source-runtime.js';
+import { acquireStationheadGuestSession } from './stationhead-guest-session.js';
+import { persistStationheadCollectorD1Credentials } from './stationhead-collector-state-d1.js';
+import { claimStationheadAuthRefresh, finishStationheadAuthRefresh } from './stationhead-auth-control.js';
+import {
+  fetchStationheadChannelResponse,
+  prepareStationheadChannelPayload,
+} from './stationhead-collector-core.js';
 
 const STATE_ID = 'stationhead';
 const RAW_COLLECTION_QUEUE_OPTIONS = Object.freeze({ contentType: 'json' });
 const SESSION_CACHE_TTL_MS = 5 * 60_000;
-const MINUTE_MS = 60_000;
 const sessionCache = new WeakMap();
 const messageEncoder = new TextEncoder();
 const COMPATIBILITY_FALLBACK_STAGES = new Set([
@@ -41,17 +47,6 @@ function collectorRequestConfig(env) {
     appVersion: env.STATIONHEAD_APP_VERSION || env.SH_APP_VERSION || '1.0.0',
     requestTimeoutMs: Math.min(positive(env.REQUEST_TIMEOUT_MS, 15_000), 30_000),
   };
-}
-
-function snapshotAnalysisDue(env, observedAt) {
-  const parsed = Number(env?.SNAPSHOT_PERSIST_INTERVAL_MS);
-  const interval = !Number.isFinite(parsed) || parsed < MINUTE_MS
-    ? MINUTE_MS
-    : Math.min(Math.trunc(parsed), 60 * MINUTE_MS);
-  if (interval <= MINUTE_MS) return true;
-  const timestamp = Number(observedAt);
-  if (!Number.isFinite(timestamp) || timestamp < 0) return true;
-  return Math.floor(timestamp / interval) !== Math.floor((timestamp - MINUTE_MS) / interval);
 }
 
 function sessionCacheKey(env) {
@@ -93,54 +88,23 @@ function forgetSession(env) {
 
 async function claimAuthLock(env, cfg) {
   const now = Date.now();
-  const result = await env.DB.prepare(`UPDATE sh_worker_auth_control
-    SET lock_until=?,last_attempt_at=?,updated_at=?
-    WHERE id=? AND COALESCE(lock_until,0)<?`)
-    .bind(now + cfg.lockMs, now, now, STATE_ID, now).run();
-  return Number(result?.meta?.changes || 0) > 0;
+  return claimStationheadAuthRefresh(env.DB, { stateId: STATE_ID, now, lockMs: cfg.lockMs });
 }
 
 async function finishAuthAttempt(env, error = null) {
   const now = Date.now();
-  await env.DB.prepare(`UPDATE sh_worker_auth_control SET
-      last_success_at=CASE WHEN ? IS NULL THEN ? ELSE last_success_at END,
-      last_error=?,lock_until=0,updated_at=? WHERE id=?`)
-    .bind(error, now, error, now, STATE_ID).run();
-}
-
-function guestHeaders(config, deviceUid, authToken = '') {
-  return {
-    ...shHeaders({ authToken, deviceUid }, config),
-    ...(authToken ? {} : { authorization: '' }),
-  };
+  await finishStationheadAuthRefresh(env.DB, { stateId: STATE_ID, now, error });
 }
 
 async function acquireSession(env) {
   const cfg = authConfig(env);
   const collectionConfig = configFromEnv(env);
-  const deviceUid = crypto.randomUUID();
-  const tokenResponse = await fetch(`${API_BASE}/web/token`, {
-    method: 'POST',
-    headers: guestHeaders(collectionConfig, deviceUid),
-    body: '',
-    signal: AbortSignal.timeout(cfg.requestTimeoutMs),
+  const session = await acquireStationheadGuestSession({
+    appVersion: collectionConfig.appVersion,
+    requestTimeoutMs: cfg.requestTimeoutMs,
   });
-  const authToken = normalizeBearer(tokenResponse.headers.get('authorization'));
-  if (!tokenResponse.ok || !authToken) throw new Error(`guest token failed: ${tokenResponse.status}`);
-  const loginResponse = await fetch(`${API_BASE}/web/guest/login`, {
-    method: 'POST',
-    headers: guestHeaders(collectionConfig, deviceUid, authToken),
-    body: '',
-    signal: AbortSignal.timeout(cfg.requestTimeoutMs),
-  });
-  if (!loginResponse.ok) throw new Error(`guest login failed: ${loginResponse.status}`);
   const now = Date.now();
-  await env.DB.prepare(`INSERT INTO sh_worker_collector_state(
-      id,auth_token,device_uid,token_expires_at,updated_at
-    ) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
-      auth_token=excluded.auth_token,device_uid=excluded.device_uid,
-      token_expires_at=excluded.token_expires_at,updated_at=excluded.updated_at`)
-    .bind(STATE_ID, authToken, deviceUid, jwtExpiryMs(authToken) || null, now).run();
+  await persistStationheadCollectorD1Credentials(env.DB, session, now, STATE_ID);
   await finishAuthAttempt(env);
   return readAuthState(env, STATE_ID);
 }
@@ -213,8 +177,7 @@ async function directPreparedMessage(base, body, config, env) {
   }
   let stage = 'load-preparation-modules';
   try {
-    const [payload, queueAnalysis, materialization, snapshotAnalysis] = await Promise.all([
-      import('./collector-payload.js'),
+    const [queueAnalysis, materialization, snapshotAnalysis] = await Promise.all([
       import('./queue-analysis-transfer.js'),
       import('./queue-materialization.js'),
       import('./snapshot-analysis-transfer.js'),
@@ -223,17 +186,17 @@ async function directPreparedMessage(base, body, config, env) {
       channelId: base.auth?.collectorChannelId ?? null,
       stationId: base.auth?.collectorStationId ?? null,
     };
-    stage = 'validate-channel';
-    payload.validateChannelPayload(channel, config.channelAlias);
-    stage = 'extract-identifiers';
-    payload.extractIds(channel, state);
     stage = 'normalize-snapshot';
-    const snapshot = payload.normalizeSnapshot(channel, state, config);
-    stage = 'extract-queue';
-    const fullQueue = payload.extractQueue(channel, state.stationId);
+    const prepared = prepareStationheadChannelPayload(
+      channel,
+      config.channelAlias,
+      state,
+    );
+    const snapshot = prepared.snapshot;
+    const fullQueue = prepared.queue;
     stage = 'analyze-payload';
     const [preparedSnapshot, preparedQueue] = await Promise.all([
-      snapshotAnalysisDue(env, base.observed_at)
+      snapshotPersistenceDue(env, base.observed_at)
         ? snapshotAnalysis.prepareSnapshotAnalysis(snapshot)
         : null,
       queueAnalysis.prepareQueueAnalysis(fullQueue),
@@ -309,13 +272,12 @@ export async function collectRawChannel(env, dependencies = {}) {
   const inlinePreparation = inlinePipeline || (!env.DB && dependencies.inlinePreparation !== false);
   const config = inlinePreparation ? configFromEnv(env) : collectorRequestConfig(env);
   const observedAt = Date.now();
-  const response = await (dependencies.fetch || fetch)(
-    `${API_BASE}/channels/alias/${encodeURIComponent(config.channelAlias)}`,
-    {
-      headers: shHeaders(state, config),
-      signal: AbortSignal.timeout(config.requestTimeoutMs),
-    },
+  const request = await fetchStationheadChannelResponse(
+    state,
+    config,
+    dependencies.fetch || fetch,
   );
+  const { response } = request;
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) forgetSession(env);
     throw new Error(`Stationhead API ${response.status}: channel`);
@@ -323,7 +285,7 @@ export async function collectRawChannel(env, dependencies = {}) {
 
   const body = await response.text();
   const payloadBytes = messageEncoder.encode(body).byteLength;
-  const refreshed = normalizeBearer(response.headers.get('authorization'));
+  const refreshed = request.refreshedAuthToken;
   const persistCredentials = !state.collectorUpdatedAt
     || Boolean(refreshed && refreshed !== state.authToken);
   const activeToken = refreshed || state.authToken;
@@ -361,12 +323,14 @@ export async function collectRawChannel(env, dependencies = {}) {
   const ingestResult = inlinePipeline
     ? await ingestInline(env, message, { inline: true })
     : await rawCollectionQueue.send(message, RAW_COLLECTION_QUEUE_OPTIONS);
-  if (config.channelAlias === 'buddies' && message.snapshot) {
-    await registerBuddiesInitialFollowerTarget(env, message.snapshot, observedAt, {
+  const registerInitialFollower = stationheadInitialFollowerRegistrar(config.channelAlias);
+  if (registerInitialFollower && message.snapshot) {
+    await registerInitialFollower(env, message.snapshot, observedAt, {
       auth_token: activeToken,
       device_uid: state.deviceUid,
     }).catch((error) => console.warn(JSON.stringify({
-      event: 'buddies_initial_followers_failed',
+      event: 'stationhead_initial_followers_failed',
+      channel_alias: config.channelAlias,
       error: String(error?.message || error).slice(0, 300),
     })));
   }

@@ -1,4 +1,5 @@
-import { mkdir, stat, rm } from 'node:fs/promises';
+import { mkdir, stat, rm, readFile, writeFile, readdir } from 'node:fs/promises';
+import { gzipSync } from 'node:zlib';
 import { dirname, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
@@ -9,6 +10,7 @@ const publicRoot = resolve(siteRoot, 'public');
 const assetsDir = resolve(publicRoot, 'assets');
 
 const cssGroups = Object.freeze({
+  official: ['official-account-live.css'],
   dashboard: [
     'app-lite.css',
     'monochrome.css',
@@ -28,14 +30,14 @@ const cssGroups = Object.freeze({
     'hinata.css',
     'history/history-past-toggle.css',
     'history/history-range-navigator.css',
+    'stationhead-channel-tools.css',
   ],
   subscriptions: [
     'spotify.css',
     'apple-music.css',
     'amazon-music.css',
     'music-service-common.css',
-    'followers.css',
-    'leaderboard.css',
+    'subscription-chart-tools.css',
   ],
 });
 
@@ -46,9 +48,7 @@ const browserModuleResolver = {
       const clean = args.path.replace(/[?#].*$/, '');
       if (args.kind === 'entry-point' || clean.startsWith(publicRoot)) return null;
       if (!clean.startsWith('/') && !clean.startsWith('.')) return null;
-      const path = clean.startsWith('/')
-        ? resolve(publicRoot, `.${clean}`)
-        : resolve(args.resolveDir, clean);
+      const path = clean.startsWith('/') ? resolve(publicRoot, `.${clean}`) : resolve(args.resolveDir, clean);
       return { path };
     });
   },
@@ -68,24 +68,19 @@ function inputContributions(metafiles, limit = 20) {
   const bytes = new Map();
   for (const metafile of Array.isArray(metafiles) ? metafiles : [metafiles]) {
     for (const output of Object.values(metafile.outputs)) {
-      for (const [input, details] of Object.entries(output.inputs || {})) {
-        bytes.set(input, (bytes.get(input) || 0) + (details.bytesInOutput || 0));
-      }
+      for (const [input, details] of Object.entries(output.inputs || {})) bytes.set(input, (bytes.get(input) || 0) + (details.bytesInOutput || 0));
     }
   }
-  return [...bytes.entries()]
-    .map(([input, bytesInOutput]) => ({
-      input: input.startsWith(siteRoot) ? relative(siteRoot, input) : input,
-      bytes: bytesInOutput,
-    }))
-    .sort((a, b) => b.bytes - a.bytes)
-    .slice(0, limit);
+  return [...bytes.entries()].map(([input, bytesInOutput]) => ({ input: input.startsWith(siteRoot) ? relative(siteRoot, input) : input, bytes: bytesInOutput })).sort((a, b) => b.bytes - a.bytes).slice(0, limit);
 }
 
 async function buildCssBundle(name, files) {
   return build({
     stdin: {
-      contents: files.map((file) => `@import "./public/${file}";`).join('\n'),
+      contents: '@layer base, features, layout;\n' + files.map((file) => {
+        const layer = name !== 'dashboard' ? 'features' : ['pages-layout.css', 'dashboard-navigation.css', 'dashboard-ui-common.css', 'mobile-layout-refinements.css', 'dashboard-presentation.css'].includes(file) ? 'layout' : 'base';
+        return `@import "./public/${file}" layer(${layer});`;
+      }).join('\n'),
       resolveDir: siteRoot,
       sourcefile: `${name}-bundle.css`,
       loader: 'css',
@@ -100,12 +95,11 @@ async function buildCssBundle(name, files) {
   });
 }
 
-// Discard chunks from previous builds; deploy only the current module graph.
 await rm(resolve(assetsDir, 'chunks'), { recursive: true, force: true });
 await mkdir(assetsDir, { recursive: true });
 
 const jsBuild = await build({
-  entryPoints: { 'dashboard.min': resolve(publicRoot, 'dashboard-metrics.js') },
+  entryPoints: { 'dashboard.min': resolve(publicRoot, 'dashboard-metrics.js'), 'official-account-live.min': resolve(publicRoot, 'official-account-live.js') },
   outdir: assetsDir,
   chunkNames: 'chunks/[name]-[hash]',
   bundle: true,
@@ -121,34 +115,31 @@ const jsBuild = await build({
   plugins: [browserModuleResolver],
 });
 
-const cssBuilds = await Promise.all(Object.entries(cssGroups).map(async ([name, files]) => [
-  name,
-  await buildCssBundle(name, files),
-]));
-const cssBuildMap = new Map(cssBuilds);
+// Every shipped source module must belong to a real page entry's import graph.
+const bundledSources = new Set(Object.keys(jsBuild.metafile.inputs).map(path => resolve(path)));
+const orphanModules = (await readdir(publicRoot, { recursive: true }))
+  .filter(path => path.endsWith('.js') && !path.startsWith('assets/'))
+  .filter(path => !bundledSources.has(resolve(publicRoot, path)));
+if (orphanModules.length) throw new Error(`Unreferenced browser modules: ${orphanModules.join(', ')}`);
 
+const cssBuilds = await Promise.all(Object.entries(cssGroups).map(async ([name, files]) => [name, await buildCssBundle(name, files)]));
+const cssBuildMap = new Map(cssBuilds);
 const jsOutputs = Object.entries(jsBuild.metafile.outputs);
 const initialOutputs = new Set();
 function collectInitial(path) {
   if (initialOutputs.has(path)) return;
   initialOutputs.add(path);
-  for (const dependency of jsBuild.metafile.outputs[path]?.imports || []) {
-    if (dependency.kind === 'import-statement' && !dependency.external) collectInitial(dependency.path);
-  }
+  for (const dependency of jsBuild.metafile.outputs[path]?.imports || []) if (dependency.kind === 'import-statement' && !dependency.external) collectInitial(dependency.path);
 }
 collectInitial(jsOutputs.find(([path]) => path.endsWith('/dashboard.min.js'))[0]);
 const initialJsBytes = [...initialOutputs].reduce((total, path) => total + jsBuild.metafile.outputs[path].bytes, 0);
 const totalJsBytes = jsOutputs.reduce((total, [, output]) => total + output.bytes, 0);
-
 const js = await stat(resolve(assetsDir, 'dashboard.min.js'));
-const cssSizes = Object.fromEntries(await Promise.all(Object.keys(cssGroups).map(async (name) => [
-  name,
-  (await stat(resolve(assetsDir, `${name}.min.css`))).size,
-])));
+const cssSizes = Object.fromEntries(await Promise.all(Object.keys(cssGroups).map(async (name) => [name, (await stat(resolve(assetsDir, `${name}.min.css`))).size])));
 const initialCssBytes = cssSizes.dashboard;
 const totalCssBytes = Object.values(cssSizes).reduce((total, size) => total + size, 0);
 
-console.log(JSON.stringify({
+const report = {
   event: 'pages_assets_built',
   js_bytes: js.size,
   css_bytes: initialCssBytes,
@@ -162,4 +153,55 @@ console.log(JSON.stringify({
   browser_files: jsOutputs.length + Object.keys(cssGroups).length,
   largest_js_inputs: inputContributions(jsBuild.metafile),
   largest_css_inputs: inputContributions([...cssBuildMap.values()].map((result) => result.metafile)),
-}));
+};
+
+const routeModules = {
+  current: ['current-shell.js', 'stationhead-channel.js'],
+  hinata: ['hinata-shell.js', 'hinata.js'],
+  nogizaka: ['nogizaka-listening-party-shell.js', 'nogizaka-listening-party.js'],
+  history: ['history-shell.js', 'history/history-main.js'],
+  spotify: ['spotify-shell.js', 'spotify.js'],
+  'apple-music': ['apple-music-shell.js', 'apple-music.js'],
+  'amazon-music': ['amazon-music-shell.js', 'amazon-music.js'],
+  'youtube-music': ['youtube-music-shell.js', 'youtube-music.js'],
+  kkbox: ['kkbox-shell.js', 'kkbox.js'],
+  qq_music: ['qq-music-shell.js', 'qq-music.js'],
+  kugou_music: ['kugou-music-shell.js', 'kugou-music.js'],
+  ranking: ['leaderboard-shell.js', 'leaderboard.js'],
+  followers: ['followers-shell.js', 'followers.js'],
+};
+function routeGraph(inputs, withBootstrap = true) {
+  const outputs = new Set(withBootstrap ? initialOutputs : []);
+  function visit(path) {
+    if (outputs.has(path)) return;
+    outputs.add(path);
+    for (const dependency of jsBuild.metafile.outputs[path]?.imports || []) if (!dependency.external) visit(dependency.path);
+  }
+  for (const input of inputs) {
+    const output = jsOutputs.find(([, details]) => details.entryPoint && resolve(details.entryPoint) === resolve(publicRoot, input));
+    if (!output) throw new Error(`Missing route output: ${input}`);
+    visit(output[0]);
+  }
+  return outputs;
+}
+report.route_js_graph_bytes = Object.fromEntries(Object.entries(routeModules).map(([route, inputs]) => [route, [...routeGraph(inputs)].reduce((total, path) => total + jsBuild.metafile.outputs[path].bytes, 0)]));
+const allOutputPaths = [...jsOutputs.map(([path]) => path), ...Object.keys(cssGroups).map((name) => resolve(assetsDir, `${name}.min.css`))];
+const gzipSizes = new Map(await Promise.all(allOutputPaths.map(async (path) => [path, gzipSync(await readFile(path)).length])));
+report.gzip_estimate = {
+  initial_js_bytes: [...initialOutputs].reduce((sum, path) => sum + gzipSizes.get(path), 0),
+  initial_css_bytes: gzipSizes.get(resolve(assetsDir, 'dashboard.min.css')),
+  total_bytes: [...gzipSizes.values()].reduce((sum, value) => sum + value, 0),
+};
+report.html_bytes = (await stat(resolve(publicRoot, 'index.html'))).size;
+report.html_files = {};
+for (const file of ['index.html', 'sakurazaka46jp/index.html', 'nogizaka46smej/index.html']) report.html_files[file] = (await stat(resolve(publicRoot, file))).size;
+report.standalone_entry_sources = {};
+for (const file of ['official-account-live.js', 'official-account-live.css', 'pages-theme.css']) report.standalone_entry_sources[file] = (await stat(resolve(publicRoot, file))).size;
+report.dashboard_total_bytes = [...routeGraph(['dashboard-metrics.js'], false)].reduce((total, path) => total + jsBuild.metafile.outputs[path].bytes, 0) + cssSizes.dashboard + cssSizes.stationhead + cssSizes.subscriptions;
+report.official_route_bytes = [...routeGraph(['official-account-live.js'], false)].reduce((total, path) => total + jsBuild.metafile.outputs[path].bytes, 0) + cssSizes.official;
+report.bundled_source_modules = Object.keys(jsBuild.metafile.inputs).sort();
+const budgets = { initial_js_bytes: 25_000, css_bytes: 30_000, total_bytes: 310_000 };
+for (const [metric, limit] of Object.entries(budgets)) if (report[metric] > limit) throw new Error(`Pages asset budget exceeded: ${metric} ${report[metric]} > ${limit}`);
+await mkdir(resolve(siteRoot, 'artifacts'), { recursive: true });
+await writeFile(resolve(siteRoot, 'artifacts/pages-assets.json'), JSON.stringify(report, null, 2) + '\n');
+console.log(JSON.stringify(report));

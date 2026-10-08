@@ -1,10 +1,11 @@
+import { browserSource } from '../site/tests/helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const migration = readFileSync(new URL('../database/other-migrations/023_dedupe_rock_in_2026_official_party.sql', import.meta.url), 'utf8');
 const broadcasts = readFileSync(new URL('../site/public/history/history-broadcasts.js', import.meta.url), 'utf8');
-const history = readFileSync(new URL('../site/public/history/history-lite.js', import.meta.url), 'utf8');
+const history = browserSource('history/history-lite.js');
 
 const CANONICAL_EVENT = '2026.09.21 『ROCK IN JAPAN FESTIVAL 2026 SETLIST LISTENING PARTY』';
 

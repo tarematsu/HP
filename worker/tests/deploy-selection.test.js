@@ -31,20 +31,29 @@ test('domain modules select every Worker whose bundle imports them', () => {
     'site/functions/lib/d1-lean-ingest.js',
     'site/functions/lib/d1-optimized-ingest.js',
   ]) {
-    assert.deepEqual(select([path]).workers, BUDDIES_RUNTIME_WORKERS, path);
+    assert.deepEqual(select([path]).workers, [], `Pages compatibility-only re-export: ${path}`);
+  }
+  for (const path of [
+    'packages/sh-shared/d1-lean-ingest.mjs',
+    'packages/sh-shared/d1-optimized-ingest.mjs',
+  ]) {
+    const selected = select([path]).workers;
+    for (const worker of BUDDIES_RUNTIME_WORKERS) {
+      assert.ok(selected.includes(worker), `${path} must redeploy ${worker}`);
+    }
   }
   assert.deepEqual(select(['worker/src/persist-structure-stages.js']).workers, [RECOVERY, COLLECTOR]);
   for (const path of [
     'worker/src/minute-enrichment-playback-stages.js',
     'worker/src/track-metadata-entry.js',
-    'worker/src/pages-response-store.js',
     'worker/src/minute-derive-entry.js',
     'worker/src/runtime-queue.js',
   ]) {
     assert.deepEqual(select([path]).workers, [RUNTIME], path);
   }
+  assert.deepEqual(select(['worker/src/pages-response-store.js']).workers, [REGIONAL, RUNTIME]);
   assert.deepEqual(select(['worker/src/buddies-collector-entry.js']).workers, [COLLECTOR]);
-  assert.deepEqual(select(['worker/src/ohisama-collector-entry.js']).workers, [OHISAMA]);
+  assert.deepEqual(select(['worker/src/ohisama-collector-shared.js']).workers, [OHISAMA]);
   assert.deepEqual(select(['worker/src/buddies-recovery-entry.js']).workers, [RECOVERY]);
   assert.deepEqual(select(['worker/src/sakurazaka-raw-materializer.js']).workers, [SAKURAZAKA, NOGIZAKA]);
   assert.deepEqual(select(['worker/src/nogizaka-raw-materializer.js']).workers, [NOGIZAKA]);
@@ -110,7 +119,6 @@ test('deployment support changes select the owning Worker', () => {
   assert.deepEqual(select(['worker/scripts/deploy-runtime.mjs']), {
     changed_paths: ['worker/scripts/deploy-runtime.mjs'], workers: [RUNTIME], commands: ['deploy:runtime'], diagnostics: [RUNTIME],
   });
-  assert.deepEqual(select(['worker/scripts/pages-response-kv-namespace.mjs']).workers, [RUNTIME]);
   assert.deepEqual(select(['worker/scripts/verify-runtime-deployment.mjs']).workers, [RUNTIME]);
   assert.deepEqual(select(['worker/scripts/deploy-sakurazaka46jp.mjs']).workers, [SAKURAZAKA]);
   assert.deepEqual(select(['worker/scripts/deploy-nogizaka46smej.mjs']).workers, [NOGIZAKA]);
@@ -165,7 +173,7 @@ test('tests and unrelated verification scripts do not deploy Workers', () => {
 });
 
 test('shared package only redeploys importers while unresolved Worker source remains fail-safe', () => {
-  assert.equal(select(['packages/sh-shared/index.mjs']).workers.length, 6);
+  assert.equal(select(['packages/sh-shared/index.mjs']).workers.length, 8);
   assert.equal(select(['worker/src/deleted-runtime-module.js']).workers.length, 11);
 });
 

@@ -1,24 +1,33 @@
+import { browserSource } from './helpers/dashboard-source.js';
+import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { formatNogizakaBroadcastContent } from '../functions/api/nogizaka-listening-party.js';
+import { formatNogizakaBroadcastContent } from '../../packages/sh-shared/index.mjs';
+import { ROUTES, navigationForMode } from '../public/dashboard-navigation-config.js';
+import { stationheadReadModelKey } from '../../packages/sh-shared/stationhead-read-models.mjs';
 
 const shellWrapper = readFileSync(new URL('../public/nogizaka-listening-party-shell.js', import.meta.url), 'utf8');
 const runtimeWrapper = readFileSync(new URL('../public/nogizaka-listening-party.js', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
-const runtime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
-const readModel = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
+const runtime = browserSource('stationhead-channel.js');
+const readModel = browserSource('stationhead-channel-read-model.js');
 const sharedCss = readFileSync(new URL('../public/dashboard-navigation.css', import.meta.url), 'utf8') + readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
-const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+const tabs = dashboardRouterSource();
 const api = readFileSync(new URL('../functions/api/nogizaka-listening-party.js', import.meta.url), 'utf8');
+const materializedProxy = readFileSync(new URL('../functions/lib/stationhead-materialized-proxy.js', import.meta.url), 'utf8');
+const readModelService = readFileSync(new URL('../functions/lib/pages-read-model-service.js', import.meta.url), 'utf8');
 const publisher = readFileSync(new URL('../../worker/src/nogizaka-pages-read-model.js', import.meta.url), 'utf8');
 
 test('Nogizaka is a lazy source route mounted through the shared Stationhead shell', () => {
-  assert.match(tabs, /nogizaka:\s*\{/);
-  assert.match(tabs, /viewId: 'nogizakaListeningPartyView'/);
-  assert.match(tabs, /nogizaka-listening-party-shell\.js/);
-  assert.match(tabs, /loadNogizakaListeningPartyView/);
-  assert.match(tabs, /id: 'nogizaka', label: 'Nogizaka', defaultMode: 'nogizaka'/);
+  assert.equal(ROUTES.nogizaka.kind, 'lazy');
+  assert.equal(ROUTES.nogizaka.viewId, 'nogizakaListeningPartyView');
+  assert.equal(ROUTES.nogizaka.moduleId, 'nogizaka');
+  assert.equal(ROUTES.nogizaka.loadExport, 'loadNogizakaListeningPartyView');
+  const navigation = navigationForMode('nogizaka');
+  assert.equal(navigation.source.id, 'nogizaka');
+  assert.equal(navigation.source.label, 'Nogizaka');
+  assert.equal(navigation.source.defaultMode, 'nogizaka');
   assert.match(shellWrapper, /mountStationheadChannelShell/);
   assert.match(shellWrapper, /stationheadModel = 'nogizaka'/);
   assert.match(runtimeWrapper, /loadStationheadChannelView/);
@@ -59,9 +68,13 @@ test('Nogizaka listening-party labels are reusable for future Under Live events'
   }), '43rd アンダーライブ セットリスト');
 });
 
-test('Nogizaka public API is materialized-read-model-only', () => {
-  assert.match(api, /PAGES_READ_MODEL_SERVICE/);
-  assert.match(api, /_internal\/pages-response\?key=nogizaka-listening-party/);
+test('Nogizaka public API is materialized-read-model-only through the shared Stationhead proxy', () => {
+  assert.match(api, /proxyStationheadMaterializedReadModel/);
+  assert.match(api, /'nogizaka'/);
+  assert.match(materializedProxy, /fetchPagesReadModel/);
+  assert.match(readModelService, /PAGES_READ_MODEL_SERVICE/);
+  assert.match(readModelService, /_internal\/pages-response/);
+  assert.equal(stationheadReadModelKey('nogizaka'), 'nogizaka-listening-party');
   assert.doesNotMatch(api, /OTHER_DB|\.prepare\(|sh_nogizaka_official_news_announcements|sh_official_broadcast_/);
   assert.match(readModel, /source: 'nogizaka'/);
 });
@@ -71,12 +84,15 @@ test('Nogizaka producer builds the listening-party model from bounded D1 read mo
   assert.match(publisher, /sh_nogizaka_official_news_announcements/);
   assert.match(publisher, /FROM sh_official_broadcast_summary AS s/);
   assert.match(publisher, /FROM sh_official_broadcast_series/);
-  assert.match(publisher, /WHERE s\.host_handle='nogizaka46smej'/);
+  assert.match(publisher, /WHERE s\.host_handle=\?/);
+  assert.match(publisher, /NOGIZAKA_HANDLE = NOGIZAKA_PROFILE\.channelAlias/);
   assert.match(publisher, /ORDER BY s\.started_at DESC/);
-  assert.match(publisher, /LIMIT \?`\)\.bind\(HISTORY_LIMIT\)\.all\(\)/);
+  assert.match(publisher, /LIMIT \?`\)\.bind\(NOGIZAKA_HANDLE, HISTORY_LIMIT\)\.all\(\)/);
   assert.doesNotMatch(publisher, /sh_nogizaka_official_news_station_probes/);
-  assert.match(publisher, /pagesActionsR2ResponseKey\(NOGIZAKA_LISTENING_PARTY_MODEL_KEY\)/);
+  assert.match(publisher, /saveMaterializedR2Response/);
   assert.match(publisher, /broadcast_content: formatNogizakaBroadcastContent\(/);
+  assert.match(publisher, /packages\/sh-shared\/index\.mjs/);
+  assert.doesNotMatch(publisher, /site\/functions\/api/);
   assert.match(publisher, /rows,/);
   assert.match(publisher, /jstDayKey\(row\.started_at, day\)/);
   assert.match(publisher, /source = readSeries/);

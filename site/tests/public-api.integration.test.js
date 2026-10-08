@@ -2,13 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  appendJsonObjectFields,
-  cachedPrediction,
-  decorateQueueResponse,
-  resetPredictionCache,
-  selectGoalPrediction,
-} from '../functions/api/dashboard.js';
-import {
   cachedHistoryLoad,
   onRequestGet as historyGet,
   resetHistoryLoadCache,
@@ -46,7 +39,7 @@ test('broadcast history reports setup-required only when no imported event exist
   assert.deepEqual(body.rows, []);
 });
 
-test('history endpoint restores the ranking leaderboard from the weekly read model', async () => {
+test('history endpoint restores the ranking leaderboard from the R2 read model', async () => {
   resetHistoryLoadCache();
   const model = {
     version: 1,
@@ -86,14 +79,20 @@ test('history endpoint restores the ranking leaderboard from the weekly read mod
     ],
     weekly_metrics: [],
   };
-  const otherDb = new FakeD1Database().route('first', /FROM sh_weekly_ranking_read_model/, {
-    payload_json: JSON.stringify(model),
-    source_max_ranking_date: model.source_max_ranking_date,
-    refreshed_at: model.refreshed_at,
-  });
+  const requests = [];
   const response = await historyGet({
     request: new Request('https://skrzk.test/api/history?mode=ranking&from=2026-07-01&to=2026-07-31'),
-    env: { DB: new FakeD1Database(), OTHER_DB: otherDb },
+    env: {
+      PAGES_READ_MODEL_SERVICE: {
+        async fetch(request) {
+          const url = new URL(request.url);
+          requests.push(url);
+          return Response.json(model, {
+            headers: { 'x-materialized-at': String(model.refreshed_at) },
+          });
+        },
+      },
+    },
   });
   const body = await responseJson(response);
   assert.equal(response.status, 200);
@@ -104,9 +103,9 @@ test('history endpoint restores the ranking leaderboard from the weekly read mod
   assert.equal(body.rows[0].rank, null);
   assert.equal(body.rows[0].is_out_of_rank, true);
   assert.equal(body.rows.find((row) => row.ranking_date === '2026-07-07' && row.host_name === 'sakuramankai').rank, 3);
-  assert.equal(otherDb.callsMatching(/FROM sh_weekly_ranking_read_model/).length, 1);
-  assert.equal(otherDb.callsMatching(/FROM sh_channel_rankings/).length, 0);
-  assert.equal(body.read_path, 'weekly-ranking-read-model');
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].searchParams.get('key'), 'leaderboard');
+  assert.equal(body.read_path, 'leaderboard-r2-read-model');
 });
 
 test('history rejects impossible dates before querying D1', async () => {
@@ -157,66 +156,4 @@ test('history cache coalesces concurrent readers and can be reset safely', async
   assert.deepEqual(await second, { value: 42 });
   assert.equal(loads, 1);
   resetHistoryLoadCache();
-});
-
-test('dashboard prediction cache retains completed values without sharing request-scoped D1 promises', async () => {
-  resetPredictionCache();
-  let reads = 0;
-  const statement = {
-    async first() {
-      reads += 1;
-      await Promise.resolve();
-      return { slope: 2, intercept: 10 };
-    },
-  };
-  const [first, second] = await Promise.all([
-    cachedPrediction(statement, 100),
-    cachedPrediction(statement, 100),
-  ]);
-  assert.deepEqual(first, second);
-  assert.equal(reads, 2);
-
-  const decorated = decorateQueueResponse({
-    ok: true,
-    latest: { is_broadcasting: 1 },
-    queue: [{ position: 0 }],
-    queue_status: { is_paused: false, total_items: 1 },
-  }, {
-    revision: 'rev-1',
-    unchanged: true,
-    state: { total_items: 3 },
-  });
-  assert.equal(decorated.queue_revision, 'rev-1');
-  assert.equal(decorated.queue_unchanged, true);
-  assert.deepEqual(decorated.queue, []);
-  assert.equal(decorated.queue_status.playing, true);
-  assert.equal(decorated.queue_status.total_items, 3);
-
-  const appended = appendJsonObjectFields('{"ok":true}', { queue_revision: 'rev-2' });
-  assert.deepEqual(JSON.parse(appended), { ok: true, queue_revision: 'rev-2' });
-  resetPredictionCache();
-});
-
-test('dashboard keeps calculated goal prediction when persisted state is unavailable', () => {
-  const calculated = {
-    eta: 1783400000000,
-    rate_per_hour: 12000,
-    remaining: 100000,
-    sample_count: 80,
-    span_hours: 12,
-  };
-  assert.equal(selectGoalPrediction(null, calculated, 53240000), calculated);
-});
-
-test('dashboard prefers valid persisted goal prediction over calculated fallback', () => {
-  const calculated = { eta: 1783400000000, rate_per_hour: 12000, remaining: 100000 };
-  const persisted = selectGoalPrediction({
-    generated_at: 1783300000000,
-    goal: 53240000,
-    eta: 1783500000000,
-    rate_per_hour: 15000,
-    remaining: 90000,
-  }, calculated, 53240000);
-  assert.notEqual(persisted, calculated);
-  assert.equal(persisted.rate_per_hour, 15000);
 });

@@ -4,8 +4,10 @@ import test from 'node:test';
 
 const buddies = readFileSync(new URL('../src/buddies-playback-state.js', import.meta.url), 'utf8');
 const ohisama = readFileSync(new URL('../src/ohisama-playback.js', import.meta.url), 'utf8');
+import { stationheadPlaybackPeriodKey } from '../src/stationhead-playback-core.js';
+const playbackStore = readFileSync(new URL('../src/stationhead-playback-store.js', import.meta.url), 'utf8');
 const nogizaka = readFileSync(new URL('../src/nogizaka-raw-materializer.js', import.meta.url), 'utf8');
-const hostIngest = readFileSync(new URL('../../site/functions/lib/host-ingest.js', import.meta.url), 'utf8');
+const hostIngest = readFileSync(new URL('../../packages/sh-shared/host-ingest.mjs', import.meta.url), 'utf8');
 const otherTables = readFileSync(new URL('../scripts/other-db-tables.mjs', import.meta.url), 'utf8');
 const migration = readFileSync(new URL(
   '../../database/other-migrations/068_nogizaka_history_storage_compaction.sql',
@@ -15,9 +17,11 @@ const migration = readFileSync(new URL(
 const redundantPlaybackColumns = /event_key,played_at,period_key,station_id,track_id,track_key,spotify_id,isrc,title,artist,duration_ms,thumbnail_url/;
 const compactPlaybackColumns = /event_key,played_at,period_key,station_id,track_id,track_key\s*\n\s*\) VALUES\(\?,\?,\?,\?,\?,\?\)/;
 
-test('Buddies and Ohisama playback events persist canonical identity without duplicate presentation metadata', () => {
+test('Buddies and Ohisama playback events persist canonical identity through the shared compact store', () => {
+  assert.match(playbackStore, compactPlaybackColumns);
+  assert.doesNotMatch(playbackStore, redundantPlaybackColumns);
   for (const source of [buddies, ohisama]) {
-    assert.match(source, compactPlaybackColumns);
+    assert.match(source, /planStationheadPlaybackDaily/);
     assert.doesNotMatch(source, redundantPlaybackColumns);
   }
 });
@@ -43,7 +47,8 @@ test('Nogizaka opts into change-only like hashing without increasing other solo 
   assert.match(hostIngest, /dedupeKey: `solo:\$\{num\(data\.session_id\) \?\? 0\}:queue:/);
 });
 
-test('existing UTC day key remains unchanged, preserving the JST 09:00 boundary', () => {
-  assert.match(buddies, /Math\.floor\(Number\(timestamp\) \/ DAY_MS\) \* DAY_MS/);
-  assert.match(ohisama, /Math\.floor\(Number\(timestamp\) \/ DAY_MS\) \* DAY_MS/);
+test('shared playback UTC day key remains unchanged, preserving the JST 09:00 boundary', () => {
+  assert.equal(stationheadPlaybackPeriodKey(Date.parse('2026-10-02T08:59:59+09:00')), '2026-10-01');
+  assert.equal(stationheadPlaybackPeriodKey(Date.parse('2026-10-02T09:00:00+09:00')), '2026-10-02');
+  assert.match(playbackStore, /stationheadPlaybackPeriodKey/);
 });

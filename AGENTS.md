@@ -63,3 +63,10 @@ For Worker requests, CPU, D1 rows, storage, or other production metrics:
 - Keep workflows declarative; move substantial validation or orchestration logic into tested scripts or actions.
 - Preserve existing production boundaries while reducing duplicated code.
 - Run the narrowest relevant checks first, then the repository-level validation required by the changed paths.
+
+## Pages read model design
+
+- Prefer Worker generation triggered by successful source ingestion for normal publication. Use Actions for deployment, backfill, repair, and recovery rather than as the primary update path.
+- Deduplicate unchanged inputs before D1 work; prefer bounded delta reads and writes over repeated full scans.
+- Publish generated models from memory when available instead of reading the same model back from D1.
+- Keep publication retries durable and prevent older observations from replacing newer data. Describe actual collection and cache latency instead of promising instantaneous updates.

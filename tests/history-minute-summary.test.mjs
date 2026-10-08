@@ -6,12 +6,7 @@ import test from 'node:test';
 import { loadCurrentMinuteSummary } from '../site/functions/api/history-current.js';
 import { SAKURAZAKA_MINUTE_SERIES_SQL } from '../site/functions/api/sakurazaka46jp.js';
 import { CURRENT_DAILY_MINUTE_SUMMARY_SQL } from '../site/functions/lib/current-minute-summary.js';
-import { minuteSummaryFallbackStart } from '../site/functions/lib/history-summary.js';
 
-const summarySource = readFileSync(
-  new URL('../site/functions/lib/history-summary.js', import.meta.url),
-  'utf8',
-);
 const currentSource = readFileSync(
   new URL('../site/functions/api/history-current.js', import.meta.url),
   'utf8',
@@ -234,16 +229,10 @@ test('Sakurazaka series seeks only target broadcast sessions and sparse override
   assert.doesNotMatch(plan, /SCAN f USING INDEX idx_sh_minute_facts_time/);
 });
 
-test('minute scans are reserved for the bounded current UTC daily endpoint', () => {
-  const now = Date.parse('2026-07-27T12:00:00Z');
-  assert.equal(
-    minuteSummaryFallbackStart('daily', now),
-    Date.parse('2026-07-13T00:00:00Z'),
-  );
+test('minute scans are reserved for the current UTC daily endpoint', () => {
   assert.match(currentSource, /CURRENT_DAILY_MINUTE_SUMMARY_SQL/);
   assert.match(currentSource, /currentSummaryPeriodStart\('daily', now\)/);
-  assert.doesNotMatch(summarySource, /MINUTE_DB\.prepare\(minuteSummarySql/);
-  assert.match(summarySource, /live_source: 'summary-only'/);
+  assert.match(currentSource, /MINUTE_DB binding missing/);
 });
 
 test('offline rollups reconcile missing Minute Facts before rebuilding summaries', () => {

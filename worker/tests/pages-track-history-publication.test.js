@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { runPagesReadModelActions } from '../scripts/run-pages-read-model-actions.mjs';
 import {
   advanceTrackHistoryPublication,
   initializeTrackHistoryPublication,
@@ -156,26 +154,4 @@ test('explicit split cycle marks an R2 publication completed inline', async () =
   assert.equal(result.publication.published, true);
   assert.equal(stage.published, true);
   assert.equal(stage.publication.phase, 'published');
-});
-
-test('scheduled Actions ignore track-history publication recovery hooks', async () => {
-  const runtime = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
-  let calls = 0;
-  const result = await runPagesReadModelActions({
-    startedAt: CYCLE_START + 19 * 60_000,
-    deadlineMs: CYCLE_START + 30 * 60_000,
-    now: () => CYCLE_START + 19 * 60_000,
-    maxSteps: 3,
-    env: { MINUTE_DB: {}, DB: {}, BUDDIES_DB: {}, OTHER_DB: {} },
-    runTrackHistoryStep: async () => { calls += 1; },
-    materializeVariant: async (variant) => ({ key: variant.key }),
-  });
-
-  assert.equal(calls, 0);
-  assert.equal(result.track_history_steps, 0);
-  assert.equal(result.track_history_result.reason, 'track-history-read-model-disabled');
-  assert.deepEqual(result.published.map(({ key }) => key), ['dashboard']);
-  assert.equal(runtime.queues.consumers.some(({ queue }) => queue === 'stationhead-pages-read-model-publication'), false);
-  assert.equal(runtime.queues.producers.some(({ binding }) => binding === 'PAGES_READ_MODEL_QUEUE'), false);
-  assert.equal(runtime.triggers, undefined);
 });

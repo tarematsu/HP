@@ -5,7 +5,7 @@ import {
   continueAmazon100kScan,
   monitorAmazonTop500,
 } from './amazon-music-rank-monitor.js';
-import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
+import { pagesR2ResponseKey } from './pages-response-r2.js';
 
 export const AMAZON_MUSIC_PIPELINE_STATE_KEY = 'amazon-music/rank-monitor/pipeline.json';
 const AMAZON_MUSIC_READ_MODEL_KEY = 'amazon-music/read-model/latest.json';
@@ -219,7 +219,7 @@ async function publishDeepProgress(env, deepState, observedAt, { resetRanks = fa
 
   await putJson(r2, AMAZON_MUSIC_READ_MODEL_KEY, model);
   const body = JSON.stringify({ ok: true, ...model });
-  const objectKey = pagesActionsR2ResponseKey(AMAZON_MUSIC_PAGES_MODEL_KEY);
+  const objectKey = pagesR2ResponseKey(AMAZON_MUSIC_PAGES_MODEL_KEY);
   if (!objectKey) throw new Error('Amazon Music public read-model key is unavailable');
   await putJson(r2, objectKey, {
     version: 1,

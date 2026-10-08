@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const historyApi = readFileSync(new URL('../functions/api/history.js', import.meta.url), 'utf8');
+const historyApi = readFileSync(new URL('../../packages/sh-shared/broadcast-history.mjs', import.meta.url), 'utf8');
 const historyMain = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const table = readFileSync(new URL('../public/history/history-broadcast-table.js', import.meta.url), 'utf8');
 const partyUi = readFileSync(new URL('../public/official-listening-party-ui.js', import.meta.url), 'utf8');
@@ -36,7 +36,7 @@ test('official listening-party table renders final fields directly without hidde
 test('official listening-party chart no longer fetches or mutates table enrichment data', () => {
   assert.doesNotMatch(chart, /host-history|TABLE_METRICS|enhanceBroadcastTable|loadHostSessions|scheduleTableEnhance/);
   assert.doesNotMatch(chart, /getElementById\('thead'\)|getElementById\('tbody'\)/);
-  assert.match(chart, /fetch\(`\/api\/sakurazaka46jp\?/);
+  assert.match(chart, /fetchOfficialBroadcast\(`\/api\/sakurazaka46jp\?/);
 });
 
 test('broadcast runtime URLs remain stable while the response contract is consolidated', () => {

@@ -1,3 +1,4 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -7,8 +8,8 @@ const css = readFileSync(new URL('../public/pages-layout.css', import.meta.url),
 const spotifyShell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
 const musicServiceShell = readFileSync(new URL('../public/music-service-shell.js', import.meta.url), 'utf8');
 const firstWeekShell = readFileSync(new URL('../public/first-week-comparison-shell.js', import.meta.url), 'utf8');
-const playedTracksShell = readFileSync(new URL('../public/played-tracks-shell.js', import.meta.url), 'utf8');
-const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+const playedTracksShell = browserSource('stationhead-channel-shell.js');
+const history = browserSource('history/history-lite.js');
 
 test('one canonical cross-view stylesheet owns dashboard layout and is bundled after feature refinements', () => {
   assert.match(buildScript, /'pages-layout\.css'/);
@@ -21,7 +22,7 @@ test('one canonical cross-view stylesheet owns dashboard layout and is bundled a
 
 test('every dashboard view uses one grid rhythm without per-tab margins', () => {
   assert.match(css, /\.dashboard-view\s*\{[\s\S]*display:\s*grid;[\s\S]*gap:\s*var\(--pages-view-gap\)/);
-  assert.match(css, /\.dashboard-view > \*\s*\{[\s\S]*margin-top:\s*0 !important/);
+  assert.match(css, /\.dashboard-view > \*\s*\{[\s\S]*margin-top:\s*0/);
   assert.match(css, /--pages-view-gap:\s*12px/);
   assert.match(css, /--pages-view-gap-mobile:\s*8px/);
   assert.doesNotMatch(css, /#(?:current|history|likes|spotify|firstWeek|playedTracks)View/);
@@ -39,11 +40,11 @@ test('toolbars controls fitting tables charts and music sections use shared sema
   assert.match(css, /\.view-toolbar\s*\{/);
   assert.match(css, /\.controls\s*\{/);
   assert.match(css, /\.table-wrap\.table-fit-mobile/);
-  assert.match(css, /\.table-fit-mobile > table[\s\S]*table-layout:\s*fixed !important/);
+  assert.match(css, /\.table-fit-mobile > table[\s\S]*table-layout:\s*auto/);
   assert.match(css, /\.chart-fit > :is\(svg, canvas\)/);
   assert.doesNotMatch(firstWeekShell, /view-toolbar first-week-toolbar|data-first-week-metric/);
-  assert.match(playedTracksShell, /dashboardControls/);
-  assert.match(playedTracksShell, /className: 'played-tracks-controls'/);
+  assert.match(playedTracksShell, /role\('played-week'\)/);
+  assert.match(playedTracksShell, /played-tracks-controls/);
   assert.doesNotMatch(playedTracksShell, /view-toolbar played-tracks-toolbar/);
   assert.match(spotifyShell, /musicServiceTable/);
   assert.match(spotifyShell, /wrapClassName: 'table-fit-mobile'/);
@@ -55,13 +56,13 @@ test('toolbars controls fitting tables charts and music sections use shared sema
 });
 
 test('history renderer assigns table meaning classes without injecting layout CSS', () => {
-  assert.match(history, /classList\.toggle\('compact-columns', mode === 'ranking'\)/);
+  assert.doesNotMatch(history, /RANKING_COLUMNS|mode === 'ranking'/);
   assert.match(history, /classList\.toggle\('official-party-table', mode === 'broadcasts'\)/);
   assert.doesNotMatch(history, /createElement\('style'\)|MOBILE_TABLE_STYLE_ID|installMobileTableWidthStyle/);
 });
 
 test('mobile navigation remains one row and shared layout handles wide-table exceptions by class', () => {
-  assert.match(css, /table\.compact-columns:not\(\.all-host-ranking-table\)[\s\S]*min-width:\s*760px !important/);
-  assert.match(css, /table\.all-host-ranking-table\.compact-columns[\s\S]*min-width:\s*980px !important/);
-  assert.match(css, /table\.weekly-ranking-table[\s\S]*min-width:\s*560px !important/);
+  assert.match(css, /table\.compact-columns:not\(\.all-host-ranking-table\)[\s\S]*min-width:\s*760px/);
+  assert.match(css, /table\.all-host-ranking-table\.compact-columns[\s\S]*min-width:\s*980px/);
+  assert.match(css, /table\.weekly-ranking-table[\s\S]*min-width:\s*560px/);
 });

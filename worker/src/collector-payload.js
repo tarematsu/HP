@@ -1,5 +1,9 @@
 import { firstDefined } from './collector-config.js';
 import { trackDisplayTitleParts } from './track-metadata-quality.js';
+import {
+  normalizeStationheadQueue,
+  stationheadQueueStructuralPayload,
+} from './stationhead-queue-normalize.js';
 
 const COMPACT_QUEUE_MARKER = Symbol('compact-queue');
 const QUEUE_STRUCTURAL_PAYLOAD = Symbol.for('stationhead.queue.structural-payload');
@@ -233,111 +237,35 @@ export function attachMinuteFactQueueMetadata(queue, rows = []) {
 export function extractQueue(channel, stationId) {
   const station = channel?.current_station || {};
   const queue = station?.queue || channel?.queue || null;
-  if (!queue) return null;
-  const queueTracks = Array.isArray(queue?.queue_tracks)
-    ? queue.queue_tracks
-    : Array.isArray(queue?.tracks)
-      ? queue.tracks
-      : [];
-  const compactTracks = new Array(queueTracks.length);
-  const structuralTracks = new Array(queueTracks.length);
+  const compactQueue = normalizeStationheadQueue(
+    queue,
+    firstDefined(queue?.station_id, station?.id, stationId),
+    null,
+  );
+  if (!compactQueue) return null;
+
   const likeValues = new Map();
   let identifiableLikes = 0;
   let completeLikes = true;
-
-  for (let position = 0; position < queueTracks.length; position += 1) {
-    const item = queueTracks[position];
-    const track = item?.track || item;
-    const artist = track?.artist || track?.artists?.[0] || {};
-    const album = track?.album || {};
-    const queueTrackId = item?.id ?? null;
-    const stationheadTrackId = track?.id ?? null;
-    const spotifyId = track?.spotify_id ?? null;
-    const deezerId = track?.deezer_id ?? null;
-    const isrc = track?.isrc ?? null;
-    const durationMs = track?.duration ?? null;
-    const previewUrl = track?.preview ?? null;
-    const biteCount = track?.bite_count ?? null;
-    const directTitle = boundedText(track?.title ?? track?.name, 500);
-    const displayTitle = boundedText(track?.display_title ?? track?.displayTitle, 500);
-    const display = trackDisplayTitleParts(displayTitle, directTitle);
-    const directArtist = boundedText(
-      typeof artist === 'string' ? artist : (artist?.name ?? track?.artist_name),
-      500,
-    );
-
-    structuralTracks[position] = {
-      position,
-      queue_track_id: normalizedNumber(queueTrackId),
-      stationhead_track_id: normalizedNumber(stationheadTrackId),
-      spotify_id: normalizedText(spotifyId),
-      deezer_id: normalizedText(deezerId),
-      isrc: normalizedText(isrc),
-      duration_ms: normalizedNumber(durationMs),
-      preview_url: normalizedText(previewUrl),
-    };
-
-    const trackKey = likeTrackKey(isrc, spotifyId);
-    if (trackKey) {
-      identifiableLikes += 1;
-      const likeCount = normalizedNumber(biteCount);
-      if (likeCount == null) completeLikes = false;
-      else likeValues.set(trackKey, likeCount);
-    }
-
-    compactTracks[position] = {
-      position,
-      queue_track_id: queueTrackId,
-      stationhead_track_id: stationheadTrackId,
-      spotify_id: spotifyId,
-      deezer_id: deezerId,
-      isrc,
-      duration_ms: durationMs,
-      preview_url: previewUrl,
-      bite_count: biteCount,
-      title: directTitle || display.title,
-      artist: directArtist || display.artist,
-      album_name: boundedText(album?.name ?? track?.album_name, 500),
-      thumbnail_url: boundedText(
-        track?.thumbnail_url ?? track?.image_url ?? track?.artwork_url ?? track?.album_art_url
-          ?? album?.thumbnail_url ?? album?.image_url ?? album?.artwork_url
-          ?? album?.images?.[0]?.url
-          ?? item?.thumbnail_url ?? item?.image_url ?? item?.artwork_url ?? item?.album_art_url,
-        2_048,
-      ),
-      ...(displayTitle ? { display_title: displayTitle } : {}),
-    };
+  for (const track of compactQueue.tracks) {
+    const trackKey = likeTrackKey(track?.isrc, track?.spotify_id);
+    if (!trackKey) continue;
+    identifiableLikes += 1;
+    const likeCount = normalizedNumber(track?.bite_count);
+    if (likeCount == null) completeLikes = false;
+    else likeValues.set(trackKey, likeCount);
   }
 
-  const likePayload = new Array(likeValues.size);
-  let likeIndex = 0;
-  for (const [trackKey, likeCount] of likeValues) {
-    likePayload[likeIndex] = { track_key: trackKey, like_count: likeCount };
-    likeIndex += 1;
-  }
-  likePayload.sort((left, right) => left.track_key.localeCompare(right.track_key));
-
-  const compactQueue = {
-    station_id: firstDefined(queue?.station_id, station?.id, stationId),
-    queue_id: queue?.id ?? null,
-    start_time: queue?.start_time ?? null,
-    is_paused: queue?.is_paused ?? null,
-    tracks: compactTracks,
-  };
+  const likePayload = [...likeValues.entries()]
+    .map(([trackKey, likeCount]) => ({ track_key: trackKey, like_count: likeCount }))
+    .sort((left, right) => left.track_key.localeCompare(right.track_key));
   const likeAnalysis = {
     complete: identifiableLikes === 0 || completeLikes,
     payload: likePayload,
   };
-  const structuralPayload = {
-    station_id: normalizedNumber(compactQueue.station_id),
-    queue_id: normalizedNumber(compactQueue.queue_id),
-    start_time: normalizedNumber(compactQueue.start_time),
-    is_paused: normalizedBoolean(compactQueue.is_paused),
-    tracks: structuralTracks,
-  };
   Object.defineProperties(compactQueue, {
     [COMPACT_QUEUE_MARKER]: { value: true },
-    [QUEUE_STRUCTURAL_PAYLOAD]: { value: structuralPayload },
+    [QUEUE_STRUCTURAL_PAYLOAD]: { value: stationheadQueueStructuralPayload(compactQueue) },
   });
   Object.defineProperty(compactQueue.tracks, QUEUE_LIKE_ANALYSIS, { value: likeAnalysis });
   return compactQueue;

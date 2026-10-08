@@ -24,7 +24,7 @@ test('dashboard is published directly from committed live minute facts', () => {
   assert.match(fastStore, /await publishCurrentDashboard\(env, input, fact\)/);
   assert.match(livePublisher, /export async function publishDashboardFromMinuteFact/);
   assert.match(livePublisher, /pages_dashboard_live_published/);
-  assert.match(livePublisher, /bucket\.put\(DASHBOARD_KEY/);
+  assert.match(livePublisher, /publishStationheadReadModel/);
 });
 
 test('dashboard no longer depends on GitHub Actions or a dispatch watchdog', () => {

@@ -33,11 +33,12 @@ const dashboardEntry = readFileSync(
   'utf8',
 );
 
-test('materialized Pages APIs fail closed and mask the legacy dashboard DB', () => {
+test('materialized Pages APIs fail closed without a legacy dashboard DB path', () => {
   assert.match(middleware, /x-materialized-required/);
   assert.doesNotMatch(middleware, /prebuilt \|\| await context\.next\(\)/);
-  assert.match(dashboardEntry, /Object\.defineProperty\(env, 'DB'/);
-  assert.match(dashboardEntry, /value: null/);
+  assert.match(dashboardEntry, /proxyStationheadMaterializedReadModel/);
+  assert.match(dashboardEntry, /'buddies'/);
+  assert.doesNotMatch(dashboardEntry, /Object\.defineProperty\(env, 'DB'|factsOnlyDashboardContext|dashboardCoreContext|MINUTE_DB|OTHER_DB|\.prepare\(/);
 });
 
 test('track history uses incrementally materialized queue starts', () => {

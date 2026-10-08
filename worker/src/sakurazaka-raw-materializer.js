@@ -1,4 +1,4 @@
-import { persistHostEvent } from '../../site/functions/lib/host-ingest.js';
+import { persistHostEvent } from '../../packages/sh-shared/host-ingest.mjs';
 import {
   finite,
   identity,

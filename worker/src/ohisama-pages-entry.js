@@ -1,5 +1,5 @@
-import { runOptimizedOhisamaCollectorScheduled } from './ohisama-collector-optimized.js';
-import { registerOhisamaFollowerTarget } from './ohisama-collector-entry.js';
+import { runOhisamaCollectorScheduled } from './ohisama-collector.js';
+import { registerOhisamaFollowerTarget } from './ohisama-collector-shared.js';
 import { collectInitialStationheadFollowers } from './stationhead-initial-followers.js';
 import { cachedOhisamaFollowerMetadataRegistrar } from './ohisama-follower-target-cache.js';
 import { withOhisamaFollowerMembership } from './ohisama-follower-membership.js';
@@ -8,7 +8,8 @@ import {
   loadOhisamaPublicationSnapshot,
   mergeOhisamaPlaybackReadModelWithCadence,
 } from './ohisama-publication-cadence.js';
-import { refreshOptimizedOhisamaReadModel } from './ohisama-read-model-optimized.js';
+import { refreshOhisamaReadModel } from './ohisama-read-model.js';
+import { coordinateOhisamaCollection, clearOhisamaPriorityRetry } from './stationhead-collection-priority.js';
 
 export const OHISAMA_FOLLOWER_EXCLUDED_HANDLES = Object.freeze(['46fm', 'buddy46']);
 const OHISAMA_FOLLOWER_EXCLUDED_HANDLE_SET = new Set(OHISAMA_FOLLOWER_EXCLUDED_HANDLES);
@@ -62,35 +63,34 @@ export function ohisamaFollowerRegistrar(dependencies = {}) {
   });
 }
 
-function capturingFetch(fetchImpl, onChannelPayload) {
-  return async (input, init) => {
-    const response = await fetchImpl(input, init);
-    const url = typeof input === 'string' ? input : input?.url;
-    if (response?.ok && String(url || '').includes('/channels/alias/')) {
-      try {
-        const payload = await response.clone().json();
-        onChannelPayload(payload);
-      } catch {}
-    }
-    return response;
-  };
+export function requireOhisamaReadModelPublication(publication) {
+  if (publication?.published !== true && publication?.reason !== 'stale-observation') {
+    throw new Error(`Ohisama read model publication failed: ${publication?.reason || 'unavailable'}`);
+  }
+  return publication;
 }
 
 export async function runOhisamaPagesScheduled(controller, env, ctx, dependencies = {}) {
+  const scheduledAt = Number(controller?.scheduledTime ?? dependencies.now?.() ?? Date.now());
+  const priority = await coordinateOhisamaCollection(env, scheduledAt, dependencies.priority || {});
+  if (priority.skipped) {
+    console.info(JSON.stringify({ event: 'ohisama_collection_yielded', scheduled_at: scheduledAt, reason: priority.reason }));
+    return { ...priority, collected: false };
+  }
   const registerFollowerTarget = ohisamaFollowerRegistrar(dependencies);
   let channelPayload = null;
-  const fetchImpl = dependencies.fetch || fetch;
-  const result = await runOptimizedOhisamaCollectorScheduled(
+  const result = await runOhisamaCollectorScheduled(
     controller,
     env,
     ctx,
     {
       ...dependencies,
-      fetch: capturingFetch(fetchImpl, (payload) => { channelPayload = payload; }),
+      onChannelPayload: (payload) => { channelPayload = payload; },
       registerFollowerTarget,
     },
   );
   if (!result?.collected) return result;
+  await clearOhisamaPriorityRetry(env, scheduledAt).catch(() => {});
 
   const previousReadModel = await loadOhisamaPublicationSnapshot(env?.PAGES_RESPONSE_R2)
     .catch(() => null);
@@ -98,13 +98,22 @@ export async function runOhisamaPagesScheduled(controller, env, ctx, dependencie
   let playback = null;
   if (channelPayload) {
     try {
-      playback = await captureOhisamaPlayback(env, channelPayload, result, result.observed_at);
-      console.log(JSON.stringify({
-        event: 'ohisama_playback_captured',
-        observed_at: result.observed_at,
-        queue_items: playback.queue?.length || 0,
-        transitions_written: playback.transitions_written || 0,
-      }));
+      const captured = await captureOhisamaPlayback(env, channelPayload, result, result.observed_at);
+      if (captured?.skipped) {
+        console.warn(JSON.stringify({
+          event: 'ohisama_playback_skipped',
+          observed_at: result.observed_at,
+          reason: captured.reason || 'unknown',
+        }));
+      } else {
+        playback = captured;
+        console.log(JSON.stringify({
+          event: 'ohisama_playback_captured',
+          observed_at: result.observed_at,
+          queue_items: playback.queue?.length || 0,
+          transitions_written: playback.transitions_written || 0,
+        }));
+      }
     } catch (error) {
       console.error(JSON.stringify({
         event: 'ohisama_playback_capture_failed',
@@ -115,15 +124,33 @@ export async function runOhisamaPagesScheduled(controller, env, ctx, dependencie
   }
 
   try {
-    const generated = await refreshOptimizedOhisamaReadModel(env, result, result.observed_at);
+    const generated = await refreshOhisamaReadModel(env, result, result.observed_at);
+    if (generated.skipped) {
+      console.info(JSON.stringify({
+        event: 'ohisama_pages_read_model_skipped',
+        observed_at: result.observed_at,
+        reason: generated.reason,
+      }));
+      return {
+        ...result,
+        read_model: {
+          published: false,
+          skipped: true,
+          reason: generated.reason,
+          updated_at: generated.updated_at,
+        },
+      };
+    }
     const { payload: currentReadModel, ...readModel } = generated;
-    const publication = await mergeOhisamaPlaybackReadModelWithCadence(
-      env,
-      playback,
-      result,
-      result.observed_at,
-      previousReadModel,
-      currentReadModel,
+    const publication = requireOhisamaReadModelPublication(
+      await mergeOhisamaPlaybackReadModelWithCadence(
+        env,
+        playback,
+        result,
+        result.observed_at,
+        previousReadModel,
+        currentReadModel,
+      ),
     );
     const playbackPublished = Boolean(playback) && publication.published === true;
     console.log(JSON.stringify({
@@ -154,10 +181,9 @@ export async function runOhisamaPagesScheduled(controller, env, ctx, dependencie
       observed_at: result.observed_at,
       error: detail,
     }));
-    return {
-      ...result,
-      read_model: { published: false, error: detail },
-    };
+    // A successful collection is not a successful scheduled publication.
+    // Surface the failure to the dispatcher/CI rather than acknowledging it.
+    throw error;
   }
 }
 

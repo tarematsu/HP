@@ -1,5 +1,5 @@
 import { CURRENT_DAILY_MINUTE_SUMMARY_SQL } from '../lib/current-minute-summary.js';
-import { currentSummaryPeriodStart } from '../lib/history-summary.js';
+import { currentSummaryPeriodStart } from '../../../packages/sh-shared/history-summary-contract.mjs';
 import {
   applySummaryCompleteness,
   currentPeriodKey,

@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { canonicalizeAppleMusicPlaylistPresentation } from '../src/apple-music-playlist-canonical-presentation.js';
 import { APPLE_MUSIC_PLAYLIST_PAGES_MODEL_KEY } from '../src/apple-music-playlist-collector.js';
-import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 
 const LATEST_KEY = 'apple-music/playlists/latest.json';
 
@@ -181,7 +181,7 @@ test('Apple Music playlist presentation canonicalizes provider titles and resolv
   assert.deepEqual(stored.tracks.map((track) => track.key).sort(), ['track:101', 'track:202']);
   assert.equal(stored.canonical_presentation_version, 2);
 
-  const publicKey = pagesActionsR2ResponseKey(APPLE_MUSIC_PLAYLIST_PAGES_MODEL_KEY);
+  const publicKey = pagesR2ResponseKey(APPLE_MUSIC_PLAYLIST_PAGES_MODEL_KEY);
   const envelope = JSON.parse(r2.values.get(publicKey));
   const publicModel = JSON.parse(envelope.body);
   assert.equal(publicModel.playlists[0].tracks[0].title, '五月雨よ');

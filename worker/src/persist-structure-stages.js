@@ -1,12 +1,12 @@
-import { bool, num, rawJson, text } from '../../site/functions/lib/api-utils.js';
-import { prepared, runPreparedD1Batches } from '../../site/functions/lib/d1-batch.js';
+import { bool, num, rawJson, text } from '../../packages/sh-shared/api-utils.mjs';
+import { prepared, runPreparedD1Batches } from '../../packages/sh-shared/d1-batch.mjs';
 import {
   normalizedTrackIsrc,
   normalizedTrackSpotifyId,
   queueItemsToWriteLean,
   queueStructuralPayload,
-} from '../../site/functions/lib/d1-lean-ingest.js';
-import { claimWrite, payloadHash, sourceIdentity } from '../../site/functions/lib/ingest-claim.js';
+} from '../../packages/sh-shared/d1-lean-ingest.mjs';
+import { claimWrite, payloadHash, sourceIdentity } from '../../packages/sh-shared/ingest-claim.mjs';
 
 const QUERY_CHUNK = 80;
 const VARIABLE_LIMIT = 90;

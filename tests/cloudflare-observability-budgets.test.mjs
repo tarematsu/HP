@@ -63,7 +63,6 @@ test('unified observability runs account-wide post-deploy, collection, and daily
     'DAILY_D1_WRITE_BUDGET: "100000"',
     'DAILY_QUEUE_BUDGET: "10000"',
     'CLOUDFLARE_RUNTIME_WORKER: sh-runtime-orchestrator',
-    'CLOUDFLARE_KV_BINDINGS: PAGES_RESPONSE_KV',
     'CLOUDFLARE_DO_BINDINGS: BUDDIES_COLLECTOR_COORDINATOR,SCHEDULER_COORDINATOR,DEVICE_SYNC_COORDINATOR,RADAR_BUNDLE_COORDINATOR,VIDEO_FEED_COORDINATOR',
     'audit-cloudflare-d1-history.py',
     'd1-daily-history.log',
@@ -90,6 +89,9 @@ test('unified observability runs account-wide post-deploy, collection, and daily
     'live-tail/',
   ]);
   expectNone(workflow, [
+    'PAGES_RESPONSE_KV_NAMESPACE_ID',
+    'CLOUDFLARE_KV_BINDINGS:',
+    'PAGES_RESPONSE_KV',
     'homepanel-video',
     'hp/video/wrangler.jsonc',
     'publish-homepanel-observability-status.mjs',

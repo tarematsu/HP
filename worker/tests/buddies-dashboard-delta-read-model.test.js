@@ -6,10 +6,10 @@ import {
   publishDashboardFromMinuteFact,
 } from '../src/pages-dashboard-live-publisher.js';
 import { BUDDIES_PLAYBACK_HOT_STATE_KEY } from '../src/buddies-playback-state.js';
-import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 
 const DAY_MS = 24 * 60 * 60_000;
-const DASHBOARD_KEY = pagesActionsR2ResponseKey('dashboard');
+const DASHBOARD_KEY = pagesR2ResponseKey('dashboard');
 
 class FakeR2 {
   constructor(initial = new Map()) {
@@ -295,7 +295,6 @@ test('Buddies dashboard reuses playback hot-state canonical ids before D1 lookup
   assert.equal(result.mode, 'incremental');
   assert.equal(d1Reads, 0);
   assert.deepEqual(r2.gets, [BUDDIES_DASHBOARD_HOT_STATE_KEY, BUDDIES_PLAYBACK_HOT_STATE_KEY]);
-  const envelope = JSON.parse(r2.values.get(DASHBOARD_KEY));
-  const payload = JSON.parse(envelope.body);
+  const payload = JSON.parse(r2.values.get(DASHBOARD_KEY));
   assert.equal(payload.queue[0].track_id, 77);
 });

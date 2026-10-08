@@ -1,9 +1,13 @@
 import { runSpotifyArtistChartScheduled } from './spotify-artist-chart-collector.js';
 import { runSpotifyScheduledWork } from './spotify-playcount-scheduled-run.js';
+import {
+  SPOTIFY_ARTIST_CHART_CRON,
+  SPOTIFY_PLAYCOUNT_CRON,
+} from './scheduled-crons.js';
+
+export { SPOTIFY_ARTIST_CHART_CRON, SPOTIFY_PLAYCOUNT_CRON };
 
 export const SPOTIFY_SCHEDULED_DISPATCH_TYPE = 'spotify-scheduled-dispatch';
-export const SPOTIFY_PLAYCOUNT_CRON = '0 * * * *';
-export const SPOTIFY_ARTIST_CHART_CRON = '20 22 * * *';
 const ALLOWED_CRONS = new Set([SPOTIFY_PLAYCOUNT_CRON, SPOTIFY_ARTIST_CHART_CRON]);
 
 function normalizedScheduledTime(value) {

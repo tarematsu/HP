@@ -1,20 +1,19 @@
+import { loadDashboardJson } from './dashboard-data-client.js?v=20261005.2';
 import { safeInteger as integer } from './dashboard-ui-common.js?v=20261004.1';
-import {
-  MUSIC_ARTIST_LABELS,
-  loadMusicServiceReadModel,
-} from './music-service-runtime-common.js?v=20261004.2';
 
 const STATIONHEAD_HANDLES = Object.freeze([
   'sakuramankai',
   'sakuramankai2',
   'sakurazaka46jp',
   'nogizaka46smej',
+  'nogifan1ch',
 ]);
 const STATIONHEAD_MEMBERSHIPS = Object.freeze({
   sakuramankai: Object.freeze({ affiliation: 'Buddies', group: 'sakurazaka46' }),
   sakuramankai2: Object.freeze({ affiliation: 'Buddies', group: 'sakurazaka46' }),
   sakurazaka46jp: Object.freeze({ affiliation: '櫻坂46公式', group: 'sakurazaka46' }),
   nogizaka46smej: Object.freeze({ affiliation: '乃木坂46公式', group: 'nogizaka46' }),
+  nogifan1ch: Object.freeze({ affiliation: 'Nogizaka', group: 'nogizaka46' }),
 });
 const GROUP_COLORS = Object.freeze({
   sakurazaka46: '#f3a6c8',
@@ -22,13 +21,6 @@ const GROUP_COLORS = Object.freeze({
   hinatazaka46: '#9ecff3',
 });
 const FAN_DASHES = Object.freeze([[10, 6], [2, 5], [14, 4, 3, 4]]);
-const MUSIC_SERVICES = Object.freeze([
-  ['youtube_music', 'YouTube Music'],
-  ['kkbox', 'KKBOX'],
-  ['qq_music', 'QQ音乐'],
-  ['kugou_music', '酷狗音乐'],
-]);
-const cachedPayloads = new Map();
 
 function validDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
@@ -55,6 +47,7 @@ function offsetDate(value, days) {
 }
 
 function stationheadMembership(payload, row, handle) {
+  if (handle === 'nogifan1ch') return STATIONHEAD_MEMBERSHIPS.nogifan1ch;
   const fallback = STATIONHEAD_MEMBERSHIPS[handle] || {};
   const supplied = payload?.memberships?.[handle] || {};
   return {
@@ -132,117 +125,11 @@ export function normalizeStationheadFollowers(payload = {}) {
   };
 }
 
-function artistName(row) {
-  const key = String(row?.canonical_artist || '').trim();
-  return String(row?.display_name || MUSIC_ARTIST_LABELS[key] || key || '-').trim();
-}
-
-function streamingAccount(service, serviceLabel, row, index) {
-  const value = nonNegative(row?.followers);
-  if (value == null) return null;
-  const group = normalizedId(row?.canonical_artist);
-  const id = `${service}:${group || normalizedId(row?.service_artist_id) || index}`;
-  return {
-    id,
-    label: artistName(row),
-    affiliation: serviceLabel,
-    group,
-    value,
-    day_delta: null,
-    week_delta: null,
-    color: GROUP_COLORS[group] || '#6f7886',
-    dash: [],
-    date: validDate(row?.snapshot_date) ? row.snapshot_date : '',
-  };
-}
-
-export async function loadStreamingFollowers() {
-  const settled = await Promise.allSettled(MUSIC_SERVICES.map(async ([service, label]) => ({
-    service,
-    label,
-    payload: await loadMusicServiceReadModel(service),
-  })));
-  const successful = settled.filter((result) => result.status === 'fulfilled').map((result) => result.value);
-  if (!successful.length) throw new Error('music streaming follower read models unavailable');
-  const accounts = successful.flatMap(({ service, label, payload }) =>
-    (Array.isArray(payload?.artists) ? payload.artists : [])
-      .map((row, index) => streamingAccount(service, label, row, index))
-      .filter(Boolean));
-  const dates = [...new Set(accounts.map((account) => account.date).filter(validDate))].sort();
-  const rows = dates.map((date) => ({
-    date,
-    values: Object.fromEntries(accounts
-      .filter((account) => account.date === date && account.value != null)
-      .map((account) => [account.id, account.value])),
-  })).filter((row) => Object.keys(row.values).length);
-  const updatedAt = Math.max(0, ...successful.flatMap(({ payload }) => [
-    timestamp(payload?.updated_at) || 0,
-    timestamp(payload?.source_updated_at) || 0,
-    ...(Array.isArray(payload?.artists) ? payload.artists.map((artist) => timestamp(artist?.observed_at) || 0) : []),
-  ]));
-  const failed = settled.length - successful.length;
-  const noFollowerMetric = successful.length && !accounts.length;
-  return {
-    source: 'music-streaming',
-    updated_at: updatedAt || null,
-    cadence: 'サービスごとの更新周期',
-    metric_label: 'フォロワー数',
-    chart_title: '音楽ストリーミングサービス フォロワー推移',
-    table_title: '音楽ストリーミングサービス フォロワー比較',
-    columns: ['アーティスト', 'サービス', 'フォロワー数', '前日比', '1週間前比'],
-    accounts: accounts.sort((a, b) => a.affiliation.localeCompare(b.affiliation, 'ja')
-      || a.label.localeCompare(b.label, 'ja')),
-    rows,
-    notice: failed
-      ? `${failed}サービスのリードモデルを取得できませんでした。取得できたサービスのみ表示しています。`
-      : noFollowerMetric
-        ? '現在の対応サービスのリードモデルにはフォロワー数がありません。'
-        : '',
-    chart_enabled: rows.length > 1,
-  };
-}
-
 async function stationheadPayload({ force = false } = {}) {
-  const key = 'followers:stationhead';
-  if (force) cachedPayloads.delete(key);
-  if (!cachedPayloads.has(key)) {
-    const promise = fetch('/api/followers', {
-      headers: { accept: 'application/json' },
-      cache: force ? 'reload' : 'default',
-    }).then(async (response) => {
-      const payload = await response.json().catch(() => null);
-      if (!response.ok || !payload?.ok) throw new Error(payload?.error || `followers HTTP ${response.status}`);
-      return normalizeStationheadFollowers(payload);
-    }).catch((error) => {
-      cachedPayloads.delete(key);
-      throw error;
-    });
-    cachedPayloads.set(key, promise);
-  }
-  return cachedPayloads.get(key);
+  return normalizeStationheadFollowers(await loadDashboardJson('/api/followers', { force }));
 }
 
-async function streamingPayload({ force = false } = {}) {
-  const key = 'followers:music-streaming';
-  if (force) cachedPayloads.delete(key);
-  if (!cachedPayloads.has(key)) {
-    const promise = loadStreamingFollowers().catch((error) => {
-      cachedPayloads.delete(key);
-      throw error;
-    });
-    cachedPayloads.set(key, promise);
-  }
-  return cachedPayloads.get(key);
-}
-
-const MODELS = Object.freeze({
-  stationhead: () => ({ source: 'stationhead', load: stationheadPayload }),
-  'music-streaming': () => ({ source: 'music-streaming', load: streamingPayload }),
-});
-const instances = new Map();
-
-export function followersReadModel(source = 'stationhead') {
-  const key = Object.hasOwn(MODELS, source) ? source : 'stationhead';
-  if (!instances.has(key)) instances.set(key, MODELS[key]());
-  return instances.get(key);
+const model = { source: 'stationhead', load: stationheadPayload };
+export function followersReadModel() {
+  return model;
 }

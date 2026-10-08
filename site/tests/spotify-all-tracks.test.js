@@ -13,7 +13,7 @@ test('Spotify track list exposes an all-groups filter before the three Sakamichi
   assert.match(shell, /value: 'nogizaka46', label: '乃木坂46'/);
   assert.match(shell, /value: 'hinatazaka46', label: '日向坂46'/);
   assert.match(shell, /installSpotifyAllTracksFilter\(\)/);
-  assert.match(runtime, /fetch\('\/api\/spotify-playcounts\?artists=sakamichi'\)/);
+  assert.match(runtime, /loadSpotifyReadModel/);
   assert.match(runtime, /坂道3グループの再生数一覧/);
 });
 

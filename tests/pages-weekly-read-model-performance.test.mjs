@@ -46,39 +46,46 @@ test('weekly leaderboard read model materializes missing weeks and fandom metada
   assert.equal(gap.fandom_label, '櫻坂46(ファンダム)');
 });
 
-test('Pages leaderboard reads only the weekly materialized model', () => {
+test('Pages leaderboard reads only the R2 materialized model', () => {
   const source = readFileSync(
     new URL('../site/functions/lib/history-ranking.js', import.meta.url),
     'utf8',
   );
-  assert.match(source, /FROM sh_weekly_ranking_read_model/);
-  assert.match(source, /read_path: 'weekly-ranking-read-model'/);
-  assert.doesNotMatch(source, /FROM sh_channel_rankings|FROM sh_channel_fandoms|summaryLoader\s*\(/);
+  assert.match(source, /fetchPagesReadModel/);
+  assert.match(source, /fetchPagesReadModel\(env, LEADERBOARD_MODEL_KEY\)/);
+  assert.match(source, /read_path: 'leaderboard-r2-read-model'/);
+  assert.doesNotMatch(source, /FROM sh_weekly_ranking_read_model|FROM sh_channel_rankings|FROM sh_channel_fandoms|summaryLoader\s*\(/);
 });
 
 test('weekly leaderboard producer reads only the three Sakamichi hosts', () => {
   const source = readFileSync(
-    new URL('../worker/scripts/materialize-weekly-ranking-read-model.mjs', import.meta.url),
+    new URL('../worker/src/weekly-ranking-materializer.js', import.meta.url),
+    'utf8',
+  );
+  const hosts = readFileSync(
+    new URL('../packages/sh-shared/stationhead-ranking-hosts.mjs', import.meta.url),
     'utf8',
   );
   assert.match(source, /lower\(trim\(channel_name\)\) IN \('sakuramankai','sakurazaka46jp','nogizaka46smej'\)/);
   assert.match(source, /lower\(trim\(host_name\)\) IN \('sakuramankai','sakurazaka46jp','nogizaka46smej'\)/);
-  assert.match(source, /\['nogizaka46smej', '乃木坂46'\]/);
+  assert.match(source, /stationheadChannelNameForHost/);
+  assert.match(hosts, /\['nogizaka46smej', '乃木坂46'\]/);
 });
 
-test('weekly leaderboard read model refresh is chained to import and uses a compact source revision', () => {
-  const workflow = readFileSync(
-    new URL('../.github/workflows/materialize-weekly-ranking-read-model.yml', import.meta.url),
+test('weekly leaderboard publication is Worker-owned and uses compact revision materialization', () => {
+  const worker = readFileSync(
+    new URL('../worker/src/leaderboard-refresh.js', import.meta.url),
     'utf8',
   );
   const gate = readFileSync(
     new URL('../worker/scripts/materialize-weekly-ranking-read-model-if-stale.mjs', import.meta.url),
     'utf8',
   );
-  assert.doesNotMatch(workflow, /cron:/);
-  assert.match(workflow, /workflow_run:/);
-  assert.match(workflow, /Stationhead leaderboard probe report/);
-  assert.match(workflow, /materialize-weekly-ranking-read-model-if-stale\.mjs/);
+  assert.match(worker, /materializeWeeklyRankingReadModel/);
+  assert.match(worker, /publishReadModelR2/);
+  assert.match(worker, /message\.body\?\.type !== 'stationhead-leaderboard-refresh'/);
+  assert.match(worker, /consumeLeaderboardRefresh/);
+  assert.doesNotMatch(worker, /wrangler|r2 object put|publish-stationhead-leaderboard-read-model/);
   assert.match(gate, /sh_read_model_revision/);
   assert.match(gate, /sh_weekly_ranking_revision_state/);
   assert.doesNotMatch(gate, /MAX\(imported_at\)|MAX\(verified_at\)/);

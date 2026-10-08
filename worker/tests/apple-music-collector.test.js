@@ -16,7 +16,7 @@ import {
   normalizeAppleMusicTopSongs,
   resolveAppleMusicTrackIds,
 } from '../src/apple-music-collector.js';
-import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 
 class FakeR2 {
   constructor() {
@@ -363,7 +363,7 @@ test('hourly collector writes only on changes and reuses R2 track mapping withou
   assert.equal(third.d1_reads, 0);
   assert.equal(third.d1_writes, 0);
 
-  const publicKey = pagesActionsR2ResponseKey(APPLE_MUSIC_PAGES_MODEL_KEY);
+  const publicKey = pagesR2ResponseKey(APPLE_MUSIC_PAGES_MODEL_KEY);
   const envelope = JSON.parse(r2.values.get(publicKey));
   const payload = JSON.parse(envelope.body);
   assert.equal(payload.ok, true);

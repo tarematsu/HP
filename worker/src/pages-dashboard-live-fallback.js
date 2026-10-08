@@ -1,11 +1,16 @@
-import { directFiveMinuteStreamHistory } from '../../site/functions/lib/dashboard-chart-support.js';
-import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
+import { directFiveMinuteStreamHistory } from '../../packages/sh-shared/dashboard-chart-support.mjs';
+import { requireStationheadSourceProfile } from '../../packages/sh-shared/stationhead-source.mjs';
+import {
+  loadStationheadReadModelState,
+  publishStationheadReadModel,
+  saveStationheadReadModelHotState,
+} from './stationhead-read-model-state.js';
 
 const FIVE_MINUTES_MS = 5 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
-const DASHBOARD_KEY = pagesActionsR2ResponseKey('dashboard');
-const DASHBOARD_CADENCE_SECONDS = 5 * 60;
-const HOT_STATE_KEY = 'stationhead/buddies/dashboard-hot-state.json';
+const BUDDIES_PROFILE = requireStationheadSourceProfile('buddies');
+const DASHBOARD_MODEL_KEY = BUDDIES_PROFILE.modelKey;
+const HOT_STATE_KEY = BUDDIES_PROFILE.readModelHotKey;
 
 function finite(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -23,33 +28,12 @@ function bucketAt(value) {
   return parsed == null ? null : Math.floor(parsed / FIVE_MINUTES_MS) * FIVE_MINUTES_MS;
 }
 
-async function readJson(bucket, key) {
-  if (!key || typeof bucket?.get !== 'function') return null;
-  try {
-    const object = await bucket.get(key);
-    if (!object) return null;
-    if (typeof object.json === 'function') return await object.json();
-    if (typeof object.text === 'function') return JSON.parse(await object.text());
-  } catch {
-    // The fallback must never depend on a readable previous object.
-  }
-  return null;
-}
-
-function payloadFromEnvelope(envelope) {
-  if (Number(envelope?.version) !== 1) return null;
-  try {
-    const payload = typeof envelope?.body === 'string' ? JSON.parse(envelope.body) : envelope?.body;
-    return payload?.ok ? payload : null;
-  } catch {
-    return null;
-  }
-}
-
 async function loadBase(bucket) {
-  const hot = await readJson(bucket, HOT_STATE_KEY);
-  if (Number(hot?.version) === 1 && hot?.payload?.ok) return hot.payload;
-  return payloadFromEnvelope(await readJson(bucket, DASHBOARD_KEY));
+  const { payload } = await loadStationheadReadModelState(bucket, {
+    source: 'buddies',
+    upgrade: (value) => value?.ok ? value : null,
+  });
+  return payload;
 }
 
 function latestFrom(base, input, fact, observedAt) {
@@ -178,31 +162,14 @@ async function purgeDashboardCache() {
 }
 
 async function persist(bucket, payload, now) {
-  await bucket.put(HOT_STATE_KEY, JSON.stringify({
-    version: 1,
-    updated_at: now,
-    payload,
-  }), {
-    httpMetadata: { contentType: 'application/json; charset=utf-8' },
-    customMetadata: { version: '1', model_key: 'dashboard', updated_at: String(now) },
+  await saveStationheadReadModelHotState(bucket, HOT_STATE_KEY, payload, now, {
+    modelKey: DASHBOARD_MODEL_KEY,
+    source: 'buddies',
   });
-  await bucket.put(DASHBOARD_KEY, JSON.stringify({
-    version: 1,
-    status: 200,
+  await publishStationheadReadModel(bucket, 'buddies', payload, now, {
     headers: {
       'content-type': 'application/json; charset=utf-8',
       'cache-control': 'no-store',
-    },
-    updated_at: now,
-    cadence_seconds: DASHBOARD_CADENCE_SECONDS,
-    body: JSON.stringify(payload),
-  }), {
-    httpMetadata: { contentType: 'application/json; charset=utf-8' },
-    customMetadata: {
-      version: '1',
-      model_key: 'dashboard',
-      updated_at: String(now),
-      cadence_seconds: String(DASHBOARD_CADENCE_SECONDS),
     },
   });
   await purgeDashboardCache();

@@ -1,3 +1,4 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -6,8 +7,8 @@ const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const fetchCache = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
-const dashboard = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
-const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+const dashboard = browserSource('stationhead-channel.js');
+const history = browserSource('history/history-lite.js');
 const historyData = readFileSync(new URL('../public/history/history-data-client.js', import.meta.url), 'utf8');
 
 test('dashboard title is final in initial HTML and links to an X search for the same text', () => {
@@ -38,7 +39,6 @@ test('header shows the dashboard materialization time in JST without seconds', (
   assert.match(fetchCache, /dashboard:materialized-at/);
   assert.doesNotMatch(historyData, /history:materialized-at|x-materialized-at/);
 
-  // Current dashboard no longer formats acquisition timestamps; archive ranges remain explicitly UTC.
   assert.doesNotMatch(dashboard, /timeZone:\s*'UTC'|最終取得 .* UTC/);
   assert.match(history, /timeZone: 'UTC'/);
   assert.match(history, /const todayUtc = \(\) => new Date\(\)\.toISOString\(\)\.slice\(0, 10\)/);

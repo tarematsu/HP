@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { runOhisamaCollectorScheduled } from '../src/ohisama-collector.js';
 
 import {
   OHISAMA_COLLECTOR_CRON,
   fiveMinuteBucket,
   normalizeOhisamaSnapshot,
   registerOhisamaFollowerTarget,
-} from '../src/ohisama-collector-entry.js';
+} from '../src/ohisama-collector-shared.js';
 
 test('ohisama collector runs every five minutes', () => {
   assert.equal(OHISAMA_COLLECTOR_CRON, '*/5 * * * *');
@@ -137,11 +138,14 @@ test('ohisama follower target requires a handle observed during an active broadc
   assert.equal(runs, 1);
 });
 
-test('ohisama auth acquisition is fixed to ILYS while collection remains ohisama', () => {
-  const source = readFileSync(new URL('../src/ohisama-collector-entry.js', import.meta.url), 'utf8');
+test('ohisama auth acquisition uses shared guest session with the ILYS verification hook', () => {
+  const source = readFileSync(new URL('../src/ohisama-collector.js', import.meta.url), 'utf8');
+  const guestSession = readFileSync(new URL('../src/stationhead-guest-session.js', import.meta.url), 'utf8');
   assert.match(source, /DEFAULT_AUTH_HANDLE = 'ilys'/);
-  assert.match(source, /STATIONHEAD_AUTH_PAGE_URL/);
-  assert.match(source, /station\/handle\/\$\{encodeURIComponent\(authHandle\)\}\/guest/);
+  assert.match(source, /acquireStationheadGuestSession/);
+  assert.match(source, /verifyHandle: authHandle/);
+  assert.match(guestSession, /STATIONHEAD_AUTH_PAGE_URL/);
+  assert.match(guestSession, /station\/handle\/\$\{encodeURIComponent\(handle\)\}\/guest/);
   assert.match(source, /env\.CHANNEL_ALIAS \|\| 'ohisama'/);
 });
 
@@ -162,9 +166,76 @@ test('ohisama Worker config binds its own D1 and the canonical track catalog whi
     { binding: 'PAGES_RESPONSE_R2', bucket_name: 'sh-pages-responses' },
   ]);
   assert.equal(config.queues, undefined);
-  assert.equal(config.durable_objects, undefined);
+  assert.deepEqual(config.durable_objects?.bindings, [
+    { name: 'BUDDIES_COLLECTOR_COORDINATOR', class_name: 'BuddiesCollectorCoordinator', script_name: 'sh-buddies-collector' },
+  ]);
 
   const serviceEntry = readFileSync(new URL('../src/ohisama-service-entry.js', import.meta.url), 'utf8');
   assert.match(serviceEntry, /handleInternalScheduled/);
   assert.match(serviceEntry, /OHISAMA_COLLECTOR_CRON/);
+});
+test('Ohisama passes the already-parsed Stationhead payload to playback without re-fetching', async () => {
+  const timestamp = Date.now();
+  const channel = {
+    id: 46,
+    alias: 'ohisama',
+    current_station: { id: 99, is_broadcasting: true, listener_count: 15 },
+    online_member_count: 15,
+  };
+  let fetchCount = 0;
+  let parseCount = 0;
+  let passed = null;
+  const statements = [];
+  const env = {
+    PAGES_RESPONSE_R2: {
+      async get() {
+        return { json: async () => ({
+          version: 1,
+          authToken: 'test-auth-token',
+          deviceUid: 'test-device',
+          tokenExpiresAt: timestamp + 3 * 60 * 60_000,
+          d1CheckpointAt: timestamp,
+        }) };
+      },
+      async put() {},
+    },
+    OHISAMA_DB: {
+      prepare(sql) {
+        statements.push(String(sql));
+        return {
+          bind() {
+            return { async run() { return { meta: { changes: 1 } }; } };
+          },
+        };
+      },
+    },
+  };
+  const result = await runOhisamaCollectorScheduled(
+    { cron: OHISAMA_COLLECTOR_CRON },
+    env,
+    null,
+    {
+      now: () => timestamp,
+      fetch: async () => {
+        fetchCount += 1;
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => null },
+          async json() {
+            parseCount += 1;
+            return channel;
+          },
+        };
+      },
+      onChannelPayload: (payload) => { passed = payload; },
+      registerFollowerTarget: async () => false,
+    },
+  );
+
+  assert.equal(result.collected, true);
+  assert.equal(fetchCount, 1);
+  assert.equal(parseCount, 1);
+  assert.strictEqual(passed, channel);
+  assert.match(statements.join('\n'), /excluded\.observed_at\s*>=\s*sh_minute_facts\.observed_at/);
 });

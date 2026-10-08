@@ -125,6 +125,41 @@ test('inline Actions cycle routes r2-days state without legacy D1 advancement or
   assert.equal(stage.published, true);
 });
 
+test('source-scoped Ohisama ranking reads the dedicated likes model', async () => {
+  let requestedKey = null;
+  const response = await loadTrackHistoryR2ApiResponse(
+    r2Binding(),
+    new Request('https://internal/api/track-history?source=ohisama&ranking_only=1&ranking_limit=500'),
+    START + DAY,
+    Number.MAX_SAFE_INTEGER,
+    {
+      async loadLikesResponse(_r2, modelKey) {
+        requestedKey = modelKey;
+        return new Response(JSON.stringify({
+          ok: true,
+          source: 'ohisama',
+          updated_at: START + DAY,
+          ranking: [{ track_id: 7, title: 'Song H', artist: '日向坂46', like_count: 55 }],
+          ranking_summary: { track_count: 1, latest_observed_at: START + DAY },
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      },
+    },
+  );
+
+  assert.equal(requestedKey, 'track-likes:ohisama');
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.source, 'ohisama');
+  assert.equal(payload.read_path, 'r2-stationhead-likes-read-model');
+  assert.equal(payload.ranking_limit, 1);
+  assert.deepEqual(payload.ranking, [
+    { track_id: 7, title: 'Song H', artist: '日向坂46', like_count: 55 },
+  ]);
+});
+
 test('ranking status is readable while full R2 history is still publishing', async () => {
   const objects = new Map();
   const r2 = {

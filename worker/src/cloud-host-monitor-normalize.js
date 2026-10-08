@@ -1,4 +1,8 @@
 import { normalizeComments as sharedNormalizeComments } from './shared.js';
+import {
+  normalizeStationheadQueue,
+  stationheadQueueStructuralPayload,
+} from './stationhead-queue-normalize.js';
 
 export function finite(value) {
   if (value === undefined || value === null || value === '') return null;
@@ -50,61 +54,12 @@ export function normalizeComments(payload, stationId) {
 }
 
 export function normalizeQueue(station, observedAt) {
-  const queue = station?.queue;
-  if (!queue) return null;
-  const items = queue.queue_tracks || queue.tracks || [];
-  const tracks = items.map((item, position) => {
-    const track = item?.track || item;
-    const artist = track?.artist || track?.artists?.[0] || {};
-    const album = track?.album || {};
-    return {
-      position,
-      queue_track_id: finite(item?.id),
-      stationhead_track_id: finite(track?.id),
-      spotify_id: track?.spotify_id ?? null,
-      apple_music_id: track?.apple_music_id ?? null,
-      deezer_id: track?.deezer_id ?? null,
-      isrc: track?.isrc ?? null,
-      duration_ms: finite(track?.duration),
-      preview_url: track?.preview ?? null,
-      bite_count: finite(track?.bite_count ?? track?.biteCount ?? track?.likes ?? track?.like_count),
-      title: text(track?.title ?? track?.name, 500),
-      artist: text(typeof artist === 'string' ? artist : (artist?.name ?? track?.artist_name), 500),
-      album_name: text(album?.name ?? track?.album_name, 500),
-      thumbnail_url: text(
-        track?.thumbnail_url ?? track?.image_url ?? track?.artwork_url ?? track?.album_art_url
-          ?? album?.thumbnail_url ?? album?.image_url ?? album?.artwork_url
-          ?? album?.images?.[0]?.url
-          ?? item?.thumbnail_url ?? item?.image_url ?? item?.artwork_url ?? item?.album_art_url,
-        2_048,
-      ),
-    };
-  });
-
-  let currentTrack = null;
-  const startTime = finite(queue.start_time);
-  if (startTime != null && tracks.length) {
-    let elapsed = Math.max(0, observedAt - startTime);
-    for (const track of tracks) {
-      const duration = finite(track.duration_ms);
-      if (!duration || elapsed < duration) {
-        currentTrack = track;
-        break;
-      }
-      elapsed -= duration;
-    }
-    if (!currentTrack) currentTrack = tracks.at(-1);
-  }
-
-  return {
-    station_id: finite(station?.id ?? station?.broadcast?.station_id),
-    queue_id: finite(queue.id),
-    start_time: startTime,
-    is_paused: queue.is_paused ?? null,
-    current_track_id: currentTrack?.stationhead_track_id ?? null,
-    current_spotify_id: currentTrack?.spotify_id ?? null,
-    tracks,
-  };
+  return normalizeStationheadQueue(
+    station?.queue,
+    station?.id ?? station?.broadcast?.station_id,
+    observedAt,
+    { includeAppleMusic: true, includeCurrent: true },
+  );
 }
 
 export async function digest(value) {
@@ -114,23 +69,5 @@ export async function digest(value) {
 }
 
 export async function queueHash(queue) {
-  return digest({
-    start_time: queue.start_time,
-    is_paused: queue.is_paused,
-    tracks: queue.tracks.map((track) => [
-      track.queue_track_id,
-      track.stationhead_track_id,
-      track.spotify_id,
-      track.apple_music_id,
-      track.deezer_id,
-      track.isrc,
-      track.duration_ms,
-      track.preview_url,
-      track.bite_count,
-      track.title,
-      track.artist,
-      track.album_name,
-      track.thumbnail_url,
-    ]),
-  });
+  return digest(stationheadQueueStructuralPayload(queue, { includeLikeCounts: true }));
 }

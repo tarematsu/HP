@@ -6,11 +6,13 @@ import {
 } from './amazon-music-track-playlist-collector.js';
 import { amazonMusicTrackPlaylistFetch } from './amazon-music-track-playlist-fetch.js';
 import { publishAmazonMusicTrackPlaylistModel } from './amazon-music-track-playlist-publisher.js';
+import { MUSIC_PLAYLIST_REFRESH_CRON } from './scheduled-crons.js';
 import { collectSpotifyPlaylists } from './spotify-playlist-collector.js';
+
+export { MUSIC_PLAYLIST_REFRESH_CRON };
 
 const APPLE_STATE_KEY = 'apple-music/playlists/state.json';
 const MAX_BATCHES = 100;
-export const MUSIC_PLAYLIST_REFRESH_CRON = '0 5,17 * * *';
 export const MUSIC_PLAYLIST_QUEUE_TYPES = Object.freeze([
   'spotify-playlists',
   'apple-playlists',

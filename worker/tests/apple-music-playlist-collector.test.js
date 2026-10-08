@@ -10,7 +10,7 @@ import {
   extractAppleMusicPlaylistLinks,
   parseAppleMusicPlaylistPage,
 } from '../src/apple-music-playlist-collector.js';
-import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 
 const PLAYLIST_URL = 'https://music.apple.com/jp/playlist/test-list/pl.abc123';
 const PLAYLIST_HTML = `<!doctype html>
@@ -196,7 +196,7 @@ test('daily playlist collection crawls only public Apple Music pages and publish
   assert.ok(requests.every((url) => url.startsWith('https://music.apple.com/')));
   assert.ok(requests.every((url) => !url.includes('api.music.apple.com')));
 
-  const publicKey = pagesActionsR2ResponseKey(APPLE_MUSIC_PLAYLIST_PAGES_MODEL_KEY);
+  const publicKey = pagesR2ResponseKey(APPLE_MUSIC_PLAYLIST_PAGES_MODEL_KEY);
   const envelope = JSON.parse(r2.values.get(publicKey));
   const payload = JSON.parse(envelope.body);
   assert.equal(payload.source, 'music.apple.com-public-pages');

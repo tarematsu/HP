@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { ROUTES } from '../public/dashboard-navigation-config.js';
+
 import { onRequestGet as amazonMusicApi } from '../functions/api/amazon-music.js';
 import { onRequestGet as amazonMusicPlaylistsApi } from '../functions/api/amazon-music-playlists.js';
 
-const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../public/amazon-music-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/amazon-music.js', import.meta.url), 'utf8');
 const rankChart = readFileSync(new URL('../public/dashboard-rank-chart.js', import.meta.url), 'utf8');
@@ -16,20 +17,25 @@ const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import
 const commonShell = readFileSync(new URL('../public/music-service-shell.js', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/amazon-music.js', import.meta.url), 'utf8');
 const playlistApi = readFileSync(new URL('../functions/api/amazon-music-playlists.js', import.meta.url), 'utf8');
+const readModelService = readFileSync(new URL('../functions/lib/pages-read-model-service.js', import.meta.url), 'utf8');
 
 test('Amazon Music is a dashboard route backed only by Worker materialized read models', () => {
-  assert.match(tabs, /'amazon-music':\s*\{/);
-  assert.match(tabs, /import\('\/amazon-music-shell\.js\?v=\d{8}\.\d+'\)/);
-  assert.match(tabs, /import\('\/amazon-music\.js\?v=\d{8}\.\d+'\)/);
-  assert.match(tabs, /async function showLazyView/);
+  const route = ROUTES['amazon-music'];
+  assert.equal(route.kind, 'lazy');
+  assert.equal(route.viewId, 'amazonMusicView');
+  assert.equal(route.moduleId, 'amazon-music');
+  assert.equal(route.loadExport, 'loadAmazonMusicView');
   assert.match(shell, /mountMusicServiceView/);
   assert.match(commonShell, /mountDashboardShell/);
   assert.match(shell, /dashboardChartHost/);
   assert.match(sharedUi, /class="\$\{joinClasses\('shared-svg-chart', className\)\}"/);
-  assert.match(runtime, /fetch\('\/api\/amazon-music'/);
-  assert.match(api, /PAGES_READ_MODEL_SERVICE/);
-  assert.match(api, /_internal\/pages-response\?key=amazon-music/);
-  assert.match(playlistApi, /_internal\/pages-response\?key=amazon-music-playlists/);
+  assert.match(runtime, /loadDashboardJson\('\/api\/amazon-music'/);
+  assert.match(api, /proxyPagesReadModel/);
+  assert.match(api, /'amazon-music'/);
+  assert.match(playlistApi, /proxyPagesReadModel/);
+  assert.match(playlistApi, /'amazon-music-playlists'/);
+  assert.match(readModelService, /PAGES_READ_MODEL_SERVICE/);
+  assert.match(readModelService, /_internal\/pages-response/);
   assert.doesNotMatch(api, /OTHER_DB|MINUTE_DB|\.prepare\(/);
   assert.doesNotMatch(playlistApi, /OTHER_DB|MINUTE_DB|\.prepare\(/);
   assert.doesNotMatch(runtime, /\/api\/history|\/api\/dashboard|OTHER_DB|MINUTE_DB/);

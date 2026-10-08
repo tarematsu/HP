@@ -8,7 +8,7 @@ import {
   KUGOU_ACG_BACKFILL_MESSAGE_TYPE,
 } from '../src/kugou-acg-backfill.js';
 import { KUGOU_ACG_HISTORY_PROGRESS_KEY } from '../src/kugou-acg-chart-history.js';
-import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 
 const POLL_INTERVAL_MS = 10_000;
 const POLL_TIMEOUT_MS = 45 * 60_000;
@@ -66,7 +66,7 @@ async function waitForCompletion(r2, requestedAt, startDate) {
 }
 
 async function waitForPagesReadModel(r2, progress) {
-  const key = pagesActionsR2ResponseKey('music-service:kugou_music');
+  const key = pagesR2ResponseKey('music-service:kugou_music');
   const deadline = Date.now() + 5 * 60_000;
   while (Date.now() < deadline) {
     const envelope = await readJson(r2, key);

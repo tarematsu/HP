@@ -58,6 +58,19 @@ test('Actions follower read model calculates deltas and prunes accounts no longe
   assert.equal(model.rows.some((row) => Object.hasOwn(row, 'stalehost')), false);
 });
 
+test('nogifan1ch follower membership is Nogizaka even when Buddies discovery also set its source bit', () => {
+  const model = buildFollowerReadModel({
+    historyRows: [{
+      observed_date_jst: '2026-10-06',
+      followers_json: JSON.stringify({ nogifan1ch: 123 }),
+    }],
+    targets: [{ handle: 'nogifan1ch', source_mask: 11 }],
+    latestDate: '2026-10-06',
+    updatedAt: 12345,
+  });
+  assert.deepEqual(model.memberships.nogifan1ch, { affiliation: 'Nogizaka', group: 'nogizaka46' });
+});
+
 test('Actions follower auth uses production Stationhead guest endpoints', async () => {
   const calls = [];
   const session = await createStationheadGuestSession({

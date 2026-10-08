@@ -47,6 +47,6 @@ test('snapshot schema errors are surfaced instead of invoking a legacy writer', 
 });
 
 test('active ingest source has no schema compatibility fallback', () => {
-  const source = readFileSync(new URL('../functions/lib/ingest.js', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../../packages/sh-shared/ingest.mjs', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /isPendingStreamSchemaError|ingest-legacy|ingest-core/);
 });

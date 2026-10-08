@@ -1,59 +1,51 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const dashboard = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-const channelRuntime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
-const channelReadModel = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
+const channelRuntime = browserSource('stationhead-channel.js');
+const channelReadModel = browserSource('stationhead-channel-read-model.js');
 const dashboardCache = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
-const dashboardLayout = readFileSync(new URL('../public/dashboard-current-layout.js', import.meta.url), 'utf8');
-const dashboardStability = readFileSync(new URL('../public/dashboard-chart-stability.js', import.meta.url), 'utf8');
 const paintGate = readFileSync(new URL('../public/chart-paint-gate.js', import.meta.url), 'utf8');
-const dashboardDetail = readFileSync(new URL('../public/dashboard-chart-detail.js', import.meta.url), 'utf8');
 const historyMain = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
-const historyLite = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+const historyLite = browserSource('history/history-lite.js');
 const historyStability = readFileSync(new URL('../public/history/history-chart-stability.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
-const leaderboardRuntime = readFileSync(new URL('../public/leaderboard.js', import.meta.url), 'utf8');
+const leaderboardRuntime = browserSource('leaderboard.js');
 
 test('current Stationhead dashboard has one shared data adapter and Canvas runtime', () => {
-  assert.match(dashboard, /stationhead-channel\.js\?v=/);
-  assert.match(dashboard, /dashboard-fetch-cache\.js\?v=/);
-  assert.doesNotMatch(dashboard, /dashboard-current-layout\.js|dashboard-chart-comparison\.js|dashboard-chart-detail\.js/);
+  assert.match(readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8'), /stationhead-channel\.js\?v=/);
+  assert.match(channelReadModel, /import \{ fetchDashboard \}/);
+  assert.doesNotMatch(dashboard, /dashboard-current-layout\.js|dashboard-chart-comparison\.js|dashboard-chart-detail\.js|dashboard-chart-stability\.js/);
   assert.match(channelRuntime, /prepareDashboardCanvas/);
   assert.match(channelRuntime, /function renderCurrentChart\(/);
+  assert.match(channelRuntime, /function renderCurrentDetail\(/);
   assert.match(channelReadModel, /async function fetchJson\(/);
   assert.match(channelReadModel, /function buddiesModel\(\)/);
   assert.match(channelReadModel, /function ohisamaModel\(\)/);
   assert.match(channelReadModel, /function nogizakaModel\(\)/);
   assert.doesNotMatch(channelRuntime, /window\.fetch|response\.clone\(\)\.json/);
-  assert.doesNotMatch(dashboardLayout, /audienceChart|getContext\('2d'\)|clearRect\(/);
   assert.match(dashboardCache, /url\.searchParams\.set\('since'/);
 });
 
-test('current and history charts share one paint gate controller', () => {
+test('history charts use the shared paint gate controller', () => {
   assert.match(paintGate, /export function createChartPaintGate\(/);
   assert.match(paintGate, /requestAnimationFrame\(\(\) => requestAnimationFrame/);
   assert.match(paintGate, /fallbackMs > 0/);
   assert.match(paintGate, /node\.dataset\[pendingKey\]/);
   assert.match(paintGate, /node\.dataset\[stableKey\]/);
-  assert.match(dashboardStability, /createChartPaintGate/);
   assert.match(historyStability, /createChartPaintGate/);
-  assert.doesNotMatch(dashboardStability, /requestAnimationFrame|fallbackTimer|revealTimer/);
   assert.doesNotMatch(historyStability, /requestAnimationFrame|fallbackTimer|revealTimer/);
 });
 
-test('dashboard first paint settles from the unified materialized payload', () => {
-  assert.match(dashboardStability, /pendingKey: 'initialPaintPending'/);
-  assert.match(dashboardStability, /stableKey: 'initialPaintStable'/);
-  assert.match(dashboardStability, /fallbackMs: 2500/);
-  assert.match(dashboardStability, /oneShot: true/);
-  assert.match(dashboardStability, /source === 'network' \? 180 : 280/);
-  assert.match(dashboardStability, /Array\.isArray\(payload\?\.history\)/);
-  assert.match(dashboardStability, /dashboard:payload/);
-  assert.match(dashboardDetail, /currentChartDetail/);
-  assert.match(dashboardDetail, /dashboard:payload/);
-  assert.doesNotMatch(dashboardDetail, /dashboard:details/);
+test('current dashboard renders directly from the unified materialized payload', () => {
+  assert.match(channelReadModel, /fetchJson\('\/api\/dashboard\?history=0'/);
+  assert.match(channelReadModel, /history_24h: normalizedHistory/);
+  assert.match(channelReadModel, /previous_day_history: previousDayHistory/);
+  assert.match(channelRuntime, /function renderCurrent\(runtime, payload\)/);
+  assert.match(channelRuntime, /renderCurrentChart\(runtime, payload\)/);
+  assert.doesNotMatch(channelRuntime, /dashboard:details/);
 });
 
 test('history owns period charts while the shared leaderboard owns ranking canvas paint', () => {

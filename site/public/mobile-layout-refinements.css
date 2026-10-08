@@ -1,14 +1,9 @@
-/* Small late overrides for compact widths found by the screenshot audit. */
 #spotifyHint,
-.spotify-table td:nth-child(n + 3) { white-space: nowrap !important; }
+.spotify-table td:nth-child(n+3) {
+  white-space: nowrap;
+}
 
 @media (max-width: 760px) {
-  .top-card.dashboard-header {
-    padding-top: 0 !important;
-  }
-
-  .top-card.dashboard-header > .channel {
-    display: none !important;
-  }
-
+  .top-card.dashboard-header > .channel { display:none; }
+  .top-card.dashboard-header { padding-top:0; }
 }

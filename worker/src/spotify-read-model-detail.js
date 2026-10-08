@@ -1,4 +1,4 @@
-import { SPOTIFY_DETAIL_ARTISTS } from '../../site/functions/api/spotify-playcounts.js';
+import { SPOTIFY_DETAIL_ARTISTS } from 'sh-shared/spotify-read-model.mjs';
 
 const DEFAULT_ARTIST_KEYS = Object.freeze(SPOTIFY_DETAIL_ARTISTS.map((artist) => artist.key));
 const ALLOWED_ARTIST_KEYS = new Set(DEFAULT_ARTIST_KEYS);

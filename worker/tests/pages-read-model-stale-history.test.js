@@ -7,7 +7,7 @@ function historyRequest() {
   return new Request('https://internal.test/_internal/pages-response?key=history%3Adaily');
 }
 
-test('old revision-driven completed history remains valid and cacheable without KV reads', async () => {
+test('old revision-driven completed history remains valid without KV or Worker L1 cache reads', async () => {
   const now = Date.UTC(2026, 7, 31, 23, 30);
   const updatedAt = now - 25 * 60 * 60 * 1000;
   const maximumAges = [];
@@ -40,7 +40,7 @@ test('old revision-driven completed history remains valid and cacheable without 
   assert.deepEqual(await response.json(), { ok: true, source: 'revision-r2' });
   assert.equal(response.headers.get('x-materialized-stale'), null);
   assert.deepEqual(maximumAges, [Number.MAX_SAFE_INTEGER]);
-  assert.equal(cacheWrites, 1);
+  assert.equal(cacheWrites, 0);
 });
 
 test('fresh completed history remains the preferred single R2 response', async () => {

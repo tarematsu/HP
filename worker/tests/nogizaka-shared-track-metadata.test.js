@@ -4,8 +4,8 @@ import test from 'node:test';
 
 const source = readFileSync(new URL('../src/nogizaka-raw-materializer.js', import.meta.url), 'utf8');
 
-test('Nogizaka reuses the shared bounded Spotify presentation resolver only for active queues', () => {
-  assert.match(source, /resolveMissingSpotifyPresentation/);
+test('Nogizaka uses the canonical Stationhead identity and metadata pipeline for active queues', () => {
+  assert.match(source, /canonicalizeStationheadQueueTracks/);
   assert.match(source, /if \(active && queue\?\.tracks\?\.length && env\?\.MINUTE_DB\?\.prepare\)/);
-  assert.match(source, /resolveMissingSpotifyPresentation\(env\.MINUTE_DB, queue\.tracks/);
+  assert.doesNotMatch(source, /resolveMissingSpotifyPresentation/);
 });

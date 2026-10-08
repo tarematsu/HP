@@ -8,11 +8,11 @@ import {
 } from '../functions/lib/known-history-gap.js';
 
 const materializedSource = readFileSync(
-  new URL('../functions/lib/materialized-history.js', import.meta.url),
+  new URL('../../packages/sh-shared/materialized-history-summary.mjs', import.meta.url),
   'utf8',
 );
 const gapSource = readFileSync(
-  new URL('../functions/lib/known-history-gap.js', import.meta.url),
+  new URL('../../packages/sh-shared/known-history-gap.mjs', import.meta.url),
   'utf8',
 );
 const chartSource = readFileSync(
@@ -71,7 +71,8 @@ test('known missing rows are never persisted to D1', () => {
   assert.doesNotMatch(gapSource, /\.prepare\(|\bINSERT\b|\bUPDATE\b|\bDELETE\b/);
   assert.match(materializedSource, /isKnownMissingPeriod\(mode, key\)/);
   assert.match(materializedSource, /rows: materializeKnownMissingPeriods\(enrichedRows, mode, from, to, now\)/);
-  assert.match(materializedSource, /if \(!key \|\| key >= currentKey \|\| isKnownMissingPeriod\(mode, key\)/);
+  assert.match(materializedSource, /if \(isKnownMissingPeriod\(mode, key\)\) return false/);
+  assert.match(materializedSource, /return key === currentKey \|\| \(key < currentKey && finiteNumber\(row\?\.distinct_tracks\) == null\)/);
 });
 
 test('period chart paints known missing read-model rows as a gray band without reviving unrelated empty periods', () => {

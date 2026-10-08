@@ -62,10 +62,13 @@ test('raw materializer reads saved non-comment raw only and performs no Stationh
   assert.equal(existsSync(new URL('../src/sakurazaka-monitor.js', import.meta.url)), false);
 });
 
-test('raw-derived queue normalization preserves Buddies-equivalent track fields', () => {
+test('raw-derived queue normalization uses the shared Stationhead canonicalizer', () => {
   const source = readFileSync(new URL('../src/cloud-host-monitor-normalize.js', import.meta.url), 'utf8');
+  const shared = readFileSync(new URL('../src/stationhead-queue-normalize.js', import.meta.url), 'utf8');
+  assert.match(source, /normalizeStationheadQueue/);
+  assert.match(source, /stationheadQueueStructuralPayload/);
   for (const field of ['spotify_id', 'apple_music_id', 'deezer_id', 'isrc', 'duration_ms', 'preview_url', 'bite_count', 'title', 'artist', 'album_name', 'thumbnail_url']) {
-    assert.match(source, new RegExp(`\\b${field}\\b`));
+    assert.match(shared, new RegExp(`\\b${field}\\b`));
   }
 });
 

@@ -1,3 +1,4 @@
+import { browserSource } from '../site/tests/helpers/dashboard-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -94,10 +95,7 @@ test('Pages stores listening-party labels at their owning sources without late r
     new URL('../site/public/stationhead-channel-model.js', import.meta.url),
     'utf8',
   );
-  const history = readFileSync(
-    new URL('../site/public/history/history-lite.js', import.meta.url),
-    'utf8',
-  );
+  const history = browserSource('history/history-lite.js');
   const chart = readFileSync(
     new URL('../site/public/history/history-broadcasts.js', import.meta.url),
     'utf8',

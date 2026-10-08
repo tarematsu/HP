@@ -41,7 +41,7 @@ mountMusicServiceView({
       bodyHtml: '<div id="kugouJapanRankLegend" class="music-service-rank-legend" aria-label="グループ凡例"></div><div id="kugouJapanRankChart" class="music-service-rank-chart"></div>',
     }),
     musicServiceSection({
-      id: 'kugouJapanHistorySection',
+      id: 'kugouJapanHistorySection', group: 'list',
       title: '酷狗音乐 日本榜 ランクイン履歴',
       trailingHtml: artistFilter('酷狗音乐 日本榜 表示グループ'),
       bodyHtml: historyTable('kugouJapanHistoryBody', '年月日'),
@@ -52,7 +52,7 @@ mountMusicServiceView({
       bodyHtml: '<div id="kugouAcgRankLegend" class="music-service-rank-legend" aria-label="グループ凡例"></div><div id="kugouAcgRankChart" class="music-service-rank-chart"></div>',
     }),
     musicServiceSection({
-      id: 'kugouAcgHistorySection',
+      id: 'kugouAcgHistorySection', group: 'list',
       title: '酷狗音乐 ACG新歌榜 ランクイン履歴',
       trailingHtml: artistFilter('酷狗音乐 ACG新歌榜 表示グループ'),
       bodyHtml: historyTable('kugouAcgHistoryBody', '更新日'),

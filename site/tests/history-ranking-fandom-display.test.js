@@ -1,8 +1,11 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { loadRanking } from '../functions/lib/history-ranking.js';
+
+const rankingHosts = readFileSync(new URL('../../packages/sh-shared/stationhead-ranking-hosts.mjs', import.meta.url), 'utf8');
 
 function rankingRows({ withFandom = true } = {}) {
   const metadata = withFandom ? {
@@ -36,7 +39,7 @@ function rankingRows({ withFandom = true } = {}) {
   ];
 }
 
-function dbFor({ withFandom = true } = {}) {
+function serviceFor({ withFandom = true } = {}) {
   const rows = rankingRows({ withFandom });
   const gapMetadata = withFandom ? {
     artist_name: '櫻坂46',
@@ -76,17 +79,12 @@ function dbFor({ withFandom = true } = {}) {
     weekly_metrics: [],
   };
   return {
-    prepare(sql) {
-      assert.match(sql, /FROM sh_weekly_ranking_read_model/);
-      return {
-        async first() {
-          return {
-            payload_json: JSON.stringify(model),
-            source_max_ranking_date: model.source_max_ranking_date,
-            refreshed_at: model.refreshed_at,
-          };
-        },
-      };
+    async fetch(request) {
+      const url = new URL(request.url);
+      assert.equal(url.searchParams.get('key'), 'leaderboard');
+      return Response.json(model, {
+        headers: { 'x-materialized-at': String(model.refreshed_at) },
+      });
     },
   };
 }
@@ -96,7 +94,7 @@ function request() {
 }
 
 test('ranking API keeps artist relation and Stationhead channel metadata across gap rows and host summaries', async () => {
-  const response = await loadRanking(request(), { OTHER_DB: dbFor() });
+  const response = await loadRanking(request(), { PAGES_READ_MODEL_SERVICE: serviceFor() });
   const data = await response.json();
 
   assert.equal(data.rows.length, 3);
@@ -109,7 +107,7 @@ test('ranking API keeps artist relation and Stationhead channel metadata across 
 });
 
 test('ranking data remains available when the materialized model has no fandom metadata', async () => {
-  const response = await loadRanking(request(), { OTHER_DB: dbFor({ withFandom: false }) });
+  const response = await loadRanking(request(), { PAGES_READ_MODEL_SERVICE: serviceFor({ withFandom: false }) });
   const data = await response.json();
 
   assert.equal(data.ok, true);
@@ -119,11 +117,7 @@ test('ranking data remains available when the materialized model has no fandom m
 });
 
 test('ranking root renderer defines channel, artist, and relation immediately after host', () => {
-  const source = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
-  assert.match(source, /\['host_name', 'ホスト'\],[\s\S]*\['stationhead_channel_name', 'チャンネル'\],[\s\S]*\['artist_name', 'アーティスト名'\],[\s\S]*\['relation_label', '種別'\]/);
-  assert.match(source, /function rebuildRankingMetadata\(\)/);
-  assert.match(source, /\(row\?\.fandom_type \|\| metadata\.fandom_type\) === 'official' \? '公式' : 'ファンダム'/);
-  assert.doesNotMatch(source, /fandomHeader|channelHeader\.after|hostCell\.after/);
+  const source=browserSource('leaderboard-read-model.js'); assert.match(source,/key: 'host'[\s\S]*key: 'channel'[\s\S]*key: 'artist'[\s\S]*key: 'relation'/); assert.match(source,/fandom_type === 'official' \? '公式' : 'ファンダム'/); assert.match(source,/stationhead_channel_name/);
 });
 
 test('D1 migration corrects sbuddies1819 idempotently', () => {
@@ -144,14 +138,30 @@ test('D1 migration corrects sbuddies1819 idempotently', () => {
   assert.match(correction, /ON CONFLICT\(host_name\) DO UPDATE/);
 });
 
-test('Stationhead display names are keyed by host so official Sakurazaka is not mislabeled as Buddies', () => {
-  const source = readFileSync(
-    new URL('../../worker/scripts/materialize-weekly-ranking-read-model.mjs', import.meta.url),
+test('Stationhead display names are keyed once in the shared ranking host metadata', () => {
+  const worker = readFileSync(
+    new URL('../../worker/src/weekly-ranking-materializer.js', import.meta.url),
     'utf8',
   );
-  assert.match(source, /STATIONHEAD_CHANNEL_BY_HOST/);
-  assert.match(source, /\['sakuramankai', 'Buddies'\]/);
-  assert.match(source, /\['sakurazaka46jp', '櫻坂46'\]/);
-  assert.match(source, /\['sbuddies1819', 'ATIN'\]/);
-  assert.doesNotMatch(source, /STATIONHEAD_CHANNEL_BY_ARTIST/);
+  const api = readFileSync(
+    new URL('../functions/lib/history-ranking.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(rankingHosts, /\['sakuramankai', 'Buddies'\]/);
+  assert.match(rankingHosts, /\['sakurazaka46jp', '櫻坂46'\]/);
+  assert.match(rankingHosts, /\['sbuddies1819', 'ATIN'\]/);
+  assert.match(worker, /stationheadChannelNameForHost/);
+  assert.match(api, /stationheadChannelNameForHost/);
+  assert.doesNotMatch(worker, /STATIONHEAD_CHANNEL_BY_ARTIST/);
+});
+
+
+test('nogifan1ch is classified as Nogizaka in leaderboard metadata', () => {
+  const migration = readFileSync(
+    new URL('../../database/other-migrations/070_nogifan1ch_nogizaka_affiliation.sql', import.meta.url),
+    'utf8',
+  );
+  assert.match(migration, /'nogifan1ch'[\s\S]*'乃木坂46'[\s\S]*'fandom'/);
+  assert.match(migration, /source_mask = \(source_mask \| 8\)/);
+  assert.match(rankingHosts, /\['nogifan1ch', 'Nogizaka'\]/);
 });

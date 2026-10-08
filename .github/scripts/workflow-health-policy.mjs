@@ -9,15 +9,6 @@ function freeze(policy) {
 
 export const WORKFLOW_HEALTH_POLICIES = Object.freeze([
   freeze({
-    key: 'pages',
-    name: 'Pages read models',
-    workflow: 'run-pages-read-model-rebuild.yml',
-    cadenceMinutes: 1440,
-    staleAfterMinutes: 1500,
-    stalledAfterMinutes: 25,
-    recoverBeforeStale: true,
-  }),
-  freeze({
     key: 'runtime',
     name: 'Runtime offline maintenance',
     workflow: 'run-runtime-offline-maintenance.yml',

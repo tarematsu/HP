@@ -6,14 +6,13 @@ import { expectAll, expectNone, readSource } from './helpers/source-contract.mjs
 const script = readSource('.github/scripts/cloudflare_free_tier_audit.py');
 const runtime = JSON.parse(readSource('worker/wrangler.runtime.jsonc'));
 const collector = JSON.parse(readSource('worker/wrangler.buddies-collector.jsonc'));
-const responseStore = readSource('worker/src/pages-response-store.js');
 const responseFetch = readSource('worker/src/pages-response-fetch-entry.js');
+const responseStore = readSource('worker/src/pages-response-store.js');
 const coreEntry = readSource('worker/src/runtime-orchestrator-entry.js');
 const deployedEntry = readSource('worker/src/runtime-orchestrator-deployed-entry.js');
 const collectorStatus = readSource('worker/src/collector-coordinator-status.js');
 const queuePlanR2 = readSource('worker/src/queue-plan-r2.js');
 const pagesMiddleware = readSource('site/functions/_middleware.js');
-const pagesActions = readSource('worker/scripts/run-pages-read-model-actions.mjs');
 const offlineActions = readSource('worker/scripts/run-runtime-offline-maintenance-actions.mjs');
 
 
@@ -115,6 +114,8 @@ test('collector coordination and runtime live-job DO fit daily budgets without r
   });
   assert.equal(runtime.main, 'src/runtime-orchestrator-deployed-entry.js');
   assert.deepEqual(Object.keys(runtime).includes('triggers'), false);
+  assert.equal(runtime.kv_namespaces, undefined);
+  assert.equal(runtime.r2_buckets[0].binding, 'PAGES_RESPONSE_R2');
   expectNone(deployedEntry, ['scheduled:', 'runRuntimeOrchestratorScheduled']);
   expectAll(deployedEntry, ['MinuteLiveJobCoordinator']);
   expectNone(coreEntry, ['runCoreScheduled', 'runtime-scheduled', 'pages-read-model-scheduled-dispatch']);
@@ -123,26 +124,27 @@ test('collector coordination and runtime live-job DO fit daily budgets without r
     'BUDDIES_COLLECTOR_COORDINATOR',
     'COLLECTOR_STATUS_DO_ENABLED',
   ]);
-  expectAll(pagesActions, ['PAGES_READ_MODEL_DEADLINE_MS', 'track-history-read-model-disabled']);
-  expectNone(pagesActions, ['runSplitTrackHistoryCycleStep']);
   expectAll(offlineActions, ['runRollupMaintenance', 'pruneOldSnapshots', 'runStreamGoalPrediction']);
 });
 
-test('surplus KV and R2 capacity replaces materialized-response D1 writes and reads', () => {
-  expectAll(responseStore, ['if (kvSaved)', 'if (r2Saved) return r2Saved']);
-  expectNone(responseStore, ['saveD1Response', 'sh_pages_response_manifest', 'sh_pages_response_chunks']);
+test('Pages serving uses R2 without materialized-response D1 or KV fallback', () => {
   expectNone(pagesMiddleware, ['sh_pages_response_manifest', 'sh_pages_response_chunks']);
-  expectAll(responseFetch, ['loadMaterializedResponse', 'loadMaterializedR2Response']);
-  expectNone(responseFetch, ['sh_pages_response_manifest', 'sh_pages_response_chunks', 'runPagesReadModelCron']);
+  expectAll(responseFetch, ['loadMaterializedResponse', 'pages-response-store.js']);
+  expectNone(responseFetch, [
+    'loadMaterializedR2Response',
+    'PAGES_RESPONSE_KV',
+    'sh_pages_response_manifest',
+    'sh_pages_response_chunks',
+    'runPagesReadModelCron',
+  ]);
+  expectAll(responseStore, ['loadMaterializedR2Response', 'pages-response/actions-v2/']);
+  expectNone(responseStore, ['saveMaterializedR2Response', 'PAGES_RESPONSE_KV']);
   expectAll(queuePlanR2, ['operational/queue-plan/v1', 'await r2.delete']);
 
-  const maximumDailyVariantWrites = 17;
-  const maximumDailyDashboardWrites = 24 * 60 / 15;
-  const maximumDailyKvWrites = maximumDailyDashboardWrites + maximumDailyVariantWrites;
-  const maximumMonthlyR2Mirrors = maximumDailyKvWrites * 31;
+  const maximumDailyReadModelWrites = 17 + 24 * 60 / 15;
+  const maximumMonthlyR2Writes = maximumDailyReadModelWrites * 31;
   const maximumMonthlyQueuePlanReads = 24 * 60 * 31;
   const maximumMonthlyQueuePlanClassA = 3 * 24 * 60 * 31;
-  assert.ok(maximumDailyKvWrites < 1_000);
-  assert.ok(maximumMonthlyR2Mirrors + maximumMonthlyQueuePlanClassA < 1_000_000);
+  assert.ok(maximumMonthlyR2Writes + maximumMonthlyQueuePlanClassA < 1_000_000);
   assert.ok(maximumMonthlyQueuePlanReads < 10_000_000);
 });

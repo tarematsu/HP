@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { directFiveMinuteStreamHistory } from '../site/functions/lib/dashboard-chart-support.js';
+import { directFiveMinuteStreamHistory } from '../packages/sh-shared/dashboard-chart-support.mjs';
 
 const descriptor = JSON.parse(readFileSync(
   new URL('../database/facts-db.json', import.meta.url),
@@ -13,7 +13,7 @@ const migration = readFileSync(
   'utf8',
 );
 const dashboard = readFileSync(
-  new URL('../site/functions/lib/dashboard-chart-support.js', import.meta.url),
+  new URL('../packages/sh-shared/dashboard-chart-support.mjs', import.meta.url),
   'utf8',
 );
 
@@ -44,7 +44,7 @@ test('five-minute playback values use a rolling 15-minute average normalized bac
   ]);
 });
 
-test('Pages derives playback counts from dashboard history without average-table reads', () => {
+test('shared dashboard core derives playback counts from dashboard history without average-table reads', () => {
   assert.match(dashboard, /FROM sh_dashboard_history_5m AS r/);
   assert.match(dashboard, /current_stream_count/);
   assert.match(dashboard, /directFiveMinuteStreamHistory/);

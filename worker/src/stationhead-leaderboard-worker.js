@@ -174,6 +174,7 @@ export function extractLeaderboardFromArtifact(artifact) {
       ranking_date: rankingDate,
       observed_at: observedAt,
       captured_at: Number(snapshot.captured_at) || observedAt,
+      source: compactText(record.source, 32),
       parser: parsed.parser,
       rows: parsed.rows,
     };
@@ -200,6 +201,14 @@ export async function importLeaderboardArtifact(artifact, db, now = Date.now()) 
   if (extracted.digest && existingRows.length === extracted.rows.length && existingRows.every((row) => rawDigest(row.raw_json) === extracted.digest)) {
     return { status: 'unchanged', ranking_date: extracted.ranking_date, row_count: extracted.rows.length, digest: extracted.digest, parser: extracted.parser };
   }
+  // Use observation time, not delivery time: an offline native spool may
+  // deliver an older snapshot after the current week's corrected ranking.
+  const existingObservedAt = Math.max(0, ...existingRows.map((row) => {
+    try { return Number(JSON.parse(row.raw_json || '{}').observed_at) || 0; } catch { return 0; }
+  }));
+  if (existingObservedAt > extracted.observed_at) {
+    return { status: 'stale', reason: 'older-observation', ranking_date: extracted.ranking_date, digest: extracted.digest };
+  }
   const statements = [db.prepare('DELETE FROM sh_channel_rankings WHERE ranking_date=? AND ranking_type=?').bind(extracted.ranking_date, RANKING_TYPE)];
   for (const row of extracted.rows) {
     statements.push(db.prepare(`INSERT INTO sh_channel_rankings(ranking_date,observed_at,ranking_type,rank,channel_name,channel_alias,listener_count,member_count,total_listens,source_sheet,source_row,quality_score,quality_flags,raw_json,imported_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
@@ -210,7 +219,8 @@ export async function importLeaderboardArtifact(artifact, db, now = Date.now()) 
       now,
     ));
   }
-  await db.batch(statements);
+  if (typeof db.script === 'function') await db.script(statements);
+  else await db.batch(statements);
   return { status: 'imported', ranking_date: extracted.ranking_date, row_count: extracted.rows.length, digest: extracted.digest, parser: extracted.parser };
 }
 

@@ -1,10 +1,11 @@
 import { execFileSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
+import { STATIONHEAD_FOLLOWER_SOURCE, stationheadFollowerMembership } from '../src/stationhead-follower-membership.js';
+import { acquireStationheadGuestSession } from '../src/stationhead-guest-session.js';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 
 const workerRoot = resolve(import.meta.dirname, '..');
@@ -16,10 +17,10 @@ const WEB_BASE = 'https://www.stationhead.com';
 const PROFILE_BASE = `${API_BASE}/account/handle/`;
 const JST_OFFSET_MS = 9 * 60 * 60_000;
 const CADENCE_SECONDS = 24 * 60 * 60;
-const SOURCE_FIXED = 1;
-const SOURCE_BUDDIES = 2;
-const SOURCE_OHISAMA = 4;
-const SOURCE_NOGIZAKA = 8;
+const SOURCE_FIXED = STATIONHEAD_FOLLOWER_SOURCE.fixed;
+const SOURCE_BUDDIES = STATIONHEAD_FOLLOWER_SOURCE.buddies;
+const SOURCE_OHISAMA = STATIONHEAD_FOLLOWER_SOURCE.ohisama;
+const SOURCE_NOGIZAKA = STATIONHEAD_FOLLOWER_SOURCE.nogizaka;
 const HANDLE_RE = /^[a-z0-9._-]{1,64}$/;
 const EXCLUDED_HANDLES = new Set(['46fm', 'buddy46']);
 
@@ -117,15 +118,7 @@ function nonNegativeInteger(value) {
 }
 
 function membership(handle, sourceMask) {
-  if (handle === 'sakurazaka46jp') return { affiliation: '櫻坂46公式', group: 'sakurazaka46' };
-  if (handle === 'nogizaka46smej') return { affiliation: '乃木坂46公式', group: 'nogizaka46' };
-  if (handle === 'sakuramankai' || handle === 'sakuramankai2') {
-    return { affiliation: 'Buddies', group: 'sakurazaka46' };
-  }
-  if (sourceMask & SOURCE_BUDDIES) return { affiliation: 'Buddies', group: 'sakurazaka46' };
-  if (sourceMask & SOURCE_OHISAMA) return { affiliation: 'Ohisama', group: 'hinatazaka46' };
-  if (sourceMask & SOURCE_NOGIZAKA) return { affiliation: 'Nogizaka', group: 'nogizaka46' };
-  return null;
+  return stationheadFollowerMembership(handle, sourceMask);
 }
 
 function parsedFollowerJson(value) {
@@ -238,23 +231,11 @@ async function checkedFetch(fetchFn, url, options, label) {
 }
 
 export async function createStationheadGuestSession({ fetchFn = fetch, appVersion = '1.0.0' } = {}) {
-  const deviceUid = randomUUID();
-  const signal = AbortSignal.timeout(10_000);
-  const tokenResponse = await checkedFetch(fetchFn, `${API_BASE}/web/token`, {
-    method: 'POST',
-    headers: { ...browserHeaders(deviceUid, '', appVersion, `${WEB_BASE}/c/ilys`), 'content-type': 'application/json' },
-    body: '',
-    signal,
-  }, 'Stationhead guest token');
-  const token = String(tokenResponse.headers.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
-  if (!token) throw new Error('Stationhead guest token is missing');
-  await checkedFetch(fetchFn, `${API_BASE}/web/guest/login`, {
-    method: 'POST',
-    headers: { ...browserHeaders(deviceUid, token, appVersion, `${WEB_BASE}/c/ilys`), 'content-type': 'application/json' },
-    body: '',
-    signal: AbortSignal.timeout(10_000),
-  }, 'Stationhead guest login');
-  return { token, deviceUid };
+  const session = await acquireStationheadGuestSession({
+    appVersion,
+    requestTimeoutMs: 10_000,
+  }, fetchFn);
+  return { token: session.authToken, deviceUid: session.deviceUid };
 }
 
 async function fetchFollowerProfile(handle, session, { fetchFn = fetch, appVersion = '1.0.0' } = {}) {
@@ -346,7 +327,7 @@ export async function collectStationheadFollowersActions({
     failures,
   });
   const body = JSON.stringify(payload);
-  upload(pagesActionsR2ResponseKey('followers'), {
+  upload(pagesR2ResponseKey('followers'), {
     version: 1,
     updated_at: collectedAt,
     cadence_seconds: CADENCE_SECONDS,

@@ -7,9 +7,9 @@ import {
   CURRENT_HISTORY_SQL,
   PREVIOUS_DAY_HISTORY_SQL,
   directFiveMinuteStreamHistory,
-} from '../functions/lib/dashboard-chart-support.js';
+} from '../../packages/sh-shared/dashboard-chart-support.mjs';
 
-const source = readFileSync(new URL('../functions/lib/dashboard-chart-support.js', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../../packages/sh-shared/dashboard-chart-support.mjs', import.meta.url), 'utf8');
 
 test('current and previous-day chart queries use the compact 5-minute dashboard rollup', () => {
   for (const sql of [CURRENT_HISTORY_SQL, PREVIOUS_DAY_HISTORY_SQL]) {

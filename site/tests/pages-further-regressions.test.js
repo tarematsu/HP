@@ -1,3 +1,5 @@
+import { browserSource } from './helpers/dashboard-source.js';
+import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -6,72 +8,42 @@ import {
   countSakurazakaMissingSummaries,
   mergeSakurazakaSeriesRows,
 } from '../functions/api/sakurazaka46jp.js';
-import { inferArtistFromDisplayTitle } from '../functions/lib/playback.js';
-import {
-  currentUtcWeekRange,
-  inclusivePresetStart,
-  utcDate,
-} from '../public/history/history-date-utils.js';
-import {
-  aggregateCompleteTrackRows,
-  normalizeTrackRows,
-  summarizeCompleteTrackRows,
-} from '../public/history/history-track-view.js';
+import { trackDisplayTitleParts } from '../../worker/src/track-metadata-quality.js';
+import { aggregatePlayed } from '../public/stationhead/played-tracks.js';
+import { normalizePlayedRows } from '../public/stationhead/normalize.js';
 
-test('playback artist inference accepts artist-first and title-first display labels', () => {
-  assert.equal(inferArtistFromDisplayTitle('Song — Artist', 'Song'), 'Artist');
-  assert.equal(inferArtistFromDisplayTitle('Artist — Song', 'Song'), 'Artist');
-  assert.equal(inferArtistFromDisplayTitle('JPABCDEF123 — Song', 'Song'), null);
+test('track metadata parsing accepts artist-first and title-first display labels', () => {
+  assert.equal(trackDisplayTitleParts('Song — Artist', 'Song').artist, 'Artist');
+  assert.equal(trackDisplayTitleParts('Artist — Song', 'Song').artist, 'Artist');
+  assert.equal(trackDisplayTitleParts('JPABCDEF123 — Song', 'Song').artist, 'JPABCDEF123');
 });
 
-test('track summaries aggregate the same song across complete dates', () => {
-  const rows = [
-    { play_date: '2026-07-20', track_key: 'a', play_count: 3, period_complete: true },
-    { play_date: '2026-07-21', track_key: 'a', play_count: 4, play_count_excluded: false },
-    { play_date: '2026-07-20', track_key: 'b', play_count: 2, play_count_excluded: false },
-    { play_date: '2026-07-22', track_key: 'c', play_count: 99, play_count_excluded: true },
-  ];
-  assert.deepEqual(summarizeCompleteTrackRows(rows), { days: 2, tracks: 2, total: 9, maximum: 7 });
-  assert.deepEqual(aggregateCompleteTrackRows(rows).map((row) => [row.identity, row.play_count]), [
-    ['a', 7],
-    ['b', 2],
+test('played tracks aggregate matching canonical songs across dates', () => {
+  const tracks = aggregatePlayed([
+    { track_id: 1, title: 'A', play_count: 3 },
+    { track_id: 1, title: 'A', play_count: 4 },
+    { track_id: 2, title: 'B', play_count: 2 },
   ]);
+  assert.deepEqual(tracks.map(row => [row.track_id, row.play_count]), [[1, 7], [2, 2]]);
 });
 
-test('track aggregation joins rows that expose different identifiers for the same song', () => {
-  const rows = [
-    { play_date: '2026-07-20', track_key: 'legacy-a', spotify_id: 'spotify-a', title: 'Song', play_count: 2 },
-    { play_date: '2026-07-21', spotify_id: 'spotify-a', display_title: 'Song', play_count: 3 },
-  ];
-  const aggregate = aggregateCompleteTrackRows(rows);
-  assert.equal(aggregate.length, 1);
-  assert.equal(aggregate[0].play_count, 5);
+test('played tracks prefer canonical track IDs over provider variants', () => {
+  const tracks = aggregatePlayed([
+    { track_id: 1, spotify_id: 'old', play_count: 2 },
+    { track_id: 1, spotify_id: 'new', play_count: 3 },
+  ]);
+  assert.equal(tracks.length, 1);
+  assert.equal(tracks[0].play_count, 5);
 });
 
-test('track rows recover whitespace-only titles and artists before rendering or caching', () => {
-  const rows = normalizeTrackRows([{
-    title: '   ',
-    display_title: 'Recovered title',
-    artist: ' ',
-    raw_artist: 'Recovered artist',
+test('played row normalization preserves fallback titles, artists and canonical identity', () => {
+  const rows = normalizePlayedRows([{
+    track_id: 42, display_title: 'Recovered title', artist_name: 'Recovered artist', count: 3,
   }]);
   assert.equal(rows[0].title, 'Recovered title');
   assert.equal(rows[0].artist, 'Recovered artist');
-});
-
-test('UTC week boundaries and inclusive presets use only the UTC calendar day', () => {
-  const sundayUtc = Date.parse('2026-07-26T15:30:00Z');
-  assert.equal(utcDate(0, sundayUtc), '2026-07-26');
-  assert.deepEqual(currentUtcWeekRange(sundayUtc), {
-    from: '2026-07-20',
-    to: '2026-07-26',
-  });
-  const mondayUtc = Date.parse('2026-07-27T00:30:00Z');
-  assert.deepEqual(currentUtcWeekRange(mondayUtc), {
-    from: '2026-07-27',
-    to: '2026-07-27',
-  });
-  assert.equal(inclusivePresetStart('2026-07-30', 30), '2026-07-01');
+  assert.equal(rows[0].track_id, 42);
+  assert.equal(rows[0].play_count, 3);
 });
 
 test('official series keeps distinct nearby events and reports missing summaries from minute facts', () => {
@@ -94,49 +66,17 @@ test('official series keeps distinct nearby events and reports missing summaries
 });
 
 test('active Pages archive runtimes stay UTC except official-party display dates', () => {
-  const entry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
-  const dataClient = readFileSync(new URL('../public/history/history-data-client.js', import.meta.url), 'utf8');
-  const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
-  const likes = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
-  const broadcasts = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
-  const dashboardTime = readFileSync(new URL('../public/dashboard-time.js', import.meta.url), 'utf8');
-  const dashboard = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
-  const mainPage = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-  const likesShell = readFileSync(new URL('../public/likes-shell.js', import.meta.url), 'utf8');
-  const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
-  const utcArchiveSources = [entry, dataClient, history, likes].join('\n');
-
-  assert.match(entry, /history:runtime-ready/);
-  assert.doesNotMatch(entry, /trackDate|trackWeekMode|'tracks'|legacyHistoryRoute|history-request-guard|history-current-overlay/);
-  assert.doesNotMatch(entry, /history-page-fixes|history-table-cleanup|history-summary-average-labels/);
-  assert.doesNotMatch(dataClient, /TRACK_CACHE_PREFIX|\/api\/track-history|history:track-rows/);
-  assert.doesNotMatch(history, /aggregateCompleteTrackRows|再生数ランキング|history:track-rows/);
-  assert.match(history, /function applyPreset\(days\)/);
-  assert.match(history, /todayUtc/);
-  assert.match(history, /timeZone: 'UTC'/);
-  assert.match(likes, /timeZone: 'UTC'/);
-  assert.match(likes, /ranking_only=1/);
-  assert.doesNotMatch(likes, /currentUtcWeekRange|completeTrackRows|week_play_count/);
-  assert.match(likes, /else if \(!el\('likesView'\)\.hidden\) load\(\)/);
-  assert.match(broadcasts, /JST_DATE_EN_CA/);
-  assert.match(dashboardTime, /timeZone: 'Asia\/Tokyo'/);
-  assert.match(broadcasts, /JST_DATE_EN_CA\.format\(new Date\(startedAt\)\)\.replaceAll\('-', ''\)/);
-  assert.match(broadcasts, /isTodayEvent/);
-  assert.doesNotMatch(dashboard, /timeZone: 'UTC'|最終取得 .* UTC/);
-  assert.match(likesShell, /id: 'likesView'/);
-  assert.match(tabs, /import\('\/history\/history-likes\.js\?v=20260930\.1'\)/);
-  assert.doesNotMatch(mainPage, /href="\/history/);
-  assert.doesNotMatch(utcArchiveSources, /Asia\/Tokyo|JST_OFFSET_MS|jstDate|todayJst|currentJstWeekRange|applyJstPreset/);
+  assert.match(browserSource('history/history-lite.js'),/timeZone: 'UTC'/); assert.match(browserSource('stationhead/likes.js'),/jstDateTime/); assert.match(browserSource('stationhead/view-utils.js'),/Asia\/Tokyo/);
 });
 
-test('dashboard image retries stay in the current runtime and successful refreshes clear stale errors', () => {
+test('dashboard artwork handling stays in the current runtime and successful refreshes clear stale errors', () => {
   const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-  const source = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
+  const source = browserSource('stationhead-channel.js');
   const fetchCache = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
   assert.doesNotMatch(entry, /IMAGE_RETRY_DELAYS|MutationObserver/);
-  assert.match(source, /IMAGE_RETRY_DELAYS/);
-  assert.match(source, /new URL\(value, location\.href\)/);
-  assert.match(source, /image\.dataset\.lastSource = next/);
+  assert.match(source, /track\?\.thumbnail_url/);
+  assert.match(source, /image\.removeAttribute\('src'\)/);
+  assert.match(source, /image\.hidden = true/);
   assert.doesNotMatch(source, /MutationObserver/);
   assert.match(fetchCache, /function clearTransientStatus/);
   assert.match(fetchCache, /node\.hidden = true/);

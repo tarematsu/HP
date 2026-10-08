@@ -8,6 +8,7 @@ on:
       - 'worker/**'
       - 'packages/sh-shared/**'
       - 'scripts/check-js-syntax.mjs'
+      - '.github/scripts/ci/**'
       - 'scripts/cloudflare-d1-*.mjs'
       - 'scripts/discover-sh-page.mjs'
       - 'scripts/enforce-d1-*.mjs'
@@ -22,6 +23,7 @@ on:
       - '!tests/observability-*.test.mjs'
       - '!tests/helpers/source-contract.mjs'
       - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/ci.yml'
   workflow_dispatch:
 
@@ -52,35 +54,10 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install Pages dependencies
-        run: npm ci --prefer-offline --no-audit --no-fund
-        working-directory: site
+      - name: Install dependencies
+        run: |
+          npm ci --prefix site --prefer-offline --no-audit --no-fund
+          npm ci --prefix worker --prefer-offline --no-audit --no-fund
 
-      - name: Install Worker dependencies
-        run: npm ci --prefer-offline --no-audit --no-fund
-        working-directory: worker
-
-      - name: Check repository JavaScript syntax
-        run: node scripts/check-js-syntax.mjs scripts tests .github/scripts/ci
-
-      - name: Run repository JavaScript tests
-        run: npm run test:js
-
-      - name: Run SQL migration tests
-        run: npm run test:sql
-
-      - name: Check Pages
-        run: npm run check
-        working-directory: site
-
-      - name: Run Pages integration tests
-        run: node --test tests/*.test.js
-        working-directory: site
-
-      - name: Check Worker bundles
-        run: npm run check
-        working-directory: worker
-
-      - name: Run Worker tests
-        run: npm test
-        working-directory: worker
+      - name: Validate Stationhead
+        run: npm run check:ci

@@ -3,16 +3,17 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { publishDashboardFallbackFromMinuteFact } from '../src/pages-dashboard-live-fallback.js';
-import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 
 const HOT_STATE_KEY = 'stationhead/buddies/dashboard-hot-state.json';
-const DASHBOARD_KEY = pagesActionsR2ResponseKey('dashboard');
+const DASHBOARD_KEY = pagesR2ResponseKey('dashboard');
 
 class FakeR2 {
   constructor(initial = new Map()) {
     this.values = initial;
     this.gets = [];
     this.puts = [];
+    this.metadata = new Map();
   }
 
   async get(key) {
@@ -25,9 +26,10 @@ class FakeR2 {
     };
   }
 
-  async put(key, value) {
+  async put(key, value, options = {}) {
     this.puts.push(key);
     this.values.set(key, String(value));
+    this.metadata.set(key, options.customMetadata || {});
   }
 }
 
@@ -126,8 +128,11 @@ test('Buddies dashboard fallback advances a stale current model without D1', asy
   assert.equal(result.mode, 'fallback');
   assert.equal(result.skipped, false);
   assert.deepEqual(r2.puts, [HOT_STATE_KEY, DASHBOARD_KEY]);
-  const envelope = JSON.parse(r2.values.get(DASHBOARD_KEY));
-  const payload = JSON.parse(envelope.body);
+  assert.equal(r2.metadata.get(HOT_STATE_KEY).source, 'buddies');
+  assert.equal(r2.metadata.get(DASHBOARD_KEY).model_key, 'dashboard');
+  assert.equal(r2.metadata.get(DASHBOARD_KEY).format, 'raw-response-v1');
+  assert.equal(r2.metadata.get(DASHBOARD_KEY).cadence_seconds, '300');
+  const payload = JSON.parse(r2.values.get(DASHBOARD_KEY));
   assert.equal(payload.latest_observed_at, observedAt);
   assert.equal(payload.latest.online_member_count, 125);
   assert.equal(payload.latest.current_stream_count, 5125);

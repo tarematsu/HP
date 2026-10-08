@@ -1,3 +1,4 @@
+import { browserSource } from '../site/tests/helpers/dashboard-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -222,10 +223,7 @@ test('history lite client is loaded lazily into the integrated dashboard', () =>
   assert.match(tabs, /import\('\/history\/history-main\.js\?v=\d{8}\.\d+'\)/);
   assert.doesNotMatch([html, shell].join('\n'), /history-period-completeness\.js|history-copy-fixes\.js|history-track-likes\.js/);
 
-  const runtimeSource = readFileSync(
-    new URL('../site/public/history/history-lite.js', import.meta.url),
-    'utf8',
-  );
+  const runtimeSource = browserSource('history/history-lite.js');
   assert.match(runtimeSource, /state\.rows = Array\.isArray\(data\.rows\) \? data\.rows : \[\]/);
   assert.match(runtimeSource, /history:data-loaded/);
   assert.match(entry, /history-period-chart\.js\?v=\d{8}\.\d+/);

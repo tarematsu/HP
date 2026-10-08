@@ -52,8 +52,8 @@ test('repair responsibilities are split across independent 30-minute, four-hour,
   assert.match(dailyDeepWorkflow, /RUNTIME_MAINTENANCE_COLLECTOR_ID: daily-deep-repair-actions/);
   assert.match(dailyDeepWorkflow, /RUNTIME_MAINTENANCE_SKIP_REBUILD: 'true'/);
   assert.match(dailyDeepWorkflow, /publish-recent-daily-summaries-actions\.mjs/);
-  assert.match(dailyDeepWorkflow, /detect-pages-read-model-revision-drift-actions\.mjs/);
-  assert.match(dailyDeepWorkflow, /steps\.pages-revision-drift\.outputs\.due_keys != ''/);
+  assert.doesNotMatch(dailyDeepWorkflow, /detect-pages-read-model-revision-drift-actions\.mjs/);
+  assert.doesNotMatch(dailyDeepWorkflow, /pages-revision-drift|due_keys/);
 
   assert.match(runner, /RUNTIME_MAINTENANCE_LIGHT_ONLY/);
   assert.match(runner, /RUNTIME_MAINTENANCE_REBUILD_ONLY/);

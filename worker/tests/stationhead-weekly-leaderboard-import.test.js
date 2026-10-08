@@ -206,3 +206,23 @@ test('a new R2 digest replaces the whole weekly ranking instead of duplicating i
   assert.equal(db.state.rows[0].channel_name, 'buddies');
   assert.equal(JSON.parse(db.state.rows[0].raw_json).source_digest, 'digest-2');
 });
+
+test('a late older observation cannot overwrite a newer same-week ranking', async () => {
+  const db = createFakeDb();
+  const snapshot = { ranking: completeRanking({ firstStreams: 1200 }) };
+  await importLeaderboardArtifact(artifactWith(snapshot, {
+    digest: 'newer', observed_at: Date.parse('2026-09-22T15:30:00Z'),
+  }), db);
+  const result = await importLeaderboardArtifact(artifactWith({ ranking: completeRanking({ firstStreams: 1000 }) }, {
+    digest: 'older', observed_at: Date.parse('2026-09-21T15:30:00Z'),
+  }), db);
+  assert.equal(result.status, 'stale');
+  assert.equal(db.state.batches, 1);
+  assert.equal(db.state.rows[0].total_listens, 1200);
+});
+
+test('Actions and Worker use the same parser and importer', async () => {
+  const worker = await import('../src/stationhead-leaderboard-worker.js');
+  assert.strictEqual(importLeaderboardArtifact, worker.importLeaderboardArtifact);
+  assert.strictEqual(parseLeaderboardSnapshot, worker.parseLeaderboardSnapshot);
+});

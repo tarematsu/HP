@@ -27,7 +27,7 @@
 }
 
 #historyView .history-gap-row td {
-  padding-block: 10px !important;
+  padding-block: 10px;
   background: var(--panel-2, #f5f6f8);
   color: var(--muted, #687386);
   font-weight: 650;
@@ -41,19 +41,19 @@
   }
 
   #historyView .history-data-table {
-    min-width: 980px !important;
-    font-size: 10.5px !important;
+    min-width: 980px;
+    font-size: 10.5px;
   }
 
   #historyView .history-data-table.compact-columns {
-    min-width: 720px !important;
+    min-width: 720px;
   }
 
   #historyView .history-data-table.official-party-table {
-    min-width: 900px !important;
+    min-width: 900px;
   }
 
   #historyView .history-gap-row td {
-    font-size: 10px !important;
+    font-size: 10px;
   }
 }

@@ -1,18 +1,18 @@
-import { bool, num, rawJson } from '../../site/functions/lib/api-utils.js';
-import { prepared, runPreparedD1Batches } from '../../site/functions/lib/d1-batch.js';
+import { bool, num, rawJson } from '../../packages/sh-shared/api-utils.mjs';
+import { prepared, runPreparedD1Batches } from '../../packages/sh-shared/d1-batch.mjs';
 import {
   analyzeQueueLikes,
   D1_BATCH_STATEMENT_LIMIT,
   D1_BATCH_VARIABLE_LIMIT,
   D1_SINGLE_STATEMENT_VARIABLE_LIMIT,
-} from '../../site/functions/lib/d1-optimized-ingest.js';
+} from '../../packages/sh-shared/d1-optimized-ingest.mjs';
 import {
   normalizedTrackIsrc,
   normalizedTrackSpotifyId,
   observationTrackKey,
   planLikeChanges,
-} from '../../site/functions/lib/d1-lean-ingest.js';
-import { payloadHash } from '../../site/functions/lib/ingest-claim.js';
+} from '../../packages/sh-shared/d1-lean-ingest.mjs';
+import { payloadHash } from '../../packages/sh-shared/ingest-claim.mjs';
 import { restoreQueueAnalysis } from './queue-analysis-transfer.js';
 
 export const QUEUE_STAGE_LIKES_WRITE = 'likes-write';

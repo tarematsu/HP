@@ -94,7 +94,7 @@ test('all non-track-history read-model workflows are outside the D1 budget guard
   }
 
   const pages = await readFile(new URL('../.github/workflows/run-pages-read-model-rebuild.yml', import.meta.url), 'utf8');
-  assert.match(pages, /Publish due pages read models/);
-  assert.match(pages, /Publish compact track ranking to R2/);
-  assert.doesNotMatch(pages, /worker.*retry|retry.*worker/i);
+  assert.match(pages, /Request canonical Worker rebuild/);
+  assert.match(pages, /request-pages-read-model-rebuild-actions\.mjs/);
+  assert.doesNotMatch(pages, /Publish compact track ranking to R2|run-pages-history-read-model-actions/);
 });

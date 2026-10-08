@@ -34,6 +34,7 @@ const jstDateTime = new Intl.DateTimeFormat('ja-JP', {
 });
 
 let currentSource = '';
+let requestSequence = 0;
 let currentPayload = null;
 let chartModel = null;
 let selectedIndex = null;
@@ -291,17 +292,18 @@ function bindInteractions() {
 }
 
 export async function loadFollowersView({ source = 'stationhead', force = false } = {}) {
+  const sequence = ++requestSequence;
   currentSource = source;
   bindInteractions();
   try {
     const payload = await followersReadModel(source).load({ force });
-    if (currentSource !== source) return payload;
+    if (sequence !== requestSequence || currentSource !== source) return payload;
     currentPayload = payload;
     selectedIndex = null;
     render(payload);
     return payload;
   } catch (error) {
-    if (currentSource === source) {
+    if (sequence === requestSequence && currentSource === source) {
       currentPayload = null;
       setSharedNotice('followersNotice', 'フォロワーデータの取得に失敗しました。', true);
       setChartEmpty(true);

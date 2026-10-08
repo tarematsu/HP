@@ -5,6 +5,7 @@ import test from 'node:test';
 const readModel = readFileSync(new URL('../src/nogizaka-read-model.js', import.meta.url), 'utf8');
 const pagesModel = readFileSync(new URL('../src/nogizaka-pages-read-model.js', import.meta.url), 'utf8');
 const pagesFetch = readFileSync(new URL('../src/pages-response-fetch-entry.js', import.meta.url), 'utf8');
+const sourceProfile = readFileSync(new URL('../../packages/sh-shared/stationhead-source.mjs', import.meta.url), 'utf8');
 const entry = readFileSync(new URL('../src/nogizaka-entry.js', import.meta.url), 'utf8');
 const finalized = readFileSync(new URL('../src/nogizaka-official-news.js', import.meta.url), 'utf8');
 const config = JSON.parse(readFileSync(new URL('../wrangler.nogizaka46smej.jsonc', import.meta.url), 'utf8'));
@@ -31,8 +32,9 @@ test('Nogizaka reconciliation preserves the existing finalized model pass after 
 });
 
 test('Nogizaka publishes a producer-owned Pages read model to the shared R2 bucket', () => {
-  assert.match(pagesModel, /NOGIZAKA_LISTENING_PARTY_MODEL_KEY = 'nogizaka-listening-party'/);
-  assert.match(pagesModel, /pagesActionsR2ResponseKey\(NOGIZAKA_LISTENING_PARTY_MODEL_KEY\)/);
+  assert.match(pagesModel, /NOGIZAKA_LISTENING_PARTY_MODEL_KEY = NOGIZAKA_PROFILE\.modelKey/);
+  assert.match(sourceProfile, /modelKey: 'nogizaka-listening-party'/);
+  assert.match(pagesModel, /saveMaterializedR2Response/);
   assert.match(pagesModel, /PAGES_RESPONSE_R2 binding is missing/);
   assert.match(pagesFetch, /'nogizaka-listening-party'/);
   const servingConfig = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));

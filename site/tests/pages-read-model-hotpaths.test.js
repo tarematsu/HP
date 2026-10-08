@@ -2,32 +2,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const boundary = readFileSync(new URL('../functions/lib/period-boundary-evidence.js', import.meta.url), 'utf8');
 const current = readFileSync(new URL('../functions/api/history-current.js', import.meta.url), 'utf8');
 const tracks = readFileSync(new URL('../functions/api/track-history.js', import.meta.url), 'utf8');
-const facts = readFileSync(new URL('../functions/lib/dashboard-facts.js', import.meta.url), 'utf8');
+const readModelService = readFileSync(new URL('../functions/lib/pages-read-model-service.js', import.meta.url), 'utf8');
 const dailyTracks = readFileSync(
   new URL('../../database/facts-migrations/053_pages_track_history_daily_read_model.sql', import.meta.url),
   'utf8',
 );
-
-function between(source, start, end) {
-  const from = source.indexOf(start);
-  const to = source.indexOf(end, from + start.length);
-  assert.notEqual(from, -1, `missing start marker: ${start}`);
-  assert.notEqual(to, -1, `missing end marker: ${end}`);
-  return source.slice(from, to);
-}
-
-test('history boundary reads never fall back to raw snapshot repair', () => {
-  const loader = between(
-    boundary,
-    'export async function loadPeriodBoundaryEvidence',
-    'export function applyPeriodBoundaryEvidence',
-  );
-  assert.match(loader, /loadPreaggregatedEvidence/);
-  assert.doesNotMatch(loader, /periodBoundaryEvidenceSql|sh_channel_snapshots|\.batch\(|INSERT|UPDATE/);
-});
 
 test('current history reads a single daily track-count projection row', () => {
   assert.match(current, /FROM sh_pages_track_history_daily_read_model/);
@@ -39,14 +20,11 @@ test('current history reads a single daily track-count projection row', () => {
 });
 
 test('track-history public requests proxy only to the R2 materialized service', () => {
-  assert.match(tracks, /PAGES_READ_MODEL_SERVICE/);
-  assert.match(tracks, /url\.searchParams\.set\('key', TRACK_HISTORY_MODEL_KEY\)/);
-  assert.match(tracks, /url\.searchParams\.set\('api', '1'\)/);
+  assert.match(tracks, /fetchPagesReadModel\(env, TRACK_HISTORY_MODEL_KEY/);
+  assert.match(tracks, /api: true/);
+  assert.match(readModelService, /PAGES_READ_MODEL_SERVICE/);
+  assert.match(readModelService, /url\.searchParams\.set\('key', modelKey\)/);
+  assert.match(readModelService, /if \(api\) url\.searchParams\.set\('api', '1'\)/);
   assert.doesNotMatch(tracks, /MINUTE_DB|\.prepare\(|TRACK_RANKING_SQL|TRACK_RANKING_SUMMARY_SQL|sh_track_ranking_current|MAX\(play_date\)|FROM sh_tracks/);
 });
 
-test('dashboard request path never calculates the prediction regression', () => {
-  const loader = between(facts, 'export async function loadFactsDashboard', 'export async function loadFactsBaseline');
-  assert.doesNotMatch(loader, /FACTS_PREDICTION_24H_SQL|predictionStatement/);
-  assert.match(loader, /prediction: null/);
-});

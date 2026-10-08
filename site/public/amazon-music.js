@@ -1,3 +1,4 @@
+import { loadDashboardJson } from './dashboard-data-client.js?v=20261005.2';
 import {
   byId as element,
   fullDate as formatFullDate,
@@ -221,11 +222,8 @@ function render(payload) {
   renderTable(tablePayload(payload, activeMode));
 }
 
-async function fetchPayload() {
-  const response = await fetch('/api/amazon-music', { headers: { accept: 'application/json' } });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload?.ok) throw new Error(payload?.error || `Amazon Music API HTTP ${response.status}`);
-  return payload;
+function fetchPayload(force = false) {
+  return loadDashboardJson('/api/amazon-music', { force });
 }
 
 export async function loadAmazonMusicView({ force = false } = {}) {
@@ -234,7 +232,7 @@ export async function loadAmazonMusicView({ force = false } = {}) {
     return lastPayload;
   }
   if (!loadPromise || force) {
-    loadPromise = fetchPayload().then((payload) => {
+    loadPromise = fetchPayload(force).then((payload) => {
       lastPayload = payload;
       setNotice('');
       render(payload);

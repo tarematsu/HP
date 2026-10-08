@@ -1,9 +1,10 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const main = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
-const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+const history = browserSource('history/history-lite.js');
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 
@@ -19,5 +20,5 @@ test('history entry no longer loads a summary-label correction runtime', () => {
   assert.doesNotMatch(main, /history-summary-average-labels/);
   assert.match(main, /history-lite\.js\?v=20261001\.1/);
   assert.match(tabs, /history-main\.js\?v=\d{8}\.\d+/);
-  assert.match(metrics, /dashboard-tabs\.js\?v=20261005\.1/);
+  assert.match(metrics, /dashboard-tabs\.js\?v=20261005\.2/);
 });

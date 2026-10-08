@@ -1,4 +1,8 @@
-import { loadWeeklyRankingReadModel } from './weekly-ranking-read-model.js';
+import {
+  stationheadChannelNameForHost,
+  stationheadRankingHostKey as hostKey,
+} from '../../../packages/sh-shared/stationhead-ranking-hosts.mjs';
+import { fetchPagesReadModel } from './pages-read-model-service.js';
 
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
@@ -7,30 +11,11 @@ const JSON_HEADERS = {
 
 const LEADERBOARD_MODEL_KEY = 'leaderboard';
 const FEATURED_HOSTS = ['sakuramankai', 'sakurazaka46jp', 'nogizaka46smej'];
-const STATIONHEAD_CHANNEL_BY_HOST = new Map([
-  ['sakuramankai', 'Buddies'],
-  ['sakurazaka46jp', '櫻坂46'],
-  ['nogizaka46smej', '乃木坂46'],
-  ['sbuddies1819', 'ATIN'],
-  ['jo1andjam', 'JAM'],
-  ['vote6tones', 'team SixTONES'],
-  ['befirst', 'BESTY'],
-  ['straykids', 'STAYS'],
-  ['k_p_official', 'Tiara'],
-  ['rosehq', 'numberoneHQ'],
-]);
-const READ_MODEL_SQL = `SELECT payload_json,source_max_ranking_date,refreshed_at
-FROM sh_weekly_ranking_read_model
-WHERE id=1`;
 const json = (data, status = 200, headers = {}) =>
   new Response(JSON.stringify(data), { status, headers: { ...JSON_HEADERS, ...headers } });
 
 function safeText(value, max = 100) {
   return String(value || '').trim().slice(0, max);
-}
-
-function hostKey(value) {
-  return String(value || '').trim().toLowerCase();
 }
 
 function finiteNumber(value) {
@@ -51,7 +36,7 @@ function validRank(value) {
 function correctKnownHostMetadata(row) {
   const next = { ...row };
   const key = hostKey(next.host_name);
-  const channel = STATIONHEAD_CHANNEL_BY_HOST.get(key);
+  const channel = stationheadChannelNameForHost(key);
   if (channel) next.stationhead_channel_name = channel;
   if (key === 'sbuddies1819') {
     next.artist_name = 'SB19';
@@ -186,47 +171,20 @@ function matchingHostKeys(rows, search) {
 }
 
 async function loadLeaderboardReadModel(env) {
-  const service = env?.PAGES_READ_MODEL_SERVICE;
-  if (typeof service?.fetch === 'function') {
-    const url = new URL('https://pages-read-model.internal/_internal/pages-response');
-    url.searchParams.set('key', LEADERBOARD_MODEL_KEY);
-    let response;
-    try {
-      response = await service.fetch(new Request(url, {
-        method: 'GET',
-        headers: { accept: 'application/json' },
-      }));
-    } catch {
-      return null;
-    }
-    if (!response?.ok) return null;
-    let model;
-    try {
-      model = await response.json();
-    } catch {
-      return null;
-    }
-    if (!model || typeof model !== 'object' || Array.isArray(model)) return null;
-    return {
-      model,
-      refreshed_at: Number(response.headers.get('x-materialized-at')) || Number(model.refreshed_at) || null,
-      source_max_ranking_date: model.source_max_ranking_date || null,
-      read_path: 'leaderboard-r2-read-model',
-    };
+  const response = await fetchPagesReadModel(env, LEADERBOARD_MODEL_KEY);
+  if (!response?.ok) return null;
+  let model;
+  try {
+    model = await response.json();
+  } catch {
+    return null;
   }
-
-  // Local/test fallback only. Production has PAGES_READ_MODEL_SERVICE and therefore
-  // never touches D1 for leaderboard reads.
-  if (!env?.OTHER_DB?.prepare) return null;
-  const stored = await env.OTHER_DB.prepare(READ_MODEL_SQL).first();
-  if (!stored?.payload_json) return null;
-  const model = await loadWeeklyRankingReadModel(env.OTHER_DB, stored);
-  if (!model) return null;
+  if (!model || typeof model !== 'object' || Array.isArray(model)) return null;
   return {
     model,
-    refreshed_at: Number(stored.refreshed_at) || Number(model.refreshed_at) || null,
-    source_max_ranking_date: stored.source_max_ranking_date || model.source_max_ranking_date || null,
-    read_path: 'weekly-ranking-read-model',
+    refreshed_at: Number(response.headers.get('x-materialized-at')) || Number(model.refreshed_at) || null,
+    source_max_ranking_date: model.source_max_ranking_date || null,
+    read_path: 'leaderboard-r2-read-model',
   };
 }
 
@@ -252,7 +210,7 @@ function readModelUnavailable(from, to, scope, hostSearch) {
   });
 }
 
-export async function loadRanking(requestUrl, env, _summaryLoader) {
+export async function loadRanking(requestUrl, env) {
   const from = requestUrl.searchParams.get('from') || '2024-06-01';
   const to = requestUrl.searchParams.get('to') || new Date().toISOString().slice(0, 10);
   const hostSearch = safeText(requestUrl.searchParams.get('host'));

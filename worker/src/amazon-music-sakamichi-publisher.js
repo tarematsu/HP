@@ -10,7 +10,7 @@ import {
 import { AMAZON_MUSIC_DEEP_STATE_KEY } from './amazon-music-rank-monitor.js';
 import { resolveAmazonMusicTracks } from './amazon-music-track-identity.js';
 import { isAmazonMusicTitleTrack } from './amazon-music-title-tracks.js';
-import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
+import { pagesR2ResponseKey } from './pages-response-r2.js';
 
 const AMAZON_MUSIC_READ_MODEL_KEY = 'amazon-music/read-model/latest.json';
 const AMAZON_MUSIC_PAGES_MODEL_KEY = 'amazon-music';
@@ -217,7 +217,7 @@ export async function publishAmazonMusicSakamichiModel(env, observedAt = Date.no
   };
 
   await putJson(r2, AMAZON_MUSIC_READ_MODEL_KEY, model);
-  const objectKey = pagesActionsR2ResponseKey(AMAZON_MUSIC_PAGES_MODEL_KEY);
+  const objectKey = pagesR2ResponseKey(AMAZON_MUSIC_PAGES_MODEL_KEY);
   if (!objectKey) throw new Error('Amazon Music public read-model key is unavailable');
   await putJson(r2, objectKey, {
     version: 1,

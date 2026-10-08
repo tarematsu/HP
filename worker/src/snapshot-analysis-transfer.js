@@ -1,5 +1,5 @@
-import { payloadHash } from '../../site/functions/lib/ingest-claim.js';
-import { bool, num, rawJson, text } from '../../site/functions/lib/api-utils.js';
+import { payloadHash } from '../../packages/sh-shared/ingest-claim.mjs';
+import { bool, num, rawJson, text } from '../../packages/sh-shared/api-utils.mjs';
 
 const SNAPSHOT_ANALYSIS = Symbol.for('stationhead.snapshot.analysis');
 const SNAPSHOT_CHECKPOINT_MS = 5 * 60_000;
@@ -95,7 +95,7 @@ export function restoreSnapshotAnalysis(snapshot, analysis) {
 }
 
 async function fallbackSnapshot(db, observedAt, data) {
-  const { saveLeanSnapshot } = await import('../../site/functions/lib/d1-lean-ingest.js');
+  const { saveLeanSnapshot } = await import('../../packages/sh-shared/d1-lean-ingest.mjs');
   return saveLeanSnapshot(db, observedAt, data);
 }
 

@@ -55,8 +55,8 @@ test('Buddies R2 mode bypasses D1 queue materialization reads', async () => {
     },
   };
   const result = await prepareMaterializedQueue(db, source, analysis, {
-    BUDDIES_R2_PLAYBACK_ENABLED: true,
-    BUDDIES_PLAYBACK_VISIBLE_TRACKS: 6,
+    STATIONHEAD_R2_PLAYBACK_ENABLED: true,
+    STATIONHEAD_PLAYBACK_VISIBLE_TRACKS: 6,
   });
   assert.equal(result.queue.tracks.length, 6);
   assert.equal(result.analysis, null);
@@ -84,20 +84,22 @@ test('Buddies playback day changes at 09:00 JST', () => {
 
 test('prepared collector routes queue management to R2 playback mode instead of legacy queue ingest', () => {
   const source = readFileSync(new URL('../src/prepared-collector-runner.js', import.meta.url), 'utf8');
-  assert.match(source, /BUDDIES_R2_PLAYBACK_ENABLED/);
-  assert.match(source, /captureBuddiesPlayback\(activeEnv, queue, observedAt\)/);
-  assert.match(source, /if \(r2PlaybackMode\)[\s\S]*captureBuddiesPlayback[\s\S]*else \{[\s\S]*ingest\(activeEnv, 'queue'/);
+  assert.match(source, /stationheadPlaybackEnabled\(activeEnv\)/);
+  assert.match(source, /stationheadPlaybackCapture\(config\.channelAlias\)/);
+  assert.match(source, /if \(r2PlaybackMode\)[\s\S]*playbackCapture\(activeEnv, queue, observedAt\)[\s\S]*else \{[\s\S]*ingest\(activeEnv, 'queue'/);
 });
 
 test('Buddies and Ohisama playback share canonical stationhead-minute track ids', () => {
   const source = readFileSync(new URL('../src/buddies-playback-state.js', import.meta.url), 'utf8');
+  const identity = readFileSync(new URL('../src/stationhead-playback-identity.js', import.meta.url), 'utf8');
   const migration = readFileSync(
     new URL('../../database/buddies-migrations/020_r2_playback_events.sql', import.meta.url),
     'utf8',
   );
   const wrangler = readFileSync(new URL('../wrangler.buddies-collector.jsonc', import.meta.url), 'utf8');
-  assert.match(source, /resolveTracksBulk/);
-  assert.match(source, /MINUTE_DB binding is missing/);
+  assert.match(source, /canonicalizeStationheadPlayback/);
+  assert.match(identity, /resolveTracksBulk/);
+  assert.match(identity, /MINUTE_DB binding is missing/);
   assert.match(source, /version: 2/);
   assert.match(source, /track_id: trackId/);
   assert.match(migration, /track_id INTEGER NOT NULL/);

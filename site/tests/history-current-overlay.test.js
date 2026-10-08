@@ -158,7 +158,7 @@ test('migration clears legacy history responses once without patching Storage', 
 test('daily session freshness is 30 seconds without a Storage prototype hook', () => {
   assert.equal(DAILY_HISTORY_CACHE_TTL_MS, 30_000);
   assert.equal(historyCacheTtl('daily'), 30_000);
-  assert.equal(historyCacheTtl('weekly'), 5 * 60_000);
-  assert.equal(historyCacheTtl('monthly'), 5 * 60_000);
-  assert.equal(historyCacheTtl('broadcasts'), 15 * 60_000);
+  assert.equal(historyCacheTtl('weekly'), 60_000);
+  assert.equal(historyCacheTtl('monthly'), 60_000);
+  assert.equal(historyCacheTtl('broadcasts'), 60_000);
 });

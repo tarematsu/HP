@@ -1,23 +1,33 @@
+import { browserSource } from './helpers/dashboard-source.js';
+import { dashboardRouterSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { ROUTES, navigationForMode } from '../public/dashboard-navigation-config.js';
+import { stationheadReadModelKey } from '../../packages/sh-shared/stationhead-read-models.mjs';
+
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-const route = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+const route = dashboardRouterSource();
 const shellWrapper = readFileSync(new URL('../public/hinata-shell.js', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
-const runtime = readFileSync(new URL('../public/stationhead-channel.js', import.meta.url), 'utf8');
-const readModel = readFileSync(new URL('../public/stationhead-channel-read-model.js', import.meta.url), 'utf8');
+const runtime = browserSource('stationhead-channel.js');
+const readModel = browserSource('stationhead-channel-read-model.js');
 const stationheadModel = readFileSync(new URL('../public/stationhead-channel-model.js', import.meta.url), 'utf8');
 const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/hinata.js', import.meta.url), 'utf8');
+const materializedProxy = readFileSync(new URL('../functions/lib/stationhead-materialized-proxy.js', import.meta.url), 'utf8');
+const readModelService = readFileSync(new URL('../functions/lib/pages-read-model-service.js', import.meta.url), 'utf8');
 
 test('Pages keeps Ohisama behind the shared lazy dashboard route', () => {
   assert.doesNotMatch(metrics, /hinata-shell\.js/);
-  assert.match(route, /hinata:\s*\{/);
-  assert.match(route, /shell: \(\) => import\('\/hinata-shell\.js\?v=/);
-  assert.match(route, /id: 'hinata', label: 'Ohisama', defaultMode: 'hinata'/);
-  assert.match(route, /viewId: 'hinataView'/);
+  assert.equal(ROUTES.hinata.kind, 'lazy');
+  assert.equal(ROUTES.hinata.viewId, 'hinataView');
+  assert.equal(ROUTES.hinata.moduleId, 'hinata');
+  const navigation = navigationForMode('hinata');
+  assert.equal(navigation.source.id, 'hinata');
+  assert.equal(navigation.source.label, 'Ohisama');
+  assert.equal(navigation.source.defaultMode, 'hinata');
   assert.match(shellWrapper, /mountStationheadChannelShell/);
   assert.match(shellWrapper, /id: 'hinataView'/);
   assert.match(shellWrapper, /stationheadModel = 'ohisama'/);
@@ -55,15 +65,20 @@ test('Ohisama frontend difference is isolated to the materialized read-model ada
   assert.match(readModel, /source: 'ohisama'/);
   assert.match(readModel, /capabilities: \['current', 'history', 'played-tracks', 'likes'\]/);
   assert.match(readModel, /payload\?\.queue/);
-  assert.match(readModel, /payload\?\.played_history/);
-  assert.match(readModel, /payload\.likes/);
-  assert.match(readModel, /includes\('日向坂46'\)/);
+  assert.match(readModel, /createStationheadTrackHistoryClient\('ohisama', '日向坂46', fetchJson\)/);
+  assert.doesNotMatch(readModel, /payload\?\.played_history/);
+  assert.match(readModel, /endpoint\('ranking_only=1&ranking_limit=500'\)/);
+  assert.doesNotMatch(readModel, /payload\.likes/);
+  assert.match(readModel, /row\.artist\.normalize\('NFKC'\)\.includes\(normalizedArtist\)/);
   assert.doesNotMatch(runtime, /\/api\/hinata|日向坂46/);
 });
 
-test('Hinata public API remains read-model-only', () => {
-  assert.match(api, /PAGES_READ_MODEL_SERVICE/);
-  assert.match(api, /_internal\/pages-response/);
-  assert.match(api, /HINATA_MODEL_KEY = 'hinata'/);
+test('Hinata public API remains read-model-only through the shared Stationhead proxy', () => {
+  assert.match(api, /proxyStationheadMaterializedReadModel/);
+  assert.match(api, /'ohisama'/);
+  assert.match(materializedProxy, /fetchPagesReadModel/);
+  assert.match(readModelService, /PAGES_READ_MODEL_SERVICE/);
+  assert.match(readModelService, /_internal\/pages-response/);
+  assert.equal(stationheadReadModelKey('ohisama'), 'hinata');
   assert.doesNotMatch(api, /\.prepare\(|OHISAMA_DB|MINUTE_DB|OTHER_DB/);
 });

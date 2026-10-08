@@ -1,8 +1,9 @@
+import { browserSource } from './helpers/dashboard-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+const history = browserSource('history/history-lite.js');
 const summaryRuntime = readFileSync(new URL('../public/history/history-broadcast-summary.js', import.meta.url), 'utf8');
 const main = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 
@@ -19,4 +20,12 @@ test('broadcast live-status runtime loads before the compact history renderer', 
   const historyIndex = main.indexOf('history-lite.js');
   assert.ok(summaryIndex >= 0);
   assert.ok(historyIndex > summaryIndex);
+});
+
+
+test('official live overlay uses an explicit adapter and never replaces browser fetch', () => {
+  assert.match(summaryRuntime, /export async function fetchOfficialBroadcast/);
+  assert.doesNotMatch(summaryRuntime, /browser\.fetch\s*=/);
+  const runtime = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
+  assert.match(runtime, /await fetchOfficialBroadcast/);
 });

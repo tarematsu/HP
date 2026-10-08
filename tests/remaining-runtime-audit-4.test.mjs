@@ -1,3 +1,4 @@
+import { browserSource } from '../site/tests/helpers/dashboard-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -86,18 +87,15 @@ test('Sakurazaka series reads canonical OTHER_DB history without request-time mi
 });
 
 test('history client owns table formatting and cache while charts are mode-specific', () => {
-  const source = readFileSync(
-    new URL('../site/public/history/history-lite.js', import.meta.url),
-    'utf8',
-  );
+  const source = browserSource('history/history-lite.js');
   assert.match(source, /integerFormat as integer/);
   assert.doesNotMatch(source, /const integer = new Intl\.NumberFormat/);
   assert.match(source, /const dateOnly = new Intl\.DateTimeFormat/);
   assert.match(source, /function renderTable/);
   assert.match(source, /function publishHistoryData/);
   assert.match(source, /history:data-loaded/);
-  assert.match(source, /sessionStorage\.getItem/);
-  assert.match(source, /sessionStorage\.setItem/);
-  assert.doesNotMatch(source, /function drawSummaryChart|function prepareCanvas|chartModel|broadcast-series|history-current|mode === 'raw'/);
+  assert.match(source, /storage\.getItem/);
+  assert.match(source, /storage\.setItem/);
+  assert.doesNotMatch(readFileSync(new URL('../site/public/history/history-lite.js',import.meta.url),'utf8'), /function drawSummaryChart|function prepareCanvas|chartModel|broadcast-series|history-current|mode === 'raw'/);
   assert.doesNotMatch(source, /TRACK_COLUMNS|trackDate|trackWeekMode|mode === 'tracks'/);
 });

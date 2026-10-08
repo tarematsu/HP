@@ -6,7 +6,7 @@ import {
   publishAmazonMusicTrackPlaylistModel,
 } from '../src/amazon-music-track-playlist-publisher.js';
 import { AMAZON_MUSIC_TRACK_PLAYLIST_MODEL_KEY } from '../src/amazon-music-track-playlist-collector.js';
-import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 
 function r2Store(seed = {}) {
   const values = new Map(Object.entries(seed));
@@ -36,7 +36,7 @@ test('Amazon Music track playlists publish as a Pages read model', async () => {
   assert.equal(result.published, true);
   assert.equal(result.tracks, 1);
 
-  const key = pagesActionsR2ResponseKey(AMAZON_MUSIC_TRACK_PLAYLIST_PAGES_MODEL_KEY);
+  const key = pagesR2ResponseKey(AMAZON_MUSIC_TRACK_PLAYLIST_PAGES_MODEL_KEY);
   const envelope = JSON.parse(r2.values.get(key));
   assert.equal(envelope.status, 200);
   assert.equal(envelope.updated_at, 2_000);

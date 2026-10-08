@@ -3,25 +3,6 @@
   gap: 10px;
 }
 
-.music-service-meta {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 5px 16px;
-  margin: 0 2px;
-  color: var(--muted);
-  font-size: .72rem;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.music-service-meta strong,
-.music-service-meta time {
-  margin-left: 5px;
-  color: var(--text);
-  font-weight: 750;
-}
-
 .music-service-section {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -35,7 +16,7 @@
   justify-content: space-between;
   gap: 8px 12px;
   min-width: 0;
-  margin-bottom: 0 !important;
+  margin-bottom: 0;
 }
 
 .music-service-section > .section-head h2 {
@@ -60,11 +41,11 @@
 
 .music-service-filter.mode-tabs button {
   width: auto;
-  min-height: 28px;
+  min-height: 44px;
   flex: 0 0 auto;
   padding: 4px 8px;
   border-radius: 8px;
-  font-size: .7rem;
+  font-size: var(--dashboard-copy-size);
   line-height: 1.15;
 }
 
@@ -91,7 +72,7 @@
   margin: 0;
   min-height: 16px;
   color: var(--muted);
-  font-size: .72rem;
+  font-size: var(--dashboard-small-size);
   font-weight: 700;
 }
 
@@ -136,7 +117,7 @@
 .music-service-playlist-note {
   margin: 0 0 8px;
   color: var(--muted);
-  font-size: .72rem;
+  font-size: var(--dashboard-small-size);
 }
 
 .music-service-playlist-table :is(th,td):first-child {
@@ -172,11 +153,6 @@
     gap: 8px;
   }
 
-  .music-service-meta {
-    justify-content: flex-start;
-    gap: 3px 12px;
-    text-align: left;
-  }
 
   .music-service-section > .section-head {
     align-items: flex-start;
@@ -194,7 +170,7 @@
 
   .music-service-filter.mode-tabs button {
     flex: 1 0 auto;
-    min-height: 30px;
+    min-height: 44px;
     padding: 5px 8px;
   }
 
@@ -202,3 +178,6 @@
     gap: 5px 9px;
   }
 }
+.music-service-view-tabs { margin:0; border-bottom:1px solid var(--line); }
+
+.music-service-group { display: contents; }

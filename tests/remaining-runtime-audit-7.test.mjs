@@ -1,3 +1,4 @@
+import { browserSource } from '../site/tests/helpers/dashboard-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -49,7 +50,7 @@ test('queue items and latest likes share one D1 read batch', async () => {
 });
 
 test('Stationhead comment velocity runtime is retired', () => {
-  const ingest = readFileSync(new URL('../site/functions/lib/ingest.js', import.meta.url), 'utf8');
+  const ingest = readFileSync(new URL('../packages/sh-shared/ingest.mjs', import.meta.url), 'utf8');
   assert.doesNotMatch(ingest, /saveCommentCounts|COMMENT_VELOCITY_UPDATE_SQL/);
 });
 
@@ -83,10 +84,7 @@ test('broadcast summary reports empty range and setup state in one query', () =>
 });
 
 test('history display layer uses current canonical modules only', () => {
-  const source = readFileSync(
-    new URL('../site/public/history/history-lite.js', import.meta.url),
-    'utf8',
-  );
+  const source = browserSource('history/history-lite.js');
   const entry = readFileSync(
     new URL('../site/public/history/history-main.js', import.meta.url),
     'utf8',

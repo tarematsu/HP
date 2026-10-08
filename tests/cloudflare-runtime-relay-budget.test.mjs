@@ -10,10 +10,6 @@ const runtimeQueue = readFileSync(
   new URL('../worker/src/runtime-queue.js', import.meta.url),
   'utf8',
 );
-const pagesActions = readFileSync(
-  new URL('../worker/scripts/run-pages-read-model-actions.mjs', import.meta.url),
-  'utf8',
-);
 const offlineActions = readFileSync(
   new URL('../worker/scripts/run-runtime-offline-maintenance-actions.mjs', import.meta.url),
   'utf8',
@@ -35,9 +31,6 @@ test('runtime emits no scheduled relay traffic while account-wide Queue usage re
   assert.match(runtimeQueue, /unsupported_runtime_message_retried/);
   assert.doesNotMatch(runtimeQueue, /unsupported_runtime_message_discarded/);
 
-  assert.doesNotMatch(pagesActions, /runSplitTrackHistoryCycleStep/);
-  assert.match(pagesActions, /track-history-read-model-disabled/);
-  assert.match(pagesActions, /dueVariantKeys/);
   assert.match(offlineActions, /runStreamGoalPrediction/);
   assert.match(offlineActions, /runRollupMaintenance/);
   assert.match(offlineActions, /pruneOldSnapshots/);

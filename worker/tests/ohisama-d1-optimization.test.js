@@ -3,15 +3,13 @@ import test from 'node:test';
 
 import {
   OHISAMA_AUTH_HOT_STATE_KEY,
-  runOptimizedOhisamaCollectorScheduled,
-} from '../src/ohisama-collector-optimized.js';
-import {
-  refreshOptimizedOhisamaReadModel,
-  rollupOhisamaWeekly,
-} from '../src/ohisama-read-model-optimized.js';
-import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+  runOhisamaCollectorScheduled,
+} from '../src/ohisama-collector.js';
+import { refreshOhisamaReadModel } from '../src/ohisama-read-model.js';
+import { rollupStationheadWeekly } from '../../packages/sh-shared/stationhead-read-models.mjs';
+import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 
-const HINATA_KEY = pagesActionsR2ResponseKey('hinata');
+const HINATA_KEY = pagesR2ResponseKey('hinata');
 
 class FakeR2 {
   constructor(initial = new Map()) {
@@ -79,7 +77,7 @@ test('Ohisama weekly rollup uses Monday UTC boundaries and Buddies-style weighte
     },
   ];
 
-  const weekly = rollupOhisamaWeekly(rows, updatedAt);
+  const weekly = rollupStationheadWeekly(rows, updatedAt);
   assert.equal(weekly.length, 1);
   assert.equal(weekly[0].period_key, '2026-09-28');
   assert.equal(weekly[0].sample_count, 400);
@@ -130,7 +128,7 @@ test('Ohisama same-day read-model refresh stays entirely off D1', async () => {
     },
   };
 
-  const result = await refreshOptimizedOhisamaReadModel(env, {
+  const result = await refreshOhisamaReadModel(env, {
     observed_at: observedAt,
     channel_id: 46,
     station_id: 99,
@@ -192,7 +190,7 @@ test('Ohisama UTC day rollover persists completed daily and weekly summaries exa
     },
   };
 
-  const result = await refreshOptimizedOhisamaReadModel(env, {
+  const result = await refreshOhisamaReadModel(env, {
     observed_at: observedAt,
     channel_id: 46,
     station_id: 99,
@@ -261,7 +259,7 @@ test('Ohisama collector uses R2 auth hot state and skips the per-run D1 state wr
     },
   };
 
-  const result = await runOptimizedOhisamaCollectorScheduled(
+  const result = await runOhisamaCollectorScheduled(
     { cron: '*/5 * * * *' },
     env,
     {},

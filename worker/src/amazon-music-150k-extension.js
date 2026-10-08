@@ -10,7 +10,7 @@ import {
   scanAmazonChart,
 } from './amazon-music-rank-monitor.js';
 import { resolveAmazonMusicTracks } from './amazon-music-track-identity.js';
-import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
+import { pagesR2ResponseKey } from './pages-response-r2.js';
 
 export const AMAZON_MUSIC_DEEP_BASE_RANK = 100_000;
 export const AMAZON_MUSIC_DEEP_TARGET_RANK = 150_000;
@@ -225,7 +225,7 @@ async function publishCompleted150k(env, deepState, observedAt) {
   };
 
   await putJson(r2, AMAZON_MUSIC_READ_MODEL_KEY, model);
-  const objectKey = pagesActionsR2ResponseKey(AMAZON_MUSIC_PAGES_MODEL_KEY);
+  const objectKey = pagesR2ResponseKey(AMAZON_MUSIC_PAGES_MODEL_KEY);
   if (!objectKey) throw new Error('Amazon Music public read-model key is unavailable');
   await putJson(r2, objectKey, {
     version: 1,

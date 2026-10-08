@@ -1,8 +1,8 @@
 import {
   TRACK_HISTORY_GRACE_MS,
   TRACK_HISTORY_SQL,
-} from '../../site/functions/lib/track-history-restored-handler.js';
-import { loadTrackRanking } from '../../site/functions/lib/track-ranking.js';
+} from '../../packages/sh-shared/track-history-restored-handler.mjs';
+import { loadTrackRanking } from '../../packages/sh-shared/track-ranking.mjs';
 import { mergeTrackHistoryExcludedDates } from './pages-track-history-support.js';
 import { TRACK_HISTORY_STAGE_KEY } from './pages-track-history-cycle.js';
 import {

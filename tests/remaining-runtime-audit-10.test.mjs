@@ -1,9 +1,11 @@
+import { browserSource } from '../site/tests/helpers/dashboard-source.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 
 import { HOST_SUMMARY_SQL, loadHostSummary } from '../site/functions/api/host-history.js';
+import { ROUTES } from '../site/public/dashboard-navigation-config.js';
 
 function hostDatabase() {
   const db = new DatabaseSync(':memory:');
@@ -67,16 +69,21 @@ test('history runtime is embedded and lazy while the shared leaderboard owns ran
   const html = readFileSync(new URL('../site/public/index.html', import.meta.url), 'utf8');
   const shell = readFileSync(new URL('../site/public/history-shell.js', import.meta.url), 'utf8');
   const tabs = readFileSync(new URL('../site/public/dashboard-tabs.js', import.meta.url), 'utf8');
+  const navigation = readFileSync(new URL('../site/public/dashboard-navigation-config.js', import.meta.url), 'utf8');
   const entry = readFileSync(new URL('../site/public/history/history-main.js', import.meta.url), 'utf8');
-  const runtime = readFileSync(new URL('../site/public/history/history-lite.js', import.meta.url), 'utf8');
+  const runtime = browserSource('history/history-lite.js');
   const period = readFileSync(new URL('../site/public/history/history-period-chart.js', import.meta.url), 'utf8');
-  const leaderboard = readFileSync(new URL('../site/public/leaderboard.js', import.meta.url), 'utf8');
+  const leaderboard = browserSource('leaderboard.js');
   const leaderboardReadModel = readFileSync(new URL('../site/public/leaderboard-read-model.js', import.meta.url), 'utf8');
 
   assert.equal((html.match(/<script /g) || []).length, 1);
   assert.match(shell, /id: 'historyView'/);
   assert.match(tabs, /import\('\/history\/history-main\.js\?v=\d{8}\.\d+'\)/);
-  assert.match(tabs, /ranking:[\s\S]*runtime: \(\) => import\('\/leaderboard\.js\?v=\d{8}\.\d+'\)/);
+  assert.equal(ROUTES.ranking.kind, 'lazy');
+  assert.equal(ROUTES.ranking.moduleId, 'ranking');
+  assert.deepEqual(ROUTES.ranking.loadArgs, { source: 'stationhead' });
+  assert.match(tabs, /ranking: Object\.freeze\(\{[\s\S]*?import\('\/leaderboard\.js\?v=\d{8}\.\d+'\)/);
+  assert.doesNotMatch(navigation, /import\('\/leaderboard\.js/);
   assert.doesNotMatch(html, /href="\/history/);
   assert.match(entry, /function ensureHistoryModeRuntime/);
   assert.match(entry, /history-period-chart\.js/);
@@ -85,7 +92,7 @@ test('history runtime is embedded and lazy while the shared leaderboard owns ran
   assert.doesNotMatch(entry, /history-ranking-missing-gap/);
 
   assert.match(runtime, /const PAGE_SIZE = 200/);
-  assert.match(runtime, /sessionStorage\.getItem/);
+  assert.match(runtime, /storage\.getItem/);
   assert.match(runtime, /publishHistoryData/);
   assert.doesNotMatch(runtime, /prepareCanvas|drawSummaryChart|chartModel|history-broadcasts\.js/);
   assert.match(period, /history:data-loaded/);
