@@ -87,3 +87,16 @@ it("does not deduplicate an identical ranking across two different JST weeks", a
   await applyStationheadLeaderboardProbeInput([sample({ observed_at: NOW + 7 * 86400000 })], env, "device");
   expect(send).toHaveBeenCalledTimes(2);
 });
+
+it("rejects a missing shared ranking bucket rather than acknowledging data in another R2 bucket", async () => {
+  vi.spyOn(Date, "now").mockReturnValue(NOW);
+  const fallbackPut = vi.fn(async () => ({}));
+  const env = {
+    DB: {} as D1Database,
+    DATA_BUCKET: { put: fallbackPut } as unknown as R2Bucket,
+    STATIONHEAD_LEADERBOARD_REFRESH_QUEUE: { send: vi.fn() } as unknown as Queue,
+  } as Env;
+  const response = await applyStationheadLeaderboardProbeInput([sample()], env, "device");
+  expect(response.status).toBe(503);
+  expect(fallbackPut).not.toHaveBeenCalled();
+});
