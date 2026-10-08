@@ -188,7 +188,7 @@ try {
         // Wait for the selected route's data, while retaining the non-empty assertion.
         try {
           await page.waitForFunction((expectedMode) => {
-            const view = document.getElementById(mode === 'past' ? 'currentView' : 'hinataView');
+            const view = document.getElementById(expectedMode === 'past' ? 'currentView' : 'hinataView');
             const cell = view?.querySelector('[data-role="daily-tbody"] tr td');
             return location.hash === `#${expectedMode}` && view && !view.hidden
               && /^\d{4}/.test(cell?.textContent || '');
