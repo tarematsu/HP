@@ -39,8 +39,6 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
   body += "\"dashboard\":" + number(L"dashboardVersion");
   body += ",\"radar\":" + number(L"radarVersion");
   body += ",\"switchbot\":" + number(L"switchbotVersion");
-  body += ",\"stationhead\":" + number(L"stationheadVersion");
-  body += ",\"stationheadHealth\":" + number(L"stationheadHealthVersion");
   body += ",\"config\":" + number(L"configVersion") + "}";
 
   std::optional<PendingTelemetry> telemetry;

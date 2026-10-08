@@ -478,12 +478,6 @@ void App::Tick() {
         NextDelayFromDeadline(
             now, lastTelemetryAt_ + telemetryIntervalMs, kMaxAppTimerMs));
   }
-  if (rendererStarted_) {
-    nextTickMs = std::min(
-        nextTickMs,
-        NextDelayFromDeadline(
-            now, renderer_->NativePlaybackNextWakeAt(now), kMaxAppTimerMs));
-  }
   if (stationheadStarted_ && stationhead_) {
     // Until Stationhead has established audio, keep the App scheduler alive at
     // the fast cadence even while the WebView stays behind the dashboard. This

@@ -1,8 +1,6 @@
-#include "app.h"
 #include "sh.h"
 #include "sh_audio_loss_policy.h"
 #include "stationhead_monitor_probe.h"
-#include "web_renderer.h"
 #include <winrt/Windows.Data.Json.h>
 
 namespace hp {
@@ -229,20 +227,6 @@ void RequestStationheadMonitorDomProbe() noexcept {
   }
 }
 
-void App::NotifyStationheadPlaybackFallbackStarted() {
-  if (!renderer_ || stationheadPlaybackFallbackActive_) return;
-  const NativePlaybackFeedStatus feed =
-      renderer_->NativePlaybackFeedStatusFor(0, UnixMillis());
-  stationheadPlaybackFallbackActive_ = true;
-  stationheadPlaybackNoNextTrackObserved_ = false;
-  stationheadPlaybackFallbackRevision_ =
-      std::max<uint64_t>(1, feed.healthyRevision);
-  if (logger_) {
-    logger_->Warn(
-        L"Stationhead audio-loss fallback registered; waiting for a newer healthy five-minute playback observation");
-  }
-}
-
 void StationheadPlayer::UpdateAudioLossState(
     const std::wstring& state, const std::wstring& detail) {
   if (audioLossState_ == state) return;
@@ -346,9 +330,6 @@ void StationheadPlayer::SetManagedPlaybackFallback(
     ResetAudioLossProbe();
     UpdateAudioLossState(L"fallback", reason);
     SetPlaybackFallback(true, reason);
-    if (App* app = App::Current()) {
-      app->NotifyStationheadPlaybackFallbackStarted();
-    }
     return;
   }
 

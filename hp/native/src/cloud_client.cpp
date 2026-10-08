@@ -8,7 +8,6 @@
 namespace hp {
 namespace {
 constexpr size_t kMaxResponseBytes = 16 * 1024 * 1024;
-constexpr UINT kStationheadHealthUpdatedMessage = WM_APP + 10;
 constexpr double kMaxJsonInteger = 9'007'199'254'740'991.0;
 using winrt::Windows::Data::Json::JsonArray;
 using winrt::Windows::Data::Json::JsonObject;
@@ -283,18 +282,6 @@ std::wstring CloudClient::WorkerVersion() const {
   return workerVersion_;
 }
 
-void CloudClient::UpdateStationheadHealthText(std::wstring text) {
-  bool changed = false;
-  {
-    std::lock_guard lock(stateMutex_);
-    if (stationheadHealthText_ != text) {
-      stationheadHealthText_ = std::move(text);
-      changed = true;
-    }
-  }
-  if (changed && window_) PostMessageW(window_, kStationheadHealthUpdatedMessage, 0, 0);
-}
-
 void CloudClient::LoadCacheMetadata() {
   try {
     const std::optional<std::string> text = ReadTextFile(dataDir_ / L"dashboard.meta.json");
@@ -303,13 +290,10 @@ void CloudClient::LoadCacheMetadata() {
       dashboardVersion_ = static_cast<int>(object.GetNamedNumber(L"dashboardVersion", -1));
       radarVersion_ = static_cast<int>(object.GetNamedNumber(L"radarVersion", -1));
       switchbotVersion_ = static_cast<int>(object.GetNamedNumber(L"switchbotVersion", -1));
-      stationheadVersion_ = static_cast<int>(object.GetNamedNumber(L"stationheadVersion", -1));
-      stationheadHealthVersion_ = static_cast<int>(object.GetNamedNumber(L"stationheadHealthVersion", -1));
       deviceConfigVersion_ = static_cast<int>(object.GetNamedNumber(L"deviceConfigVersion", -1));
     }
   } catch (...) {
-    dashboardVersion_ = radarVersion_ = switchbotVersion_ = stationheadVersion_ =
-        stationheadHealthVersion_ = deviceConfigVersion_ = -1;
+    dashboardVersion_ = radarVersion_ = switchbotVersion_ = deviceConfigVersion_ = -1;
   }
   cacheMetadataDirty_ = false;
 }
@@ -323,15 +307,10 @@ void CloudClient::SaveCacheMetadata() {
   const bool radarFormatted = AppendInteger(text, radarVersion_);
   text += ",\"switchbotVersion\":";
   const bool switchbotFormatted = AppendInteger(text, switchbotVersion_);
-  text += ",\"stationheadVersion\":";
-  const bool stationheadFormatted = AppendInteger(text, stationheadVersion_);
-  text += ",\"stationheadHealthVersion\":";
-  const bool healthFormatted = AppendInteger(text, stationheadHealthVersion_);
   text += ",\"deviceConfigVersion\":";
   const bool configFormatted = AppendInteger(text, deviceConfigVersion_);
   text.push_back('}');
-  if (!formatted || !radarFormatted || !switchbotFormatted ||
-      !stationheadFormatted || !healthFormatted || !configFormatted) {
+  if (!formatted || !radarFormatted || !switchbotFormatted || !configFormatted) {
     log_.Warn(L"Cloud cache metadata formatting failed");
     return;
   }
@@ -346,7 +325,6 @@ void CloudClient::Loop() {
       ApplyPresenceFallback();
       dashboardVersion_ = -1;
       cacheMetadataDirty_ = true;
-      UpdateStationheadHealthText(L"Stationhead収集: 状態取得失敗");
       const std::wstring friendly = FriendlyCloudError(error.what());
       const auto dashboard = DashboardWithCloudError(dataDir_ / L"dashboard.json", friendly);
       if (AtomicWriteBytes(dataDir_ / L"dashboard.json", dashboard)) PostMessageW(window_, WM_HP_CLOUD_UPDATED, 0, 0);
