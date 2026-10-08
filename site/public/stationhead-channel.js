@@ -17,7 +17,7 @@ async function loadSection(runtime, section, { force = false } = {}) {
   try {
     if (section === 'played-tracks') { await loadPlayed(runtime, { force }); return; }
     const methods = { current: 'loadCurrent', history: 'loadHistory', likes: 'loadLikes', broadcasts: 'loadBroadcasts' }; const payload = await runtime.model[methods[section]]({ force }); if (!current()) return;
-    const renderers = { current: renderCurrent, history: renderDaily, likes: renderLikes, broadcasts: renderBroadcasts }; renderers[section](runtime, payload); if (section === 'history') refreshHistoryRange(runtime);
+    const renderers = { current: renderCurrent, history: renderDaily, likes: renderLikes, broadcasts: renderBroadcasts }; if (section === 'history') { runtime.historyPayload = payload; refreshHistoryRange(runtime); } else renderers[section](runtime, payload);
   } catch (error) { if (!current()) return; console.error(error); setNotice(runtime.root, `データの取得に失敗しました：${error.message}`, true); }
 }
 
@@ -40,7 +40,7 @@ function refreshHistoryRange(runtime) {
   const days = Number(runtime.historyRange) || 0;
   const step = Math.max(1, Math.floor(days / 2));
   const maxOffset = !isAll && Number.isFinite(firstDate) && Number.isFinite(lastDate)
-    ? Math.max(0, Math.ceil((lastDate - firstDate - (days - 1) * 86_400_000) / (step * 86_400_000)) + 1) : 0;
+    ? Math.max(0, Math.floor((lastDate - firstDate) / (step * 86_400_000))) : 0;
   runtime.historyOffset = Math.min(runtime.historyOffset, maxOffset);
   const previous = runtime.root.querySelector('[data-history-move="previous"]');
   const next = runtime.root.querySelector('[data-history-move="next"]');
