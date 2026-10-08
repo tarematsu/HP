@@ -25,26 +25,3 @@ test('July 19 auth capture remains in the Stationhead composition', () => {
   assert.match(july19Policy, /const NativeXhr = window\.XMLHttpRequest/);
   assert.match(july19Policy, /getHeader\('authorization'\)/);
 });
-
-test('Primary owns the PR48 authenticated streakStats request', () => {
-  assert.match(
-    playerSource,
-    /nowMs - lastDailyPlayStatsAt_ >= kStationheadDailyPlayStatsIntervalMs\) PollDailyPlayStats\(nowMs\)/,
-  );
-  assert.doesNotMatch(playerSource, /IsSecondary\(/);
-  assert.match(playerSource, /StationheadApiPlayStatsScript\(config_\.channelId\)/);
-  assert.match(activePolicy, /production1\.stationhead\.com\/me\/channel\//);
-  assert.match(activePolicy, /\/streakStats/);
-  assert.match(activePolicy, /if \(!headers\?\.authorization\)/);
-  assert.match(activePolicy, /error: 'no-auth-header'/);
-  assert.match(activePolicy, /10 \* 60 \* 1000/);
-  assert.match(activePolicy, /response\.status === 401 \|\| response\.status === 403/);
-});
-
-test('successful stats are no longer consumed into the later native store', () => {
-  assert.doesNotMatch(messagePolicy, /PublishStationheadNativeStatsMessage/);
-  assert.doesNotMatch(messagePolicy, /if \(consumed\) return S_OK/);
-  assert.match(webview, /type == L"stationhead-play-stats"/);
-  assert.match(webview, /status_\.dailyPlayCounts = std::move\(normalized\)/);
-  assert.match(webview, /status_\.dailyPlayStatsUpdatedAt = receivedAt/);
-});

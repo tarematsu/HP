@@ -44,17 +44,8 @@ test('login detection rejects stale auth and re-arms after authentication', () =
   assert.match(autoplay, /homepanel-stationhead-auth-ready/);
 
   const capture = section(shared, 'inline std::wstring StationheadAuthCaptureScript()',
-    'inline std::wstring StationheadApiPlayStatsScript(');
+    'inline std::wstring StationheadLowerAscii(');
   assert.match(capture, /dispatchEvent\(new Event\('homepanel-stationhead-auth-ready'\)\)/);
-});
-
-test('authenticated stats failures schedule the short retry', () => {
-  const poll = section(player, 'void StationheadPlayer::PollDailyPlayStats(',
-    'void StationheadPlayer::AttemptNativeStartClick(');
-  assert.match(poll, /ExecuteScript/);
-  assert.match(poll, /kStationheadDailyPlayStatsRetryMs/);
-  assert.match(poll, /nextTickAt_ = nowMs \+ kStationheadDailyPlayStatsRetryMs/);
-  assert.match(webview, /lastDailyPlayStatsAt_/);
 });
 
 test('Spotify authorization clears published login-required state', () => {

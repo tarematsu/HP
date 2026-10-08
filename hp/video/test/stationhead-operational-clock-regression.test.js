@@ -35,7 +35,7 @@ test('audio start timestamps are re-projected from uptime', () => {
 
 test('player wake deadlines and per-window retry states use monotonic wrappers', () => {
   assert.match(playerHeader, /MonotonicProjectedDeadline trackBoundaryPlaybackRecoveryDeadline_;/);
-  assert.match(playerHeader, /MonotonicElapsedTimestamp lastDailyPlayStatsAt_;/);
+  assert.doesNotMatch(playerHeader, /lastDailyPlayStatsAt_/);
   assert.doesNotMatch(playerHeader, /lastAuthProbeAt_|authProbeInFlight_|authProbeStartedAt_/);
   assert.match(handleHeader, /MonotonicElapsedTimestamp playbackMissingSinceAt_;/);
 
@@ -50,8 +50,7 @@ test('player wake deadlines and per-window retry states use monotonic wrappers',
 test('polling and recovery expressions bind to monotonic arithmetic', () => {
   const tick = section(playerSource, 'void StationheadPlayer::Tick(int64_t nowMs)',
     'void StationheadPlayer::Reconnect()');
-  assert.match(tick, /nowMs - lastDailyPlayStatsAt_ >= kStationheadDailyPlayStatsIntervalMs/);
-  assert.match(tick, /lastDailyPlayStatsAt_ \+ kStationheadDailyPlayStatsIntervalMs/);
+  assert.doesNotMatch(tick, /lastDailyPlayStatsAt_|PollDailyPlayStats/);
   assert.match(tick, /nowMs >= trackBoundaryPlaybackRecoveryDeadline_/);
 
   const gap = section(handleSource, 'bool StationheadHandleBase::SuppressTrackTransitionGap(',

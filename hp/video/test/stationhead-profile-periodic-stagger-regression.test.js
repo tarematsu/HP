@@ -49,12 +49,5 @@ test('Stationhead startup work stays staggered independently', () => {
 });
 
 test('retired play-count polling cannot reintroduce a synchronized five-minute burst', () => {
-  assert.match(
-    startupCache,
-    /#define kStationheadDailyPlayStatsIntervalMs 4'000'000'000'000'000'000LL/,
-  );
-  assert.match(
-    startupCache,
-    /#define StationheadApiPlayStatsScript\(channelId\) std::wstring\(L"void 0;"\)/,
-  );
+  assert.doesNotMatch(startupCache, /StationheadApiPlayStatsScript|kStationheadDailyPlayStatsIntervalMs/);
 });

@@ -59,7 +59,7 @@ test('auth callback publishes readiness before exposing the auth surface', () =>
 
 test('all Stationhead windows re-evaluate placement on state change', () => {
   const changed = section(messages, 'case WM_HP_STATIONHEAD_CHANGED:',
-    'case kStationheadHealthUpdatedMessage:');
+    'case WM_HP_CONFIG_UPDATED:');
   assert.match(changed, /stationheadPeers_\[i\]->ConsumeChangeFlags\(\)/);
   assert.match(changed, /stationhead_->ConsumeChangeFlags\(\)/);
   assert.match(changed, /MarkStationheadPlacementDirty\(\)/);
