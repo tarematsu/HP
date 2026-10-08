@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const buddies = readFileSync(new URL('../src/buddies-playback-state.js', import.meta.url), 'utf8');
 const ohisama = readFileSync(new URL('../src/ohisama-playback.js', import.meta.url), 'utf8');
-const playbackCore = readFileSync(new URL('../src/stationhead-playback-core.js', import.meta.url), 'utf8');
+import { stationheadPlaybackPeriodKey } from '../src/stationhead-playback-core.js';
 const playbackStore = readFileSync(new URL('../src/stationhead-playback-store.js', import.meta.url), 'utf8');
 const nogizaka = readFileSync(new URL('../src/nogizaka-raw-materializer.js', import.meta.url), 'utf8');
 const hostIngest = readFileSync(new URL('../../packages/sh-shared/host-ingest.mjs', import.meta.url), 'utf8');
@@ -21,7 +21,7 @@ test('Buddies and Ohisama playback events persist canonical identity through the
   assert.match(playbackStore, compactPlaybackColumns);
   assert.doesNotMatch(playbackStore, redundantPlaybackColumns);
   for (const source of [buddies, ohisama]) {
-    assert.match(source, /stationheadPlaybackPlayStatement/);
+    assert.match(source, /planStationheadPlaybackDaily/);
     assert.doesNotMatch(source, redundantPlaybackColumns);
   }
 });
@@ -48,7 +48,7 @@ test('Nogizaka opts into change-only like hashing without increasing other solo 
 });
 
 test('shared playback UTC day key remains unchanged, preserving the JST 09:00 boundary', () => {
-  assert.match(playbackCore, /Math\.floor\(Number\(timestamp\) \/ DAY_MS\) \* DAY_MS/);
-  assert.match(buddies, /stationheadPlaybackPeriodKey/);
-  assert.match(ohisama, /stationheadPlaybackPeriodKey/);
+  assert.equal(stationheadPlaybackPeriodKey(Date.parse('2026-10-02T08:59:59+09:00')), '2026-10-01');
+  assert.equal(stationheadPlaybackPeriodKey(Date.parse('2026-10-02T09:00:00+09:00')), '2026-10-02');
+  assert.match(playbackStore, /stationheadPlaybackPeriodKey/);
 });
