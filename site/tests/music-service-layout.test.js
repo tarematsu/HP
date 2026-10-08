@@ -37,7 +37,7 @@ test('all music subscription views mount through one shared shell contract', () 
 test('every service owns its own metadata identity and shared cadence contract', () => {
   assert.match(spotify, /meta: \{ valueId: 'spotifyUpdatedAt', cadence: '毎日朝ごろ' \}/);
   assert.match(apple, /meta: \{ valueId: 'appleUpdatedAt', cadence: '毎日6:00' \}/);
-  assert.match(amazon, /meta: \{ valueId: 'amazonUpdatedAt', cadence: '毎日6:00' \}/);
+  assert.match(amazon, /meta: \{ valueId: 'amazonUpdatedAt', cadence: '毎日5:00開始' \}/);
   assert.match(youtube, /meta: \{ valueId: 'youtubeMusicUpdated', cadence: '毎日0:00' \}/);
   assert.match(kkbox, /valueId: 'kkboxUpdatedAt'/);
   assert.match(kkbox, /cadenceId: 'kkboxCadence'/);
