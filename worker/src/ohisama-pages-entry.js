@@ -106,13 +106,22 @@ export async function runOhisamaPagesScheduled(controller, env, ctx, dependencie
   let playback = null;
   if (channelPayload) {
     try {
-      playback = await captureOhisamaPlayback(env, channelPayload, result, result.observed_at);
-      console.log(JSON.stringify({
-        event: 'ohisama_playback_captured',
-        observed_at: result.observed_at,
-        queue_items: playback.queue?.length || 0,
-        transitions_written: playback.transitions_written || 0,
-      }));
+      const captured = await captureOhisamaPlayback(env, channelPayload, result, result.observed_at);
+      if (captured?.skipped) {
+        console.warn(JSON.stringify({
+          event: 'ohisama_playback_skipped',
+          observed_at: result.observed_at,
+          reason: captured.reason || 'unknown',
+        }));
+      } else {
+        playback = captured;
+        console.log(JSON.stringify({
+          event: 'ohisama_playback_captured',
+          observed_at: result.observed_at,
+          queue_items: playback.queue?.length || 0,
+          transitions_written: playback.transitions_written || 0,
+        }));
+      }
     } catch (error) {
       console.error(JSON.stringify({
         event: 'ohisama_playback_capture_failed',
