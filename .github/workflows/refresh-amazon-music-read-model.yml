@@ -5,13 +5,8 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/refresh-amazon-music-read-model.yml'
-      - 'worker/scripts/amazon-music-read-model-refresh-entry.js'
+      - 'worker/scripts/refresh-amazon-music-actions.mjs'
   workflow_dispatch:
-    inputs:
-      collect:
-        description: Recollect the complete current 50k chart before publishing
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -25,7 +20,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     name: Publish current Sakamichi Amazon Music model
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets['CLOUDFLARE_API_TOKEN'] || secrets['CF_API_TOKEN'] || secrets['CLOUDFLARE_BUILDS_API_TOKEN'] }}
     steps:
@@ -42,67 +37,17 @@ jobs:
       - name: Install Worker dependencies
         run: npm ci --prefer-offline --no-audit --no-fund
         working-directory: worker
-      - name: Build remote-binding refresh config
-        working-directory: worker
-        run: |
-          node --input-type=module <<'NODE'
-          import { readFileSync, writeFileSync } from 'node:fs';
-          const source = JSON.parse(readFileSync('wrangler.amazon-music.jsonc', 'utf8'));
-          source.name = 'sh-amazon-music-read-model-refresh';
-          source.main = 'scripts/amazon-music-read-model-refresh-entry.js';
-          source.workers_dev = false;
-          source.preview_urls = false;
-          delete source.triggers;
-          delete source.observability;
-          source.d1_databases = (source.d1_databases || []).map((binding) => ({ ...binding, remote: true }));
-          source.r2_buckets = (source.r2_buckets || []).map((binding) => ({ ...binding, remote: true }));
-          writeFileSync('.amazon-music-refresh.wrangler.jsonc', JSON.stringify(source, null, 2));
-          NODE
-      - name: Publish read model now
+      - name: Recollect and publish through shared remote adapters
         working-directory: worker
         shell: bash
-        env:
-          RECOLLECT: ${{ (github.event_name == 'push' || inputs.collect) && '1' || '0' }}
         run: |
           set -euo pipefail
-          : > amazon-refresh.log
-          npx wrangler dev --config .amazon-music-refresh.wrangler.jsonc --port 8791 --log-level error > amazon-refresh.log 2>&1 &
-          pid=$!
-          trap 'kill "$pid" >/dev/null 2>&1 || true' EXIT
-          ok=false
-          for _ in $(seq 1 60); do
-            if curl --fail --silent --show-error http://127.0.0.1:8791/health >/dev/null; then
-              ok=true
-              break
-            fi
-            sleep 1
-          done
-          if [[ "$ok" != true ]]; then
-            cat amazon-refresh.log
-            exit 1
-          fi
-          if ! curl --fail-with-body --silent --show-error --max-time 900 "http://127.0.0.1:8791/refresh?collect=$RECOLLECT" -o amazon-refresh-result.json; then
-            cat amazon-refresh-result.json 2>/dev/null || true
-            cat amazon-refresh.log
-            exit 1
-          fi
-          cat amazon-refresh-result.json
-          node --input-type=module <<'NODE'
-          import { readFileSync } from 'node:fs';
-          const result = JSON.parse(readFileSync('amazon-refresh-result.json', 'utf8'));
-          if (result?.published !== true) throw new Error(`Amazon Music read model publish failed: ${JSON.stringify(result)}`);
-          for (const group of ['乃木坂46', '櫻坂46', '日向坂46']) {
-            if (!Object.hasOwn(result.groups || {}, group)) throw new Error(`Missing group in published read model: ${group}`);
-          }
-          console.log(JSON.stringify({ event: 'amazon_music_read_model_refreshed', ...result }));
-          NODE
+          node scripts/refresh-amazon-music-actions.mjs 2>&1 | tee amazon-refresh.log
       - name: Preserve Amazon recovery diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: amazon-recovery-failure-${{ github.run_id }}
-          path: |
-            worker/amazon-refresh-result.json
-            worker/amazon-refresh.log
+          path: worker/amazon-refresh.log
           if-no-files-found: warn
           retention-days: 7
