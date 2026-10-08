@@ -73,8 +73,8 @@ test('legacy unofficial list remains visible only while the legacy broadcasts ro
   assert.match(viewSource, /panel\.hidden = !tab\.classList\.contains\('active'\)/);
   assert.match(viewSource, /new MutationObserver\(syncTab\)/);
   assert.match(viewSource, /location\.hash !== '#unofficial'/);
-  assert.match(tabsSource, /mode === 'first-week' \|\| mode === 'unofficial'/);
-  assert.ok(tabsSource.includes("mode === 'monthly' ? 'weekly' : 'broadcasts'"));
+  assert.match(tabsSource, /'first-week', 'unofficial', 'monthly', 'daily', 'weekly'/);
+  assert.ok(tabsSource.includes("? 'past' : 'broadcasts'"));
 });
 
 test('unofficial data stays out of initial entry and loads only through broadcasts history runtime', () => {
