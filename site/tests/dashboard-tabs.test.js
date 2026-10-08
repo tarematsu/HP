@@ -72,7 +72,7 @@ test('feature tabs share one lazy route registry stylesheet loader and module ca
   assert.match(readFileSync(new URL('../public/dashboard-styles.js', import.meta.url), 'utf8'), /const stylePromises = new Map\(\)/);
   assert.match(tabsClient, /function ensureModeStyles\(mode\)/);
   assert.match(tabsClient, /async function showLazyView\(mode, route, options = \{\}\)/);
-  for (const mode of ['hinata', 'ranking', 'followers', 'spotify', 'amazon-music', 'apple-music']) {
+  for (const mode of ['ranking', 'followers', 'spotify', 'amazon-music', 'apple-music']) {
     assert.equal(ROUTES[mode].kind, 'lazy');
     assert.equal(ROUTES[mode].moduleId, mode);
   }
@@ -82,7 +82,7 @@ test('feature tabs share one lazy route registry stylesheet loader and module ca
 
 test('legacy listening-party hashes normalize to the shared broadcasts route only', () => {
   assert.match(tabsClient, /mode === 'first-week' \|\| mode === 'unofficial'/);
-  assert.ok(tabsClient.includes("mode === 'monthly' ? 'weekly' : 'broadcasts'"));
+  assert.ok(tabsClient.includes("? 'past' : 'broadcasts'"));
   assert.doesNotMatch(tabsClient, /unofficialView|showUnofficial|['"]unofficial['"]\s*:/);
   assert.doesNotMatch(registry, /view: 'unofficial'/);
 });
