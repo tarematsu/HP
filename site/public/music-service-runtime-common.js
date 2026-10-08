@@ -24,7 +24,7 @@ export const SAKAMICHI_GROUP_COLORS = Object.freeze({
 
 export const MUSIC_SERVICE_CADENCE = Object.freeze({
   youtube_music: '毎日0:00',
-  kkbox: '-',
+  kkbox: '毎週月曜日0:00',
   qq_music: '毎週木曜日18:00',
   kugou_music: '平日11:30 / ACG新歌榜: 水曜11:40',
 });
