@@ -49,7 +49,7 @@ test('media startup launches six Stationhead windows at thirty-second offsets', 
 });
 
 test('legacy Spotify renderer entry point is not part of app startup anymore', () => {
-  const initialize = section(lifecycle, 'void Renderer::Initialize()', 'void Renderer::StartSpotify()');
+  const initialize = section(lifecycle, 'void Renderer::Initialize()', 'void Renderer::Resize(');
   assert.doesNotMatch(initialize, /gSpotifyWebViews->Start\(\)/);
 
   const startup = section(app, 'void App::StartServices()', 'void App::StartDeferredServices(');

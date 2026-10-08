@@ -33,7 +33,7 @@ test('monotonic timing primitives are isolated from Stationhead domain state', (
 test('Stationhead DTOs are isolated from WebView player implementation details', () => {
   assert.match(types, /enum class StationheadTabKind/);
   assert.match(types, /enum StationheadChangeFlags/);
-  assert.match(types, /struct StationheadDailyPlayPoint/);
+  assert.doesNotMatch(types, /struct StationheadDailyPlayPoint/);
   assert.match(types, /struct StationheadStatus/);
   assert.doesNotMatch(types, /ICoreWebView2|StationheadPlayer/);
 });

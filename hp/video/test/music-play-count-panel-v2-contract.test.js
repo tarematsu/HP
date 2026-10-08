@@ -30,14 +30,9 @@ test('the compiled media panel uses the integrated YouTube and TVer surface', ()
   assert.doesNotMatch(entry, /media_section_v2\.inc/);
 });
 
-test('play-count acquisition uses PR48 authenticated Primary WebView polling', () => {
+test('Stationhead authorization capture remains while retired play-count polling is absent', () => {
   assert.match(july19Policy, /StationheadJuly19AuthCaptureScript/);
   assert.match(july19Policy, /window\.fetch = function\(input, init\)/);
   assert.match(july19Policy, /NativeXhr\.prototype\.send = function/);
-  assert.match(activePolicy, /StationheadPrimaryPlayStatsScript/);
-  assert.match(activePolicy, /window\.__homepanelStationheadAuthHeaders/);
-  assert.match(activePolicy, /if \(!headers\?\.authorization\)/);
-  assert.match(activePolicy, /credentials: 'include'/);
-  assert.match(activePolicy, /\/streakStats/);
-  assert.match(activePolicy, /10 \* 60 \* 1000/);
+  assert.doesNotMatch(activePolicy, /StationheadPrimaryPlayStatsScript|streakStats/);
 });
