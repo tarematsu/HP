@@ -57,6 +57,15 @@ function streamValue(row) {
   return finite(row?.stream_count ?? row?.reported_current_stream_count ?? row?.current_stream_count);
 }
 
+const MAX_STREAM_DELTA_GAP_MS = 20 * 60_000;
+
+function fiveMinuteStreamDelta(previousCount, currentCount, elapsedMs) {
+  if (previousCount == null || currentCount == null
+    || elapsedMs <= 0 || elapsedMs > MAX_STREAM_DELTA_GAP_MS) return null;
+  const delta = currentCount - previousCount;
+  return delta >= 0 ? Math.round((delta * FIVE_MINUTES_MS / elapsedMs) * 10) / 10 : null;
+}
+
 export function stationheadReadModelKey(sourceValue) {
   return stationheadSourceProfile(sourceValue)?.modelKey || null;
 }
@@ -96,15 +105,14 @@ export function normalizeStationheadHistory(rows = []) {
 
   return normalized.map((row, index) => {
     const previous = normalized[index - 1];
-    let streamDelta = null;
-    if (previous && row.stream_count != null && previous.stream_count != null) {
-      const elapsed = row.observed_at - previous.observed_at;
-      const delta = row.stream_count - previous.stream_count;
-      if (elapsed > 0 && delta >= 0) streamDelta = delta * FIVE_MINUTES_MS / elapsed;
-    }
     return {
       ...row,
-      stream_delta_5m: streamDelta == null ? null : Math.round(streamDelta * 10) / 10,
+      stream_delta_5m: previous
+        ? fiveMinuteStreamDelta(
+          previous.stream_count, row.stream_count,
+          row.observed_at - previous.observed_at,
+        )
+        : null,
     };
   });
 }
@@ -190,12 +198,11 @@ export function rollStationheadHistory(existingRows = [], collection, observedAt
     stream_delta_5m: null,
   };
   const previous = rows.at(-1);
-  if (previous && point.stream_count != null && previous.stream_count != null) {
-    const elapsed = point.observed_at - previous.observed_at;
-    const delta = point.stream_count - previous.stream_count;
-    if (elapsed > 0 && delta >= 0) {
-      point.stream_delta_5m = Math.round((delta * FIVE_MINUTES_MS / elapsed) * 10) / 10;
-    }
+  if (previous) {
+    point.stream_delta_5m = fiveMinuteStreamDelta(
+      previous.stream_count, point.stream_count,
+      point.observed_at - previous.observed_at,
+    );
   }
   return [...rows, point];
 }
