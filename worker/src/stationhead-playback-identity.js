@@ -6,23 +6,9 @@ import { resolveTracksBulk } from './minute-facts-track-resolution.js';
 import {
   emptyPlaybackDaily,
   stationheadPlaybackTrackKey,
+  stationheadPlaybackInteger as integer,
+  stationheadPlaybackText as text,
 } from './stationhead-playback-core.js';
-
-function finite(value) {
-  if (value === null || value === undefined || value === '') return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function integer(value) {
-  const parsed = finite(value);
-  return parsed == null ? null : Math.trunc(parsed);
-}
-
-function text(value, limit = 500) {
-  const parsed = String(value ?? '').trim();
-  return parsed ? parsed.slice(0, limit) : null;
-}
 
 function normalizedIdentitySource(track = {}) {
   const key = text(track?.track_key) || stationheadPlaybackTrackKey(track);
@@ -168,7 +154,6 @@ export async function canonicalizeStationheadPlayback(
     likes: aggregates.likes,
   };
 }
-
 
 export async function canonicalizeStationheadQueueTracks(
   catalogDb,

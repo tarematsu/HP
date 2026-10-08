@@ -1,18 +1,10 @@
 import {
+  emptyPlaybackDaily,
+  recordPlaybackDailyTrack,
   playbackDailyPublic,
   stationheadPlaybackPeriodKey,
+  stationheadPlaybackInteger as integer,
 } from './stationhead-playback-core.js';
-
-function finite(value) {
-  if (value === null || value === undefined || value === '') return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function integer(value) {
-  const parsed = finite(value);
-  return parsed == null ? null : Math.trunc(parsed);
-}
 
 export async function loadStationheadPlaybackState(bucket, key) {
   if (typeof bucket?.get !== 'function') return { available: false, state: null };
@@ -88,4 +80,27 @@ export async function runStationheadPlaybackStatements(db, statements) {
     return;
   }
   for (const statement of statements) await statement.run();
+}
+
+// Shared day rollover and play persistence plan; adapters retain their queue
+// and likes schemas while counting transitions through one implementation.
+export function planStationheadPlaybackDaily(db, stationId, previousDaily, transitions, observedAt, sourceLabel) {
+  const currentKey = stationheadPlaybackPeriodKey(observedAt);
+  let daily = previousDaily?.period_key ? previousDaily : emptyPlaybackDaily(currentKey);
+  let completedDay = null;
+  const statements = [];
+  const complete = (nextKey) => {
+    completedDay = playbackDailyPublic(daily);
+    statements.push(stationheadCompletedDailyStatement(db, daily, observedAt));
+    daily = emptyPlaybackDaily(nextKey);
+  };
+  for (const track of transitions) {
+    const playedAt = integer(track?.expected_start_at) ?? observedAt;
+    const nextKey = stationheadPlaybackPeriodKey(playedAt);
+    if (daily.period_key !== nextKey) complete(nextKey);
+    daily = recordPlaybackDailyTrack(daily, track, playedAt);
+    statements.push(stationheadPlaybackPlayStatement(db, stationId, track, observedAt, sourceLabel));
+  }
+  if (daily.period_key !== currentKey && !transitions.length) complete(currentKey);
+  return { daily, completedDay, statements };
 }

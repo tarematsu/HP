@@ -16,6 +16,8 @@ function text(value, limit = 500) {
   return parsed ? parsed.slice(0, limit) : null;
 }
 
+export { integer as stationheadPlaybackInteger, text as stationheadPlaybackText };
+
 export function stationheadPlaybackPeriodKey(timestamp) {
   return new Date(Math.floor(Number(timestamp) / DAY_MS) * DAY_MS).toISOString().slice(0, 10);
 }

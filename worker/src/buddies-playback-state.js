@@ -1,46 +1,23 @@
 import { requireStationheadSourceProfile } from '../../packages/sh-shared/stationhead-source.mjs';
 import {
-  emptyPlaybackDaily,
   playbackDailyPublic,
-  recordPlaybackDailyTrack,
-  stationheadPlaybackPeriodKey,
-  stationheadPlaybackTrackKey,
-  transitionedStationheadTracks,
+  stationheadPlaybackPeriodKey as buddiesPlaybackPeriodKey,
+  stationheadPlaybackTrackKey as buddiesTrackKey,
+  transitionedStationheadTracks as transitionedBuddiesTracks,
+  stationheadPlaybackInteger as integer,
+  stationheadPlaybackText as text,
 } from './stationhead-playback-core.js';
 import { canonicalizeStationheadPlayback } from './stationhead-playback-identity.js';
 import {
   loadStationheadPlaybackState,
+  planStationheadPlaybackDaily,
   runStationheadPlaybackStatements,
   saveStationheadPlaybackState,
-  stationheadCompletedDailyStatement,
-  stationheadPlaybackPlayStatement,
 } from './stationhead-playback-store.js';
 
 export const BUDDIES_PLAYBACK_HOT_STATE_KEY = requireStationheadSourceProfile('buddies').playbackHotKey;
 
-function finite(value) {
-  if (value === null || value === undefined || value === '') return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function integer(value) {
-  const parsed = finite(value);
-  return parsed == null ? null : Math.trunc(parsed);
-}
-
-function text(value, limit = 500) {
-  const parsed = String(value ?? '').trim();
-  return parsed ? parsed.slice(0, limit) : null;
-}
-
-export function buddiesPlaybackPeriodKey(timestamp) {
-  return stationheadPlaybackPeriodKey(timestamp);
-}
-
-export function buddiesTrackKey(track) {
-  return stationheadPlaybackTrackKey(track);
-}
+export { buddiesPlaybackPeriodKey, buddiesTrackKey, transitionedBuddiesTracks };
 
 function playbackTrack(queue, track, fallbackIndex) {
   const trackKey = buddiesTrackKey(track);
@@ -78,10 +55,6 @@ function normalizedQueue(queue) {
     total_track_count: integer(queue?.total_track_count) ?? tracks.length,
     tracks,
   };
-}
-
-export function transitionedBuddiesTracks(previousQueue = [], currentQueue = [], options = {}) {
-  return transitionedStationheadTracks(previousQueue, currentQueue, options);
 }
 
 function likeStatements(db, queue, track, observedAt) {
@@ -158,11 +131,6 @@ export async function captureBuddiesPlayback(env, queue, observedAt = Date.now()
     { channelId: 'buddies' },
   );
   currentQueue.tracks = canonical.tracks;
-  let daily = canonical.daily?.period_key
-    ? canonical.daily
-    : emptyPlaybackDaily(buddiesPlaybackPeriodKey(observedAt));
-  let completedDay = null;
-  const statements = [];
   const transitions = transitionedBuddiesTracks(previous?.queue, currentQueue.tracks, {
     previousObservedAt: previous?.updated_at,
     observedAt,
@@ -170,24 +138,9 @@ export async function captureBuddiesPlayback(env, queue, observedAt = Date.now()
     currentPaused: currentQueue.is_paused,
   });
 
-  for (const track of transitions) {
-    const playedAt = integer(track?.expected_start_at) ?? observedAt;
-    const nextKey = buddiesPlaybackPeriodKey(playedAt);
-    if (daily?.period_key && daily.period_key !== nextKey) {
-      completedDay = playbackDailyPublic(daily);
-      statements.push(stationheadCompletedDailyStatement(db, daily, observedAt));
-      daily = emptyPlaybackDaily(nextKey);
-    }
-    daily = recordPlaybackDailyTrack(daily, track, playedAt);
-    statements.push(stationheadPlaybackPlayStatement(db, currentQueue.station_id, track, observedAt, 'Buddies'));
-  }
-
-  if (!daily?.period_key) daily = emptyPlaybackDaily(buddiesPlaybackPeriodKey(observedAt));
-  if (daily.period_key !== buddiesPlaybackPeriodKey(observedAt) && !transitions.length) {
-    completedDay = playbackDailyPublic(daily);
-    statements.push(stationheadCompletedDailyStatement(db, daily, observedAt));
-    daily = emptyPlaybackDaily(buddiesPlaybackPeriodKey(observedAt));
-  }
+  const { daily, completedDay, statements } = planStationheadPlaybackDaily(
+    db, currentQueue.station_id, canonical.daily, transitions, observedAt, 'Buddies',
+  );
 
   const likes = { ...(canonical.likes || {}) };
   let likeChanges = 0;

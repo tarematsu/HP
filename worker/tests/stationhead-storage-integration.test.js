@@ -1,3 +1,4 @@
+import { planStationheadPlaybackDaily } from '../src/stationhead-playback-store.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadStationheadMinuteFactGapRows } from '../src/stationhead-minute-facts-reader.js';
@@ -102,3 +103,28 @@ test('source-scoped R2 publication retains model keys, cadence and one-object fo
   await assert.rejects(publishStationheadReadModel(r2, 'invalid', {}, 1), /unsupported/);
   assert.equal(objects.length, 2);
 });
+
+for (const label of ['Buddies', 'Ohisama']) {
+  test(`${label} daily plan preserves midnight plays and flushes the completed day`, () => {
+    const db = fakeDb();
+    const midnight = Date.parse('2026-10-02T00:00:00Z');
+    const tracks = [-1, 1].map((offset, index) => ({
+      track_id: index + 1, track_key: `track:${index}`, event_key: `event:${index}`,
+      expected_start_at: midnight + offset,
+    }));
+    const result = planStationheadPlaybackDaily(db, 99, null, tracks, midnight + 10, label);
+    assert.equal(result.completedDay.period_key, '2026-10-01');
+    assert.equal(result.completedDay.total_plays, 1);
+    assert.equal(result.daily.period_key, '2026-10-02');
+    assert.equal(result.daily.total_plays, 1);
+    const plays = db.calls.filter(call => call.sql.includes('INSERT OR IGNORE INTO sh_track_plays'));
+    assert.deepEqual(plays.map(call => call.args.slice(1, 4)), [
+      [midnight - 1, '2026-10-01', 99], [midnight + 1, '2026-10-02', 99],
+    ]);
+    const idle = planStationheadPlaybackDaily(db, 99, result.daily, [], midnight + 86400000, label);
+    assert.equal(idle.completedDay.total_plays, 1);
+    assert.equal(idle.daily.period_key, '2026-10-03');
+    assert.equal(idle.daily.total_plays, 0);
+    assert.equal(idle.statements.length, 1);
+  });
+}
