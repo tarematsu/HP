@@ -7,6 +7,7 @@ import {
 } from '../src/ohisama-read-model.js';
 import { mergeOhisamaPlaybackReadModelWithCadence } from '../src/ohisama-publication-cadence.js';
 import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
+import { captureOhisamaPlayback } from '../src/ohisama-playback.js';
 
 class FakeR2 {
   constructor(initial = new Map()) {
@@ -181,4 +182,53 @@ test('Ohisama public model can be published once from private hot payload', asyn
   const body = JSON.parse(raw);
   assert.equal(body.latest.host_handle, 'host-a');
   assert.equal(body.section_updated_at.current, observedAt);
+});
+
+
+test('delayed Ohisama refresh never rewinds a newer hot read model', async () => {
+  const currentAt = Date.parse('2026-10-08T01:10:00Z');
+  const delayedAt = currentAt - 5 * 60_000;
+  const r2 = new FakeR2(new Map([[
+    OHISAMA_READ_MODEL_HOT_STATE_KEY,
+    hotEnvelope(basePayload(currentAt), currentAt),
+  ]]));
+  const result = await refreshOhisamaReadModel({
+    PAGES_RESPONSE_R2: r2,
+    OHISAMA_DB: { prepare() { throw new Error('stale refresh must not touch D1'); } },
+  }, { channel_id: 46, observed_at: delayedAt }, delayedAt);
+  assert.equal(result.skipped, true);
+  assert.equal(result.reason, 'stale-observation');
+  assert.equal(result.payload.updated_at, currentAt);
+  assert.equal(r2.puts, 0);
+});
+
+test('delayed Ohisama playback does not rewrite state or record tracks', async () => {
+  const currentAt = Date.parse('2026-10-08T01:10:00Z');
+  const delayedAt = currentAt - 5 * 60_000;
+  const r2 = new FakeR2(new Map([[
+    'stationhead/ohisama/playback-state.json',
+    JSON.stringify({ version: 2, updated_at: currentAt, queue: [] }),
+  ]]));
+  const never = () => { throw new Error('stale playback must not touch D1'); };
+  const result = await captureOhisamaPlayback({
+    PAGES_RESPONSE_R2: r2,
+    OHISAMA_DB: { prepare: never },
+    MINUTE_DB: { prepare: never },
+  }, {}, { station_id: 99 }, delayedAt);
+  assert.equal(result.skipped, true);
+  assert.equal(result.reason, 'stale-playback-observation');
+  assert.equal(r2.puts, 0);
+});
+
+test('Ohisama public publication never overwrites newer data with delayed observations', async () => {
+  const currentAt = Date.parse('2026-10-08T01:10:00Z');
+  const delayedAt = currentAt - 5 * 60_000;
+  const r2 = new FakeR2();
+  const result = await mergeOhisamaPlaybackReadModelWithCadence(
+    { PAGES_RESPONSE_R2: r2 }, null, {}, delayedAt,
+    basePayload(currentAt), basePayload(delayedAt),
+  );
+  assert.equal(result.published, false);
+  assert.equal(result.reason, 'stale-observation');
+  assert.equal(r2.puts, 0);
 });
