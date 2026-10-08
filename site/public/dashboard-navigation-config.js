@@ -2,18 +2,24 @@ export const HISTORY_MODES = Object.freeze(new Set(['daily', 'weekly', 'broadcas
 
 const stationheadFunctions = Object.freeze([
   { mode: 'current', label: '現在' },
-  { mode: 'daily', label: '日次' },
-  { mode: 'weekly', label: '週次' },
+  { mode: 'past', label: '過去' },
   { mode: 'played-tracks', label: '再生履歴' },
   { mode: 'likes', label: 'いいね' },
   { mode: 'broadcasts', label: 'リスパ' },
+]);
+// Source-specific URL modes point to the same Stationhead panel implementation.
+const ohisamaFunctions = Object.freeze([
+  { mode: 'hinata', label: '現在' },
+  { mode: 'hinata-past', label: '過去' },
+  { mode: 'hinata-played-tracks', label: '再生履歴' },
+  { mode: 'hinata-likes', label: 'いいね' },
 ]);
 
 export const NAVIGATION = Object.freeze([
   {
     id: 'stationhead', label: 'Stationhead', sources: Object.freeze([
       { id: 'buddies', label: 'Buddies', defaultMode: 'current', functions: stationheadFunctions },
-      { id: 'hinata', label: 'Ohisama', defaultMode: 'hinata', functions: Object.freeze([{ mode: 'hinata', label: '統計' }]) },
+      { id: 'hinata', label: 'Ohisama', defaultMode: 'hinata', functions: ohisamaFunctions },
       { id: 'nogizaka', label: 'Nogizaka', defaultMode: 'nogizaka', functions: Object.freeze([{ mode: 'nogizaka', label: 'リスパ' }]) },
       { id: 'ranking', label: 'リーダーボード', defaultMode: 'ranking', functions: Object.freeze([{ mode: 'ranking', label: 'リーダーボード' }]) },
       { id: 'followers', label: 'フォロワー', defaultMode: 'followers', functions: Object.freeze([{ mode: 'followers', label: 'フォロワー' }]) },
@@ -40,10 +46,14 @@ export const ROUTES = Object.freeze({
   current: Object.freeze({ kind: 'stationhead', panel: 'current', viewId: 'currentView' }),
   'played-tracks': Object.freeze({ kind: 'stationhead', panel: 'played-tracks', viewId: 'currentView' }),
   likes: Object.freeze({ kind: 'stationhead', panel: 'likes', viewId: 'currentView' }),
+  past: Object.freeze({ kind: 'stationhead', panel: 'history', viewId: 'currentView' }),
   daily: Object.freeze({ kind: 'history', viewId: 'historyView' }),
   weekly: Object.freeze({ kind: 'history', viewId: 'historyView' }),
   broadcasts: Object.freeze({ kind: 'history', viewId: 'historyView', firstWeek: true }),
-  hinata: lazy('hinataView', 'hinata', 'loadHinataView', 'hinataNotice', 'hinata', '日向坂データの初期化に失敗しました。再読み込みしてください。'),
+  hinata: Object.freeze({ kind: 'stationhead', panel: 'current', viewId: 'hinataView' }),
+  'hinata-past': Object.freeze({ kind: 'stationhead', panel: 'history', viewId: 'hinataView' }),
+  'hinata-played-tracks': Object.freeze({ kind: 'stationhead', panel: 'played-tracks', viewId: 'hinataView' }),
+  'hinata-likes': Object.freeze({ kind: 'stationhead', panel: 'likes', viewId: 'hinataView' }),
   ranking: lazy('leaderboardView', 'ranking', 'loadLeaderboardView', 'leaderboardNotice', 'stationhead leaderboard', 'リーダーボードデータの初期化に失敗しました。再読み込みしてください。', { source: 'stationhead' }),
   followers: lazy('followersView', 'followers', 'loadFollowersView', 'followersNotice', 'followers', 'フォロワーデータの初期化に失敗しました。再読み込みしてください。', { source: 'stationhead' }),
   spotify: lazy('spotifyView', 'spotify', 'loadSpotifyView', 'spotifyNotice', 'spotify', 'Spotify再生数の初期化に失敗しました。再読み込みしてください。'),
