@@ -127,7 +127,6 @@ class StationheadPlayer {
   void ConfigureWebView();
   void ConfigureAuthWebView();
   void ResetNavigationRouteState();
-  void PollDailyPlayStats(int64_t nowMs);
   void AttemptNativeStartClick(int64_t nowMs);
   void FinishSpotifyAuthorization(const std::wstring& detail);
   void NavigateCurrentUrl(int64_t nowMs, const std::wstring& reason);
@@ -215,10 +214,6 @@ class StationheadPlayer {
   // first successful navigation initializes it, then only an App-accepted
   // 52-minute refresh may advance it.
   int64_t lastReloadAtStorage_ = 0;
-  MonotonicElapsedTimestamp lastDailyPlayStatsAt_;
-  uint64_t statsDocumentGeneration_ = 0;
-  uint64_t statsAuthGeneration_ = 0;
-  uint64_t statsLastAcceptedRequestId_ = 0;
   int64_t nextAutoClickAt_ = 0;
   bool autoClickInFlight_ = false;
   bool webViewConfigured_ = false;

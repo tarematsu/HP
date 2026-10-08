@@ -406,22 +406,6 @@ void StationheadPlayer::NavigateStationheadUrl(int64_t nowMs, const std::wstring
   log_.Info(L"Stationhead " + std::wstring(RoleTag()) + L" navigation (" + reason + L"): " + url);
 }
 
-void StationheadPlayer::PollDailyPlayStats(int64_t nowMs) {
-  if (!webview_) return;
-  const std::wstring script = StationheadApiPlayStatsScript(config_.channelId);
-  const HRESULT result = webview_->ExecuteScript(script.c_str(), nullptr);
-  if (FAILED(result)) {
-    lastDailyPlayStatsAt_ =
-        nowMs - (kStationheadDailyPlayStatsIntervalMs -
-                 kStationheadDailyPlayStatsRetryMs);
-    nextTickAt_ = nowMs + kStationheadDailyPlayStatsRetryMs;
-    log_.Warn(L"Stationhead authenticated stats script could not start " +
-              HResultHex(result));
-    return;
-  }
-  lastDailyPlayStatsAt_ = nowMs;
-}
-
 void StationheadPlayer::AttemptNativeStartClick(int64_t nowMs) {
   if (!webview_ || autoClickInFlight_ ||
       navigationInFlight_.load(std::memory_order_acquire) ||
@@ -814,8 +798,6 @@ void StationheadPlayer::Tick(int64_t nowMs) {
     return;
   }
 
-  if (nowMs - lastDailyPlayStatsAt_ >= kStationheadDailyPlayStatsIntervalMs) PollDailyPlayStats(nowMs);
-  consider(lastDailyPlayStatsAt_ + kStationheadDailyPlayStatsIntervalMs);
   if (!audioPlaying_.load(std::memory_order_relaxed)) {
     if (nowMs >= nextAutoClickAt_) AttemptNativeStartClick(nowMs);
     consider(nextAutoClickAt_);
