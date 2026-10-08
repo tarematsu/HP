@@ -351,6 +351,11 @@ export async function runOhisamaCollectorScheduled(
     const { payload, state, alias } = await requestChannel(env, dependencies);
     const snapshot = normalizeOhisamaSnapshot(payload, alias);
     const persisted = await persistSnapshot(env, snapshot, state, observedAt);
+    // Pass the already parsed response to the playback publisher instead
+    // of intercepting fetch and parsing a cloned response a second time.
+    if (typeof dependencies.onChannelPayload === 'function') {
+      dependencies.onChannelPayload(payload);
+    }
     const registerTarget = dependencies.registerFollowerTarget || registerOhisamaFollowerTarget;
     const followerTargetAdded = await registerTarget(env, snapshot, observedAt, state).catch((error) => {
       console.warn(JSON.stringify({
