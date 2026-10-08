@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { runOhisamaCollectorScheduled } from '../src/ohisama-collector.js';
 
 import {
   OHISAMA_COLLECTOR_CRON,
@@ -172,4 +173,66 @@ test('ohisama Worker config binds its own D1 and the canonical track catalog whi
   const serviceEntry = readFileSync(new URL('../src/ohisama-service-entry.js', import.meta.url), 'utf8');
   assert.match(serviceEntry, /handleInternalScheduled/);
   assert.match(serviceEntry, /OHISAMA_COLLECTOR_CRON/);
+});
+test('Ohisama passes the already-parsed Stationhead payload to playback without re-fetching', async () => {
+  const timestamp = Date.now();
+  const channel = {
+    id: 46,
+    alias: 'ohisama',
+    current_station: { id: 99, is_broadcasting: true, listener_count: 15 },
+    online_member_count: 15,
+  };
+  let fetchCount = 0;
+  let parseCount = 0;
+  let passed = null;
+  const env = {
+    PAGES_RESPONSE_R2: {
+      async get() {
+        return { json: async () => ({
+          version: 1,
+          authToken: 'test-auth-token',
+          deviceUid: 'test-device',
+          tokenExpiresAt: timestamp + 3 * 60 * 60_000,
+          d1CheckpointAt: timestamp,
+        }) };
+      },
+      async put() {},
+    },
+    OHISAMA_DB: {
+      prepare() {
+        return {
+          bind() {
+            return { async run() { return { meta: { changes: 1 } }; } };
+          },
+        };
+      },
+    },
+  };
+  const result = await runOhisamaCollectorScheduled(
+    { cron: OHISAMA_COLLECTOR_CRON },
+    env,
+    null,
+    {
+      now: () => timestamp,
+      fetch: async () => {
+        fetchCount += 1;
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => null },
+          async json() {
+            parseCount += 1;
+            return channel;
+          },
+        };
+      },
+      onChannelPayload: (payload) => { passed = payload; },
+      registerFollowerTarget: async () => false,
+    },
+  );
+
+  assert.equal(result.collected, true);
+  assert.equal(fetchCount, 1);
+  assert.equal(parseCount, 1);
+  assert.strictEqual(passed, channel);
 });
