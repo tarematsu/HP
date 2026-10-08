@@ -43,6 +43,7 @@ function basePayload(previousAt) {
     model: 'hinata',
     updated_at: previousAt,
     latest: { observed_at: previousAt },
+    previous_day_history: [],
     history_24h: [{
       observed_at: previousAt,
       online_member_count: 100,
