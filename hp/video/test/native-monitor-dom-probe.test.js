@@ -21,6 +21,8 @@ const bridge = readFileSync(
 
 test('visible monitor modes probe targeted Stationhead controls every five minutes', () => {
   assert.match(schedule, /kMonitorAuthProbeIntervalMs = 5 \* 60'000/);
+  assert.match(schedule, /kMonitorAuthActiveProbeIntervalMs = 3'000/);
+  assert.match(schedule, /monitorAuthForeground_[\s\S]*kMonitorAuthActiveProbeIntervalMs/);
   assert.match(schedule, /monitorMode_ != MonitorMode::Off[\s\S]*RequestMonitorAuthProbe\(\)/);
   assert.match(schedule, /monitorMode_ != MonitorMode::Off[\s\S]*kMonitorAuthProbeIntervalMs/);
   assert.match(audioLoss, /kMonitorDomProbeScript/);

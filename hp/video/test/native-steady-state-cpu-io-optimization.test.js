@@ -46,6 +46,12 @@ test('App timer follows real deadlines instead of a fixed five second dashboard 
   assert.doesNotMatch(appSource, /selectedTab_ == WorkspaceTab::Main[\s\S]*kSteadyDashboardTickMs/);
 });
 
+test('healthy hidden Stationhead profiles skip costly maintenance during another profile\'s recovery ticks', () => {
+  assert.match(stationheadHandles, /player_->AudioPlaying\(\) && !player_->SurfaceVisible\(\)/);
+  assert.match(stationheadHandles, /nowMs < player_->NextWakeAt\(\)/);
+  assert.match(stationheadHandles, /player_->EvaluateAudioLossRecovery\(nowMs\);\s*return;/);
+});
+
 test('steady Stationhead ticks read only the authorization flag', () => {
   assert.match(stationheadPlayerHeader, /bool SpotifyAuthorizationActive\(\) const/);
   assert.match(stationheadHandles, /player_->SpotifyAuthorizationActive\(\)/);

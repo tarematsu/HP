@@ -2,7 +2,8 @@
 namespace {
 constexpr UINT kMvStartupPassHoldMs = 1'500;
 constexpr int64_t kMonitorAuthProbeIntervalMs = 5 * 60'000;
-constexpr int64_t kMonitorAuthActiveProbeIntervalMs = 1'000;
+// WebView2 auth-ready/login events are immediate; active DOM polling is backup.
+constexpr int64_t kMonitorAuthActiveProbeIntervalMs = 3'000;
 constexpr int kPowerSavingStartMinute = 12 * 60;
 constexpr int kPowerSavingEndMinute = 20 * 60;
 
@@ -17,7 +18,7 @@ static_assert(ScheduledPowerSavingAt(12, 0));
 static_assert(ScheduledPowerSavingAt(19, 59));
 static_assert(!ScheduledPowerSavingAt(20, 0));
 static_assert(kMonitorAuthProbeIntervalMs == 300'000);
-static_assert(kMonitorAuthActiveProbeIntervalMs == 1'000);
+static_assert(kMonitorAuthActiveProbeIntervalMs == 3'000);
 
 bool ScheduledPowerSavingNow(int64_t nowMs) {
   const std::time_t seconds = static_cast<std::time_t>(nowMs / 1000);
