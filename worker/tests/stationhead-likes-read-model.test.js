@@ -75,3 +75,31 @@ test('source-scoped likes read model replaces an empty ranking immediately', asy
 function expectKey(modelKey) {
   return `pages-response/v1/${encodeURIComponent(modelKey)}.json`;
 }
+
+test('stale likes observations never replace a newer ranking, even when the content differs', async () => {
+  const r2 = new FakeR2();
+  await publishStationheadLikesReadModel(r2, 'ohisama', {
+    '1': { track_id: 1, title: 'Current', like_count: 24, observed_at: 3_000 },
+  }, 3_000);
+  const older = await publishStationheadLikesReadModel(r2, 'ohisama', {
+    '1': { track_id: 1, title: 'Old', like_count: 10, observed_at: 2_000 },
+  }, 2_000);
+
+  assert.equal(older.published, false);
+  assert.equal(older.reason, 'stale-observation');
+  assert.equal(r2.puts.length, 1);
+  assert.equal(JSON.parse(r2.values.get(expectKey(stationheadLikesModelKey('ohisama'))).body)
+    .ranking[0].like_count, 24);
+});
+
+test('transient likes R2 read failure does not allow an unverified overwrite', async () => {
+  const r2 = new FakeR2();
+  r2.get = async () => { throw new Error('temporary R2 read outage'); };
+  await assert.rejects(
+    publishStationheadLikesReadModel(r2, 'ohisama', {
+      '1': { track_id: 1, like_count: 10, observed_at: 2_000 },
+    }, 2_000),
+    /temporary R2 read outage/,
+  );
+  assert.equal(r2.puts.length, 0);
+});
