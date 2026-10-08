@@ -37,6 +37,13 @@ function timestamp(value) {
   return Number.isFinite(number) && number > 0 ? number : null;
 }
 
+function currentJstRankingWeek(now = Date.now()) {
+  const date = new Date(now + 9 * 60 * 60_000);
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
+  return date.toISOString().slice(0, 10);
+}
+
 function stationheadMissingPeriod(period) {
   return STATIONHEAD_MISSING_RANGES.some(({ from, to }) => period >= from && period <= to);
 }
@@ -75,6 +82,8 @@ export function normalizeStationheadLeaderboard(payload = {}) {
       || (a.rank ?? Number.MAX_SAFE_INTEGER) - (b.rank ?? Number.MAX_SAFE_INTEGER)
       || a.host.localeCompare(b.host));
   const rows = timelineRows.filter((row) => row.rank_status !== '欠測' && row.rank_status !== '圏外');
+  const sourceWeek = String(payload?.source_max_ranking_date || '');
+  const isStale = /^\\d{4}-\\d{2}-\\d{2}$/.test(sourceWeek) && sourceWeek < currentJstRankingWeek();
   const chartHosts = (Array.isArray(payload?.chart_hosts) && payload.chart_hosts.length
     ? payload.chart_hosts
     : STATIONHEAD_FEATURED)
@@ -111,7 +120,9 @@ export function normalizeStationheadLeaderboard(payload = {}) {
     rows,
     series,
     missing_ranges: STATIONHEAD_MISSING_RANGES,
-    notice: rows.length ? '' : 'リーダーボードデータはまだありません。',
+    notice: isStale
+      ? `今週のリーダーボードは未反映です（公開データの最新週: ${sourceWeek}）。`
+      : rows.length ? '' : 'リーダーボードデータはまだありません。',
   };
 }
 
