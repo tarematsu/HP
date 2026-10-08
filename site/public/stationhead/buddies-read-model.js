@@ -1,38 +1,25 @@
-// buddies API adapter and capabilities.
+// Buddies varies from other channels only in the published read-model paths.
 import { fetchJson, todayUtc } from './data-client.js';
-import { createStationheadTrackHistoryClient } from './track-history-client.js';
-import { normalizeCurrent, normalizedDaily, historyMode, normalizeBroadcasts } from './normalize.js';
+import { createStationheadChannelModel } from './source-model.js';
 
 export function buddiesModel() {
-  let selectedHistoryMode = 'daily';
-  const tracks = createStationheadTrackHistoryClient('buddies', '櫻坂46', fetchJson);
-  return {
+  return createStationheadChannelModel({
     source: 'buddies',
-    meta: { station_url: 'https://stationhead.com/c/buddies', artist_filter: '櫻坂46' },
+    stationUrl: 'https://stationhead.com/c/buddies',
+    artistFilter: '櫻坂46',
     capabilities: ['current', 'history', 'played-tracks', 'likes', 'broadcasts'],
-    async loadCurrent({ signal = null, force = false } = {}) {
-      return normalizeCurrent(await fetchJson('/api/dashboard?history=0', { signal, force }));
-    },
-    setHistoryMode(mode) { selectedHistoryMode = historyMode(mode); },
-    async loadHistory({ signal = null, force = false } = {}) {
-      const mode = selectedHistoryMode;
-      const payload = await fetchJson(`/api/history?mode=${mode}&from=2024-06-01&to=${todayUtc()}`, { signal, force });
-      return { daily: normalizedDaily(payload.rows), mode };
-    },
-    loadPlayedIndex: tracks.loadIndex,
-    loadPlayedPeriod: tracks.loadPeriod,
-    loadLikes: tracks.loadLikes,
-    async loadBroadcasts({ signal = null, force = false } = {}) {
+    currentUrl: '/api/dashboard?history=0',
+    historyUrl: (mode) => `/api/history?mode=${mode}&from=2024-06-01&to=${todayUtc()}`,
+    historyRows: (payload) => payload?.rows,
+    async broadcastLoader({ signal = null, force = false } = {}) {
       const summary = await fetchJson(`/api/history?mode=broadcasts&from=2024-06-01&to=${todayUtc()}`, { signal, force });
-      const normalized = normalizeBroadcasts(summary);
       try {
         const chart = await fetchJson(`/api/sakurazaka46jp?from=2024-06-01&to=${todayUtc()}&revision=3`, { signal, force });
-        normalized.series = Array.isArray(chart.series) ? chart.series : [];
+        return { ...summary, series: Array.isArray(chart.series) ? chart.series : [] };
       } catch (error) {
         if (error.name === 'AbortError') throw error;
-        normalized.chart_error = true;
+        return { ...summary, chart_error: true };
       }
-      return normalized;
     },
-  };
+  });
 }
