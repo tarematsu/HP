@@ -24,3 +24,26 @@ test('plain model refresh retains its existing collector-free behavior', async (
   assert.equal(result.published, true);
   assert.equal(scanned, false);
 });
+
+test('a successful incomplete batch continues before the fresh model is checked', async () => {
+  let continued = 0;
+  const now = 1000;
+  const result = await refreshAmazonModel({ PAGES_RESPONSE_R2: {
+    get: async () => ({ json: async () => ({ observed_at: now, tracks: [] }) }),
+  } }, { now, collect: true, dependencies: {
+    collect: async () => ({ ok: true, skipped: false, complete: false, scanned_tracks: 49_950 }),
+    continue: async (_env, observedAt) => {
+      assert.equal(observedAt, now);
+      continued++;
+      return { complete: true, published: { published: true } };
+    },
+  } });
+  assert.equal(result.published, true);
+  assert.equal(continued, 1);
+});
+
+test('recovery failures return diagnostics instead of an opaque 500 response', async () => {
+  const response = await entry.fetch(new Request('http://localhost/refresh?collect=1'), {});
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), { ok: false, error: 'PAGES_RESPONSE_R2 binding is required' });
+});
