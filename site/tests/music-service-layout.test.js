@@ -119,3 +119,10 @@ test('playlist table uses dedicated mobile cards instead of the shared 600px scr
   assert.match(commonCss, /\.music-service-playlist-table tbody td:nth-child\(3\)\s*\{\s*grid-column: 1 \/ -1;/);
   assert.match(commonCss, /\.music-service-playlist-links\s*\{\s*min-width: 0;\s*overflow-wrap: anywhere;/);
 });
+
+test('YouTube Music playlist rows use an unclipped single-column mobile layout', () => {
+  assert.match(commonCss, /\.youtube-music-view \.music-service-playlist-table tbody tr\s*\{\s*grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(commonCss, /\.youtube-music-view \.music-service-playlist-table tbody td\s*\{[\s\S]*?min-width: 0;[\s\S]*?width: auto;[\s\S]*?max-width: 100%/);
+  assert.match(commonCss, /\.youtube-music-view \.music-service-playlist-table tbody td:nth-child\(2\)::before\s*\{\s*content: '種別 '/);
+  assert.match(commonCss, /\.youtube-music-view \.music-service-playlist-table tbody td:nth-child\(3\)::before\s*\{\s*content: '対象曲数 '/);
+});

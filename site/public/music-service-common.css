@@ -251,4 +251,30 @@
     min-width: 0;
     overflow-wrap: anywhere;
   }
+
+  /* Unlike membership lists, YouTube Music's playlist rows contain three
+     independent fields. Give each field its own full-width row on mobile. */
+  .youtube-music-view .music-service-playlist-table tbody tr {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .youtube-music-view .music-service-playlist-table tbody td {
+    min-width: 0;
+    width: auto;
+    max-width: 100%;
+    text-align: left;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .youtube-music-view .music-service-playlist-table tbody td:nth-child(2)::before {
+    content: '種別 ';
+    color: var(--muted);
+  }
+
+  .youtube-music-view .music-service-playlist-table tbody td:nth-child(3)::before {
+    content: '対象曲数 ';
+    color: var(--muted);
+  }
 }

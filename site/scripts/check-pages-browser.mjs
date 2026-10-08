@@ -199,7 +199,22 @@ try {
       const downloads = await checkCsv(page, label);
       for (const button of await page.locator('.dashboard-view:not([hidden]) .music-service-view-tabs button').all()) {
         await button.click(); await page.waitForTimeout(400); await page.waitForLoadState('networkidle', { timeout: 45000 });
-        const group = await button.getAttribute('data-service-group'); assert.equal(await button.getAttribute('aria-pressed'), 'true'); const visible = page.locator('.dashboard-view:not([hidden]) .music-service-group:not([hidden])'); assert.equal(await visible.count(), 1); assert.equal(await visible.getAttribute('data-group'), group); await page.screenshot({ path: `${output}/${mode}-${group}-${viewportLabel}.png`, fullPage: true }); downloads.push(...await checkCsv(page, `${mode}-${group}-${viewportLabel}`));
+        const group = await button.getAttribute('data-service-group'); assert.equal(await button.getAttribute('aria-pressed'), 'true'); const visible = page.locator('.dashboard-view:not([hidden]) .music-service-group:not([hidden])'); assert.equal(await visible.count(), 1); assert.equal(await visible.getAttribute('data-group'), group);
+        if (!live && mode === 'youtube-music' && group === 'playlists') {
+          const overflow = await page.locator('#youtubeMusicPlaylistBody').evaluate((body) => {
+            const row = document.createElement('tr');
+            for (const value of ['Top songs', 'official', '30']) {
+              const cell = document.createElement('td');
+              cell.textContent = value;
+              row.append(cell);
+            }
+            body.replaceChildren(row);
+            const wrap = body.closest('.table-wrap');
+            return Math.max(0, (wrap?.scrollWidth || 0) - (wrap?.clientWidth || 0));
+          });
+          if (width <= 760) assert.equal(overflow, 0, `${mode}: mobile playlist columns must not be clipped`);
+        }
+        await page.screenshot({ path: `${output}/${mode}-${group}-${viewportLabel}.png`, fullPage: true }); downloads.push(...await checkCsv(page, `${mode}-${group}-${viewportLabel}`));
       }
       for (const button of await page.locator('.dashboard-view:not([hidden]) [data-stationhead-section]:not(:disabled)').all()) {
         await button.click(); await page.waitForTimeout(400); await page.waitForLoadState('networkidle', { timeout: 45000 }); const section = await button.getAttribute('data-stationhead-section'); await page.screenshot({ path: `${output}/${mode}-${section}-${viewportLabel}.png`, fullPage: true }); downloads.push(...await checkCsv(page, `${mode}-${section}-${viewportLabel}`));
