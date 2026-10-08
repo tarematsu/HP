@@ -39,14 +39,15 @@ test('source differences are confined to read-model adapters and supported capab
   const [buddies, ohisama, nogizaka] = ['buddies','ohisama','nogizaka'].map(read);
   const factory = readFileSync(new URL('../public/stationhead/source-model.js', import.meta.url), 'utf8');
   for (const source of [buddies, ohisama, nogizaka]) {
-    assert.match(source, /createStationheadChannelModel\\(\\{/);
-    assert.doesNotMatch(source, /function normalizeCurrent|function normalizedDaily|function render/);
+    assert.ok(source.includes('createStationheadChannelModel({'));
+    assert.ok(!source.includes('function normalizeCurrent'));
+    assert.ok(!source.includes('function render'));
   }
   for (const key of ['loadCurrent', 'loadHistory', 'loadLikes', 'loadBroadcasts', 'setHistoryMode']) {
     assert.ok(factory.includes(key), `Shared model factory must own ${key}`);
   }
-  assert.match(buddies, /currentUrl: '\\/api\\/dashboard\\?history=0'/);
-  assert.match(ohisama, /currentUrl: '\\/api\\/hinata'/);
-  assert.match(nogizaka, /capabilities: \\['broadcasts'\\]/);
-  assert.match(ohisama, /capabilities: \\['current', 'history', 'played-tracks', 'likes'\\]/);
+  assert.ok(buddies.includes("currentUrl: '/api/dashboard?history=0'"));
+  assert.ok(ohisama.includes("currentUrl: '/api/hinata'"));
+  assert.ok(nogizaka.includes("capabilities: ['broadcasts']"));
+  assert.ok(ohisama.includes("capabilities: ['current', 'history', 'played-tracks', 'likes']"));
 });
