@@ -28,7 +28,7 @@ test('shared history controls support daily and weekly, ranges, summary and CSV 
     'data-history-range="30"', 'data-history-range="180"',
     'data-history-range="365"', 'data-history-range="all"',
     'data-history-table-mode="daily"', 'data-history-table-mode="weekly"',
-    "role('history-csv')", "role('history-periods')",
+    "role('history-csv')", "summaryItem('集計期間', 'history-periods')",
   ]) assert.ok(shell.includes(selector), selector);
   assert.match(client, /exportHistoryCsv\(runtime\)/);
   assert.match(client, /stationhead:history-mode/);
