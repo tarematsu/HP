@@ -39,8 +39,8 @@ test('music streaming section contains only streaming service views', () => {
 test('Buddies functions include archive and aggregate views and normalize legacy listening-party links', () => {
   assert.deepEqual(NAVIGATION[0].sources[0].functions.map(item => item.mode),
     ['current', 'daily', 'weekly', 'played-tracks', 'likes', 'broadcasts']);
-  assert.match(route, /mode === 'first-week' \\|\\| mode === 'unofficial'/);
-  assert.match(route, /mode === 'monthly' \\? 'weekly'/);
+  assert.ok(route.includes("mode === 'first-week' || mode === 'unofficial'"));
+  assert.ok(route.includes("mode === 'monthly' ? 'weekly'"));
   assert.equal(NAVIGATION[0].sources[0].functions.some(item => item.mode === 'monthly'), false);
   assert.doesNotMatch(route, /new MutationObserver/);
 });
