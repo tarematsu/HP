@@ -181,3 +181,74 @@
 .music-service-view-tabs { margin:0; border-bottom:1px solid var(--line); }
 
 .music-service-group { display: contents; }
+
+
+/* Playlist memberships are variable-length links. On narrow screens, each song
+   is one full-width card rather than a squeezed third table column. */
+@media (max-width: 760px) {
+  .music-service-playlist-table {
+    display: block;
+    table-layout: auto;
+    min-width: 0;
+  }
+
+  .music-service-playlist-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .music-service-playlist-table tbody {
+    display: block;
+  }
+
+  .music-service-playlist-table tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px 10px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .music-service-playlist-table tbody td {
+    display: block;
+    min-width: 0;
+    width: auto;
+    padding: 0;
+    border: 0;
+    white-space: normal;
+  }
+
+  .music-service-playlist-table tbody td:first-child {
+    font-weight: 700;
+  }
+
+  .music-service-playlist-table tbody td:nth-child(2) {
+    white-space: nowrap;
+  }
+
+  .music-service-playlist-table tbody td:nth-child(2)::before {
+    content: '掲載数 ';
+    color: var(--muted);
+    font-weight: 400;
+  }
+
+  .music-service-playlist-table tbody td:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+
+  .music-service-playlist-links {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .music-service-playlist-links > div {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}

@@ -26,3 +26,9 @@ test('visual audit waits for history data and fresh chart paint before recording
   assert.match(source, /historyWaitTimedOut/);
   assert.match(source, /history summary returned no rows/);
 });
+
+test('visual audit flags clipped playlist tables even when document width fits', () => {
+  assert.match(source, /playlistOverflow/);
+  assert.match(source, /playlist table is horizontally clipped/);
+  assert.match(source, /music-service-playlist-table/);
+});

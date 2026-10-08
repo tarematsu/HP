@@ -110,3 +110,12 @@ test('playlist detail stays lazy and renders inside shared sections', () => {
   assert.match(playlistRuntime, /appendEmptyTableRow/);
   assert.doesNotMatch(playlistRuntime, /dashboardDataCard/);
 });
+
+test('playlist table uses dedicated mobile cards instead of the shared 600px scrolling table', () => {
+  assert.match(playlistRuntime, /wrapClassName: 'music-service-playlist-wrap'/);
+  assert.doesNotMatch(playlistRuntime, /wrapClassName: 'table-fit-mobile'/);
+  assert.match(commonCss, /\.music-service-playlist-table tbody tr\s*\{\s*display: grid;/);
+  assert.match(commonCss, /grid-template-columns: minmax\(0, 1fr\) auto/);
+  assert.match(commonCss, /\.music-service-playlist-table tbody td:nth-child\(3\)\s*\{\s*grid-column: 1 \/ -1;/);
+  assert.match(commonCss, /\.music-service-playlist-links\s*\{\s*min-width: 0;\s*overflow-wrap: anywhere;/);
+});

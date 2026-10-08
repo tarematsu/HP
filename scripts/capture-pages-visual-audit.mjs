@@ -127,6 +127,12 @@ async function inspectView(page, tab, viewport, outDir) {
       dataErrors: text.match(/[^。\n]*(?:データの取得に失敗|データを取得できません|materialized response unavailable)[^。\n]*/g) || [],
       visiblePanels,
       horizontalOverflow: Math.max(0, scrollWidth - window.innerWidth),
+      playlistOverflow: [...document.querySelectorAll('.dashboard-view:not([hidden]) .music-service-playlist-table')]
+        .filter(visible)
+        .reduce((max, table) => {
+          const wrapper = table.closest('.table-wrap');
+          return Math.max(max, wrapper ? wrapper.scrollWidth - wrapper.clientWidth : 0);
+        }, 0),
       bodyLength: text.length,
       suspicious,
       visibleLoading,
@@ -148,6 +154,7 @@ async function inspectView(page, tab, viewport, outDir) {
   if (!state.active) issues.push('selected tab is not marked active');
   if (state.visiblePanels.length !== 1) issues.push(`expected exactly one visible dashboard view, got ${state.visiblePanels.length}`);
   if (state.horizontalOverflow > 1) issues.push(`document horizontally overflows by ${state.horizontalOverflow}px`);
+  if (state.playlistOverflow > 3) issues.push(`playlist table is horizontally clipped by ${state.playlistOverflow}px`);
   if (state.bodyLength < 40) issues.push(`body text is unexpectedly short (${state.bodyLength})`);
   if (state.visibleLoading) issues.push('visible loading placeholder remained after settling');
   if (state.dataErrors.length) issues.push(...state.dataErrors);

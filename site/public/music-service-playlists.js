@@ -74,7 +74,7 @@ function ensureTable(service, config) {
   const table = dashboardTable({
     id: config.tableId,
     className: 'regional-music-table music-service-playlist-table',
-    wrapClassName: 'table-fit-mobile',
+    wrapClassName: 'music-service-playlist-wrap',
   });
   mount.insertAdjacentHTML('beforeend', `<p${config.noteId ? ` id="${config.noteId}"` : ''} class="music-service-playlist-note">${noteText(service, config)}</p>${table}`);
   return element(config.tableId);
