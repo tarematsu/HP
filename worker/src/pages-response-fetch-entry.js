@@ -1,7 +1,9 @@
 import {
   MATERIALIZED_API_VARIANTS,
+  MUSIC_SERVICE_API_MODELS,
   materializedResponseMaximumAge,
 } from '../../packages/sh-shared/api-contract.mjs';
+import { STATIONHEAD_READ_MODEL_KEYS } from '../../packages/sh-shared/stationhead-read-models.mjs';
 import { loadMaterializedResponse } from './pages-response-store.js';
 import { normalizeFollowersResponse } from './stationhead-followers-response.js';
 
@@ -24,6 +26,8 @@ const PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS = new Set([
 const PUBLIC_R2_MODEL_KEYS = new Set([
   ...MATERIALIZED_API_VARIANTS.map(({ key }) => key),
   ...PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS,
+  ...Object.values(MUSIC_SERVICE_API_MODELS),
+  ...Object.values(STATIONHEAD_READ_MODEL_KEYS),
   TRACK_HISTORY_MODEL_KEY,
 ]);
 

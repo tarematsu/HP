@@ -39,3 +39,14 @@ for (const name of ['wrangler.regional-music.jsonc', 'wrangler.nogizaka46smej.js
     }
   });
 }
+
+test('followers deployment does not recollect an already current JST date', async () => {
+  const now = Date.parse('2026-10-08T16:00:00Z');
+  const result = await bootstrapProducerReadModel('wrangler.scheduled-collection-jobs.jsonc', {
+    now,
+    db: { prepare() { throw new Error('No D1 query should be needed for a current follower model'); } },
+    r2: { async get() { return { body: {}, async json() { return { version: 1, status: 200,
+      updated_at: now, body: JSON.stringify({ ok: true, latest_date: '2026-10-09' }) }; } }; } },
+  });
+  assert.equal(result.reason, 'followers-current');
+});

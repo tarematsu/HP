@@ -7,4 +7,6 @@ runWrangler(
   ['deploy', '--config', 'wrangler.regional-music.jsonc'],
   { capture: true, mirror: true },
 );
-console.log(JSON.stringify(await bootstrapProducerReadModel('wrangler.regional-music.jsonc')));
+const bootstrap = await bootstrapProducerReadModel('wrangler.regional-music.jsonc');
+if (bootstrap.models !== 4) throw new Error('Regional read-model bootstrap did not cover all four services');
+console.log(JSON.stringify(bootstrap));

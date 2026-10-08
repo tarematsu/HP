@@ -1,20 +1,31 @@
 name: Refresh Amazon Music read model
 
 on:
-  workflow_dispatch:
   push:
     branches: [main]
     paths:
       - '.github/workflows/refresh-amazon-music-read-model.yml'
+      - 'worker/scripts/amazon-music-read-model-refresh-entry.js'
+  workflow_dispatch:
+    inputs:
+      collect:
+        description: Recollect the complete current 50k chart before publishing
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
+concurrency:
+  group: amazon-music-read-model-refresh
+  cancel-in-progress: false
+
 jobs:
   refresh:
+    if: github.ref == 'refs/heads/main'
     name: Publish current Sakamichi Amazon Music model
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets['CLOUDFLARE_API_TOKEN'] || secrets['CF_API_TOKEN'] || secrets['CLOUDFLARE_BUILDS_API_TOKEN'] }}
     steps:
@@ -50,6 +61,8 @@ jobs:
       - name: Publish read model now
         working-directory: worker
         shell: bash
+        env:
+          RECOLLECT: ${{ (github.event_name == 'push' || inputs.collect) && '1' || '0' }}
         run: |
           set -euo pipefail
           : > amazon-refresh.log
@@ -58,7 +71,7 @@ jobs:
           trap 'kill "$pid" >/dev/null 2>&1 || true' EXIT
           ok=false
           for _ in $(seq 1 60); do
-            if curl --fail --silent --show-error http://127.0.0.1:8791/refresh -o amazon-refresh-result.json; then
+            if curl --fail --silent --show-error http://127.0.0.1:8791/health >/dev/null; then
               ok=true
               break
             fi
@@ -68,6 +81,7 @@ jobs:
             cat amazon-refresh.log
             exit 1
           fi
+          curl --fail --silent --show-error --max-time 900 "http://127.0.0.1:8791/refresh?collect=$RECOLLECT" -o amazon-refresh-result.json
           cat amazon-refresh-result.json
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';

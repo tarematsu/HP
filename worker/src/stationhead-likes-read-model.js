@@ -1,3 +1,4 @@
+import { loadMaterializedResponse } from './pages-response-store.js';
 import { loadMaterializedR2Json, saveMaterializedR2Response } from './pages-response-r2.js';
 import { normalizeStationheadSource } from '../../packages/sh-shared/stationhead-source.mjs';
 
@@ -21,7 +22,7 @@ export function stationheadLikesModelKey(sourceValue) {
 
 export function stationheadLikeRanking(likes) {
   const rows = Array.isArray(likes) ? likes : Object.values(likes || {});
-  return rows.map((row) => ({
+  const normalized = rows.map((row) => ({
     track_id: integer(row?.track_id),
     track_key: text(row?.track_key),
     spotify_id: text(row?.spotify_id),
@@ -29,9 +30,15 @@ export function stationheadLikeRanking(likes) {
     title: text(row?.title),
     artist: text(row?.artist),
     thumbnail_url: text(row?.thumbnail_url, 2_048),
-    like_count: integer(row?.like_count),
-    observed_at: integer(row?.observed_at),
-  })).filter((row) => row.track_id != null && row.like_count != null)
+    like_count: integer(row?.like_count ?? row?.latest_like_count),
+    observed_at: integer(row?.observed_at ?? row?.latest_observed_at),
+  })).filter((row) => row.track_id != null && row.like_count != null);
+  const latest = new Map();
+  for (const row of normalized) {
+    const previous = latest.get(row.track_id);
+    if (!previous || (row.observed_at || 0) >= (previous.observed_at || 0)) latest.set(row.track_id, row);
+  }
+  return [...latest.values()]
     .sort((left, right) => (right.like_count - left.like_count)
       || ((right.observed_at || 0) - (left.observed_at || 0))
       || ((left.track_id || 0) - (right.track_id || 0)));
@@ -47,7 +54,7 @@ export async function publishStationheadLikesReadModel(
   const modelKey = stationheadLikesModelKey(source);
   if (!modelKey || typeof r2?.put !== 'function') return { published: false, reason: 'r2-unavailable' };
   const now = integer(observedAt) ?? Date.now();
-  const ranking = stationheadLikeRanking(likes);
+
   // A transient R2 read failure is not an empty ranking. Fail closed so
   // retries cannot overwrite newer data without checking its timestamp.
   const existing = await loadMaterializedR2Json(r2, modelKey);
@@ -55,6 +62,18 @@ export async function publishStationheadLikesReadModel(
   if (previousAt != null && now < previousAt) {
     return { published: false, reason: 'stale-observation', payload: existing };
   }
+  let previousRanking = existing?.ranking || [];
+  if (!existing && normalizeStationheadSource(source) === 'buddies') {
+    // Seed the first source-scoped publication from the migration ranking so
+    // tracks not played since the cutover retain their latest known counters.
+    const response = await loadMaterializedResponse(r2, 'track-history-status');
+    const legacy = response?.ok ? await response.json() : null;
+    if (legacy?.ok && Array.isArray(legacy.ranking)) previousRanking = legacy.ranking;
+  }
+  const ranking = stationheadLikeRanking([
+    ...previousRanking,
+    ...(Array.isArray(likes) ? likes : Object.values(likes || {})),
+  ]);
   const unchanged = JSON.stringify(Array.isArray(existing?.ranking) ? existing.ranking : [])
     === JSON.stringify(ranking);
   if (unchanged && previousAt != null && now >= previousAt && now - previousAt < cadenceMs) {

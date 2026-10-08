@@ -1,6 +1,6 @@
 import { loadTrackHistoryDayIndex } from './pages-track-history-day-index.js';
 import { loadTrackHistoryDayReadModel } from './pages-track-history-r2-shards.js';
-import { loadMaterializedR2Response } from './pages-response-r2.js';
+import { loadMaterializedResponse } from './pages-response-store.js';
 import { stationheadLikesModelKey } from './stationhead-likes-read-model.js';
 
 const TRACK_HISTORY_MODEL_KEY = 'track-history';
@@ -63,7 +63,7 @@ function rankingFromPayload(payload, limit) {
 }
 
 async function loadStatusPayload(r2, now, maximumAgeMs, dependencies) {
-  const loadResponse = dependencies.loadStatusResponse || loadMaterializedR2Response;
+  const loadResponse = dependencies.loadStatusResponse || loadMaterializedResponse;
   for (const key of ['track-history-status', TRACK_HISTORY_MODEL_KEY]) {
     const response = await loadResponse(r2, key, now, maximumAgeMs);
     if (!response?.ok) continue;
@@ -74,14 +74,13 @@ async function loadStatusPayload(r2, now, maximumAgeMs, dependencies) {
 }
 
 async function loadSourceLikesPayload(r2, source, now, maximumAgeMs, dependencies) {
-  if (source === 'buddies') return loadStatusPayload(r2, now, maximumAgeMs, dependencies);
   const modelKey = stationheadLikesModelKey(source);
   if (!modelKey) return null;
-  const loadResponse = dependencies.loadLikesResponse || loadMaterializedR2Response;
+  const loadResponse = dependencies.loadLikesResponse || loadMaterializedResponse;
   const response = await loadResponse(r2, modelKey, now, maximumAgeMs);
-  if (!response?.ok) return null;
-  const payload = await response.json().catch(() => null);
-  return payload?.ok && Array.isArray(payload.ranking) ? payload : null;
+  const payload = response?.ok ? await response.json().catch(() => null) : null;
+  if (payload?.ok && Array.isArray(payload.ranking)) return payload;
+  return source === 'buddies' ? loadStatusPayload(r2, now, maximumAgeMs, dependencies) : null;
 }
 
 function validateParams(url) {
@@ -153,9 +152,7 @@ export async function loadTrackHistoryR2ApiResponse(
       generated_at: payload?.generated_at || ranking.summary.latest_observed_at || null,
       method: 'current_track_like_ranking',
       source,
-      read_path: source === 'buddies'
-        ? 'r2-track-history-status-read-model'
-        : 'r2-stationhead-likes-read-model',
+      read_path: 'r2-stationhead-likes-read-model',
     }, 200, now, payload?.generated_at || payload?.updated_at);
   }
 
