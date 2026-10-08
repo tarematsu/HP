@@ -20,8 +20,12 @@ test('inline collection records materialization state after structural changes',
 
 test('snapshot analysis is computed only in persistence slots', () => {
   const collector = source('../src/raw-collector-entry.js');
-  assert.match(collector, /function snapshotAnalysisDue/);
-  assert.match(collector, /snapshotAnalysisDue\(env, base\.observed_at\)/);
+  const config = source('../src/collector-config.js');
+  const ingest = source('../src/collector-ingest.js');
+  assert.match(collector, /import \{ configFromEnv, snapshotPersistenceDue \} from '\.\/collector-config\.js'/);
+  assert.match(config, /export function snapshotPersistenceDue/);
+  assert.match(ingest, /import \{ snapshotPersistenceDue \} from '\.\/collector-config\.js'/);
+  assert.match(collector, /snapshotPersistenceDue\(env, base\.observed_at\)/);
   assert.match(collector, /payload_bytes/);
 });
 
