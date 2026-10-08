@@ -74,27 +74,27 @@ function contentIdentity(deviceId: string, records: StationheadLeaderboardProbeR
   }) });
 }
 export async function applyStationheadLeaderboardProbeInput(value: unknown, env: Env, deviceId: string): Promise<StationheadLeaderboardProbeResult> {
-  if (!env.DATA_BUCKET) return { status: 503, body: { error: "probe storage unavailable" } };
+  if (!env.LEADERBOARD_SOURCE_R2) return { status: 503, body: { error: "leaderboard source bucket unavailable" } };
   if (!env.STATIONHEAD_LEADERBOARD_REFRESH_QUEUE) return { status: 503, body: { error: "leaderboard refresh queue unavailable" } };
   const receivedAt = Date.now(); const records = normalizeStationheadLeaderboardProbe(value, receivedAt);
   if (!records) return { status: 400, body: { error: "invalid leaderboard probe" } };
   const digest = await sha256Hex(contentIdentity(deviceId, records));
   const historyKey = `${HISTORY_PREFIX}${digest.slice(0, 32)}.json`;
-  const previous = await env.DATA_BUCKET.head(LATEST_KEY);
+  const previous = await env.LEADERBOARD_SOURCE_R2.head(LATEST_KEY);
   if (previous?.customMetadata?.contentDigest === digest && previous.customMetadata.refreshQueued === "1") {
     return { status: 200, body: { accepted: records.length, stored: false, unchanged: true, reported: true, delivery: "queue", historyKey } };
   }
   const serialized = JSON.stringify({ version: 1, device_id: deviceId, received_at: receivedAt, digest, records });
   const options = { httpMetadata: { contentType: "application/json; charset=utf-8" }, customMetadata: { contentDigest: digest } };
-  await env.DATA_BUCKET.put(historyKey, serialized, options);
+  await env.LEADERBOARD_SOURCE_R2.put(historyKey, serialized, options);
   await env.STATIONHEAD_LEADERBOARD_REFRESH_QUEUE.send({ version: 1, type: "stationhead-leaderboard-refresh", history_key: historyKey, digest });
-  await env.DATA_BUCKET.put(LATEST_KEY, serialized, { ...options, customMetadata: { ...options.customMetadata, refreshQueued: "1" } });
+  await env.LEADERBOARD_SOURCE_R2.put(LATEST_KEY, serialized, { ...options, customMetadata: { ...options.customMetadata, refreshQueued: "1" } });
   return { status: 200, body: { accepted: records.length, stored: true, unchanged: false, reported: true, delivery: "queue", historyKey } };
 }
 
 export async function stationheadLeaderboardLatestProbeResponse(env: Env): Promise<Response> {
-  if (!env.DATA_BUCKET) return Response.json({ error: "probe storage unavailable" }, { status: 503 });
-  const object = await env.DATA_BUCKET.get(LATEST_KEY);
+  if (!env.LEADERBOARD_SOURCE_R2) return Response.json({ error: "probe storage unavailable" }, { status: 503 });
+  const object = await env.LEADERBOARD_SOURCE_R2.get(LATEST_KEY);
   if (!object) return Response.json({ error: "probe unavailable" }, { status: 404, headers: { "Cache-Control": "no-store" } });
   return new Response(object.body, { status: 200, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
 }
