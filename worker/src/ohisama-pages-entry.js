@@ -63,6 +63,13 @@ export function ohisamaFollowerRegistrar(dependencies = {}) {
   });
 }
 
+export function requireOhisamaReadModelPublication(publication) {
+  if (publication?.published !== true && publication?.reason !== 'stale-observation') {
+    throw new Error(`Ohisama read model publication failed: ${publication?.reason || 'unavailable'}`);
+  }
+  return publication;
+}
+
 export async function runOhisamaPagesScheduled(controller, env, ctx, dependencies = {}) {
   const scheduledAt = Number(controller?.scheduledTime ?? dependencies.now?.() ?? Date.now());
   const priority = await coordinateOhisamaCollection(env, scheduledAt, dependencies.priority || {});
@@ -135,13 +142,15 @@ export async function runOhisamaPagesScheduled(controller, env, ctx, dependencie
       };
     }
     const { payload: currentReadModel, ...readModel } = generated;
-    const publication = await mergeOhisamaPlaybackReadModelWithCadence(
-      env,
-      playback,
-      result,
-      result.observed_at,
-      previousReadModel,
-      currentReadModel,
+    const publication = requireOhisamaReadModelPublication(
+      await mergeOhisamaPlaybackReadModelWithCadence(
+        env,
+        playback,
+        result,
+        result.observed_at,
+        previousReadModel,
+        currentReadModel,
+      ),
     );
     const playbackPublished = Boolean(playback) && publication.published === true;
     console.log(JSON.stringify({
@@ -172,10 +181,9 @@ export async function runOhisamaPagesScheduled(controller, env, ctx, dependencie
       observed_at: result.observed_at,
       error: detail,
     }));
-    return {
-      ...result,
-      read_model: { published: false, error: detail },
-    };
+    // A successful collection is not a successful scheduled publication.
+    // Surface the failure to the dispatcher/CI rather than acknowledging it.
+    throw error;
   }
 }
 
