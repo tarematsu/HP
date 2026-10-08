@@ -4,6 +4,7 @@ import { normalizeStationheadSource } from '../../packages/sh-shared/stationhead
 export const STATIONHEAD_LIKES_DEFAULT_CADENCE_MS = 6 * 60 * 60_000;
 
 function integer(value) {
+  if (value == null || (typeof value === 'string' && !value.trim())) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
 }
