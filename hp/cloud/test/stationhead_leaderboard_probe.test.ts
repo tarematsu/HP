@@ -31,7 +31,7 @@ describe("Stationhead leaderboard probe", () => {
     });
     const head = vi.fn(async () => latestDigest ? ({ customMetadata: { contentDigest: latestDigest, refreshQueued } }) : null);
     vi.spyOn(Date, "now").mockReturnValue(NOW);
-    const env = { DB: {} as D1Database, STATIONHEAD_LEADERBOARD_REFRESH_QUEUE: { send: vi.fn(async () => {}) } as unknown as Queue, DATA_BUCKET: { put, head } as unknown as R2Bucket } as Env;
+    const env = { DB: {} as D1Database, STATIONHEAD_LEADERBOARD_REFRESH_QUEUE: { send: vi.fn(async () => {}) } as unknown as Queue, LEADERBOARD_SOURCE_R2: { put, head } as unknown as R2Bucket } as Env;
 
     const first = await applyStationheadLeaderboardProbeInput([sample()], env, "homepanel-device");
     const second = await applyStationheadLeaderboardProbeInput([sample({ observed_at: NOW, body: JSON.stringify({ captured_at: NOW, ranking: [{ rank: 1, name: "buddies", listens: 1234 }], authorization: "Bearer another-secret", nested: { device_uid: "another-device", keep: "ok" } }) })], env, "homepanel-device");
@@ -51,7 +51,7 @@ describe("Stationhead leaderboard probe", () => {
     const put = vi.fn(async (key: string, _body: string, options?: R2PutOptions) => { if (key.endsWith("latest.json")) { latestDigest = options?.customMetadata?.contentDigest; refreshQueued = options?.customMetadata?.refreshQueued; } return {}; });
     const head = vi.fn(async () => latestDigest ? ({ customMetadata: { contentDigest: latestDigest, refreshQueued } }) : null);
     vi.spyOn(Date, "now").mockReturnValue(NOW);
-    const env = { DB: {} as D1Database, STATIONHEAD_LEADERBOARD_REFRESH_QUEUE: { send: vi.fn(async () => {}) } as unknown as Queue, DATA_BUCKET: { put, head } as unknown as R2Bucket } as Env;
+    const env = { DB: {} as D1Database, STATIONHEAD_LEADERBOARD_REFRESH_QUEUE: { send: vi.fn(async () => {}) } as unknown as Queue, LEADERBOARD_SOURCE_R2: { put, head } as unknown as R2Bucket } as Env;
     await applyStationheadLeaderboardProbeInput([sample()], env, "homepanel-device");
     const changed = await applyStationheadLeaderboardProbeInput([sample({ body: JSON.stringify({ captured_at: NOW, ranking: [{ rank: 1, name: "buddies", listens: 1235 }] }) })], env, "homepanel-device");
     expect(changed.body).toMatchObject({ stored: true, unchanged: false });
@@ -64,7 +64,7 @@ it("does not acknowledge a failed Queue notification and retries the stored snap
   const stored: string[] = [];
   const put = vi.fn(async (key: string) => { stored.push(key); return {}; });
   const send = vi.fn().mockRejectedValueOnce(new Error("queue unavailable")).mockResolvedValue(undefined);
-  const env = { DB: {} as D1Database, DATA_BUCKET: { head: async () => null, put } as unknown as R2Bucket,
+  const env = { DB: {} as D1Database, LEADERBOARD_SOURCE_R2: { head: async () => null, put } as unknown as R2Bucket,
     STATIONHEAD_LEADERBOARD_REFRESH_QUEUE: { send } as unknown as Queue } as Env;
   await expect(applyStationheadLeaderboardProbeInput([sample()], env, "device")).rejects.toThrow("queue unavailable");
   expect(stored.some(key => key.endsWith("latest.json"))).toBe(false);
@@ -79,7 +79,7 @@ it("does not deduplicate an identical ranking across two different JST weeks", a
   let meta: Record<string, string> | undefined;
   const put = vi.fn(async (key: string, _body: string, options?: R2PutOptions) => { if (key.endsWith("latest.json")) meta = options?.customMetadata; });
   const send = vi.fn(async () => {});
-  const env = { DB: {} as D1Database, DATA_BUCKET: { head: async () => meta ? { customMetadata: meta } : null, put } as unknown as R2Bucket,
+  const env = { DB: {} as D1Database, LEADERBOARD_SOURCE_R2: { head: async () => meta ? { customMetadata: meta } : null, put } as unknown as R2Bucket,
     STATIONHEAD_LEADERBOARD_REFRESH_QUEUE: { send } as unknown as Queue } as Env;
   vi.spyOn(Date, "now").mockReturnValue(NOW);
   await applyStationheadLeaderboardProbeInput([sample()], env, "device");
