@@ -118,6 +118,22 @@ export async function runOhisamaPagesScheduled(controller, env, ctx, dependencie
 
   try {
     const generated = await refreshOhisamaReadModel(env, result, result.observed_at);
+    if (generated.skipped) {
+      console.info(JSON.stringify({
+        event: 'ohisama_pages_read_model_skipped',
+        observed_at: result.observed_at,
+        reason: generated.reason,
+      }));
+      return {
+        ...result,
+        read_model: {
+          published: false,
+          skipped: true,
+          reason: generated.reason,
+          updated_at: generated.updated_at,
+        },
+      };
+    }
     const { payload: currentReadModel, ...readModel } = generated;
     const publication = await mergeOhisamaPlaybackReadModelWithCadence(
       env,
