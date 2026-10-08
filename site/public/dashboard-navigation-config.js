@@ -1,15 +1,12 @@
-export const HISTORY_MODES = Object.freeze(new Set(['daily', 'weekly', 'monthly', 'broadcasts']));
+export const HISTORY_MODES = Object.freeze(new Set(['daily', 'weekly', 'broadcasts']));
 
 const stationheadFunctions = Object.freeze([
   { mode: 'current', label: '現在' },
   { mode: 'daily', label: '日次' },
   { mode: 'weekly', label: '週次' },
-  { mode: 'monthly', label: '月次' },
   { mode: 'played-tracks', label: '再生履歴' },
   { mode: 'likes', label: 'いいね' },
   { mode: 'broadcasts', label: 'リスパ' },
-  { mode: 'ranking', label: 'リーダーボード' },
-  { mode: 'followers', label: 'フォロワー' },
 ]);
 
 export const NAVIGATION = Object.freeze([
@@ -18,6 +15,8 @@ export const NAVIGATION = Object.freeze([
       { id: 'buddies', label: 'Buddies', defaultMode: 'current', functions: stationheadFunctions },
       { id: 'hinata', label: 'Ohisama', defaultMode: 'hinata', functions: Object.freeze([{ mode: 'hinata', label: '統計' }]) },
       { id: 'nogizaka', label: 'Nogizaka', defaultMode: 'nogizaka', functions: Object.freeze([{ mode: 'nogizaka', label: 'リスパ' }]) },
+      { id: 'ranking', label: 'リーダーボード', defaultMode: 'ranking', functions: Object.freeze([{ mode: 'ranking', label: 'リーダーボード' }]) },
+      { id: 'followers', label: 'フォロワー', defaultMode: 'followers', functions: Object.freeze([{ mode: 'followers', label: 'フォロワー' }]) },
     ]),
   },
   {
@@ -43,7 +42,6 @@ export const ROUTES = Object.freeze({
   likes: Object.freeze({ kind: 'stationhead', panel: 'likes', viewId: 'currentView' }),
   daily: Object.freeze({ kind: 'history', viewId: 'historyView' }),
   weekly: Object.freeze({ kind: 'history', viewId: 'historyView' }),
-  monthly: Object.freeze({ kind: 'history', viewId: 'historyView' }),
   broadcasts: Object.freeze({ kind: 'history', viewId: 'historyView', firstWeek: true }),
   hinata: lazy('hinataView', 'hinata', 'loadHinataView', 'hinataNotice', 'hinata', '日向坂データの初期化に失敗しました。再読み込みしてください。'),
   ranking: lazy('leaderboardView', 'ranking', 'loadLeaderboardView', 'leaderboardNotice', 'stationhead leaderboard', 'リーダーボードデータの初期化に失敗しました。再読み込みしてください。', { source: 'stationhead' }),
