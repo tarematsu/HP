@@ -24,3 +24,19 @@ test('missing object is distinct from authentication, corruption and write failu
   const corrupt=createWranglerRemoteR2({...options,execute:(_binary,args)=>writeFileSync(args[args.indexOf('--file')+1],'bad json')});
   await assert.rejects((await corrupt.get('test')).json(),SyntaxError);
 });
+
+test('Actions bootstrap publication remains readable by the production R2 response reader', async () => {
+  const { saveMaterializedR2Response, loadMaterializedR2Response } = await import('../src/pages-response-r2.js');
+  let stored;
+  const r2 = createWranglerRemoteR2({ ...options, execute: (_binary, args) => {
+    const file = args[args.indexOf('--file') + 1];
+    if (args.includes('get')) writeFileSync(file, stored);
+    else stored = readFileSync(file, 'utf8');
+  } });
+  await saveMaterializedR2Response(r2, 'music-service:kkbox', '{"ok":true,"service":"kkbox"}', 200,
+    { 'content-type': 'application/json' }, 1000, 86400);
+  const response = await loadMaterializedR2Response(r2, 'music-service:kkbox', 1000);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('x-materialized-at'), '1000');
+  assert.deepEqual(await response.json(), { ok: true, service: 'kkbox' });
+});

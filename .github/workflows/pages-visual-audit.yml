@@ -2,6 +2,14 @@ name: Pages visual audit
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'scripts/capture-pages-visual-audit.mjs'
+      - '.github/workflows/pages-visual-audit.yml'
+  workflow_run:
+    workflows: [Deploy production]
+    types: [completed]
+    branches: [main]
   schedule:
     - cron: '17 */6 * * *'
 
@@ -14,6 +22,7 @@ concurrency:
 
 jobs:
   capture:
+    if: github.event_name != 'pull_request' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -45,4 +54,29 @@ jobs:
           path: .pages-visual-audit/
           include-hidden-files: true
           if-no-files-found: warn
+          retention-days: 14
+
+  browser-regression:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefer-offline --no-audit --no-fund
+      - run: npm ci --prefer-offline --no-audit --no-fund
+        working-directory: site
+      - run: npm run assets:build
+        working-directory: site
+      - run: npx playwright install --with-deps chromium
+      - name: Check responsive navigation with isolated API fixtures
+        run: node site/scripts/check-pages-browser.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pages-visual-audit-browser-regression
+          path: site/artifacts/browser/
+          if-no-files-found: error
           retention-days: 14

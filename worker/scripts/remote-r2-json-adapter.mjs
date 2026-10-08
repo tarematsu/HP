@@ -17,10 +17,23 @@ export function createWranglerRemoteR2({ bucket, cwd, wranglerScript, execute = 
           throw new Error('Remote R2 read failed');
         }
         const body = readFileSync(file,'utf8');
-        return { json:async()=>JSON.parse(body) };
+        return { body: new Response(body).body, text: async () => body, json:async()=>JSON.parse(body) };
       } finally { rmSync(directory,{recursive:true,force:true}); }
     },
-    async put(key,body) {
+    async put(key,body,options = {}) {
+      const metadata = options.customMetadata;
+      // Wrangler object put cannot preserve custom metadata. Store the
+      // canonical envelope already supported by the migration reader.
+      if (metadata?.format === 'raw-response-v1') {
+        body = JSON.stringify({
+          version: 1,
+          status: Number(metadata.status) || 200,
+          headers: JSON.parse(metadata.headers_json || '{}'),
+          updated_at: Number(metadata.updated_at),
+          cadence_seconds: Number(metadata.cadence_seconds) || 0,
+          body: String(body),
+        });
+      }
       const directory = mkdtempSync(join(tmpdir(),'remote-r2-write-'));
       const file = join(directory,'object.json');
       try {

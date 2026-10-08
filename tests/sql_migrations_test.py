@@ -7,6 +7,30 @@ MIGRATIONS = ROOT / "database" / "migrations"
 
 
 class MigrationTests(unittest.TestCase):
+    def test_nogizaka_smoke_cleanup_covers_early_start_and_preserves_real_events(self):
+        db = sqlite3.connect(":memory:")
+        for table in ["sh_official_broadcast_series", "sh_official_broadcast_summary"]:
+            db.execute(f"CREATE TABLE {table}(host_handle TEXT,event_name TEXT)")
+            db.executemany(f"INSERT INTO {table} VALUES (?,?)", [
+                ("nogizaka46smej", "Nogizaka collector temporary sakuramankai test"),
+                ("nogizaka46smej", "Official listening party"),
+                ("other", "Nogizaka collector temporary sakuramankai test"),
+            ])
+        for table in ["sh_nogizaka46smej_main", "sh_nogizaka_official_news_station_probes"]:
+            db.execute(f"CREATE TABLE {table}(observed_at INTEGER,station_id INTEGER,broadcast_id INTEGER)")
+            db.executemany(f"INSERT INTO {table} VALUES (?,?,?)", [
+                (1790697666254, 3328626, 3604336),
+                (1790697666254, 999, 3604336),
+                (1790771410238, 3328626, 3604336),
+            ])
+        db.executescript((ROOT / "database/other-migrations/071_remove_exact_nogizaka_smoke_event.sql").read_text())
+        for table in ["sh_official_broadcast_series", "sh_official_broadcast_summary"]:
+            self.assertEqual(db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0], 2)
+            self.assertEqual(db.execute(f"SELECT COUNT(*) FROM {table} WHERE host_handle='nogizaka46smej' AND event_name='Official listening party'").fetchone()[0], 1)
+        for table in ["sh_nogizaka46smej_main", "sh_nogizaka_official_news_station_probes"]:
+            self.assertEqual(db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0], 2)
+        db.close()
+
     def setUp(self):
         self.db = sqlite3.connect(":memory:")
         self.db.executescript(

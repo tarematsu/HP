@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { chromium } from 'playwright';
+import { NAVIGATION } from '../site/public/dashboard-navigation-config.js';
 
 function parseArgs(argv) {
   const options = {
@@ -27,6 +27,7 @@ function slug(value) {
 }
 
 async function settle(page) {
+  await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
   await page.evaluate(() => document.fonts?.ready).catch(() => {});
   for (let attempt = 0; attempt < 6; attempt += 1) {
     await page.waitForTimeout(attempt === 0 ? 900 : 350);
@@ -62,37 +63,25 @@ async function revealPage(page) {
   });
 }
 
-async function getTabSnapshot(page) {
-  return page.locator('#modeTabs button').evaluateAll((buttons) => buttons
-    .map((button, index) => {
-      const style = getComputedStyle(button);
-      const rect = button.getBoundingClientRect();
-      return {
-        index,
-        text: (button.textContent || '').trim(),
-        view: button.dataset.view || '',
-        mode: button.dataset.mode || '',
-        visible: !button.hidden
-          && style.display !== 'none'
-          && style.visibility !== 'hidden'
-          && rect.width > 0
-          && rect.height > 0,
-      };
-    })
-    .filter(({ visible }) => visible)
-    .map(({ visible: _visible, ...tab }) => tab));
+export function auditRoutes() {
+  return NAVIGATION.flatMap((section) => section.sources.flatMap((source) => source.functions.map((item) => ({
+    section: section.id, source: source.id, mode: item.mode, text: `${source.label} ${item.label}`,
+  })))).map((route, index) => ({ ...route, index }));
 }
 
 async function inspectView(page, tab, viewport, outDir) {
-  const button = page.locator('#modeTabs button').nth(tab.index);
-  await button.scrollIntoViewIfNeeded();
-  await button.click();
+  await page.evaluate((mode) => { location.hash = mode; }, tab.mode);
   await settle(page);
+  if (tab.control) {
+    await page.locator('.dashboard-view:not([hidden])').locator(tab.control).click();
+    await settle(page);
+  }
   await revealPage(page);
 
-  const state = await page.evaluate(({ tabIndex }) => {
-    const buttons = [...document.querySelectorAll('#modeTabs button')];
-    const active = buttons[tabIndex];
+  const state = await page.evaluate(({ route }) => {
+    const active = document.querySelector('#functionTabs button.active');
+    const source = document.querySelector('#sourceTabs button.active')?.dataset.source
+      || document.querySelector('#sourceSelect')?.value;
     const visible = (element) => {
       if (!element || element.hidden) return false;
       const style = getComputedStyle(element);
@@ -115,8 +104,9 @@ async function inspectView(page, tab, viewport, outDir) {
       return /^読み込み中(?:\.{3}|…)?$/.test((element.textContent || '').trim());
     });
     return {
-      active: active?.classList.contains('active') || false,
+      active: location.hash === `#${route.mode}` && source === route.source,
       ariaCurrent: active?.getAttribute('aria-current') || null,
+      dataErrors: text.match(/[^。\n]*(?:データの取得に失敗|データを取得できません|materialized response unavailable)[^。\n]*/g) || [],
       visiblePanels,
       horizontalOverflow: Math.max(0, scrollWidth - window.innerWidth),
       bodyLength: text.length,
@@ -124,20 +114,20 @@ async function inspectView(page, tab, viewport, outDir) {
       visibleLoading,
       hash: location.hash,
       title: document.title,
-      tabCount: buttons.length,
     };
-  }, { tabIndex: tab.index });
+  }, { route: tab });
 
-  const name = `${viewport.name}-${String(tab.index + 1).padStart(2, '0')}-${slug(tab.view || tab.mode || tab.text)}`;
+  const name = `${viewport.name}-${String(tab.index + 1).padStart(2, '0')}-${slug(`${tab.mode}${tab.panel ? `-${tab.panel}` : ''}`)}`;
   const screenshot = join(outDir, `${name}.png`);
   await page.screenshot({ path: screenshot, fullPage: true, animations: 'disabled' });
 
   const issues = [];
-  if (!state.active || state.ariaCurrent !== 'page') issues.push('selected tab is not marked active');
+  if (!state.active) issues.push('selected tab is not marked active');
   if (state.visiblePanels.length !== 1) issues.push(`expected exactly one visible dashboard view, got ${state.visiblePanels.length}`);
   if (state.horizontalOverflow > 1) issues.push(`document horizontally overflows by ${state.horizontalOverflow}px`);
   if (state.bodyLength < 40) issues.push(`body text is unexpectedly short (${state.bodyLength})`);
   if (state.visibleLoading) issues.push('visible loading placeholder remained after settling');
+  if (state.dataErrors.length) issues.push(...state.dataErrors);
   if (state.suspicious.length) issues.push(`suspicious rendered tokens: ${state.suspicious.join(', ')}`);
 
   return {
@@ -172,6 +162,11 @@ async function auditViewport(browser, baseUrl, viewport, outDir) {
   page.on('console', (message) => {
     if (message.type() === 'error') consoleErrors.add(message.text());
   });
+  page.on('response', (response) => {
+    if (new URL(response.url()).pathname.startsWith('/api/') && response.status() >= 400) {
+      requestFailures.add(`HTTP ${response.status()} ${response.url()}`);
+    }
+  });
   page.on('pageerror', (error) => pageErrors.add(error.message));
   page.on('requestfailed', (request) => {
     const type = request.resourceType();
@@ -182,15 +177,26 @@ async function auditViewport(browser, baseUrl, viewport, outDir) {
   });
 
   const response = await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 35_000 });
-  await page.locator('#modeTabs button').first().waitFor({ state: 'visible', timeout: 15_000 });
+  await page.locator('#sectionTabs button').first().waitFor({ state: 'visible', timeout: 15_000 });
   await settle(page);
 
-  const tabs = await getTabSnapshot(page);
+  const tabs = auditRoutes();
   if (!tabs.length) throw new Error('No visible navigation tabs were found');
 
   const views = [];
   for (const tab of tabs) {
-    views.push(await inspectView(page, tab, viewport, outDir));
+    try {
+      views.push(await inspectView(page, tab, viewport, outDir));
+      const panels = await page.locator('.dashboard-view:not([hidden]) :is(button[data-stationhead-section], button[data-service-group]):visible:not(:disabled)').evaluateAll((buttons) => buttons.map((button) => {
+        const attribute = button.hasAttribute('data-stationhead-section') ? 'data-stationhead-section' : 'data-service-group';
+        return { panel: button.getAttribute(attribute), control: `button[${attribute}="${button.getAttribute(attribute)}"]` };
+      }));
+      for (const panel of panels) views.push(await inspectView(page, { ...tab, ...panel }, viewport, outDir));
+    } catch (error) {
+      const screenshot = join(outDir, `${viewport.name}-${tab.index + 1}-failed.png`);
+      await page.screenshot({ path: screenshot, fullPage: true, animations: 'disabled' }).catch(() => {});
+      views.push({ tab, viewport: viewport.name, screenshot, ok: false, issues: [String(error?.message || error)] });
+    }
   }
 
   await context.close();
@@ -205,7 +211,9 @@ async function auditViewport(browser, baseUrl, viewport, outDir) {
   };
 }
 
-const options = parseArgs(process.argv.slice(2));
+export async function runVisualAudit(argv = process.argv.slice(2)) {
+  const { chromium } = await import('playwright');
+const options = parseArgs(argv);
 await mkdir(options.outDir, { recursive: true });
 
 const viewports = [
@@ -255,3 +263,7 @@ if (fatal || issueCount > 0) {
   if (issueCount > 0) console.error(`Visual audit detected ${issueCount} issue(s).`);
   process.exitCode = 1;
 }
+
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) await runVisualAudit();

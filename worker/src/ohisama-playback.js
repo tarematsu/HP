@@ -1,7 +1,7 @@
 import { requireStationheadSourceProfile } from '../../packages/sh-shared/stationhead-source.mjs';
 import { extractQueue } from './collector-payload.js';
 import { materializeCurrentPlaybackWindow } from './queue-materialization.js';
-import { saveTrackHistoryDayReadModel } from './pages-track-history-r2-shards.js';
+import { publishStationheadPlaybackDay } from './stationhead-playback-publication.js';
 import {
   playbackDailyPublic,
   stationheadPlaybackTrackKey as trackKey,
@@ -111,39 +111,6 @@ function likeStatements(db, stationId, track, observedAt) {
   return [current, observation];
 }
 
-function trackHistoryDayRange(period) {
-  const fromTs = Date.parse(`${String(period || '')}T00:00:00Z`);
-  if (!Number.isFinite(fromTs)) throw new Error(`invalid Ohisama playback day: ${period}`);
-  return { fromTs, toTs: fromTs + 24 * 60 * 60_000 };
-}
-
-function trackHistoryRows(daily) {
-  const row = Array.isArray(daily?.tracks) ? daily : playbackDailyPublic(daily);
-  return (Array.isArray(row?.tracks) ? row.tracks : []).map((track) => ({
-    play_date: row.period_key,
-    track_id: integer(track?.track_id),
-    spotify_id: text(track?.spotify_id),
-    title: text(track?.title),
-    artist: text(track?.artist),
-    play_count: Math.max(0, integer(track?.count) || 0),
-  })).filter((track) => track.track_id != null && track.play_count > 0);
-}
-
-async function publishOhisamaTrackHistoryDay(bucket, daily, observedAt) {
-  const row = Array.isArray(daily?.tracks) ? daily : playbackDailyPublic(daily);
-  if (!row?.period_key) return null;
-  return saveTrackHistoryDayReadModel(
-    bucket,
-    trackHistoryDayRange(row.period_key),
-    trackHistoryRows(row),
-    {
-      source: 'ohisama',
-      updated_at: observedAt,
-      source_row_count: Math.max(0, integer(row.total_plays) || 0),
-    },
-  );
-}
-
 export async function captureOhisamaPlayback(env, channel, collection, observedAt = Date.now()) {
   const db = env?.OHISAMA_DB;
   const catalogDb = env?.MINUTE_DB;
@@ -235,10 +202,10 @@ export async function captureOhisamaPlayback(env, channel, collection, observedA
     return { published: false, reason: 'error' };
   });
   if (completedDay?.period_key) {
-    await publishOhisamaTrackHistoryDay(bucket, completedDay, observedAt);
+    await publishStationheadPlaybackDay(bucket, 'ohisama', completedDay, observedAt);
   }
   if (transitions.length || completedDay) {
-    await publishOhisamaTrackHistoryDay(bucket, playbackDailyPublic(daily), observedAt);
+    await publishStationheadPlaybackDay(bucket, 'ohisama', playbackDailyPublic(daily), observedAt);
   }
   const state = {
     version: 2,

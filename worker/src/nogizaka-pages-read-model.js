@@ -59,8 +59,8 @@ async function loadHistory(db) {
       s.likes_max,s.distinct_tracks,s.host_handle,s.refreshed_at,
       a.news_url AS source_url,a.title AS source_title
     FROM sh_official_broadcast_summary AS s
-    LEFT JOIN latest_sources AS latest ON latest.event_name=s.event_name
-    LEFT JOIN sh_nogizaka_official_news_announcements AS a ON a.id=latest.id
+    INNER JOIN latest_sources AS latest ON latest.event_name=s.event_name
+    INNER JOIN sh_nogizaka_official_news_announcements AS a ON a.id=latest.id
     WHERE s.host_handle=?
     ORDER BY s.started_at DESC
     LIMIT ?`).bind(NOGIZAKA_HANDLE, HISTORY_LIMIT).all();
