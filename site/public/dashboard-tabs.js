@@ -205,7 +205,11 @@ async function showHistory(mode, route, { updateUrl = true, replaceUrl = false, 
 }
 function modeFromLocation() {
   const mode = location.hash.slice(1);
-  if (mode === 'first-week' || mode === 'unofficial') { history.replaceState(null, '', `${location.pathname}${location.search}#broadcasts`); return 'broadcasts'; }
+  if (mode === 'first-week' || mode === 'unofficial' || mode === 'monthly') {
+    const target = mode === 'monthly' ? 'weekly' : 'broadcasts';
+    history.replaceState(null, '', `${location.pathname}${location.search}#${target}`);
+    return target;
+  }
   return VIEW_MODES.has(mode) ? mode : 'current';
 }
 function showMode(mode, options = {}) {
