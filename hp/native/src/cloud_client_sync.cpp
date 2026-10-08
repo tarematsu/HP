@@ -1,7 +1,6 @@
 // Device-state synchronization only. Radar localization and dormant
 // Stationhead health projection live in dedicated implementation files.
 #include "cloud_client_radar_cache.cpp"
-#include "cloud_client_stationhead_health.cpp"
 #include "cloud_client.h"
 #include <limits>
 #include <winrt/Windows.Data.Json.h>
@@ -63,12 +62,9 @@ void CloudClient::Synchronize() {
   }
   if (deviceToken_.empty()) throw std::runtime_error("device token missing");
 
-  const bool stationheadSyncEnabled = NativeStationheadSyncEnabled();
   const fs::path dashboardPath = dataDir_ / L"dashboard.json";
   const fs::path radarPath = dataDir_ / L"radar.json";
   const fs::path switchbotPath = dataDir_ / L"switchbot.json";
-  const fs::path stationheadPath = dataDir_ / L"stationhead.json";
-  const fs::path stationheadHealthPath = dataDir_ / L"stationhead-health.json";
   const fs::path deviceConfigPath = dataDir_ / L"device-config.json";
   const auto requestedVersion = [](const fs::path& path, int version) {
     std::error_code error;
@@ -130,12 +126,6 @@ void CloudClient::Synchronize() {
       presenceFallbackActive_
           ? -1
           : requestedVersion(switchbotPath, switchbotVersion_));
-  if (stationheadSyncEnabled) {
-    path += L"&stationheadVersion=" +
-        std::to_wstring(requestedVersion(stationheadPath, stationheadVersion_));
-    path += L"&stationheadHealthVersion=" + std::to_wstring(
-        requestedVersion(stationheadHealthPath, stationheadHealthVersion_));
-  }
   path += L"&configVersion=" +
       std::to_wstring(requestedDeviceConfigVersion());
 
@@ -152,20 +142,11 @@ void CloudClient::Synchronize() {
   const int nextRadar = VersionOr(versions, L"radar", radarVersion_);
   const int nextSwitchbot =
       VersionOr(versions, L"switchbot", switchbotVersion_);
-  const int nextStationhead = stationheadSyncEnabled
-      ? VersionOr(versions, L"stationhead", stationheadVersion_)
-      : stationheadVersion_;
-  const int nextStationheadHealth = stationheadSyncEnabled
-      ? VersionOr(
-          versions, L"stationheadHealth", stationheadHealthVersion_)
-      : stationheadHealthVersion_;
   const int nextConfig = VersionOr(versions, L"config", deviceConfigVersion_);
 
   bool dashboardApplied = false;
   bool radarApplied = false;
   bool switchbotApplied = false;
-  bool stationheadApplied = false;
-  bool stationheadHealthApplied = false;
   bool configApplied = false;
 
   if (auto payload = StringPayload(root, L"dashboard")) {
@@ -198,21 +179,6 @@ void CloudClient::Synchronize() {
     switchbotApplied = true;
     presenceFallbackActive_ = false;
     PostMessageW(window_, WM_HP_SWITCHBOT_UPDATED, 0, 0);
-  }
-  if (stationheadSyncEnabled) {
-    if (auto payload = StringPayload(root, L"stationhead")) {
-      if (!AtomicWriteBytes(stationheadPath, *payload)) {
-        throw std::runtime_error("Stationhead cache write failed");
-      }
-      stationheadApplied = true;
-      PostMessageW(window_, WM_HP_STATIONHEAD_CHANGED, 0, 0);
-    }
-    if (auto payload = StringPayload(root, L"stationheadHealth")) {
-      if (!AtomicWriteBytes(stationheadHealthPath, *payload)) {
-        throw std::runtime_error("Stationhead health cache write failed");
-      }
-      stationheadHealthApplied = true;
-    }
   }
   if (auto payload = StringPayload(root, L"deviceConfig")) {
     if (!AtomicWriteBytes(deviceConfigPath, *payload)) {
@@ -252,55 +218,20 @@ void CloudClient::Synchronize() {
       acceptedVersion(L"radar", radarVersion_, nextRadar, radarApplied);
   const int acceptedSwitchbot = acceptedVersion(
       L"switchbot", switchbotVersion_, nextSwitchbot, switchbotApplied);
-  const int acceptedStationhead = stationheadSyncEnabled
-      ? acceptedVersion(
-          L"stationhead", stationheadVersion_, nextStationhead,
-          stationheadApplied)
-      : stationheadVersion_;
-  const int acceptedStationheadHealth = stationheadSyncEnabled
-      ? acceptedVersion(
-          L"stationhead health", stationheadHealthVersion_,
-          nextStationheadHealth, stationheadHealthApplied)
-      : stationheadHealthVersion_;
   const int acceptedConfig = acceptedVersion(
       L"device config", deviceConfigVersion_, nextConfig, configApplied);
 
   if (dashboardVersion_ != acceptedDashboard ||
       radarVersion_ != acceptedRadar ||
       switchbotVersion_ != acceptedSwitchbot ||
-      stationheadVersion_ != acceptedStationhead ||
-      stationheadHealthVersion_ != acceptedStationheadHealth ||
       deviceConfigVersion_ != acceptedConfig) {
     dashboardVersion_ = acceptedDashboard;
     radarVersion_ = acceptedRadar;
     switchbotVersion_ = acceptedSwitchbot;
-    stationheadVersion_ = acceptedStationhead;
-    stationheadHealthVersion_ = acceptedStationheadHealth;
     deviceConfigVersion_ = acceptedConfig;
     cacheMetadataDirty_ = true;
   }
   if (cacheMetadataDirty_) SaveCacheMetadata();
-
-  if (stationheadSyncEnabled) {
-    std::wstring nextHealthText;
-    try {
-      std::ifstream input(stationheadHealthPath, std::ios::binary);
-      std::string text((std::istreambuf_iterator<char>(input)), {});
-      nextHealthText = text.empty()
-          ? L"Stationhead収集: 確認中"
-          : StationheadHealthSummary(JsonObject::Parse(Utf8ToWide(text)));
-    } catch (const std::exception& error) {
-      log_.Warn(
-          L"Stationhead health read failed without interrupting dashboard sync: " +
-          Utf8ToWide(error.what()));
-      nextHealthText = L"Stationhead収集: 状態取得失敗";
-    } catch (...) {
-      log_.Warn(
-          L"Stationhead health read failed without interrupting dashboard sync");
-      nextHealthText = L"Stationhead収集: 状態取得失敗";
-    }
-    UpdateStationheadHealthText(std::move(nextHealthText));
-  }
 
   {
     std::lock_guard lock(stateMutex_);

@@ -142,11 +142,8 @@ test('compact runtime responsibilities do not overlap', () => {
   }
 });
 
-test('authenticated stats remain owned by playback/data policy, not runtime files', () => {
-  assert.match(playback, /inline std::wstring StationheadPrimaryPlayStatsScript\(int channelId\)/);
-  assert.match(playback, /streakStats/);
-  assert.match(playback, /response\.status === 401 \|\| response\.status === 403/);
-  assert.doesNotMatch(locator + reuse + interaction + recovery + lifecycle, /streakStats/);
+test('retired statistics are absent from playback and runtime policy', () => {
+  assert.doesNotMatch(playback + locator + reuse + interaction + recovery + lifecycle, /StationheadPrimaryPlayStatsScript|streakStats/);
 });
 
 test('Stationhead state changes still shorten the central idle timer', () => {

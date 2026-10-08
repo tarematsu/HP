@@ -1,8 +1,6 @@
-#include "app.h"
 #include "sh.h"
 #include "sh_audio_loss_policy.h"
 #include "stationhead_monitor_probe.h"
-#include "web_renderer.h"
 #include <winrt/Windows.Data.Json.h>
 
 namespace hp {
@@ -229,20 +227,6 @@ void RequestStationheadMonitorDomProbe() noexcept {
   }
 }
 
-void App::NotifyStationheadPlaybackFallbackStarted() {
-  if (!renderer_ || stationheadPlaybackFallbackActive_) return;
-  const NativePlaybackFeedStatus feed =
-      renderer_->NativePlaybackFeedStatusFor(0, UnixMillis());
-  stationheadPlaybackFallbackActive_ = true;
-  stationheadPlaybackNoNextTrackObserved_ = false;
-  stationheadPlaybackFallbackRevision_ =
-      std::max<uint64_t>(1, feed.healthyRevision);
-  if (logger_) {
-    logger_->Warn(
-        L"Stationhead audio-loss fallback registered; waiting for a newer healthy five-minute playback observation");
-  }
-}
-
 void StationheadPlayer::UpdateAudioLossState(
     const std::wstring& state, const std::wstring& detail) {
   if (audioLossState_ == state) return;
@@ -346,9 +330,6 @@ void StationheadPlayer::SetManagedPlaybackFallback(
     ResetAudioLossProbe();
     UpdateAudioLossState(L"fallback", reason);
     SetPlaybackFallback(true, reason);
-    if (App* app = App::Current()) {
-      app->NotifyStationheadPlaybackFallbackStarted();
-    }
     return;
   }
 
@@ -380,12 +361,34 @@ void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
       monitorDomProbeGeneration.load(std::memory_order_acquire);
   bool startMonitorProbe = false;
   if (requestedGeneration != 0 && webview_) {
-    std::lock_guard lock(monitorDomProbeStateMutex);
-    auto& state = monitorDomProbeStates[this];
-    if (!state.inFlight && state.seenGeneration != requestedGeneration) {
-      state.seenGeneration = requestedGeneration;
-      state.inFlight = true;
-      startMonitorProbe = true;
+    const StationheadStatus candidate = Status();
+    const unsigned selected = StationheadMonitorProfile();
+    const bool selectedMonitor = selected != 0 &&
+        selected == StationheadProfileNumber(profileName_);
+    // WebView2 audio/authorization events already track healthy backgrounds.
+    // Only probe the visible monitor profile or a session that could need login.
+    const bool needsDomProbe = selectedMonitor ||
+        candidate.loginRequired || candidate.spotifyAuthorization ||
+        (selected == 0 && !AudioPlaying() &&
+         !candidate.navigating && !candidate.processFailed);
+    bool clearMonitorAuth = false;
+    {
+      std::lock_guard lock(monitorDomProbeStateMutex);
+      auto& state = monitorDomProbeStates[this];
+      if (!state.inFlight && state.seenGeneration != requestedGeneration) {
+        state.seenGeneration = requestedGeneration;
+        if (needsDomProbe) {
+          state.inFlight = true;
+          startMonitorProbe = true;
+        } else {
+          // Explicitly clear stale auth indicators without scanning the DOM.
+          clearMonitorAuth = true;
+        }
+      }
+    }
+    if (clearMonitorAuth) {
+      PostMessageW(window_, kStationheadMonitorProbeResultMessage, 0,
+                   static_cast<LPARAM>(StationheadMonitorSlot(profileName_)));
     }
   }
 

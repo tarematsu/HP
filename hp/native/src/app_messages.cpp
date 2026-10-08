@@ -109,13 +109,6 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       ScheduleNextTick(1);
       return 0;
     }
-    case kStationheadHealthUpdatedMessage:
-      if (cloud_ && toastUntil_ == 0) {
-        std::wstring health = cloud_->StationheadHealthText();
-        if (toastText_ != health) ShowToast(std::move(health), 0, false);
-      }
-      return 0;
-
     case WM_HP_CONFIG_UPDATED:
       ShowToast(L"クラウド設定を保存しました。再起動時に適用します", 5000);
       return 0;

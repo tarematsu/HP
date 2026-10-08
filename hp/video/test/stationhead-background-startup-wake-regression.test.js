@@ -8,11 +8,11 @@ const app = readFileSync(
 );
 
 test('background Stationhead keeps App ticks alive until audio starts', () => {
-  const rendererScheduler = app.indexOf('if (rendererStarted_) {');
-  assert.ok(rendererScheduler >= 0);
+  const deadlineScheduler = app.indexOf('uint32_t nextTickMs = kMaxAppTimerMs;');
+  assert.ok(deadlineScheduler >= 0);
   const schedulerStart = app.indexOf(
     'if (stationheadStarted_ && stationhead_) {',
-    rendererScheduler,
+    deadlineScheduler,
   );
   assert.ok(schedulerStart >= 0);
   const scheduler = app.slice(schedulerStart, schedulerStart + 1200);

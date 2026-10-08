@@ -8,13 +8,6 @@ const source = name => readFileSync(
 );
 
 const stationhead = source('sh_track_boundary_message_policy.h');
-const spotifyHeader = source('spotify_webviews.h');
-const spotifyClick = source('spotify_background_click.inc');
-const spotifyController = source('spotify_controller_lifecycle.inc');
-const spotifyPhase = source('spotify_phase_sync.inc');
-const spotifyHost = source('spotify_host_lifecycle.inc');
-const spotifyTrackRecovery = source('spotify_track_start_recovery.h');
-const spotifyStartup = source('spotify_startup_audio_recovery.inc');
 
 test('Stationhead silence recovery is one bounded native ladder', () => {
   assert.match(stationhead, /enum class StationheadAudioRecoveryStage/);
@@ -51,37 +44,9 @@ test('Stationhead ladder resets on real audio and cannot restart after fallback'
   assert.match(stationhead, /managedPlaybackFallbackActive_/);
   assert.match(stationhead, /spotifyAuthorization_ \|\| loginRequired_/);
   assert.match(stationhead, /ResetMediaRecoveryEpisode\(mediaRecoveryEpisode_, 1\)/);
+  const player = source('sh.cpp');
+  assert.match(player, /resourceBlockingArmed_ = true;[\s\S]*ResetAudioLossEscalation\(\)/);
   assert.doesNotMatch(stationhead, /audioLossEscalationStage_/);
   assert.doesNotMatch(stationhead, /NextMediaRecoveryAction/);
 });
 
-test('Spotify normal startup reloads once and then skips', () => {
-  assert.match(spotifyHeader, /SpotifyTrackStartRecovery trackStartRecovery\{\}/);
-  assert.match(spotifyHeader, /bool nativeAudioStartVerified = false/);
-  assert.match(spotifyPhase, /BeginSpotifyTrackStartRecovery/);
-  assert.match(spotifyHost, /slot\.trackStartRecovery = \{\}/);
-  assert.match(spotifyTrackRecovery, /bool reloadIssued = false/);
-  assert.match(spotifyTrackRecovery, /ConsumeSpotifyStartupReload/);
-  assert.doesNotMatch(spotifyTrackRecovery, /rebuildIssued|skipIssued|RebuildSurface/);
-  assert.match(spotifyStartup, /ConsumeSpotifyStartupReload/);
-  assert.match(spotifyStartup, /slot\.webview->Reload\(\)/);
-  assert.match(spotifyStartup, /SkipFailedSpotifyTrack\(slot\)/);
-  assert.doesNotMatch(spotifyStartup, /mediaPipelineRecoveryPending = true/);
-  assert.doesNotMatch(spotifyStartup, /RebuildSurface/);
-  assert.doesNotMatch(spotifyClick, /EscalateSpotifyStartupFailure/);
-});
-
-test('Spotify explicit full rebuild preserves current target and rotation', () => {
-  const start = spotifyController.indexOf(
-    'void SpotifyWebViews::RebuildPlaybackSurface');
-  const end = spotifyController.indexOf(
-    'void SpotifyWebViews::CreateController', start);
-  assert.ok(start >= 0 && end > start);
-  const rebuild = spotifyController.slice(start, end);
-
-  assert.doesNotMatch(rebuild, /slot\.targetGeneration = 0/);
-  assert.doesNotMatch(rebuild, /slot\.timedRotationPosition = 0/);
-  assert.doesNotMatch(rebuild, /slot\.timedRotationActive = false/);
-  assert.match(rebuild, /slot\.nextRecoveryTick = GetTickCount64\(\)/);
-  assert.match(spotifyStartup, /AdvanceTimedRotationSlot\(slot\)/);
-});

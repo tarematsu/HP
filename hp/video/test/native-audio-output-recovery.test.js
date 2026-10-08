@@ -13,12 +13,6 @@ const stationheadEvents = source('sh_webview_event_policy.h');
 const stationheadLoss = source('sh_audio_loss.cpp');
 const stationheadPolicy = source('sh_audio_loss_policy.h');
 const stationheadRecovery = source('sh_track_boundary_message_policy.h');
-const spotifyEvents = source('spotify_media_observer_events.inc');
-const spotifyClick = source('spotify_background_click.inc');
-const spotifyPhase = source('spotify_phase_sync.inc');
-const spotifySchedule = source('spotify_stagger_schedule.inc');
-const spotifyTrackRecovery = source('spotify_track_start_recovery.h');
-const spotifyStartupAudio = source('spotify_startup_audio_recovery.inc');
 
 test('Stationhead has no independent event-driven pause-play repair loop', () => {
   assert.doesNotMatch(stationheadEvents, /UpdateStationheadSilentPlaybackRecovery/);
@@ -81,51 +75,6 @@ test('Stationhead lightweight repair is issued once by the bounded recovery ladd
   assert.match(recovery, /ScheduleRecreate\(L"Stationhead silence recovery WebView rebuild"/);
   assert.match(recovery, /SetManagedPlaybackFallback/);
   assert.doesNotMatch(recovery, /media\.pause\(\)|media\.play\?\.\(\)/);
-});
-
-test('Spotify startup recovery is per target generation and is reload-once then skip', () => {
-  assert.match(spotifyPhase, /BeginSpotifyTrackStartRecovery\([\s\S]*slot\.targetGeneration/);
-  assert.match(spotifyTrackRecovery, /ULONGLONG generation = 0/);
-  assert.match(spotifyTrackRecovery, /bool reloadIssued = false/);
-  assert.match(spotifyTrackRecovery, /ConsumeSpotifyStartupReload/);
-  assert.doesNotMatch(spotifyTrackRecovery, /rebuildIssued|skipIssued|RebuildSurface/);
-  assert.doesNotMatch(spotifyClick, /NativePlayRetry|return 'reload'|return 'recreate'/);
-  assert.doesNotMatch(spotifyClick, /EscalateSpotifyStartupFailure/);
-  assert.match(spotifyStartupAudio, /ConsumeSpotifyStartupReload/);
-  assert.match(spotifyStartupAudio, /slot\.webview->Reload\(\)/);
-  assert.match(spotifyStartupAudio, /SkipFailedSpotifyTrack\(slot\)/);
-  assert.doesNotMatch(spotifyStartupAudio, /RequestSpotifyAudioPipelineRestart|RebuildSurface/);
-});
-
-test('Spotify checks native audio only during startup and requires consecutive positive samples', () => {
-  assert.doesNotMatch(spotifyPhase, /AudioHealth|audioHealth/);
-  assert.doesNotMatch(spotifySchedule, /gSpotifyAudioHealth/);
-  assert.doesNotMatch(spotifySchedule, /TryClaimAudioHealthScan/);
-  assert.doesNotMatch(spotifySchedule, /get_IsDocumentPlayingAudio/);
-  assert.match(spotifySchedule, /No periodic IsDocumentPlayingAudio scan here/);
-  assert.match(spotifyPhase, /kSpotifyNativeAudioStartRetryMs = 2ULL \* 1000ULL/);
-  assert.match(spotifyStartupAudio, /kSpotifyNativeAudioStartCheckLimit = 4/);
-  assert.match(spotifyStartupAudio, /gSpotifyNativeAudioFirstPassTicks/);
-  assert.match(spotifyStartupAudio, /get_IsDocumentPlayingAudio\(&nativePlaying\)/);
-  assert.match(spotifyStartupAudio, /SpotifyMediaStartEvidenceReady/);
-  assert.match(
-    spotifyStartupAudio,
-    /now - firstPassTick >= kSpotifyNativeAudioStartRetryMs/,
-  );
-  assert.match(spotifyStartupAudio, /slot\.nativeAudioStartVerified = true/);
-  assert.match(
-    spotifyClick,
-    /slot\.playbackConfirmed && slot\.nativeAudioStartVerified/,
-  );
-});
-
-test('Spotify observer still reacts immediately to explicit playback interruption events', () => {
-  assert.match(spotifyEvents, /recoveryGraceMs = 6000/);
-  for (const eventName of ['pause', 'stalled', 'waiting', 'error']) {
-    assert.match(spotifyEvents, new RegExp(`['\"]${eventName}['\"]`));
-  }
-  assert.match(spotifyEvents, /post\('spotify:timed-interrupted'\)/);
-  assert.match(spotifyEvents, /next > recoveryTime \+ 0\.10/);
 });
 
 test('Stationhead does not use the retired preventive refresh implementation', () => {

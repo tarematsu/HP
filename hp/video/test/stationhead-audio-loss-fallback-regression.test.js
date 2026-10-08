@@ -4,13 +4,13 @@ import test from 'node:test';
 
 const source = name => readFileSync(new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
 const policy = source('sh_audio_loss_policy.h');
-const fallbackGate = source('stationhead_fallback_revision_gate.h');
+
 const handleHeader = source('app_stationhead_handles.h');
 const handles = source('app_stationhead_handles.cpp');
 const playerHeader = source('sh.h');
 const audioLoss = source('sh_audio_loss.cpp');
-const resolver = source('dashboard_playback_resolve.cpp');
-const bridge = source('dashboard_native_playback.cpp');
+
+
 const appHeader = source('app.h');
 const rendererHeader = source('web_renderer.h');
 const cmake = readFileSync(new URL('../../native/CMakeLists.txt', import.meta.url), 'utf8');
@@ -69,19 +69,3 @@ test('navigation time is excluded from recovery failure time', () => {
   assert.match(audioLoss, /snapshot\.processFailed/);
 });
 
-test('fallback recovery requires dwell and stable audio', () => {
-  assert.match(audioLoss, /StationheadFallbackDwellSatisfied/);
-  assert.match(audioLoss, /managedPrimaryReturnPending_/);
-  assert.match(audioLoss, /kStationheadPrimaryRecoveryStabilityMs/);
-  assert.match(appHeader, /#include "stationhead_fallback_revision_gate\.h"/);
-  assert.match(fallbackGate,
-    /startedAt_\.ElapsedMilliseconds\(\) >=\s*kStationheadFallbackMinimumDwellMs/);
-});
-
-test('healthy playback observation remains active without retired renderer cache coupling', () => {
-  assert.doesNotMatch(resolver, /SelectedStationheadIsOnFallback|nativeStationhead_/);
-  assert.match(rendererHeader, /uint64_t healthyRevision = 0/);
-  assert.match(resolver, /healthyObservation/);
-  assert.match(audioLoss, /feed\.healthyRevision/);
-  assert.match(bridge, /kDashboardPollIntervalMs = 5 \* 60'000/);
-});

@@ -191,9 +191,6 @@ set(HOMEPANEL_RENDERER_SOURCES
   src/renderer_bitmap_cache.cpp
   src/renderer_panels.cpp
   src/renderer_radar_ui.cpp
-  src/dashboard_native_playback.cpp
-  src/dashboard_native_minute_facts.cpp
-  src/dashboard_playback_resolve.cpp
   src/embedded_ui.cpp)
 
 set(HOMEPANEL_RESOURCE_SOURCES

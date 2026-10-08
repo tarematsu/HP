@@ -5,8 +5,8 @@ import test from 'node:test';
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const helper = read('../../native/src/webview_startup_cache_reset.h');
 const stationhead = read('../../native/src/sh.cpp');
-const spotifyFoundation = read('../../native/src/spotify_webview_foundation.inc');
-const spotifyLifecycle = read('../../native/src/spotify_controller_lifecycle.inc');
+
+
 const rendererPanels = read('../../native/src/renderer_panels.cpp');
 const mediaHost = read('../../native/src/renderer_panels/media_host.inc');
 
@@ -27,15 +27,6 @@ test('only the former amazon profile gets a one-time tgut login reset', () => {
   assert.match(helper, /BROWSING_DATA_KINDS_GENERAL_AUTOFILL/);
   assert.doesNotMatch(helper, /BROWSING_DATA_KINDS_DISK_CACHE/);
   assert.match(helper, /marker << "tgut-login-reset-v1\\n"/);
-});
-
-test('Spotify no longer routes startup through the cache-reset compatibility shim', () => {
-  assert.doesNotMatch(spotifyFoundation, /webview_startup_cache_reset\.h/);
-  assert.doesNotMatch(spotifyLifecycle, /ResetWebViewStartupCaches/);
-  assert.match(
-    spotifyLifecycle,
-    /SetSlotState\(slot, SlotState::Authenticating\);[\s\S]*slot\.webview->Navigate\(kSpotifyLoginUrl\)/,
-  );
 });
 
 test('the shared startup hook keeps every non-tgut profile intact', () => {

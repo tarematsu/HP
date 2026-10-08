@@ -15,12 +15,8 @@ const compactRuntime = readFileSync(
   'utf8',
 );
 
-test('authenticated stats polling retains its bounded retry behavior', () => {
-  assert.match(activePolicy, /const headers = window\.__homepanelStationheadAuthHeaders/);
-  assert.match(activePolicy, /if \(!headers\?\.authorization\)/);
-  assert.match(activePolicy, /error: 'no-auth-header'/);
-  assert.match(activePolicy, /Date\.now\(\) - lastSuccessAt < 10 \* 60 \* 1000/);
-  assert.doesNotMatch(activePolicy, /const requestHeaders = \{ accept: 'application\/json' \}/);
+test('retired authenticated play-count polling cannot run', () => {
+  assert.doesNotMatch(activePolicy, /StationheadPrimaryPlayStatsScript|streakStats|no-auth-header/);
 });
 
 test('legacy interaction wrapper is bypassed by an event-driven compatibility bridge', () => {

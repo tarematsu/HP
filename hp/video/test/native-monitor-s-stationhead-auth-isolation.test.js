@@ -19,7 +19,7 @@ test('named Stationhead monitors keep auth probing active across all six windows
 });
 
 test('auth results are aggregated per Stationhead slot and active auth is rechecked quickly', () => {
-  assert.match(schedule, /kMonitorAuthActiveProbeIntervalMs = 1'000/);
+  assert.match(schedule, /kMonitorAuthActiveProbeIntervalMs = 3'000/);
   assert.match(
     schedule,
     /monitorAuthForeground_[\s\S]*\? kMonitorAuthActiveProbeIntervalMs[\s\S]*: kMonitorAuthProbeIntervalMs/,

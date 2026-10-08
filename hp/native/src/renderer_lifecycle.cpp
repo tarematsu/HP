@@ -1,6 +1,4 @@
 #include "web_renderer.h"
-#include "spotify_webviews.h"
-#include "spotify_webviews.inc"
 
 namespace hp {
 bool InstallRuntimeAssets() noexcept;
@@ -9,8 +7,6 @@ namespace {
 constexpr UINT_PTR kNativePanelTickTimer = 1;
 constexpr UINT kNativePanelTickMs = 1'000;
 constexpr ULONG kNativePanelTimerToleranceMs = 100;
-std::unique_ptr<SpotifyWebViews> gSpotifyWebViews;
-bool gSpotifyMediaNetworkBlocked = false;
 
 HBRUSH DashboardBackgroundBrush() noexcept {
   static HBRUSH background = CreateSolidBrush(kNativeDashboardBackground);
@@ -30,35 +26,6 @@ void PrepareParentWindow(HWND window) {
 }
 }  // namespace
 
-void SetSpotifyMediaPhase(bool) noexcept {
-  // Legacy media-panel notification retained only to keep the composition
-  // boundary stable. Spotify intentionally ignores YouTube/TVer phase changes;
-  // its scheduler and rotation are fully autonomous.
-}
-
-void SetSpotifyMediaNetworkBlocked(bool blocked) noexcept {
-  if (gSpotifyMediaNetworkBlocked == blocked) return;
-  gSpotifyMediaNetworkBlocked = blocked;
-  if (!gSpotifyWebViews) return;
-  gSpotifyWebViews->SetNetworkBlocked(blocked);
-}
-
-void SpotifyWebViews::PollPlaybackStatusesNow() noexcept {
-  PollProcessTitleStatus(GetTickCount64());
-}
-
-void PollSpotifyPlaybackStatusesNow() noexcept {
-  if (!gSpotifyWebViews || gSpotifyMediaNetworkBlocked) return;
-  gSpotifyWebViews->PollPlaybackStatusesNow();
-}
-
-std::array<SpotifyPlaybackStatus, kSpotifyActiveAccountCount>
-GetSpotifyPlaybackStatuses() noexcept {
-  return gSpotifyWebViews ? gSpotifyWebViews->PlaybackStatuses()
-                          : std::array<SpotifyPlaybackStatus,
-                                       kSpotifyActiveAccountCount>{};
-}
-
 Renderer::Renderer(HWND window, int width, int height)
     : window_(window), width_(width), height_(height) {
   current_ = this;
@@ -73,10 +40,6 @@ Renderer::Renderer(HWND window, int width, int height)
 
 Renderer::~Renderer() {
   shuttingDown_ = true;
-  if (gSpotifyWebViews) {
-    gSpotifyWebViews->Shutdown();
-    gSpotifyWebViews.reset();
-  }
   StopRadarCompose();
   DestroyNativeStaticWindows();
   if (current_ == this) current_ = nullptr;
@@ -118,19 +81,6 @@ void Renderer::Initialize() {
   }
 }
 
-void Renderer::StartSpotify() {
-  if (!gSpotifyWebViews) {
-    gSpotifyWebViews = std::make_unique<SpotifyWebViews>(window_, dataDir_);
-  }
-  // Spotify remains active in power-saving mode unless the explicit mute
-  // control has hard-blocked media networking.
-  gSpotifyWebViews->Start();
-  gSpotifyWebViews->Resize();
-  if (gSpotifyMediaNetworkBlocked) {
-    gSpotifyWebViews->SetNetworkBlocked(true);
-  }
-}
-
 void Renderer::Resize(int width, int height) {
   const int nextWidth = std::max(1, width);
   const int nextHeight = std::max(1, height);
@@ -140,7 +90,6 @@ void Renderer::Resize(int width, int height) {
   bounds_.right = std::max(bounds_.left + 1L, bounds_.left + width_);
   bounds_.bottom = std::max(bounds_.top + 1L, bounds_.top + height_);
   ApplyNativeStaticBounds();
-  if (gSpotifyWebViews) gSpotifyWebViews->Resize();
 }
 
 void Renderer::SetBounds(const RECT& bounds) {
@@ -149,7 +98,6 @@ void Renderer::SetBounds(const RECT& bounds) {
   width_ = std::max(1L, bounds.right - bounds.left);
   height_ = std::max(1L, bounds.bottom - bounds.top);
   ApplyNativeStaticBounds();
-  if (gSpotifyWebViews) gSpotifyWebViews->Resize();
 }
 
 void Renderer::SetVisible(bool visible) {

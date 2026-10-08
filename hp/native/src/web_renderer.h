@@ -6,50 +6,6 @@
 
 namespace hp {
 
-struct NativePlaybackTrack {
-  std::wstring title;
-  std::wstring artist;
-  std::wstring artwork;
-  int64_t durationMs = 0;
-};
-
-struct NativePlaybackProjection {
-  bool available = false;
-  bool playing = false;
-  bool stale = false;
-  bool ended = false;
-  bool setupRequired = false;
-  std::wstring queueRevision;
-  int currentIndex = -1;
-  int64_t progressMs = 0;
-  int64_t anchorAt = 0;
-  int64_t sampledAt = 0;
-  int64_t queueEndAt = 0;
-  int64_t fetchedAt = 0;
-  std::vector<NativePlaybackTrack> queue;
-};
-
-struct NativePlaybackFeedStatus {
-  bool available = false;
-  bool playing = false;
-  bool hasTrack = false;
-  bool endedWithoutNextTrack = false;
-  uint64_t contentRevision = 0;
-  uint64_t healthyRevision = 0;
-};
-
-struct NativeMinuteFactsProjection {
-  bool available = false;
-  bool ok = false;
-  bool stale = false;
-  bool isBroadcasting = false;
-  bool isPaused = false;
-  int listenerCount = 0;
-  int onlineMemberCount = 0;
-  int64_t minuteAt = 0;
-  int64_t fetchedAt = 0;
-};
-
 inline constexpr int kRadarCanvasWidth = 640;
 inline constexpr int kRadarCanvasHeight = 360;
 inline constexpr COLORREF kNativeDashboardBackground = RGB(7, 10, 16);
@@ -114,7 +70,6 @@ class Renderer {
   ~Renderer();
   static void SetGlobalPowerSavingMode(bool enabled);
   void Initialize();
-  void StartSpotify();
   void Resize(int width, int height);
   void SetBounds(const RECT& bounds);
   void SetVisible(bool visible);
@@ -124,21 +79,10 @@ class Renderer {
   void UpdateSensors(const SensorSnapshot& sensors);
   void UpdateAirHistory(const std::vector<AirHistorySample>& history);
   void TickNativePanels(int64_t nowMs, bool timerDriven = false);
-  NativePlaybackFeedStatus NativePlaybackFeedStatusFor(
-      size_t source, int64_t nowMs) const;
-  int64_t NativePlaybackNextWakeAt(int64_t nowMs) const;
-  NativeMinuteFactsProjection NativeMinuteFactsSnapshot() const;
   void NotifyRadarUpdated();
   UiAction TakePendingAction();
 
  private:
-  struct NativePlaybackUpdate {
-    NativePlaybackProjection projection;
-    uint64_t payloadSignature = 0;
-    uint64_t contentRevision = 0;
-    bool hasPayload = false;
-  };
-
   struct BitmapCacheEntry {
     HBITMAP bitmap = nullptr;
     uint64_t lastUsed = 0;
@@ -232,9 +176,6 @@ class Renderer {
   void ReleaseNativePanelSurfaces() noexcept;
   void ResetNativeBitmapCaches() noexcept;
   void QueueAction(UiAction action);
-  void StartNativePlaybackBridge();
-  void StopNativePlaybackBridge() noexcept;
-  void NativePlaybackLoop();
   HBITMAP NativeWeatherIconBitmap(
       const std::wstring& icon, bool night, int width, int height);
   void StartRadarCompose();
@@ -280,23 +221,12 @@ class Renderer {
   std::string switchbotUtf8_;
   DashboardSourceStamp dashboardSourceStamp_{};
   DashboardSourceStamp switchbotSourceStamp_{};
-  uint64_t spotifySourceRevision_ = 0;
   mutable std::mutex actionMutex_;
   UiAction pendingAction_ = UiAction::None;
-  std::thread nativePlaybackThread_;
-  std::condition_variable nativePlaybackWake_;
-  std::mutex nativePlaybackWakeMutex_;
-  mutable std::mutex nativePlaybackMutex_;
-  NativePlaybackUpdate nativePlaybackUpdate_{};
-  uint64_t nativePlaybackContentRevision_ = 0;
   std::map<std::wstring, BitmapCacheEntry> nativeWeatherIconBitmaps_;
   uint64_t nativeWeatherIconUseCounter_ = 0;
   std::map<HWND, PanelBackBuffer> nativeBackBuffers_;
   EnergyBitmapCache energyBitmapCache_{};
-  std::atomic<bool> nativePlaybackStarted_{false};
-  std::atomic<bool> nativePlaybackStopping_{false};
-  mutable std::mutex nativeMinuteFactsMutex_;
-  NativeMinuteFactsProjection nativeMinuteFacts_{};
   std::thread radarComposeThread_;
   std::condition_variable radarComposeWake_;
   std::mutex radarComposeWakeMutex_;

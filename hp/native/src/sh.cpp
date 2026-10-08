@@ -34,7 +34,6 @@ StationheadPlayer::~StationheadPlayer() { Stop(); }
 void StationheadPlayer::Start() {
   shuttingDown_ = false;
   usingFallback_ = false;
-  scheduledUrl_.clear();
   trackBoundaryPlaybackRecoveryPending_ = false;
   trackBoundaryPlaybackRecoveryAwaitingNavigation_ = false;
   trackBoundaryPlaybackRecoveryDeadline_ = 0;
@@ -144,6 +143,9 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
                 L" audio recovered after track-boundary refresh");
     }
     resourceBlockingArmed_ = true;
+    // A successful native playback event closes the previous recovery incident
+    // immediately, even when this healthy hidden profile skips frequent App ticks.
+    ResetAudioLossEscalation();
     if (!preserveLoginRequired) loginRequired_ = false;
     {
       std::lock_guard lock(mutex_);
@@ -347,7 +349,7 @@ void StationheadPlayer::TryStartInitialNavigation() {
 
 std::wstring StationheadPlayer::CurrentStationheadUrl() const {
   if (usingFallback_ && !config_.fallbackUrl.empty()) return config_.fallbackUrl;
-  return std::wstring(StationheadScheduledUrl(UnixMillis() - routeDelayMs_));
+  return config_.url.empty() ? L"https://www.stationhead.com/sakuramankai" : config_.url;
 }
 
 void StationheadPlayer::SetPlaybackFallback(bool active, const std::wstring& reason) {
@@ -381,7 +383,6 @@ void StationheadPlayer::NavigateStationheadUrl(int64_t nowMs, const std::wstring
   SetStartupBounds();
   ResetNavigationRouteState();
   usingFallback_ = fallbackActive;
-  scheduledUrl_ = url;
   resourceBlockingArmed_ = false;
   loginRequired_ = false;
   {
@@ -406,22 +407,6 @@ void StationheadPlayer::NavigateStationheadUrl(int64_t nowMs, const std::wstring
               L" armed 30-second navigation watchdog for track-boundary refresh");
   }
   log_.Info(L"Stationhead " + std::wstring(RoleTag()) + L" navigation (" + reason + L"): " + url);
-}
-
-void StationheadPlayer::PollDailyPlayStats(int64_t nowMs) {
-  if (!webview_) return;
-  const std::wstring script = StationheadApiPlayStatsScript(config_.channelId);
-  const HRESULT result = webview_->ExecuteScript(script.c_str(), nullptr);
-  if (FAILED(result)) {
-    lastDailyPlayStatsAt_ =
-        nowMs - (kStationheadDailyPlayStatsIntervalMs -
-                 kStationheadDailyPlayStatsRetryMs);
-    nextTickAt_ = nowMs + kStationheadDailyPlayStatsRetryMs;
-    log_.Warn(L"Stationhead authenticated stats script could not start " +
-              HResultHex(result));
-    return;
-  }
-  lastDailyPlayStatsAt_ = nowMs;
 }
 
 void StationheadPlayer::AttemptNativeStartClick(int64_t nowMs) {
@@ -623,7 +608,6 @@ void StationheadPlayer::EnsureAuthController(const std::wstring& url) {
 void StationheadPlayer::Tick(int64_t nowMs) {
   if (shuttingDown_) return;
   if (nowMs < nextTickAt_ &&
-      scheduledUrl_ == StationheadScheduledUrl(nowMs - routeDelayMs_) &&
       !(recreating_.load(std::memory_order_relaxed) && nowMs >= recreateAt_)) {
     return;
   }
@@ -675,13 +659,6 @@ void StationheadPlayer::Tick(int64_t nowMs) {
       nextTickAt_ = nowMs + 1'000;
       return;
     }
-  }
-  const std::wstring scheduledUrl(StationheadScheduledUrl(nowMs - routeDelayMs_));
-  if (scheduledUrl_ != scheduledUrl && !spotifyAuthorization_ &&
-      !navigationInFlight_.load(std::memory_order_acquire)) {
-    NavigateStationheadUrl(nowMs, scheduledUrl, L"JST scheduled room change", false);
-    nextTickAt_ = nowMs + 1'000;
-    return;
   }
   if (spotifyAuthorization_ && authControllerStartedAt_ > 0 &&
       nowMs - authControllerStartedAt_ >= kStationheadAuthControllerTimeoutMs) {
@@ -824,8 +801,6 @@ void StationheadPlayer::Tick(int64_t nowMs) {
     return;
   }
 
-  if (nowMs - lastDailyPlayStatsAt_ >= kStationheadDailyPlayStatsIntervalMs) PollDailyPlayStats(nowMs);
-  consider(lastDailyPlayStatsAt_ + kStationheadDailyPlayStatsIntervalMs);
   if (!audioPlaying_.load(std::memory_order_relaxed)) {
     if (nowMs >= nextAutoClickAt_) AttemptNativeStartClick(nowMs);
     consider(nextAutoClickAt_);

@@ -87,6 +87,12 @@ test('native TVer phase selects and navigates an episode without a data-page boo
 
 test('native TVer refresh preserves valid state but rejects stale or redirected episode ids', () => {
   assert.match(cloudQueueRefresh, /kNativeMediaTverCloudQueueRefreshMs =\s*30ULL \* 60ULL \* 1000ULL/);
+  assert.match(cloudQueueRefresh, /NativeMediaTverCloudRetryDelayMs\(unsigned failures\)/);
+  assert.match(cloudQueueRefresh, /NativeMediaTverCloudRetryDelayMs\(1\) == 30'000ULL/);
+  assert.match(cloudQueueRefresh, /NativeMediaTverCloudRetryDelayMs\(4\) == 300'000ULL/);
+  assert.match(cloudQueueRefresh, /!force && state\.retryAfterAt > now/);
+  assert.match(cloudQueueRefresh, /NativeMediaTverRecordRefreshFailureLocked\(shared\)/);
+  assert.match(cloudQueueRefresh, /shared\.consecutiveRefreshFailures = 0/);
   assert.match(cloudQueueRefresh, /kNativeMediaTverStartupTimeoutMs = 30ULL \* 1000ULL/);
   assert.match(cloudQueueRefresh, /NativeMediaTverFetchCloudFeed\(\)/);
   assert.match(cloudQueueRefresh, /NativeMediaTverParseCloudFeed/);

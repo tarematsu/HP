@@ -5,7 +5,6 @@
 #include "logger.h"
 #include "render_state.h"
 #include "sensors.h"
-#include "stationhead_fallback_revision_gate.h"
 #include "stationhead_leaderboard_collector.h"
 #include "update_client.h"
 
@@ -21,7 +20,6 @@ class App {
   int Run(int showCommand);
   static App* Current();
   void LogUnhandled(DWORD code, void* address);
-  void NotifyStationheadPlaybackFallbackStarted();
 
  private:
   struct HistoryFlushGuard {
@@ -97,9 +95,6 @@ class App {
   bool cloudStarted_ = false;
   bool startupUpdateScheduled_ = false;
   bool postRestartClickPending_ = false;
-  bool stationheadPlaybackFallbackActive_ = false;
-  bool stationheadPlaybackNoNextTrackObserved_ = false;
-  StationheadFallbackRevisionGate stationheadPlaybackFallbackRevision_;
   int64_t lastTelemetryAt_ = 0;
   int64_t lastAirHistorySavedAt_ = 0;
   int64_t toastUntil_ = 0;

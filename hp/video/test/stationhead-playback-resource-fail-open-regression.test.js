@@ -39,13 +39,12 @@ test('final July 19 resource boundary is fail-open and cache-preserving', () => 
   assert.doesNotMatch(july19Policy, /AttachStationheadNativeStats/);
 });
 
-test('playback policy contains statistics only, not retired request filtering', () => {
+test('playback policy keeps native audio health without retired statistics requests', () => {
   assert.doesNotMatch(playbackPolicy, /ApplyStationheadResourceBlocking/);
   assert.doesNotMatch(playbackPolicy, /sh_startup_resource_reduction_policy_fix/);
   assert.doesNotMatch(playbackPolicy, /AttachStationheadNativeStats/);
-  assert.match(playbackPolicy, /StationheadPrimaryPlayStatsScript/);
-  assert.match(july19Policy, /StationheadJuly19ApiPlayStatsScript/);
-  assert.match(july19Policy, /credentials: 'include'/);
+  assert.doesNotMatch(playbackPolicy, /StationheadPrimaryPlayStatsScript|streakStats/);
+  assert.doesNotMatch(july19Policy, /StationheadJuly19ApiPlayStatsScript|streakStats/);
 });
 
 test('safe image and font reduction remains environment-level', () => {

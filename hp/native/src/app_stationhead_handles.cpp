@@ -131,6 +131,16 @@ void StationheadHandleBase::Start() {
 
 void StationheadHandleBase::Tick(int64_t nowMs) {
   if (!player_ || !startIssued_ || stopIssued_) return;
+  // When another profile needs a two-second recovery tick, avoid re-running
+  // the healthy, hidden profile's WebView/layout/foreground maintenance.
+  // Audio and login changes still arrive as WebView2 events; keep the
+  // lightweight monitor DOM probe and playback-stability bookkeeping alive.
+  if (player_->AudioPlaying() && !player_->SurfaceVisible() &&
+      !player_->SpotifyAuthorizationActive() &&
+      nowMs < player_->NextWakeAt()) {
+    player_->EvaluateAudioLossRecovery(nowMs);
+    return;
+  }
   player_->RecoverUnavailableAuthorization();
   SyncStationheadBackgroundPreview(*player_, workspaceBounds_);
   if (player_->SpotifyAuthorizationActive()) player_->RequestImmediateTick();

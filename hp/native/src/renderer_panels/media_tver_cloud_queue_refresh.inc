@@ -2,6 +2,16 @@
 namespace {
 constexpr ULONGLONG kNativeMediaTverCloudQueueRefreshMs =
     30ULL * 60ULL * 1000ULL;
+// Retry an unavailable cloud feed without spawning a network thread on every
+// player navigation. Successful refreshes retain the normal 30-minute cadence.
+constexpr ULONGLONG NativeMediaTverCloudRetryDelayMs(unsigned failures) noexcept {
+  return failures <= 1 ? 30'000ULL
+      : failures == 2 ? 60'000ULL
+      : failures == 3 ? 180'000ULL
+      : 300'000ULL;
+}
+static_assert(NativeMediaTverCloudRetryDelayMs(1) == 30'000ULL);
+static_assert(NativeMediaTverCloudRetryDelayMs(4) == 300'000ULL);
 constexpr ULONGLONG kNativeMediaTverStartupTimeoutMs = 30ULL * 1000ULL;
 // Retained as the neutral/default duration for legacy contracts. Runtime X
 // boundary checks use the duration drawn for the current TVer phase.
@@ -16,6 +26,8 @@ struct NativeMediaTverNativeQueueState {
   std::mutex mutex;
   uint64_t generation = 1;
   ULONGLONG lastAttemptAt = 0;
+  ULONGLONG retryAfterAt = 0;
+  unsigned consecutiveRefreshFailures = 0;
   ULONGLONG phaseStartedAt = 0;
   bool phaseActive = false;
   bool inFlight = false;
@@ -34,6 +46,16 @@ struct NativeMediaTverNativeQueueState {
 NativeMediaTverNativeQueueState& NativeMediaTverNativeQueue() {
   static NativeMediaTverNativeQueueState state;
   return state;
+}
+
+void NativeMediaTverRecordRefreshFailureLocked(
+    NativeMediaTverNativeQueueState& state) noexcept {
+  state.lastAttemptAt = 0;
+  if (state.consecutiveRefreshFailures < 4) ++state.consecutiveRefreshFailures;
+  ULONGLONG now = GetTickCount64();
+  if (now == 0) now = 1;
+  state.retryAfterAt =
+      now + NativeMediaTverCloudRetryDelayMs(state.consecutiveRefreshFailures);
 }
 
 bool NativeMediaTverContainsId(
@@ -108,6 +130,8 @@ void NativeMediaTverResetQueuePhaseLocked(
   ++state.generation;
   if (state.generation == 0) ++state.generation;
   state.lastAttemptAt = 0;
+  state.retryAfterAt = 0;
+  state.consecutiveRefreshFailures = 0;
   ULONGLONG now = GetTickCount64();
   state.phaseStartedAt = active ? (now == 0 ? 1 : now) : 0;
   state.phaseActive = active;
@@ -137,6 +161,7 @@ void NativeMediaTverPrepareCloudQueueRefresh(
     ULONGLONG now = GetTickCount64();
     if (now == 0) now = 1;
     if (state.inFlight ||
+        (!force && state.retryAfterAt > now) ||
         (!force && state.lastAttemptAt &&
          now - state.lastAttemptAt < kNativeMediaTverCloudQueueRefreshMs)) {
       return;
@@ -168,11 +193,13 @@ void NativeMediaTverPrepareCloudQueueRefresh(
         if (!shared.phaseActive || shared.generation != generation) return;
         shared.inFlight = false;
         if (!result.generatedAt.empty() && !result.episodeIds.empty()) {
+          shared.retryAfterAt = 0;
+          shared.consecutiveRefreshFailures = 0;
           shared.ready = std::move(result);
           postWake = true;
         } else {
-          // Failed startup stays eligible for the normal navigation retry.
-          shared.lastAttemptAt = 0;
+          // Retain the current episode; only throttle cloud-feed re-fetches.
+          NativeMediaTverRecordRefreshFailureLocked(shared);
         }
       }
       if (postWake && IsWindow(hostWindow)) {
@@ -183,7 +210,7 @@ void NativeMediaTverPrepareCloudQueueRefresh(
     std::lock_guard lock(state.mutex);
     if (state.generation == generation) {
       state.inFlight = false;
-      state.lastAttemptAt = 0;
+      NativeMediaTverRecordRefreshFailureLocked(state);
     }
   }
 }

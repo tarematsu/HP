@@ -8,7 +8,7 @@ const readNative = relative => readFileSync(
 );
 
 const lifecycle = readNative('renderer_lifecycle.cpp');
-const playbackResolve = readNative('dashboard_playback_resolve.cpp');
+
 const panelWindows = readNative('renderer_panels/windows.inc');
 const bitmapCache = readNative('renderer_bitmap_cache.cpp');
 
@@ -19,36 +19,6 @@ function section(source, start, end) {
   assert.notEqual(endAt, -1, `missing section terminator: ${end}`);
   return source.slice(startAt, endAt);
 }
-
-test('persisted playback snapshots cannot trigger fallback during dashboard startup', () => {
-  assert.match(playbackResolve, /kPlaybackFallbackMaximumAgeMs\s*=\s*30'000/);
-  assert.match(
-    playbackResolve,
-    /gPlaybackFallbackProcessStartedAtMs\s*=\s*UnixMillis\(\)/,
-  );
-  const freshness = section(
-    playbackResolve,
-    'bool ProjectionFreshForFallback(',
-    'bool PlaybackEndedWithoutNextTrack(',
-  );
-  assert.match(freshness, /projection\.stale/);
-  assert.match(freshness, /projection\.fetchedAt\s*<=\s*0/);
-  assert.match(
-    freshness,
-    /projection\.fetchedAt\s*<\s*gPlaybackFallbackProcessStartedAtMs/,
-  );
-  assert.match(freshness, /nowMs\s*-\s*projection\.fetchedAt\s*<=\s*kPlaybackFallbackMaximumAgeMs/);
-
-  const ended = section(
-    playbackResolve,
-    'bool PlaybackEndedWithoutNextTrack(',
-    '}  // namespace',
-  );
-  assert.ok(
-    ended.indexOf('ProjectionFreshForFallback') < ended.indexOf('projection.ended'),
-    'fallback freshness must be checked before an ended snapshot is accepted',
-  );
-});
 
 test('dashboard initialization rolls back every partially started stage', () => {
   const initialize = section(

@@ -177,9 +177,6 @@ class NativeMediaPanelHost final {
 
   UINT_PTR ArmTimer(UINT_PTR timerId, UINT intervalMs) noexcept {
     if (!hostWindow_ || !IsWindow(hostWindow_)) return 0;
-    if (timerId == kNativeMediaPhaseTimer) {
-      SetSpotifyMediaPhase(phase_ == Phase::Tver);
-    }
     if (timerId == kNativeMediaTverWatchdogTimer) {
       return ArmNativeMediaTrustedWakeTimer(
           hostWindow_, webview_.Get(), controller_.Get(), timerId, intervalMs);

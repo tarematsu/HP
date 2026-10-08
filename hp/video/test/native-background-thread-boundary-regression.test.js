@@ -7,7 +7,7 @@ const readNative = relative => readFileSync(
   'utf8',
 );
 
-const playback = readNative('dashboard_native_playback.cpp');
+
 const radar = readNative('renderer_radar_ui.cpp');
 const cloud = readNative('cloud_client.cpp');
 const cloudHeader = readNative('cloud_client.h');
@@ -19,37 +19,6 @@ function section(source, start, end) {
   assert.notEqual(endAt, -1, `missing section terminator: ${end}`);
   return source.slice(startAt, endAt);
 }
-
-test('native playback thread cannot terminate the process on an escaped exception', () => {
-  const start = section(
-    playback,
-    'void Renderer::StartNativePlaybackBridge()',
-    'void Renderer::StopNativePlaybackBridge()',
-  );
-  assert.match(start, /nativePlaybackThread_\s*=\s*std::thread\(\[this\]/);
-  assert.match(start, /for \(;;\)/);
-  assert.match(start, /try \{\s*NativePlaybackLoop\(\);\s*return;/);
-  assert.match(start, /catch \(\.\.\.\)/);
-  assert.match(start, /nativePlaybackStopping_\.load\(std::memory_order_acquire\)/);
-  assert.match(start, /Sleep\(1'000\)/);
-});
-
-test('native playback retry always balances its COM apartment', () => {
-  const apartment = section(
-    playback,
-    'struct ScopedPlaybackComApartment',
-    'void AppendSignatureBytes(',
-  );
-  assert.match(apartment, /CoInitializeEx\(nullptr, COINIT_MULTITHREADED\)/);
-  assert.match(apartment, /if \(SUCCEEDED\(result\)\) CoUninitialize\(\)/);
-  const loop = section(
-    playback,
-    'void Renderer::NativePlaybackLoop()',
-    '}  // namespace hp',
-  );
-  assert.match(loop, /ScopedPlaybackComApartment apartment/);
-  assert.doesNotMatch(loop, /const HRESULT apartment/);
-});
 
 test('radar compose thread cannot terminate the process on an escaped exception', () => {
   const start = section(

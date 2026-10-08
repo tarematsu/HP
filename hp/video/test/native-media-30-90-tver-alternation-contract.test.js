@@ -42,7 +42,7 @@ test('media cadence keeps zero to two two-minute X slots with variable YouTube a
   assert.doesNotMatch(mediaBase, /kNativeMediaTverWeekdayPhaseMs/);
   assert.doesNotMatch(mediaBase, /NativeMediaTverPhaseIntervalMs/);
   assert.doesNotMatch(mediaBase, /NetworkClockJstNow/);
-  assert.match(mediaHost, /SetSpotifyMediaPhase\(phase_ == Phase::Tver\)/);
+  assert.doesNotMatch(mediaHost, /SetSpotifyMediaPhase/);
   assert.doesNotMatch(composition, /PhaseOverrideMs/);
 });
 

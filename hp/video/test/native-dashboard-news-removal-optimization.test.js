@@ -14,14 +14,8 @@ const dashboardLoader = readFileSync(
   new URL('../../native/src/renderer_dashboard.cpp', import.meta.url),
   'utf8',
 );
-const nativePlayback = readFileSync(
-  new URL('../../native/src/dashboard_native_playback.cpp', import.meta.url),
-  'utf8',
-);
-const playbackResolve = readFileSync(
-  new URL('../../native/src/dashboard_playback_resolve.cpp', import.meta.url),
-  'utf8',
-);
+
+
 const artworkCache = readFileSync(
   new URL('../../native/src/artwork_cache.h', import.meta.url),
   'utf8',
@@ -111,63 +105,6 @@ test('dashboard loader retains a compact signature instead of the full JSON copy
   );
   assert.match(dashboardLoader, /dashboardUtf8_ = contentSignature;/);
   assert.doesNotMatch(dashboardLoader, /dashboardUtf8_ = std::move\(text\)/);
-});
-
-test('native playback state retains only a compact queue signature', () => {
-  const updateStruct = rendererHeader.match(
-    /struct NativePlaybackUpdate \{([\s\S]*?)\n  \};/,
-  )?.[1] ?? '';
-  assert.doesNotMatch(updateStruct, /std::wstring|fetchedAt/);
-  assert.doesNotMatch(rendererHeader, /nativePlaybackRevision_/);
-  assert.match(nativePlayback, /uint64_t PlaybackSnapshotSignature\(/);
-  assert.match(nativePlayback, /update\.payloadSignature = projectionSignature;/);
-  assert.doesNotMatch(nativePlayback, /PayloadSignature\(payload\)/);
-  assert.doesNotMatch(nativePlayback, /update\.payload\s*=/);
-  assert.doesNotMatch(nativePlayback, /update\.(?:source|error|fetchedAt)\s*=/);
-});
-
-test('playback snapshots persist only compact playback and minute facts', () => {
-  assert.match(nativePlayback, /kCompactSnapshotVersion = 2;/);
-  assert.match(nativePlayback, /bool SaveDashboardSnapshot\([\s\S]*const NativePlaybackProjection& playback[\s\S]*const NativeMinuteFactsProjection& facts/s);
-  assert.match(nativePlayback, /L",\\"playback\\":\{"/);
-  assert.match(nativePlayback, /L"\]\},\\"facts\\":\{"/);
-  assert.match(nativePlayback, /bool LoadCompactSnapshot\(/);
-  assert.match(nativePlayback, /Read snapshots created by pre-v2 builds once/);
-  const saveFunction = nativePlayback.match(
-    /bool SaveDashboardSnapshot\([\s\S]*?\n\}/,
-  )?.[0] ?? '';
-  assert.doesNotMatch(saveFunction, /payload/);
-});
-
-test('playback snapshot writes use queue persistence changes or 30 minute checkpoints', () => {
-  assert.match(nativePlayback, /kDashboardSnapshotCheckpointMs = 30 \* 60'000;/);
-  assert.match(nativePlayback, /uint64_t PlaybackPersistenceSignature\(/);
-  assert.match(nativePlayback, /const bool snapshotChanged =\s*persistenceSignature != lastPersistenceSignature;/s);
-  assert.match(nativePlayback, /fetchedAt - lastSnapshotSavedAt >= kDashboardSnapshotCheckpointMs/);
-  assert.match(nativePlayback, /\(snapshotChanged \|\| checkpointDue\) &&\s*SaveDashboardSnapshot/s);
-});
-
-test('dashboard response JSON is parsed once for playback and status', () => {
-  assert.match(nativePlayback, /bool ParseDashboardPayload\(/);
-  assert.match(nativePlayback, /facts = ParseDashboardStatus\(root, fetchedAt\)/);
-  const fetchFunction = nativePlayback.match(
-    /std::wstring FetchDashboardJson\([\s\S]*?\n\}/,
-  )?.[0] ?? '';
-  assert.doesNotMatch(fetchFunction, /JsonObject::Parse|JsonValue::Parse/);
-  assert.match(nativePlayback, /ParseDashboardPayload\(\s*dataDir_, payload, fetchedAt, &projection, &statusProjection, &error\)/s);
-});
-
-test('playback polling does not invalidate the unrelated radar panel', () => {
-  assert.doesNotMatch(nativePlayback, /PanelSection::Radar|PanelSection::Music/);
-});
-
-test('playback update storage is reduced to one native source', () => {
-  assert.match(rendererHeader, /NativePlaybackUpdate nativePlaybackUpdate_\{\};/);
-  assert.doesNotMatch(rendererHeader, /nativePlaybackUpdates_|std::array<NativePlaybackUpdate/);
-  assert.match(nativePlayback, /NativePlaybackUpdate& update = nativePlaybackUpdate_;/);
-  assert.match(playbackResolve, /const NativePlaybackUpdate& update = nativePlaybackUpdate_;/);
-  assert.doesNotMatch(nativePlayback, /nativePlaybackUpdates_/);
-  assert.doesNotMatch(playbackResolve, /nativePlaybackUpdates_/);
 });
 
 test('unused artwork pipeline performs no native caching or download', () => {
@@ -278,9 +215,3 @@ test('News drawing function and paint branches are removed', () => {
   assert.doesNotMatch(layout, /sections\.news/);
 });
 
-test('playback projection does not repaint or retain a native media display model', () => {
-  assert.doesNotMatch(panelState, /NativePlaybackTickStateFor\(nowMs\)/);
-  assert.doesNotMatch(panelState, /PanelSection::PlaybackProgress/);
-  assert.doesNotMatch(rendererHeader, /NativePlaybackRender|ResolveNativePlayback/);
-  assert.doesNotMatch(playbackResolve, /Renderer::ResolveNativePlayback/);
-});
