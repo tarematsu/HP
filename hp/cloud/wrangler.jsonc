@@ -104,6 +104,10 @@
     },
     {
       "binding": "DATA_BUCKET"
+    },
+    {
+      "binding": "LEADERBOARD_SOURCE_R2",
+      "bucket_name": "sh-pages-responses"
     }
   ],
   "queues": {
