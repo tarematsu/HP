@@ -143,6 +143,9 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
                 L" audio recovered after track-boundary refresh");
     }
     resourceBlockingArmed_ = true;
+    // A successful native playback event closes the previous recovery incident
+    // immediately, even when this healthy hidden profile skips frequent App ticks.
+    ResetAudioLossEscalation();
     if (!preserveLoginRequired) loginRequired_ = false;
     {
       std::lock_guard lock(mutex_);

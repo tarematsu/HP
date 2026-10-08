@@ -44,6 +44,8 @@ test('Stationhead ladder resets on real audio and cannot restart after fallback'
   assert.match(stationhead, /managedPlaybackFallbackActive_/);
   assert.match(stationhead, /spotifyAuthorization_ \|\| loginRequired_/);
   assert.match(stationhead, /ResetMediaRecoveryEpisode\(mediaRecoveryEpisode_, 1\)/);
+  const player = source('sh.cpp');
+  assert.match(player, /resourceBlockingArmed_ = true;[\s\S]*ResetAudioLossEscalation\(\)/);
   assert.doesNotMatch(stationhead, /audioLossEscalationStage_/);
   assert.doesNotMatch(stationhead, /NextMediaRecoveryAction/);
 });
