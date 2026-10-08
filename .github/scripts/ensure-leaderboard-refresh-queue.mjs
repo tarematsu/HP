@@ -6,7 +6,7 @@ export function ensureLeaderboardRefreshQueue(run) {
   try { run(['queues', 'create', 'stationhead-leaderboard-refresh']); }
   catch (error) {
     const detail = `${error.message || ''} ${error.stderr || ''} ${error.stdout || ''}`;
-    if (!/already exists/i.test(detail)) throw error;
+    if (!/already (?:exists|taken)/i.test(detail)) throw error;
   }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
