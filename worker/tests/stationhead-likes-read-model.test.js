@@ -32,6 +32,13 @@ test('Stationhead likes ranking is canonical and sorted by latest count', () => 
   assert.deepEqual(ranking.map((row) => [row.track_id, row.like_count]), [[1, 20], [2, 12]]);
 });
 
+test('likes model keys use canonical Stationhead sources and reject unknown names', () => {
+  assert.equal(stationheadLikesModelKey('ohisama'), 'track-likes:ohisama');
+  assert.equal(stationheadLikesModelKey('Hinata'), 'track-likes:ohisama');
+  assert.equal(stationheadLikesModelKey('NOGIZAKA46SMEJ'), 'track-likes:nogizaka');
+  assert.equal(stationheadLikesModelKey('unknown'), null);
+});
+
 test('source-scoped likes read model writes canonical R2 only at its cadence', async () => {
   const r2 = new FakeR2();
   const key = stationheadLikesModelKey('ohisama');
