@@ -185,6 +185,7 @@ test('Ohisama passes the already-parsed Stationhead payload to playback without 
   let fetchCount = 0;
   let parseCount = 0;
   let passed = null;
+  const statements = [];
   const env = {
     PAGES_RESPONSE_R2: {
       async get() {
@@ -199,7 +200,8 @@ test('Ohisama passes the already-parsed Stationhead payload to playback without 
       async put() {},
     },
     OHISAMA_DB: {
-      prepare() {
+      prepare(sql) {
+        statements.push(String(sql));
         return {
           bind() {
             return { async run() { return { meta: { changes: 1 } }; } };
@@ -235,4 +237,5 @@ test('Ohisama passes the already-parsed Stationhead payload to playback without 
   assert.equal(fetchCount, 1);
   assert.equal(parseCount, 1);
   assert.strictEqual(passed, channel);
+  assert.match(statements.join('\n'), /excluded\.observed_at\s*>=\s*sh_minute_facts\.observed_at/);
 });
