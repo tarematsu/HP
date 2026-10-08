@@ -102,6 +102,7 @@ test('Ohisama same-day read-model refresh stays entirely off D1', async () => {
       model: 'hinata',
       updated_at: previousAt,
       latest: { observed_at: previousAt },
+      previous_day_history: [],
       history_24h: [{ observed_at: previousAt, online_member_count: 100, stream_count: 5000 }],
       daily: [{
         period_key: '2026-09-30',
@@ -155,6 +156,7 @@ test('Ohisama UTC day rollover persists completed daily and weekly summaries exa
       model: 'hinata',
       updated_at: previousAt,
       latest: { observed_at: previousAt },
+      previous_day_history: [],
       history_24h: [{ observed_at: previousAt, online_member_count: 100, stream_count: 5000 }],
       daily: [{
         period_key: '2026-09-30',
