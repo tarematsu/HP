@@ -47,7 +47,7 @@ mountMusicServiceView({
   viewId: 'amazonMusicView',
   className: 'amazon-music-view',
   noticeId: 'amazonMusicNotice',
-  meta: { valueId: 'amazonUpdatedAt', cadence: '毎日6:00' },
+  meta: { valueId: 'amazonUpdatedAt', cadence: '毎日5:00開始' },
   sections: [rankSection, tracksSection, playlistSection],
 });
 

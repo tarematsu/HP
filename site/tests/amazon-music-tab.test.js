@@ -77,7 +77,7 @@ test('Amazon Music API preserves real materialized-service failures', async () =
 });
 
 test('Amazon Music uses the shared music-service metadata and section layout while keeping Sakamichi switches', () => {
-  assert.match(shell, /meta: \{ valueId: 'amazonUpdatedAt', cadence: '毎日6:00' \}/);
+  assert.match(shell, /meta: \{ valueId: 'amazonUpdatedAt', cadence: '毎日5:00開始' \}/);
   assert.match(shell, /className: 'amazon-music-view'/);
   assert.match(shell, /musicServiceSection/);
   assert.match(shell, /musicServiceFilterTabs/);
