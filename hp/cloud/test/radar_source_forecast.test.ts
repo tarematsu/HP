@@ -1,237 +1,112 @@
 import { describe, expect, it } from "vitest";
 import {
-  selectLatestShortTermEntry,
-  selectOneHourForecastEntry,
-  selectRadarForecastEntries,
+  nextJstRadarTargetMillis,
+  selectLatestObservedRadarEntry,
+  selectNextShortTermEntry,
   type RadarTimeEntry,
 } from "../src/radar_source";
 
-const hrpns = ["hrpns"];
-
-function entry(basetime: string, validtime = basetime): RadarTimeEntry {
-  return { basetime, validtime, elements: hrpns };
+function observed(validtime: string): RadarTimeEntry {
+  return { basetime: validtime, validtime, elements: ["hrpns"] };
 }
 
 function rasrf(basetime: string, validtime: string, member = "none"): RadarTimeEntry {
   return { basetime, validtime, member, elements: ["rasrf"] };
 }
 
-describe("radar fixed endpoint selection", () => {
-  it("uses the latest observation and available forecast valid times through 60 minutes", () => {
-    const observed = [
-      entry("20260717102000"),
-      entry("20260717102500"),
-      entry("20260717103000"),
-    ];
-    const forecast = [
-      entry("20260717102000", "20260717105000"),
-      entry("20260717102500", "20260717103000"),
-      entry("20260717102500", "20260717105000"),
-      entry("20260717102500", "20260717105500"),
-      entry("20260717102500", "20260717110000"),
-      entry("20260717102500", "20260717112500"),
-      entry("20260717102500", "20260717113000"),
-    ];
+const utc = (stamp: string): number => Date.UTC(
+  Number(stamp.slice(0, 4)),
+  Number(stamp.slice(4, 6)) - 1,
+  Number(stamp.slice(6, 8)),
+  Number(stamp.slice(8, 10)),
+  Number(stamp.slice(10, 12)),
+  Number(stamp.slice(12, 14)),
+);
 
-    const selected = selectRadarForecastEntries(observed, forecast);
-
-    expect(selected.map(frame => frame.validtime)).toEqual([
-      "20260717103000",
-      "20260717105000",
-      "20260717105500",
-      "20260717110000",
-      "20260717112500",
-      "20260717113000",
-    ]);
-    expect(selected[0]?.validtime).toBe("20260717103000");
-    expect(selectOneHourForecastEntry(selected)?.validtime).toBe("20260717113000");
+describe("cloud radar three-panel timing", () => {
+  it("selects the latest observed frame without requiring an N2 +60-minute forecast", () => {
+    expect(selectLatestObservedRadarEntry([
+      observed("20261008135300"),
+      observed("20261008135800"),
+      observed("20261008135500"),
+      { basetime: "20261008135900", validtime: "20261008140000", elements: ["hrpns"] },
+      { basetime: "20261008140000", validtime: "20261008140000", elements: ["other"] },
+    ])?.validtime).toBe("20261008135800");
+    expect(selectLatestObservedRadarEntry([])).toBeUndefined();
   });
 
-  it("keeps the newest observation when N1 and N2 basetimes have rolled over independently", () => {
-    const observed = [
-      entry("20260911104500"),
-      entry("20260911105000"),
+  it("finds the next 22:00 and 09:00 JST independently across midnight", () => {
+    // 2026-10-08 23:02 JST: both requested hours occur tomorrow.
+    const now = utc("20261008140200");
+    expect(nextJstRadarTargetMillis(now, 22)).toBe(utc("20261009130000"));
+    expect(nextJstRadarTargetMillis(now, 9)).toBe(utc("20261009000000"));
+  });
+
+  it("uses today's 22:00 and tomorrow's 09:00 when the reference is 21:59 JST", () => {
+    const now = utc("20261008125900");
+    expect(nextJstRadarTargetMillis(now, 22)).toBe(utc("20261008130000"));
+    expect(nextJstRadarTargetMillis(now, 9)).toBe(utc("20261009000000"));
+  });
+
+  it("uses today's 09:00 and 22:00 when the reference is 08:59 JST", () => {
+    const now = utc("20261007235900");
+    expect(nextJstRadarTargetMillis(now, 9)).toBe(utc("20261008000000"));
+    expect(nextJstRadarTargetMillis(now, 22)).toBe(utc("20261008130000"));
+  });
+
+  it("treats the exact 09:00 or 22:00 JST boundary as tomorrow's next occurrence", () => {
+    expect(nextJstRadarTargetMillis(utc("20261008000000"), 9)).toBe(utc("20261009000000"));
+    expect(nextJstRadarTargetMillis(utc("20261008130000"), 22)).toBe(utc("20261009130000"));
+  });
+
+  it("handles leap-day, month, and year rollover in JST", () => {
+    expect(nextJstRadarTargetMillis(utc("20280229140000"), 9)).toBe(utc("20280301000000"));
+    expect(nextJstRadarTargetMillis(utc("20261231140000"), 22)).toBe(utc("20270101130000"));
+  });
+
+  it("selects exact next 22:00 and 09:00 frames even when later frames exist", () => {
+    const now = utc("20261008110000"); // 20:00 JST
+    const frames = [
+      rasrf("20261008110000", "20261008130000"), // Today 22:00
+      rasrf("20261008110000", "20261009000000"), // Tomorrow 09:00
+      rasrf("20261008120000", "20261009000000"), // Same valid time, newer base
+      rasrf("20261008110000", "20261009010000"),
     ];
-    const forecast = [
-      entry("20260911110000", "20260911110000"),
-      entry("20260911110000", "20260911112000"),
-      entry("20260911110000", "20260911115000"),
+    expect(selectNextShortTermEntry(frames, 22, now)?.validtime).toBe("20261008130000");
+    expect(selectNextShortTermEntry(frames, 9, now)).toEqual(frames[2]);
+  });
+
+  it("falls back to the latest available valid time separately when targets are not published", () => {
+    const now = utc("20261008140200"); // 23:02 JST
+    const frames = [
+      rasrf("20261008130000", "20261008150000"),
+      rasrf("20261008140000", "20261008230000"),
+      rasrf("20261008140000", "20261008200000"),
     ];
-
-    const selected = selectRadarForecastEntries(observed, forecast);
-
-    expect(selected[0]).toEqual(expect.objectContaining({
-      basetime: "20260911105000",
-      validtime: "20260911105000",
-    }));
-    expect(selectOneHourForecastEntry(selected)).toEqual(expect.objectContaining({
-      basetime: "20260911110000",
-      validtime: "20260911115000",
-    }));
+    // Tomorrow 22:00 is beyond this horizon; tomorrow 09:00 is missing as well.
+    expect(selectNextShortTermEntry(frames, 22, now)?.validtime).toBe("20261008230000");
+    expect(selectNextShortTermEntry(frames, 9, now)?.validtime).toBe("20261008230000");
   });
 
-  it("requires an exact +60 minute nowcast frame", () => {
-    const selected = [
-      entry("20260717102500"),
-      entry("20260717102500", "20260717112000"),
+  it("can select tomorrow 09:00 while falling back for tomorrow 22:00", () => {
+    const now = utc("20261008140200");
+    const frames = [
+      rasrf("20261008140000", "20261009000000"), // Tomorrow 09:00
+      rasrf("20261008140000", "20261009020000"),
     ];
-
-    expect(selectOneHourForecastEntry(selected)).toBeUndefined();
+    expect(selectNextShortTermEntry(frames, 22, now)?.validtime).toBe("20261009020000");
+    expect(selectNextShortTermEntry(frames, 9, now)?.validtime).toBe("20261009000000");
   });
 
-  it("returns no endpoints when a +60 minute future frame is unavailable", () => {
-    const observed = [entry("20260717102500")];
-    const forecast = [entry("20260717102000", "20260717105500")];
-
-    expect(selectRadarForecastEntries(observed, forecast)).toEqual([]);
-  });
-
-  it("does not return a current-only cycle", () => {
-    const observed = [entry("20260717102500")];
-    const forecast = [entry("20260717102500", "20260717102500")];
-
-    expect(selectRadarForecastEntries(observed, forecast)).toEqual([]);
-  });
-
-  it("ignores non-radar elements and keeps the newest basetime for duplicate valid times", () => {
-    const observed = [entry("20260717102500")];
-    const forecast: RadarTimeEntry[] = [
-      entry("20260717102000", "20260717105500"),
-      entry("20260717102500", "20260717105500"),
-      entry("20260717102500", "20260717112500"),
-      { basetime: "20260717102500", validtime: "20260717110000", elements: ["other"] },
+  it("ignores non-RASRF elements, invalid entries, and non-none members", () => {
+    const now = utc("20261008110000");
+    const frames: RadarTimeEntry[] = [
+      rasrf("20261008110000", "20261008120000"),
+      rasrf("20261008110000", "20261008130000", "immed"),
+      { basetime: "20261008110000", validtime: "20261008130000", elements: ["other"] },
+      { basetime: "invalid", validtime: "20261008130000", elements: ["rasrf"] },
     ];
-
-    const selected = selectRadarForecastEntries(observed, forecast);
-    expect(selected.map(frame => frame.validtime)).toEqual([
-      "20260717102500",
-      "20260717105500",
-      "20260717112500",
-    ]);
-    expect(selected[1]?.basetime).toBe("20260717102500");
-  });
-
-  it("caps the right panel at exactly 09:00 JST when the latest available time is later than 09:00", () => {
-    const shortTerm: RadarTimeEntry[] = [
-      rasrf("20260914230000", "20260915000000"),
-      rasrf("20260915000000", "20260915000000"),
-      rasrf("20260915010000", "20260915030000"),
-      rasrf("20260915020000", "20260915060000"),
-    ];
-
-    expect(selectLatestShortTermEntry(shortTerm)).toEqual(
-      expect.objectContaining({
-        basetime: "20260915000000",
-        validtime: "20260915000000",
-      }),
-    );
-  });
-
-  it("caps the right panel at exactly 22:00 JST when the latest available time is later than 22:00", () => {
-    const shortTerm: RadarTimeEntry[] = [
-      rasrf("20260915110000", "20260915120000"),
-      rasrf("20260915120000", "20260915130000"),
-      rasrf("20260915130000", "20260915140000"),
-    ];
-
-    expect(selectLatestShortTermEntry(shortTerm)).toEqual(
-      expect.objectContaining({
-        validtime: "20260915130000",
-      }),
-    );
-  });
-
-  it("keeps the right panel at the reference day's 22:00 JST when the forecast crosses midnight", () => {
-    const shortTerm: RadarTimeEntry[] = [
-      rasrf("20260915110000", "20260915120000"),
-      rasrf("20260915120000", "20260915130000"),
-      rasrf("20260915130000", "20260915150000"),
-    ];
-
-    expect(selectLatestShortTermEntry(shortTerm, "20260915010000")).toEqual(
-      expect.objectContaining({
-        validtime: "20260915130000",
-      }),
-    );
-  });
-
-  it("uses the latest future frame when the 22:00 JST cap is already behind the current radar time", () => {
-    const shortTerm: RadarTimeEntry[] = [
-      rasrf("20260915120000", "20260915130000"),
-      rasrf("20260915130000", "20260915140000"),
-      rasrf("20260915140000", "20260915150000"),
-    ];
-
-    expect(selectLatestShortTermEntry(shortTerm, "20260915135500")).toEqual(
-      expect.objectContaining({
-        validtime: "20260915150000",
-      }),
-    );
-  });
-
-  it("uses the latest future frame when the 09:00 JST cap is already behind the current radar time", () => {
-    const shortTerm: RadarTimeEntry[] = [
-      rasrf("20260914230000", "20260915000000"),
-      rasrf("20260915000000", "20260915030000"),
-      rasrf("20260915010000", "20260915060000"),
-    ];
-
-    expect(selectLatestShortTermEntry(shortTerm, "20260915003000")).toEqual(
-      expect.objectContaining({
-        validtime: "20260915060000",
-      }),
-    );
-  });
-
-  it("returns no past right-panel frame when no short-term forecast remains ahead of the current radar time", () => {
-    const shortTerm: RadarTimeEntry[] = [
-      rasrf("20260915120000", "20260915130000"),
-    ];
-
-    expect(selectLatestShortTermEntry(shortTerm, "20260915135500")).toBeUndefined();
-  });
-
-  it("keeps the latest RASRF time when it has not passed 09:00 JST", () => {
-    const shortTerm: RadarTimeEntry[] = [
-      rasrf("20260914210000", "20260914220000"),
-      rasrf("20260914220000", "20260914230000"),
-    ];
-
-    expect(selectLatestShortTermEntry(shortTerm)).toEqual(
-      expect.objectContaining({
-        validtime: "20260914230000",
-      }),
-    );
-  });
-
-  it("keeps exact 09:00 and 22:00 JST boundary frames unchanged", () => {
-    expect(selectLatestShortTermEntry([
-      rasrf("20260914230000", "20260915000000"),
-    ])?.validtime).toBe("20260915000000");
-
-    expect(selectLatestShortTermEntry([
-      rasrf("20260915120000", "20260915130000"),
-    ])?.validtime).toBe("20260915130000");
-  });
-
-  it("does not substitute a nearby frame when an exact 09:00 or 22:00 JST cap is missing", () => {
-    const shortTerm: RadarTimeEntry[] = [
-      rasrf("20260914230000", "20260914233000"),
-      rasrf("20260915010000", "20260915030000"),
-    ];
-
-    expect(selectLatestShortTermEntry(shortTerm)).toBeUndefined();
-  });
-
-  it("ignores non-none RASRF members and non-RASRF elements", () => {
-    const shortTerm: RadarTimeEntry[] = [
-      rasrf("20260914220000", "20260914230000"),
-      rasrf("20260915010000", "20260915030000", "immed"),
-      { basetime: "20260915020000", validtime: "20260915040000", member: "none", elements: ["other"] },
-    ];
-
-    expect(selectLatestShortTermEntry(shortTerm)).toEqual(
-      expect.objectContaining({ validtime: "20260914230000", member: "none" }),
-    );
+    expect(selectNextShortTermEntry(frames, 22, now)?.validtime).toBe("20261008120000");
+    expect(selectNextShortTermEntry([], 9, now)).toBeUndefined();
   });
 });

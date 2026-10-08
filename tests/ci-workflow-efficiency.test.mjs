@@ -69,11 +69,13 @@ test('CI trigger paths stay inside the Stationhead boundary', () => {
   assert.doesNotMatch(trigger, /hp\/\*\*/);
 });
 
-test('Pages screenshots are scheduled/manual only and the live browser audit is removed', () => {
+test('Pages production screenshots run after deployment while PRs only check isolated fixtures', () => {
   assert.match(visualAudit, /^  workflow_dispatch:\n/m);
   assert.match(visualAudit, /^  schedule:\n/m);
   assert.match(visualAudit, /cron: '17 \*\/6 \* \* \*'/);
-  assert.doesNotMatch(visualAudit, /^  pull_request:\n/m);
+  assert.match(visualAudit, /github.event_name != 'pull_request'/);
+  assert.match(visualAudit, /workflows: \[Deploy production\]/);
+  assert.match(visualAudit, /Check responsive navigation with isolated API fixtures/);
   assert.match(visualAudit, /capture-pages-visual-audit\.mjs/);
   assert.doesNotMatch(visualAudit, /wrangler pages deploy|audit-pages-live\.mjs|audit-pages-materialized-production\.mjs/);
   assert.equal(

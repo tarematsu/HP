@@ -1,0 +1,39 @@
+name: Catch up Stationhead followers
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Deploy production]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stationhead-followers-catch-up
+  cancel-in-progress: false
+
+jobs:
+  catch-up:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      - run: npm ci --prefer-offline --no-audit --no-fund
+        working-directory: worker
+      - name: Collect only when the current JST date is missing
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+        run: node scripts/bootstrap-producer-read-model.mjs wrangler.scheduled-collection-jobs.jsonc

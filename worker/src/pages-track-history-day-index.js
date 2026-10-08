@@ -88,7 +88,7 @@ export async function updateTrackHistoryDayIndex(
   source = 'buddies',
 ) {
   if (!validDay(day)) throw new Error('track-history day index update has invalid day');
-  const current = await loadTrackHistoryDayIndex(r2, source).catch(() => null);
+  const current = await loadTrackHistoryDayIndex(r2, source);
   const dates = new Set(current?.dates || []);
   const counts = { ...(current?.play_counts || {}) };
   if (hasRows) {

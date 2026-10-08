@@ -88,7 +88,7 @@ export async function refreshArtistCatalog(db, artist, releases, seenAt) {
       releaseInsert,
       db.prepare(`INSERT INTO sh_spotify_release_targets (album_id,artist_key,is_active,last_seen_at)
         VALUES (?,?,1,?) ON CONFLICT(album_id,artist_key) DO UPDATE SET is_active=1,last_seen_at=excluded.last_seen_at`)
-        .bind(seenAt, release.album_id, artist.artist_key, seenAt),
+        .bind(release.album_id, artist.artist_key, seenAt),
     );
     changed += 1;
   }

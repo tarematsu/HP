@@ -91,10 +91,9 @@ test('missing ranking model fails instead of reporting an empty ranking as succe
   );
   assert.equal(response.status, 503);
   assert.equal((await response.json()).ok, false);
-  assert.deepEqual(r2.gets, [
-    pagesR2ResponseKey('track-history-status'),
-    pagesR2ResponseKey('track-history'),
-  ]);
+  assert.ok(r2.gets.includes(pagesR2ResponseKey(stationheadLikesModelKey('buddies'))));
+  assert.ok(r2.gets.includes(pagesR2ResponseKey('track-history-status')));
+  assert.ok(r2.gets.includes(pagesR2ResponseKey('track-history')));
 });
 
 test('regular Track History response also fails closed when its ranking model is missing', async () => {
@@ -106,10 +105,8 @@ test('regular Track History response also fails closed when its ranking model is
   );
   assert.equal(response.status, 503);
   assert.equal((await response.json()).ok, false);
-  assert.deepEqual(r2.gets.slice(-2), [
-    pagesR2ResponseKey('track-history-status'),
-    pagesR2ResponseKey('track-history'),
-  ]);
+  assert.ok(r2.gets.includes(pagesR2ResponseKey('track-history-status')));
+  assert.ok(r2.gets.includes(pagesR2ResponseKey('track-history')));
 });
 
 test('Likes reads the canonical ranking model without requiring the full history object', async () => {
@@ -136,7 +133,8 @@ test('Likes reads the canonical ranking model without requiring the full history
   }, new Request('https://internal/api/track-history?ranking_only=1'), 1_000);
   assert.equal(response.status, 200);
   assert.equal((await response.json()).ranking[0].title, 'Song A');
-  assert.deepEqual(calls, [statusKey]);
+  assert.equal(calls.at(-1), statusKey);
+  assert.ok(!calls.includes(pagesR2ResponseKey('track-history')));
 });
 
 test('Ohisama likes use the source-scoped Stationhead likes model', async () => {

@@ -7,6 +7,8 @@ import {
   stationheadPlaybackInteger as integer,
   stationheadPlaybackText as text,
 } from './stationhead-playback-core.js';
+import { publishStationheadPlaybackDay } from './stationhead-playback-publication.js';
+import { publishStationheadLikesReadModel } from './stationhead-likes-read-model.js';
 import { canonicalizeStationheadPlayback } from './stationhead-playback-identity.js';
 import {
   loadStationheadPlaybackState,
@@ -122,6 +124,9 @@ export async function captureBuddiesPlayback(env, queue, observedAt = Date.now()
   }
 
   const previous = loaded.state;
+  if (Number(previous?.updated_at) > Number(observedAt)) {
+    return { queue: currentQueue, skipped: true, reason: 'stale-playback-observation', state_saved: false };
+  }
   const canonical = await canonicalizeStationheadPlayback(
     catalogDb,
     db,
@@ -165,6 +170,13 @@ export async function captureBuddiesPlayback(env, queue, observedAt = Date.now()
   }
 
   await runStationheadPlaybackStatements(db, statements);
+  await publishStationheadLikesReadModel(bucket, 'buddies', likes, observedAt);
+  if (completedDay?.period_key) {
+    await publishStationheadPlaybackDay(bucket, 'buddies', completedDay, observedAt);
+  }
+  if (transitions.length || completedDay) {
+    await publishStationheadPlaybackDay(bucket, 'buddies', playbackDailyPublic(daily), observedAt);
+  }
   const state = {
     version: 2,
     updated_at: observedAt,

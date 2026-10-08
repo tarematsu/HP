@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   packSpotifyQueueBodies,
   queueActiveReleases,
+  refreshArtistCatalog,
   syncCollectionRoster,
 } from '../src/spotify-playcount-schedule.js';
 
@@ -16,6 +17,14 @@ function database() {
     CREATE TABLE sh_spotify_top20_history (
       ranking_date TEXT, artist_key TEXT, rank INTEGER,
       PRIMARY KEY (ranking_date, artist_key)
+    );
+    CREATE TABLE sh_spotify_releases (
+      album_id TEXT PRIMARY KEY, name TEXT, album_type TEXT, release_date TEXT,
+      release_date_precision TEXT, total_tracks INTEGER, last_seen_at INTEGER
+    );
+    CREATE TABLE sh_spotify_release_targets (
+      album_id TEXT, artist_key TEXT, is_active INTEGER, last_seen_at INTEGER,
+      PRIMARY KEY (album_id, artist_key)
     );
   `);
   let writes = 0;
@@ -55,6 +64,25 @@ test('unchanged Spotify roster sync writes no rows, while corrections still pers
   } finally {
     sqlite.close();
   }
+});
+
+test('new albums register the correct artist and timestamp, then skip unchanged active targets', async () => {
+  const { sqlite, db, writes } = database();
+  const artist = { artist_key: 'sakurazaka46' };
+  const releases = [{ album_id: 'new-album', name: 'New album', album_type: 'album',
+    release_date: '2026-10-08', release_date_precision: 'day', total_tracks: 12 }];
+  try {
+    assert.equal(await refreshArtistCatalog(db, artist, releases, 1000), 1);
+    assert.deepEqual({ ...sqlite.prepare('SELECT * FROM sh_spotify_release_targets').get() }, {
+      album_id: 'new-album', artist_key: artist.artist_key, is_active: 1, last_seen_at: 1000,
+    });
+    const initialWrites = writes();
+    assert.equal(await refreshArtistCatalog(db, artist, releases, 2000), 0);
+    assert.equal(writes(), initialWrites);
+    sqlite.exec('UPDATE sh_spotify_release_targets SET is_active=0');
+    assert.equal(await refreshArtistCatalog(db, artist, releases, 3000), 1);
+    assert.equal(sqlite.prepare('SELECT last_seen_at FROM sh_spotify_release_targets').get().last_seen_at, 3000);
+  } finally { sqlite.close(); }
 });
 
 test('album batching preserves shared artist targets and skips unknown targets', async () => {

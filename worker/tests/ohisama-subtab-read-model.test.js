@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const pagesEntry = readFileSync(new URL('../src/ohisama-pages-entry.js', import.meta.url), 'utf8');
 const playback = readFileSync(new URL('../src/ohisama-playback.js', import.meta.url), 'utf8');
+const publication = readFileSync(new URL('../src/stationhead-playback-publication.js', import.meta.url), 'utf8');
 const readModel = readFileSync(new URL('../src/ohisama-read-model.js', import.meta.url), 'utf8');
 const sharedReadModel = readFileSync(new URL('../../packages/sh-shared/stationhead-read-models.mjs', import.meta.url), 'utf8');
 const sourceProfile = readFileSync(new URL('../../packages/sh-shared/stationhead-source.mjs', import.meta.url), 'utf8');
@@ -16,8 +17,8 @@ test('Ohisama keeps current/history in hinata and shares Track History for playb
   assert.match(sourceProfile, /modelKey: 'hinata'/);
   assert.match(pagesEntry, /refreshOhisamaReadModel/);
   assert.match(pagesEntry, /mergeOhisamaPlaybackReadModelWithCadence/);
-  assert.match(playback, /saveTrackHistoryDayReadModel/);
-  assert.match(playback, /source: 'ohisama'/);
+  assert.match(publication, /saveTrackHistoryDayReadModel/);
+  assert.match(playback, /publishStationheadPlaybackDay\(bucket, 'ohisama'/);
 
   for (const field of ['latest', 'history_24h', 'daily', 'queue', 'queue_status']) {
     assert.match(`${readModel}\n${sharedReadModel}\n${sourceProfile}\n${pagesEntry}\n${cadence}`, new RegExp(`\\b${field}\\b`), `missing read-model field ${field}`);
@@ -36,6 +37,6 @@ test('Ohisama keeps current/history in hinata and shares Track History for playb
 
 test('Ohisama playback history uses the shared Pages track-history path without a separate D1 reader', () => {
   assert.doesNotMatch(playback, /pagesR2ResponseKey\('hinata-(?:current|history|played-tracks|likes)'\)/);
-  assert.match(playback, /pages-track-history-r2-shards\.js/);
+  assert.match(publication, /pages-track-history-r2-shards\.js/);
   assert.doesNotMatch(adapter, /OHISAMA_DB|\.prepare\(/);
 });

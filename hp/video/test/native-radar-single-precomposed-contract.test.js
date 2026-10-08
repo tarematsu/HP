@@ -106,8 +106,8 @@ test('cloud radar contract remains one z10 downsampled precomposed three-panel r
   assert.match(cloud, /RADAR_FRAME_PATH = "\/v1\/radar\/frame\/representative\/latest\.png"/);
   assert.match(cloud, /JMA_SHORT_TERM_TIMES_URL/);
   assert.match(cloud, /panelRequest\(env, "jma", currentEntry/);
-  assert.match(cloud, /panelRequest\(env, "jma", oneHourEntry/);
-  assert.match(cloud, /panelRequest\(env, "rasrf", latestEntry/);
+  assert.match(cloud, /panelRequest\(env, "rasrf", twentyTwoEntry/);
+  assert.match(cloud, /panelRequest\(env, "rasrf", nineEntry/);
   assert.match(cloud, /precomposed: true/);
   assert.match(cloud, /frames: \[frame\]/);
   assert.match(cloud, /one cloud-composited representative frame/);
@@ -120,7 +120,7 @@ test('cloud radar contract remains one z10 downsampled precomposed three-panel r
 
 test('unchanged cloud radar times reuse the existing representative frame', () => {
   assert.match(cloud, /RADAR_COMPOSITION_VERSION/);
-  assert.match(cloud, /radarCompositionKey\(currentEntry, oneHourEntry, latestEntry\)/);
+  assert.match(cloud, /radarCompositionKey\(currentEntry, twentyTwoEntry, nineEntry\)/);
   assert.match(cloud, /UPDATE_BUCKET\.head\(representativeFrameKey\(\)\)/);
   assert.match(cloud, /customMetadata\?\.radarCompositionKey !== compositionKey/);
   assert.match(cloud, /customMetadata: \{ radarCompositionKey: compositionKey \}/);

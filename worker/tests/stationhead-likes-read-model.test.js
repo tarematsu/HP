@@ -121,3 +121,16 @@ test('transient likes R2 read failure does not allow an unverified overwrite', a
   );
   assert.equal(r2.puts.length, 0);
 });
+
+test('partial likes updates retain older tracks and select each latest observation once', async () => {
+  const r2 = new FakeR2();
+  await publishStationheadLikesReadModel(r2, 'ohisama', [
+    { track_id: 1, title: 'A', like_count: 100, observed_at: 1000 },
+    { track_id: 2, title: 'B', like_count: 50, observed_at: 1000 },
+  ], 1000);
+  const updated = await publishStationheadLikesReadModel(r2, 'ohisama', [
+    { track_id: 1, title: 'A', like_count: 101, observed_at: 2000 },
+    { track_id: 2, title: 'Old B', like_count: 10, observed_at: 500 },
+  ], 2000);
+  assert.deepEqual(updated.payload.ranking.map((row) => [row.track_id, row.like_count]), [[1, 101], [2, 50]]);
+});

@@ -10,7 +10,7 @@ const paintGate = createChartPaintGate(canvas, {
 let paintedMode = '';
 
 function activeMode() {
-  return String(document.querySelector('#modeTabs button.active[data-mode]')?.dataset?.mode || location.hash.slice(1) || 'weekly');
+  return String(document.querySelector('#functionTabs button.active[data-mode]')?.dataset?.mode || location.hash.slice(1) || 'weekly');
 }
 
 function conceal(mode = activeMode()) {
@@ -80,18 +80,18 @@ if (canvas) {
     if (activeMode() === 'ranking') reveal(80);
   });
 
-  document.getElementById('modeTabs')?.addEventListener('click', (event) => {
-    const button = event.target.closest('button[data-mode]');
-    if (!button) return;
-    const nextMode = String(button.dataset.mode || '');
-    if (!nextMode) return;
+  // The current router changes modes through history:select-mode, including hash navigation.
+  // #modeTabs no longer exists; clicking or changing the URL must both clear the old chart.
+  window.addEventListener('history:select-mode', (event) => {
+    const nextMode = String(event.detail?.mode || '');
+    if (!['daily', 'weekly', 'monthly', 'broadcasts'].includes(nextMode)) return;
     resetSharedChartPresentation();
     if (nextMode === 'broadcasts') {
       prepareBroadcastCanvas();
       return;
     }
     if (nextMode !== paintedMode) conceal(nextMode);
-  }, true);
+  });
 
   document.getElementById('rankingScope')?.addEventListener('change', prepareRankingQueryChange, true);
   document.getElementById('rankingHost')?.addEventListener('keydown', (event) => {

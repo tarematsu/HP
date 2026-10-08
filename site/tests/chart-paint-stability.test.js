@@ -83,6 +83,10 @@ test('history mode switches clear stale shared chart state before the next rende
   assert.match(historyStability, /nextMode === 'broadcasts'[\s\S]*prepareBroadcastCanvas\(\)/);
   assert.match(historyStability, /paintGate\.show\(\)/);
   assert.match(historyStability, /paintedMode = 'broadcasts'/);
+  assert.match(historyStability, /history:select-mode/);
+  assert.ok(historyStability.includes('#functionTabs button.active'));
+  assert.ok(!historyStability.includes("getElementById(\'modeTabs\')"));
+  assert.ok(periodChart.includes('#functionTabs button.active'));
 });
 
 test('shared leaderboard redraws only its current payload after resize or pointer selection', () => {
