@@ -83,7 +83,7 @@ export function normalizeStationheadLeaderboard(payload = {}) {
       || a.host.localeCompare(b.host));
   const rows = timelineRows.filter((row) => row.rank_status !== '欠測' && row.rank_status !== '圏外');
   const sourceWeek = String(payload?.source_max_ranking_date || '');
-  const isStale = /^\\d{4}-\\d{2}-\\d{2}$/.test(sourceWeek) && sourceWeek < currentJstRankingWeek();
+  const isStale = /^\d{4}-\d{2}-\d{2}$/.test(sourceWeek) && sourceWeek < currentJstRankingWeek();
   const chartHosts = (Array.isArray(payload?.chart_hosts) && payload.chart_hosts.length
     ? payload.chart_hosts
     : STATIONHEAD_FEATURED)
