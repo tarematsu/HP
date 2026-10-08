@@ -124,6 +124,11 @@ export async function mergeOhisamaPlaybackReadModelWithCadence(
     ? currentPayloadOverride
     : await loadOhisamaPublicationSnapshot(bucket);
   if (!currentPayload) return { published: false, refreshed: {} };
+  const publishedAt = integer(previousPayload?.updated_at);
+  const modelAt = integer(currentPayload?.updated_at);
+  if (Math.max(publishedAt ?? -Infinity, modelAt ?? -Infinity) > integer(observedAt)) {
+    return { published: false, refreshed: {}, reason: 'stale-observation' };
+  }
 
   const built = buildOhisamaCadencedPayload(
     currentPayload,
