@@ -1,9 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { NAVIGATION, ROUTES } from '../public/dashboard-navigation-config.js';
-import { buddiesModel } from '../public/stationhead/buddies-read-model.js';
-import { ohisamaModel } from '../public/stationhead/ohisama-read-model.js';
-import { nogizakaModel } from '../public/stationhead/nogizaka-read-model.js';
 import { readFileSync } from 'node:fs';
 
 const shell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
@@ -37,17 +34,19 @@ test('shared history controls support daily and weekly, ranges, summary and CSV 
   assert.match(client, /stationhead:history-mode/);
 });
 
-test('source differences are confined to read-model adapters and supported capabilities', async () => {
-  const models = [buddiesModel(), ohisamaModel(), nogizakaModel()];
-  for (const model of models) {
-    assert.equal(typeof model.loadCurrent, 'function');
-    assert.equal(typeof model.loadHistory, 'function');
-    assert.equal(typeof model.loadLikes, 'function');
-    assert.equal(typeof model.loadBroadcasts, 'function');
-    assert.equal(typeof model.setHistoryMode, 'function');
-    assert.ok(Array.isArray(model.capabilities));
+test('source differences are confined to read-model adapters and supported capabilities', () => {
+  const read = (name) => readFileSync(new URL(`../public/stationhead/${name}-read-model.js`, import.meta.url), 'utf8');
+  const [buddies, ohisama, nogizaka] = ['buddies','ohisama','nogizaka'].map(read);
+  const factory = readFileSync(new URL('../public/stationhead/source-model.js', import.meta.url), 'utf8');
+  for (const source of [buddies, ohisama, nogizaka]) {
+    assert.match(source, /createStationheadChannelModel\\(\\{/);
+    assert.doesNotMatch(source, /function normalizeCurrent|function normalizedDaily|function render/);
   }
-  assert.deepEqual(models[0].capabilities.slice(0,4), models[1].capabilities);
-  assert.deepEqual(models[2].capabilities, ['broadcasts']);
-  assert.notEqual(models[0].meta.station_url, models[1].meta.station_url);
+  for (const key of ['loadCurrent', 'loadHistory', 'loadLikes', 'loadBroadcasts', 'setHistoryMode']) {
+    assert.ok(factory.includes(key), `Shared model factory must own ${key}`);
+  }
+  assert.match(buddies, /currentUrl: '\\/api\\/dashboard\\?history=0'/);
+  assert.match(ohisama, /currentUrl: '\\/api\\/hinata'/);
+  assert.match(nogizaka, /capabilities: \\['broadcasts'\\]/);
+  assert.match(ohisama, /capabilities: \\['current', 'history', 'played-tracks', 'likes'\\]/);
 });
