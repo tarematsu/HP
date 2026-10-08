@@ -63,20 +63,6 @@ export function ohisamaFollowerRegistrar(dependencies = {}) {
   });
 }
 
-function capturingFetch(fetchImpl, onChannelPayload) {
-  return async (input, init) => {
-    const response = await fetchImpl(input, init);
-    const url = typeof input === 'string' ? input : input?.url;
-    if (response?.ok && String(url || '').includes('/channels/alias/')) {
-      try {
-        const payload = await response.clone().json();
-        onChannelPayload(payload);
-      } catch {}
-    }
-    return response;
-  };
-}
-
 export async function runOhisamaPagesScheduled(controller, env, ctx, dependencies = {}) {
   const scheduledAt = Number(controller?.scheduledTime ?? dependencies.now?.() ?? Date.now());
   const priority = await coordinateOhisamaCollection(env, scheduledAt, dependencies.priority || {});
@@ -86,14 +72,13 @@ export async function runOhisamaPagesScheduled(controller, env, ctx, dependencie
   }
   const registerFollowerTarget = ohisamaFollowerRegistrar(dependencies);
   let channelPayload = null;
-  const fetchImpl = dependencies.fetch || fetch;
   const result = await runOhisamaCollectorScheduled(
     controller,
     env,
     ctx,
     {
       ...dependencies,
-      fetch: capturingFetch(fetchImpl, (payload) => { channelPayload = payload; }),
+      onChannelPayload: (payload) => { channelPayload = payload; },
       registerFollowerTarget,
     },
   );
