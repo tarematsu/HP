@@ -1,6 +1,11 @@
 name: Refresh Amazon Music read model
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/refresh-amazon-music-read-model.yml'
+      - 'worker/scripts/amazon-music-read-model-refresh-entry.js'
   workflow_dispatch:
     inputs:
       collect:
@@ -10,6 +15,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: amazon-music-read-model-refresh
+  cancel-in-progress: false
 
 jobs:
   refresh:
@@ -53,7 +62,7 @@ jobs:
         working-directory: worker
         shell: bash
         env:
-          RECOLLECT: ${{ inputs.collect && '1' || '0' }}
+          RECOLLECT: ${{ (github.event_name == 'push' || inputs.collect) && '1' || '0' }}
         run: |
           set -euo pipefail
           : > amazon-refresh.log
