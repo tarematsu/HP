@@ -6,5 +6,6 @@ test('deployment creates the refresh queue or accepts an existing queue only', (
   ensureLeaderboardRefreshQueue(args => calls.push(args));
   assert.deepEqual(calls, [['queues', 'create', 'stationhead-leaderboard-refresh']]);
   ensureLeaderboardRefreshQueue(() => { throw new Error('Queue already exists'); });
+  ensureLeaderboardRefreshQueue(() => { throw new Error("Queue name 'stationhead-leaderboard-refresh' is already taken. [code: 11009]"); });
   assert.throws(() => ensureLeaderboardRefreshQueue(() => { throw new Error('permission denied'); }), /permission denied/);
 });
