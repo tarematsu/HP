@@ -39,6 +39,17 @@ test('likes model keys use canonical Stationhead sources and reject unknown name
   assert.equal(stationheadLikesModelKey('unknown'), null);
 });
 
+test('likes ranking excludes rows with missing IDs or counts instead of coercing them to zero', () => {
+  const result = stationheadLikeRanking([
+    { track_id: null, like_count: 5, title: 'No ID' },
+    { track_id: '', like_count: 5, title: 'Blank ID' },
+    { track_id: 7, like_count: null, title: 'No count' },
+    { track_id: 8, like_count: ' ', title: 'Blank count' },
+    { track_id: 9, like_count: 0, title: 'Valid zero' },
+  ]);
+  assert.deepEqual(result.map((row) => [row.track_id, row.like_count]), [[9, 0]]);
+});
+
 test('source-scoped likes read model writes canonical R2 only at its cadence', async () => {
   const r2 = new FakeR2();
   const key = stationheadLikesModelKey('ohisama');
