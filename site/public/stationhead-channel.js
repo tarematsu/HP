@@ -37,6 +37,9 @@ function initialize(root) {
   const runtime = { root, model, section: '', selectionSequence: 0, requestSequence: 0, playedSequence: 0, current: null, playbackIndex: -1, playedDates: [], playedPeriod: '', likes: [], hiddenBroadcastSeries: new Set(), broadcastPayload: null };
   const capabilities = new Set(model.capabilities); const tabs = root.querySelector('.stationhead-subtabs');
   root.querySelectorAll('[data-stationhead-section]').forEach((button) => { const enabled = capabilities.has(button.dataset.stationheadSection); button.disabled = !enabled; button.setAttribute('aria-disabled', String(!enabled)); button.title = enabled ? '' : '未提供'; if (enabled) button.addEventListener('click', () => selectSection(runtime, button.dataset.stationheadSection)); });
+  root.addEventListener('stationhead:history-mode', () => {
+    if (runtime.section === 'history') void loadSection(runtime, 'history');
+  });
   bindRovingTabs(tabs, (button) => button.click()); role(root, 'live-chart')?.addEventListener('pointerup', (event) => renderCurrentDetail(runtime, event), true); role(root, 'played-week')?.addEventListener('change', () => { runtime.playedPeriod = ''; void loadPlayed(runtime); });
   role(root, 'likes-csv')?.addEventListener('click', () => exportLikesCsv(runtime));
   const initial = model.capabilities.includes('current') ? 'current' : model.capabilities[0]; runtimes.set(root, runtime); void selectSection(runtime, initial, { load: false }); return runtime;
