@@ -82,3 +82,35 @@
   .daily-stats-table { min-width: 760px !important; }
   .secondary-column { display: none; }
 }
+
+.stationhead-history-controls {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.stationhead-history-controls .range-presets,
+.history-range-arrows {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.stationhead-history-controls button {
+  min-height: 40px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+.stationhead-history-controls button.active {
+  background: var(--panel-2);
+  font-weight: 700;
+}
+.stationhead-history-controls button:disabled {
+  opacity: .45;
+  cursor: default;
+}
+@media (max-width: 760px) {
+  .stationhead-history-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
