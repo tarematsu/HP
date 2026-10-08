@@ -9,6 +9,8 @@ const handleHeader = source('app_stationhead_handles.h');
 const handles = source('app_stationhead_handles.cpp');
 const playerHeader = source('sh.h');
 const audioLoss = source('sh_audio_loss.cpp');
+const player = source('sh.cpp');
+const cloudConfig = source('cloud_config.cpp');
 
 
 const appHeader = source('app.h');
@@ -32,6 +34,14 @@ test('single handle delegates audio-loss recovery to the player', () => {
   assert.match(playerHeader, /void SetManagedPlaybackFallback/);
   assert.match(audioLoss, /void StationheadPlayer::SetManagedPlaybackFallback/);
   assert.match(cmake, /src\/sh_audio_loss\.cpp/);
+});
+
+test('buddy46 is the fixed destination for managed fallback after primary recovery fails', () => {
+  assert.match(cloudConfig, /kCanonicalFallbackStationheadUrl\[\] =[\s\S]*L"https:\/\/www\.stationhead\.com\/buddy46"/);
+  assert.match(player, /if \(usingFallback_ && !config_\.fallbackUrl\.empty\(\)\) return config_\.fallbackUrl/);
+  assert.match(audioLoss, /if \(config_\.fallbackUrl\.empty\(\) \|\| managedPlaybackFallbackActive_\) return/);
+  assert.match(audioLoss, /SetPlaybackFallback\(true, reason\)/);
+  assert.match(audioLoss, /SetPlaybackFallback\(false, reason\)/);
 });
 
 test('startup and navigation audio pulses cannot arm fallback', () => {

@@ -7,6 +7,8 @@ namespace {
 using winrt::Windows::Data::Json::JsonObject;
 constexpr wchar_t kCanonicalPrimaryStationheadUrl[] =
     L"https://www.stationhead.com/sakuramankai";
+constexpr wchar_t kCanonicalFallbackStationheadUrl[] =
+    L"https://www.stationhead.com/buddy46";
 
 JsonObject Object(const JsonObject& parent, const wchar_t* key) {
   try { return parent.GetNamedObject(key); } catch (...) { return JsonObject{}; }
@@ -55,10 +57,11 @@ bool ApplyCloudConfig(AppConfig& config, const fs::path& path) {
     config.temperatureOffset = Decimal(co2, L"temperatureOffset", config.temperatureOffset, -20.0, 20.0);
 
     const auto station = Object(root, L"stationhead");
-    // The native schedule owns all Stationhead destinations. Do not let a
-    // cloud setting or managed fallback override the selected room.
+    // Keep both Stationhead destinations fixed across cloud-config updates.
+    // Managed audio-loss recovery may switch to buddy46, but normal playback
+    // always starts at sakuramankai.
     config.stationhead.url = kCanonicalPrimaryStationheadUrl;
-    config.stationhead.fallbackUrl.clear();
+    config.stationhead.fallbackUrl = kCanonicalFallbackStationheadUrl;
     config.stationhead.channelId = Number(station, L"channelId", config.stationhead.channelId, 1, 100'000'000);
     config.stationhead.blockImages = HasKey(station, L"blockImages")
         ? Boolean(station, L"blockImages", config.stationhead.blockImages)
