@@ -11,7 +11,6 @@ const RADAR_CENTER = { lat: 35.8923181, lon: 139.4858691 };
 const RADAR_BASE_ZOOM = 10;
 const RADAR_DISPLAY_ZOOM = 10;
 const RADAR_TILE_URL_LIFETIME_SECONDS = 30 * 60;
-const RADAR_FORECAST_WINDOW_MS = 60 * 60 * 1000;
 const RADAR_FRAME_PREFIX = "radar/frames/representative/";
 const RADAR_PANEL_SOURCE_WIDTH = 432;
 const RADAR_PANEL_SOURCE_HEIGHT = 729;
@@ -19,13 +18,12 @@ const RADAR_BASE_CROP_WIDTH = 432;
 const RADAR_BASE_CROP_HEIGHT = 729;
 const RADAR_OUTPUT_WIDTH = 640;
 const RADAR_OUTPUT_HEIGHT = 360;
-const RADAR_COMPOSITION_VERSION = "radar-frame-v12-z10-640x360-downsampled-location-marker-day-cap";
+const RADAR_COMPOSITION_VERSION = "radar-frame-v13-z10-640x360-downsampled-location-marker-next22-next09-jst";
 const RADAR_LEGEND = [0, 1, 2, 4, 8, 16, 32, 64] as const;
 const RADAR_FRAME_PATH = "/v1/radar/frame/representative/latest.png";
 const RADAR_LEGACY_FRAME_PREFIX = "radar/frames/";
 const RADAR_LEGACY_FRAME_PATH = /^\/v1\/radar\/frame\/([a-z0-9-]{1,96})\/(\d{14})\.webp$/;
 const JMA_OBSERVED_TIMES_URL = "https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N1.json";
-const JMA_FORECAST_TIMES_URL = "https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N2.json";
 const JMA_SHORT_TERM_TIMES_URL = "https://www.jma.go.jp/bosai/jmatile/data/rasrf/targetTimes.json";
 
 export type RadarTimeEntry = {
@@ -55,52 +53,37 @@ function hasElement(entry: RadarTimeEntry, element: string): boolean {
   return entry.elements?.includes(element) === true;
 }
 
-export function selectRadarForecastEntries(
-  observed: RadarTimeEntry[],
-  forecast: RadarTimeEntry[],
-): RadarTimeEntry[] {
-  const observedAvailable = observed
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export function selectLatestObservedRadarEntry(entries: RadarTimeEntry[]): RadarTimeEntry | undefined {
+  return entries
     .filter(entry => (
       hasElement(entry, "hrpns")
       && entry.basetime === entry.validtime
       && jmaTimestampToMillis(entry.validtime) > 0
     ))
-    .sort((left, right) => right.validtime.localeCompare(left.validtime));
-  const forecastAvailable = forecast.filter(entry => (
-    hasElement(entry, "hrpns") && jmaTimestampToMillis(entry.validtime) > 0
-  ));
-
-  for (const current of observedAvailable) {
-    const currentAt = jmaTimestampToMillis(current.validtime);
-    const forecastEnd = currentAt + RADAR_FORECAST_WINDOW_MS;
-    const futureByValidTime = new Map<string, RadarTimeEntry>();
-    for (const entry of forecastAvailable) {
-      const validAt = jmaTimestampToMillis(entry.validtime);
-      if (validAt <= currentAt || validAt > forecastEnd) continue;
-      const existing = futureByValidTime.get(entry.validtime);
-      if (!existing || existing.basetime.localeCompare(entry.basetime) < 0) {
-        futureByValidTime.set(entry.validtime, entry);
-      }
-    }
-    const future = [...futureByValidTime.values()]
-      .sort((left, right) => left.validtime.localeCompare(right.validtime));
-    if (future.some(entry => jmaTimestampToMillis(entry.validtime) === forecastEnd)) {
-      return [current, ...future];
-    }
-  }
-  return [];
+    .sort((left, right) => right.validtime.localeCompare(left.validtime))[0];
 }
 
-export function selectOneHourForecastEntry(entries: RadarTimeEntry[]): RadarTimeEntry | undefined {
-  const current = entries[0];
-  if (!current) return undefined;
-  const targetAt = jmaTimestampToMillis(current.validtime) + RADAR_FORECAST_WINDOW_MS;
-  return entries.find(entry => jmaTimestampToMillis(entry.validtime) === targetAt);
+/** The next occurrence strictly after referenceAt, regardless of month/year boundaries. */
+export function nextJstRadarTargetMillis(referenceAt: number, hour: 9 | 22): number {
+  const date = new Date(referenceAt + JST_OFFSET_MS);
+  let targetAt = Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate(),
+    hour,
+  ) - JST_OFFSET_MS;
+  if (targetAt <= referenceAt) targetAt += DAY_MS;
+  return targetAt;
 }
 
-export function selectLatestShortTermEntry(
+/** Prefer the exact next JST clock hour; use the latest published valid time if absent. */
+export function selectNextShortTermEntry(
   entries: RadarTimeEntry[],
-  referenceValidTime?: string,
+  hour: 9 | 22,
+  referenceAt: number,
 ): RadarTimeEntry | undefined {
   const available = entries.filter(entry => (
     hasElement(entry, "rasrf")
@@ -108,50 +91,13 @@ export function selectLatestShortTermEntry(
     && jmaTimestampToMillis(entry.basetime) > 0
     && jmaTimestampToMillis(entry.validtime) > 0
   ));
-  const ordered = available.sort((left, right) => (
-    left.validtime.localeCompare(right.validtime)
-    || left.basetime.localeCompare(right.basetime)
-  ));
-  const latest = ordered.at(-1);
-  if (!latest) return undefined;
-
-  const latestAt = jmaTimestampToMillis(latest.validtime);
-  const explicitReferenceAt = referenceValidTime
-    ? jmaTimestampToMillis(referenceValidTime)
-    : 0;
-  const referenceAt = explicitReferenceAt > 0 ? explicitReferenceAt : latestAt;
-  if (explicitReferenceAt > 0 && latestAt < explicitReferenceAt) return undefined;
-
-  const jstOffsetMs = 9 * 60 * 60 * 1000;
-  const referenceJst = new Date(referenceAt + jstOffsetMs);
-  const nineAt = Date.UTC(
-    referenceJst.getUTCFullYear(),
-    referenceJst.getUTCMonth(),
-    referenceJst.getUTCDate(),
-    9,
-    0,
-    0,
-  ) - jstOffsetMs;
-  const twentyTwoAt = Date.UTC(
-    referenceJst.getUTCFullYear(),
-    referenceJst.getUTCMonth(),
-    referenceJst.getUTCDate(),
-    22,
-    0,
-    0,
-  ) - jstOffsetMs;
-  const targetAt = latestAt > twentyTwoAt
-    ? twentyTwoAt
-    : latestAt > nineAt && latestAt < twentyTwoAt
-      ? nineAt
-      : null;
-  if (targetAt === null) return latest;
-
-  if (explicitReferenceAt > 0 && targetAt < explicitReferenceAt) {
-    return ordered.filter(entry => jmaTimestampToMillis(entry.validtime) > explicitReferenceAt).at(-1);
-  }
-
-  return ordered.filter(entry => jmaTimestampToMillis(entry.validtime) === targetAt).at(-1);
+  const targetAt = nextJstRadarTargetMillis(referenceAt, hour);
+  const exact = available.filter(entry => jmaTimestampToMillis(entry.validtime) === targetAt);
+  return (exact.length ? exact : available)
+    .sort((left, right) => (
+      left.validtime.localeCompare(right.validtime)
+      || left.basetime.localeCompare(right.basetime)
+    )).at(-1);
 }
 
 function radarViewport(lat: number, lon: number, zoom: number, width: number, height: number): RadarViewport {
@@ -211,17 +157,17 @@ function representativeFramePath(): string {
 
 function radarCompositionKey(
   current: RadarTimeEntry,
-  oneHour: RadarTimeEntry,
-  latest: RadarTimeEntry,
+  twentyTwo: RadarTimeEntry,
+  nine: RadarTimeEntry,
 ): string {
   return [
     RADAR_COMPOSITION_VERSION,
     current.basetime,
     current.validtime,
-    oneHour.basetime,
-    oneHour.validtime,
-    latest.basetime,
-    latest.validtime,
+    twentyTwo.basetime,
+    twentyTwo.validtime,
+    nine.basetime,
+    nine.validtime,
   ].join("|");
 }
 
@@ -288,26 +234,25 @@ export async function radarFrameResponse(pathname: string, env: Env): Promise<Re
 }
 
 export async function fetchRadar(env: Env): Promise<SourceResult> {
-  const [observed, forecast, shortTerm] = await Promise.all([
+  const [observed, shortTerm] = await Promise.all([
     fetchJson<RadarTimeEntry[]>(JMA_OBSERVED_TIMES_URL),
-    fetchJson<RadarTimeEntry[]>(JMA_FORECAST_TIMES_URL),
     fetchJson<RadarTimeEntry[]>(JMA_SHORT_TERM_TIMES_URL),
   ]);
-  const availableEntries = selectRadarForecastEntries(observed, forecast);
-  const currentEntry = availableEntries[0];
-  const oneHourEntry = selectOneHourForecastEntry(availableEntries);
-  const latestEntry = selectLatestShortTermEntry(shortTerm, currentEntry?.validtime);
-  if (!currentEntry || !oneHourEntry || !latestEntry) {
-    throw new Error("JMA current, +60-minute, or latest short-term radar frame is unavailable");
+  const referenceAt = Date.now();
+  const currentEntry = selectLatestObservedRadarEntry(observed);
+  const twentyTwoEntry = selectNextShortTermEntry(shortTerm, 22, referenceAt);
+  const nineEntry = selectNextShortTermEntry(shortTerm, 9, referenceAt);
+  if (!currentEntry || !twentyTwoEntry || !nineEntry) {
+    throw new Error("JMA latest observed or short-term radar frame is unavailable");
   }
   if (!env.UPDATE_BUCKET) throw new Error("UPDATE_BUCKET is required for radar cloud composition");
 
   const panelMetadata = [
     { validTimeText: jstTimeText(currentEntry) },
-    { validTimeText: jstTimeText(oneHourEntry) },
-    { validTimeText: jstTimeText(latestEntry) },
+    { validTimeText: jstTimeText(twentyTwoEntry) },
+    { validTimeText: jstTimeText(nineEntry) },
   ] as const;
-  const compositionKey = radarCompositionKey(currentEntry, oneHourEntry, latestEntry);
+  const compositionKey = radarCompositionKey(currentEntry, twentyTwoEntry, nineEntry);
   const existingFrame = await env.UPDATE_BUCKET.head(representativeFrameKey());
   const shouldRender = existingFrame?.customMetadata?.radarCompositionKey !== compositionKey;
 
@@ -322,8 +267,8 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
     const expires = Math.floor(Date.now() / 1000) + RADAR_TILE_URL_LIFETIME_SECONDS;
     const panels = await Promise.all([
       panelRequest(env, "jma", currentEntry, displayLayout, viewport, expires),
-      panelRequest(env, "jma", oneHourEntry, displayLayout, viewport, expires),
-      panelRequest(env, "rasrf", latestEntry, displayLayout, viewport, expires),
+      panelRequest(env, "rasrf", twentyTwoEntry, displayLayout, viewport, expires),
+      panelRequest(env, "rasrf", nineEntry, displayLayout, viewport, expires),
     ]) as [
       BrowserRadarPanelRequest,
       BrowserRadarPanelRequest,
@@ -353,7 +298,7 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
     source: "radar",
     observedAt: jmaTimestampToMillis(currentEntry.validtime),
     payload: {
-      provider: "JMA current, +60-minute nowcast, and latest short-term precipitation; one cloud-composited representative frame",
+      provider: "JMA latest observation, next 22:00 and 09:00 JST short-term forecast (latest available fallback); one cloud-composited representative frame",
       precomposed: true,
       bundleUrl: "",
       width: RADAR_OUTPUT_WIDTH,
@@ -362,7 +307,6 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
       outputHeight: RADAR_OUTPUT_HEIGHT,
       center: RADAR_CENTER,
       zoom: RADAR_DISPLAY_ZOOM,
-      forecastWindowMs: RADAR_FORECAST_WINDOW_MS,
       frames: [frame],
       panels: panelMetadata.map(panel => ({ ...panel })),
       legend: RADAR_LEGEND,

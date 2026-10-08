@@ -72,18 +72,22 @@ test('cloud radar renders a z10 640x360 three-panel image from the original logi
   assert.doesNotMatch(cloudRadar, /env\.RADAR_ZOOM|env\.RADAR_CENTER_LAT|env\.RADAR_CENTER_LON/);
 });
 
-test('cloud selects current, exact one-hour, and latest short-term panels', () => {
-  assert.match(cloudRadar, /const RADAR_FORECAST_WINDOW_MS = 60 \* 60 \* 1000;/);
-  assert.match(cloudRadar, /selectOneHourForecastEntry/);
-  assert.match(cloudRadar, /jmaTimestampToMillis\(entry\.validtime\) === targetAt/);
-  assert.match(cloudRadar, /selectLatestShortTermEntry/);
+test('cloud selects latest observation and exact next 22:00/09:00 JST with latest fallback', () => {
+  assert.match(cloudRadar, /selectLatestObservedRadarEntry/);
+  assert.match(cloudRadar, /selectNextShortTermEntry\(shortTerm, 22, referenceAt\)/);
+  assert.match(cloudRadar, /selectNextShortTermEntry\(shortTerm, 9, referenceAt\)/);
+  assert.match(cloudRadar, /const JST_OFFSET_MS = 9 \* 60 \* 60 \* 1000;/);
+  assert.match(cloudRadar, /if \(targetAt <= referenceAt\) targetAt \+= DAY_MS;/);
+  assert.match(cloudRadar, /const exact = available\.filter\(entry => jmaTimestampToMillis\(entry\.validtime\) === targetAt\)/);
+  assert.match(cloudRadar, /return \(exact\.length \? exact : available\)/);
   assert.match(cloudRadar, /entry\.member === undefined \|\| entry\.member === "none"/);
   assert.match(cloudRadar, /\{ validTimeText: jstTimeText\(currentEntry\) \}/);
-  assert.match(cloudRadar, /\{ validTimeText: jstTimeText\(oneHourEntry\) \}/);
-  assert.match(cloudRadar, /\{ validTimeText: jstTimeText\(latestEntry\) \}/);
+  assert.match(cloudRadar, /\{ validTimeText: jstTimeText\(twentyTwoEntry\) \}/);
+  assert.match(cloudRadar, /\{ validTimeText: jstTimeText\(nineEntry\) \}/);
   assert.match(cloudRadar, /panelRequest\(env, "jma", currentEntry/);
-  assert.match(cloudRadar, /panelRequest\(env, "jma", oneHourEntry/);
-  assert.match(cloudRadar, /panelRequest\(env, "rasrf", latestEntry/);
+  assert.match(cloudRadar, /panelRequest\(env, "rasrf", twentyTwoEntry/);
+  assert.match(cloudRadar, /panelRequest\(env, "rasrf", nineEntry/);
+  assert.doesNotMatch(cloudRadar, /JMA_FORECAST_TIMES_URL|selectOneHourForecastEntry|RADAR_FORECAST_WINDOW_MS/);
   assert.doesNotMatch(cloudRadar, /title:/);
   assert.doesNotMatch(cloudRadar, /現在|1時間後|取得可能な最後/);
   assert.doesNotMatch(cloudRadar, /RADAR_TERMINAL_WINDOW_MS/);
