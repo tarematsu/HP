@@ -233,7 +233,8 @@ function snapshotStatement(env, snapshot, observedAt) {
       reported_total_listens=excluded.reported_total_listens,
       stream_goal=excluded.stream_goal,
       reported_current_stream_count=excluded.reported_current_stream_count
-    WHERE excluded.station_id IS NOT sh_minute_facts.station_id
+    WHERE excluded.observed_at >= sh_minute_facts.observed_at
+      AND (excluded.station_id IS NOT sh_minute_facts.station_id
        OR excluded.is_broadcasting IS NOT sh_minute_facts.is_broadcasting
        OR excluded.listener_count IS NOT sh_minute_facts.listener_count
        OR excluded.online_member_count IS NOT sh_minute_facts.online_member_count
@@ -241,7 +242,7 @@ function snapshotStatement(env, snapshot, observedAt) {
        OR excluded.guest_count IS NOT sh_minute_facts.guest_count
        OR excluded.reported_total_listens IS NOT sh_minute_facts.reported_total_listens
        OR excluded.stream_goal IS NOT sh_minute_facts.stream_goal
-       OR excluded.reported_current_stream_count IS NOT sh_minute_facts.reported_current_stream_count`)
+       OR excluded.reported_current_stream_count IS NOT sh_minute_facts.reported_current_stream_count)`)
     .bind(
       snapshot.channel_id,
       minuteAt,
