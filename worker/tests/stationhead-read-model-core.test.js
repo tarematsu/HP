@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   STATIONHEAD_READ_MODEL_KEYS,
   mergeStationheadDailyRows,
+  normalizeStationheadHistory,
   nextStationheadDailySummary,
   rollStationheadHistory,
   rollupStationheadWeekly,
@@ -76,4 +77,24 @@ test('Stationhead UTC daily and Monday-based weekly boundaries are shared across
   assert.equal(stationheadUtcDayKey(monday), '2026-10-05');
   assert.equal(stationheadUtcWeekKey(sunday), '2026-09-28');
   assert.equal(stationheadUtcWeekKey(monday), '2026-10-05');
+});
+
+test('Stationhead does not synthesize five-minute gains across a missing interval', () => {
+  const at = Date.parse('2026-10-08T00:00:00Z');
+  const previous = { observed_at: at, stream_count: 1_000 };
+  const afterGap = { observed_at: at + 30 * 60_000, stream_count: 1_600 };
+  const normalized = normalizeStationheadHistory([previous, afterGap]);
+  assert.equal(normalized[1].stream_delta_5m, null);
+
+  const rolled = rollStationheadHistory([previous], {
+    observed_at: afterGap.observed_at,
+    reported_current_stream_count: afterGap.stream_count,
+  }, afterGap.observed_at);
+  assert.equal(rolled.at(-1).stream_delta_5m, null);
+
+  const normal = normalizeStationheadHistory([
+    previous,
+    { observed_at: at + 5 * 60_000, stream_count: 1_060 },
+  ]);
+  assert.equal(normal[1].stream_delta_5m, 60);
 });
