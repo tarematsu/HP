@@ -59,7 +59,7 @@ test('leaderboard acquisition uses a disposable 1x1 background WebView and waits
   assert.match(collector, /leaderboard_ready/);
   assert.match(collector, /const ranking = \[\]/);
   assert.match(collector, /expectedRank <= 100/);
-  assert.match(collector, /ranking\.length >= 10/);
+  assert.match(collector, /ranking\.length === 100/);
   assert.match(collector, /GetNamedBoolean\(L"leaderboard_ready", !signedIn\)/);
   assert.match(collector, /captureDueAt_ = now \+ kContentPollIntervalMs/);
   assert.match(collector, /resource_paths/);
