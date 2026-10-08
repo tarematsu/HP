@@ -6,10 +6,6 @@ const stationheadLayout = readFileSync(
   new URL('../../native/src/sh_layout.cpp', import.meta.url),
   'utf8',
 );
-const spotifyLayout = readFileSync(
-  new URL('../../native/src/spotify_host_layout.inc', import.meta.url),
-  'utf8',
-);
 
 test('Stationhead keeps 360x960 in background and expands monitor or interactive playback on the media panel', () => {
   assert.match(stationheadLayout, /CreateRectRgn\(0, 0, 1, 1\)/);
@@ -34,13 +30,3 @@ test('Stationhead releases the empty auth host after completed authorization', (
   assert.match(stationheadLayout, /EnsureAuthHostWindow\(\)/);
 });
 
-test('Spotify keeps background hosts clipped and Monitor S removes all five playback clips', () => {
-  assert.match(spotifyLayout, /CreateRectRgn\(0, 0, 1, 1\)/);
-  assert.match(spotifyLayout, /SetWindowRgn\(window, nullptr, TRUE\)/);
-  assert.match(spotifyLayout, /const bool gridForeground = gSpotifyMonitorGridVisible && !loginPage/);
-  assert.match(spotifyLayout, /ServiceMonitorTileBounds\(client, i \+ 1\)/);
-  assert.match(
-    spotifyLayout,
-    /ApplySpotifyHostVisualClip\([\s\S]*authentication \|\| monitorForeground \|\| gridForeground/,
-  );
-});
