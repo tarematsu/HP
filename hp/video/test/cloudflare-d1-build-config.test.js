@@ -33,6 +33,10 @@ test('unified cloud configuration owns bounded queue consumers and Spotify refre
     {
       binding: 'SPOTIFY_PLAYCOUNT_QUEUE',
       queue: 'stationhead-spotify-playcount'
+    },
+    {
+      binding: 'STATIONHEAD_LEADERBOARD_REFRESH_QUEUE',
+      queue: 'stationhead-leaderboard-refresh'
     }
   ]);
   assert.equal(cloudWrangler.queues?.consumers?.[0]?.max_batch_size, 1);

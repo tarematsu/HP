@@ -201,7 +201,8 @@ test('cloud keeps redacted capture history in R2 for direct pull reporting', () 
   assert.match(cloudProbe, /MAX_BODY_CHARS = 65_536/);
   assert.match(cloudProbe, /contentIdentity\(deviceId, records\)/);
   assert.match(cloudProbe, /DATA_BUCKET\.head\(LATEST_KEY\)/);
-  assert.match(cloudProbe, /delivery: "r2-pull"/);
+  assert.match(cloudProbe, /delivery: "queue"/);
+  assert.match(cloudProbe, /STATIONHEAD_LEADERBOARD_REFRESH_QUEUE\.send/);
   assert.doesNotMatch(cloudProbe, /repository_dispatch|GITHUB_RADAR_DISPATCH_TOKEN/);
   assert.match(reportWorkflow, /LATEST_KEY: diagnostics\/stationhead-leaderboard\/latest\.json/);
   assert.match(reportWorkflow, /Cloudflare R2 REST API/);
