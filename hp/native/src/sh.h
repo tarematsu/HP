@@ -6,7 +6,6 @@
 #include "media_recovery_coordinator.h"
 #include "monotonic_time.h"
 #include "stationhead_types.h"
-#include "stationhead_daily_route.h"
 
 namespace hp {
 
@@ -26,15 +25,7 @@ class StationheadPlayer {
   void ReuseWebViewProfile(std::wstring profileName) {
     if (!profileName.empty()) profileName_ = std::move(profileName);
   }
-  void SetRouteDelayMinutes(int minutes) noexcept {
-    routeDelayMs_ = static_cast<int64_t>(std::clamp(minutes, 0, 5)) * 60'000;
-  }
-  [[nodiscard]] int64_t NextWakeAt() const noexcept {
-    if (nextTickAt_ <= 0) return nextTickAt_;
-    const int64_t nextWakeAt = nextTickAt_;
-    return std::min(nextWakeAt,
-                    StationheadNextRouteChangeAt(UnixMillis() - routeDelayMs_) + routeDelayMs_);
-  }
+  [[nodiscard]] int64_t NextWakeAt() const noexcept { return nextTickAt_; }
   void RequestImmediateTick() noexcept { nextTickAt_ = 0; }
   [[nodiscard]] bool AudioPlaying() const noexcept {
     // A controller is a valid handoff source only after playback has a stable
@@ -164,8 +155,6 @@ class StationheadPlayer {
   RECT bounds_{0, 0, 1, 1};
   StationheadTabKind selectedTab_ = StationheadTabKind::None;
   StationheadStatus status_;
-  std::wstring scheduledUrl_;
-  int64_t routeDelayMs_ = 0;
   ComPtr<ICoreWebView2Environment> environment_;
   ComPtr<ICoreWebView2Controller> controller_;
   ComPtr<ICoreWebView2> webview_;

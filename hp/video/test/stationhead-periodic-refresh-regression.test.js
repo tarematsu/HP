@@ -7,7 +7,6 @@ const config = source('config.h');
 const cloudConfig = source('cloud_config.cpp');
 const app = source('app.cpp');
 const player = source('sh.h');
-const route = source('stationhead_daily_route.h');
 const policy = source('sh_track_boundary_message_policy.h');
 const audioLossPolicy = source('sh_audio_loss_policy.h');
 const trackScript = source('sh_track_boundary_script.h');
@@ -27,17 +26,15 @@ test('native schedule owns Stationhead destinations', () => {
   assert.match(cloudConfig, /config\.stationhead\.fallbackUrl\.clear\(\)/);
   assert.doesNotMatch(cloudConfig, /kCanonicalFallbackStationheadUrl/);
 
-  assert.match(route, /21 \* 60 \+ 45[\s\S]*22 \* 60 \+ 15[\s\S]*https:\/\/www\.stationhead\.com\/c\/ohisama/);
-  assert.match(route, /11 \* 60 \+ 45[\s\S]*12 \* 60 \+ 15[\s\S]*https:\/\/www\.stationhead\.com\/c\/unity/);
-  assert.match(route, /return L"https:\/\/www\.stationhead\.com\/sakuramankai"/);
-  assert.match(player, /StationheadNextRouteChangeAt\(UnixMillis\(\) - routeDelayMs_\) \+ routeDelayMs_/);
+  assert.doesNotMatch(player, /StationheadNextRouteChangeAt|SetRouteDelayMinutes/);
+  assert.match(player, /NextWakeAt\(\) const noexcept \{ return nextTickAt_; \}/);
 });
 
-test('Stationhead has no preventive periodic reload; scheduled room changes only wake routing', () => {
+test('Stationhead has no preventive periodic reload or timed room switching', () => {
   const wake = section(policy, '#define NextWakeAt()', '#define RecoverUnavailableAuthorization()');
   assert.doesNotMatch(policy, /StationheadScheduledReload|scheduledReload|stationhead_scheduled_reload/);
   assert.doesNotMatch(wake, /Reload/);
-  assert.match(player, /StationheadNextRouteChangeAt/);
+  assert.doesNotMatch(player, /StationheadNextRouteChangeAt|routeDelayMs_/);
 });
 
 test('one-minute native audio health and loss recovery remain active', () => {
@@ -67,7 +64,6 @@ test('App schedules every Stationhead handle independently', () => {
   assert.match(app, /stationhead_->NextWakeAt\(\)/);
   assert.match(app, /stationheadPeers_\[i\]->Tick\(now\)/);
   assert.match(app, /stationhead_->Tick\(now\)/);
-  assert.match(app, /SetRouteDelayMinutes\(static_cast<int>\(i\)\)/);
-  assert.match(app, /SetRouteDelayMinutes\(5\)/);
+  assert.doesNotMatch(app, /SetRouteDelayMinutes/);
   assert.doesNotMatch(app, /UpdateStationheadPlaybackFallback|ApplyScheduledStationheadAudioProfile/);
 });

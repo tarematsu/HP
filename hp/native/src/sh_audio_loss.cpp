@@ -380,12 +380,34 @@ void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
       monitorDomProbeGeneration.load(std::memory_order_acquire);
   bool startMonitorProbe = false;
   if (requestedGeneration != 0 && webview_) {
-    std::lock_guard lock(monitorDomProbeStateMutex);
-    auto& state = monitorDomProbeStates[this];
-    if (!state.inFlight && state.seenGeneration != requestedGeneration) {
-      state.seenGeneration = requestedGeneration;
-      state.inFlight = true;
-      startMonitorProbe = true;
+    const StationheadStatus candidate = Status();
+    const unsigned selected = StationheadMonitorProfile();
+    const bool selectedMonitor = selected != 0 &&
+        selected == StationheadProfileNumber(profileName_);
+    // WebView2 audio/authorization events already track healthy backgrounds.
+    // Only probe the visible monitor profile or a session that could need login.
+    const bool needsDomProbe = selectedMonitor ||
+        candidate.loginRequired || candidate.spotifyAuthorization ||
+        (selected == 0 && !AudioPlaying() &&
+         !candidate.navigating && !candidate.processFailed);
+    bool clearMonitorAuth = false;
+    {
+      std::lock_guard lock(monitorDomProbeStateMutex);
+      auto& state = monitorDomProbeStates[this];
+      if (!state.inFlight && state.seenGeneration != requestedGeneration) {
+        state.seenGeneration = requestedGeneration;
+        if (needsDomProbe) {
+          state.inFlight = true;
+          startMonitorProbe = true;
+        } else {
+          // Explicitly clear stale auth indicators without scanning the DOM.
+          clearMonitorAuth = true;
+        }
+      }
+    }
+    if (clearMonitorAuth) {
+      PostMessageW(window_, kStationheadMonitorProbeResultMessage, 0,
+                   static_cast<LPARAM>(StationheadMonitorSlot(profileName_)));
     }
   }
 
