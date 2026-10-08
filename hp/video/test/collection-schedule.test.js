@@ -33,6 +33,10 @@ test('shared dispatcher owns hourly HomePanel wakeup while cloud Worker owns eve
     {
       binding: 'SPOTIFY_PLAYCOUNT_QUEUE',
       queue: 'stationhead-spotify-playcount'
+    },
+    {
+      binding: 'STATIONHEAD_LEADERBOARD_REFRESH_QUEUE',
+      queue: 'stationhead-leaderboard-refresh'
     }
   ]);
   assert.equal(cloudWrangler.queues?.consumers?.[0]?.queue, MANUAL_IMPORT_QUEUE_NAME);
