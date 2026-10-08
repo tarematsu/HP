@@ -19,7 +19,7 @@ function render(payload) {
   if (cadence) cadence.textContent = String(payload?.cadence || '-');
   if (chartTitle) chartTitle.textContent = String(payload?.chart_title || 'リーダーボード順位推移');
   if (chartFoot) chartFoot.textContent = String(payload?.chart_foot || '');
-  if (tableTitle) tableTitle.textContent = String(payload?.table_title || 'リーダーボード');
+  if (tableTitle) tableTitle.textContent = String(payload?.table_title || '過去ランクイン一覧');
   setSharedNotice('leaderboardNotice', String(payload?.notice || ''), false);
   renderChart(payload);
   renderTable(payload);
