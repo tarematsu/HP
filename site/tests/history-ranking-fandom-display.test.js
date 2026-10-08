@@ -165,3 +165,15 @@ test('nogifan1ch is classified as Nogizaka in leaderboard metadata', () => {
   assert.match(migration, /source_mask = \(source_mask \| 8\)/);
   assert.match(rankingHosts, /\['nogifan1ch', 'Nogizaka'\]/);
 });
+
+test('ranking API does not cache recent leaderboard data for fifteen minutes', async () => {
+  const response = await loadRanking(request(), { PAGES_READ_MODEL_SERVICE: serviceFor() });
+  assert.match(response.headers.get('cache-control') || '', /s-maxage=60/);
+});
+
+test('Stationhead ranking UI exposes stale source week instead of silently presenting last week as current', () => {
+  const source = browserSource('leaderboard-read-model.js');
+  assert.match(source, /source_max_ranking_date/);
+  assert.match(source, /currentJstRankingWeek/);
+  assert.match(source, /今週のリーダーボードは未反映です/);
+});
