@@ -46,8 +46,13 @@ export async function publishStationheadLikesReadModel(
   if (!modelKey || typeof r2?.put !== 'function') return { published: false, reason: 'r2-unavailable' };
   const now = integer(observedAt) ?? Date.now();
   const ranking = stationheadLikeRanking(likes);
-  const existing = await loadMaterializedR2Json(r2, modelKey).catch(() => null);
+  // A transient R2 read failure is not an empty ranking. Fail closed so
+  // retries cannot overwrite newer data without checking its timestamp.
+  const existing = await loadMaterializedR2Json(r2, modelKey);
   const previousAt = integer(existing?.updated_at);
+  if (previousAt != null && now < previousAt) {
+    return { published: false, reason: 'stale-observation', payload: existing };
+  }
   const unchanged = JSON.stringify(Array.isArray(existing?.ranking) ? existing.ranking : [])
     === JSON.stringify(ranking);
   if (unchanged && previousAt != null && now >= previousAt && now - previousAt < cadenceMs) {
