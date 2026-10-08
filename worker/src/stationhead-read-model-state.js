@@ -26,10 +26,15 @@ export function stationheadReadModelDescriptor(sourceValue) {
 }
 
 export async function readStationheadJsonObject(bucket, key) {
-  if (!key || typeof bucket?.get !== 'function') return null;
+  if (!key) return null;
+  if (typeof bucket?.get !== 'function') {
+    throw new Error('Stationhead read-model R2 binding is missing');
+  }
+  // Missing objects may bootstrap; transient R2 failures must not silently
+  // become empty state and trigger a destructive rebuild.
+  const object = await bucket.get(key);
+  if (!object) return null;
   try {
-    const object = await bucket.get(key);
-    if (!object) return null;
     if (typeof object.json === 'function') return await object.json();
     if (typeof object.text === 'function') return JSON.parse(await object.text());
     return null;
