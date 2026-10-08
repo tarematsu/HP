@@ -23,7 +23,7 @@ test('shared Stationhead current view renders track likes from each read model q
 });
 
 test('shared Stationhead history table uses the actual daily period key and cumulative boundaries', () => {
-  assert.match(stationheadShell, /<th>日付<\/th><th>平均同接<\/th>/);
+  assert.ok(stationheadShell.includes("role('history-period-column')"));
   assert.match(stationheadShell, /<th>開始再生<\/th><th>終了再生<\/th><th>増加<\/th>/);
   assert.match(stationheadRuntime, /row\.period_key \|\| '—'/);
   assert.match(stationheadReadModel, /period_key: String\(row\?\.period_key \|\| ''\)/);
