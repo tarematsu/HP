@@ -105,9 +105,11 @@ test('Stationhead secondary CSS uses the shared lazy style loader directly', () 
 });
 
 test('Hinata and followers use the same lazy route registry as other tabs', () => {
+  assert.equal(ROUTES.hinata.kind, 'stationhead');
+  assert.equal(ROUTES.hinata.panel, 'current');
+  assert.equal(ROUTES.followers.kind, 'lazy');
+  assert.equal(ROUTES.followers.moduleId, 'followers');
   for (const mode of ['hinata', 'followers']) {
-    assert.equal(ROUTES[mode].kind, 'lazy');
-    assert.equal(ROUTES[mode].moduleId, mode);
     assert.equal(VIEW_IDS.includes(ROUTES[mode].viewId), true);
   }
 });
