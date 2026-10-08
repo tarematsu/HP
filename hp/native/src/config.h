@@ -5,7 +5,7 @@ namespace hp {
 
 struct StationheadConfig {
   std::wstring url = L"https://www.stationhead.com/sakuramankai";
-  std::wstring fallbackUrl;
+  std::wstring fallbackUrl = L"https://www.stationhead.com/buddy46";
   int channelId = 318;
   bool blockImages = true;
   bool blockFonts = true;

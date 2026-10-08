@@ -21,10 +21,11 @@ function section(text, start, end) {
 
 test('native schedule owns Stationhead destinations', () => {
   assert.match(config, /url = L"https:\/\/www\.stationhead\.com\/sakuramankai"/);
-  assert.match(config, /std::wstring fallbackUrl;/);
+  assert.match(config, /std::wstring fallbackUrl = L"https:\/\/www\.stationhead\.com\/buddy46"/);
   assert.match(cloudConfig, /kCanonicalPrimaryStationheadUrl\[\] =[\s\S]*L"https:\/\/www\.stationhead\.com\/sakuramankai"/);
-  assert.match(cloudConfig, /config\.stationhead\.fallbackUrl\.clear\(\)/);
-  assert.doesNotMatch(cloudConfig, /kCanonicalFallbackStationheadUrl/);
+  assert.match(cloudConfig, /kCanonicalFallbackStationheadUrl\[\] =[\s\S]*L"https:\/\/www\.stationhead\.com\/buddy46"/);
+  assert.match(cloudConfig, /config\.stationhead\.fallbackUrl = kCanonicalFallbackStationheadUrl;/);
+  assert.doesNotMatch(cloudConfig, /config\.stationhead\.fallbackUrl\.clear\(\)/);
 
   assert.doesNotMatch(player, /StationheadNextRouteChangeAt|SetRouteDelayMinutes/);
   assert.match(player, /NextWakeAt\(\) const noexcept \{ return nextTickAt_; \}/);
