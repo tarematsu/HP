@@ -1,5 +1,5 @@
 import { ensureAuthControlRow, readAuthState } from './auth-state.js';
-import { configFromEnv } from './collector-config.js';
+import { configFromEnv, snapshotPersistenceDue } from './collector-config.js';
 import { sanitizeFailureDetail } from './collector-failure.js';
 import { jwtExpiryMs, normalizeBearer } from './shared.js';
 import { stationheadInitialFollowerRegistrar } from './stationhead-source-runtime.js';
@@ -14,7 +14,6 @@ import {
 const STATE_ID = 'stationhead';
 const RAW_COLLECTION_QUEUE_OPTIONS = Object.freeze({ contentType: 'json' });
 const SESSION_CACHE_TTL_MS = 5 * 60_000;
-const MINUTE_MS = 60_000;
 const sessionCache = new WeakMap();
 const messageEncoder = new TextEncoder();
 const COMPATIBILITY_FALLBACK_STAGES = new Set([
@@ -48,17 +47,6 @@ function collectorRequestConfig(env) {
     appVersion: env.STATIONHEAD_APP_VERSION || env.SH_APP_VERSION || '1.0.0',
     requestTimeoutMs: Math.min(positive(env.REQUEST_TIMEOUT_MS, 15_000), 30_000),
   };
-}
-
-function snapshotAnalysisDue(env, observedAt) {
-  const parsed = Number(env?.SNAPSHOT_PERSIST_INTERVAL_MS);
-  const interval = !Number.isFinite(parsed) || parsed < MINUTE_MS
-    ? MINUTE_MS
-    : Math.min(Math.trunc(parsed), 60 * MINUTE_MS);
-  if (interval <= MINUTE_MS) return true;
-  const timestamp = Number(observedAt);
-  if (!Number.isFinite(timestamp) || timestamp < 0) return true;
-  return Math.floor(timestamp / interval) !== Math.floor((timestamp - MINUTE_MS) / interval);
 }
 
 function sessionCacheKey(env) {
@@ -208,7 +196,7 @@ async function directPreparedMessage(base, body, config, env) {
     const fullQueue = prepared.queue;
     stage = 'analyze-payload';
     const [preparedSnapshot, preparedQueue] = await Promise.all([
-      snapshotAnalysisDue(env, base.observed_at)
+      snapshotPersistenceDue(env, base.observed_at)
         ? snapshotAnalysis.prepareSnapshotAnalysis(snapshot)
         : null,
       queueAnalysis.prepareQueueAnalysis(fullQueue),

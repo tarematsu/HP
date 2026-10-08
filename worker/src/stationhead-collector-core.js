@@ -86,7 +86,7 @@ export async function fetchStationheadChannelResponse(state, config, fetchImpl =
   };
 }
 
-export function prepareStationheadChannelPayload(channel, expectedAlias, previousState = {}) {
+function prepareStationheadSnapshot(channel, expectedAlias, previousState = {}) {
   validateChannelPayload(channel, expectedAlias);
   const state = {
     channelId: previousState?.channelId ?? null,
@@ -97,15 +97,17 @@ export function prepareStationheadChannelPayload(channel, expectedAlias, previou
   const host = robustHostIdentity(channel);
   if (host.accountId != null) snapshot.host_account_id = host.accountId;
   if (host.handle) snapshot.host_handle = host.handle;
-  return {
-    state,
-    snapshot,
-    queue: extractQueue(channel, state.stationId),
-  };
+  return { state, snapshot };
+}
+
+export function prepareStationheadChannelPayload(channel, expectedAlias, previousState = {}) {
+  const { state, snapshot } = prepareStationheadSnapshot(channel, expectedAlias, previousState);
+  return { state, snapshot, queue: extractQueue(channel, state.stationId) };
 }
 
 export function compactStationheadSnapshot(channel, expectedAlias) {
-  const { snapshot } = prepareStationheadChannelPayload(channel, expectedAlias);
+  // Read-only snapshot publication must not parse the queue or its like metadata.
+  const { snapshot } = prepareStationheadSnapshot(channel, expectedAlias);
   return {
     channel_id: finite(snapshot.channel_id),
     station_id: finite(snapshot.station_id),

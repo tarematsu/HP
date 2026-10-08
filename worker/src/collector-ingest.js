@@ -1,23 +1,10 @@
+import { snapshotPersistenceDue } from './collector-config.js';
+export { snapshotPersistenceDue } from './collector-config.js';
 import { ingestOptimizedBody } from '../../packages/sh-shared/ingest.mjs';
 import { serializedQueueAnalysis } from './queue-analysis-transfer.js';
 import { savePreparedSnapshot } from './snapshot-analysis-transfer.js';
 
 const SNAPSHOT_ANALYSIS = Symbol.for('stationhead.snapshot.analysis');
-const MINUTE_MS = 60_000;
-
-function snapshotPersistenceIntervalMs(env) {
-  const parsed = Number(env?.SNAPSHOT_PERSIST_INTERVAL_MS);
-  if (!Number.isFinite(parsed) || parsed < MINUTE_MS) return MINUTE_MS;
-  return Math.min(Math.trunc(parsed), 60 * MINUTE_MS);
-}
-
-export function snapshotPersistenceDue(env, observedAt) {
-  const interval = snapshotPersistenceIntervalMs(env);
-  if (interval <= MINUTE_MS) return true;
-  const timestamp = Number(observedAt);
-  if (!Number.isFinite(timestamp) || timestamp < 0) return true;
-  return Math.floor(timestamp / interval) !== Math.floor((timestamp - MINUTE_MS) / interval);
-}
 
 function skippedSnapshotPersistence(type) {
   return {

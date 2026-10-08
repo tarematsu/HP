@@ -2,6 +2,22 @@ import { jwtExpiryMs, normalizeBearer, positiveNumber as numberValue } from './s
 import { sanitizeFailureDetail } from './collector-failure.js';
 import { combinedAbortSignal } from './request-signal.js';
 
+const MINUTE_MS = 60_000;
+
+function snapshotPersistenceIntervalMs(env) {
+  const parsed = Number(env?.SNAPSHOT_PERSIST_INTERVAL_MS);
+  if (!Number.isFinite(parsed) || parsed < MINUTE_MS) return MINUTE_MS;
+  return Math.min(Math.trunc(parsed), 60 * MINUTE_MS);
+}
+
+export function snapshotPersistenceDue(env, observedAt) {
+  const interval = snapshotPersistenceIntervalMs(env);
+  if (interval <= MINUTE_MS) return true;
+  const timestamp = Number(observedAt);
+  if (!Number.isFinite(timestamp) || timestamp < 0) return true;
+  return Math.floor(timestamp / interval) !== Math.floor((timestamp - MINUTE_MS) / interval);
+}
+
 export const API_BASE = 'https://production1.stationhead.com';
 export const STATIONHEAD_AUTH_PAGE_URL = 'https://www.stationhead.com/c/ilys';
 export const COLLECTOR_VERSION = '1.0.0-worker';

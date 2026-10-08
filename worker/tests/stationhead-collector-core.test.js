@@ -53,3 +53,23 @@ test('source environment aliases only the source-specific database binding', () 
   assert.equal(stationheadSourceEnv(buddies, 'buddies').DB.id, 'b');
   assert.equal(stationheadSourceEnv(ohisama, 'ohisama').DB.id, 'o');
 });
+
+test('compact Stationhead snapshot does not parse an unrelated playback queue', () => {
+  let queueAccesses = 0;
+  const snapshotOnly = {
+    ...channel,
+    current_station: {
+      ...channel.current_station,
+      get queue() {
+        queueAccesses += 1;
+        throw new Error('queue parsing is not needed for a compact snapshot');
+      },
+    },
+  };
+  assert.equal(compactStationheadSnapshot(snapshotOnly, 'ohisama').channel_id, 46);
+  assert.equal(queueAccesses, 0);
+  assert.throws(
+    () => prepareStationheadChannelPayload(snapshotOnly, 'ohisama'),
+    /queue parsing is not needed/,
+  );
+});
