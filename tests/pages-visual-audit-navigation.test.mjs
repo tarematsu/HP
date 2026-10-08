@@ -18,3 +18,11 @@ test('visual audit uses current navigation and retains screenshots when a route 
   assert.match(source, /response.status\(\) >= 400/);
   assert.match(source, /views.push\(\{ tab, viewport: viewport.name, screenshot, ok: false/);
 });
+
+test('visual audit waits for history data and fresh chart paint before recording a successful screenshot', () => {
+  assert.match(source, /history:data-loaded/);
+  assert.match(source, /history:period-chart-drawn/);
+  assert.ok(source.includes('window.__pagesAuditHistory'));
+  assert.match(source, /historyWaitTimedOut/);
+  assert.match(source, /history summary returned no rows/);
+});

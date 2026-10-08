@@ -70,8 +70,26 @@ export function auditRoutes() {
 }
 
 async function inspectView(page, tab, viewport, outDir) {
+  const historyMode = tab.section === 'stationhead' && ['daily', 'weekly', 'monthly'].includes(tab.mode);
+  if (historyMode) {
+    await page.evaluate(() => {
+      window.__pagesAuditHistory = { mode: null, rowCount: null, paintedMode: null };
+    });
+  }
   await page.evaluate((mode) => { location.hash = mode; }, tab.mode);
   await settle(page);
+  let historyWaitTimedOut = false;
+  if (historyMode) {
+    try {
+      await page.waitForFunction((mode) => {
+        const history = window.__pagesAuditHistory;
+        return history?.mode === mode
+          && (history.rowCount === 0 || history.paintedMode === mode);
+      }, tab.mode, { timeout: 20_000 });
+    } catch {
+      historyWaitTimedOut = true;
+    }
+  }
   if (tab.control) {
     await page.locator('.dashboard-view:not([hidden])').locator(tab.control).click();
     await settle(page);
@@ -114,6 +132,7 @@ async function inspectView(page, tab, viewport, outDir) {
       visibleLoading,
       hash: location.hash,
       title: document.title,
+      historyAudit: window.__pagesAuditHistory || null,
     };
   }, { route: tab });
 
@@ -122,6 +141,10 @@ async function inspectView(page, tab, viewport, outDir) {
   await page.screenshot({ path: screenshot, fullPage: true, animations: 'disabled' });
 
   const issues = [];
+  if (historyWaitTimedOut) issues.push('history data or chart was not rendered within 20 seconds');
+  if (historyMode && state.historyAudit?.mode === tab.mode && state.historyAudit.rowCount === 0) {
+    issues.push('history summary returned no rows for the full available period');
+  }
   if (!state.active) issues.push('selected tab is not marked active');
   if (state.visiblePanels.length !== 1) issues.push(`expected exactly one visible dashboard view, got ${state.visiblePanels.length}`);
   if (state.horizontalOverflow > 1) issues.push(`document horizontally overflows by ${state.horizontalOverflow}px`);
@@ -155,6 +178,22 @@ async function auditViewport(browser, baseUrl, viewport, outDir) {
     serviceWorkers: 'block',
   });
   const page = await context.newPage();
+  await page.addInitScript(() => {
+    window.__pagesAuditHistory = { mode: null, rowCount: null, paintedMode: null };
+    window.addEventListener('history:data-loaded', (event) => {
+      const detail = event.detail || {};
+      window.__pagesAuditHistory = {
+        mode: String(detail.mode || ''),
+        rowCount: Array.isArray(detail.data?.rows) ? detail.data.rows.length : null,
+        paintedMode: null,
+      };
+    });
+    window.addEventListener('history:period-chart-drawn', (event) => {
+      if (window.__pagesAuditHistory) {
+        window.__pagesAuditHistory.paintedMode = String(event.detail?.mode || '');
+      }
+    });
+  });
   const consoleErrors = new Set();
   const pageErrors = new Set();
   const requestFailures = new Set();
