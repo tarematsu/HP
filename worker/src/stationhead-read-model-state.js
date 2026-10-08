@@ -38,7 +38,10 @@ export async function readStationheadJsonObject(bucket, key) {
     if (typeof object.json === 'function') return await object.json();
     if (typeof object.text === 'function') return JSON.parse(await object.text());
     return null;
-  } catch {
+  } catch (error) {
+    // Invalid JSON can fall back to the public model; body transport failures
+    // must retain the same fail-closed behavior as bucket.get failures.
+    if (!(error instanceof SyntaxError)) throw error;
     return null;
   }
 }

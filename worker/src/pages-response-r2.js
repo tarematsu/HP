@@ -99,7 +99,8 @@ async function loadCanonicalResponse(r2, modelKey, now, maximumAgeMs) {
         maximumAgeMs,
         'worker-r2-migration',
       );
-    } catch {
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
       return null;
     }
   }
@@ -142,7 +143,8 @@ export async function loadMaterializedR2Json(
   if (!response?.ok) return null;
   try {
     return await response.json();
-  } catch {
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
     return null;
   }
 }
