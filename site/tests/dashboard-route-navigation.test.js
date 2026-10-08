@@ -150,7 +150,7 @@ test('a late lazy import cannot reopen a tab after the user leaves it', async ()
   let loaded = 0;
   let requested = 0;
   const pending = new Promise(resolve => { finish = resolve; });
-  const page = harness('', path => { if (path.includes('/hinata.js')) { requested++; return pending; } return Promise.resolve({ loadStationheadChannelView() {} }); });
+  const page = harness('', path => { if (path.includes('/hinata-shell.js')) { requested++; return pending; } return Promise.resolve({ loadStationheadChannelView() {} }); });
   page.click('hinata');
   await flush();
   assert.equal(requested, 1);
