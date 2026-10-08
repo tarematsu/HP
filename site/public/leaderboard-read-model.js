@@ -105,10 +105,10 @@ export function normalizeStationheadLeaderboard(payload = {}) {
   return {
     source: 'stationhead',
     updated_at: timestamp(payload?.materialized_at),
-    cadence: 'データ受信時',
+    cadence: '毎週月曜日夜',
     chart_title: series.length === 1 ? `${series[0].label} 順位推移` : '週間リーダーボード順位',
     chart_foot: '順位は上ほど高順位です。灰色は欠測期間です。空白週は圏外です。',
-    table_title: '週間リーダーボード',
+    table_title: '過去ランクイン一覧',
     columns: [
       { key: 'period', label: '週' },
       { key: 'rank', label: '順位', numeric: true, format: 'rank' },
