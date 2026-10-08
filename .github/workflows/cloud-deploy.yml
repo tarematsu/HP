@@ -10,6 +10,7 @@ on:
       - "hp/video/**"
       - ".github/actions/cloudflare-context/action.yml"
       - ".github/scripts/resolve-cloudflare-account.mjs"
+      - ".github/scripts/ensure-leaderboard-refresh-queue.mjs"
       - ".github/scripts/cloudflare-worker-public-url.mjs"
       - ".github/scripts/delete-cloudflare-worker.mjs"
       - ".github/scripts/summarize-homepanel-deploy-failure.mjs"
