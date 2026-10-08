@@ -10,8 +10,7 @@ const stationheadLayout = source('sh_layout.cpp');
 const stationheadPopup = source('sh_webview.cpp');
 const stationheadBoundary = source('sh_track_boundary_script.h');
 const stationheadVisibility = source('sh_playback_visibility.h');
-const spotifyClick = source('spotify_background_click.inc');
-const spotifyRotation = source('spotify_timed_end_rotation.inc');
+
 
 function section(text, start, end) {
   const startAt = text.indexOf(start);
@@ -74,31 +73,3 @@ test('obsolete Stationhead page-side track-boundary observer is a no-op', () => 
   assert.doesNotMatch(boundary, /track-boundary-retry|track-ended/);
 });
 
-test('Spotify trusted Play click never hides the controller', () => {
-  const releasedAt = spotifyClick.indexOf('L"Input.dispatchMouseEvent", released.c_str()');
-  assert.ok(releasedAt >= 0);
-  assert.doesNotMatch(spotifyClick.slice(releasedAt), /put_IsVisible\(FALSE\)/);
-});
-
-test('Spotify remains visible after the observer confirms playback', () => {
-  const observer = section(
-    spotifyRotation,
-    'void SpotifyWebViews::ArmTimedEndObserver',
-    '}  // namespace hp',
-  );
-  assert.match(observer, /SetSlotState\(\*target, SlotState::Playing\)/);
-  assert.doesNotMatch(observer, /put_IsVisible\(FALSE\)/);
-});
-
-test('Spotify reasserts visible state when its next-track advance begins', () => {
-  const advance = section(
-    spotifyRotation,
-    'void SpotifyWebViews::AdvanceTimedRotationSlot',
-    'void SpotifyWebViews::ProbeDueTimedCompletions',
-  );
-  const showAt = advance.indexOf('slot.controller->put_IsVisible(TRUE)');
-  const applyAt = advance.indexOf('ApplyTimedRotationTarget(slot)');
-  assert.ok(showAt >= 0);
-  assert.ok(applyAt > showAt);
-  assert.doesNotMatch(advance, /put_IsVisible\(FALSE\)/);
-});

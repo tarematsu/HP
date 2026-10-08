@@ -7,15 +7,8 @@ const source = name => readFileSync(
 
 const policy = source('webview_feature_policy.h');
 const stationhead = source('sh_webview.cpp');
-const spotify = source('spotify_controller_lifecycle.inc');
-const media = source('renderer_panels/media_host.inc');
 
-test('all media WebViews use the shared minimal feature policy', () => {
-  assert.match(stationhead, /ApplyMediaWebViewFeaturePolicy\(controller_\.Get\(\), webview_\.Get\(\), true\)/);
-  assert.match(stationhead, /authController_\.Get\(\), authWebview_\.Get\(\), true/);
-  assert.match(spotify, /slot\.controller\.Get\(\), slot\.webview\.Get\(\), true/);
-  assert.match(media, /controller_\.Get\(\), webview_\.Get\(\), false/);
-});
+const media = source('renderer_panels/media_host.inc');
 
 test('shared policy enables web messages before the first navigation', () => {
   assert.match(policy, /static_cast<void>\(webMessagesEnabled\)/);

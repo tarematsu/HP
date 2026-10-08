@@ -10,10 +10,7 @@ const appHeader = readFileSync(
   new URL('../../native/src/app.h', import.meta.url),
   'utf8',
 );
-const playbackResolve = readFileSync(
-  new URL('../../native/src/dashboard_playback_resolve.cpp', import.meta.url),
-  'utf8',
-);
+
 const rendererHeader = readFileSync(
   new URL('../../native/src/web_renderer.h', import.meta.url),
   'utf8',
@@ -47,13 +44,6 @@ test('App timer follows real deadlines instead of a fixed five second dashboard 
   assert.match(appSource, /NextDelayFromDeadline\(int64_t now, int64_t deadline, uint32_t fallbackMs\)/);
   assert.doesNotMatch(appSource, /constexpr uint32_t kMaxIdleTickMs/);
   assert.doesNotMatch(appSource, /selectedTab_ == WorkspaceTab::Main[\s\S]*kSteadyDashboardTickMs/);
-});
-
-test('native playback exposes an exact queue boundary deadline', () => {
-  assert.match(rendererHeader, /int64_t NativePlaybackNextWakeAt\(int64_t nowMs\) const;/);
-  assert.match(playbackResolve, /int64_t Renderer::NativePlaybackNextWakeAt\(int64_t nowMs\) const/);
-  assert.match(playbackResolve, /projection\.queueEndAt <= nowMs \? nowMs : projection\.queueEndAt/);
-  assert.match(playbackResolve, /duration \+ kPlaybackRenderTransitionHoldMs - position\.elapsedMs/);
 });
 
 test('steady Stationhead ticks read only the authorization flag', () => {

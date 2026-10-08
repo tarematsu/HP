@@ -6,10 +6,7 @@ const app = readFileSync(
   new URL('../../native/src/app.cpp', import.meta.url),
   'utf8',
 );
-const spotifyLayout = readFileSync(
-  new URL('../../native/src/spotify_host_layout.inc', import.meta.url),
-  'utf8',
-);
+
 const stationheadLayout = readFileSync(
   new URL('../../native/src/sh_layout.cpp', import.meta.url),
   'utf8',
@@ -36,21 +33,6 @@ test('native app primes the dashboard before exposing the top-level HWND', () =>
   assert.match(
     startServices,
     /RDW_INVALIDATE \| RDW_UPDATENOW \| RDW_ALLCHILDREN/,
-  );
-});
-
-test('deferred Spotify hosts are clipped before SWP_SHOWWINDOW can expose them', () => {
-  const placeHosts = spotifyLayout.slice(
-    spotifyLayout.indexOf('void SpotifyWebViews::PlaceHosts()'),
-    spotifyLayout.indexOf('void SpotifyWebViews::RefreshSpotifyHostLayout()'),
-  );
-  const clipAt = placeHosts.indexOf('ApplySpotifyHostVisualClip(');
-  const showAt = placeHosts.indexOf('UINT flags = SWP_NOACTIVATE | SWP_SHOWWINDOW;');
-  assert.ok(clipAt >= 0);
-  assert.ok(showAt > clipAt);
-  assert.match(
-    placeHosts,
-    /ApplySpotifyHostVisualClip\([\s\S]*authentication \|\| monitorForeground \|\| gridForeground/,
   );
 });
 

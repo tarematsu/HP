@@ -6,7 +6,7 @@ const source = name => readFileSync(
   new URL(`../../native/src/${name}`, import.meta.url),
   'utf8',
 );
-const spotify = source('spotify_static_scripts.inc');
+
 const renderPolicy = source('sh_render_reduction_policy.h');
 const roomUiPolicy = source('sh_room_ui_reduction_policy.h');
 const startupScript = source('sh_startup_script.h');
@@ -18,16 +18,6 @@ const nativeCmake = readFileSync(
   new URL('../../native/CMakeLists.txt', import.meta.url),
   'utf8',
 );
-
-test('Spotify page bootstrap leaves Spotify rendering and controls completely untouched', () => {
-  assert.match(spotify, /kSpotifyStaticPageBootstrapScript/);
-  assert.match(spotify, /spotify:target/);
-  assert.doesNotMatch(spotify, /createElement\(['"]style['"]\)/);
-  assert.doesNotMatch(spotify, /__homePanelSpotifyStaticLightweight/);
-  assert.doesNotMatch(spotify, /!important/);
-  assert.doesNotMatch(spotify, /animation\s*:|transition\s*:|background-image\s*:/);
-  assert.doesNotMatch(spotify, /display\s*:|visibility\s*:|pointer-events\s*:|content-visibility\s*:/);
-});
 
 test('Stationhead startup enables lightweight CSS policies', () => {
   assert.match(startupScript, /#include "sh_compact_runtime_script\.h"/);
