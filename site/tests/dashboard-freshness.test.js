@@ -35,7 +35,7 @@ test('shared Buddies adapter keeps only in-memory delta state between network re
   const adapter = browserSource('stationhead-channel-read-model.js');
   const source = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
   assert.match(entry, /dashboard-fetch-cache\.js\?v=20260930\.1/);
-  assert.match(adapter, /fetchJson\('\/api\/dashboard\?history=0'/);
+  assert.match(adapter, /currentUrl: '\/api\/dashboard\?history=0'/);
   assert.doesNotMatch(adapter, /dashboard-details/);
   assert.match(source, /state\.latestObservedAt = Math\.max\(state\.latestObservedAt, latestObservedAt\(payload\)\)/);
   assert.match(source, /url\.searchParams\.set\('since', String\(state\.latestObservedAt\)\)/);
