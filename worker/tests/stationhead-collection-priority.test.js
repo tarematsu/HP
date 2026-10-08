@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { coordinateOhisamaCollection, clearOhisamaPriorityRetry } from '../src/stationhead-collection-priority.js';
 import { requireStationheadSourceProfile } from '../../packages/sh-shared/stationhead-source.mjs';
-import { runOhisamaPagesScheduled } from '../src/ohisama-pages-entry.js';
+import { requireOhisamaReadModelPublication, runOhisamaPagesScheduled } from '../src/ohisama-pages-entry.js';
 
 const BASE = Date.UTC(2026, 9, 8, 12, 0);
 const KEY = requireStationheadSourceProfile('ohisama').priorityRetryKey;
@@ -108,4 +108,20 @@ test('Ohisama remains available when Buddies has failed or deferred rather than 
   assert.deepEqual(await coordinateOhisamaCollection(env, BASE + 60_000, { waitMs: 0 }),
     { skipped: false, reason: 'buddies-not-in-flight' });
   assert.equal(env.stored.size, 0);
+});
+
+test('a failed Ohisama Read Model publication is not acknowledged as a successful run', () => {
+  assert.throws(
+    () => requireOhisamaReadModelPublication({ published: false, reason: 'r2-unavailable' }),
+    /Ohisama read model publication failed: r2-unavailable/,
+  );
+  assert.throws(
+    () => requireOhisamaReadModelPublication({ published: false }),
+    /Ohisama read model publication failed: unavailable/,
+  );
+  assert.deepEqual(requireOhisamaReadModelPublication({ published: true }), { published: true });
+  assert.deepEqual(
+    requireOhisamaReadModelPublication({ published: false, reason: 'stale-observation' }),
+    { published: false, reason: 'stale-observation' },
+  );
 });
