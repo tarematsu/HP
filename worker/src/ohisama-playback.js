@@ -181,7 +181,21 @@ export async function captureOhisamaPlayback(env, channel, collection, observedA
 
   const stationId = integer(collection?.station_id);
   const playback = resolveOhisamaPlaybackWindow(channel, stationId, observedAt);
-  const previous = (await loadStationheadPlaybackState(bucket, OHISAMA_PLAYBACK_HOT_STATE_KEY)).state;
+  const loaded = await loadStationheadPlaybackState(bucket, OHISAMA_PLAYBACK_HOT_STATE_KEY);
+  // Match Buddies: an inaccessible/corrupt R2 checkpoint is not an empty
+  // playback history. Fail closed rather than replaying an already seen song.
+  if (!loaded.available) {
+    return {
+      ...playback,
+      transitions_written: 0,
+      like_changes_written: 0,
+      likes_published: false,
+      state_saved: false,
+      skipped: true,
+      reason: 'playback-r2-unavailable',
+    };
+  }
+  const previous = loaded.state;
   const canonicalState = await canonicalizeStationheadPlayback(
     catalogDb,
     null,
