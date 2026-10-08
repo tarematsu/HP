@@ -51,7 +51,8 @@ test('domain modules select every Worker whose bundle imports them', () => {
   ]) {
     assert.deepEqual(select([path]).workers, [RUNTIME], path);
   }
-  assert.deepEqual(select(['worker/src/pages-response-store.js']).workers, [REGIONAL, RUNTIME]);
+  assert.deepEqual(select(['worker/src/pages-response-store.js']).workers, [RECOVERY, COLLECTOR, OHISAMA, REGIONAL, RUNTIME]);
+  assert.deepEqual(select(['worker/src/stationhead-playback-publication.js']).workers, [RECOVERY, COLLECTOR, OHISAMA]);
   assert.deepEqual(select(['worker/src/buddies-collector-entry.js']).workers, [COLLECTOR]);
   assert.deepEqual(select(['worker/src/ohisama-collector-shared.js']).workers, [OHISAMA]);
   assert.deepEqual(select(['worker/src/buddies-recovery-entry.js']).workers, [RECOVERY]);
