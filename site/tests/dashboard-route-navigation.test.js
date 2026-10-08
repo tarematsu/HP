@@ -141,7 +141,8 @@ test('switching between lazy tabs and browser Back keeps one visible view and on
   await flush();
   assert.deepEqual(page.visible(), ['followersView']);
   assert.equal(page.location.hash, '#followers');
-  assert.equal(page.selected().mode, 'followers');
+  assert.equal(page.selected().source, 'followers');
+  assert.equal(page.selected().mode, undefined);
 });
 
 test('a late lazy import cannot reopen a tab after the user leaves it', async () => {

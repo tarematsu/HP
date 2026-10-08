@@ -2,6 +2,7 @@ export interface Env {
   BROWSER?: Fetcher;
   DB: D1Database;
   DATA_BUCKET?: R2Bucket;
+  LEADERBOARD_SOURCE_R2?: R2Bucket;
   STATIONHEAD_LEADERBOARD_REFRESH_QUEUE?: Queue;
   UPDATE_BUCKET?: R2Bucket;
   SCHEDULER_COORDINATOR?: DurableObjectNamespace;

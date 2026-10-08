@@ -20,10 +20,10 @@ test('dashboard exposes Stationhead and music streaming service top-level catego
 });
 
 test('Stationhead separates channels from Buddies functions', () => {
-  assert.deepEqual(NAVIGATION[0].sources.map(source => source.id), ['buddies', 'hinata', 'nogizaka']);
+  assert.deepEqual(NAVIGATION[0].sources.map(source => source.id), ['buddies', 'hinata', 'nogizaka', 'ranking', 'followers']);
   for (const mode of ['ranking', 'followers']) {
     assert.equal(navigationForMode(mode).section.id, 'stationhead');
-    assert.equal(navigationForMode(mode).source.id, 'buddies');
+    assert.equal(navigationForMode(mode).source.id, mode);
   }
 });
 
@@ -38,8 +38,10 @@ test('music streaming section contains only streaming service views', () => {
 
 test('Buddies functions include archive and aggregate views and normalize legacy listening-party links', () => {
   assert.deepEqual(NAVIGATION[0].sources[0].functions.map(item => item.mode),
-    ['current', 'daily', 'weekly', 'monthly', 'played-tracks', 'likes', 'broadcasts', 'ranking', 'followers']);
-  assert.match(route, /mode === 'first-week' \|\| mode === 'unofficial'[\s\S]*#broadcasts/);
+    ['current', 'daily', 'weekly', 'played-tracks', 'likes', 'broadcasts']);
+  assert.ok(route.includes("mode === 'first-week' || mode === 'unofficial'"));
+  assert.ok(route.includes("mode === 'monthly' ? 'weekly'"));
+  assert.equal(NAVIGATION[0].sources[0].functions.some(item => item.mode === 'monthly'), false);
   assert.doesNotMatch(route, /new MutationObserver/);
 });
 

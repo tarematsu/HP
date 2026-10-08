@@ -420,7 +420,7 @@ const links = Array.from(root?.querySelectorAll?.('a[href]') || [])
   const path = String(location.pathname || '');
   const signed_in = !/^\/sign-in(?:\/|$)/i.test(path);
   const leaderboard_ready = signed_in && (
-  /^\/leaderboard\/?$/i.test(path) && ranking.length >= 10
+  /^\/leaderboard\/?$/i.test(path) && ranking.length === 100
 );
   return {
     schema: 2,

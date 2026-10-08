@@ -44,7 +44,7 @@ test('dashboard starts on the shared Buddies Stationhead view without duplicate 
   assert.doesNotMatch(page, /id="currentView"|id="historyView"|id="likesView"/);
 });
 
-test('leaderboard and followers are Buddies functions with shared views', () => {
+test('leaderboard and followers are independent Stationhead sources with shared views', () => {
   assert.doesNotMatch(registry, /mode: 'ranking'|view: 'spotify'/);
   assert.equal(ROUTES.ranking.viewId, 'leaderboardView');
   assert.deepEqual(ROUTES.ranking.loadArgs, { source: 'stationhead' });
@@ -82,7 +82,7 @@ test('feature tabs share one lazy route registry stylesheet loader and module ca
 
 test('legacy listening-party hashes normalize to the shared broadcasts route only', () => {
   assert.match(tabsClient, /mode === 'first-week' \|\| mode === 'unofficial'/);
-  assert.match(tabsClient, /#broadcasts/);
+  assert.ok(tabsClient.includes("mode === 'monthly' ? 'weekly' : 'broadcasts'"));
   assert.doesNotMatch(tabsClient, /unofficialView|showUnofficial|['"]unofficial['"]\s*:/);
   assert.doesNotMatch(registry, /view: 'unofficial'/);
 });

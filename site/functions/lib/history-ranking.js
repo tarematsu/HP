@@ -292,7 +292,7 @@ export async function loadRanking(requestUrl, env) {
       materialized_at: loaded.refreshed_at,
       source_max_ranking_date: loaded.source_max_ranking_date,
       read_path: loaded.read_path,
-    });
+    }, 200, { 'cache-control': 'public, max-age=30, s-maxage=60, stale-while-revalidate=120' });
   } catch (error) {
     if (/no such table|no such column/i.test(String(error?.message || ''))) {
       return readModelUnavailable(from, to, scope, hostSearch);

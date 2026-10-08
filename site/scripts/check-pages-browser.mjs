@@ -29,8 +29,8 @@ const runtimeErrors = [];
 const viewports = live
   ? [{ width: 390, height: 960, label: '390' }, { width: 1440, height: 960, label: '1440' }]
   : [{ width: 320, height: 960, label: '320' }, { width: 390, height: 960, label: '390' }, { width: 844, height: 390, label: '844-landscape' }, { width: 1440, height: 960, label: '1440' }];
-const modes = ['current', 'daily', 'weekly', 'monthly', 'played-tracks', 'likes', 'broadcasts', 'hinata', 'nogizaka', 'spotify', 'apple-music', 'amazon-music', 'youtube-music', 'kkbox', 'qq_music', 'kugou_music', 'ranking', 'followers'];
-const stationheadFunctions = ['現在', '日次', '週次', '月次', '再生履歴', 'いいね', 'リスパ', 'リーダーボード', 'フォロワー'];
+const modes = ['current', 'daily', 'weekly', 'played-tracks', 'likes', 'broadcasts', 'hinata', 'nogizaka', 'spotify', 'apple-music', 'amazon-music', 'youtube-music', 'kkbox', 'qq_music', 'kugou_music', 'ranking', 'followers'];
+const stationheadFunctions = ['現在', '日次', '週次', '再生履歴', 'いいね', 'リスパ'];
 
 function emptyFixture() {
   return {
@@ -161,20 +161,24 @@ try {
       assert.equal(await page.locator('#sourceSelect').isVisible(), width <= 760, `${mode}: native selector breakpoint`);
 
       const sourceLabels = width > 760 ? await page.locator('#sourceTabs button').allTextContents() : await page.locator('#sourceSelect option').allTextContents();
-      if (['current', 'daily', 'weekly', 'monthly', 'played-tracks', 'likes', 'broadcasts', 'ranking', 'followers', 'hinata', 'nogizaka'].includes(mode)) {
-        assert.deepEqual(sourceLabels, ['Buddies', 'Ohisama', 'Nogizaka'], `${mode}: Stationhead targets only`);
+      if (['current', 'daily', 'weekly', 'played-tracks', 'likes', 'broadcasts', 'ranking', 'followers', 'hinata', 'nogizaka'].includes(mode)) {
+        assert.deepEqual(sourceLabels, ['Buddies', 'Ohisama', 'Nogizaka', 'リーダーボード', 'フォロワー'], `${mode}: Stationhead targets only`);
       } else {
         assert.deepEqual(sourceLabels, ['Spotify', 'Apple Music', 'Amazon Music', 'YouTube Music', '🇹🇼KKBOX', '🇨🇳QQ音乐', '🇨🇳酷狗音乐'], `${mode}: streaming services only`);
       }
-      if (['current', 'daily', 'weekly', 'monthly', 'played-tracks', 'likes', 'broadcasts', 'ranking', 'followers'].includes(mode)) {
+      if (['current', 'daily', 'weekly', 'played-tracks', 'likes', 'broadcasts'].includes(mode)) {
         assert.deepEqual(await page.locator('#functionTabs button').allTextContents(), stationheadFunctions, `${mode}: Buddies functions`);
+      }
+      if (['ranking', 'followers'].includes(mode)) {
+        assert.deepEqual(await page.locator('#functionTabs button').allTextContents(), [], `${mode}: standalone source`);
+        assert.equal(await page.locator('#sourceSelect').inputValue(), mode);
       }
       if (!live && mode === 'current') {
         await page.waitForTimeout(100);
         assert.equal(await page.locator('[data-role="track-image"]').isHidden(), true, 'broken artwork stays hidden');
         assert.equal(await page.locator('.track-fallback').isVisible(), true, 'broken artwork keeps fallback visible');
       }
-      if (live && ['daily', 'weekly', 'monthly'].includes(mode)) {
+      if (live && ['daily', 'weekly'].includes(mode)) {
         // Network idle can precede JSON parsing, the daily overlay and table rendering.
         // Wait for the selected route's data, while retaining the non-empty assertion.
         try {

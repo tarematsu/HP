@@ -71,6 +71,10 @@
     {
       "binding": "DATA_BUCKET",
       "bucket_name": "homepanel-test-data"
+    },
+    {
+      "binding": "LEADERBOARD_SOURCE_R2",
+      "bucket_name": "homepanel-test-leaderboard"
     }
   ]
 }
