@@ -244,6 +244,19 @@ export async function refreshOhisamaReadModel(env, collection, now = Date.now())
   let weeklyPersisted = false;
   let recoveryRows = 0;
   const previousAt = lastHistoryObservedAt(existingPayload);
+  const latestStateAt = integer(existingPayload?.updated_at);
+  if (Math.max(previousAt ?? -Infinity, latestStateAt ?? -Infinity) > observedAt) {
+    // A delayed five-minute run must not replace a newer private model.
+    return {
+      published: false,
+      skipped: true,
+      reason: 'stale-observation',
+      mode: 'stale',
+      model_key: OHISAMA_PAGES_MODEL_KEY,
+      updated_at: Math.max(previousAt ?? -Infinity, latestStateAt ?? -Infinity),
+      payload: existingPayload,
+    };
+  }
 
   if (existingPayload && previousAt != null && previousAt <= observedAt) {
     const gapMode = stationheadReadModelGapMode(previousAt, observedAt, {
