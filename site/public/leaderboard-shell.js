@@ -43,7 +43,7 @@ mountDashboardShell({
         className: 'chart-card leaderboard-chart-card',
       })}
       ${dashboardDataCard({
-        title: '',
+        title: '過去ランクイン一覧',
         titleId: 'leaderboardTableTitle',
         kicker: 'DATA',
         bodyHtml: table,
