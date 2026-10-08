@@ -47,6 +47,10 @@ function setHistorySummary(runtime, rows, total) {
 
 export function renderDaily(runtime, payload) {
   runtime.historyPayload = payload;
+  const isWeekly = payload?.mode === 'weekly';
+  setText(runtime.root, 'history-chart-title', isWeekly ? '週次推移' : '日次推移');
+  setText(runtime.root, 'history-table-title', isWeekly ? '週次データ' : '日次データ');
+  setText(runtime.root, 'history-period-column', isWeekly ? '週' : '日付');
   const allRows = Array.isArray(payload?.daily) ? payload.daily : [];
   const rows = visibleHistoryRows(allRows, runtime.historyRange || 'all', runtime.historyOffset || 0);
   runtime.historyVisibleRows = rows;
@@ -56,9 +60,9 @@ export function renderDaily(runtime, payload) {
   }, 0);
   setHistorySummary(runtime, rows, total);
   const body = role(runtime.root, 'daily-tbody');
-  if (body) { body.replaceChildren(); if (!rows.length) appendEmptyTableRow(body, '日次データはまだありません。', 10); else for (const row of [...rows].reverse()) appendTableRow(body, historyRowCells(row)); }
+  if (body) { body.replaceChildren(); if (!rows.length) appendEmptyTableRow(body, isWeekly ? '週次データはまだありません。' : '日次データはまだありません。', 10); else for (const row of [...rows].reverse()) appendTableRow(body, historyRowCells(row)); }
   const canvas = role(runtime.root, 'daily-chart'); const prepared = setupCanvas(canvas, 360); if (!prepared) return; const { context, width, height } = prepared; const points = rows.filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.period_key || '') && finite(row.listener_avg) != null);
-  if (!points.length) { context.fillStyle = '#667287'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.font = '14px system-ui'; context.fillText('日次データがありません', width / 2, height / 2); return; }
+  if (!points.length) { context.fillStyle = '#667287'; context.textAlign = 'center'; context.textBaseline = 'middle'; context.font = '14px system-ui'; context.fillText(isWeekly ? '週次データがありません' : '日次データがありません', width / 2, height / 2); return; }
   const area = { left: 54, right: 42, top: 26, bottom: 42 }; area.width = width - area.left - area.right; area.height = height - area.top - area.bottom; const times = points.map((row) => Date.parse(`${row.period_key}T00:00:00Z`)); const minTime = times[0]; const maxTime = times.at(-1); const span = Math.max(DAY_MS, maxTime - minTime); const values = points.flatMap((row) => [finite(row.listener_avg), finite(row.listener_min), finite(row.listener_max)]).filter((value) => value != null); const minimum = Math.max(0, Math.floor(Math.min(...values) / 10) * 10); const maximum = Math.max(minimum + 10, Math.ceil(Math.max(...values) / 10) * 10); const x = (time) => area.left + area.width * (time - minTime) / span; const y = (value) => area.top + area.height - area.height * (value - minimum) / (maximum - minimum); drawGrid(context, width, area, maximum, minimum);
   const series = [['listener_min', '#2776b9'], ['listener_max', '#c56a18'], ['listener_avg', '#111']]; for (const [key, color] of series) { context.strokeStyle = color; context.lineWidth = key === 'listener_avg' ? 2.2 : 1.7; context.beginPath(); let started = false; points.forEach((row, index) => { const value = finite(row[key]); if (value == null) { started = false; return; } const px = x(times[index]); const py = y(value); if (!started) { context.moveTo(px, py); started = true; } else context.lineTo(px, py); }); context.stroke(); }
   const growths = points.map((row) => finite(row.stream_growth)).filter((value) => value != null && value >= 0); const growthMax = Math.max(1, ...growths); const slot = area.width / Math.max(1, points.length); context.fillStyle = 'rgba(22,139,115,.28)'; points.forEach((row, index) => { const value = finite(row.stream_growth); if (value == null || value < 0) return; const barHeight = area.height * value / growthMax; context.fillRect(x(times[index]) - Math.min(8, slot * .3), area.top + area.height - barHeight, Math.min(16, slot * .6), barHeight); });
