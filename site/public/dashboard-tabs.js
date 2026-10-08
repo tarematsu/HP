@@ -151,16 +151,22 @@ function setRoute(mode, view, { updateUrl = true, replaceUrl = false } = {}) {
   if (updateUrl) updateLocation(mode, { replace: replaceUrl });
 }
 
+const STATIONHEAD_SHELLS = Object.freeze({
+  currentView: () => import('/current-shell.js?v=20261005.2'),
+  hinataView: () => import('/hinata-shell.js?v=20261001.2'),
+});
+
 async function showStationheadPanel(mode, route, options = {}) {
   setRoute(mode, null, options);
+  const shell = STATIONHEAD_SHELLS[route.viewId];
   try {
-    await Promise.all([ensureModeStyles(mode), loadOnce('current:shell', () => import('/current-shell.js?v=20261005.2'))]);
+    if (!shell) throw new Error(`Missing Stationhead shell for ${route.viewId}`);
+    await Promise.all([ensureModeStyles(mode), loadOnce(`${route.viewId}:shell`, shell)]);
     if (activeMode !== mode) return;
     const view = document.getElementById(route.viewId); showOnly(view); markRouteReady();
-    const runtime = await loadOnce('current:runtime', () => import('/stationhead-channel.js?v=20261005.4'));
+    const runtime = await loadOnce('stationhead:runtime', () => import('/stationhead-channel.js?v=20261005.4'));
     if (activeMode !== mode) return;
     await runtime.selectStationheadChannelSection?.(view, route.panel);
-    if (activeMode === mode) await runtime.loadStationheadChannelView(view);
   } catch (error) {
     if (activeMode !== mode) return; markRouteReady();
     showRuntimeError({ errorLabel: mode, errorMessage: '画面の初期化に失敗しました。再読み込みしてください。' }, error);
@@ -205,8 +211,8 @@ async function showHistory(mode, route, { updateUrl = true, replaceUrl = false, 
 }
 function modeFromLocation() {
   const mode = location.hash.slice(1);
-  if (mode === 'first-week' || mode === 'unofficial' || mode === 'monthly') {
-    const target = mode === 'monthly' ? 'weekly' : 'broadcasts';
+  if (['first-week', 'unofficial', 'monthly', 'daily', 'weekly'].includes(mode)) {
+    const target = ['monthly', 'daily', 'weekly'].includes(mode) ? 'past' : 'broadcasts';
     history.replaceState(null, '', `${location.pathname}${location.search}#${target}`);
     return target;
   }
