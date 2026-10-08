@@ -19,7 +19,13 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === '/health') return new Response('ready');
     if (url.pathname !== '/refresh') return new Response('Not found', { status: 404 });
-    const result = await refreshAmazonModel(env, { collect: url.searchParams.get('collect') === '1' });
-    return Response.json(result, { headers: { 'cache-control': 'no-store' } });
+    try {
+      const result = await refreshAmazonModel(env, { collect: url.searchParams.get('collect') === '1' });
+      return Response.json(result, { headers: { 'cache-control': 'no-store' } });
+    } catch (error) {
+      return Response.json({ ok: false, error: String(error?.message || error) }, {
+        status: 500, headers: { 'cache-control': 'no-store' },
+      });
+    }
   },
 };

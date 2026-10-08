@@ -24,3 +24,9 @@ test('plain model refresh retains its existing collector-free behavior', async (
   assert.equal(result.published, true);
   assert.equal(scanned, false);
 });
+
+test('recovery failures return diagnostics instead of an opaque 500 response', async () => {
+  const response = await entry.fetch(new Request('http://localhost/refresh?collect=1'), {});
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), { ok: false, error: 'PAGES_RESPONSE_R2 binding is required' });
+});
