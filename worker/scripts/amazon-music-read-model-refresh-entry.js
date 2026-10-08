@@ -1,11 +1,17 @@
 import { publishAmazonMusicSakamichiModel } from '../src/amazon-music-sakamichi-publisher.js';
-import { startAmazonDaily50kScan } from '../src/amazon-music-daily-50k.js';
+import { startAmazonDaily50kScan, continueAmazonDaily50kScan } from '../src/amazon-music-daily-50k.js';
 import { amazonMusicServiceEnv } from '../src/music-service-other-store.js';
 
 export async function refreshAmazonModel(env, { collect = false, now = Date.now(), dependencies = {} } = {}) {
   if (!collect) return (dependencies.publish || publishAmazonMusicSakamichiModel)(env, now);
-  const scan = await (dependencies.collect || startAmazonDaily50kScan)(amazonMusicServiceEnv(env), now);
-  if (!scan.complete || !scan.published?.published) throw new Error('Amazon Music recollection did not publish a complete scan');
+  const serviceEnv = amazonMusicServiceEnv(env);
+  let scan = await (dependencies.collect || startAmazonDaily50kScan)(serviceEnv, now);
+  if (!scan.complete && scan.ok && scan.skipped === false) {
+    scan = await (dependencies.continue || continueAmazonDaily50kScan)(serviceEnv, now);
+  }
+  if (!scan.complete || !scan.published?.published) {
+    throw new Error(`Amazon Music recollection did not publish a complete scan (tracks=${scan.scanned_tracks ?? 'unknown'})`);
+  }
   const object = await env.PAGES_RESPONSE_R2.get('amazon-music/read-model/latest.json');
   const model = await object?.json();
   if (!model || model.observed_at !== now) throw new Error('Amazon Music recollection publication is not current');
