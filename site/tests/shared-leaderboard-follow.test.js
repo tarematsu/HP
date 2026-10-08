@@ -65,6 +65,6 @@ test('aggregate feature styles are bundled only with Stationhead', () => {
 
 test('leaderboard no longer participates in the history router', () => {
   assert.equal(HISTORY_MODES.has('ranking'), false);
-  assert.deepEqual([...HISTORY_MODES], ['daily', 'weekly', 'monthly', 'broadcasts']);
+  assert.deepEqual([...HISTORY_MODES], ['daily', 'weekly', 'broadcasts']);
 });
 
