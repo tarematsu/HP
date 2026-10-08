@@ -196,6 +196,19 @@ export async function captureOhisamaPlayback(env, channel, collection, observedA
     };
   }
   const previous = loaded.state;
+  const previousAt = integer(previous?.updated_at);
+  if (previousAt != null && previousAt > observedAt) {
+    // Ignore out-of-order retries before writing plays, likes, or hot state.
+    return {
+      ...playback,
+      transitions_written: 0,
+      like_changes_written: 0,
+      likes_published: false,
+      state_saved: false,
+      skipped: true,
+      reason: 'stale-playback-observation',
+    };
+  }
   const canonicalState = await canonicalizeStationheadPlayback(
     catalogDb,
     null,
