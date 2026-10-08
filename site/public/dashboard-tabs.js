@@ -14,10 +14,6 @@ let activeMode = 'current';
 let initialRouteReady = false;
 
 const DASHBOARD_ROUTE_MODULES = Object.freeze({
-  hinata: Object.freeze({
-    shell: () => import('/hinata-shell.js?v=20261001.2'),
-    runtime: () => import('/hinata.js?v=20260930.5'),
-  }),
   ranking: Object.freeze({
     shell: () => import('/leaderboard-shell.js?v=20261005.2'),
     runtime: () => import('/leaderboard.js?v=20261005.2'),
