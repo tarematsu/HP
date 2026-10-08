@@ -81,7 +81,7 @@ test('feature tabs share one lazy route registry stylesheet loader and module ca
 });
 
 test('legacy listening-party hashes normalize to the shared broadcasts route only', () => {
-  assert.match(tabsClient, /mode === 'first-week' \|\| mode === 'unofficial'/);
+  assert.match(tabsClient, /'first-week', 'unofficial', 'monthly', 'daily', 'weekly'/);
   assert.ok(tabsClient.includes("? 'past' : 'broadcasts'"));
   assert.doesNotMatch(tabsClient, /unofficialView|showUnofficial|['"]unofficial['"]\s*:/);
   assert.doesNotMatch(registry, /view: 'unofficial'/);
