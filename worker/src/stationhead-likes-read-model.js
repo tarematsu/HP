@@ -1,4 +1,5 @@
 import { loadMaterializedR2Json, saveMaterializedR2Response } from './pages-response-r2.js';
+import { normalizeStationheadSource } from '../../packages/sh-shared/stationhead-source.mjs';
 
 export const STATIONHEAD_LIKES_DEFAULT_CADENCE_MS = 6 * 60 * 60_000;
 
@@ -13,7 +14,7 @@ function text(value, limit = 500) {
 }
 
 export function stationheadLikesModelKey(sourceValue) {
-  const source = String(sourceValue || '').trim().toLowerCase();
+  const source = normalizeStationheadSource(sourceValue);
   return source ? `track-likes:${source}` : null;
 }
 
@@ -66,7 +67,7 @@ export async function publishStationheadLikesReadModel(
   const payload = {
     ok: true,
     mode: 'likes',
-    source: String(source || '').trim().toLowerCase(),
+    source: normalizeStationheadSource(source),
     updated_at: now,
     ranking_scope: 'all-time-latest-counter',
     ranking,
