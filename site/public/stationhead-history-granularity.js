@@ -176,8 +176,7 @@ export function bindStationheadHistoryGranularity(root) {
       repaint();
       return;
     }
-    const historyTab = root.querySelector('[data-stationhead-section="history"]');
-    if (historyTab && !historyTab.disabled) historyTab.click();
+    root.dispatchEvent(new CustomEvent('stationhead:history-mode', { detail: { mode } }));
   };
 
   for (const button of buttons) {
