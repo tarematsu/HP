@@ -1,12 +1,15 @@
 import { directFiveMinuteStreamHistory } from '../../packages/sh-shared/dashboard-chart-support.mjs';
 import { requireStationheadSourceProfile } from '../../packages/sh-shared/stationhead-source.mjs';
-import { loadMaterializedR2Json, saveMaterializedR2Response } from './pages-response-r2.js';
+import {
+  loadStationheadReadModelState,
+  publishStationheadReadModel,
+  saveStationheadReadModelHotState,
+} from './stationhead-read-model-state.js';
 
 const FIVE_MINUTES_MS = 5 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
 const BUDDIES_PROFILE = requireStationheadSourceProfile('buddies');
 const DASHBOARD_MODEL_KEY = BUDDIES_PROFILE.modelKey;
-const DASHBOARD_CADENCE_SECONDS = BUDDIES_PROFILE.publicationCadenceSeconds;
 const HOT_STATE_KEY = BUDDIES_PROFILE.readModelHotKey;
 
 function finite(value) {
@@ -25,24 +28,12 @@ function bucketAt(value) {
   return parsed == null ? null : Math.floor(parsed / FIVE_MINUTES_MS) * FIVE_MINUTES_MS;
 }
 
-async function readJson(bucket, key) {
-  if (!key || typeof bucket?.get !== 'function') return null;
-  try {
-    const object = await bucket.get(key);
-    if (!object) return null;
-    if (typeof object.json === 'function') return await object.json();
-    if (typeof object.text === 'function') return JSON.parse(await object.text());
-  } catch {
-    // The fallback must never depend on a readable previous object.
-  }
-  return null;
-}
-
 async function loadBase(bucket) {
-  const hot = await readJson(bucket, HOT_STATE_KEY);
-  if (Number(hot?.version) === 1 && hot?.payload?.ok) return hot.payload;
-  const payload = await loadMaterializedR2Json(bucket, DASHBOARD_MODEL_KEY);
-  return payload?.ok ? payload : null;
+  const { payload } = await loadStationheadReadModelState(bucket, {
+    source: 'buddies',
+    upgrade: (value) => value?.ok ? value : null,
+  });
+  return payload;
 }
 
 function latestFrom(base, input, fact, observedAt) {
@@ -171,27 +162,16 @@ async function purgeDashboardCache() {
 }
 
 async function persist(bucket, payload, now) {
-  await bucket.put(HOT_STATE_KEY, JSON.stringify({
-    version: 1,
-    updated_at: now,
-    payload,
-  }), {
-    httpMetadata: { contentType: 'application/json; charset=utf-8' },
-    customMetadata: { version: '1', model_key: DASHBOARD_MODEL_KEY, updated_at: String(now) },
+  await saveStationheadReadModelHotState(bucket, HOT_STATE_KEY, payload, now, {
+    modelKey: DASHBOARD_MODEL_KEY,
+    source: 'buddies',
   });
-  await saveMaterializedR2Response(
-    bucket,
-    DASHBOARD_MODEL_KEY,
-    JSON.stringify(payload),
-    200,
-    {
+  await publishStationheadReadModel(bucket, 'buddies', payload, now, {
+    headers: {
       'content-type': 'application/json; charset=utf-8',
       'cache-control': 'no-store',
     },
-    now,
-    DASHBOARD_CADENCE_SECONDS,
-    { model_key: DASHBOARD_MODEL_KEY },
-  );
+  });
   await purgeDashboardCache();
 }
 

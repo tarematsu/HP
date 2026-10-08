@@ -13,6 +13,7 @@ class FakeR2 {
     this.values = initial;
     this.gets = [];
     this.puts = [];
+    this.metadata = new Map();
   }
 
   async get(key) {
@@ -25,9 +26,10 @@ class FakeR2 {
     };
   }
 
-  async put(key, value) {
+  async put(key, value, options = {}) {
     this.puts.push(key);
     this.values.set(key, String(value));
+    this.metadata.set(key, options.customMetadata || {});
   }
 }
 
@@ -126,6 +128,10 @@ test('Buddies dashboard fallback advances a stale current model without D1', asy
   assert.equal(result.mode, 'fallback');
   assert.equal(result.skipped, false);
   assert.deepEqual(r2.puts, [HOT_STATE_KEY, DASHBOARD_KEY]);
+  assert.equal(r2.metadata.get(HOT_STATE_KEY).source, 'buddies');
+  assert.equal(r2.metadata.get(DASHBOARD_KEY).model_key, 'dashboard');
+  assert.equal(r2.metadata.get(DASHBOARD_KEY).format, 'raw-response-v1');
+  assert.equal(r2.metadata.get(DASHBOARD_KEY).cadence_seconds, '300');
   const payload = JSON.parse(r2.values.get(DASHBOARD_KEY));
   assert.equal(payload.latest_observed_at, observedAt);
   assert.equal(payload.latest.online_member_count, 125);
