@@ -1,5 +1,5 @@
 name: Recollect Spotify today manually
-# A main-branch push touching this file with [run-spotify-today] intentionally triggers same-day recovery.
+# A main-branch push with [run-spotify-today] triggers recovery. Last requested: 2026-10-08 after catalog SQL binding fix.
 on:
   workflow_dispatch:
   push:
