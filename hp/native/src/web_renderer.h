@@ -114,7 +114,6 @@ class Renderer {
   ~Renderer();
   static void SetGlobalPowerSavingMode(bool enabled);
   void Initialize();
-  void StartSpotify();
   void Resize(int width, int height);
   void SetBounds(const RECT& bounds);
   void SetVisible(bool visible);
@@ -280,7 +279,6 @@ class Renderer {
   std::string switchbotUtf8_;
   DashboardSourceStamp dashboardSourceStamp_{};
   DashboardSourceStamp switchbotSourceStamp_{};
-  uint64_t spotifySourceRevision_ = 0;
   mutable std::mutex actionMutex_;
   UiAction pendingAction_ = UiAction::None;
   std::thread nativePlaybackThread_;
