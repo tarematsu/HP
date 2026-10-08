@@ -28,8 +28,21 @@ function currentPanel() {
 
 function historyPanel() {
   return `<section class="stationhead-channel-panel" data-stationhead-panel="history" hidden>
-    <section class="card chart-card chart-panel"><div class="section-head chart-head"><div><p class="kicker">HISTORY</p><h2>日次推移</h2></div></div><div class="legend" ${role('daily-legend')}></div><canvas class="shared-dashboard-canvas" ${role('daily-chart')} width="960" height="360" aria-label="日次の同接と再生数増加"></canvas></section>
-    <section class="card data-panel"><div class="section-head history-table-head"><div><p class="kicker">DATA</p><h2 ${role('history-table-title')}>日次データ</h2></div><div class="history-granularity-toggle" role="group" aria-label="一覧表示単位"><button type="button" class="is-selected" data-history-table-mode="daily" aria-pressed="true">日次</button><button type="button" data-history-table-mode="weekly" aria-pressed="false">週次</button></div></div><div class="table-wrap scrollable-table"><table class="shared-numeric-table daily-stats-table"><thead><tr><th>日付</th><th>平均同接</th><th>最小</th><th>最大</th><th>開始再生</th><th>終了再生</th><th>増加</th><th>開始メンバー</th><th>終了メンバー</th><th>増加</th></tr></thead><tbody ${role('daily-tbody')}></tbody></table></div></section>
+    <section class="controls card stationhead-history-controls" aria-label="過去データの期間設定">
+      <div class="range-presets" data-role="history-presets" aria-label="表示期間">
+        <button type="button" data-history-range="30">1ヶ月</button>
+        <button type="button" data-history-range="180">半年</button>
+        <button type="button" data-history-range="365">1年</button>
+        <button type="button" data-history-range="all" class="active">全期間</button>
+      </div>
+      <div class="history-range-arrows" aria-label="表示範囲の移動">
+        <button type="button" data-history-move="previous" title="過去へ" disabled>‹</button>
+        <button type="button" data-history-move="next" title="新しい期間へ" disabled>›</button>
+      </div>
+    </section>
+    <section class="summary-cards" aria-label="過去データの集計概要">${summaryItem('集計期間', 'history-periods')}${summaryItem('最大同接', 'history-max')}${summaryItem('再生数増加', 'history-streams')}${summaryItem('メンバー増加', 'history-members')}</section>
+    <section class="card chart-card chart-panel"><div class="section-head chart-head"><div><p class="kicker">HISTORY</p><h2 ${role('history-chart-title')}>日次推移</h2></div></div><div class="legend" ${role('daily-legend')}></div><canvas class="shared-dashboard-canvas" ${role('daily-chart')} width="960" height="360" aria-label="日次の同接と再生数増加"></canvas></section>
+    <section class="card data-panel"><div class="section-head history-table-head"><div><p class="kicker">DATA</p><h2 ${role('history-table-title')}>日次データ</h2></div><div class="history-granularity-toggle" role="group" aria-label="一覧表示単位"><button type="button" class="is-selected" data-history-table-mode="daily" aria-pressed="true">日次</button><button type="button" data-history-table-mode="weekly" aria-pressed="false">週次</button></div><button type="button" class="csv-button" ${role('history-csv')}>CSV</button></div><div class="table-wrap scrollable-table"><table class="shared-numeric-table daily-stats-table"><thead><tr><th ${role('history-period-column')}>日付</th><th>平均同接</th><th>最小</th><th>最大</th><th>開始再生</th><th>終了再生</th><th>増加</th><th>開始メンバー</th><th>終了メンバー</th><th>増加</th></tr></thead><tbody ${role('daily-tbody')}></tbody></table></div></section>
   </section>`;
 }
 

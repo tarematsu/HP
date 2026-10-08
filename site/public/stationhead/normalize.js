@@ -127,5 +127,6 @@ export function normalizeBroadcasts(payload) {
     rows,
     series: Array.isArray(payload?.series) ? payload.series : [],
     collection_active: Boolean(payload?.collection_active),
+    chart_error: Boolean(payload?.chart_error),
   };
 }

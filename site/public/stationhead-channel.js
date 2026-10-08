@@ -5,7 +5,7 @@ import { stationheadChannelReadModel } from './stationhead-channel-read-model.js
 import { role, setNotice } from './stationhead/view-utils.js';
 import { renderCurrentDetail } from './stationhead/current-chart.js';
 import { renderCurrent, renderPlayback } from './stationhead/playback.js';
-import { renderDaily } from './stationhead/history-view.js';
+import { renderDaily, exportHistoryCsv } from './stationhead/history-view.js';
 import { loadPlayed } from './stationhead/played-tracks.js';
 import { renderLikes, exportLikesCsv } from './stationhead/likes.js';
 import { renderBroadcasts } from './stationhead/broadcasts.js';
@@ -17,7 +17,7 @@ async function loadSection(runtime, section, { force = false } = {}) {
   try {
     if (section === 'played-tracks') { await loadPlayed(runtime, { force }); return; }
     const methods = { current: 'loadCurrent', history: 'loadHistory', likes: 'loadLikes', broadcasts: 'loadBroadcasts' }; const payload = await runtime.model[methods[section]]({ force }); if (!current()) return;
-    const renderers = { current: renderCurrent, history: renderDaily, likes: renderLikes, broadcasts: renderBroadcasts }; renderers[section](runtime, payload);
+    const renderers = { current: renderCurrent, history: renderDaily, likes: renderLikes, broadcasts: renderBroadcasts }; if (section === 'history') { runtime.historyPayload = payload; refreshHistoryRange(runtime); } else renderers[section](runtime, payload);
   } catch (error) { if (!current()) return; console.error(error); setNotice(runtime.root, `データの取得に失敗しました：${error.message}`, true); }
 }
 
@@ -31,13 +31,46 @@ async function selectSection(runtime, section, { force = false, load = true } = 
   if (load) void loadSection(runtime, section, { force }); requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
 }
 
+function refreshHistoryRange(runtime) {
+  if (!runtime.historyPayload) return;
+  const available = Array.isArray(runtime.historyPayload.daily) ? runtime.historyPayload.daily : [];
+  const isAll = runtime.historyRange === 'all';
+  const firstDate = Date.parse(`${available[0]?.period_key}T00:00:00Z`);
+  const lastDate = Date.parse(`${available.at(-1)?.period_key}T00:00:00Z`);
+  const days = Number(runtime.historyRange) || 0;
+  const step = Math.max(1, Math.floor(days / 2));
+  const maxOffset = !isAll && Number.isFinite(firstDate) && Number.isFinite(lastDate)
+    ? Math.max(0, Math.floor((lastDate - firstDate) / (step * 86_400_000))) : 0;
+  runtime.historyOffset = Math.min(runtime.historyOffset, maxOffset);
+  const previous = runtime.root.querySelector('[data-history-move="previous"]');
+  const next = runtime.root.querySelector('[data-history-move="next"]');
+  if (previous) previous.disabled = isAll || runtime.historyOffset >= maxOffset;
+  if (next) next.disabled = isAll || runtime.historyOffset <= 0;
+  renderDaily(runtime, runtime.historyPayload);
+}
+
 function initialize(root) {
   if (runtimes.has(root)) return runtimes.get(root);
   const model = stationheadChannelReadModel(root.dataset.stationheadModel || 'buddies');
-  const runtime = { root, model, section: '', selectionSequence: 0, requestSequence: 0, playedSequence: 0, current: null, playbackIndex: -1, playedDates: [], playedPeriod: '', likes: [], hiddenBroadcastSeries: new Set(), broadcastPayload: null };
+  const runtime = { root, model, section: '', selectionSequence: 0, requestSequence: 0, playedSequence: 0, historyRange: 'all', historyOffset: 0, historyPayload: null, historyVisibleRows: [], current: null, playbackIndex: -1, playedDates: [], playedPeriod: '', likes: [], hiddenBroadcastSeries: new Set(), broadcastPayload: null };
   const capabilities = new Set(model.capabilities); const tabs = root.querySelector('.stationhead-subtabs');
   root.querySelectorAll('[data-stationhead-section]').forEach((button) => { const enabled = capabilities.has(button.dataset.stationheadSection); button.disabled = !enabled; button.setAttribute('aria-disabled', String(!enabled)); button.title = enabled ? '' : '未提供'; if (enabled) button.addEventListener('click', () => selectSection(runtime, button.dataset.stationheadSection)); });
+  root.addEventListener('stationhead:history-mode', () => {
+    if (runtime.section === 'history') void loadSection(runtime, 'history');
+  });
   bindRovingTabs(tabs, (button) => button.click()); role(root, 'live-chart')?.addEventListener('pointerup', (event) => renderCurrentDetail(runtime, event), true); role(root, 'played-week')?.addEventListener('change', () => { runtime.playedPeriod = ''; void loadPlayed(runtime); });
+  root.querySelectorAll('[data-history-range]').forEach((button) => button.addEventListener('click', () => {
+    runtime.historyRange = button.dataset.historyRange;
+    runtime.historyOffset = 0;
+    root.querySelectorAll('[data-history-range]').forEach((item) => item.classList.toggle('active', item === button));
+    refreshHistoryRange(runtime);
+  }));
+  root.querySelectorAll('[data-history-move]').forEach((button) => button.addEventListener('click', () => {
+    const direction = button.dataset.historyMove === 'previous' ? 1 : -1;
+    runtime.historyOffset = Math.max(0, runtime.historyOffset + direction);
+    refreshHistoryRange(runtime);
+  }));
+  role(root, 'history-csv')?.addEventListener('click', () => exportHistoryCsv(runtime));
   role(root, 'likes-csv')?.addEventListener('click', () => exportLikesCsv(runtime));
   const initial = model.capabilities.includes('current') ? 'current' : model.capabilities[0]; runtimes.set(root, runtime); void selectSection(runtime, initial, { load: false }); return runtime;
 }

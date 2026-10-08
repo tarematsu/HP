@@ -2,6 +2,7 @@ import {
   mergeStationheadDailyRows,
   nextStationheadDailySummary,
   rollStationheadHistory,
+  previousStationheadHistory,
   rollupStationheadWeekly,
   stationheadAggregateReadModelPayload,
   stationheadUtcDayStart as dayStart,
@@ -140,7 +141,7 @@ async function loadHistory(db, channelId, observedAt) {
     FROM sh_minute_facts
     WHERE channel_id=? AND observed_at>=? AND observed_at<=?
     ORDER BY observed_at ASC,id ASC`)
-    .bind(channelId, observedAt - DAY_MS, observedAt)
+    .bind(channelId, observedAt - 2 * DAY_MS, observedAt)
     .all();
   return result?.results || [];
 }
@@ -200,6 +201,9 @@ async function applyObservation(payload, collection, observedAt, db) {
       updated_at: observedAt,
       latest: stationheadAggregateReadModelPayload(OHISAMA_SOURCE, collection, [], [], observedAt).latest,
       history_24h: rollStationheadHistory(payload.history_24h, collection, observedAt),
+      previous_day_history: previousStationheadHistory(
+        payload.previous_day_history, payload.history_24h, observedAt,
+      ),
       daily,
       weekly: rollupStationheadWeekly(daily, observedAt),
     },
@@ -225,7 +229,12 @@ async function bootstrapPayload(db, collection, channelId, observedAt) {
   const weeklyRows = rollupStationheadWeekly(dailyRows, observedAt);
   for (const row of weeklyRows) await persistWeeklySummary(db, row);
   return {
-    ...stationheadAggregateReadModelPayload(OHISAMA_SOURCE, collection, historyRows, dailyRows, observedAt),
+    ...stationheadAggregateReadModelPayload(
+      OHISAMA_SOURCE, collection,
+      historyRows.filter((row) => integer(row?.observed_at) >= observedAt - DAY_MS),
+      dailyRows, observedAt,
+    ),
+    previous_day_history: previousStationheadHistory([], historyRows, observedAt),
     weekly: weeklyRows,
   };
 }
@@ -238,6 +247,12 @@ export async function refreshOhisamaReadModel(env, collection, now = Date.now())
   if (channelId == null || observedAt == null) throw new Error('ohisama collection identity is missing');
 
   const existingPayload = await loadExistingPayload(env?.PAGES_RESPONSE_R2);
+  // One-off upgrade of old hot states. Afterwards the 24-hour comparison is
+  // maintained from the rolling R2 history without additional D1 reads.
+  if (existingPayload && !Array.isArray(existingPayload.previous_day_history)) {
+    const history = await loadHistory(db, channelId, observedAt);
+    existingPayload.previous_day_history = previousStationheadHistory([], history, observedAt);
+  }
   let payload;
   let mode = 'bootstrap';
   let dailyPersisted = false;

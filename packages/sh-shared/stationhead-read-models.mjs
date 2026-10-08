@@ -207,6 +207,23 @@ export function rollStationheadHistory(existingRows = [], collection, observedAt
   return [...rows, point];
 }
 
+// Same 24-hour comparison contract as Buddies, retained entirely in the
+// source-scoped read model. Each incremental observation recycles evicted points,
+// so normal updates do not require a second D1 history query.
+export function previousStationheadHistory(existingPrevious = [], currentRows = [], observedAt = Date.now()) {
+  const earliest = observedAt - 2 * DAY_MS;
+  const latest = observedAt - DAY_MS;
+  const byBucket = new Map();
+  for (const row of [...(Array.isArray(existingPrevious) ? existingPrevious : []), ...(Array.isArray(currentRows) ? currentRows : [])]) {
+    const time = integer(row?.observed_at);
+    const online = integer(row?.online_member_count);
+    if (time == null || online == null || time < earliest || time > latest) continue;
+    const bucket = stationheadFiveMinuteBucket(time);
+    if (bucket != null) byBucket.set(bucket, { observed_at: time, online_member_count: online });
+  }
+  return [...byBucket.values()].sort((left, right) => left.observed_at - right.observed_at);
+}
+
 export function mergeStationheadDailyRows(existingRows = [], currentRow) {
   const normalizedCurrent = normalizeStationheadDaily([currentRow])[0];
   if (!normalizedCurrent?.period_key) return normalizeStationheadDaily(existingRows);

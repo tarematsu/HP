@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { auditRoutes } from '../scripts/capture-pages-visual-audit.mjs';
-import { ROUTES } from '../site/public/dashboard-navigation-config.js';
+import { NAVIGATION } from '../site/public/dashboard-navigation-config.js';
 
 const source = readFileSync(new URL('../scripts/capture-pages-visual-audit.mjs', import.meta.url), 'utf8');
 test('visual audit covers every registered route across all sources', () => {
   const routes = auditRoutes();
-  assert.deepEqual(routes.map(({ mode }) => mode).sort(), Object.keys(ROUTES).sort());
+  assert.deepEqual(routes.map(({ mode }) => mode).sort(), NAVIGATION.flatMap(section => section.sources.flatMap(channel => channel.functions.map(item => item.mode))).sort());
   assert.equal(new Set(routes.map(({ mode }) => mode)).size, routes.length);
   assert.ok(routes.some(({ source, mode }) => source === 'hinata' && mode === 'hinata'));
   assert.ok(routes.some(({ source }) => source === 'kugou_music'));

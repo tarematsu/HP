@@ -4,6 +4,7 @@ import { bindStationheadHistoryGranularity } from './stationhead-history-granula
 const view = mountStationheadChannelShell({
   id: 'hinataView',
   anchorIds: ['historyView', 'currentView'],
+  showTabs: false,
 });
 
 if (view) {

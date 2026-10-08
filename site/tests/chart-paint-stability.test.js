@@ -40,7 +40,7 @@ test('history charts use the shared paint gate controller', () => {
 });
 
 test('current dashboard renders directly from the unified materialized payload', () => {
-  assert.match(channelReadModel, /fetchJson\('\/api\/dashboard\?history=0'/);
+  assert.match(channelReadModel, /currentUrl: '\/api\/dashboard\?history=0'/);
   assert.match(channelReadModel, /history_24h: normalizedHistory/);
   assert.match(channelReadModel, /previous_day_history: previousDayHistory/);
   assert.match(channelRuntime, /function renderCurrent\(runtime, payload\)/);

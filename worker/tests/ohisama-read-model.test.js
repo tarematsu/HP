@@ -5,6 +5,7 @@ import {
   mergeStationheadDailyRows,
   nextStationheadDailySummary,
   normalizeStationheadHistory,
+  previousStationheadHistory,
   rollStationheadHistory,
   stationheadAggregateReadModelPayload,
 } from '../../packages/sh-shared/stationhead-read-models.mjs';
@@ -206,4 +207,23 @@ test('rolling history appends one point, replaces the same five-minute bucket, a
   assert.equal(history[0].observed_at, observedAt - 5 * 60_000);
   assert.equal(history[1].observed_at, observedAt);
   assert.equal(history[1].stream_delta_5m, 30);
+});
+
+test('Ohisama previous-day overlay follows Buddies rolling 24h contract without D1 on incremental updates', () => {
+  const now = Date.parse('2026-10-09T03:00:00Z');
+  const DAY = 86_400_000;
+  const currentAndPrevious = [
+    { observed_at: now - DAY * 2 - 1000, online_member_count: 999 },
+    { observed_at: now - DAY * 1.8, online_member_count: 12 },
+    { observed_at: now - DAY * 1.2, online_member_count: 18 },
+    { observed_at: now - DAY * 0.8, online_member_count: 20 },
+  ];
+  const bootstrap = previousStationheadHistory([], currentAndPrevious, now);
+  assert.deepEqual(bootstrap.map(row => row.online_member_count), [12, 18]);
+  const updated = previousStationheadHistory(bootstrap, [
+    { observed_at: now - DAY + 300_000, online_member_count: 25 },
+    { observed_at: now - 300_000, online_member_count: 30 },
+  ], now + 600_000);
+  assert.deepEqual(updated.map(row => row.online_member_count), [12, 18, 25]);
+  assert.ok(updated.every(row => row.observed_at >= now - 2 * DAY && row.observed_at <= now - DAY + 600_000));
 });

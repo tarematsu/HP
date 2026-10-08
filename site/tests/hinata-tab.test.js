@@ -21,9 +21,10 @@ const readModelService = readFileSync(new URL('../functions/lib/pages-read-model
 
 test('Pages keeps Ohisama behind the shared lazy dashboard route', () => {
   assert.doesNotMatch(metrics, /hinata-shell\.js/);
-  assert.equal(ROUTES.hinata.kind, 'lazy');
+  assert.equal(ROUTES.hinata.kind, 'stationhead');
   assert.equal(ROUTES.hinata.viewId, 'hinataView');
-  assert.equal(ROUTES.hinata.moduleId, 'hinata');
+  assert.equal(ROUTES.hinata.panel, 'current');
+  assert.equal(ROUTES['hinata-past'].panel, 'history');
   const navigation = navigationForMode('hinata');
   assert.equal(navigation.source.id, 'hinata');
   assert.equal(navigation.source.label, 'Ohisama');
@@ -54,18 +55,18 @@ test('Ohisama charts and tables are rendered by the shared Stationhead runtime',
   assert.match(runtime, /listener_max/);
   assert.match(runtime, /stream_growth/);
   assert.match(runtime, /member_growth/);
-  assert.match(runtime, /appendEmptyTableRow\(body, '日次データはまだありません。', 10\)/);
+  assert.ok(runtime.includes("isWeekly ? '週次データはまだありません。' : '日次データはまだありません。'"));
   assert.match(shell, /再生数増加/);
   assert.match(shell, /5分単位/);
 });
 
 test('Ohisama frontend difference is isolated to the materialized read-model adapter', () => {
   assert.match(readModel, /function ohisamaModel\(\)/);
-  assert.match(readModel, /fetchJson\('\/api\/hinata'/);
+  assert.match(readModel, /currentUrl: '\/api\/hinata'/);
   assert.match(readModel, /source: 'ohisama'/);
   assert.match(readModel, /capabilities: \['current', 'history', 'played-tracks', 'likes'\]/);
   assert.match(readModel, /payload\?\.queue/);
-  assert.match(readModel, /createStationheadTrackHistoryClient\('ohisama', '日向坂46', fetchJson\)/);
+  assert.match(readModel, /createStationheadTrackHistoryClient\(source, artistFilter, fetchJson\)/);
   assert.doesNotMatch(readModel, /payload\?\.played_history/);
   assert.match(readModel, /endpoint\('ranking_only=1&ranking_limit=500'\)/);
   assert.doesNotMatch(readModel, /payload\.likes/);
