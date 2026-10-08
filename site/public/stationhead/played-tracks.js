@@ -22,7 +22,12 @@ export function renderPlayed(runtime, rows) {
 
 export async function loadPlayed(runtime, { force = false } = {}) {
   const sequence = ++runtime.playedSequence; const current = () => sequence === runtime.playedSequence && runtime.section === 'played-tracks' && !runtime.root.hidden;
-  if (!runtime.playedDates.length || force) runtime.playedDates = await runtime.model.loadPlayedIndex({ force }); if (!current()) return;
+  if (!runtime.playedDates.length || force) {
+    const dates = await runtime.model.loadPlayedIndex({ force });
+    if (!current()) return;
+    runtime.playedDates = dates;
+  }
+  if (!current()) return;
   const week = Boolean(role(runtime.root, 'played-week')?.checked); const periods = week ? [...new Set(runtime.playedDates.map(weekStart).filter(Boolean))] : runtime.playedDates; if (!runtime.playedPeriod || !periods.includes(runtime.playedPeriod)) runtime.playedPeriod = periods.at(-1) || '';
   const strip = role(runtime.root, 'played-periods'); if (strip) { strip.replaceChildren(); for (const period of periods) { const button = document.createElement('button'); button.type = 'button'; button.className = `played-tracks-period${period === runtime.playedPeriod ? ' is-selected' : ''}`; button.dataset.period = period; button.textContent = `${shortDate(period)}${week ? ' (週)' : ''}`; button.addEventListener('click', async () => { runtime.playedPeriod = period; await loadPlayed(runtime); }); strip.append(button); } }
   if (!runtime.playedPeriod) { renderPlayed(runtime, []); return; } const from = runtime.playedPeriod; const to = week ? addDays(from, 6) : from; const nextRows = await runtime.model.loadPlayedPeriod(from, to, { force }); if (current()) renderPlayed(runtime, nextRows);
