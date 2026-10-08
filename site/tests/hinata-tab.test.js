@@ -55,7 +55,7 @@ test('Ohisama charts and tables are rendered by the shared Stationhead runtime',
   assert.match(runtime, /listener_max/);
   assert.match(runtime, /stream_growth/);
   assert.match(runtime, /member_growth/);
-  assert.match(runtime, /appendEmptyTableRow\(body, '日次データはまだありません。', 10\)/);
+  assert.ok(runtime.includes("isWeekly ? '週次データはまだありません。' : '日次データはまだありません。'"));
   assert.match(shell, /再生数増加/);
   assert.match(shell, /5分単位/);
 });
