@@ -30,7 +30,7 @@ let drawTimer = 0;
 let chartModel = null;
 
 function activeMode() {
-  const active = document.querySelector('#modeTabs button.active[data-mode]');
+  const active = document.querySelector('#functionTabs button.active[data-mode]');
   const routeMode = String(active?.dataset?.mode || latestMode || '');
   if (routeMode === 'daily' && byId('historyPastWeekMode')?.checked) return 'weekly';
   return routeMode;
