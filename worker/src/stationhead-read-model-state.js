@@ -59,7 +59,7 @@ export async function loadStationheadReadModelState(
     if (payload) return { payload, source: 'hot' };
   }
   if (!modelKey) return { payload: null, source: 'none' };
-  const publicPayload = await loadMaterializedR2Json(bucket, modelKey).catch(() => null);
+  const publicPayload = await loadMaterializedR2Json(bucket, modelKey);
   const upgraded = upgrade(publicPayload);
   if (!upgraded || !acceptPublic(publicPayload, upgraded)) return { payload: null, source: 'none' };
   return { payload: upgraded, source: 'public' };
