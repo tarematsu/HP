@@ -200,7 +200,7 @@ test('cloud keeps redacted capture history in R2 and queues leaderboard refresh'
   assert.match(cloudProbe, /SECRET_KEY/);
   assert.match(cloudProbe, /MAX_BODY_CHARS = 65_536/);
   assert.match(cloudProbe, /contentIdentity\(deviceId, records\)/);
-  assert.match(cloudProbe, /DATA_BUCKET\.head\(LATEST_KEY\)/);
+  assert.match(cloudProbe, /LEADERBOARD_SOURCE_R2\.head\(LATEST_KEY\)/);
   assert.match(cloudProbe, /STATIONHEAD_LEADERBOARD_REFRESH_QUEUE\.send\(/);
   assert.match(cloudProbe, /refreshQueued === "1"/);
   assert.match(cloudProbe, /delivery: "queue"/);
@@ -209,4 +209,15 @@ test('cloud keeps redacted capture history in R2 and queues leaderboard refresh'
   assert.match(reportWorkflow, /Cloudflare R2 REST API/);
   assert.match(reportWorkflow, /name: stationhead-leaderboard-latest/);
   assert.match(reportWorkflow, /actions\/upload-artifact@v4/);
+});
+
+test('HomePanel leaderboard snapshots and consumer use the same source R2 bucket', () => {
+  const producer = JSON.parse(read('../../cloud/wrangler.jsonc'));
+  const consumer = JSON.parse(read('../../../worker/wrangler.scheduled-collection-jobs.jsonc'));
+  const source = producer.r2_buckets.find(entry => entry.binding === 'LEADERBOARD_SOURCE_R2');
+  const target = consumer.r2_buckets.find(entry => entry.binding === 'PAGES_RESPONSE_R2');
+  assert.ok(source?.bucket_name, 'HomePanel must explicitly configure its leaderboard bucket');
+  assert.equal(source.bucket_name, target?.bucket_name);
+  assert.match(cloudProbe, /env\.LEADERBOARD_SOURCE_R2\.put\(historyKey/);
+  assert.doesNotMatch(cloudProbe, /env\.DATA_BUCKET\.put\(historyKey/);
 });
