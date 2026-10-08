@@ -41,7 +41,7 @@ test('current chart, detail, daily view and playback share one normalized model'
 });
 
 test('current dashboard uses only the materialized dashboard request', () => {
-  assert.match(readModel, /fetchJson\('\/api\/dashboard\?history=0'/);
+  assert.match(readModel, /currentUrl: '\/api\/dashboard\?history=0'/);
   assert.equal((readModel.match(/\/api\/dashboard\?history=0/g) || []).length, 1);
   assert.doesNotMatch(entry, /dashboard-details-client\.js/);
 });
