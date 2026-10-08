@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
 import assert from 'node:assert/strict';
+import { NAVIGATION, navigationForMode } from '../public/dashboard-navigation-config.js';
 
 const root = resolve('site/public');
 const live = process.argv.includes('--live');
@@ -29,8 +30,8 @@ const runtimeErrors = [];
 const viewports = live
   ? [{ width: 390, height: 960, label: '390' }, { width: 1440, height: 960, label: '1440' }]
   : [{ width: 320, height: 960, label: '320' }, { width: 390, height: 960, label: '390' }, { width: 844, height: 390, label: '844-landscape' }, { width: 1440, height: 960, label: '1440' }];
-const modes = ['current', 'daily', 'weekly', 'played-tracks', 'likes', 'broadcasts', 'hinata', 'nogizaka', 'spotify', 'apple-music', 'amazon-music', 'youtube-music', 'kkbox', 'qq_music', 'kugou_music', 'ranking', 'followers'];
-const stationheadFunctions = ['現在', '日次', '週次', '再生履歴', 'いいね', 'リスパ'];
+const modes = NAVIGATION.flatMap(section => section.sources.flatMap(source => source.functions.map(item => item.mode)));
+const stationheadFunctions = NAVIGATION[0].sources[0].functions.map(item => item.label);
 
 function emptyFixture() {
   return {
@@ -161,13 +162,17 @@ try {
       assert.equal(await page.locator('#sourceSelect').isVisible(), width <= 760, `${mode}: native selector breakpoint`);
 
       const sourceLabels = width > 760 ? await page.locator('#sourceTabs button').allTextContents() : await page.locator('#sourceSelect option').allTextContents();
-      if (['current', 'daily', 'weekly', 'played-tracks', 'likes', 'broadcasts', 'ranking', 'followers', 'hinata', 'nogizaka'].includes(mode)) {
+      if (navigationForMode(mode).section.id === 'stationhead') {
         assert.deepEqual(sourceLabels, ['Buddies', 'Ohisama', 'Nogizaka', 'リーダーボード', 'フォロワー'], `${mode}: Stationhead targets only`);
       } else {
         assert.deepEqual(sourceLabels, ['Spotify', 'Apple Music', 'Amazon Music', 'YouTube Music', '🇹🇼KKBOX', '🇨🇳QQ音乐', '🇨🇳酷狗音乐'], `${mode}: streaming services only`);
       }
-      if (['current', 'daily', 'weekly', 'played-tracks', 'likes', 'broadcasts'].includes(mode)) {
+      if (navigationForMode(mode).source.id === 'buddies') {
         assert.deepEqual(await page.locator('#functionTabs button').allTextContents(), stationheadFunctions, `${mode}: Buddies functions`);
+      }
+      if (navigationForMode(mode).source.id === 'hinata') {
+        assert.deepEqual(await page.locator('#functionTabs button').allTextContents(),
+          NAVIGATION[0].sources[1].functions.map(item => item.label), `${mode}: Ohisama shares the channel functions`);
       }
       if (['ranking', 'followers'].includes(mode)) {
         assert.deepEqual(await page.locator('#functionTabs button').allTextContents(), [], `${mode}: standalone source`);
@@ -178,13 +183,13 @@ try {
         assert.equal(await page.locator('[data-role="track-image"]').isHidden(), true, 'broken artwork stays hidden');
         assert.equal(await page.locator('.track-fallback').isVisible(), true, 'broken artwork keeps fallback visible');
       }
-      if (live && ['daily', 'weekly'].includes(mode)) {
+      if (live && ['past', 'hinata-past'].includes(mode)) {
         // Network idle can precede JSON parsing, the daily overlay and table rendering.
         // Wait for the selected route's data, while retaining the non-empty assertion.
         try {
           await page.waitForFunction((expectedMode) => {
-            const view = document.getElementById('historyView');
-            const cell = view?.querySelector('#tbody tr td');
+            const view = document.getElementById(mode === 'past' ? 'currentView' : 'hinataView');
+            const cell = view?.querySelector('[data-role="daily-tbody"] tr td');
             return location.hash === `#${expectedMode}` && view && !view.hidden
               && /^\d{4}/.test(cell?.textContent || '');
           }, mode, { timeout: 30000 });
@@ -192,7 +197,7 @@ try {
           await page.screenshot({ path: `${output}/history-not-ready-${label}.png`, fullPage: true });
           throw new Error(`${mode}: history data did not load; API results: ${JSON.stringify(apiResults)}`, { cause: error });
         }
-        assert.match(await page.locator('#tbody tr td').first().textContent(), /^\d{4}/, `${mode}: history data did not load`);
+        assert.match(await page.locator('.dashboard-view:not([hidden]) [data-role="daily-tbody"] tr td').first().textContent(), /^\d{4}/, `${mode}: history data did not load`);
       }
       if (!live && width === 320 && ['broadcasts', 'ranking', 'youtube-music', 'kkbox'].includes(mode)) await stressVisibleLayout(page, label);
       await page.screenshot({ path: `${output}/${label}.png`, fullPage: true });
