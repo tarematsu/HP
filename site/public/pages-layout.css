@@ -102,14 +102,8 @@
   white-space: normal;
 }
 .summary-cards strong {
-  overflow: visible;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-.history-view #summaryCards strong {
   font-size: clamp(1.25rem, 2.75vw, 2.25rem);
   white-space: nowrap;
-  overflow-wrap: normal;
 }
 .summary-cards .summary-date {
   font-size: clamp(.9rem, 3vw, 1.3rem);
