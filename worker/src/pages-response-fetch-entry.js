@@ -83,6 +83,8 @@ export async function runPagesResponseFetch(
   _contextOrDependencies = EMPTY_DEPENDENCIES,
   injectedDependencies = EMPTY_DEPENDENCIES,
 ) {
+  const context = typeof _contextOrDependencies?.waitUntil === 'function'
+    ? _contextOrDependencies : null;
   const dependencies = typeof _contextOrDependencies?.waitUntil === 'function'
     ? injectedDependencies
     : _contextOrDependencies;
@@ -92,13 +94,23 @@ export async function runPagesResponseFetch(
   }
   const modelKey = String(url.searchParams.get('key') || '').trim();
   if (!modelKey) return new Response(null, { status: 400 });
-  const now = dependencies.now?.() ?? Date.now();
+  const startedAt = Date.now();
+  const now = dependencies.now?.() ?? startedAt;
   const maximumAge = PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS.has(modelKey)
     ? Number.MAX_SAFE_INTEGER
     : materializedResponseMaximumAge(modelKey, env);
   try {
     let response = null;
     if (modelKey === TRACK_HISTORY_MODEL_KEY && url.searchParams.get('api') === '1') {
+      const cache = dependencies.responseCache
+        ?? (context && typeof caches !== 'undefined' ? caches.default : null);
+      // This API already declares a five-minute public cache lifetime. Retain
+      // the full query so source, range, limits and invalid parameters stay isolated.
+      const cacheKey = new Request(`https://track-history-cache.internal/v1${url.pathname}${url.search}`);
+      if (cache) {
+        const cached = await cache.match(cacheKey).catch(() => null);
+        if (cached) return cached;
+      }
       const loadTrackHistoryApi = dependencies.loadTrackHistoryApiResponse
         || (await loadTrackHistoryApiModule()).loadTrackHistoryR2ApiResponse;
       response = await loadTrackHistoryApi(
@@ -108,11 +120,21 @@ export async function runPagesResponseFetch(
         materializedStaleMaximumAge(env, maximumAge),
         dependencies.trackHistory || EMPTY_DEPENDENCIES,
       );
+      if (cache && context && response?.ok) {
+        context.waitUntil(cache.put(cacheKey, response.clone()).catch(() => {}));
+      }
     } else if (PUBLIC_R2_MODEL_KEYS.has(modelKey)) {
       response = await loadCanonicalR2(env, modelKey, now, maximumAge, dependencies);
     }
     if (modelKey === FOLLOWERS_MODEL_KEY) {
       response = await normalizeFollowersResponse(response, now);
+    }
+    const elapsedMs = Date.now() - startedAt;
+    if (elapsedMs >= 100 && PUBLIC_R2_MODEL_KEYS.has(modelKey)) {
+      console.info(JSON.stringify({
+        event: 'pages_response_slow_read', model_key: modelKey,
+        api: url.searchParams.get('api') === '1', elapsed_ms: elapsedMs,
+      }));
     }
     return response || new Response(null, {
       status: 404,
