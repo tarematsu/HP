@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { DatabaseSync } from 'node:sqlite';
 
 import {
   pruneOldSnapshots,
@@ -96,9 +97,9 @@ class FakeMinuteDb {
   prepare(sql) {
     this.calls.push(sql);
     return {
-      bind: (start, end) => ({
+      bind: (channelId, ...minutes) => ({
         all: async () => ({
-          results: this.facts.filter((row) => row.minute_at >= start && row.minute_at < end),
+          results: this.facts.filter((row) => row.channel_id === channelId && minutes.includes(row.minute_at)),
         }),
       }),
     };
@@ -236,4 +237,41 @@ test('explicit retention disable remains distinguishable', async () => {
     await pruneOldSnapshots({ SNAPSHOT_RETENTION_ENABLED: '0' }),
     { skipped: true, reason: 'disabled' },
   );
+});
+
+test('retention probes only unique candidate keys with bounded bindings and indexed seeks', async () => {
+  const sqlite = new DatabaseSync(':memory:');
+  sqlite.exec(`CREATE TABLE sh_minute_facts(channel_id INTEGER,minute_at INTEGER,
+    UNIQUE(channel_id,minute_at));`);
+  const now = Date.UTC(2026, 9, 9);
+  const day = now - 31 * DAY_MS;
+  const insert = sqlite.prepare('INSERT INTO sh_minute_facts VALUES(?,?)');
+  for (let index = 0; index < 1440; index++) {
+    if (index !== 17) insert.run(318, day + index * MINUTE_MS);
+    insert.run(999, day + index * MINUTE_MS);
+  }
+  const snapshots = Array.from({ length: 250 }, (_, index) => ({
+    id: index + 1, channel_id: 318, observed_at: day + index * MINUTE_MS,
+  }));
+  snapshots.push({ id: 251, channel_id: 318, observed_at: day + 1000 });
+  const source = new FakeBuddiesDb({ snapshots });
+  const reads = [];
+  const minuteDb = { prepare(sql) { return { bind(...values) {
+    assert.ok(values.length <= 100);
+    const plan = sqlite.prepare('EXPLAIN QUERY PLAN ' + sql).all(...values);
+    assert.ok(plan.every(row => !/SCAN sh_minute_facts/.test(row.detail)));
+    assert.match(plan.map(row => row.detail).join(' '), /channel_id=\? AND minute_at=\?/);
+    return { async all() {
+      const results = sqlite.prepare(sql).all(...values);
+      reads.push(results.length);
+      return { results };
+    } };
+  } }; } };
+  const result = await pruneOldSnapshots({ BUDDIES_DB: source, MINUTE_DB: minuteDb,
+    SNAPSHOT_RETENTION_MAX_BATCHES: 1 }, now);
+  assert.equal(result.deleted.sh_channel_snapshots, 250);
+  assert.deepEqual(source.snapshots.map(row => row.id), [18]);
+  assert.equal(reads.length, 3);
+  assert.equal(reads.reduce((sum,count) => sum+count,0), 249);
+  sqlite.close();
 });

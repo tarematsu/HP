@@ -10,6 +10,7 @@ const MAX_MAX_BATCHES = 100;
 const DAY_MS = 24 * 60 * 60_000;
 const MINUTE_MS = 60_000;
 const MAX_FACT_CHECK_DAYS = 4;
+const FACT_PROBE_MINUTES_PER_QUERY = 99;
 const STATE_ID = 'snapshot-retention-v1';
 const REQUIRED_RETENTION_INDEXES = Object.freeze([
   'idx_sh_channel_snapshots_observed_id',
@@ -139,13 +140,31 @@ async function loadChannelSnapshotCandidates(db, cutoff, size) {
   })).filter((row) => row.id != null && row.observedAt != null);
 }
 
-async function loadMaterializedFactKeys(minuteDb, start, end) {
-  const result = await minuteDb.prepare(`SELECT channel_id,minute_at
-    FROM sh_minute_facts INDEXED BY idx_sh_minute_facts_time
-    WHERE minute_at>=? AND minute_at<?`).bind(start, end).all();
-  return new Set((result?.results || []).map((row) => (
-    factKey(integer(row.channel_id), integer(row.minute_at))
-  )));
+async function loadMaterializedFactKeys(minuteDb, candidates) {
+  const byChannel = new Map();
+  for (const row of candidates) {
+    if (row.channelId == null) continue;
+    const minutes = byChannel.get(row.channelId) || new Set();
+    minutes.add(minuteAt(row.observedAt));
+    byChannel.set(row.channelId, minutes);
+  }
+  const keys = new Set();
+  for (const [channelId, uniqueMinutes] of byChannel) {
+    const minutes = [...uniqueMinutes];
+    for (let offset = 0; offset < minutes.length; offset += FACT_PROBE_MINUTES_PER_QUERY) {
+      const chunk = minutes.slice(offset, offset + FACT_PROBE_MINUTES_PER_QUERY);
+      // UNIQUE(channel_id,minute_at) covers these exact probes. Keep the D1
+      // binding count at most 100 and avoid loading unrelated minutes/channels.
+      const result = await minuteDb.prepare(`SELECT channel_id,minute_at
+        FROM sh_minute_facts
+        WHERE channel_id=? AND minute_at IN (${chunk.map(() => '?').join(',')})`)
+        .bind(channelId, ...chunk).all();
+      for (const row of result?.results || []) {
+        keys.add(factKey(integer(row.channel_id), integer(row.minute_at)));
+      }
+    }
+  }
+  return keys;
 }
 
 async function deletableChannelSnapshotIds(db, minuteDb, cutoff, size) {
@@ -165,13 +184,8 @@ async function deletableChannelSnapshotIds(db, minuteDb, cutoff, size) {
     if (days.length >= MAX_FACT_CHECK_DAYS) break;
   }
   const eligibleDays = new Set(days);
-  const factKeys = new Set();
-  for (const day of days) {
-    const keys = await loadMaterializedFactKeys(minuteDb, day, day + DAY_MS);
-    for (const key of keys) factKeys.add(key);
-  }
-
   const checked = candidates.filter((row) => eligibleDays.has(dayAt(row.observedAt)));
+  const factKeys = await loadMaterializedFactKeys(minuteDb, checked);
   const ids = [];
   for (const row of checked) {
     const minute = minuteAt(row.observedAt);
