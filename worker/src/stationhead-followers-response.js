@@ -73,6 +73,7 @@ export function sanitizeFollowersPayload(payload) {
 
 export async function normalizeFollowersResponse(response, now = Date.now()) {
   if (!response) return emptyFollowersResponse(now);
+  if (response.headers.get('x-followers-normalized') === '1') return response;
   try {
     const payload = await response.clone().json();
     return new Response(JSON.stringify(sanitizeFollowersPayload(payload)), {
