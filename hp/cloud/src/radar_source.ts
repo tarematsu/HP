@@ -274,7 +274,7 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
   const [observed, shortTerm, nowcast] = await Promise.all([
     fetchJson<RadarTimeEntry[]>(JMA_OBSERVED_TIMES_URL),
     fetchJson<RadarTimeEntry[]>(JMA_SHORT_TERM_TIMES_URL),
-    fetchJson<RadarTimeEntry[]>(JMA_NOWCAST_FORECAST_TIMES_URL),
+    fetchJson<RadarTimeEntry[]>(JMA_NOWCAST_FORECAST_TIMES_URL).catch(() => [] as RadarTimeEntry[]),
   ]);
   const referenceAt = Date.now();
   const currentEntry = selectLatestObservedRadarEntry(observed);
