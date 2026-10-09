@@ -431,9 +431,9 @@ def self_test() -> int:
 
 
 def main() -> int:
-    if not all((TOKEN, ACCOUNT, CONFIGS, WORKER, KV_BINDINGS, DO_BINDINGS)):
+    if not all((TOKEN, ACCOUNT, CONFIGS, WORKER, DO_BINDINGS)):
         raise RuntimeError(
-            "Cloudflare token, resolved account ID, runtime Worker, config globs, and KV/DO bindings are required"
+            "Cloudflare token, resolved account ID, runtime Worker, config globs, and DO bindings are required"
         )
 
     configured_queue_names, buckets = configured_resources()
