@@ -36,12 +36,12 @@ export async function refreshHistoryReadModel(env, message, now = Date.now(), de
   }
   const key = message.key;
   const load = dependencies.loadRevisions || loadHistorySourceRevisions;
-  const before = await load(env, now);
+  const before = await load(env, now, [key]);
   const sourceRevision = before[key];
   if (await historyPublicationIsComplete(env.PAGES_RESPONSE_R2, key, sourceRevision)) return { key, status: 'unchanged' };
   const payload = await (dependencies.render || renderHistoryReadModel)(key, env, now);
   if (payload?.ok !== true) throw new Error('history model generation failed');
-  if ((await load(env, now))[key] !== sourceRevision) throw new Error('history source changed during generation');
+  if ((await load(env, now, [key]))[key] !== sourceRevision) throw new Error('history source changed during generation');
   await publishHistoryReadModel(env.PAGES_RESPONSE_R2, key, payload, {
     now,
     sourceRevision,

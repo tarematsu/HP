@@ -125,3 +125,38 @@ test('publication stores source and renderer identity as R2 metadata', async () 
   assert.equal(stored.customMetadata.source_revision, 'source:history:daily');
   assert.equal(stored.customMetadata.renderer_revision, 'deployed-renderer');
 });
+
+
+test('single-model revision checks read only dependencies and keep identical tokens', async () => {
+  const calls = [];
+  const env = { OTHER_DB: { prepare() { return { bind(...keys) {
+    calls.push(keys);
+    return { async all() { return { results: keys.map(model_key => ({
+      model_key, revision: 3, updated_at: 100,
+    })) }; } };
+  } }; } } };
+  const now = Date.UTC(2026, 9, 9);
+  const all = await loadHistorySourceRevisions(env, now);
+  const expected = {
+    'history:daily': ['history:daily','track-history'],
+    'history:weekly': ['history:weekly','track-history','weekly-ranking'],
+    'history:broadcasts': ['history:broadcasts'],
+    'host-history:summary': ['host-history:summary','history:broadcasts'],
+  };
+  for (const [key,dependencies] of Object.entries(expected)) {
+    const result = await loadHistorySourceRevisions(env, now, [key]);
+    assert.deepEqual(calls.at(-1), dependencies);
+    assert.deepEqual(result, { [key]: all[key] });
+  }
+});
+
+test('refresh scopes both race-safety checks to the model being published', async () => {
+  const f = fixture();
+  const keys = [];
+  f.deps.loadRevisions = async (_env, _now, selected) => {
+    keys.push(selected);
+    return f.revisions;
+  };
+  await refreshHistoryReadModel(f.env, message('history:daily'), 100, f.deps);
+  assert.deepEqual(keys, [['history:daily'], ['history:daily']]);
+});
