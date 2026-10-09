@@ -106,6 +106,7 @@ const recoveryEntries = WORKFLOW_HEALTH_POLICIES
   .filter((policy) => policy.recoverBeforeStale)
   .map((policy) => [policy.key, freeze({
     file: policy.workflow,
+    ignoreExpectedWorkflowRunSkips: Boolean(policy.ignoreExpectedWorkflowRunSkips),
     recoverAfterMs: recoveryAfterMs(policy),
     healthStaleAfterMs: policy.staleAfterMinutes * MINUTE_MS,
   })]);

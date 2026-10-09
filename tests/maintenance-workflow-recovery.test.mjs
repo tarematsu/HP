@@ -208,3 +208,14 @@ test('recovery watchdog has an independent timer and remains budget-safe', () =>
   assert.match(script, /RECOVERY_WORKFLOWS/);
   assert.doesNotMatch(script, /WORKFLOWS\.pages|states\.pages|force_all/);
 });
+
+
+test('expected workflow chaining skips do not hide stale runtime or actual failures', () => {
+  const skipped = { ...run({ minutesAgo: 1, conclusion: 'skipped' }), event: 'workflow_run' };
+  const options = { now, ...WORKFLOWS.runtime };
+  assert.equal(workflowRunState([skipped, run({ minutesAgo: 80 })], options).state, 'stale');
+  assert.equal(workflowRunState([skipped], options).state, 'missing');
+  assert.equal(workflowRunState([skipped, run({ minutesAgo: 10, conclusion: 'failure' })], options).state, 'failed');
+  assert.equal(workflowRunState([{ ...skipped, event: 'schedule' }], options).state, 'failed');
+  assert.equal(workflowRunState([skipped], { now, ...WORKFLOWS.dataRepair }).state, 'failed');
+});
