@@ -5,6 +5,8 @@ export const YOUTUBE_PLAYLIST_URL =
 
 const RESOLVE_TIMEOUT_MS = 8_000;
 const MAX_PLAYLIST_HTML_CHARS = 6 * 1024 * 1024;
+// Longer than the longest renderer/endpoint match, including its delimiters.
+const STREAM_SCAN_OVERLAP_CHARS = 8192;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const PERSISTENT_CACHE_TTL_SECONDS = 6 * 60 * 60;
 const PERSISTENT_CACHE_URL =
@@ -58,22 +60,24 @@ async function firstYoutubePlaylistVideoIdFromResponse(response) {
 
   const decoder = new TextDecoder();
   let html = '';
+  let receivedChars = 0;
   try {
-    while (html.length <= MAX_PLAYLIST_HTML_CHARS) {
+    while (receivedChars <= MAX_PLAYLIST_HTML_CHARS) {
       const { done, value } = await reader.read();
       if (done) {
         html += decoder.decode();
         return firstYoutubePlaylistVideoId(html);
       }
-      html += decoder.decode(value, { stream: true });
+      const chunk = decoder.decode(value, { stream: true });
+      receivedChars += chunk.length;
+      if (receivedChars > MAX_PLAYLIST_HTML_CHARS) break;
+      html += chunk;
       const videoId = firstYoutubePlaylistVideoId(html);
-      if (videoId) {
-        try { await reader.cancel(); } catch (_) {}
-        return videoId;
-      }
-      if (html.length > MAX_PLAYLIST_HTML_CHARS) break;
+      if (videoId) return videoId;
+      html = html.slice(-STREAM_SCAN_OVERLAP_CHARS);
     }
   } finally {
+    try { await reader.cancel(); } catch (_) {}
     try { reader.releaseLock?.(); } catch (_) {}
   }
   throw new Error('youtube playlist first item not found within scan limit');
