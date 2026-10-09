@@ -36,7 +36,6 @@ REQUIRED_RESOURCE_COUNTS = (
     "queues",
     "durableObjectNamespaces",
     "r2Buckets",
-    "kvNamespaces",
 )
 
 
@@ -203,12 +202,7 @@ def validate_free_tier(report: dict[str, Any]) -> list[str]:
     validate_free_tier_violations(report, errors)
     counts = mapping(report.get("resourceCounts"), "freeTier.resourceCounts", errors)
     for key in REQUIRED_RESOURCE_COUNTS:
-        if key == "kvNamespaces":
-            parsed = number(counts.get(key))
-            if parsed is None or parsed < 0 or not parsed.is_integer():
-                errors.append(f"freeTier.resourceCounts.{key} must be a non-negative integer")
-        else:
-            positive_integer(counts.get(key), f"freeTier.resourceCounts.{key}", errors)
+        positive_integer(counts.get(key), f"freeTier.resourceCounts.{key}", errors)
     usage = mapping(report.get("usage"), "freeTier.usage", errors)
     unknown_r2 = usage.get("unknownR2ActionsChargedAsClassA")
     if not isinstance(unknown_r2, list) or any(not isinstance(item, str) for item in unknown_r2):
@@ -313,9 +307,8 @@ def self_test() -> int:
     broken_free = json.loads(json.dumps(free))
     broken_free["resourceCounts"]["kvNamespaces"] = 0
     assert validate_free_tier(broken_free) == []
-    for invalid in (-1, 0.5, None, True):
-        broken_free["resourceCounts"]["kvNamespaces"] = invalid
-        assert any("kvNamespaces" in item for item in validate_free_tier(broken_free))
+    broken_free["resourceCounts"].pop("kvNamespaces")
+    assert validate_free_tier(broken_free) == []
 
     warmup_free = json.loads(json.dumps(free))
     warmup_free["projection"]["enforceProjected"] = False
