@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   nextJstRadarTargetMillis,
   selectLatestObservedRadarEntry,
+  selectNextNowcastEntry,
+  selectNextRadarForecast,
   selectNextShortTermEntry,
   type RadarTimeEntry,
 } from "../src/radar_source";
@@ -96,6 +98,67 @@ describe("cloud radar three-panel timing", () => {
     ];
     expect(selectNextShortTermEntry(frames, 22, now)?.validtime).toBe("20261009020000");
     expect(selectNextShortTermEntry(frames, 9, now)?.validtime).toBe("20261009000000");
+  });
+
+  it("uses the exact 22:00 nowcast at 21:25 JST instead of the RASRF horizon maximum", () => {
+    const now = utc("20261009122500"); // 2026-10-09 21:25 JST
+    const shortTerm = [
+      rasrf("20261009060000", "20261010030000"), // Tomorrow 12:00 JST
+      rasrf("20261009060000", "20261010000000"), // Tomorrow 09:00 JST
+    ];
+    const earlier = { basetime: "20261009120500", validtime: "20261009130000", elements: ["hrpns"] };
+    const latest = { basetime: "20261009122000", validtime: "20261009130000", elements: ["hrpns"] };
+    const nowcast = [
+      earlier,
+      latest,
+      { basetime: "20261009122000", validtime: "20261009130500", elements: ["hrpns"] },
+    ];
+    expect(selectNextShortTermEntry(shortTerm, 22, now)?.validtime).toBe("20261010030000");
+    expect(selectNextNowcastEntry(nowcast, 22, now)).toEqual(latest);
+    expect(selectNextRadarForecast(shortTerm, nowcast, 22, now)).toEqual({
+      product: "jma",
+      entry: latest,
+    });
+    expect(selectNextRadarForecast(shortTerm, nowcast, 9, now)).toEqual({
+      product: "rasrf",
+      entry: shortTerm[1],
+    });
+  });
+
+  it("prefers the exact nowcast when both sources publish the target hour", () => {
+    const now = utc("20261009122000"); // 21:20 JST
+    const nearTerm = { basetime: "20261009121000", validtime: "20261009130000", elements: ["hrpns"] };
+    const hourly = rasrf("20261009020000", "20261009130000");
+    expect(selectNextRadarForecast([hourly], [nearTerm], 22, now)).toEqual({
+      product: "jma",
+      entry: nearTerm,
+    });
+    expect(selectNextRadarForecast([hourly], [], 22, now)).toEqual({
+      product: "rasrf",
+      entry: hourly,
+    });
+  });
+
+  it("falls back to the latest short-term forecast only if neither source has the target hour", () => {
+    const now = utc("20261009140000"); // 23:00 JST; next 22:00 is tomorrow
+    const latest = rasrf("20261009130000", "20261010030000");
+    const nowcast = { basetime: "20261009135500", validtime: "20261009145500", elements: ["hrpns"] };
+    expect(selectNextRadarForecast([latest], [nowcast], 22, now)).toEqual({
+      product: "rasrf",
+      entry: latest,
+    });
+    expect(selectNextRadarForecast([], [], 22, now)).toBeUndefined();
+  });
+
+  it("ignores expired, future-base, invalid, or non-hrpns nowcast entries", () => {
+    const now = utc("20261009122500");
+    const valid = { basetime: "20261009121500", validtime: "20261009130000", elements: ["hrpns"] };
+    expect(selectNextNowcastEntry([
+      { basetime: "20261009123500", validtime: "20261009130000", elements: ["hrpns"] },
+      { basetime: "20261009121500", validtime: "20261009130000", elements: ["other"] },
+      { basetime: "invalid", validtime: "20261009130000", elements: ["hrpns"] },
+      valid,
+    ], 22, now)).toEqual(valid);
   });
 
   it("ignores non-RASRF elements, invalid entries, and non-none members", () => {
