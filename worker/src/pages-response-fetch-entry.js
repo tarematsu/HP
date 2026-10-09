@@ -1,3 +1,4 @@
+import { pagesResponseCacheKey, cacheablePagesResponse } from './pages-response-cache.js';
 import {
   MATERIALIZED_API_VARIANTS,
   MUSIC_SERVICE_API_MODELS,
@@ -124,10 +125,19 @@ export async function runPagesResponseFetch(
         context.waitUntil(cache.put(cacheKey, response.clone()).catch(() => {}));
       }
     } else if (PUBLIC_R2_MODEL_KEYS.has(modelKey)) {
+      const cache = dependencies.responseCache
+        ?? (context && typeof caches !== 'undefined' ? caches.default : null);
+      const key = pagesResponseCacheKey(url);
+      if (cache) {
+        const cached = await cache.match(key).catch(() => null);
+        if (cached && !responseIsStale(cached, now, maximumAge)) return cached;
+      }
       response = await loadCanonicalR2(env, modelKey, now, maximumAge, dependencies);
-    }
-    if (modelKey === FOLLOWERS_MODEL_KEY) {
-      response = await normalizeFollowersResponse(response, now);
+      if (modelKey === FOLLOWERS_MODEL_KEY) response = await normalizeFollowersResponse(response, now);
+      if (cache && context) {
+        const cacheResponse = cacheablePagesResponse(response, now, maximumAge);
+        if (cacheResponse) context.waitUntil(cache.put(key, cacheResponse).catch(() => {}));
+      }
     }
     const elapsedMs = Date.now() - startedAt;
     if (elapsedMs >= 100 && PUBLIC_R2_MODEL_KEYS.has(modelKey)) {
