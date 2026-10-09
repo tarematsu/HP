@@ -23,7 +23,6 @@ ACCOUNT = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
 WORKER = os.environ.get("CLOUDFLARE_RUNTIME_WORKER", "sh-runtime-orchestrator").strip()
 CONFIGS = csv_env("CLOUDFLARE_CONFIG_GLOBS")
 EXTRA_BUCKETS = csv_env("CLOUDFLARE_STORAGE_BUCKETS")
-KV_BINDINGS = csv_env("CLOUDFLARE_KV_BINDINGS")
 DO_BINDINGS = csv_env("CLOUDFLARE_DO_BINDINGS", "BUDDIES_COLLECTOR_COORDINATOR")
 OUT = Path(os.environ.get("FREE_TIER_USAGE_OUTPUT_DIR", "free-tier-usage"))
 GB = 1_000_000_000
@@ -431,9 +430,9 @@ def self_test() -> int:
 
 
 def main() -> int:
-    if not all((TOKEN, ACCOUNT, CONFIGS, WORKER, KV_BINDINGS, DO_BINDINGS)):
+    if not all((TOKEN, ACCOUNT, CONFIGS, WORKER, DO_BINDINGS)):
         raise RuntimeError(
-            "Cloudflare token, resolved account ID, runtime Worker, config globs, and KV/DO bindings are required"
+            "Cloudflare token, resolved account ID, runtime Worker, config globs, and DO bindings are required"
         )
 
     configured_queue_names, buckets = configured_resources()
@@ -487,7 +486,6 @@ def main() -> int:
             "queues": len(configured_queue_names),
             "durableObjectNamespaces": len(DO_BINDINGS),
             "r2Buckets": len(buckets),
-            "kvNamespaces": len(KV_BINDINGS),
         },
         "limits": LIMITS,
         "violations": violations,
