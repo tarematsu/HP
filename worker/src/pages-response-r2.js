@@ -1,3 +1,5 @@
+import { sanitizeFollowersPayload } from './stationhead-followers-response.js';
+
 const R2_RESPONSE_KEY_PREFIX = 'pages-response/v1/';
 const RAW_FORMAT = 'raw-response-v1';
 
@@ -35,6 +37,10 @@ export async function saveMaterializedR2Response(
 ) {
   const key = pagesR2ResponseKey(modelKey);
   if (!key || typeof r2?.put !== 'function') return null;
+  if (modelKey === 'followers') {
+    body = JSON.stringify(sanitizeFollowersPayload(JSON.parse(body)));
+    headers = { ...headers, 'x-followers-normalized': '1' };
+  }
   const updatedAt = Number(now) || Date.now();
   const customMetadata = {
     version: '1',

@@ -58,7 +58,6 @@ test('Sakurazaka and Buddies remain the only standalone collection cron owners',
 
 test('high-frequency status workflows are event-driven instead of cron-polled', () => {
   for (const path of [
-    '.github/workflows/recover-maintenance-workflows.yml',
     '.github/workflows/publish-github-deployment-health.yml',
     '.github/workflows/publish-github-actions-runner-health.yml',
   ]) {
