@@ -146,3 +146,38 @@ describe('YouTube playlist cloud startup', () => {
     expect(response.headers.get('x-homepanel-youtube-start')).toBe('native-fallback');
   });
 });
+
+
+describe('bounded playlist stream scanning', () => {
+  it('finds a renderer split across chunks after a large irrelevant prefix', async () => {
+    const html = 'x'.repeat(4 * 1024 * 1024)
+      + '"playlistVideoRenderer":{' + ' '.repeat(5990) + '"videoId":"QrStUvWxY12"}';
+    const chunks = [];
+    for (let offset = 0; offset < html.length; offset += 4096) {
+      chunks.push(new TextEncoder().encode(html.slice(offset, offset + 4096)));
+    }
+    let cursor = 0;
+    const reader = {
+      async read() { return cursor < chunks.length ? { value: chunks[cursor++], done: false } : { done: true }; },
+      cancel: vi.fn(async () => {}), releaseLock: vi.fn(),
+    };
+    const result = await resolveYoutubePlaylistStart({ disableCache: true,
+      fetchImpl: async () => ({ ok: true, body: { getReader: () => reader } }),
+    });
+    expect(result.videoId).toBe('QrStUvWxY12');
+    expect(reader.cancel).toHaveBeenCalled();
+  });
+
+  it('keeps the total size limit even though the rolling buffer is small', async () => {
+    let reads = 0;
+    const chunk = new TextEncoder().encode('x'.repeat(65536));
+    const reader = { async read() { reads++; return { done: false, value: chunk }; },
+      cancel: vi.fn(async () => {}), releaseLock: vi.fn() };
+    await expect(resolveYoutubePlaylistStart({ disableCache: true,
+      fetchImpl: async () => ({ ok: true, body: { getReader: () => reader } }),
+    })).rejects.toThrow('scan limit');
+    expect(reads).toBe(97);
+    expect(reader.cancel).toHaveBeenCalled();
+    expect(reader.releaseLock).toHaveBeenCalled();
+  });
+});
