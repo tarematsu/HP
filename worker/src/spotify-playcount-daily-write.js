@@ -22,6 +22,10 @@ export function spotifyDailyFinalizeStatement(db, message, previousDate) {
     WHERE c.snapshot_date=? AND c.run_token=?
     ON CONFLICT(snapshot_date,track_id) DO UPDATE SET
       playcount=excluded.playcount,delta=excluded.delta,
-      collected_at=excluded.collected_at,is_carried_forward=0`)
+      collected_at=excluded.collected_at,is_carried_forward=0
+    WHERE sh_spotify_playcount_daily.playcount IS NOT excluded.playcount
+      OR sh_spotify_playcount_daily.delta IS NOT excluded.delta
+      OR sh_spotify_playcount_daily.collected_at IS NOT excluded.collected_at
+      OR sh_spotify_playcount_daily.is_carried_forward IS NOT 0`)
     .bind(message.snapshot_date, previousDate, message.snapshot_date, message.run_token);
 }

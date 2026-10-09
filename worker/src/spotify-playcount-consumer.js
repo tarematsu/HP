@@ -63,7 +63,12 @@ async function persistCandidateTracks(db, message, tracks, collectedAt) {
         WHERE EXISTS (
           SELECT 1 FROM sh_spotify_collection_runs
           WHERE snapshot_date=? AND run_token=? AND status IN ('catalog','queued')
-        )`)
+        ) AND (sh_spotify_playcount_candidates.run_token IS NOT excluded.run_token
+          OR excluded.playcount>sh_spotify_playcount_candidates.playcount
+          OR (excluded.playcount=sh_spotify_playcount_candidates.playcount AND (
+            sh_spotify_playcount_candidates.album_id IS NOT excluded.album_id
+            OR excluded.collected_at>sh_spotify_playcount_candidates.collected_at
+          )))`)
         .bind(
           message.snapshot_date, message.run_token, track.track_id, message.album_id,
           track.playcount, collectedAt, message.snapshot_date, message.run_token,
@@ -283,7 +288,10 @@ async function finalizeAttempt(db, message) {
       WHERE c.snapshot_date=? AND c.run_token=?
       ON CONFLICT(track_id) DO UPDATE SET
         playcount=excluded.playcount,snapshot_date=excluded.snapshot_date,collected_at=excluded.collected_at
-      WHERE excluded.snapshot_date>=sh_spotify_playcount_current.snapshot_date`)
+      WHERE excluded.snapshot_date>=sh_spotify_playcount_current.snapshot_date
+        AND (sh_spotify_playcount_current.playcount IS NOT excluded.playcount
+          OR sh_spotify_playcount_current.snapshot_date IS NOT excluded.snapshot_date
+          OR sh_spotify_playcount_current.collected_at IS NOT excluded.collected_at)`)
       .bind(message.snapshot_date, message.snapshot_date, message.run_token),
     db.prepare(`DELETE FROM sh_spotify_playcount_current
       WHERE track_id IN (
