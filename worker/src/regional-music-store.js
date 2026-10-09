@@ -35,7 +35,11 @@ export async function saveRegionalArtist(env, value) {
     service_artist_id=excluded.service_artist_id,
     display_name=COALESCE(excluded.display_name,display_name),
     profile_url=COALESCE(excluded.profile_url,profile_url),
-    last_seen_at=excluded.last_seen_at`)
+    last_seen_at=excluded.last_seen_at
+  WHERE (excluded.service_artist_id) IS NOT regional_music_artist_profiles.service_artist_id
+    OR (COALESCE(excluded.display_name,display_name)) IS NOT regional_music_artist_profiles.display_name
+    OR (COALESCE(excluded.profile_url,profile_url)) IS NOT regional_music_artist_profiles.profile_url
+    OR (excluded.last_seen_at) IS NOT regional_music_artist_profiles.last_seen_at`)
     .bind(value.service, value.canonical_artist, value.service_artist_id,
       value.display_name ?? null, value.profile_url ?? null, observedAt, observedAt).run();
 
@@ -47,7 +51,12 @@ export async function saveRegionalArtist(env, value) {
     followers=COALESCE(excluded.followers,followers),
     likes=COALESCE(excluded.likes,likes),
     monthly_audience=COALESCE(excluded.monthly_audience,monthly_audience),
-    total_views=COALESCE(excluded.total_views,total_views)`)
+    total_views=COALESCE(excluded.total_views,total_views)
+  WHERE (excluded.observed_at) IS NOT regional_music_artist_daily.observed_at
+    OR (COALESCE(excluded.followers,followers)) IS NOT regional_music_artist_daily.followers
+    OR (COALESCE(excluded.likes,likes)) IS NOT regional_music_artist_daily.likes
+    OR (COALESCE(excluded.monthly_audience,monthly_audience)) IS NOT regional_music_artist_daily.monthly_audience
+    OR (COALESCE(excluded.total_views,total_views)) IS NOT regional_music_artist_daily.total_views`)
     .bind(snapshotDate, value.service, value.canonical_artist, observedAt,
       count(value.followers), count(value.likes), count(value.monthly_audience), count(value.total_views)).run();
 }
@@ -69,7 +78,14 @@ export async function saveRegionalTrack(env, value) {
     title=COALESCE(excluded.title,title),
     album_name=COALESCE(excluded.album_name,album_name),
     track_url=COALESCE(excluded.track_url,track_url),
-    last_seen_at=excluded.last_seen_at`)
+    last_seen_at=excluded.last_seen_at
+  WHERE (COALESCE(excluded.service_artist_id,service_artist_id)) IS NOT regional_music_tracks.service_artist_id
+    OR (COALESCE(excluded.canonical_artist,canonical_artist)) IS NOT regional_music_tracks.canonical_artist
+    OR (COALESCE(excluded.canonical_track_id,canonical_track_id)) IS NOT regional_music_tracks.canonical_track_id
+    OR (COALESCE(excluded.title,title)) IS NOT regional_music_tracks.title
+    OR (COALESCE(excluded.album_name,album_name)) IS NOT regional_music_tracks.album_name
+    OR (COALESCE(excluded.track_url,track_url)) IS NOT regional_music_tracks.track_url
+    OR (excluded.last_seen_at) IS NOT regional_music_tracks.last_seen_at`)
     .bind(value.service, value.service_track_id, value.service_artist_id ?? null,
       value.canonical_artist ?? null, trackId, value.title ?? null,
       value.album_name ?? null, value.track_url ?? null, observedAt, observedAt).run();
@@ -84,7 +100,14 @@ export async function saveRegionalTrack(env, value) {
     listeners=COALESCE(excluded.listeners,listeners),
     likes=COALESCE(excluded.likes,likes),
     comments=COALESCE(excluded.comments,comments),
-    popularity_rank=COALESCE(excluded.popularity_rank,popularity_rank)`)
+    popularity_rank=COALESCE(excluded.popularity_rank,popularity_rank)
+  WHERE (COALESCE(excluded.track_id,track_id)) IS NOT regional_music_track_daily.track_id
+    OR (excluded.observed_at) IS NOT regional_music_track_daily.observed_at
+    OR (COALESCE(excluded.plays,plays)) IS NOT regional_music_track_daily.plays
+    OR (COALESCE(excluded.listeners,listeners)) IS NOT regional_music_track_daily.listeners
+    OR (COALESCE(excluded.likes,likes)) IS NOT regional_music_track_daily.likes
+    OR (COALESCE(excluded.comments,comments)) IS NOT regional_music_track_daily.comments
+    OR (COALESCE(excluded.popularity_rank,popularity_rank)) IS NOT regional_music_track_daily.popularity_rank`)
     .bind(snapshotDate, value.service, value.service_track_id, observedAt,
       count(value.plays), count(value.listeners), count(value.likes), count(value.comments),
       positive(value.popularity_rank), trackId).run();
@@ -96,7 +119,12 @@ export async function saveRegionalTrack(env, value) {
     ) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(snapshot_date,service,canonical_artist,service_track_id) DO UPDATE SET
       service_artist_id=COALESCE(excluded.service_artist_id,service_artist_id),
       track_id=COALESCE(excluded.track_id,track_id),
-      observed_at=excluded.observed_at,position=excluded.position,rank_source=excluded.rank_source`)
+      observed_at=excluded.observed_at,position=excluded.position,rank_source=excluded.rank_source
+  WHERE (COALESCE(excluded.service_artist_id,service_artist_id)) IS NOT regional_music_artist_track_order.service_artist_id
+    OR (COALESCE(excluded.track_id,track_id)) IS NOT regional_music_artist_track_order.track_id
+    OR (excluded.observed_at) IS NOT regional_music_artist_track_order.observed_at
+    OR (excluded.position) IS NOT regional_music_artist_track_order.position
+    OR (excluded.rank_source) IS NOT regional_music_artist_track_order.rank_source`)
       .bind(snapshotDate,value.service,value.canonical_artist,value.service_artist_id ?? null,
         value.service_track_id,observedAt,positive(value.popularity_rank),source,trackId).run();
   }
@@ -113,7 +141,13 @@ export async function saveRegionalRelease(env, value) {
     release_type=CASE WHEN excluded.release_type='unknown' THEN release_type ELSE excluded.release_type END,
     release_year=COALESCE(excluded.release_year,release_year),
     release_url=COALESCE(excluded.release_url,release_url),
-    last_seen_at=excluded.last_seen_at`)
+    last_seen_at=excluded.last_seen_at
+  WHERE (excluded.canonical_artist) IS NOT regional_music_releases.canonical_artist
+    OR (COALESCE(excluded.title,title)) IS NOT regional_music_releases.title
+    OR (CASE WHEN excluded.release_type='unknown' THEN release_type ELSE excluded.release_type END) IS NOT regional_music_releases.release_type
+    OR (COALESCE(excluded.release_year,release_year)) IS NOT regional_music_releases.release_year
+    OR (COALESCE(excluded.release_url,release_url)) IS NOT regional_music_releases.release_url
+    OR (excluded.last_seen_at) IS NOT regional_music_releases.last_seen_at`)
     .bind(value.service, value.service_release_id, value.canonical_artist,
       value.title ?? null, value.release_type || 'unknown', positive(value.release_year),
       value.release_url ?? null, observedAt, observedAt).run();
@@ -130,7 +164,12 @@ export async function saveRegionalPlaylist(env, value) {
     playlist_url=COALESCE(excluded.playlist_url,playlist_url),
     playlist_type=CASE WHEN excluded.playlist_type='unknown' THEN playlist_type ELSE excluded.playlist_type END,
     owner_name=COALESCE(excluded.owner_name,owner_name),
-    last_seen_at=excluded.last_seen_at`)
+    last_seen_at=excluded.last_seen_at
+  WHERE (COALESCE(excluded.playlist_name,playlist_name)) IS NOT regional_music_playlists.playlist_name
+    OR (COALESCE(excluded.playlist_url,playlist_url)) IS NOT regional_music_playlists.playlist_url
+    OR (CASE WHEN excluded.playlist_type='unknown' THEN playlist_type ELSE excluded.playlist_type END) IS NOT regional_music_playlists.playlist_type
+    OR (COALESCE(excluded.owner_name,owner_name)) IS NOT regional_music_playlists.owner_name
+    OR (excluded.last_seen_at) IS NOT regional_music_playlists.last_seen_at`)
     .bind(value.service, value.service_playlist_id, value.playlist_name ?? null,
       value.playlist_url ?? null, value.playlist_type || 'unknown', value.owner_name ?? null,
       observedAt, observedAt).run();
@@ -144,7 +183,9 @@ export async function saveRegionalPlaylistSnapshot(env, value) {
     snapshot_date,service,service_playlist_id,observed_at,item_count
   ) VALUES(?,?,?,?,?) ON CONFLICT(snapshot_date,service,service_playlist_id) DO UPDATE SET
     observed_at=excluded.observed_at,
-    item_count=excluded.item_count`)
+    item_count=excluded.item_count
+  WHERE (excluded.observed_at) IS NOT regional_music_playlist_snapshots.observed_at
+    OR (excluded.item_count) IS NOT regional_music_playlist_snapshots.item_count`)
     .bind(snapshotDate, value.service, value.service_playlist_id, observedAt, count(value.item_count) ?? 0).run();
 }
 
@@ -163,7 +204,10 @@ export async function saveRegionalPlaylistMembership(env, value) {
   ))) ON CONFLICT(snapshot_date,service,service_playlist_id,service_track_id) DO UPDATE SET
     track_id=COALESCE(excluded.track_id,track_id),
     observed_at=excluded.observed_at,
-    position=COALESCE(excluded.position,position)`)
+    position=COALESCE(excluded.position,position)
+  WHERE (COALESCE(excluded.track_id,track_id)) IS NOT regional_music_playlist_memberships.track_id
+    OR (excluded.observed_at) IS NOT regional_music_playlist_memberships.observed_at
+    OR (COALESCE(excluded.position,position)) IS NOT regional_music_playlist_memberships.position`)
     .bind(snapshotDate, value.service, value.service_playlist_id, value.service_track_id,
       observedAt, positive(value.position), trackId, value.service, value.service_track_id).run();
 }
@@ -180,7 +224,14 @@ export async function saveRegionalCollectorState(env, value) {
     last_error_class=excluded.last_error_class,
     last_error_message=excluded.last_error_message,
     entity_counts_json=excluded.entity_counts_json,
-    updated_at=excluded.updated_at`)
+    updated_at=excluded.updated_at
+  WHERE (excluded.status) IS NOT regional_music_collector_state.status
+    OR (excluded.last_attempt_at) IS NOT regional_music_collector_state.last_attempt_at
+    OR (COALESCE(excluded.last_success_at,last_success_at)) IS NOT regional_music_collector_state.last_success_at
+    OR (excluded.last_error_class) IS NOT regional_music_collector_state.last_error_class
+    OR (excluded.last_error_message) IS NOT regional_music_collector_state.last_error_message
+    OR (excluded.entity_counts_json) IS NOT regional_music_collector_state.entity_counts_json
+    OR (excluded.updated_at) IS NOT regional_music_collector_state.updated_at`)
     .bind(value.service, value.status, value.last_attempt_at ?? updatedAt,
       value.last_success_at ?? null, value.last_error_class ?? null,
       value.last_error_message ?? null, JSON.stringify(value.entity_counts || {}), updatedAt).run();
