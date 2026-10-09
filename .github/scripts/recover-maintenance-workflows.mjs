@@ -12,8 +12,12 @@ function startedAt(run) {
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
-export function workflowRunState(runs, { now = Date.now(), recoverAfterMs } = {}) {
+export function workflowRunState(runs, { now = Date.now(), recoverAfterMs, ignoreExpectedWorkflowRunSkips = false } = {}) {
   const latest = [...(Array.isArray(runs) ? runs : [])]
+    .filter((run) => !(ignoreExpectedWorkflowRunSkips
+      && run?.event === 'workflow_run'
+      && run?.status === 'completed'
+      && run?.conclusion === 'skipped'))
     .map((run) => ({ run, timestamp: startedAt(run) }))
     .filter(({ timestamp }) => timestamp != null)
     .sort((left, right) => right.timestamp - left.timestamp)[0];
@@ -97,7 +101,7 @@ export async function recoverMaintenanceWorkflows({
 
   const entries = await Promise.all(Object.entries(WORKFLOWS).map(async ([key, definition]) => {
     const runs = await listWorkflowRuns(repository, definition, token, request);
-    return [key, workflowRunState(runs, { now, recoverAfterMs: definition.recoverAfterMs })];
+    return [key, workflowRunState(runs, { now, ...definition })];
   }));
   const states = Object.fromEntries(entries);
   const dispatched = [];
