@@ -1,4 +1,4 @@
-import { saveTrackHistoryDayReadModel } from './pages-track-history-r2-shards.js';
+import { loadTrackHistoryDayReadModel, saveTrackHistoryDayReadModel } from './pages-track-history-r2-shards.js';
 import { playbackDailyPublic, stationheadPlaybackInteger as integer, stationheadPlaybackText as text } from './stationhead-playback-core.js';
 
 function trackHistoryDayRange(period) {
@@ -22,6 +22,10 @@ function trackHistoryRows(daily) {
 export async function publishStationheadPlaybackDay(bucket, source, daily, observedAt) {
   const row = Array.isArray(daily?.tracks) ? daily : playbackDailyPublic(daily);
   if (!row?.period_key) return null;
+  const existing = await loadTrackHistoryDayReadModel(bucket, row.period_key, source);
+  if (Number(existing?.payload?.source_row_count || 0) > Number(row.total_plays || 0)) {
+    return { published: false, reason: 'retained_more_complete_day', day: row.period_key };
+  }
   return saveTrackHistoryDayReadModel(
     bucket,
     trackHistoryDayRange(row.period_key),
@@ -33,4 +37,5 @@ export async function publishStationheadPlaybackDay(bucket, source, daily, obser
     },
   );
 }
+
 

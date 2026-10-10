@@ -69,7 +69,8 @@ export function stationheadCompletedDailyStatement(db, daily, observedAt) {
       unique_tracks=excluded.unique_tracks,
       tracks_json=excluded.tracks_json,
       updated_at=excluded.updated_at
-    WHERE excluded.updated_at>=sh_track_daily_summary.updated_at`)
+    WHERE excluded.updated_at>=sh_track_daily_summary.updated_at
+      AND excluded.total_plays>=sh_track_daily_summary.total_plays`)
     .bind(row.period_key, row.total_plays, row.unique_tracks, JSON.stringify(row.tracks), observedAt);
 }
 
