@@ -64,7 +64,7 @@ export async function auditPagesData(getJson, now = Date.now()) {
       if (!states.length) return [timestampIssue(p.source_updated_at, now, hours * HOUR)];
       return states.flatMap((state) => [
         timestampIssue(state.last_success_at, now, hours * HOUR),
-        /^(error|failed|blocked)$/.test(state.status || '') ? `collector status: ${state.status}` : null,
+        /^(error|failed|blocked|degraded)$/.test(state.status || '') ? `collector status: ${state.status}` : null,
       ]);
     }));
   }

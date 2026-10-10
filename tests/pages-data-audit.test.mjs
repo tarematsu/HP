@@ -17,3 +17,13 @@ test('HTTP failures remain separate data failures rather than successful screens
   assert.ok(report.failed_count > 10);
   assert.ok(report.checks.every((row) => row.issues[0] === 'HTTP 503'));
 });
+
+test('fresh partial collection remains a data failure', async () => {
+  const report = await auditPagesData(async () => ({
+    source_updated_at: now,
+    services: [{ status: 'degraded', last_success_at: now }],
+  }), now);
+  const youtube = report.checks.find(row => row.name === 'youtube-music');
+  assert.equal(youtube.ok, false);
+  assert.deepEqual(youtube.issues, ['collector status: degraded']);
+});
