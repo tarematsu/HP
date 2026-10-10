@@ -69,12 +69,12 @@ test('CI trigger paths stay inside the Stationhead boundary', () => {
   assert.doesNotMatch(trigger, /hp\/\*\*/);
 });
 
-test('Pages production screenshots run after deployment while PRs only check isolated fixtures', () => {
+test('Pages production screenshots run after deployment or repair while PRs only check isolated fixtures', () => {
   assert.match(visualAudit, /^  workflow_dispatch:\n/m);
   assert.match(visualAudit, /^  schedule:\n/m);
   assert.match(visualAudit, /cron: '17 \*\/6 \* \* \*'/);
   assert.match(visualAudit, /github.event_name != 'pull_request'/);
-  assert.match(visualAudit, /workflows: \[Deploy production\]/);
+  assert.match(visualAudit, /workflows: \[Deploy production, Refresh Amazon Music read model, Rebuild Ohisama Track History\]/);
   assert.match(visualAudit, /Check responsive navigation with isolated API fixtures/);
   assert.match(visualAudit, /capture-pages-visual-audit\.mjs/);
   assert.doesNotMatch(visualAudit, /wrangler pages deploy|audit-pages-live\.mjs|audit-pages-materialized-production\.mjs/);

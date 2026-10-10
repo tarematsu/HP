@@ -9,7 +9,7 @@ on:
       - 'tests/pages-data-audit.test.mjs'
       - '.github/workflows/pages-visual-audit.yml'
   workflow_run:
-    workflows: [Deploy production]
+    workflows: [Deploy production, Refresh Amazon Music read model, Rebuild Ohisama Track History]
     types: [completed]
     branches: [main]
   schedule:

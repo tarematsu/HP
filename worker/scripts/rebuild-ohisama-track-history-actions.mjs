@@ -8,6 +8,7 @@ import {
   saveTrackHistoryDayReadModel,
 } from '../src/pages-track-history-r2-shards.js';
 import { OHISAMA_PLAYBACK_HOT_STATE_KEY } from '../src/ohisama-playback.js';
+import { stationheadCompletedDailyStatement } from '../src/stationhead-playback-store.js';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 import { createWranglerRemoteR2 } from './remote-r2-json-adapter.mjs';
 
@@ -142,6 +143,13 @@ export async function rebuildOhisamaTrackHistory({
       total_plays: restored.reduce((sum, row) => sum + Number(row.count ?? row.play_count), 0),
       updated_at: Math.max(Number(existing?.updated_at || 0), ...tracks.map((row) => Number(row.updated_at))),
     };
+    // Persist recovered facts before publishing, so later raw-fact retention
+    // cannot make a subsequent rebuild truncate this restored day.
+    if (!existing || summary.total_plays > Number(existing.total_plays || 0)) {
+      await stationheadCompletedDailyStatement(db, {
+        ...summary, tracks: restored,
+      }, summary.updated_at).run();
+    }
     if (existing) Object.assign(existing, summary);
     else summaries.push(summary);
   }
