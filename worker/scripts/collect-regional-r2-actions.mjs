@@ -13,7 +13,7 @@ import {
   upsertKkboxJapaneseHistoryArtifacts,
 } from '../src/kkbox-japanese-chart-history.js';
 
-const REGIONAL_SERVICE_SET=new Set(REGIONAL_MUSIC_DAILY_SERVICES);
+const REGIONAL_SERVICE_SET=new Set(Object.keys(REGIONAL_MUSIC_SERVICE_COLLECTORS_BY_ID));
 
 async function enqueueRegionalPublication(config, api, now) {
   const name=config.queues?.consumers?.[0]?.queue;

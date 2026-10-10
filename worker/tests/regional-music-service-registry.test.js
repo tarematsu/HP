@@ -31,7 +31,7 @@ test('regional music registry covers only the retained services and collectors',
   assert.equal(Object.keys(REGIONAL_MUSIC_SERVICES).length, 4);
   assert.equal(REGIONAL_MUSIC_SERVICE_COLLECTORS.length, 3);
   assert.equal(new Set(REGIONAL_MUSIC_SERVICE_COLLECTORS).size, 3);
-  assert.deepEqual(Object.keys(REGIONAL_MUSIC_SERVICE_COLLECTORS_BY_ID), REGIONAL_MUSIC_DAILY_SERVICES);
+  assert.deepEqual(Object.keys(REGIONAL_MUSIC_SERVICE_COLLECTORS_BY_ID), ['youtube_music', ...REGIONAL_MUSIC_DAILY_SERVICES]);
   assert.equal(YOUTUBE_MUSIC_DAILY_COLLECTORS.length, 1);
   assert.equal(REGIONAL_MUSIC_DAILY_COLLECTORS.length, 4);
   assert.equal(new Set(REGIONAL_MUSIC_DAILY_COLLECTORS).size, 4);
