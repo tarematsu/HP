@@ -372,6 +372,9 @@ export async function continueAmazonDaily50kScan(
   const r2 = env?.PAGES_RESPONSE_R2;
   if (!r2?.put) throw new Error('PAGES_RESPONSE_R2 binding is required');
   let state = await getJson(r2, AMAZON_MUSIC_DAILY_SCAN_STATE_KEY);
+  if (state && Number(observedAt) < Math.max(Number(state.started_at) || 0, Number(state.updated_at) || 0)) {
+    return { ok: true, skipped: true, reason: 'stale-scan-trigger' };
+  }
   // A completed scan is durable before publication. Retry that publication
   // without recollecting 50k tracks if any D1/R2 write previously failed.
   if (state?.complete && state?.publication_pending) {
