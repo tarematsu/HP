@@ -6,6 +6,9 @@ import { join } from 'node:path';
 
 export function createWranglerRemoteR2({ bucket, cwd, wranglerScript, execute = execFileSync }) {
   if (!bucket || !cwd || !wranglerScript) throw new Error('Remote R2 configuration missing');
+  // Wrangler interpolates the key into an HTTP URL. Encode every segment so
+  // literal percent escapes, query characters and fragments survive one URL decode.
+  const objectPath = key => `${bucket}/${String(key).split('/').map(encodeURIComponent).join('/')}`;
   return {
     async get(key) {
       const owner = this;
@@ -13,7 +16,7 @@ export function createWranglerRemoteR2({ bucket, cwd, wranglerScript, execute = 
       const file = join(directory,'object.json');
       try {
         try {
-          execute(process.execPath,[wranglerScript,'r2','object','get',`${bucket}/${key}`,'--remote','--file',file],{cwd,encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:60_000});
+          execute(process.execPath,[wranglerScript,'r2','object','get',objectPath(key),'--remote','--file',file],{cwd,encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:60_000});
         } catch (error) {
           if (/specified key does not exist|specified object does not exist|object does not exist/i.test(`${error.stdout || ''} ${error.stderr || ''}`)) return null;
           throw new Error('Remote R2 read failed');
@@ -55,7 +58,7 @@ export function createWranglerRemoteR2({ bucket, cwd, wranglerScript, execute = 
       try {
         writeFileSync(file,body,'utf8');
         try {
-          execute(process.execPath,[wranglerScript,'r2','object','put',`${bucket}/${key}`,'--remote','--file',file,'--content-type','application/json; charset=utf-8'],{cwd,encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:60_000});
+          execute(process.execPath,[wranglerScript,'r2','object','put',objectPath(key),'--remote','--file',file,'--content-type','application/json; charset=utf-8'],{cwd,encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:60_000});
         } catch { throw new Error('Remote R2 write failed'); }
       } finally { rmSync(directory,{recursive:true,force:true}); }
     },
