@@ -1,5 +1,5 @@
 import { loadTrackHistoryDayIndex } from './pages-track-history-day-index.js';
-import { loadTrackHistoryDayReadModel } from './pages-track-history-r2-shards.js';
+import { loadTrackHistoryDayReadModel } from './pages-track-history-day-reader.js';
 import { loadMaterializedResponse } from './pages-response-store.js';
 import { stationheadLikesModelKey } from './stationhead-likes-read-model.js';
 

@@ -69,6 +69,15 @@ def graphql_document(order: str, limit: int) -> str:
     }}"""
 
 
+def query_window(now: dt.datetime, minutes: int) -> tuple[dt.datetime, dt.datetime]:
+    # d1QueriesAdaptiveGroups buckets timestamps by hour. A lower bound with
+    # nonzero minutes excludes the entire first bucket, including queries that
+    # actually ran inside the requested lookback.
+    start = (now - dt.timedelta(minutes=minutes)).replace(minute=0, second=0, microsecond=0)
+    end = now.replace(minute=0, second=0, microsecond=0) + dt.timedelta(hours=1)
+    return start, end
+
+
 def sanitize_query(value: Any) -> str:
     query = re.sub(r"\s+", " ", str(value or "")).strip()
     query = STRING_RE.sub("'?'", query)
@@ -166,6 +175,7 @@ def markdown(report: dict[str, Any]) -> str:
     lines = [
         "## D1 query cost insights", "",
         f"- Window: `{report['window']['start']}` to `{report['window']['end']}`",
+        "- Coverage: whole UTC hour buckets intersecting the requested lookback; the final bucket is partial.",
         f"- Databases: `{report['databaseCount']}`",
         f"- GraphQL requests: `{report['graphqlRequests']}`",
         "- Worker and operation columns are inferred from SQL signatures; Queue messages carry explicit producer metadata.", "",
@@ -188,6 +198,12 @@ def markdown(report: dict[str, Any]) -> str:
 
 
 def self_test() -> int:
+    now = dt.datetime(2026, 10, 10, 1, 20, 46, tzinfo=dt.timezone.utc)
+    start, end = query_window(now, 60)
+    assert start == dt.datetime(2026, 10, 10, 0, tzinfo=dt.timezone.utc)
+    assert end == dt.datetime(2026, 10, 10, 2, tzinfo=dt.timezone.utc)
+    start, end = query_window(now.replace(minute=0, second=0), 60)
+    assert start.hour == 0 and end.hour == 2
     document = graphql_document("sum_rowsRead_DESC", 30)
     assert "d1QueriesAdaptiveGroups" in document and "sum_rowsRead_DESC" in document
     sanitized = sanitize_query(" SELECT *  FROM events WHERE token = 'secret-value' AND id = abcdef1234567890abcdef1234567890 ")
@@ -219,7 +235,7 @@ def main() -> int:
         raise RuntimeError("CLOUDFLARE_API_TOKEN and resolved CLOUDFLARE_ACCOUNT_ID are required")
 
     now = dt.datetime.now(dt.timezone.utc)
-    start = now - dt.timedelta(minutes=LOOKBACK_MINUTES)
+    start, end = query_window(now, LOOKBACK_MINUTES)
     dbs = databases()
     rows: dict[tuple[str, str], dict[str, Any]] = {}
     requests = 0
@@ -227,7 +243,7 @@ def main() -> int:
         filter_value = {
             "AND": [{
                 "datetimeHour_geq": start.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
-                "datetimeHour_leq": now.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+                "datetimeHour_leq": (end - dt.timedelta(hours=1)).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
                 "databaseId": database_id,
             }]
         }
@@ -243,8 +259,10 @@ def main() -> int:
         "generatedAt": now.isoformat().replace("+00:00", "Z"),
         "window": {
             "start": start.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
-            "end": now.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+            "end": end.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
             "minutes": LOOKBACK_MINUTES,
+            "granularity": "hour",
+            "observedThrough": now.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
         },
         "databaseCount": len(dbs),
         "graphqlRequests": requests,
