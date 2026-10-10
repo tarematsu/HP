@@ -117,6 +117,20 @@ async function loadAliasMap(db, descriptors) {
   return result;
 }
 
+async function addUnaliasedIsrcRows(db, descriptors, aliases) {
+  // Provider/title aliases can point at a legacy row whose ISRC is still null.
+  // An existing canonical ISRC row takes precedence over those weak hints.
+  const missing = descriptors.filter(descriptor => descriptor.isrc
+    && !aliases.has(aliasKey('isrc', normalizedIsrc(descriptor.isrc))));
+  if (!missing.length) return aliases;
+  const identities = await loadTrackIdentityMap(db, missing);
+  for (const descriptor of missing) {
+    const key = aliasKey('isrc', normalizedIsrc(descriptor.isrc));
+    if (identities.has(key)) aliases.set(key, identities.get(key));
+  }
+  return aliases;
+}
+
 function assignAliases(descriptors, aliases) {
   for (const descriptor of descriptors) {
     if (descriptor.trackId != null) continue;
@@ -297,7 +311,7 @@ export async function resolveTracksAliasFirst(db, fallbackDb, tracks, observedAt
   let descriptors = tracks.map((track, index) => buildTrackDescriptor(track, {}, index));
   assignAliases(descriptors, await runSubstage(
     'load_alias_map_initial',
-    () => loadAliasMap(db, descriptors),
+    async () => addUnaliasedIsrcRows(db, descriptors, await loadAliasMap(db, descriptors)),
   ));
 
   const unresolvedIndexes = [];
@@ -318,7 +332,7 @@ export async function resolveTracksAliasFirst(db, fallbackDb, tracks, observedAt
     const enrichedUnresolved = descriptors.filter((descriptor) => descriptor.trackId == null);
     assignAliases(enrichedUnresolved, await runSubstage(
       'load_alias_map_enriched',
-      () => loadAliasMap(db, enrichedUnresolved),
+      async () => addUnaliasedIsrcRows(db, enrichedUnresolved, await loadAliasMap(db, enrichedUnresolved)),
     ));
   }
 
