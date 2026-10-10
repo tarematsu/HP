@@ -3,6 +3,16 @@ name: Recollect regional music manually
 
 on:
   workflow_dispatch:
+    inputs:
+      services:
+        description: 'Comma-separated services; empty collects all'
+        required: false
+        default: ''
+  push:
+    branches: [main]
+    paths:
+      - 'worker/src/regional-music-youtube-music.js'
+      - '.github/workflows/recollect-regional-music-manual.yml'
 
 permissions:
   contents: read
@@ -35,6 +45,17 @@ jobs:
       - name: Install Worker dependencies
         working-directory: worker
         run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Recollect all 20 services to R2 and publish their results
+      - name: Recollect selected services to R2 and publish their results
         working-directory: worker
-        run: node scripts/collect-regional-r2-actions.mjs --all
+        env:
+          RECOLLECTION_SERVICES: ${{ github.event_name == 'push' && 'youtube_music' || inputs.services }}
+        run: |
+          if [ -n "$RECOLLECTION_SERVICES" ]; then
+            node scripts/collect-regional-r2-actions.mjs "--services=$RECOLLECTION_SERVICES"
+          else
+            node scripts/collect-regional-r2-actions.mjs --all
+          fi
+      - name: Verify current YouTube source observations after repair
+        if: always() && (github.event_name == 'push' || inputs.services == 'youtube_music')
+        working-directory: worker
+        run: node scripts/verify-youtube-music-actions.mjs
