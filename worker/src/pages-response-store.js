@@ -66,7 +66,8 @@ export async function loadMaterializedResponse(
 ) {
   const canonical = await loadMaterializedR2Response(r2, modelKey, now, maximumAgeMs);
   if (canonical) return canonical;
-  if (modelKey === 'music-service:kkbox' || modelKey === 'amazon-music') {
+  if (modelKey === 'music-service:kkbox' || modelKey === 'amazon-music'
+      || modelKey === 'apple-music-playlists') {
     const streamed = await loadMaterializedR2RawFallback(r2, modelKey, now, maximumAgeMs);
     if (streamed) return streamed;
   }

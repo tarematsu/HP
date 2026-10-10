@@ -67,7 +67,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const bucket = config.r2_buckets.find(row => row.binding === 'PAGES_RESPONSE_R2')?.bucket_name;
   const r2 = createWranglerRemoteR2({ bucket, cwd: root,
     wranglerScript: join(root, 'node_modules/wrangler/bin/wrangler.js') });
-  for (const modelKey of ['music-service:kkbox', 'apple-music', 'amazon-music']) {
+  for (const modelKey of ['music-service:kkbox', 'apple-music', 'amazon-music', 'apple-music-playlists']) {
     console.log(JSON.stringify({ event: 'legacy_raw_response_migration', model_key: modelKey, ...await migrateKkboxRawResponse(r2, modelKey) }));
   }
 }
