@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { encodePlaybackCursor, parsePlaybackCursor } from '../src/playback-cursor.js';
 
 import {
   buildWeightedPlaybackPage,
@@ -8,6 +9,32 @@ import {
 } from '../src/weighted-playback.js';
 
 const NOW = Date.parse('2026-09-06T12:00:00Z');
+
+test('bounded selection matches full sorting across large feeds and cursor pages', () => {
+  const rows = Array.from({ length: 10000 }, (_, index) => ({
+    id: String(index + 1), firstSeenAt: daysAgo(index % 400), marker: index
+  }));
+  for (const seed of [1, 77, 1731811407]) {
+    let cursor = 'start';
+    for (let page = 0; page < 4; page += 1) {
+      const parsed = parsePlaybackCursor(cursor);
+      const ordered = rows.map(row => ({ ...row, id: Number(row.id),
+        shuffleKey: weightedPlaybackKey(row.id, row.firstSeenAt, seed, NOW)
+      })).sort((a, b) => a.shuffleKey - b.shuffleKey || a.id - b.id)
+        .filter(row => !parsed || row.shuffleKey > parsed.shuffleKey
+          || (row.shuffleKey === parsed.shuffleKey && row.id > parsed.videoId));
+      const expectedRows = ordered.slice(0, 100);
+      const expected = { rows: expectedRows,
+        nextCursor: ordered.length > 100 ? encodePlaybackCursor(0, expectedRows.at(-1)) : null };
+      const actual = buildWeightedPlaybackPage(rows, { seed, cursor, limit: 100, nowMs: NOW });
+      assert.deepEqual(actual, expected);
+      cursor = actual.nextCursor;
+    }
+  }
+  assert.deepEqual(buildWeightedPlaybackPage(rows.slice(0, 2), {
+    seed: 77, limit: 100, nowMs: NOW
+  }).nextCursor, null);
+});
 
 function daysAgo(days) {
   return new Date(NOW - days * 24 * 60 * 60 * 1000).toISOString();

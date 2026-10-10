@@ -10,6 +10,19 @@ import {
 
 const DAY_START = Date.UTC(2026, 6, 23);
 
+test('scheduled shard generation uses bounded direct revision history SQL by default', async () => {
+  const db = new FakeDb();
+  const range = { fromTs: DAY_START, toTs: DAY_START + 3 * 60 * 60_000 };
+  await materializeTrackHistoryRangeThroughR2(new FakePlaybackDb(), db, range, DAY_START, {
+    r2: new FakeR2(), generation: DAY_START, cleanupDay: false,
+  });
+  const history = db.batches.flat().find(statement => statement.sql.includes('history_channel_snapshots AS MATERIALIZED'));
+  assert.ok(history, 'default generation must use the indexed direct revision query');
+  assert.match(history.sql, /history_queue_snapshots AS MATERIALIZED/);
+  assert.match(history.sql, /INDEXED BY idx_sh_minute_facts_time/);
+  assert.doesNotMatch(history.sql, /FROM sh_queue_items\b/);
+});
+
 class FakeR2 {
   constructor() {
     this.values = new Map();

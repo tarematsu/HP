@@ -7,9 +7,9 @@ import {
 
 export { trackHistoryDayObjectKey, loadTrackHistoryDayReadModel };
 import {
-  loadTrackHistoryData,
   TRACK_HISTORY_SQL,
 } from '../../packages/sh-shared/track-history-restored-handler.mjs';
+import { loadDirectRevisionTrackHistoryData } from './track-history-direct-revision-sql.js';
 import { mergeTrackRows } from '../../packages/sh-shared/track-history-merge.mjs';
 import { applyTrackPeriodCompleteness } from '../../packages/sh-shared/period-completeness.mjs';
 import { attachCompactTrackLikes } from '../../packages/sh-shared/track-likes.mjs';
@@ -283,7 +283,7 @@ export async function materializeTrackHistoryRangeThroughR2(
   const r2 = options.r2;
   if (!r2?.put || !r2?.get) throw new Error('track-history R2 staging binding is missing');
   const generation = validTimestamp(options.generation) ?? validTimestamp(now) ?? Date.now();
-  const load = options.loadData || loadTrackHistoryData;
+  const load = options.loadData || loadDirectRevisionTrackHistoryData;
   const merge = options.mergeRows || mergeTrackRows;
   const attachLikes = options.attachLikes || attachCompactTrackLikes;
   const complete = options.applyCompleteness || applyTrackPeriodCompleteness;
