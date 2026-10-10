@@ -16,13 +16,14 @@ export const REGIONAL_MUSIC_COLLECTOR_CONCURRENCY = 4;
 export const REGIONAL_MUSIC_COLLECTOR_TIMEOUT_MS = 90_000;
 
 export const REGIONAL_MUSIC_SERVICE_COLLECTORS_BY_ID = Object.freeze({
+  youtube_music: collectYouTubeMusic,
   kkbox: collectKkbox,
   qq_music: collectQqMusic,
   kugou_music: collectKugouMusic,
 });
 
 export const REGIONAL_MUSIC_SERVICE_COLLECTORS = Object.freeze(
-  Object.values(REGIONAL_MUSIC_SERVICE_COLLECTORS_BY_ID),
+  REGIONAL_MUSIC_DAILY_SERVICES.map(service => REGIONAL_MUSIC_SERVICE_COLLECTORS_BY_ID[service]),
 );
 
 export const YOUTUBE_MUSIC_DAILY_COLLECTORS = Object.freeze([

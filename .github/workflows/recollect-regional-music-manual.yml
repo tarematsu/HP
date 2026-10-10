@@ -12,6 +12,7 @@ on:
     branches: [main]
     paths:
       - 'worker/src/regional-music-youtube-music.js'
+      - 'worker/src/regional-music-service-entry.js'
       - '.github/workflows/recollect-regional-music-manual.yml'
 
 permissions:

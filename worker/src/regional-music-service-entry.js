@@ -11,6 +11,7 @@ import { publishRegionalMusicServiceReadModel } from './regional-music-read-mode
 import {
   REGIONAL_SCHEDULED_JOB_CRONS,
   runRegionalScheduledJob,
+  collectRegionalServiceToR2,
 } from './regional-music-scheduled-jobs.js';
 
 export const REGIONAL_MUSIC_ALLOWED_CRONS = Object.freeze([
@@ -19,8 +20,17 @@ export const REGIONAL_MUSIC_ALLOWED_CRONS = Object.freeze([
   ...REGIONAL_SCHEDULED_JOB_CRONS,
 ]);
 export { KUGOU_ACG_BACKFILL_MESSAGE_TYPE };
+export const YOUTUBE_MUSIC_QUEUE_MESSAGE_TYPE = 'youtube-music-collect';
 
 async function runScheduled(controller, env, ctx) {
+  if (controller?.cron === YOUTUBE_MUSIC_DAILY_CRON) {
+    const scheduledAt = Number(controller.scheduledTime) || Date.now();
+    if (!env?.REGIONAL_MUSIC_QUEUE?.send) throw new Error('REGIONAL_MUSIC_QUEUE binding is required');
+    await env.REGIONAL_MUSIC_QUEUE.send({
+      message_type: YOUTUBE_MUSIC_QUEUE_MESSAGE_TYPE, message_version: 1, scheduled_at: scheduledAt,
+    }, { contentType: 'json' });
+    return { queued: true, scheduled_at: scheduledAt };
+  }
   if (REGIONAL_SCHEDULED_JOB_CRONS.includes(controller?.cron)) {
     const scheduledAt = Number(controller?.scheduledTime) || Date.now();
     const run = runRegionalScheduledJob(controller.cron, env, scheduledAt);
@@ -58,6 +68,22 @@ async function recordKugouBackfillFailure(env, body, error) {
 export async function runRegionalMusicServiceQueue(batch, env, context, dependencies = {}) {
   const messages = batch?.messages || [];
   const message = messages[0];
+  if (message?.body?.message_type === YOUTUBE_MUSIC_QUEUE_MESSAGE_TYPE) {
+    const body = message.body;
+    if (body.message_version !== 1 || !Number.isSafeInteger(body.scheduled_at) || body.scheduled_at <= 0) {
+      message.ack?.();
+      return { skipped: true, reason: 'invalid-youtube-message' };
+    }
+    const collect = dependencies.collectServiceToR2 || collectRegionalServiceToR2;
+    const signal = AbortSignal.timeout(120_000);
+    const fetchCollector = (url, init = {}) => globalThis.fetch(url, {
+      ...init, signal: init.signal ? AbortSignal.any([init.signal, signal]) : signal,
+    });
+    const result = await collect('youtube_music', env, body.scheduled_at, fetchCollector);
+    if (!result.skipped && result.snapshot_status !== 'ok') throw new Error('YouTube Music collector did not complete successfully; retained data and failure state have been published');
+    message.ack?.();
+    return result;
+  }
   if (!message || message?.body?.message_type !== KUGOU_ACG_BACKFILL_MESSAGE_TYPE) {
     const delegate = dependencies.delegateQueue || app.queue;
     return delegate(batch, env, context);

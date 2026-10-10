@@ -1,6 +1,7 @@
 import { collectLatestKugouAcgHistory } from './kugou-acg-chart-history.js';
 import { qqAnimeHistoryRecord, qqIsoWeekPeriod, upsertQqAnimeHistoryArtifacts } from './qq-anime-chart-history-view.js';
 import { qqJapanHistoryRecord, upsertQqJapanHistoryArtifacts } from './qq-japan-chart-history-view.js';
+import { collectYouTubeMusic } from './regional-music-youtube-music.js';
 import { collectKkbox } from './regional-music-kkbox.js';
 import { collectKugouMusic } from './regional-music-kugou.js';
 import {
@@ -40,6 +41,7 @@ export const REGIONAL_SCHEDULED_JOB_CRONS = Object.freeze([
 ]);
 
 const REGIONAL_COLLECTORS = Object.freeze({
+  youtube_music: collectYouTubeMusic,
   kkbox: collectKkbox,
   qq_music: collectQqMusic,
   kugou_music: collectKugouMusic,
@@ -64,6 +66,9 @@ export async function collectRegionalServiceToR2(service, env, observedAt = Date
   const collector = REGIONAL_COLLECTORS[service];
   if (!collector) throw new Error(`unknown regional music service: ${service}`);
   const previous = await loadJson(env?.PAGES_RESPONSE_R2, regionalSnapshotKey(service));
+  if (Number(previous?.updated_at) > Number(observedAt)) {
+    return { service, snapshot_status: previous.state?.status, snapshot_day: previous.day, skipped: true, reason: 'stale-source-observation' };
+  }
   const snapshot = await collectRegionalR2Snapshot({
     service,
     collect: collector,

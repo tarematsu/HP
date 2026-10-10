@@ -102,7 +102,7 @@ function render(payload) {
   const playlists = (payload.playlists || []).filter((item) => item.service === SERVICE);
   const memberships = (payload.playlist_memberships || []).filter((item) => item.service === SERVICE);
 
-  setText('youtubeMusicUpdated', musicDateTimeText(payload.updated_at));
+  setText('youtubeMusicUpdated', musicDateTimeText(state?.last_success_at));
 
   if (state?.status === 'error') {
     setNotice('youtubeMusicNotice', 'YouTube Music公開データの収集でエラーが発生しています。直前までの正常データは保持されています。', true);
@@ -110,6 +110,8 @@ function render(payload) {
     setNotice('youtubeMusicNotice', 'YouTube Music公開データの一部取得に失敗しています。取得できたデータのみ表示します。');
   } else if (!state) {
     setNotice('youtubeMusicNotice', 'YouTube Music公開データは次回収集後に表示されます。');
+  } else if (!Number(state.last_success_at) || Date.now() - Number(state.last_success_at) > 36 * 60 * 60_000) {
+    setNotice('youtubeMusicNotice', 'YouTube Music公開データの取得が遅れています。最終取得日時を確認してください。', true);
   } else {
     setNotice('youtubeMusicNotice');
   }
