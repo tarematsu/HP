@@ -27,11 +27,12 @@ test('missing object is distinct from authentication, corruption and write failu
 
 test('Actions bootstrap publication remains readable by the production R2 response reader', async () => {
   const { saveMaterializedR2Response, loadMaterializedR2Response } = await import('../src/pages-response-r2.js');
-  let stored;
+  const stored = new Map();
   const r2 = createWranglerRemoteR2({ ...options, execute: (_binary, args) => {
     const file = args[args.indexOf('--file') + 1];
-    if (args.includes('get')) writeFileSync(file, stored);
-    else stored = readFileSync(file, 'utf8');
+    const key = args[4];
+    if (args.includes('get')) writeFileSync(file, stored.get(key));
+    else stored.set(key, readFileSync(file, 'utf8'));
   } });
   await saveMaterializedR2Response(r2, 'music-service:kkbox', '{"ok":true,"service":"kkbox"}', 200,
     { 'content-type': 'application/json' }, 1000, 86400);
@@ -39,4 +40,8 @@ test('Actions bootstrap publication remains readable by the production R2 respon
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('x-materialized-at'), '1000');
   assert.deepEqual(await response.json(), { ok: true, service: 'kkbox' });
+  const manifest = JSON.parse(stored.get('test-bucket/pages-response/v1/music-service%3Akkbox.json'));
+  assert.equal(manifest.format, 'raw-response-reference-v1');
+  assert.equal(manifest.body, undefined);
+  assert.equal(stored.get(`test-bucket/${manifest.body_key}`), '{"ok":true,"service":"kkbox"}');
 });
