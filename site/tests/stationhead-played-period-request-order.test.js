@@ -15,6 +15,15 @@ test('selected playback date stays visible without moving the page', () => {
   assert.equal(strip.scrollLeft, 100);
 });
 
+test('the outer scroller moves when its inner date strip has content width', () => {
+  const outer = { scrollLeft: 0, clientWidth: 300, getBoundingClientRect: () => ({ left: 20 }) };
+  const selected = { getBoundingClientRect: () => ({ left: 3020 - outer.scrollLeft, right: 3100 - outer.scrollLeft }) };
+  const inner = { scrollLeft: 0, clientWidth: 4000, querySelector: () => selected, closest: () => outer };
+  revealPlayedPeriod(inner);
+  assert.equal(outer.scrollLeft, 2780);
+  assert.equal(inner.scrollLeft, 0);
+});
+
 test('obsolete Stationhead played-period requests must not overwrite the current period cache', async () => {
   let finishIndex;
   const pendingIndex = new Promise((resolve) => { finishIndex = resolve; });

@@ -123,6 +123,13 @@ async function assertNoDocumentOverflow(page, label) {
     await writeFile(`${output}/overflow-${label}.json`, JSON.stringify(elements, null, 2));
   }
   assert.equal(overflow, false, `${label} overflows the document`);
+  const hiddenSelectedDates = await page.locator('.dashboard-view:not([hidden]) .played-tracks-period-scroller:visible').evaluateAll((scrollers) => scrollers.filter((scroller) => {
+    const selected = scroller.querySelector('.is-selected');
+    if (!selected) return false;
+    const item = selected.getBoundingClientRect(); const bounds = scroller.getBoundingClientRect();
+    return item.left < bounds.left - 2 || item.right > bounds.right + 2;
+  }).length);
+  assert.equal(hiddenSelectedDates, 0, `${label} hides the selected playback date`);
   return overflow;
 }
 
@@ -237,3 +244,4 @@ try {
   await writeFile(`${output}/results.json`, JSON.stringify({ source: live ? 'production API snapshots with PR assets' : 'stress + empty fixture', capturedAt: new Date().toISOString(), results, apiResults, runtimeErrors }, null, 2));
   await browser.close(); await new Promise((resolveServer) => server.close(resolveServer));
 }
+

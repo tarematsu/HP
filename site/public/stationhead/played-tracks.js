@@ -13,13 +13,14 @@ export function playedChartRows(tracks) { const top = tracks.slice(0, 15).map((r
 export function revealPlayedPeriod(strip) {
   const selected = strip?.querySelector('.is-selected');
   if (!selected) return;
+  const scroller = strip.closest?.('.played-tracks-period-scroller') || strip;
   // Scroll this strip only: scrollIntoView also moves the entire page.
   const item = selected.getBoundingClientRect();
-  const bounds = strip.getBoundingClientRect();
-  const left = bounds.left + (strip.clientLeft || 0);
-  const right = left + strip.clientWidth;
-  if (item.left < left) strip.scrollLeft += item.left - left;
-  else if (item.right > right) strip.scrollLeft += item.right - right;
+  const bounds = scroller.getBoundingClientRect();
+  const left = bounds.left + (scroller.clientLeft || 0);
+  const right = left + scroller.clientWidth;
+  if (item.left < left) scroller.scrollLeft += item.left - left;
+  else if (item.right > right) scroller.scrollLeft += item.right - right;
 }
 
 export function renderPlayed(runtime, rows) {
