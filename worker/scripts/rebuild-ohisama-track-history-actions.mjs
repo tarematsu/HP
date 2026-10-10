@@ -68,6 +68,17 @@ function parseTracksJson(value, day) {
   }
 }
 
+export function mergeRetainedPlaybackTracks(existing, retained) {
+  const merged = new Map(existing.map((row) => [Number(row.track_id), row]));
+  for (const row of retained) {
+    const prior = merged.get(Number(row.track_id));
+    if (Number(row.count) > Number(prior?.count ?? prior?.play_count ?? 0)) {
+      merged.set(Number(row.track_id), { ...prior, ...row });
+    }
+  }
+  return [...merged.values()];
+}
+
 function assertTotal(day, rows, expected) {
   const total = rows.reduce((sum, row) => sum + nonNegativeInteger(row.play_count), 0);
   if (total !== nonNegativeInteger(expected)) {
@@ -107,25 +118,33 @@ export async function rebuildOhisamaTrackHistory({
     WHERE period_key>=?
     ORDER BY period_key ASC`).bind(fromDay).all();
   const summaries = Array.isArray(result?.results) ? result.results : [];
-  // A missing rollover summary must not hide retained canonical play facts.
-  // Recover only absent days; an existing summary remains authoritative.
+  // Retained immutable play facts also expose truncated rollover summaries.
+  // Keep the greater count per track, since raw retention can be incomplete.
   const raw = await db.prepare(`SELECT p.period_key,p.track_id,
       COUNT(*) AS count,MAX(p.played_at) AS updated_at,
       MAX(l.spotify_id) AS spotify_id,MAX(l.title) AS title,MAX(l.artist) AS artist
     FROM sh_track_plays p
     LEFT JOIN sh_track_like_current l ON l.station_id=p.station_id AND l.track_id=p.track_id
-    WHERE p.period_key>=? AND p.period_key NOT IN (SELECT period_key FROM sh_track_daily_summary)
+    WHERE p.period_key>=?
     GROUP BY p.period_key,p.track_id ORDER BY p.period_key,p.track_id`).bind(fromDay).all();
   const recovered = new Map();
   for (const row of raw?.results || []) {
     if (!recovered.has(row.period_key)) recovered.set(row.period_key, []);
     recovered.get(row.period_key).push(row);
   }
-  for (const [period_key, tracks] of recovered) summaries.push({
-    period_key, tracks_json: JSON.stringify(tracks),
-    total_plays: tracks.reduce((sum, row) => sum + Number(row.count), 0),
-    updated_at: Math.max(...tracks.map((row) => Number(row.updated_at))),
-  });
+  for (const [period_key, tracks] of recovered) {
+    const existing = summaries.find((row) => row.period_key === period_key);
+    const restored = mergeRetainedPlaybackTracks(
+      parseTracksJson(existing?.tracks_json || '[]', period_key), tracks,
+    );
+    const summary = {
+      period_key, tracks_json: JSON.stringify(restored),
+      total_plays: restored.reduce((sum, row) => sum + Number(row.count ?? row.play_count), 0),
+      updated_at: Math.max(Number(existing?.updated_at || 0), ...tracks.map((row) => Number(row.updated_at))),
+    };
+    if (existing) Object.assign(existing, summary);
+    else summaries.push(summary);
+  }
   const published = [];
 
   for (const summary of summaries) {
