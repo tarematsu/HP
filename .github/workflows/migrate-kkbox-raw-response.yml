@@ -1,0 +1,41 @@
+name: Migrate KKBOX response to raw R2 streaming
+on:
+  push:
+    branches: [main]
+    paths: ['worker/scripts/migrate-kkbox-raw-response-actions.mjs']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: kkbox-raw-response-migration
+  cancel-in-progress: false
+jobs:
+  migrate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Wait for production reader deployment
+        working-directory: worker
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/wait-for-production-deploy.mjs
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Migrate and verify the existing KKBOX payload without D1 reads
+        working-directory: worker
+        run: node scripts/migrate-kkbox-raw-response-actions.mjs
+      - name: Retry the failing Spotify artist-chart dispatch once with structured diagnostics
+        working-directory: worker
+        run: node scripts/diagnose-spotify-artist-chart-actions.mjs

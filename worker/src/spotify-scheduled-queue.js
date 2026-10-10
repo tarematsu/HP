@@ -64,11 +64,15 @@ export async function processSpotifyScheduledDispatchEntry(entry, env, dependenc
     return { processed: 1, failed: 0, ignored: 0 };
   } catch (error) {
     entry.retry?.();
-    console.error('Spotify scheduled Queue dispatch failed', {
+    // Persist one structured event: multi-argument console output retained
+    // only the label in Observability and hid the exception from diagnostics.
+    console.error(JSON.stringify({
+      event: 'spotify_scheduled_queue_dispatch_failed',
+      message: `Spotify scheduled Queue dispatch failed: ${String(error).slice(0, 500)}`,
       cron,
       scheduled_time: scheduledTime,
       error: String(error),
-    });
+    }));
     return { processed: 0, failed: 1, ignored: 0 };
   }
 }

@@ -99,8 +99,23 @@ async function loadCanonicalResponse(r2, modelKey, now, maximumAgeMs) {
   if (!directMetadata(metadata)) {
     // Transitional reader for canonical envelopes created before raw-v1 rollout.
     try {
+      const envelope = await object.json();
+      if (envelope?.format === 'raw-response-reference-v1') {
+        if (Number(envelope.version) !== 1
+            || !/^pages-response\/raw-body-v1\/[a-f0-9]{64}\.json$/.test(envelope.body_key || '')
+            || !freshEnough(Number(envelope.updated_at), now, maximumAgeMs)) return null;
+        const raw = await r2.get(envelope.body_key);
+        if (!raw?.body) return null;
+        const headers = new Headers(objectOrNull(envelope.headers) || {});
+        headers.set('x-api-source', 'worker-r2');
+        headers.set('x-materialized-at', String(envelope.updated_at));
+        if (Number(envelope.cadence_seconds) > 0) {
+          headers.set('x-materialized-cadence-seconds', String(Math.trunc(envelope.cadence_seconds)));
+        }
+        return new Response(raw.body, { status: Number(envelope.status) || 200, headers });
+      }
       return responseFromEnvelope(
-        await object.json(),
+        envelope,
         now,
         maximumAgeMs,
         'worker-r2-migration',
