@@ -4,12 +4,14 @@ import test from 'node:test';
 
 const playerSource = readFileSync(new URL('../public/app-resilient.js', import.meta.url), 'utf8');
 
-test('player resumes a persisted per-orientation shuffle bag', () => {
-  assert.match(playerSource, /const PLAYBACK_BAG_KEY = 'video-scraper-playback-bag-v1';/);
-  assert.match(playerSource, /return `\$\{PLAYBACK_BAG_KEY\}:\$\{state\.orientation\}`;/);
+test('opening the player starts a fresh round, even with saved playback progress', () => {
+  const opening = playerSource.split('async function showFirst() {')[1]
+    .split('async function nextVideo(')[0];
+  assert.match(opening, /const items = await loadPlaybackRound\(generation, true\);/);
   assert.match(playerSource, /const continueRound = !forceNewRound[\s\S]*savedBag\.remainingIds\.length > 0;/);
-  assert.match(playerSource, /restorePlaybackBagItems\(fetchedItems, savedBag\)/);
-  assert.match(playerSource, /persistPlaybackProgress\(result\.index\);/);
+  assert.match(playerSource, /const fetchSeed = continueRound \? savedBag\.seed : createFeedSeed\(\);/);
+  assert.match(playerSource, /function selectOrientation\(value\) \{[\s\S]*showFirst\(\)\.catch/);
+  assert.match(playerSource, /showFirst\(\)\.catch\(\(\) => \{\}\);\s*$/);
 });
 
 test('player consumes the bag in order and only creates a new round at the end', () => {
