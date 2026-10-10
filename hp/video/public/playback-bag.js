@@ -1,10 +1,43 @@
 export const PLAYBACK_BAG_VERSION = 1;
+export const RECENT_PLAYBACK_HISTORY_LIMIT = 30;
+const RECENT_PLAYBACK_DEFER_WINDOW = 60;
 
 function itemId(value) {
   const id = value?.id ?? value;
   if (id === null || id === undefined) return null;
   const normalized = String(id).trim();
   return normalized ? normalized : null;
+}
+
+export function parseRecentPlaybackIds(raw) {
+  let value = raw;
+  if (typeof raw === 'string') {
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(value)) return [];
+  const result = [];
+  const seen = new Set();
+  for (const rawId of value) {
+    const id = itemId(rawId);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    result.push(id);
+    if (result.length >= RECENT_PLAYBACK_HISTORY_LIMIT) break;
+  }
+  return result;
+}
+
+export function rememberRecentPlaybackId(raw, video) {
+  const id = itemId(video);
+  const previous = parseRecentPlaybackIds(raw);
+  return id
+    ? [id, ...previous.filter((previousId) => previousId !== id)]
+      .slice(0, RECENT_PLAYBACK_HISTORY_LIMIT)
+    : previous;
 }
 
 export function parsePlaybackBag(raw) {
@@ -60,8 +93,20 @@ function preserveServerOrder(items, previousLastPlayedId, skipAttempts) {
   return ordered;
 }
 
-export function createPlaybackBag(items, seed, previousLastPlayedId = null, skipAttempts = 0) {
-  const ordered = preserveServerOrder(items, previousLastPlayedId, skipAttempts);
+export function createPlaybackBag(items, seed, previousLastPlayedId = null, skipAttempts = 0, recentPlayedIds = []) {
+  const weightedOrder = preserveServerOrder(items, previousLastPlayedId, skipAttempts);
+  const recent = new Set(parseRecentPlaybackIds(recentPlayedIds));
+  const windowSize = Math.min(weightedOrder.length, RECENT_PLAYBACK_DEFER_WINDOW);
+  const windowItems = weightedOrder.slice(0, windowSize);
+  // Avoid replaying recently seen items at the start of a fresh round while
+  // leaving the server's weighted order intact outside a bounded window.
+  const ordered = recent.size
+    ? [
+        ...windowItems.filter((item) => !recent.has(itemId(item))),
+        ...windowItems.filter((item) => recent.has(itemId(item))),
+        ...weightedOrder.slice(windowSize)
+      ]
+    : weightedOrder;
   return {
     version: PLAYBACK_BAG_VERSION,
     seed: Number(seed),
