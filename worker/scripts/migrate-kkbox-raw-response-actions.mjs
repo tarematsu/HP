@@ -8,12 +8,22 @@ import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 export async function migrateKkboxRawResponse(r2) {
   const modelKey = 'music-service:kkbox';
   const key = pagesR2ResponseKey(modelKey);
-  // Existing canonical publications take precedence over historical snapshots.
-  if (await r2.get(key)) return { migrated: false, reason: 'canonical-exists' };
+  const canonicalObject = await r2.get(key);
+  const canonical = canonicalObject ? await canonicalObject.json() : null;
+  if (canonical?.format === 'raw-response-reference-v1') {
+    return { migrated: false, reason: 'already-streaming' };
+  }
+  if (canonical && !(Number(canonical.version) === 1 && typeof canonical.body === 'string')) {
+    // A native raw publication has custom metadata unavailable to Wrangler.
+    // Preserve it rather than interpreting its application payload as an envelope.
+    throw new Error('Canonical KKBOX object is not a migratable envelope');
+  }
   const legacyKey = `pages-response/actions-v2/${Buffer.from(modelKey).toString('hex')}.json`;
   const object = await r2.get(legacyKey);
   if (!object) throw new Error('Legacy KKBOX response unavailable');
-  const envelope = await object.json();
+  const legacy = await object.json();
+  const envelope = canonical && Number(canonical.updated_at) >= Number(legacy?.updated_at)
+    ? canonical : legacy;
   if (Number(envelope?.version) !== 1 || typeof envelope.body !== 'string'
       || !Number.isFinite(Number(envelope.updated_at))) throw new Error('Invalid legacy KKBOX envelope');
   const bodyKey = `pages-response/raw-body-v1/${createHash('sha256').update(envelope.body).digest('hex')}.json`;
@@ -23,7 +33,10 @@ export async function migrateKkboxRawResponse(r2) {
   const raw = await r2.get(bodyKey);
   if (!raw || await raw.text() !== envelope.body) throw new Error('Raw KKBOX body verification failed');
   // Recheck before publishing to avoid replacing a newer producer snapshot.
-  if (await r2.get(key)) return { migrated: false, reason: 'canonical-published-concurrently' };
+  const current = await r2.get(key);
+  if (current && await current.text() !== await canonicalObject?.text()) {
+    return { migrated: false, reason: 'canonical-published-concurrently' };
+  }
   await r2.put(key, JSON.stringify({
     ...envelope, body: undefined, format: 'raw-response-reference-v1', body_key: bodyKey,
   }));
