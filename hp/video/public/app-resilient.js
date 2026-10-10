@@ -3,7 +3,9 @@ import { createFeedSeed } from './feed-shuffle.js';
 import {
   createPlaybackBag,
   parsePlaybackBag,
+  parseRecentPlaybackIds,
   playbackBagAfterIndex,
+  rememberRecentPlaybackId,
   restorePlaybackBagItems
 } from './playback-bag.js';
 import { normalizeOrientation } from './video-orientation.js';
@@ -26,6 +28,7 @@ const orientationButtons = [...orientationFilter.querySelectorAll('[data-orienta
 const LOAD_TIMEOUT_MS = 8000;
 const MAX_SKIP_ATTEMPTS = 12;
 const PLAYBACK_BAG_KEY = 'video-scraper-playback-bag-v1';
+const RECENT_PLAYBACK_KEY = 'video-scraper-recent-plays-v1';
 const ORIENTATION_KEY = 'video-scraper-orientation';
 const NEXT_EVENT_NAME = 'videoscraper:next';
 const ADMIN_TOKEN_CHANGE_EVENT = 'videoscraper:admin-token-change';
@@ -86,8 +89,21 @@ function writePlaybackBag(bag) {
   } catch {}
 }
 
+function readRecentPlaybackIds() {
+  try {
+    return parseRecentPlaybackIds(localStorage.getItem(RECENT_PLAYBACK_KEY));
+  } catch {
+    return [];
+  }
+}
+
 function persistPlaybackProgress(index) {
   writePlaybackBag(playbackBagAfterIndex(state.items, index, state.seed));
+  try {
+    localStorage.setItem(RECENT_PLAYBACK_KEY, JSON.stringify(
+      rememberRecentPlaybackId(readRecentPlaybackIds(), state.items[index])
+    ));
+  } catch {}
 }
 
 function rememberOrientation() {
@@ -190,7 +206,8 @@ async function loadPlaybackRound(generation, forceNewRound = false) {
     fetchedItems,
     seed,
     savedBag?.lastPlayedId || null,
-    MAX_SKIP_ATTEMPTS
+    MAX_SKIP_ATTEMPTS,
+    readRecentPlaybackIds()
   );
   state.seed = seed;
   writePlaybackBag(bag);

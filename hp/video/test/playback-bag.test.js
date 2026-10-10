@@ -4,7 +4,9 @@ import test from 'node:test';
 import {
   createPlaybackBag,
   parsePlaybackBag,
+  parseRecentPlaybackIds,
   playbackBagAfterIndex,
+  rememberRecentPlaybackId,
   restorePlaybackBagItems
 } from '../public/playback-bag.js';
 
@@ -26,6 +28,36 @@ test('previously played video is moved away from the first position without resh
   const items = [{ id: 9 }, { id: 3 }, { id: 12 }, { id: 1 }];
   const bag = createPlaybackBag(items, 77, 9, 2);
   assert.deepEqual(bag.remainingIds, ['3', '12', '9', '1']);
+});
+
+
+test('recent playback history persists at most thirty unique video IDs', () => {
+  let recent = [];
+  for (let id = 1; id <= 32; id++) recent = rememberRecentPlaybackId(recent, { id });
+  assert.equal(recent.length, 30);
+  assert.deepEqual(recent.slice(0, 3), ['32', '31', '30']);
+  recent = rememberRecentPlaybackId(recent, { id: 30 });
+  assert.equal(recent[0], '30');
+  assert.equal(new Set(recent).size, 30);
+  assert.deepEqual(parseRecentPlaybackIds(JSON.stringify(recent)), recent);
+  assert.deepEqual(parseRecentPlaybackIds('{invalid json'), []);
+  assert.deepEqual(parseRecentPlaybackIds(null), []);
+});
+
+test('a fresh shuffle defers recent plays only within a bounded prefix', () => {
+  const items = Array.from({ length: 80 }, (_, index) => ({ id: index + 1 }));
+  const bag = createPlaybackBag(items, 77, null, 0, ['1', '2', '3', '78']);
+  assert.deepEqual(bag.remainingIds.slice(0, 57),
+    Array.from({ length: 57 }, (_, index) => String(index + 4)));
+  assert.deepEqual(bag.remainingIds.slice(57, 61), ['1', '2', '3', '61']);
+  assert.equal(bag.remainingIds.indexOf('78'), 77);
+  assert.equal(new Set(bag.remainingIds).size, 80);
+});
+
+test('a small library favors the unseen clip at the start of a fresh round', () => {
+  const items = [{ id: 1 }, { id: 2 }];
+  assert.deepEqual(createPlaybackBag(items, 77, null, 0, ['1']).remainingIds, ['2', '1']);
+  assert.deepEqual(createPlaybackBag([{ id: 1 }], 77, null, 0, ['1']).remainingIds, ['1']);
 });
 
 test('restored bag keeps saved order and ignores videos added mid-round', () => {
