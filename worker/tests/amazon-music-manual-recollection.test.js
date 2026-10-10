@@ -2,6 +2,18 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { refreshAmazonModel } from '../scripts/refresh-amazon-music-actions.mjs';
 import { continueAmazonDaily50kScan, AMAZON_MUSIC_DAILY_SCAN_STATE_KEY } from '../src/amazon-music-daily-50k.js';
+test('late continuation retries cannot rewind a newer scan or its progress', async () => {
+  const state = { status: 'active', started_at: 1500, updated_at: 2000, scanned_tracks: 20_000 };
+  const original = JSON.stringify(state);
+  const env = { PAGES_RESPONSE_R2: {
+    get: async () => ({ json: async () => JSON.parse(original) }),
+    put: async () => assert.fail('late retry must not replace current progress'),
+  } };
+  for (const observedAt of [1000, 1800]) {
+    const result = await continueAmazonDaily50kScan(env, observedAt, () => assert.fail('late retry must not fetch'));
+    assert.equal(result.reason, 'stale-scan-trigger');
+  }
+});
 test('manual recollection publishes only a complete fresh scan and never relabels old observations', async () => {
   const now = 1000;
   let scans = 0;
