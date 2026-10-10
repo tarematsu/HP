@@ -380,6 +380,9 @@ export async function continueAmazonDaily50kScan(
     return { ok: true, skipped: false, scan_id: state.scan_id, scanned_tracks: state.scanned_tracks, complete: true, published };
   }
   if (!state || state.status !== 'active') {
+    if (state?.complete && Number(state.updated_at) === Number(observedAt)) {
+      return { ok: true, skipped: true, complete: true, reason: 'scan-already-complete', scan_id: state.scan_id, scanned_tracks: state.scanned_tracks };
+    }
     return { ok: true, skipped: true, reason: 'no-active-daily-50k-scan' };
   }
 

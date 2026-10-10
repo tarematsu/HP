@@ -27,7 +27,8 @@ test('Spotify renderer emits single-point markers directly on the shared canvas'
 test('Spotify accessibility labels describe the separated Sakamichi trends directly', () => {
   assert.match(runtime, /櫻坂46・乃木坂46・日向坂46の全曲合計再生数前日比推移/);
   assert.match(runtime, /櫻坂46・乃木坂46・日向坂46のSpotify月間リスナー推移/);
-  assert.match(runtime, /Spotify日本 Daily Top Artist の順位データはまだありません。/);
+  assert.match(runtime, /Spotify日本 Daily Top Artist を取得できていません。/);
+  assert.match(runtime, /対象アーティストは200位圏外です。/);
   assert.match(runtime, /Spotify日本 Daily Top Artist の順位推移。1位が上。/);
   assert.match(shell, /Spotify 全曲合計再生数前日比推移（坂道3グループ）/);
   assert.match(shell, /Spotify 月間リスナー推移（坂道3グループ）/);

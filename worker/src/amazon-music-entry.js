@@ -73,7 +73,7 @@ async function runAmazon50k(env, scheduledTime, { start = false } = {}) {
   const result = start
     ? await startAmazonDaily50kScan(serviceEnv, scheduledTime)
     : await continueAmazonDaily50kScan(serviceEnv, scheduledTime);
-  if (result?.published) result.other_db = await persistAmazonMusicModelToOther(env, scheduledTime);
+  if (result?.complete) result.other_db = await persistAmazonMusicModelToOther(env, scheduledTime);
   return result;
 }
 

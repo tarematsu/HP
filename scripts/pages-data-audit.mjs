@@ -59,7 +59,14 @@ export async function auditPagesData(getJson, now = Date.now()) {
     return issues;
   }));
   for (const [service, hours] of [['youtube-music', 36], ['kkbox', 8 * 24], ['qq-music', 8 * 24], ['kugou-music', 4 * 24]]) {
-    tasks.push(check(service, `/api/${service}`, (p) => [timestampIssue(p.source_updated_at, now, hours * HOUR)]));
+    tasks.push(check(service, `/api/${service}`, (p) => {
+      const states = p.services || [];
+      if (!states.length) return [timestampIssue(p.source_updated_at, now, hours * HOUR)];
+      return states.flatMap((state) => [
+        timestampIssue(state.last_success_at, now, hours * HOUR),
+        /^(error|failed|blocked)$/.test(state.status || '') ? `collector status: ${state.status}` : null,
+      ]);
+    }));
   }
   await Promise.all(tasks);
   checks.sort((a, b) => a.name.localeCompare(b.name));
