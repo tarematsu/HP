@@ -363,6 +363,14 @@ import { JST_DATE_EN_CA } from '../dashboard-time.js?v=20261001.1';
       loadedKey = '';
       scheduleLoad(160);
     }));
+  // The router imports this module while historyView is still hidden. Start the
+  // first paint when the route becomes visible, not only on the mode event.
+  const historyView = byId('historyView');
+  if (historyView) new MutationObserver(() => {
+    if (active()) scheduleLoad(0);
+    else controller?.abort();
+  }).observe(historyView, { attributes: true, attributeFilter: ['hidden'] });
+
   observeDashboardChartResize(canvas, draw, {
     delay: 260,
     enabled: () => active() && series.length > 0,
