@@ -157,6 +157,6 @@ test('shared service CSS owns chart presentation and aggregate CSS is not bundle
 });
 
 test('dashboard navigation is bundled directly without a lazy loader workaround', () => {
-  assert.match(entry, /dashboard-tabs\.js\?v=20261005\.2/);
+  assert.match(entry, /dashboard-tabs\.js\?v=20261010\.1/);
   assert.doesNotMatch(build, /dashboard-tabs-loader|args\.path === '\.\/dashboard-tabs\.js/);
 });

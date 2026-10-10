@@ -173,7 +173,6 @@ import { byId } from '../dashboard-ui-common.js?v=20260930.1';
   }, true);
 
   window.addEventListener('history:data-loaded', syncArrowState);
+  window.addEventListener('history:select-mode', () => queueMicrotask(syncArrowState));
   window.addEventListener('hashchange', syncArrowState);
-  document.querySelectorAll('#modeTabs button').forEach((button) =>
-    button.addEventListener('click', () => queueMicrotask(syncArrowState)));
 })();

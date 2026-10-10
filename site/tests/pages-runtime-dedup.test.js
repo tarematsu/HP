@@ -39,7 +39,7 @@ test('inactive tab shells and runtimes are loaded on demand through one shared l
   assert.match(historyMain, /function ensureHistoryModeRuntime/);
   assert.match(historyMain, /history-period-chart\.js\?v=\d{8}\.\d+/);
   assert.doesNotMatch(historyMain, /history-ranking-chart\.js/);
-  assert.match(historyMain, /history-broadcasts\.js\?v=20261001\.1/);
+  assert.match(historyMain, /history-broadcasts\.js\?v=20261010\.1/);
   assert.doesNotMatch(historyMain, /history-ranking-missing-gap/);
 });
 

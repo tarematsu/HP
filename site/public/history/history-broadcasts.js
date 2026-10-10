@@ -368,9 +368,10 @@ import { JST_DATE_EN_CA } from '../dashboard-time.js?v=20261001.1';
     enabled: () => active() && series.length > 0,
   });
 
-  if (active()) {
-    notice.textContent = '';
-    notice.hidden = true;
-    scheduleLoad(0);
-  }
+  notice.textContent = '';
+  notice.hidden = true;
+  // This module is imported only for the broadcasts route. Defer the first
+  // attempt until the router has unhidden historyView; later route changes use
+  // history:select-mode/hashchange listeners above.
+  scheduleLoad(0);
 })();

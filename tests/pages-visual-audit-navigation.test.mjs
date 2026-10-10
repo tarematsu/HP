@@ -27,6 +27,16 @@ test('visual audit waits for history data and fresh chart paint before recording
   assert.match(source, /history summary returned no rows/);
 });
 
+test('visual audit requires every listening-party subview to be visibly rendered', () => {
+  assert.match(source, /listeningPartyMode/);
+  assert.match(source, /official listening party chart was not painted/);
+  assert.match(source, /official listening party table was not rendered/);
+  assert.match(source, /first-week comparison panel is hidden/);
+  assert.match(source, /first-week comparison chart was not painted/);
+  assert.match(source, /unofficial listening party panel is hidden/);
+  assert.match(source, /unofficial listening party table has no rows/);
+});
+
 test('visual audit flags clipped playlist tables even when document width fits', () => {
   assert.match(source, /playlistOverflow/);
   assert.match(source, /playlist table is horizontally clipped/);

@@ -92,6 +92,6 @@ test('history display layer uses current canonical modules only', () => {
   assert.match(source, /CACHE_PREFIX = 'sh\.history\.v3:'/);
   assert.match(source, /broadcasts: \{ title: '公式リスパ比較', table: '公式リスパ一覧'/);
   assert.doesNotMatch(source, /tracks: \{|再生曲一覧|history-copy-fixes|history-track-likes/);
-  assert.match(entry, /history-broadcasts\.js\?v=20261001\.1/);
+  assert.match(entry, /history-broadcasts\.js\?v=20261010\.1/);
   assert.match(entry, /history-period-chart\.js\?v=\d{8}\.\d+/);
 });

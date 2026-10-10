@@ -79,7 +79,7 @@ test('history keeps one visible chart and delegates archive chart drawing to mod
   assert.match(historyClient, /history:data-loaded/);
   assert.match(historyEntry, /history-period-chart\.js\?v=\d{8}\.\d+/);
   assert.doesNotMatch(historyEntry, /history-ranking-chart/);
-  assert.match(historyEntry, /history-broadcasts\.js\?v=20261001\.1/);
+  assert.match(historyEntry, /history-broadcasts\.js\?v=20261010\.1/);
   assert.match(periodChart, /history:data-loaded/);
   assert.match(broadcastClient, /function draw\(\)/);
 });

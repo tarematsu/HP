@@ -48,10 +48,8 @@ export const EVENTS = Object.freeze(EVENT_ROWS.map(([date, time, name, placeInde
 })));
 
 const PANEL_ID = 'unofficialListeningPanel';
-const TAB_LABEL = 'リスパ';
 
 function removeLegacyUi() {
-  document.querySelector('#modeTabs [data-view="unofficial"]')?.remove();
   document.getElementById('unofficialView')?.remove();
 }
 
@@ -89,27 +87,34 @@ function mountView() {
 }
 
 function listeningPartyTab() {
-  return document.querySelector('#modeTabs [data-mode="broadcasts"]');
+  return document.querySelector('#functionTabs button[data-mode="broadcasts"]');
 }
 
 function syncTab() {
   const panel = document.getElementById(PANEL_ID);
+  if (!panel) return;
   const tab = listeningPartyTab();
-  if (!panel || !tab) return;
-  if (tab.textContent !== TAB_LABEL) tab.textContent = TAB_LABEL;
-  panel.hidden = !tab.classList.contains('active');
+  const historyView = document.getElementById('historyView');
+  panel.hidden = !(location.hash === '#broadcasts'
+    && tab?.classList.contains('active')
+    && historyView
+    && !historyView.hidden);
 }
 
 function observeListeningPartyTab() {
-  const tab = listeningPartyTab();
-  if (!tab || tab.dataset.unofficialPanelObserver === '1') return;
-  tab.dataset.unofficialPanelObserver = '1';
-  new MutationObserver(syncTab).observe(tab, {
+  const tabs = document.getElementById('functionTabs');
+  if (!tabs || tabs.dataset.unofficialPanelObserver === '1') return;
+  tabs.dataset.unofficialPanelObserver = '1';
+  new MutationObserver(syncTab).observe(tabs, {
     attributes: true,
     attributeFilter: ['class', 'aria-current'],
     childList: true,
-    characterData: true,
     subtree: true,
+  });
+  const historyView = document.getElementById('historyView');
+  if (historyView) new MutationObserver(syncTab).observe(historyView, {
+    attributes: true,
+    attributeFilter: ['hidden'],
   });
 }
 
@@ -129,3 +134,4 @@ window.addEventListener('hashchange', () => {
   syncTab();
 });
 window.addEventListener('popstate', syncTab);
+window.addEventListener('history:select-mode', syncTab);

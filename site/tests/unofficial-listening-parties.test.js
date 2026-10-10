@@ -67,11 +67,13 @@ test('all remaining rows build X announcement URLs from compact account and stat
   assert.match(viewSource, /sourceLink\.rel = 'noopener noreferrer'/);
 });
 
-test('legacy unofficial list remains visible only while the legacy broadcasts route is active', () => {
-  assert.match(viewSource, /querySelector\('#modeTabs \[data-mode="broadcasts"\]'\)/);
-  assert.match(viewSource, /TAB_LABEL = 'リスパ'/);
-  assert.match(viewSource, /panel\.hidden = !tab\.classList\.contains\('active'\)/);
+test('unofficial list follows the current broadcasts route and remains visible with the shared history view', () => {
+  assert.match(viewSource, /querySelector\('#functionTabs button\[data-mode="broadcasts"\]'\)/);
+  assert.match(viewSource, /location\.hash === '#broadcasts'/);
+  assert.match(viewSource, /!historyView\.hidden/);
   assert.match(viewSource, /new MutationObserver\(syncTab\)/);
+  assert.match(viewSource, /history:select-mode/);
+  assert.doesNotMatch(viewSource, /#modeTabs|TAB_LABEL/);
   assert.match(viewSource, /location\.hash !== '#unofficial'/);
   assert.match(tabsSource, /'first-week', 'unofficial', 'monthly', 'daily', 'weekly'/);
   assert.ok(tabsSource.includes("? 'past' : 'broadcasts'"));

@@ -23,7 +23,10 @@ import {
   });
 
   function active() {
-    return document.querySelector('#modeTabs button.active[data-mode]')?.dataset?.mode === MODE;
+    const tab = document.querySelector('#functionTabs button.active[data-mode]');
+    return location.hash === `#${MODE}`
+      && tab?.dataset?.mode === MODE
+      && !document.getElementById('historyView')?.hidden;
   }
 
   function fallbackDate(value) {
