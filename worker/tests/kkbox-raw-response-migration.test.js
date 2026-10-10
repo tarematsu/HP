@@ -37,7 +37,23 @@ test('migration preserves payload and freshness while HTTP streams the raw body'
   assert.equal(r2.parsedRaw, false);
   assert.equal(await loadMaterializedR2Response(r2, 'music-service:kkbox', 10000, 100), null);
   assert.ok(r2.values.has(legacyKey));
-  assert.deepEqual(await migrateKkboxRawResponse(r2), { migrated: false, reason: 'canonical-exists' });
+  assert.deepEqual(await migrateKkboxRawResponse(r2), { migrated: false, reason: 'already-streaming' });
+});
+
+test('existing envelope is migrated and the newer snapshot wins', async () => {
+  for (const canonicalTime of [500, 2000]) {
+    const r2 = bucket();
+    const modelKey = 'music-service:kkbox';
+    const legacyKey = `pages-response/actions-v2/${Buffer.from(modelKey).toString('hex')}.json`;
+    const envelope = (body, updated_at) => ({ version: 1, status: 200,
+      headers: { 'content-type': 'application/json' }, body, updated_at });
+    await r2.put(legacyKey, JSON.stringify(envelope('legacy', 1000)));
+    await r2.put(pagesR2ResponseKey(modelKey), JSON.stringify(envelope('canonical', canonicalTime)));
+    assert.equal((await migrateKkboxRawResponse(r2)).migrated, true);
+    const response = await loadMaterializedR2Response(r2, modelKey, 3000);
+    assert.equal(await response.text(), canonicalTime > 1000 ? 'canonical' : 'legacy');
+    assert.equal(response.headers.get('x-materialized-at'), String(Math.max(1000, canonicalTime)));
+  }
 });
 
 test('reference reader rejects missing bodies and foreign object paths', async () => {

@@ -37,5 +37,6 @@ jobs:
         working-directory: worker
         run: node scripts/migrate-kkbox-raw-response-actions.mjs
       - name: Retry the failing Spotify artist-chart dispatch once with structured diagnostics
+        if: github.event_name == 'workflow_dispatch'
         working-directory: worker
         run: node scripts/diagnose-spotify-artist-chart-actions.mjs
