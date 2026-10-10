@@ -13,7 +13,7 @@ const comparisonTable = dashboardTable({
 });
 
 function broadcastsTab() {
-  return document.querySelector('#modeTabs [data-mode="broadcasts"]');
+  return document.querySelector('#functionTabs button[data-mode="broadcasts"]');
 }
 
 function mountView() {
@@ -61,7 +61,7 @@ const historyView = document.getElementById('historyView');
 function syncVisibility() {
   if (!view) return;
   const tab = broadcastsTab();
-  const shouldShow = Boolean(tab?.classList.contains('active') && historyView && !historyView.hidden);
+  const shouldShow = Boolean(location.hash === '#broadcasts' && tab?.classList.contains('active') && historyView && !historyView.hidden);
   if (view.hidden === shouldShow) view.hidden = !shouldShow;
 }
 
