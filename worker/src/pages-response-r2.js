@@ -110,13 +110,14 @@ async function responseFromRawReference(r2, envelope, now, maximumAgeMs) {
   return new Response(raw.body, { status: Number(envelope.status) || 200, headers });
 }
 
-export async function loadMaterializedR2RawFallback(r2, modelKey, now, maximumAgeMs) {
+export async function loadMaterializedR2RawFallback(r2, modelKey, now, maximumAgeMs, canonicalMd5 = null) {
   const key = pagesR2RawFallbackKey(modelKey);
   if (!key || !r2?.get) return null;
   const object = await r2.get(key);
   if (!object?.json) return null;
   try {
     const envelope = await object.json();
+    if (canonicalMd5 && envelope?.source_canonical_md5 !== canonicalMd5) return null;
     return envelope?.format === 'raw-response-reference-v1'
       ? responseFromRawReference(r2, envelope, now, maximumAgeMs) : null;
   } catch (error) {
@@ -132,6 +133,16 @@ async function loadCanonicalResponse(r2, modelKey, now, maximumAgeMs) {
   if (!object?.body) return null;
   const metadata = objectOrNull(object.customMetadata) || {};
   if (!directMetadata(metadata)) {
+    // A migrated fallback is tied to this exact canonical object. Inspect its
+    // small manifest before attempting to decode a large, unusable raw JSON
+    // object. A subsequent canonical publication changes the checksum and wins.
+    const checksum = object.checksums?.md5;
+    if ((modelKey === 'music-service:kkbox' || modelKey === 'amazon-music')
+        && checksum instanceof ArrayBuffer && checksum.byteLength === 16) {
+      const md5 = Array.from(new Uint8Array(checksum), value => value.toString(16).padStart(2, '0')).join('');
+      const streamed = await loadMaterializedR2RawFallback(r2, modelKey, now, maximumAgeMs, md5);
+      if (streamed) return streamed;
+    }
     // Transitional reader for canonical envelopes created before raw-v1 rollout.
     try {
       const envelope = await object.json();

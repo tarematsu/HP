@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import { migrateKkboxRawResponse } from '../scripts/migrate-kkbox-raw-response-actions.mjs';
 import { loadMaterializedR2Response, pagesR2ResponseKey } from '../src/pages-response-r2.js';
 import { loadMaterializedResponse } from '../src/pages-response-store.js';
@@ -14,6 +15,7 @@ function bucket() {
       if (!values.has(key)) return null;
       const text = values.get(key);
       return { body: new Response(text).body, text: async () => text,
+        checksums: { md5: Uint8Array.from(createHash('md5').update(text).digest()).buffer },
         json: async () => {
           if (key.includes('/raw-body-v1/')) { parsedRaw = true; throw new Error('HTTP must stream raw body'); }
           return JSON.parse(text);
@@ -78,9 +80,21 @@ test('native canonical objects remain intact while the legacy fallback streams',
   await r2.put(legacyKey, JSON.stringify({ version: 1, status: 200, updated_at: 1000, body }));
   assert.equal((await migrateKkboxRawResponse(r2)).migrated, true);
   assert.equal(r2.values.get(canonicalKey), native);
+  const get = r2.get.bind(r2);
+  r2.get = async key => {
+    const object = await get(key);
+    if (key === canonicalKey) object.json = async () => { throw new Error('HTTP must not parse native canonical JSON'); };
+    return object;
+  };
   const response = await loadMaterializedResponse(r2, modelKey, 2000, 2000);
   assert.equal(await response.text(), body);
   assert.equal(response.headers.get('x-api-source'), 'worker-r2');
   assert.equal(r2.parsedRaw, false);
+  r2.get = get;
   assert.equal((await migrateKkboxRawResponse(r2)).reason, 'already-streaming');
+  await r2.put(canonicalKey, JSON.stringify({ version: 1, status: 200,
+    updated_at: 2500, body: 'new canonical publication' }));
+  const newer = await loadMaterializedResponse(r2, modelKey, 3000, 2000);
+  assert.equal(await newer.text(), 'new canonical publication');
+  assert.equal(newer.headers.get('x-materialized-at'), '2500');
 });
