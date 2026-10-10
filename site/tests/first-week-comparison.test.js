@@ -89,7 +89,7 @@ test('dashboard embeds first-week comparison in the listening-party view and loa
   assert.doesNotMatch(stationheadModel, /label: '初週比較'/);
   assert.match(stationheadModel, /value: 'broadcasts', label: 'リスパ'/);
   assert.doesNotMatch(entry, /first-week-comparison-shell|first-week-comparison\.js/);
-  assert.match(entry, /dashboard-tabs\.js\?v=20261005\.2/);
+  assert.match(entry, /dashboard-tabs\.js\?v=20261010\.1/);
   assert.equal(ROUTES.broadcasts.firstWeek, true);
   assert.match(tabs, /loadOnce\('first-week:shell'[\s\S]*first-week-comparison-shell\.js/);
   assert.match(tabs, /loadOnce\('first-week:runtime'[\s\S]*first-week-comparison\.js/);
