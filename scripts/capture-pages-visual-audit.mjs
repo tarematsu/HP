@@ -113,7 +113,7 @@ async function inspectView(page, tab, viewport, outDir) {
           && Number(firstWeekChart?.dataset.firstWeekWidth || 0) > 0
           && document.querySelectorAll('#firstWeekTbody tr').length > 0
           && document.querySelectorAll('#unofficialListeningTbody tr').length > 0;
-      }, { timeout: 20_000 });
+      }, null, { timeout: 20_000 });
     } catch {
       listeningPartyWaitTimedOut = true;
     }
