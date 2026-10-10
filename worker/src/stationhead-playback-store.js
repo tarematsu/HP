@@ -86,11 +86,14 @@ export async function runStationheadPlaybackStatements(db, statements) {
 // and likes schemas while counting transitions through one implementation.
 export function planStationheadPlaybackDaily(db, stationId, previousDaily, transitions, observedAt, sourceLabel) {
   const currentKey = stationheadPlaybackPeriodKey(observedAt);
-  let daily = previousDaily?.period_key ? previousDaily : emptyPlaybackDaily(currentKey);
+  const firstAt = integer(transitions[0]?.expected_start_at) ?? observedAt;
+  let daily = previousDaily?.period_key ? previousDaily : emptyPlaybackDaily(stationheadPlaybackPeriodKey(firstAt));
   let completedDay = null;
+  const completedDays = [];
   const statements = [];
   const complete = (nextKey) => {
     completedDay = playbackDailyPublic(daily);
+    completedDays.push(completedDay);
     statements.push(stationheadCompletedDailyStatement(db, daily, observedAt));
     daily = emptyPlaybackDaily(nextKey);
   };
@@ -101,6 +104,7 @@ export function planStationheadPlaybackDaily(db, stationId, previousDaily, trans
     daily = recordPlaybackDailyTrack(daily, track, playedAt);
     statements.push(stationheadPlaybackPlayStatement(db, stationId, track, observedAt, sourceLabel));
   }
-  if (daily.period_key !== currentKey && !transitions.length) complete(currentKey);
-  return { daily, completedDay, statements };
+  if (daily.period_key !== currentKey) complete(currentKey);
+  return { daily, completedDay, completedDays, statements };
 }
+

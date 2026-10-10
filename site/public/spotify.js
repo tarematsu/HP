@@ -283,7 +283,9 @@ function renderArtistRankChart(chart = {}, trend = {}) {
   const dates = [...new Set(seriesList.flatMap((series) => series.points.map((point) => point.chart_date)))].sort();
   const ranks = seriesList.flatMap((series) => series.points.map((point) => point.rank));
   if (!dates.length || !ranks.length) {
-    appendEmptyState(container, 'Spotify日本 Daily Top Artist の順位データはまだありません。', { className: 'spotify-trend-empty' });
+    appendEmptyState(container, chart.latest_chart_date
+      ? `Spotify日本 Daily Top Artist（${chart.latest_chart_date}確認）：対象アーティストは200位圏外です。`
+      : 'Spotify日本 Daily Top Artist を取得できていません。収集状態の確認が必要です。', { className: 'spotify-trend-empty' });
     return;
   }
 
@@ -415,3 +417,4 @@ if (typeof document !== 'undefined') {
     if (latestCharts) renderCharts(latestCharts.trend, latestCharts.artistChart, latestCharts.monthlyListenerRows);
   }, { delay: 220, enabled: () => Boolean(latestCharts) });
 }
+

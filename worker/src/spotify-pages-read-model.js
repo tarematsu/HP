@@ -180,17 +180,22 @@ export async function publishSpotifyPagesReadModel(env, options = {}) {
   const db = env?.OTHER_DB;
   if (!db?.prepare) throw new Error('OTHER_DB binding is required for Spotify read-model refresh');
 
-  const [latestRows, trendResult, artistChartResult, monthlyListenersResult] = await Promise.all([
+  const [latestRows, trendResult, artistChartResult, monthlyListenersResult, chartSync] = await Promise.all([
     loadSpotifyLatestDetailRows(db),
     db.prepare(spotifyTrendSql()).all(),
     db.prepare(spotifyArtistChartSql()).all(),
     db.prepare(spotifyMonthlyListenersSql()).all(),
+    db.prepare('SELECT latest_chart_date,latest_observed_at FROM sh_spotify_artist_chart_sync_state WHERE id=1').first(),
   ]);
   const monthlyListenerRows = rows(monthlyListenersResult);
   const model = {
     ...spotifyReadModelAll(latestRows, rows(trendResult), rows(artistChartResult)),
     monthly_listener_rows: monthlyListenerRows,
   };
+  if (chartSync?.latest_chart_date && chartSync.latest_chart_date >= (model.artist_chart.latest_chart_date || '')) {
+    model.artist_chart.latest_chart_date = chartSync.latest_chart_date;
+    model.artist_chart.latest_observed_at = chartSync.latest_observed_at;
+  }
   const body = JSON.stringify({ ok: true, ...model });
 
   const snapshots = groupSnapshotDates(model);
@@ -260,3 +265,4 @@ export async function processSpotifyReadModelRefreshBatch(batch, env) {
     return { processed: 0, failed: messages.length, ignored: 0 };
   }
 }
+

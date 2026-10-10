@@ -2,6 +2,11 @@ name: Rebuild Ohisama Track History
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'worker/scripts/rebuild-ohisama-track-history-actions.mjs'
+      - '.github/workflows/rebuild-ohisama-track-history.yml'
 
 permissions:
   contents: read
@@ -33,3 +38,4 @@ jobs:
         run: npm ci --prefer-offline --no-audit --no-fund
       - name: Rebuild Ohisama Track History from October 1
         run: node scripts/rebuild-ohisama-track-history-actions.mjs
+

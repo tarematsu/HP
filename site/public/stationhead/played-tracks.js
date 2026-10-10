@@ -10,6 +10,18 @@ export function aggregatePlayed(rows) { const map = new Map(); for (const row of
 
 export function playedChartRows(tracks) { const top = tracks.slice(0, 15).map((row) => ({ ...row, label: row.title || '曲名不明' })); const other = tracks.slice(15).reduce((sum, row) => sum + row.play_count, 0); if (other) top.push({ label: 'その他', play_count: other }); return top; }
 
+export function revealPlayedPeriod(strip) {
+  const selected = strip?.querySelector('.is-selected');
+  if (!selected) return;
+  // Scroll this strip only: scrollIntoView also moves the entire page.
+  const item = selected.getBoundingClientRect();
+  const bounds = strip.getBoundingClientRect();
+  const left = bounds.left + (strip.clientLeft || 0);
+  const right = left + strip.clientWidth;
+  if (item.left < left) strip.scrollLeft += item.left - left;
+  else if (item.right > right) strip.scrollLeft += item.right - right;
+}
+
 export function renderPlayed(runtime, rows) {
   const tracks = aggregatePlayed(rows); const total = tracks.reduce((sum, row) => sum + row.play_count, 0); setText(runtime.root, 'played-total', numberText(total)); setText(runtime.root, 'played-unique', numberText(tracks.length));
   const body = role(runtime.root, 'played-tbody'); if (body) { body.replaceChildren(); if (!tracks.length) appendEmptyTableRow(body, '再生履歴データがありません。', 3); else tracks.forEach((row) => appendTableRow(body, [`${row.title || '曲名不明'}${row.artist ? ` / ${row.artist}` : ''}`, numberText(row.play_count), total ? `${(row.play_count / total * 100).toFixed(1)}%` : '—'])); }
@@ -30,5 +42,10 @@ export async function loadPlayed(runtime, { force = false } = {}) {
   if (!current()) return;
   const week = Boolean(role(runtime.root, 'played-week')?.checked); const periods = week ? [...new Set(runtime.playedDates.map(weekStart).filter(Boolean))] : runtime.playedDates; if (!runtime.playedPeriod || !periods.includes(runtime.playedPeriod)) runtime.playedPeriod = periods.at(-1) || '';
   const strip = role(runtime.root, 'played-periods'); if (strip) { strip.replaceChildren(); for (const period of periods) { const button = document.createElement('button'); button.type = 'button'; button.className = `played-tracks-period${period === runtime.playedPeriod ? ' is-selected' : ''}`; button.dataset.period = period; button.textContent = `${shortDate(period)}${week ? ' (週)' : ''}`; button.addEventListener('click', async () => { runtime.playedPeriod = period; await loadPlayed(runtime); }); strip.append(button); } }
-  if (!runtime.playedPeriod) { renderPlayed(runtime, []); return; } const from = runtime.playedPeriod; const to = week ? addDays(from, 6) : from; const nextRows = await runtime.model.loadPlayedPeriod(from, to, { force }); if (current()) renderPlayed(runtime, nextRows);
+  if (strip) {
+    revealPlayedPeriod(strip);
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => { if (current()) revealPlayedPeriod(strip); });
+  }
+  if (!runtime.playedPeriod) { renderPlayed(runtime, []); return; } const from = runtime.playedPeriod; const to = week ? addDays(from, 6) : from; const nextRows = await runtime.model.loadPlayedPeriod(from, to, { force }); if (current()) { renderPlayed(runtime, nextRows); revealPlayedPeriod(strip); }
 }
+

@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { NAVIGATION } from '../site/public/dashboard-navigation-config.js';
+import { auditPagesData } from './pages-data-audit.mjs';
 
 function parseArgs(argv) {
   const options = {
@@ -167,6 +168,16 @@ async function inspectView(page, tab, viewport, outDir) {
       hash: location.hash,
       title: document.title,
       historyAudit: window.__pagesAuditHistory || null,
+      channelHistory: ['past', 'hinata-past'].includes(route.mode) ? (() => {
+        const panel = document.querySelector('.dashboard-view:not([hidden])');
+        return { rows: Number(panel?.dataset.historyRows || 0), painted: panel?.dataset.historyPainted === 'true' };
+      })() : null,
+      playedPeriodVisible: ['played-tracks', 'hinata-played-tracks'].includes(route.mode) ? (() => {
+        const selected = document.querySelector('.dashboard-view:not([hidden]) .played-tracks-period.is-selected');
+        if (!selected) return false;
+        const item = selected.getBoundingClientRect(); const strip = selected.parentElement.getBoundingClientRect();
+        return item.left >= strip.left - 1 && item.right <= strip.right + 1;
+      })() : null,
       listeningPartyAudit: route.mode === 'broadcasts' ? {
         officialChartPainted: Number(document.getElementById('chart')?.dataset.sakurazakaMaxMinute || 0) > 0,
         officialTableReady: document.getElementById('thead')?.closest('table')?.dataset.officialPartyReadModel === 'complete',
@@ -184,6 +195,8 @@ async function inspectView(page, tab, viewport, outDir) {
   await page.screenshot({ path: screenshot, fullPage: true, animations: 'disabled' });
 
   const issues = [];
+  if (state.channelHistory && (!state.channelHistory.rows || !state.channelHistory.painted)) issues.push('channel history data or chart was not rendered');
+  if (state.playedPeriodVisible === false) issues.push('selected playback period is outside the visible date strip');
   if (historyWaitTimedOut) issues.push('history data or chart was not rendered within 20 seconds');
   if (listeningPartyWaitTimedOut) issues.push('listening party subviews were not fully rendered within 20 seconds');
   if (listeningPartyMode && state.listeningPartyAudit) {
@@ -319,6 +332,11 @@ const viewports = [
 
 const browser = await chromium.launch({ headless: true });
 const results = [];
+const dataAudit = await auditPagesData(async (path) => {
+  const response = await fetch(`${options.url}${path}`, { signal: AbortSignal.timeout(30_000), headers: { 'cache-control': 'no-cache' } });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+});
 let fatal = null;
 try {
   for (const viewport of viewports) {
@@ -335,12 +353,14 @@ const report = {
   generatedAt: new Date().toISOString(),
   url: options.url,
   viewports: results,
+  dataAudit,
   summary: {
     screenshotCount: allViews.length,
     failedViewCount: allViews.filter((view) => !view.ok).length,
     consoleErrorCount: results.reduce((sum, result) => sum + result.consoleErrors.length, 0),
     pageErrorCount: results.reduce((sum, result) => sum + result.pageErrors.length, 0),
     requestFailureCount: results.reduce((sum, result) => sum + result.requestFailures.length, 0),
+    dataFailureCount: dataAudit.failed_count,
   },
   fatal,
 };
@@ -352,7 +372,8 @@ const issueCount = report.summary.failedViewCount
   + report.summary.consoleErrorCount
   + report.summary.pageErrorCount
   + report.summary.requestFailureCount;
-if (fatal || issueCount > 0) {
+const totalIssueCount = issueCount + report.summary.dataFailureCount;
+if (fatal || totalIssueCount > 0) {
   if (fatal) console.error(fatal);
   if (issueCount > 0) console.error(`Visual audit detected ${issueCount} issue(s).`);
   process.exitCode = 1;
@@ -361,3 +382,4 @@ if (fatal || issueCount > 0) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) await runVisualAudit();
+

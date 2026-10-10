@@ -38,6 +38,7 @@ function db() {
     prepare(sql) {
       const statement = {
         args: [],
+        async first() { return { latest_chart_date: '2026-09-29', latest_observed_at: 456 }; },
         bind(...args) {
           this.args = args;
           return this;
@@ -127,6 +128,23 @@ function storedObject(stored) {
     async text() { return stored.body; },
   };
 }
+
+test('a successful empty chart retains confirmation date separately from ranking rows', async () => {
+  const database = db();
+  const prepare = database.prepare.bind(database);
+  database.prepare = (sql) => {
+    const statement = prepare(sql);
+    if (sql === spotifyArtistChartSql()) statement.all = async () => ({ results: [] });
+    return statement;
+  };
+  const objects = new Map();
+  const r2 = { get: async () => null, put: async (key, body) => { objects.set(key, body); } };
+  const result = await publishSpotifyPagesReadModel({ OTHER_DB: database, PAGES_RESPONSE_R2: r2 });
+  assert.equal(result.chart_date, '2026-09-29');
+  const model = JSON.parse(objects.get(pagesR2ResponseKey('spotify-playcounts')));
+  assert.deepEqual(model.artist_chart.days, []);
+  assert.equal(model.artist_chart.latest_observed_at, 456);
+});
 
 test('Spotify read model writes one canonical raw object and skips unchanged bodies', async () => {
   let stored = null;
@@ -284,3 +302,4 @@ test('Spotify source events use the existing collector queue', async () => {
   assert.equal(sent[0].reason, 'artist-chart');
   assert.equal(sent[0].chart_date, '2026-09-29');
 });
+

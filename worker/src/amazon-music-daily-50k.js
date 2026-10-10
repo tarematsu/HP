@@ -221,6 +221,7 @@ async function saveGroupChanges(db, observedAt, previousTracks, currentTracks) {
 async function publishCompletedScan(env, state, observedAt) {
   const r2 = env?.PAGES_RESPONSE_R2;
   const previousModel = await getJson(r2, AMAZON_MUSIC_READ_MODEL_KEY);
+  if (Number(previousModel?.observed_at) > Number(observedAt)) return { published: false, reason: 'stale-observation' };
   const previousTracks = Array.isArray(previousModel?.tracks) ? previousModel.tracks : [];
   const observedTracks = [...cycleMap(state).values()]
     .filter((track) => GROUP_NAMES.has(text(track?.group_name)))
@@ -343,6 +344,9 @@ export async function startAmazonDaily50kScan(env, observedAt = Date.now(), fetc
   const r2 = env?.PAGES_RESPONSE_R2;
   if (!r2?.put) throw new Error('PAGES_RESPONSE_R2 binding is required');
   const previous = await getJson(r2, AMAZON_MUSIC_DAILY_SCAN_STATE_KEY);
+  if (Number(previous?.started_at) > Number(observedAt)) return { ok: true, skipped: true, reason: 'stale-scan-trigger' };
+  if (Number(previous?.started_at) === Number(observedAt)) return continueAmazonDaily50kScan(env, observedAt, fetchImpl);
+  if (previous?.publication_pending) await continueAmazonDaily50kScan(env, observedAt, fetchImpl);
   const top = await observeTop500(env, observedAt, fetchImpl);
   const state = freshState({ observedAt, topHash: top.hash, previous, reason: 'daily-05-jst' });
   await putJson(r2, AMAZON_MUSIC_DAILY_SCAN_STATE_KEY, state);
@@ -368,7 +372,17 @@ export async function continueAmazonDaily50kScan(
   const r2 = env?.PAGES_RESPONSE_R2;
   if (!r2?.put) throw new Error('PAGES_RESPONSE_R2 binding is required');
   let state = await getJson(r2, AMAZON_MUSIC_DAILY_SCAN_STATE_KEY);
+  // A completed scan is durable before publication. Retry that publication
+  // without recollecting 50k tracks if any D1/R2 write previously failed.
+  if (state?.complete && state?.publication_pending) {
+    const published = await publishCompletedScan(env, state, Number(state.updated_at) || observedAt);
+    await putJson(r2, AMAZON_MUSIC_DAILY_SCAN_STATE_KEY, { ...state, publication_pending: false });
+    return { ok: true, skipped: false, scan_id: state.scan_id, scanned_tracks: state.scanned_tracks, complete: true, published };
+  }
   if (!state || state.status !== 'active') {
+    if (state?.complete && Number(state.updated_at) === Number(observedAt)) {
+      return { ok: true, skipped: true, complete: true, reason: 'scan-already-complete', scan_id: state.scan_id, scanned_tracks: state.scanned_tracks };
+    }
     return { ok: true, skipped: true, reason: 'no-active-daily-50k-scan' };
   }
 
@@ -415,6 +429,7 @@ export async function continueAmazonDaily50kScan(
     scanned_tracks: scan.scanned_tracks,
     next_url: complete ? null : scan.continuation_url,
     complete,
+    publication_pending: complete,
     exhausted: scan.exhausted,
     cycle_tracks: [...tracks.values()].sort((a, b) => Number(a.rank) - Number(b.rank)),
     status: complete ? 'complete' : 'active',
@@ -424,6 +439,7 @@ export async function continueAmazonDaily50kScan(
   let published = null;
   if (complete) {
     published = await publishCompletedScan(env, state, observedAt);
+    await putJson(r2, AMAZON_MUSIC_DAILY_SCAN_STATE_KEY, { ...state, publication_pending: false });
     await recordScanEvent(r2, {
       event: 'completed',
       observed_at: observedAt,
@@ -447,3 +463,4 @@ export async function continueAmazonDaily50kScan(
     published,
   };
 }
+

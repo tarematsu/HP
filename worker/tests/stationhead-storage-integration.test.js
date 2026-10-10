@@ -56,6 +56,17 @@ const summary = {
   member_start: 10, member_end: 12, member_growth: 2, updated_at: 150,
 };
 
+test('recovery retains every completed playback day and advances the hot day to now', () => {
+  const db = fakeDb();
+  const tracks = ['2026-10-06', '2026-10-07', '2026-10-08'].map((day, index) => ({
+    track_id: index + 1, event_key: `event:${index}`, expected_start_at: Date.parse(`${day}T12:00:00Z`),
+  }));
+  const result = planStationheadPlaybackDaily(db, 99, null, tracks, Date.parse('2026-10-10T00:00:00Z'), 'Ohisama');
+  assert.deepEqual(result.completedDays.map((row) => row.period_key), ['2026-10-06', '2026-10-07', '2026-10-08']);
+  assert.deepEqual(result.completedDays.map((row) => row.total_plays), [1, 1, 1]);
+  assert.equal(result.daily.period_key, '2026-10-10');
+});
+
 for (const [period, table, condition] of [
   ['daily', 'sh_daily_summary', '>'],
   ['weekly', 'sh_weekly_summary', '>='],
@@ -128,3 +139,4 @@ for (const label of ['Buddies', 'Ohisama']) {
     assert.equal(idle.statements.length, 1);
   });
 }
+

@@ -107,6 +107,25 @@ export async function rebuildOhisamaTrackHistory({
     WHERE period_key>=?
     ORDER BY period_key ASC`).bind(fromDay).all();
   const summaries = Array.isArray(result?.results) ? result.results : [];
+  // A missing rollover summary must not hide retained canonical play facts.
+  // Recover only absent days; an existing summary remains authoritative.
+  const raw = await db.prepare(`SELECT p.period_key,p.track_id,
+      COUNT(*) AS count,MAX(p.played_at) AS updated_at,
+      MAX(l.spotify_id) AS spotify_id,MAX(l.title) AS title,MAX(l.artist) AS artist
+    FROM sh_track_plays p
+    LEFT JOIN sh_track_like_current l ON l.station_id=p.station_id AND l.track_id=p.track_id
+    WHERE p.period_key>=? AND p.period_key NOT IN (SELECT period_key FROM sh_track_daily_summary)
+    GROUP BY p.period_key,p.track_id ORDER BY p.period_key,p.track_id`).bind(fromDay).all();
+  const recovered = new Map();
+  for (const row of raw?.results || []) {
+    if (!recovered.has(row.period_key)) recovered.set(row.period_key, []);
+    recovered.get(row.period_key).push(row);
+  }
+  for (const [period_key, tracks] of recovered) summaries.push({
+    period_key, tracks_json: JSON.stringify(tracks),
+    total_plays: tracks.reduce((sum, row) => sum + Number(row.count), 0),
+    updated_at: Math.max(...tracks.map((row) => Number(row.updated_at))),
+  });
   const published = [];
 
   for (const summary of summaries) {
@@ -168,3 +187,4 @@ if (invokedPath === fileURLToPath(import.meta.url)) {
   const result = await rebuildOhisamaTrackHistory();
   console.log(JSON.stringify(result, null, 2));
 }
+

@@ -52,7 +52,8 @@ function refreshHistoryRange(runtime) {
 function initialize(root) {
   if (runtimes.has(root)) return runtimes.get(root);
   const model = stationheadChannelReadModel(root.dataset.stationheadModel || 'buddies');
-  const runtime = { root, model, section: '', selectionSequence: 0, requestSequence: 0, playedSequence: 0, historyRange: 'all', historyOffset: 0, historyPayload: null, historyVisibleRows: [], current: null, playbackIndex: -1, playedDates: [], playedPeriod: '', likes: [], hiddenBroadcastSeries: new Set(), broadcastPayload: null };
+  const initialHistoryRange = root.querySelector('[data-history-range].active')?.dataset.historyRange || 'all';
+  const runtime = { root, model, section: '', selectionSequence: 0, requestSequence: 0, playedSequence: 0, historyRange: initialHistoryRange, historyOffset: 0, historyPayload: null, historyVisibleRows: [], current: null, playbackIndex: -1, playedDates: [], playedPeriod: '', likes: [], hiddenBroadcastSeries: new Set(), broadcastPayload: null };
   const capabilities = new Set(model.capabilities); const tabs = root.querySelector('.stationhead-subtabs');
   root.querySelectorAll('[data-stationhead-section]').forEach((button) => { const enabled = capabilities.has(button.dataset.stationheadSection); button.disabled = !enabled; button.setAttribute('aria-disabled', String(!enabled)); button.title = enabled ? '' : '未提供'; if (enabled) button.addEventListener('click', () => selectSection(runtime, button.dataset.stationheadSection)); });
   root.addEventListener('stationhead:history-mode', () => {
@@ -87,3 +88,4 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) retur
 function visibleCurrentRuntime() { if (document.hidden) return null; const root = document.querySelector('.stationhead-channel-view:not([hidden])'); const runtime = root && runtimes.get(root); return runtime?.section === 'current' ? runtime : null; }
 setInterval(() => { const runtime = visibleCurrentRuntime(); if (runtime) void loadSection(runtime, 'current', { force: true }); }, 60_000);
 setInterval(() => { const runtime = visibleCurrentRuntime(); if (runtime?.current) renderPlayback(runtime); }, 1_000);
+

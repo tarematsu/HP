@@ -5,6 +5,8 @@ on:
   pull_request:
     paths:
       - 'scripts/capture-pages-visual-audit.mjs'
+      - 'scripts/pages-data-audit.mjs'
+      - 'tests/pages-data-audit.test.mjs'
       - '.github/workflows/pages-visual-audit.yml'
   workflow_run:
     workflows: [Deploy production]
@@ -80,3 +82,4 @@ jobs:
           path: site/artifacts/browser/
           if-no-files-found: error
           retention-days: 14
+
