@@ -93,3 +93,21 @@ test('manual recovery republishes a recent durable scan without recollecting or 
   assert.equal(JSON.parse(objects.get('amazon-music/read-model/latest.json')).observed_at, 1000);
   assert.equal(JSON.parse(objects.get(AMAZON_MUSIC_DAILY_SCAN_STATE_KEY)).publication_pending, false);
 });
+
+test('large completed scans publish rank changes through bounded D1 batches', async () => {
+  const state = { started_at: 1000, updated_at: 1000, complete: true, publication_pending: true, status: 'complete', scanned_tracks: 50_000, scan_id: 'saved', cycle_tracks: Array.from({ length: 65 }, (_, index) => ({ amazon_music_id: 'A' + index, title: 'Song' + index, artist: '櫻坂46', group_name: '櫻坂46', rank: index + 1 })) };
+  const objects = new Map([[AMAZON_MUSIC_DAILY_SCAN_STATE_KEY, JSON.stringify(state)]]);
+  const batches = [];
+  const db = {
+    prepare(sql) { return { bind(...args) { return { sql, args, all: async () => ({ results: [] }), run: async () => ({}) }; } }; },
+    async batch(statements) { batches.push(statements); },
+  };
+  const env = { MINUTE_DB: db, PAGES_RESPONSE_R2: {
+    get: async key => objects.has(key) ? { json: async () => JSON.parse(objects.get(key)) } : null,
+    put: async (key, value) => objects.set(key, value),
+  } };
+  const result = await continueAmazonDaily50kScan(env, 2000, () => assert.fail('completed scan must not recollect'));
+  assert.equal(result.published.published, true);
+  assert.deepEqual(batches.filter(batch => batch[0].sql.includes('amazon_music_group_rank_history')).map(batch => batch.length), [20, 20, 20, 5]);
+  assert.equal(JSON.parse(objects.get('amazon-music/read-model/latest.json')).observed_at, 1000);
+});
