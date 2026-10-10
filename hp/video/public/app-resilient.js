@@ -353,7 +353,8 @@ async function showFirst() {
   setLoading(true);
   setMessage('');
   try {
-    const items = await loadPlaybackRound(generation);
+    // A new page load (or orientation selection) always starts a fresh shuffle.
+    const items = await loadPlaybackRound(generation, true);
     if (generation !== state.feedGeneration || !items) return;
     state.items = items;
     const result = await findPlayable(0, 0);
