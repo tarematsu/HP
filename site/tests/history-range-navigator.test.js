@@ -27,6 +27,8 @@ test('history range controls render their final UI without flashing legacy date 
   assert.doesNotMatch(historyShellSource, /type="date"/);
   assert.doesNotMatch(historyShellSource, />更新<\/button>/);
   assert.doesNotMatch(navigatorSource, /dateRange\.hidden|loadButton\.hidden|button\.textContent = period\.label/);
+  assert.doesNotMatch(navigatorSource, /#modeTabs/);
+  assert.match(navigatorSource, /history:select-mode/);
 });
 
 test('history range arrows move by half of the current visible span and clamp to data bounds', () => {
