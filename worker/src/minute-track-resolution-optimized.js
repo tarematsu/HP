@@ -121,7 +121,8 @@ async function addUnaliasedIsrcRows(db, descriptors, aliases) {
   // Provider/title aliases can point at a legacy row whose ISRC is still null.
   // An existing canonical ISRC row takes precedence over those weak hints.
   const missing = descriptors.filter(descriptor => descriptor.isrc
-    && !aliases.has(aliasKey('isrc', normalizedIsrc(descriptor.isrc))));
+    && !aliases.has(aliasKey('isrc', normalizedIsrc(descriptor.isrc)))
+    && (descriptor.aliases || []).some(alias => aliases.has(aliasKey(alias.type, alias.value))));
   if (!missing.length) return aliases;
   const identities = await loadTrackIdentityMap(db, missing);
   for (const descriptor of missing) {
