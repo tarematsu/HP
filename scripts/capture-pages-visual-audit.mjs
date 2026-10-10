@@ -367,6 +367,7 @@ const report = {
 
 await writeFile(join(options.outDir, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
 console.log(JSON.stringify(report.summary));
+console.log(JSON.stringify({ event: 'pages_data_audit', checks: dataAudit.checks }));
 
 const issueCount = report.summary.failedViewCount
   + report.summary.consoleErrorCount

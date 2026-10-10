@@ -123,3 +123,19 @@ test('Cloudflare queue context is never forwarded as the collector fetch functio
   assert.equal(actualFetch, globalThis.fetch);
   assert.equal(item.acked, true);
 });
+
+test('targeted recovery publishes only its service and retries failed publication', async () => {
+  const item = message({ message_type: 'regional-music-publish', services: ['youtube_music'], scheduled_at: 5000 });
+  const seen = [];
+  await runRegionalMusicQueue({ messages: [item] }, {}, fetch, {
+    publishReadModel: async () => assert.fail('targeted recovery must not depend on unrelated service publication'),
+    publishReadModels: async (_env, services, at) => { seen.push({ services, at }); return { written: 1 }; },
+  });
+  assert.deepEqual(seen, [{ services: ['youtube_music'], at: 5000 }]);
+  assert.equal(item.acked, true);
+  const failed = message(item.body);
+  await assert.rejects(runRegionalMusicQueue({ messages: [failed] }, {}, fetch, {
+    publishReadModels: async () => { throw new Error('publication interrupted'); },
+  }), /publication interrupted/);
+  assert.equal(failed.acked, false);
+});

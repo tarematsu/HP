@@ -13,7 +13,7 @@ import {
   saveQqAnimeToplist,
   saveQqJapanToplist,
 } from './regional-music-qq.js';
-import { publishRegionalMusicReadModel } from './regional-music-read-model.js';
+import { publishRegionalMusicReadModel, publishRegionalMusicServiceReadModel as publishRegionalMusicReadModelForService } from './regional-music-read-model.js';
 import { collectRegionalR2Snapshot, regionalDayKey, regionalSnapshotKey } from './regional-music-r2-snapshot.js';
 import { saveRegionalCollectorState } from './regional-music-store.js';
 import {
@@ -79,7 +79,7 @@ export async function collectRegionalServiceToR2(service, env, observedAt = Date
   });
   await saveJson(env.PAGES_RESPONSE_R2, regionalDayKey(service, snapshot.day), snapshot);
   await saveJson(env.PAGES_RESPONSE_R2, regionalSnapshotKey(service), snapshot);
-  const published = await publishRegionalMusicReadModel(env, observedAt);
+  const published = await publishRegionalMusicReadModelForService(env, service, observedAt);
   return { service, snapshot_status: snapshot.state?.status || 'error', snapshot_day: snapshot.day, published };
 }
 

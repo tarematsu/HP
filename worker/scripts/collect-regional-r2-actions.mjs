@@ -15,13 +15,13 @@ import {
 
 const REGIONAL_SERVICE_SET=new Set(Object.keys(REGIONAL_MUSIC_SERVICE_COLLECTORS_BY_ID));
 
-async function enqueueRegionalPublication(config, api, now) {
+async function enqueueRegionalPublication(config, api, now, services) {
   const name=config.queues?.consumers?.[0]?.queue;
   if(!name) throw new Error('Regional publication queue missing');
   const queues=await api('/queues');
   const queue=queues.find(row=>row.queue_name===name);
   if(!queue?.queue_id) throw new Error('Regional publication queue not found');
-  await api(`/queues/${queue.queue_id}/messages`,{body:{message_type:'regional-music-publish',scheduled_at:now},content_type:'json'});
+  await api(`/queues/${queue.queue_id}/messages`,{body:{message_type:'regional-music-publish',scheduled_at:now,services},content_type:'json'});
 }
 
 export function parseRegionalServiceSelection(argv=process.argv.slice(2)) {
@@ -42,7 +42,7 @@ export async function collectRegionalR2Run({load,save,now=Date.now(),all=false,s
   const results=[];
   for(const service of services) {
     const controller=new AbortController();
-    const timer=setTimeout(()=>controller.abort(),90_000);
+    const timer=setTimeout(()=>controller.abort(),service==='youtube_music' ? 600_000 : 90_000);
     const fetchService=(url,options={})=>fetchImpl(url,{...options,signal:options.signal ? AbortSignal.any([options.signal,controller.signal]) : controller.signal});
     try {
       const previous=await load(regionalSnapshotKey(service));
@@ -95,7 +95,7 @@ async function main() {
   };
   const save=async(key,value)=>{
     await r2.put(key,JSON.stringify(value));
-    console.log(JSON.stringify({event:'regional_r2_saved',key,tracks:value.tracks?.length,status:value.state?.status}));
+    console.log(JSON.stringify({event:'regional_r2_saved',key,tracks:value.tracks?.length,status:value.state?.status,state:value.state}));
   };
   const requestedServices=parseRegionalServiceSelection();
   let results;
@@ -108,7 +108,7 @@ async function main() {
       if(!response.ok || result.success!==true) throw new Error(`Publication API failed: HTTP ${response.status}`);
       return result.result;
     };
-    await enqueueRegionalPublication(config,api,Date.now());
+    await enqueueRegionalPublication(config,api,Date.now(),requestedServices.length ? requestedServices : [...REGIONAL_MUSIC_DAILY_SERVICES]);
   }
   console.log(JSON.stringify({event:'regional_r2_complete',results,requested_services:requestedServices,collection_d1_writes:0,canonical_d1_reads:true,publication_messages:1}));
   if(results.some(row=>row.status==='error' || row.status==='degraded')) process.exitCode=1;
