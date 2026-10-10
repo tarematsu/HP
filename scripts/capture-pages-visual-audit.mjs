@@ -71,6 +71,7 @@ export function auditRoutes() {
 
 async function inspectView(page, tab, viewport, outDir) {
   const historyMode = tab.section === 'stationhead' && ['daily', 'weekly', 'monthly'].includes(tab.mode);
+  const listeningPartyMode = tab.section === 'stationhead' && tab.source === 'buddies' && tab.mode === 'broadcasts';
   if (historyMode) {
     await page.evaluate(() => {
       window.__pagesAuditHistory = { mode: null, rowCount: null, paintedMode: null };
@@ -88,6 +89,33 @@ async function inspectView(page, tab, viewport, outDir) {
       }, tab.mode, { timeout: 20_000 });
     } catch {
       historyWaitTimedOut = true;
+    }
+  }
+  let listeningPartyWaitTimedOut = false;
+  if (listeningPartyMode) {
+    try {
+      await page.waitForFunction(() => {
+        const visible = (element) => {
+          if (!element || element.hidden) return false;
+          const style = getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
+          return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+        };
+        const officialChart = document.getElementById('chart');
+        const officialTable = document.getElementById('thead')?.closest('table');
+        const firstWeek = document.getElementById('firstWeekView');
+        const firstWeekChart = document.getElementById('firstWeekChart');
+        const unofficial = document.getElementById('unofficialListeningPanel');
+        return visible(firstWeek)
+          && visible(unofficial)
+          && Number(officialChart?.dataset.sakurazakaMaxMinute || 0) > 0
+          && officialTable?.dataset.officialPartyReadModel === 'complete'
+          && Number(firstWeekChart?.dataset.firstWeekWidth || 0) > 0
+          && document.querySelectorAll('#firstWeekTbody tr').length > 0
+          && document.querySelectorAll('#unofficialListeningTbody tr').length > 0;
+      }, { timeout: 20_000 });
+    } catch {
+      listeningPartyWaitTimedOut = true;
     }
   }
   if (tab.control) {
@@ -139,6 +167,15 @@ async function inspectView(page, tab, viewport, outDir) {
       hash: location.hash,
       title: document.title,
       historyAudit: window.__pagesAuditHistory || null,
+      listeningPartyAudit: route.mode === 'broadcasts' ? {
+        officialChartPainted: Number(document.getElementById('chart')?.dataset.sakurazakaMaxMinute || 0) > 0,
+        officialTableReady: document.getElementById('thead')?.closest('table')?.dataset.officialPartyReadModel === 'complete',
+        firstWeekVisible: visible(document.getElementById('firstWeekView')),
+        firstWeekChartPainted: Number(document.getElementById('firstWeekChart')?.dataset.firstWeekWidth || 0) > 0,
+        firstWeekRows: document.querySelectorAll('#firstWeekTbody tr').length,
+        unofficialVisible: visible(document.getElementById('unofficialListeningPanel')),
+        unofficialRows: document.querySelectorAll('#unofficialListeningTbody tr').length,
+      } : null,
     };
   }, { route: tab });
 
@@ -148,6 +185,17 @@ async function inspectView(page, tab, viewport, outDir) {
 
   const issues = [];
   if (historyWaitTimedOut) issues.push('history data or chart was not rendered within 20 seconds');
+  if (listeningPartyWaitTimedOut) issues.push('listening party subviews were not fully rendered within 20 seconds');
+  if (listeningPartyMode && state.listeningPartyAudit) {
+    const audit = state.listeningPartyAudit;
+    if (!audit.officialChartPainted) issues.push('official listening party chart was not painted');
+    if (!audit.officialTableReady) issues.push('official listening party table was not rendered');
+    if (!audit.firstWeekVisible) issues.push('first-week comparison panel is hidden');
+    if (!audit.firstWeekChartPainted) issues.push('first-week comparison chart was not painted');
+    if (audit.firstWeekRows < 1) issues.push('first-week comparison table has no rows');
+    if (!audit.unofficialVisible) issues.push('unofficial listening party panel is hidden');
+    if (audit.unofficialRows < 1) issues.push('unofficial listening party table has no rows');
+  }
   if (historyMode && state.historyAudit?.mode === tab.mode && state.historyAudit.rowCount === 0) {
     issues.push('history summary returned no rows for the full available period');
   }
