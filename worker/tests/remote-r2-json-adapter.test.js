@@ -30,7 +30,7 @@ test('Actions bootstrap publication remains readable by the production R2 respon
   const stored = new Map();
   const r2 = createWranglerRemoteR2({ ...options, execute: (_binary, args) => {
     const file = args[args.indexOf('--file') + 1];
-    const key = args[4];
+    const key = decodeURIComponent(new URL(`https://r2.invalid/objects/${args[4]}`).pathname.slice('/objects/'.length));
     if (args.includes('get')) writeFileSync(file, stored.get(key));
     else stored.set(key, readFileSync(file, 'utf8'));
   } });
@@ -44,4 +44,21 @@ test('Actions bootstrap publication remains readable by the production R2 respon
   assert.equal(manifest.format, 'raw-response-reference-v1');
   assert.equal(manifest.body, undefined);
   assert.equal(stored.get(`test-bucket/${manifest.body_key}`), '{"ok":true,"service":"kkbox"}');
+});
+
+test('Wrangler HTTP transport preserves literal percent escapes and URL delimiters in R2 keys', async () => {
+  const stored = new Map();
+  const r2 = createWranglerRemoteR2({ ...options, execute: (_binary, args) => {
+    const file = args[args.indexOf('--file') + 1];
+    // Cloudflare decodes the URL path once; mirror that protocol boundary.
+    const logicalPath = decodeURIComponent(new URL(`https://r2.invalid/objects/${args[4]}`).pathname.slice('/objects/'.length));
+    if (args.includes('get')) writeFileSync(file, stored.get(logicalPath));
+    else stored.set(logicalPath, readFileSync(file, 'utf8'));
+  } });
+  for (const key of ['pages-response/v1/music-service%3Akkbox.json', 'names/a+b?x#%.json', '日本語/space name.json']) {
+    const body = JSON.stringify({ key });
+    await r2.put(key, body);
+    assert.equal(stored.get(`test-bucket/${key}`), body);
+    assert.equal(await (await r2.get(key)).text(), body);
+  }
 });

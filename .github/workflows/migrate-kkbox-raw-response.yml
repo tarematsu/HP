@@ -2,7 +2,7 @@ name: Migrate KKBOX response to raw R2 streaming
 on:
   push:
     branches: [main]
-    paths: ['worker/scripts/migrate-kkbox-raw-response-actions.mjs']
+    paths: ['worker/scripts/migrate-kkbox-raw-response-actions.mjs', 'worker/scripts/remote-r2-json-adapter.mjs']
   workflow_dispatch:
 permissions:
   contents: read
