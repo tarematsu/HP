@@ -190,12 +190,12 @@ async function showHistory(mode, route, { updateUrl = true, replaceUrl = false, 
     if (activeMode !== mode) return;
     if (route.firstWeek) {
       await Promise.all([
-        loadOnce('first-week:shell', () => import('/first-week-comparison-shell.js?v=20261002.2')),
+        loadOnce('first-week:shell', () => import('/first-week-comparison-shell.js?v=20261010.1')),
         loadOnce('first-week:runtime', () => import('/first-week-comparison.js?v=20261002.2')),
       ]);
       if (activeMode !== mode) return;
     }
-    await loadOnce('history:runtime', () => import('/history/history-main.js?v=20261002.4'));
+    await loadOnce('history:runtime', () => import('/history/history-main.js?v=20261010.1'));
     if (activeMode !== mode) return;
     if (syncRuntime && historyRuntimeMode !== mode) window.dispatchEvent(new CustomEvent('history:select-mode', { detail: { mode } }));
     historyRuntimeMode = mode; showOnly(document.getElementById(route.viewId)); markRouteReady();
