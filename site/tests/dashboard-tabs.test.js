@@ -102,7 +102,7 @@ test('history no longer owns the leaderboard runtime', () => {
   assert.equal(HISTORY_MODES.has('ranking'), false);
   assert.equal(ROUTES.ranking.kind, 'lazy');
   assert.equal(ROUTES.ranking.moduleId, 'ranking');
-  assert.match(historyEntry, /history-broadcasts\.js\?v=20261001\.1/);
+  assert.match(historyEntry, /history-broadcasts\.js\?v=20261010\.1/);
 });
 
 test('late async runtimes cannot reactivate a tab the user already left', () => {
