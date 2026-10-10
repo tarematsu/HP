@@ -83,7 +83,11 @@ test('native canonical objects remain intact while the legacy fallback streams',
   const get = r2.get.bind(r2);
   r2.get = async key => {
     const object = await get(key);
-    if (key === canonicalKey) object.json = async () => { throw new Error('HTTP must not parse native canonical JSON'); };
+    if (key === canonicalKey) {
+      object.etag = Buffer.from(object.checksums.md5).toString('hex');
+      delete object.checksums;
+      object.json = async () => { throw new Error('HTTP must not parse native canonical JSON'); };
+    }
     return object;
   };
   const response = await loadMaterializedResponse(r2, modelKey, 2000, 2000);

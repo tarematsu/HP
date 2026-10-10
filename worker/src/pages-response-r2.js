@@ -137,10 +137,16 @@ async function loadCanonicalResponse(r2, modelKey, now, maximumAgeMs) {
     // small manifest before attempting to decode a large, unusable raw JSON
     // object. A subsequent canonical publication changes the checksum and wins.
     const checksum = object.checksums?.md5;
-    if ((modelKey === 'music-service:kkbox' || modelKey === 'amazon-music')
-        && checksum instanceof ArrayBuffer && checksum.byteLength === 16) {
-      const md5 = Array.from(new Uint8Array(checksum), value => value.toString(16).padStart(2, '0')).join('');
-      const streamed = await loadMaterializedR2RawFallback(r2, modelKey, now, maximumAgeMs, md5);
+    const md5 = checksum instanceof ArrayBuffer && checksum.byteLength === 16
+      ? Array.from(new Uint8Array(checksum), value => value.toString(16).padStart(2, '0')).join('')
+      : /^[a-f0-9]{32}$/i.test(object.etag || '') ? object.etag.toLowerCase() : null;
+    if (modelKey === 'music-service:kkbox' || modelKey === 'amazon-music'
+        || modelKey === 'apple-music-playlists') {
+      const streamed = md5
+        ? await loadMaterializedR2RawFallback(r2, modelKey, now, maximumAgeMs, md5) : null;
+      console.info(JSON.stringify({ event: 'pages_response_raw_fallback_selection', model_key: modelKey,
+        checksum_available: Boolean(md5), fallback_matched: Boolean(streamed),
+        canonical_bytes: Number(object.size) || null }));
       if (streamed) return streamed;
     }
     // Transitional reader for canonical envelopes created before raw-v1 rollout.
