@@ -74,7 +74,7 @@ test('Pages production screenshots run after deployment or repair while PRs only
   assert.match(visualAudit, /^  schedule:\n/m);
   assert.match(visualAudit, /cron: '17 \*\/6 \* \* \*'/);
   assert.match(visualAudit, /github.event_name != 'pull_request'/);
-  assert.match(visualAudit, /workflows: \[Deploy production, Refresh Amazon Music read model, Rebuild Ohisama Track History\]/);
+  assert.match(visualAudit, /workflows: \[Deploy production, Refresh Amazon Music read model, Rebuild Ohisama Track History, Recollect regional music manually\]/);
   assert.match(visualAudit, /Check responsive navigation with isolated API fixtures/);
   assert.match(visualAudit, /capture-pages-visual-audit\.mjs/);
   assert.doesNotMatch(visualAudit, /wrangler pages deploy|audit-pages-live\.mjs|audit-pages-materialized-production\.mjs/);
