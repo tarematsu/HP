@@ -2,9 +2,13 @@ name: Bootstrap Spotify Charts auth
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/collect-spotify-artist-chart.yml']
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: spotify-charts-auth-bootstrap
@@ -33,6 +37,16 @@ jobs:
             exit 1
           fi
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Wait for the official production deployment
+        working-directory: worker
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/wait-for-production-deploy.mjs
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -42,10 +56,6 @@ jobs:
 
       - name: Exchange one-time session for refresh token
         run: python worker/scripts/bootstrap-spotify-charts-refresh.py --output .spotify-charts-refresh-token
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
 
       - uses: ./.github/actions/cloudflare-context
         with:
