@@ -18,6 +18,7 @@ import {
   persistAppleMusicModelToOther,
 } from './music-service-other-store.js';
 import { AMAZON_MUSIC_CRON } from './scheduled-crons.js';
+import { enqueueAmazonMusicScan, consumeAmazonMusicScans } from './amazon-music-scan-queue.js';
 
 export { AMAZON_MUSIC_CRON };
 
@@ -91,9 +92,9 @@ function scheduledRuns(env, scheduledTime) {
   const due = amazonMusicDueTasks(scheduledTime);
   const runs = [];
   if (due.daily50kStart) {
-    runs.push(loggedRun('amazon-music-daily-50k-start', () => runAmazon50k(env, scheduledTime, { start: true })));
+    runs.push(enqueueAmazonMusicScan(env, scheduledTime, true));
   } else if (due.daily50kContinue) {
-    runs.push(loggedRun('amazon-music-daily-50k-continue', () => runAmazon50k(env, scheduledTime)));
+    runs.push(enqueueAmazonMusicScan(env, scheduledTime));
   }
   if (due.apple) {
     runs.push(loggedRun('apple-music-collection', () => collectAppleMusic(env, scheduledTime)));
@@ -117,7 +118,10 @@ async function runScheduled(controller, env, ctx) {
 
 export default {
   scheduled: runScheduled,
-  queue: runMusicPlaylistQueue,
+  async queue(batch, env) {
+    const messages = await consumeAmazonMusicScans(batch, env, runAmazon50k);
+    if (messages.length) return runMusicPlaylistQueue({ ...batch, messages }, env);
+  },
   async fetch(request, env) {
     const internal = await handleInternalScheduled(
       request,
@@ -130,3 +134,4 @@ export default {
     return new Response('Not found', { status: 404 });
   },
 };
+

@@ -10,8 +10,14 @@ const GROUPS = ['乃木坂46', '櫻坂46', '日向坂46'];
 export async function refreshAmazonModel(env, { now = Date.now(), dependencies = {} } = {}) {
   const serviceEnv = amazonMusicServiceEnv(env);
   let scan = await (dependencies.collect || startAmazonDaily50kScan)(serviceEnv, now);
-  if (!scan.complete && scan.ok && scan.skipped === false) {
+  let batches = 1;
+  while (!scan.complete && scan.ok && scan.skipped === false && batches < 6) {
+    const before = Number(scan.scanned_tracks) || 0;
     scan = await (dependencies.continue || continueAmazonDaily50kScan)(serviceEnv, now);
+    batches++;
+    if (!scan.complete && Number(scan.scanned_tracks) <= before) {
+      throw new Error(`Amazon Music recollection made no progress (tracks=${before})`);
+    }
   }
   if (!scan.complete || !scan.published?.published) {
     throw new Error(`Amazon Music recollection did not publish a complete scan (tracks=${scan.scanned_tracks ?? 'unknown'})`);
@@ -55,3 +61,4 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     process.exitCode = 1;
   });
 }
+

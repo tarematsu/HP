@@ -52,6 +52,10 @@ export function renderDaily(runtime, payload) {
   setText(runtime.root, 'history-table-title', isWeekly ? '週次データ' : '日次データ');
   setText(runtime.root, 'history-period-column', isWeekly ? '週' : '日付');
   const allRows = Array.isArray(payload?.daily) ? payload.daily : [];
+  if (runtime.root.dataset) {
+    runtime.root.dataset.historyRows = String(allRows.length);
+    runtime.root.dataset.historyPainted = 'false';
+  }
   const rows = visibleHistoryRows(allRows, runtime.historyRange || 'all', runtime.historyOffset || 0);
   runtime.historyVisibleRows = rows;
   const total = (key) => rows.reduce((sum, row) => {
@@ -67,4 +71,6 @@ export function renderDaily(runtime, payload) {
   const series = [['listener_min', '#2776b9'], ['listener_max', '#c56a18'], ['listener_avg', '#111']]; for (const [key, color] of series) { context.strokeStyle = color; context.lineWidth = key === 'listener_avg' ? 2.2 : 1.7; context.beginPath(); let started = false; points.forEach((row, index) => { const value = finite(row[key]); if (value == null) { started = false; return; } const px = x(times[index]); const py = y(value); if (!started) { context.moveTo(px, py); started = true; } else context.lineTo(px, py); }); context.stroke(); }
   const growths = points.map((row) => finite(row.stream_growth)).filter((value) => value != null && value >= 0); const growthMax = Math.max(1, ...growths); const slot = area.width / Math.max(1, points.length); context.fillStyle = 'rgba(22,139,115,.28)'; points.forEach((row, index) => { const value = finite(row.stream_growth); if (value == null || value < 0) return; const barHeight = area.height * value / growthMax; context.fillRect(x(times[index]) - Math.min(8, slot * .3), area.top + area.height - barHeight, Math.min(16, slot * .6), barHeight); });
   const legend = role(runtime.root, 'daily-legend'); if (legend) legend.textContent = '平均同接 / 最大同接 / 最小同接 / 再生数増加';
+  if (runtime.root.dataset) runtime.root.dataset.historyPainted = 'true';
 }
+

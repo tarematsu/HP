@@ -87,7 +87,8 @@ test('scheduled entry keeps collection orchestration out of the shared Cron disp
   assert.equal(AMAZON_MUSIC_CRON, '0,10,15,20,30,40,50 * * * *');
   assert.match(source, /from '.\/scheduled-crons\.js'/);
   assert.match(source, /startMusicPlaylistRefresh/);
-  assert.match(source, /queue: runMusicPlaylistQueue/);
+  assert.match(source, /consumeAmazonMusicScans/);
+  assert.match(source, /return runMusicPlaylistQueue/);
   assert.doesNotMatch(source, /AMAZON_MUSIC_TOP_SCAN_CRON/);
   assert.match(source, /amazonMusicServiceEnv\(env\)/);
   assert.match(source, /persistAppleMusicModelToOther\(env, scheduledTime\)/);
@@ -100,3 +101,4 @@ test('Amazon Music bundle participates in Worker checks and deployment', () => {
   assert.match(pkg.scripts['check:amazon-music-bundle'], /wrangler\.amazon-music\.jsonc/);
   assert.equal(pkg.scripts['deploy:amazon-music'], 'node scripts/deploy-amazon-music.mjs');
 });
+

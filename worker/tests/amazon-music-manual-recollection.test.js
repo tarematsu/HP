@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { refreshAmazonModel } from '../scripts/refresh-amazon-music-actions.mjs';
+import { continueAmazonDaily50kScan, AMAZON_MUSIC_DAILY_SCAN_STATE_KEY } from '../src/amazon-music-daily-50k.js';
 test('manual recollection publishes only a complete fresh scan and never relabels old observations', async () => {
   const now = 1000;
   let scans = 0;
@@ -33,3 +34,37 @@ test('a successful incomplete batch continues before the fresh model is checked'
 test('recovery preserves collection failure details', async () => {
   await assert.rejects(refreshAmazonModel({}, {}), /PAGES_RESPONSE_R2 binding is required/);
 });
+
+test('recollection continues through three batches and refuses a stuck cursor', async () => {
+  let calls = 0;
+  const env = { PAGES_RESPONSE_R2: { get: async () => ({ json: async () => ({ observed_at: 1000, tracks: [] }) }) } };
+  const collect = async () => ({ ok: true, skipped: false, complete: false, scanned_tracks: 20_000 });
+  const continuation = async () => ++calls === 1
+    ? { ok: true, skipped: false, complete: false, scanned_tracks: 40_000 }
+    : { complete: true, published: { published: true } };
+  await refreshAmazonModel(env, { now: 1000, dependencies: { collect, continue: continuation } });
+  assert.equal(calls, 2);
+  await assert.rejects(refreshAmazonModel(env, { now: 1000, dependencies: { collect, continue: collect } }), /no progress/);
+});
+
+test('completed scan publication retries from durable state without fetching the provider', async () => {
+  const state = { complete: true, status: 'complete', publication_pending: true, updated_at: 1000, scan_id: 'scan', scanned_tracks: 50_000, cycle_tracks: [] };
+  const objects = new Map([[AMAZON_MUSIC_DAILY_SCAN_STATE_KEY, JSON.stringify(state)]]);
+  let fail = true;
+  const env = { PAGES_RESPONSE_R2: {
+    get: async (key) => objects.has(key) ? { json: async () => JSON.parse(objects.get(key)) } : null,
+    put: async (key, body) => { if (key.includes('pages-responses') && fail) throw new Error('write failed'); objects.set(key, body); },
+  } };
+  // Fail the first public response write, wherever its encoded key is stored.
+  const originalPut = env.PAGES_RESPONSE_R2.put;
+  env.PAGES_RESPONSE_R2.put = async (key, body) => { if (key !== 'amazon-music/read-model/latest.json' && key !== AMAZON_MUSIC_DAILY_SCAN_STATE_KEY && fail) throw new Error('write failed'); return originalPut(key, body); };
+  const fetchImpl = () => { throw new Error('must not recollect'); };
+  await assert.rejects(continueAmazonDaily50kScan(env, 2000, fetchImpl), /write failed/);
+  assert.equal(JSON.parse(objects.get(AMAZON_MUSIC_DAILY_SCAN_STATE_KEY)).publication_pending, true);
+  fail = false;
+  const result = await continueAmazonDaily50kScan(env, 3000, fetchImpl);
+  assert.equal(result.published.published, true);
+  assert.equal(JSON.parse(objects.get('amazon-music/read-model/latest.json')).observed_at, 1000);
+  assert.equal(JSON.parse(objects.get(AMAZON_MUSIC_DAILY_SCAN_STATE_KEY)).publication_pending, false);
+});
+

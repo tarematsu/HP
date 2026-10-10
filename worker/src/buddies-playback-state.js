@@ -143,7 +143,7 @@ export async function captureBuddiesPlayback(env, queue, observedAt = Date.now()
     currentPaused: currentQueue.is_paused,
   });
 
-  const { daily, completedDay, statements } = planStationheadPlaybackDaily(
+  const { daily, completedDay, completedDays, statements } = planStationheadPlaybackDaily(
     db, currentQueue.station_id, canonical.daily, transitions, observedAt, 'Buddies',
   );
 
@@ -171,8 +171,8 @@ export async function captureBuddiesPlayback(env, queue, observedAt = Date.now()
 
   await runStationheadPlaybackStatements(db, statements);
   await publishStationheadLikesReadModel(bucket, 'buddies', likes, observedAt);
-  if (completedDay?.period_key) {
-    await publishStationheadPlaybackDay(bucket, 'buddies', completedDay, observedAt);
+  for (const day of completedDays) {
+    await publishStationheadPlaybackDay(bucket, 'buddies', day, observedAt);
   }
   if (transitions.length || completedDay) {
     await publishStationheadPlaybackDay(bucket, 'buddies', playbackDailyPublic(daily), observedAt);
@@ -193,7 +193,7 @@ export async function captureBuddiesPlayback(env, queue, observedAt = Date.now()
     completed_day: completedDay,
     transitions_written: transitions.length,
     like_changes_written: likeChanges,
-    d1_rows_written: transitions.length + likeChanges * 2 + (completedDay ? 1 : 0),
+    d1_rows_written: transitions.length + likeChanges * 2 + completedDays.length,
     state_saved: stateSaved,
     skipped: false,
   };

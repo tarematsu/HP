@@ -45,6 +45,7 @@ export function ohisamaSectionDue(previous, section, now = Date.now()) {
   const timestamp = integer(now);
   const previousAt = previousSectionTimestamp(previous, section, timestamp);
   if (timestamp == null || previousAt == null || previousAt > timestamp) return true;
+  if (section === 'history' && Math.floor(timestamp / cadence) !== Math.floor(previousAt / cadence)) return true;
   return timestamp - previousAt >= cadence;
 }
 
@@ -86,6 +87,16 @@ export function buildOhisamaCadencedPayload(
     next.daily = preserved(previousPayload, 'daily', currentPayload.daily || []);
     next.weekly = preserved(previousPayload, 'weekly', currentPayload.weekly || []);
   }
+
+  // History shows completed UTC periods, consistently with Buddies. Never
+  // freeze an incomplete current-day row for the whole publication cadence.
+  const currentDay = new Date(timestamp).toISOString().slice(0, 10);
+  next.daily = (next.daily || []).filter((row) => String(row.period_key || '') < currentDay);
+  const monday = new Date(timestamp);
+  monday.setUTCHours(0, 0, 0, 0);
+  monday.setUTCDate(monday.getUTCDate() - (monday.getUTCDay() + 6) % 7);
+  const currentWeek = monday.toISOString().slice(0, 10);
+  next.weekly = (next.weekly || []).filter((row) => String(row.period_key || '') < currentWeek);
 
   delete next.played_tracks;
   delete next.played_history;
@@ -147,3 +158,4 @@ export async function mergeOhisamaPlaybackReadModelWithCadence(
     section_updated_at: built.payload.section_updated_at,
   };
 }
+

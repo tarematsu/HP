@@ -164,7 +164,7 @@ export async function captureOhisamaPlayback(env, channel, collection, observedA
     currentPaused: Boolean(playback?.queue_status?.is_paused),
   });
 
-  const { daily, completedDay, statements } = planStationheadPlaybackDaily(
+  const { daily, completedDay, completedDays, statements } = planStationheadPlaybackDaily(
     db, stationId, canonicalState.daily, transitions, observedAt, 'Ohisama',
   );
 
@@ -201,8 +201,8 @@ export async function captureOhisamaPlayback(env, channel, collection, observedA
     }));
     return { published: false, reason: 'error' };
   });
-  if (completedDay?.period_key) {
-    await publishStationheadPlaybackDay(bucket, 'ohisama', completedDay, observedAt);
+  for (const day of completedDays) {
+    await publishStationheadPlaybackDay(bucket, 'ohisama', day, observedAt);
   }
   if (transitions.length || completedDay) {
     await publishStationheadPlaybackDay(bucket, 'ohisama', playbackDailyPublic(daily), observedAt);
@@ -226,8 +226,9 @@ export async function captureOhisamaPlayback(env, channel, collection, observedA
     likes: Object.values(likes)
       .sort((left, right) => (integer(right.like_count) || 0) - (integer(left.like_count) || 0)),
     transitions_written: transitions.length,
-    like_changes_written: statements.length - transitions.length - (completedDay ? 1 : 0),
+    like_changes_written: statements.length - transitions.length - completedDays.length,
     likes_published: Boolean(likesPublication?.published),
   };
 }
+
 

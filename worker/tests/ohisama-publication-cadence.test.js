@@ -76,3 +76,15 @@ test('history refreshes after 24 hours', () => {
   assert.equal(built.payload.likes, undefined);
   assert.equal(built.refreshed.history, true);
 });
+
+test('UTC rollover publishes completed history even when the last publication was late', () => {
+  const previous = previousPayload();
+  previous.section_updated_at.history = START + 23 * 60 * 60_000;
+  const at = START + 24 * 60 * 60_000 + 5 * 60_000;
+  const current = currentPayload(at);
+  current.daily.push({ period_key: '2026-10-02', stream_growth: 1 });
+  const built = buildOhisamaCadencedPayload(current, previous, playback(), {}, at);
+  assert.equal(built.refreshed.history, true);
+  assert.deepEqual(built.payload.daily.map((row) => row.period_key), ['2026-10-01']);
+});
+

@@ -262,7 +262,10 @@ export async function runSpotifyArtistChartScheduled(env, scheduledTime = Date.n
   const expectedDate = previousJstDateKey(scheduledTime);
   const latestDate = await latestStoredChartDate(db);
   if (latestDate && latestDate >= expectedDate) {
-    return { skipped: true, reason: 'already-current', chart_date: latestDate };
+    // Persistence and R2 publication are separate failure domains. A retry
+    // must finish publication even when the chart was already committed.
+    const readModel = await publishSpotifyPagesReadModel(env);
+    return { skipped: true, reason: 'already-current', chart_date: latestDate, read_model_published: Boolean(readModel?.published) };
   }
 
   const fetchImpl = dependencies.fetchImpl || fetch;
@@ -294,3 +297,4 @@ export async function runSpotifyArtistChartScheduled(env, scheduledTime = Date.n
     read_model_published: Boolean(readModel?.published),
   };
 }
+
