@@ -49,7 +49,7 @@ test('track history exposes a lightweight date index from the R2 day model', () 
 
 test('played tracks uses the lazy shared Stationhead runtime behind the router', () => {
   assert.doesNotMatch(metrics, /^import .*played-tracks-shell/m);
-  assert.match(metrics, /dashboard-tabs\.js\?v=20261005\.2/);
+  assert.match(metrics, /dashboard-tabs\.js\?v=20261010\.1/);
   assert.match(tabs, /selectStationheadChannelSection/);
   assert.match(tabs, /'played-tracks'/);
 });
