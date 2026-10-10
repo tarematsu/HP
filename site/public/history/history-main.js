@@ -16,10 +16,10 @@ async function importModeRuntime(mode) {
     await import('/history/history-period-chart.js?v=20261002.4');
     return;
   }
-  await import('/unofficial-listening-parties.js?v=20260927.1');
+  await import('/unofficial-listening-parties.js?v=20261010.1');
   await import('/history/history-broadcast-summary.js?v=20260930.1');
-  await import('/history/history-broadcasts.js?v=20261001.1');
-  await import('/history/history-broadcast-table.js?v=20261001.1');
+  await import('/history/history-broadcasts.js?v=20261010.1');
+  await import('/history/history-broadcast-table.js?v=20261010.1');
 }
 
 async function ensureHistoryModeRuntime(mode) {
@@ -44,6 +44,6 @@ await import('/history/history-past-toggle-shell.js?v=20261001.2');
 await import('/history/history-axis-labels.js?v=20260923.6');
 await import('/history/history-chart-stability.js?v=20260925.1');
 await ensureHistoryModeRuntime(initialMode);
-await import('/history/history-range-navigator.js?v=20260925.1');
+await import('/history/history-range-navigator.js?v=20261010.1');
 await import('/history/history-lite.js?v=20261001.1');
 window.dispatchEvent(new Event('history:runtime-ready'));
