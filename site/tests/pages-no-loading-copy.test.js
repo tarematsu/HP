@@ -34,9 +34,9 @@ test('silent loading changes are cache busted through the bundled Pages entry', 
   assert.doesNotMatch(historyEntry, /history-table-cleanup|history-page-fixes|history-summary-average-labels/);
   assert.match(historyEntry, /history-lite\.js\?v=20261001\.1/);
   assert.match(historyEntry, /unofficial-listening-parties\.js\?v=20261010\.1/);
-  assert.match(historyEntry, /history-broadcasts\.js\?v=20261001\.1/);
+  assert.match(historyEntry, /history-broadcasts\.js\?v=20261010\.1/);
   assert.match(tabs, /history-main\.js\?v=\d{8}\.\d+/);
-  assert.match(tabs, /first-week-comparison-shell\.js\?v=20261002\.2/);
+  assert.match(tabs, /first-week-comparison-shell\.js\?v=20261010\.1/);
   assert.match(tabs, /first-week-comparison\.js\?v=20261002\.2/);
   assert.match(tabs, /selectStationheadChannelSection/);
   assert.match(tabs, /spotify-shell\.js\?v=20261004\.1/);
@@ -53,7 +53,7 @@ test('silent loading changes are cache busted through the bundled Pages entry', 
   assert.doesNotMatch(assetBuild, /'dashboard-root-presentation\.css'|'dashboard-fixes\.css'|'screenshot-audit-cleanup\.css'|'period-display-fixes\.css'/);
   assert.doesNotMatch(dashboardEntry, /dashboard-(?:root-)?presentation\.css|history-global-fixes|dashboard-current-metric-style/);
   assert.doesNotMatch(dashboardEntry, /import '.\/unofficial-listening-parties\.js/);
-  assert.match(dashboardEntry, /dashboard-tabs\.js\?v=20261005\.2/);
+  assert.match(dashboardEntry, /dashboard-tabs\.js\?v=20261010\.1/);
   assert.match(html, /\/assets\/dashboard\.min\.css\?v=[^"']+/);
   assert.match(html, /\/assets\/dashboard\.min\.js\?v=[^"']+/);
 });
