@@ -33,7 +33,7 @@ jobs:
       - name: Install Worker dependencies
         working-directory: worker
         run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Migrate and verify the existing KKBOX payload without D1 reads
+      - name: Migrate and verify KKBOX, Apple and Amazon payloads without D1 reads
         working-directory: worker
         run: node scripts/migrate-kkbox-raw-response-actions.mjs
       - name: Retry the failing Spotify artist-chart dispatch once with structured diagnostics

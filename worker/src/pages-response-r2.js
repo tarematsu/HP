@@ -90,6 +90,41 @@ function directMetadata(metadata) {
     || metadata.cadence_seconds != null;
 }
 
+export function pagesR2RawFallbackKey(modelKey) {
+  const key = normalizedModelKey(modelKey);
+  return key ? `pages-response/raw-fallback-v1/${encodeURIComponent(key)}.json` : null;
+}
+
+async function responseFromRawReference(r2, envelope, now, maximumAgeMs) {
+  if (Number(envelope.version) !== 1
+      || !/^pages-response\/raw-body-v1\/[a-f0-9]{64}\.json$/.test(envelope.body_key || '')
+      || !freshEnough(Number(envelope.updated_at), now, maximumAgeMs)) return null;
+  const raw = await r2.get(envelope.body_key);
+  if (!raw?.body) return null;
+  const headers = new Headers(objectOrNull(envelope.headers) || {});
+  headers.set('x-api-source', 'worker-r2');
+  headers.set('x-materialized-at', String(envelope.updated_at));
+  if (Number(envelope.cadence_seconds) > 0) {
+    headers.set('x-materialized-cadence-seconds', String(Math.trunc(envelope.cadence_seconds)));
+  }
+  return new Response(raw.body, { status: Number(envelope.status) || 200, headers });
+}
+
+export async function loadMaterializedR2RawFallback(r2, modelKey, now, maximumAgeMs) {
+  const key = pagesR2RawFallbackKey(modelKey);
+  if (!key || !r2?.get) return null;
+  const object = await r2.get(key);
+  if (!object?.json) return null;
+  try {
+    const envelope = await object.json();
+    return envelope?.format === 'raw-response-reference-v1'
+      ? responseFromRawReference(r2, envelope, now, maximumAgeMs) : null;
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    return null;
+  }
+}
+
 async function loadCanonicalResponse(r2, modelKey, now, maximumAgeMs) {
   const key = pagesR2ResponseKey(modelKey);
   if (!key || typeof r2?.get !== 'function') return null;
@@ -101,18 +136,7 @@ async function loadCanonicalResponse(r2, modelKey, now, maximumAgeMs) {
     try {
       const envelope = await object.json();
       if (envelope?.format === 'raw-response-reference-v1') {
-        if (Number(envelope.version) !== 1
-            || !/^pages-response\/raw-body-v1\/[a-f0-9]{64}\.json$/.test(envelope.body_key || '')
-            || !freshEnough(Number(envelope.updated_at), now, maximumAgeMs)) return null;
-        const raw = await r2.get(envelope.body_key);
-        if (!raw?.body) return null;
-        const headers = new Headers(objectOrNull(envelope.headers) || {});
-        headers.set('x-api-source', 'worker-r2');
-        headers.set('x-materialized-at', String(envelope.updated_at));
-        if (Number(envelope.cadence_seconds) > 0) {
-          headers.set('x-materialized-cadence-seconds', String(Math.trunc(envelope.cadence_seconds)));
-        }
-        return new Response(raw.body, { status: Number(envelope.status) || 200, headers });
+        return responseFromRawReference(r2, envelope, now, maximumAgeMs);
       }
       return responseFromEnvelope(
         envelope,

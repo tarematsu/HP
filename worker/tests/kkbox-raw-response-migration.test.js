@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { migrateKkboxRawResponse } from '../scripts/migrate-kkbox-raw-response-actions.mjs';
 import { loadMaterializedR2Response, pagesR2ResponseKey } from '../src/pages-response-r2.js';
+import { loadMaterializedResponse } from '../src/pages-response-store.js';
 
 function bucket() {
   const values = new Map();
@@ -64,4 +65,22 @@ test('reference reader rejects missing bodies and foreign object paths', async (
       updated_at: 1000, body_key }));
     assert.equal(await loadMaterializedR2Response(r2, 'music-service:kkbox', 2000), null);
   }
+});
+
+test('native canonical objects remain intact while the legacy fallback streams', async () => {
+  const r2 = bucket();
+  const modelKey = 'music-service:kkbox';
+  const canonicalKey = pagesR2ResponseKey(modelKey);
+  const native = JSON.stringify({ ok: true, original: 'native' });
+  await r2.put(canonicalKey, native);
+  const legacyKey = `pages-response/actions-v2/${Buffer.from(modelKey).toString('hex')}.json`;
+  const body = JSON.stringify({ ok: true, original: 'legacy' });
+  await r2.put(legacyKey, JSON.stringify({ version: 1, status: 200, updated_at: 1000, body }));
+  assert.equal((await migrateKkboxRawResponse(r2)).migrated, true);
+  assert.equal(r2.values.get(canonicalKey), native);
+  const response = await loadMaterializedResponse(r2, modelKey, 2000, 2000);
+  assert.equal(await response.text(), body);
+  assert.equal(response.headers.get('x-api-source'), 'worker-r2');
+  assert.equal(r2.parsedRaw, false);
+  assert.equal((await migrateKkboxRawResponse(r2)).reason, 'already-streaming');
 });

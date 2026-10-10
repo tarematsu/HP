@@ -1,4 +1,4 @@
-import { loadMaterializedR2Response } from './pages-response-r2.js';
+import { loadMaterializedR2Response, loadMaterializedR2RawFallback } from './pages-response-r2.js';
 
 const LEGACY_ACTIONS_RESPONSE_KEY_PREFIX = 'pages-response/actions-v2/';
 
@@ -66,5 +66,9 @@ export async function loadMaterializedResponse(
 ) {
   const canonical = await loadMaterializedR2Response(r2, modelKey, now, maximumAgeMs);
   if (canonical) return canonical;
+  if (modelKey === 'music-service:kkbox' || modelKey === 'amazon-music') {
+    const streamed = await loadMaterializedR2RawFallback(r2, modelKey, now, maximumAgeMs);
+    if (streamed) return streamed;
+  }
   return loadLegacyActionsR2Response(r2, modelKey, now, maximumAgeMs);
 }
