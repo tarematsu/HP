@@ -36,7 +36,7 @@ export async function refreshAmazonModel(env, { now = Date.now(), dependencies =
   const object = await env.PAGES_RESPONSE_R2.get('amazon-music/read-model/latest.json');
   const model = await object?.json();
   if (!model || model.observed_at !== expectedObservedAt) throw new Error('Amazon Music recollection publication is not current');
-  return { ...scan.published, scan, groups: Object.fromEntries(GROUPS.map((group) => [
+  return { ...scan.published, scan, source_observed_at: model.observed_at, groups: Object.fromEntries(GROUPS.map((group) => [
     group, (model.tracks || []).filter((track) => track.group_name === group && track.amazon_rank != null).length,
   ])) };
 }

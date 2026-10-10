@@ -213,8 +213,11 @@ async function saveGroupChanges(db, observedAt, previousTracks, currentTracks) {
       item.title ?? null,
       item.artist ?? item.group_name ?? null,
     ));
-  if (typeof db.batch === 'function') await db.batch(statements);
-  else for (const statement of statements) await statement.run();
+  if (typeof db.batch === 'function') {
+    for (let offset = 0; offset < statements.length; offset += 20) {
+      await db.batch(statements.slice(offset, offset + 20));
+    }
+  } else for (const statement of statements) await statement.run();
   return statements.length;
 }
 
