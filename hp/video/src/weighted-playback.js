@@ -70,17 +70,47 @@ export function buildWeightedPlaybackPage(rows, options = {}) {
 
   const cursor = parsePlaybackCursor(options.cursor);
   const referenceMs = stableReferenceMs(options.nowMs);
-  const ordered = (rows || [])
-    .map((row) => ({
-      ...row,
+  // Retain only the page and one lookahead row. A max heap avoids sorting
+  // and copying the entire feed for every new shuffle seed.
+  const capacity = Math.floor(limit) + 1;
+  const compare = (left, right) => left.shuffleKey - right.shuffleKey || left.id - right.id || left.order - right.order;
+  const heap = [];
+  let eligible = 0;
+  let order = 0;
+  for (const row of rows || []) {
+    const candidate = {
+      source: row,
+      order: order++,
       id: Number(row.id),
       shuffleKey: weightedPlaybackKey(row.id, row.firstSeenAt, options.seed, referenceMs)
-    }))
-    .sort((left, right) => left.shuffleKey - right.shuffleKey || left.id - right.id)
-    .filter((row) => rowAfterCursor(row, cursor));
-
-  const pageRows = ordered.slice(0, limit);
-  const hasMore = ordered.length > limit;
+    };
+    if (!rowAfterCursor(candidate, cursor)) continue;
+    eligible += 1;
+    if (heap.length < capacity) {
+      heap.push(candidate);
+      let index = heap.length - 1;
+      while (index > 0) {
+        const parent = Math.floor((index - 1) / 2);
+        if (compare(heap[parent], heap[index]) >= 0) break;
+        [heap[parent], heap[index]] = [heap[index], heap[parent]];
+        index = parent;
+      }
+    } else if (compare(candidate, heap[0]) < 0) {
+      heap[0] = candidate;
+      let index = 0;
+      while (index * 2 + 1 < heap.length) {
+        let child = index * 2 + 1;
+        if (child + 1 < heap.length && compare(heap[child + 1], heap[child]) > 0) child += 1;
+        if (compare(heap[index], heap[child]) >= 0) break;
+        [heap[index], heap[child]] = [heap[child], heap[index]];
+        index = child;
+      }
+    }
+  }
+  const pageRows = heap.sort(compare).slice(0, limit).map(({ source, id, shuffleKey }) => ({
+    ...source, id, shuffleKey
+  }));
+  const hasMore = eligible > limit;
   const last = pageRows.at(-1);
   return {
     rows: pageRows,
