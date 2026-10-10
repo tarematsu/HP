@@ -60,8 +60,27 @@ function preserveServerOrder(items, previousLastPlayedId, skipAttempts) {
   return ordered;
 }
 
-export function createPlaybackBag(items, seed, previousLastPlayedId = null, skipAttempts = 0) {
-  const ordered = preserveServerOrder(items, previousLastPlayedId, skipAttempts);
+// Freshly opened sessions prefer videos not played recently. Once all
+// candidates were seen, the oldest played video goes first.
+export function postponeRecentlyPlayed(items, recentIds = []) {
+  if (!Array.isArray(recentIds) || !recentIds.length) return [...(items || [])];
+  const ageById = new Map(recentIds.map((id, index) => [itemId(id), index]));
+  const unseen = [];
+  const seen = [];
+  for (const item of items || []) {
+    const age = ageById.get(itemId(item));
+    if (age === undefined) unseen.push(item);
+    else seen.push({ item, age });
+  }
+  seen.sort((a, b) => a.age - b.age);
+  return [...unseen, ...seen.map(({ item }) => item)];
+}
+
+export function createPlaybackBag(items, seed, previousLastPlayedId = null, skipAttempts = 0, recentIds = []) {
+  const ordered = postponeRecentlyPlayed(
+    preserveServerOrder(items, previousLastPlayedId, skipAttempts),
+    recentIds
+  );
   return {
     version: PLAYBACK_BAG_VERSION,
     seed: Number(seed),
