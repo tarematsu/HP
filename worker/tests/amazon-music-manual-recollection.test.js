@@ -80,3 +80,16 @@ test('completed scan publication retries from durable state without fetching the
   assert.equal(JSON.parse(objects.get(AMAZON_MUSIC_DAILY_SCAN_STATE_KEY)).publication_pending, false);
 });
 
+
+test('manual recovery republishes a recent durable scan without recollecting or inventing freshness', async () => {
+  const state = { started_at: 1000, updated_at: 1000, complete: true, publication_pending: true, status: 'complete', scanned_tracks: 50_000, scan_id: 'saved', cycle_tracks: [] };
+  const objects = new Map([[AMAZON_MUSIC_DAILY_SCAN_STATE_KEY, JSON.stringify(state)]]);
+  const env = { PAGES_RESPONSE_R2: {
+    get: async key => objects.has(key) ? { json: async () => JSON.parse(objects.get(key)) } : null,
+    put: async (key, value) => objects.set(key, value),
+  } };
+  const result = await refreshAmazonModel(env, { now: 2000 });
+  assert.equal(result.published, true);
+  assert.equal(JSON.parse(objects.get('amazon-music/read-model/latest.json')).observed_at, 1000);
+  assert.equal(JSON.parse(objects.get(AMAZON_MUSIC_DAILY_SCAN_STATE_KEY)).publication_pending, false);
+});

@@ -2,14 +2,25 @@ import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 import { createWranglerRemoteR2 } from './remote-r2-json-adapter.mjs';
-import { startAmazonDaily50kScan, continueAmazonDaily50kScan } from '../src/amazon-music-daily-50k.js';
+import { startAmazonDaily50kScan, continueAmazonDaily50kScan, AMAZON_MUSIC_DAILY_SCAN_STATE_KEY } from '../src/amazon-music-daily-50k.js';
 import { amazonMusicServiceEnv } from '../src/music-service-other-store.js';
 
 const GROUPS = ['乃木坂46', '櫻坂46', '日向坂46'];
 
 export async function refreshAmazonModel(env, { now = Date.now(), dependencies = {} } = {}) {
   const serviceEnv = amazonMusicServiceEnv(env);
-  let scan = await (dependencies.collect || startAmazonDaily50kScan)(serviceEnv, now);
+  let resumeState = null;
+  if (!dependencies.collect) {
+    const object = await env.PAGES_RESPONSE_R2?.get(AMAZON_MUSIC_DAILY_SCAN_STATE_KEY);
+    const state = await object?.json();
+    const sourceAt = Number(state?.started_at || state?.updated_at);
+    if (sourceAt > 0 && sourceAt <= now && now - sourceAt < 36 * 60 * 60_000
+        && (state.status === 'active' || state.publication_pending)) resumeState = state;
+  }
+  const expectedObservedAt = resumeState?.complete ? Number(resumeState.updated_at) : now;
+  let scan = resumeState
+    ? await (dependencies.continue || continueAmazonDaily50kScan)(serviceEnv, now)
+    : await (dependencies.collect || startAmazonDaily50kScan)(serviceEnv, now);
   let batches = 1;
   while (!scan.complete && scan.ok && scan.skipped === false && batches < 6) {
     const before = Number(scan.scanned_tracks) || 0;
@@ -24,7 +35,7 @@ export async function refreshAmazonModel(env, { now = Date.now(), dependencies =
   }
   const object = await env.PAGES_RESPONSE_R2.get('amazon-music/read-model/latest.json');
   const model = await object?.json();
-  if (!model || model.observed_at !== now) throw new Error('Amazon Music recollection publication is not current');
+  if (!model || model.observed_at !== expectedObservedAt) throw new Error('Amazon Music recollection publication is not current');
   return { ...scan.published, scan, groups: Object.fromEntries(GROUPS.map((group) => [
     group, (model.tracks || []).filter((track) => track.group_name === group && track.amazon_rank != null).length,
   ])) };
