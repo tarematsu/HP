@@ -2,7 +2,7 @@ import { REGIONAL_MUSIC_DAILY_SERVICES } from './regional-music-dispatch-plan.js
 import { collectKkbox } from './regional-music-kkbox.js';
 import { collectKugouMusic } from './regional-music-kugou.js';
 import { collectQqMusic } from './regional-music-qq.js';
-import { publishRegionalMusicReadModel } from './regional-music-read-model.js';
+import { publishRegionalMusicReadModel, publishRegionalMusicReadModels } from './regional-music-read-model.js';
 import { regionalMusicSnapshotDate, saveRegionalCollectorState } from './regional-music-store.js';
 import { collectYouTubeMusic } from './regional-music-youtube-music.js';
 import {
@@ -303,7 +303,9 @@ export async function runRegionalMusicQueue(batch, env, fetchImpl = fetch, depen
     }
     if (body.message_type === 'regional-music-publish') {
       const observedAt = Number(body.scheduled_at) || Date.now();
-      const result = await publishReadModel(env, observedAt);
+      const result = Array.isArray(body.services) && body.services.length
+        ? await (dependencies.publishReadModels || publishRegionalMusicReadModels)(env, body.services, observedAt)
+        : await publishReadModel(env, observedAt);
       console.log(JSON.stringify({ event: 'regional-music-read-model-legacy-complete', result }));
       message.ack?.();
       continue;

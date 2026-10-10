@@ -75,7 +75,7 @@ export async function runRegionalMusicServiceQueue(batch, env, context, dependen
       return { skipped: true, reason: 'invalid-youtube-message' };
     }
     const collect = dependencies.collectServiceToR2 || collectRegionalServiceToR2;
-    const signal = AbortSignal.timeout(120_000);
+    const signal = AbortSignal.timeout(600_000);
     const fetchCollector = (url, init = {}) => globalThis.fetch(url, {
       ...init, signal: init.signal ? AbortSignal.any([init.signal, signal]) : signal,
     });
