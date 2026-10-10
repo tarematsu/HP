@@ -175,7 +175,7 @@ async function inspectView(page, tab, viewport, outDir) {
       playedPeriodVisible: ['played-tracks', 'hinata-played-tracks'].includes(route.mode) ? (() => {
         const selected = document.querySelector('.dashboard-view:not([hidden]) .played-tracks-period.is-selected');
         if (!selected) return false;
-        const item = selected.getBoundingClientRect(); const strip = selected.parentElement.getBoundingClientRect();
+        const item = selected.getBoundingClientRect(); const strip = selected.closest('.played-tracks-period-scroller').getBoundingClientRect();
         return item.left >= strip.left - 1 && item.right <= strip.right + 1;
       })() : null,
       listeningPartyAudit: route.mode === 'broadcasts' ? {
