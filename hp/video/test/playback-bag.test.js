@@ -5,6 +5,7 @@ import {
   createPlaybackBag,
   parsePlaybackBag,
   playbackBagAfterIndex,
+  postponeRecentlyPlayed,
   restorePlaybackBagItems
 } from '../public/playback-bag.js';
 
@@ -71,4 +72,25 @@ test('consuming through an index persists only the unseen suffix', () => {
 test('invalid saved state is rejected', () => {
   assert.equal(parsePlaybackBag('{broken'), null);
   assert.equal(parsePlaybackBag({ version: 1, seed: 0, remainingIds: [] }), null);
+});
+
+test('new sessions postpone the recently watched items but retain fresh weighted order', () => {
+  const items = [{ id: 9 }, { id: 3 }, { id: 12 }, { id: 1 }, { id: 5 }];
+  assert.deepEqual(
+    createPlaybackBag(items, 77, null, 0, ['3', '9']).remainingIds,
+    ['12', '1', '5', '3', '9']
+  );
+  assert.deepEqual(items.map(item => item.id), [9, 3, 12, 1, 5]);
+});
+
+test('small playlists prefer the least recently seen video, without dropping any', () => {
+  const items = [{ id: 9 }, { id: 3 }, { id: 12 }];
+  assert.deepEqual(
+    postponeRecentlyPlayed(items, ['12', '3', '9']).map((item) => item.id),
+    [12, 3, 9]
+  );
+  assert.deepEqual(
+    postponeRecentlyPlayed(items, []).map((item) => item.id),
+    [9, 3, 12]
+  );
 });
