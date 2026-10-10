@@ -1,5 +1,12 @@
 import { canonicalizeTrackRows } from '../../packages/sh-shared/canonical-track-rows.mjs';
 import {
+  trackHistoryDayObjectKey,
+  loadTrackHistoryDayReadModel,
+  TRACK_HISTORY_DAY_MODEL_VERSION as DAY_MODEL_VERSION,
+} from './pages-track-history-day-reader.js';
+
+export { trackHistoryDayObjectKey, loadTrackHistoryDayReadModel };
+import {
   loadTrackHistoryData,
   TRACK_HISTORY_SQL,
 } from '../../packages/sh-shared/track-history-restored-handler.mjs';
@@ -22,8 +29,6 @@ const TRACK_HISTORY_LIMIT = 40_000;
 const TRACK_HISTORY_QUEUE_LOOKBACK_MS = 2 * DAY_MS;
 const SHARD_PREFIX = 'track-history-shards/v1/';
 const SHARD_VERSION = 1;
-const DAY_MODEL_PREFIX = 'track-history-days/v1/';
-const DAY_MODEL_VERSION = 1;
 const RAW_QUEUE_STARTS_SQL = `WITH RECURSIVE queue_starts AS (
       SELECT DISTINCT station_id,start_time
       FROM sh_queue_items
@@ -132,15 +137,6 @@ export function trackHistoryShardObjectKey(generation, range) {
   return `${SHARD_PREFIX}${generation}/${from}-${to}.json`;
 }
 
-export function trackHistoryDayObjectKey(day, source = 'buddies') {
-  const timestamp = dayTimestamp(day);
-  if (timestamp == null) throw new Error('invalid track-history day');
-  const normalizedSource = String(source || 'buddies').trim().toLowerCase();
-  if (normalizedSource === 'buddies') return `${DAY_MODEL_PREFIX}${dayText(timestamp)}.json`;
-  if (normalizedSource === 'ohisama') return `${DAY_MODEL_PREFIX}ohisama/${dayText(timestamp)}.json`;
-  throw new Error(`unsupported track-history source: ${source}`);
-}
-
 export function trackHistoryDayShardRanges(range) {
   const from = validTimestamp(range?.fromTs);
   const to = validTimestamp(range?.toTs);
@@ -219,18 +215,6 @@ export async function saveTrackHistoryDayReadModel(r2, range, rows, metadata = {
   });
   await updateTrackHistoryDayIndex(r2, day, sortedRows.length > 0, updatedAt, sourceRowCount, source);
   return { key, day, rows: sortedRows.length, plays: sourceRowCount };
-}
-
-export async function loadTrackHistoryDayReadModel(r2, day, source = 'buddies') {
-  const key = trackHistoryDayObjectKey(day, source);
-  const payload = await loadJsonObject(r2, key);
-  if (!payload) return null;
-  if (Number(payload?.version) !== DAY_MODEL_VERSION
-      || String(payload?.day || '') !== String(day)
-      || !Array.isArray(payload?.rows)) {
-    throw new Error(`track-history day read-model is invalid: ${key}`);
-  }
-  return { key, payload };
 }
 
 // Compatibility export only. D1 is no longer a fallback source for missing R2

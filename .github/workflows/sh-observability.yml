@@ -94,7 +94,9 @@ jobs:
       CLOUDFLARE_PUBLIC_HEALTH_WORKERS: "HomePanel Cloud health|homepanel-cloud|/api/health"
       D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc
       D1_QUERY_OUTPUT_DIR: d1-insights
-      D1_QUERY_LOOKBACK_MINUTES: ${{ inputs.lookback_minutes || '60' }}
+      # Daily usage can spike before the CPU/telemetry window. Keep SQL costs
+      # visible for a full day without increasing live telemetry collection.
+      D1_QUERY_LOOKBACK_MINUTES: ${{ inputs.lookback_minutes || '1440' }}
       D1_QUERY_LIMIT: "20"
       D1_HISTORY_DAYS: "7"
       LOOKBACK_MINUTES: ${{ inputs.lookback_minutes || '60' }}
