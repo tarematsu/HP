@@ -114,6 +114,41 @@ test('telemetry triage prefers a non-zero CPU violation over zero error invocati
   assert.match(triage, /Current-deployment telemetry policy \\| \\*\\*FAIL\\*\\* \\| CPU violations: 1; Error invocations: 0/);
 });
 
+test('telemetry triage identifies the worker and execution class exceeding the CPU budget', () => {
+  const telemetry = [
+    '## Current deployment telemetry',
+    '- CPU coverage: `OK`',
+    '- CPU violations: `1`',
+    '- Error invocations: `5`',
+    '| Worker | Class | Budget ms | Samples | Average ms | Maximum ms |',
+    '|---|---|---:|---:|---:|---:|',
+    '| `sh-runtime-orchestrator` (`v123456789012`) | `http` | 10 | 15 | 5.2 | 11 |',
+    '| `other-worker` (`v22`) | `queue` | 30000 | 2 | 250 | 700 |',
+  ].join('\n');
+  const triage = buildObservabilityTriage({
+    outcomes: { ...allSuccessfulOutcomes, telemetry: 'failure' },
+    summaries: { publicHealth: summaries.publicHealth, telemetry },
+    activeDeployments: deployments,
+  });
+  assert.match(triage, /CPU violations: 1; Error invocations: 5; sh-runtime-orchestrator \(v123456789012\) \/ http: 11ms > 10ms/);
+  assert.doesNotMatch(triage, /other-worker \(v22\) \/ queue: 700ms >/);
+});
+
+test('telemetry triage reports missing CPU coverage even with zero violations and errors', () => {
+  const telemetry = [
+    '## Current deployment telemetry',
+    '- CPU coverage: `MISSING`',
+    '- CPU violations: `0`',
+    '- Error invocations: `0`',
+  ].join('\n');
+  const triage = buildObservabilityTriage({
+    outcomes: { ...allSuccessfulOutcomes, telemetry: 'failure' },
+    summaries: { publicHealth: summaries.publicHealth, telemetry },
+    activeDeployments: deployments,
+  });
+  assert.match(triage, /Highest priority: \*\*Current-deployment telemetry policy\*\* — CPU coverage: MISSING; CPU violations: 0; Error invocations: 0/);
+});
+
 test('deployment signal fails closed for unavailable or incomplete inventory', () => {
   assert.equal(deploymentSignal({
     worker: { status: 'unavailable', deployment_id: '', version_ids: [] },
