@@ -64,6 +64,20 @@ void RaiseStationheadWindowNameOverlay(HWND hostWindow) noexcept {
   HWND overlay = FindWindowExW(
       hostWindow, nullptr, kStationheadWindowNameOverlayClass, nullptr);
   if (!overlay || !IsWindow(overlay)) return;
+  RECT bounds{};
+  const HWND parent = GetParent(overlay);
+  if (parent && GetWindowRect(overlay, &bounds)) {
+    // MapWindowPoints can return zero for a successful zero-offset mapping.
+    MapWindowPoints(nullptr, parent, reinterpret_cast<POINT*>(&bounds), 2);
+    const RECT expected{
+        kStationheadWindowNameOverlayLeft, kStationheadWindowNameOverlayTop,
+        kStationheadWindowNameOverlayLeft + kStationheadWindowNameOverlayWidth,
+        kStationheadWindowNameOverlayTop + kStationheadWindowNameOverlayHeight};
+    if (EqualRect(&bounds, &expected) && IsWindowVisible(overlay) &&
+        GetWindow(overlay, GW_HWNDPREV) == nullptr) {
+      return;
+    }
+  }
   SetWindowPos(overlay, HWND_TOP,
                kStationheadWindowNameOverlayLeft,
                kStationheadWindowNameOverlayTop,
@@ -102,7 +116,11 @@ void EnsureStationheadWindowNameOverlay(
         kStationheadWindowNameOverlayHeight,
         hostWindow, nullptr, instance, nullptr);
   } else {
-    SetWindowTextW(overlay, windowName);
+    wchar_t currentName[64]{};
+    GetWindowTextW(overlay, currentName, static_cast<int>(_countof(currentName)));
+    if (wcscmp(currentName, windowName) != 0) {
+      SetWindowTextW(overlay, windowName);
+    }
   }
   if (overlay) RaiseStationheadWindowNameOverlay(hostWindow);
 }
@@ -127,10 +145,21 @@ RECT StationheadMonitorPanelBounds(const RECT& workspaceBounds) noexcept {
 
 void ApplyHostVisualClip(HWND window, bool fullSize) noexcept {
   if (!window || !IsWindow(window)) return;
+  RECT current{};
+  const int regionType = GetWindowRgnBox(window, &current);
   if (fullSize) {
-    SetWindowRgn(window, nullptr, TRUE);
+    // SetWindowRgn triggers a window redraw even if nothing changed. Most
+    // Stationhead hosts spend hours with no clip, so leave that state alone.
+    if (regionType != ERROR) SetWindowRgn(window, nullptr, TRUE);
     return;
   }
+  const RECT backgroundClip{0, 0, 1, 1};
+  if (regionType == SIMPLEREGION && EqualRect(&current, &backgroundClip)) {
+    return;
+  }
+  // Background playback keeps its full 360x960 WebView viewport, while the
+  // native host region only paints 1x1. Avoid recreating an identical GDI
+  // region for every audio/status tick across all six Stationhead profiles.
   HRGN region = CreateRectRgn(0, 0, 1, 1);
   if (!region) return;
   if (!SetWindowRgn(window, region, TRUE)) DeleteObject(region);
