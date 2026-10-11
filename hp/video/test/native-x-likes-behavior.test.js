@@ -30,6 +30,7 @@ async function run({
   let scrolls = 0;
   let tabClicks = 0;
   let selectedTab = selected;
+  const domBudget = { timelineQueries: 0, filterSets: 0, filterRemovals: 0 };
   const tab = {
     innerText: 'フォロー中',
     getAttribute: () => String(selectedTab),
@@ -37,6 +38,7 @@ async function run({
   };
   const article = (id, label = 'normal', initiallyLiked = false, baseTop = 0, options = {}) => {
     let liked = initiallyLiked;
+    let filtered = false;
     const existingLikes = options.likeCount ?? 8;
     const countText = String(existingLikes);
     const likeButton = {
@@ -63,6 +65,18 @@ async function run({
     return {
       isConnected: true,
       innerText: label,
+      getAttribute: key => key === 'data-homepanel-x-filtered' && filtered ? 'true' : null,
+      hasAttribute: key => key === 'data-homepanel-x-filtered' && filtered,
+      setAttribute: (key, value) => {
+        if (key !== 'data-homepanel-x-filtered') return;
+        domBudget.filterSets++;
+        filtered = value === 'true';
+      },
+      removeAttribute: key => {
+        if (key !== 'data-homepanel-x-filtered') return;
+        domBudget.filterRemovals++;
+        filtered = false;
+      },
       getBoundingClientRect: () => {
         const top = baseTop - scrollOffset;
         return { top, bottom: top + 160 };
@@ -138,9 +152,14 @@ async function run({
     Math: testMath,
     document: {
       readyState: 'complete',
-      querySelectorAll: selector => selector === '[role="tab"]'
-        ? (missingTab ? [] : [tab])
-        : (now < emptyUntil ? [] : articles),
+      querySelectorAll: selector => {
+        if (selector === '[role="tab"]') return missingTab ? [] : [tab];
+        if (selector === 'article[data-testid="tweet"]') {
+          domBudget.timelineQueries++;
+          return now < emptyUntil ? [] : articles;
+        }
+        return [];
+      },
     },
     performance: { now: () => now },
     setTimeout: (callback, delay) => timers.push(() => {
@@ -163,6 +182,7 @@ async function run({
     scrolls,
     tabClicks,
     state: window.__homePanelXLikeRuntime,
+    domBudget,
   };
 }
 
@@ -279,4 +299,24 @@ test('filter CSS does not hide every social-context post', () => {
   assert.doesNotMatch(source, /cellInnerDiv[^`]*socialContext/);
   assert.doesNotMatch(source, /const promotedText/);
   assert.match(source, /!element\.closest\?\.\('\[data-testid="tweetText"\]'\)/);
+});
+
+
+test('one fresh timeline query per scan, with no full candidate sort or array copies', async () => {
+  const result = await run({ randomValues: [0] });
+  assert.ok(result.state.likedCount >= 4);
+  assert.match(source, /const articles = timelineArticles\(\);\s*const candidate = scanTimeline\(articles, attempted\);/);
+  assert.doesNotMatch(source, /Array\.from\(/);
+  assert.doesNotMatch(source, /candidates\.sort\(/);
+  assert.doesNotMatch(source, /markFilteredArticles\(\)/);
+  assert.ok(result.domBudget.timelineQueries > 0);
+});
+
+test('promoted and repost filter attributes are not rewritten on every scroll tick', async () => {
+  const result = await run({ randomValues: [0] });
+  // Three initial filtered posts remain in the DOM throughout the simulation.
+  // Reapplying their filter on each scroll would force repeated CSS invalidation.
+  assert.equal(result.domBudget.filterSets, 3);
+  assert.equal(result.domBudget.filterRemovals, 0);
+  assert.ok(result.domBudget.timelineQueries > result.domBudget.filterSets * 3);
 });
