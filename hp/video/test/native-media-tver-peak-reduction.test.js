@@ -34,8 +34,8 @@ test('TVer uses one scoped observer and media event bindings', () => {
 test('TVer ad classification uses explicit player markers plus bounded short-media fallback', () => {
   assert.match(runtime, /const explicitAd = \(\) =>/);
   assert.match(runtime, /shortMedia = length >= 5 && length <= 65/);
-  assert.match(runtime, /explicitAd\(\) \|\|/);
-  assert.match(runtime, /return explicitAd\(\) \|\| shortMedia/);
+  assert.match(runtime, /shortMedia \|\| explicitAd\(\)/);
+  assert.match(runtime, /return shortMedia \|\| explicitAd\(\)/);
 });
 
 test('TVer playback rate is restored and synchronized with the current UI', () => {
