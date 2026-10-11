@@ -74,8 +74,13 @@ inline std::wstring_view StationheadRuntimeInteractionFragment() noexcept {
       return window.__homepanelAudioPlaying;
     }
     if (navigator.mediaSession?.playbackState === 'playing') return true;
-    return Array.from(document.querySelectorAll('audio,video')).some(element =>
-      !element.paused && !element.ended && element.readyState >= 2);
+    // Avoid creating a temporary Array on every audio state event.
+    for (const element of document.querySelectorAll('audio,video')) {
+      if (!element.paused && !element.ended && element.readyState >= 2) {
+        return true;
+      }
+    }
+    return false;
   };
   const publishAudio = () => {
     const current = playing();
@@ -89,8 +94,8 @@ inline std::wstring_view StationheadRuntimeInteractionFragment() noexcept {
     /(^|\/)(login|signin|sign-in|auth)(?:\/|[?#]|$)/i.test(
       String(location.pathname || ''));
 
-  const accountVisible = () => {
-    for (const element of document.querySelectorAll(controlSelector)) {
+  const accountVisible = (controls = document.querySelectorAll(controlSelector)) => {
+    for (const element of controls) {
       if (!visible(element)) continue;
       const label = labelOf(element);
       const href = String(element.getAttribute?.('href') || '').toLowerCase();
@@ -103,7 +108,7 @@ inline std::wstring_view StationheadRuntimeInteractionFragment() noexcept {
     }
     return false;
   };
-  const blockingLogin = (authenticated, recoverableAction = false) => {
+  const blockingLogin = (authenticated, recoverableAction = false, controls = null) => {
     if (loginRoute()) return true;
     for (const input of document.querySelectorAll(credentialSelector)) {
       if (visible(input)) return true;
@@ -112,7 +117,7 @@ inline std::wstring_view StationheadRuntimeInteractionFragment() noexcept {
     // link in the same dialog must not suppress it; login routes and visible
     // credential fields above remain hard stops.
     if (recoverableAction) return false;
-    for (const element of document.querySelectorAll(controlSelector)) {
+    for (const element of controls || document.querySelectorAll(controlSelector)) {
       if (!visible(element)) continue;
       const label = labelOf(element);
       const href = String(element.getAttribute?.('href') || '').toLowerCase();
@@ -131,8 +136,12 @@ inline std::wstring_view StationheadRuntimeInteractionFragment() noexcept {
   const publishAuth = () => {
     if (!pageActive || !document.body) return;
     if (publishRecoverableOnboarding()) return;
-    const authenticated = accountVisible() || playing();
-    const blocking = blockingLogin(authenticated);
+    // Reuse one fresh control snapshot for both auth checks. Recoverable
+    // onboarding runs first and may update the page's playback-only CSS;
+    // never cache controls across events or the delayed authorization check.
+    const controls = document.querySelectorAll(controlSelector);
+    const authenticated = accountVisible(controls) || playing();
+    const blocking = blockingLogin(authenticated, false, controls);
     if (blocking) {
       cancelAuthReady();
       window.__homepanelStationheadBlockingLoginVisible = true;
@@ -151,8 +160,9 @@ inline std::wstring_view StationheadRuntimeInteractionFragment() noexcept {
     authReadyTimer = nativeTimeout(() => {
       authReadyTimer = 0;
       if (!pageActive || !document.body) return;
-      const stillAuthenticated = accountVisible() || playing();
-      if (!stillAuthenticated || blockingLogin(stillAuthenticated)) return;
+      const controls = document.querySelectorAll(controlSelector);
+      const stillAuthenticated = accountVisible(controls) || playing();
+      if (!stillAuthenticated || blockingLogin(stillAuthenticated, false, controls)) return;
       lastBlocking = false;
       window.__homepanelStationheadBlockingLoginVisible = false;
       post({ type: 'stationhead-auth-ready', source: 'compact-runtime' });
