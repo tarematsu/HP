@@ -115,7 +115,7 @@ test('X likes use Following DOM clicks without an existing-like-count threshold 
   assert.match(xRuntime, /\^\(\?:Following\|フォロー中\)\$/);
   assert.match(xRuntime, /tab\.click\(\)/);
   assert.match(xRuntime, /button\.click\(\)/);
-  assert.match(xRuntime, /const likeWaitChoicesMs = \[5 \* 1000, 10 \* 1000, 15 \* 1000, 20 \* 1000\]/);
+  assert.match(xRuntime, /const likeWaitChoicesMs = \[4 \* 1000, 7 \* 1000, 9 \* 1000\]/);
   assert.doesNotMatch(xRuntime, /minimumExistingLikes/);
   assert.doesNotMatch(xRuntime, /existingLikeCount/);
   assert.doesNotMatch(xRuntime, /parseCompactCount/);
