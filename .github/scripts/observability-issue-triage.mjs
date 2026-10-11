@@ -165,7 +165,7 @@ function telemetryFailureEvidence(summary) {
   ].filter(Boolean);
   const rows = markdownRows(text);
   const offenders = rows
-    .filter((cells) => cells.length >= 6 && /^\\d+(?:\\.\\d+)?$/.test(cells[5]))
+    .filter((cells) => cells.length >= 6 && /^\d+(?:\.\d+)?$/.test(cells[5]))
     .filter((cells) => {
       const budget = Number(cells[2]);
       const maximum = Number(cells[5]);
