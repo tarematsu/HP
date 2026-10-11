@@ -49,12 +49,6 @@ LRESULT CALLBACK NativeMediaPanelWndProc(
         return 0;
       case WM_TIMER: {
         const UINT_PTR timerId = static_cast<UINT_PTR>(wparam);
-        if ((timerId == kNativeMediaTverWatchdogTimer ||
-             timerId == kNativeMediaNavigationRetryTimer) &&
-            NativeMediaTverXPhaseActive()) {
-          KillTimer(hwnd, timerId);
-          return 0;
-        }
         // A slow ExecuteScript is not a WebView process failure. Expire the
         // global execution token so a late callback cannot act on old state,
         // then let NativeMediaPanelHost's phase-local watchdog retry. Recreating

@@ -15,10 +15,13 @@ const main = readFileSync(
   'utf8',
 );
 
-test('native app schedules stable randomized restarts in both daily windows', () => {
-  assert.match(app, /\{6, 30\}/);
-  assert.match(app, /\{19, 30\}/);
-  assert.match(app, /kRestartWindowDurationMs = 30LL \* 60LL \* 1000LL/);
+test('native app schedules one stable randomized restart in each of three daily windows', () => {
+  assert.match(app, /std::array<RestartWindow, 3> kRestartWindows/);
+  assert.match(app, /\{6, 0\}/);
+  assert.match(app, /\{12, 0\}/);
+  assert.match(app, /\{20, 0\}/);
+  assert.match(app, /kRestartWindowDurationMs = 60LL \* 60LL \* 1000LL/);
+  assert.doesNotMatch(app, /\{6, 30\}|\{19, 30\}/);
   assert.match(app, /StableRestartHash\(const SYSTEMTIME& date, size_t windowIndex\)/);
   assert.match(app, /GetComputerNameW\(computerName, &length\)/);
   assert.match(app, /RestartTargetMillisecondsOfDay\(local, index\)/);

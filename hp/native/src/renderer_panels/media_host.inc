@@ -10,14 +10,19 @@ class NativeMediaPanelHost final {
   void ApplyPowerSavingMode() noexcept {
     if (!phaseStarted_) return;
     const ULONGLONG elapsed = GetTickCount64() - phaseStartedAt_;
-    if (elapsed >= kNativeMediaPhaseMs) {
-      phase_ == Phase::YouTube ? SwitchToTver() : SwitchToYouTube();
+    const UINT duration = startupXActive_ ? kNativeMediaStartupXPhaseMs : kNativeMediaPhaseMs;
+    if (elapsed >= duration) {
+      if (startupXActive_) {
+        startupXActive_ = false;
+        StopNavigationRetry();
+        NavigateCurrentPhase();
+        ArmPhaseTimer();
+      } else {
+        phase_ == Phase::YouTube ? SwitchToTver() : SwitchToYouTube();
+      }
       return;
     }
-    if (gNativeMediaPowerSaving && xPhaseActive_) {
-      xPhaseActive_ = false;
-      NavigateCurrentPhase();
-    }
+    // The one-time startup X phase is independent of the power-saving mode.
     ArmPhaseTimer(false);
   }
 
@@ -44,6 +49,7 @@ class NativeMediaPanelHost final {
             }
             environment_ = environment;
             phase_ = Phase::YouTube;
+            startupXActive_ = true;
             CreateControllerForCurrentPhase();
             ArmPhaseTimer();
           });
@@ -93,31 +99,23 @@ class NativeMediaPanelHost final {
 
   bool OnTimer(UINT_PTR timerId) noexcept {
     if (timerId == kNativeMediaPhaseTimer) {
-      if (phaseStarted_ && GetTickCount64() - phaseStartedAt_ < kNativeMediaPhaseMs) {
+      const UINT duration = startupXActive_ ? kNativeMediaStartupXPhaseMs : kNativeMediaPhaseMs;
+      if (phaseStarted_ && GetTickCount64() - phaseStartedAt_ < duration) {
         ArmPhaseTimer(false);
+        return true;
+      }
+      if (startupXActive_) {
+        startupXActive_ = false;
+        StopNavigationRetry();
+        NavigateCurrentPhase();
+        ArmPhaseTimer();
         return true;
       }
       phase_ == Phase::YouTube ? SwitchToTver() : SwitchToYouTube();
       return true;
     }
-    if (timerId == kNativeMediaXStartTimer) {
-      const UINT contentMs = phase_ == Phase::Tver
-          ? kNativeMediaTverContentDurationMs : kNativeMediaYoutubeContentPhaseMs;
-      // A killed Win32 timer can already have a message queued. Do not let an
-      // old phase's message open X early or cancel the new phase's timer.
-      if (!phaseStarted_ || GetTickCount64() - phaseStartedAt_ < contentMs) return true;
-      KillTimer(hostWindow_, kNativeMediaXStartTimer);
-      if (!gNativeMediaPowerSaving && !xPhaseActive_) {
-        xPhaseActive_ = true;
-        StopYoutubeMonitors();
-        StopTverPlaybackMonitor();
-        StopNavigationRetry();
-        NavigateCurrentPhase();
-      }
-      return true;
-    }
-    if (xPhaseActive_ && (timerId == kNativeMediaYoutubeWatchdogTimer ||
-                         timerId == kNativeMediaTverWatchdogTimer)) return true;
+    if (startupXActive_ && (timerId == kNativeMediaYoutubeWatchdogTimer ||
+                            timerId == kNativeMediaTverWatchdogTimer)) return true;
     if (timerId == kNativeMediaNavigationRetryTimer) {
       StopNavigationRetry();
       NavigateCurrentPhase();
@@ -158,7 +156,6 @@ class NativeMediaPanelHost final {
     StopNavigationRetry();
     if (hostWindow_ && IsWindow(hostWindow_)) {
       KillTimer(hostWindow_, kNativeMediaPhaseTimer);
-      KillTimer(hostWindow_, kNativeMediaXStartTimer);
     }
     CloseController();
     environment_.Reset();
@@ -398,30 +395,17 @@ class NativeMediaPanelHost final {
     if (reset) {
       phaseStartedAt_ = now;
       phaseStarted_ = true;
-      xPhaseActive_ = false;
     }
     const ULONGLONG elapsed = now - phaseStartedAt_;
-    const UINT duration = kNativeMediaPhaseMs;
+    const UINT duration = startupXActive_ ? kNativeMediaStartupXPhaseMs : kNativeMediaPhaseMs;
     KillTimer(hostWindow_, kNativeMediaPhaseTimer);
-    KillTimer(hostWindow_, kNativeMediaXStartTimer);
     const UINT remaining = elapsed < duration
         ? static_cast<UINT>(duration - elapsed) : 1U;
-    if (ArmTimer(kNativeMediaPhaseTimer, remaining) == 0) {
-      Fail();
-      return;
-    }
-    if (!gNativeMediaPowerSaving && !xPhaseActive_) {
-      const UINT contentMs = phase_ == Phase::Tver
-          ? kNativeMediaTverContentDurationMs : kNativeMediaYoutubeContentPhaseMs;
-      const UINT xRemaining = elapsed < contentMs
-          ? static_cast<UINT>(contentMs - elapsed) : 1U;
-      if (ArmTimer(kNativeMediaXStartTimer, xRemaining) == 0) Fail();
-    }
+    if (ArmTimer(kNativeMediaPhaseTimer, remaining) == 0) Fail();
   }
 
   void SwitchToYouTube() noexcept {
     phase_ = Phase::YouTube;
-    xPhaseActive_ = false;
     NativeMediaTverEndQueuePhase();
     failed_ = false;
     StopYoutubeMonitors();
@@ -435,7 +419,6 @@ class NativeMediaPanelHost final {
 
   void SwitchToTver() noexcept {
     phase_ = Phase::Tver;
-    xPhaseActive_ = false;
     failed_ = false;
     StopYoutubeMonitors();
     StopTverPlaybackMonitor();
@@ -453,8 +436,8 @@ class NativeMediaPanelHost final {
       ScheduleNavigationRetry();
       return;
     }
-    if (xPhaseActive_ && !gNativeMediaPowerSaving) {
-      if (FAILED(webview_->Navigate(L"https://x.com/home"))) ScheduleNavigationRetry();
+    if (startupXActive_) {
+      if (FAILED(webview_->Navigate(kNativeMediaStartupXUrl))) ScheduleNavigationRetry();
       return;
     }
     if (phase_ == Phase::YouTube) {
@@ -964,7 +947,6 @@ class NativeMediaPanelHost final {
     StopNavigationRetry();
     if (hostWindow_ && IsWindow(hostWindow_)) {
       KillTimer(hostWindow_, kNativeMediaPhaseTimer);
-      KillTimer(hostWindow_, kNativeMediaXStartTimer);
       InvalidateRect(hostWindow_, nullptr, FALSE);
     }
   }
@@ -980,7 +962,7 @@ class NativeMediaPanelHost final {
   Phase phase_ = Phase::YouTube;
   ULONGLONG phaseStartedAt_ = 0;
   bool phaseStarted_ = false;
-  bool xPhaseActive_ = false;
+  bool startupXActive_ = true;
   RecoveryState recoveryState_ = RecoveryState::Healthy;
   uint64_t controllerGeneration_ = 0;
   uint64_t youtubeWatchdogRequestGeneration_ = 0;

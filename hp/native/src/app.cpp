@@ -14,11 +14,12 @@ struct RestartWindow {
   int startMinute;
 };
 
-constexpr std::array<RestartWindow, 2> kRestartWindows{{
-    {6, 30},
-    {19, 30},
+constexpr std::array<RestartWindow, 3> kRestartWindows{{
+    {6, 0},
+    {12, 0},
+    {20, 0},
 }};
-constexpr int64_t kRestartWindowDurationMs = 30LL * 60LL * 1000LL;
+constexpr int64_t kRestartWindowDurationMs = 60LL * 60LL * 1000LL;
 constexpr int64_t kDayMs = 24LL * 60LL * 60LL * 1000LL;
 constexpr uint64_t kRestartHashOffset = 1469598103934665603ULL;
 constexpr uint64_t kRestartHashPrime = 1099511628211ULL;
