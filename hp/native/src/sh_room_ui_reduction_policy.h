@@ -109,8 +109,15 @@ inline std::wstring StationheadRoomUiReductionScript() {
   const setPlaybackOnly = enabled => {
     const root = document.documentElement;
     if (!root) return;
-    if (enabled) root.setAttribute(playbackAttribute, 'true');
-    else root.removeAttribute(playbackAttribute);
+    // Avoid forcing style invalidation on repeated media events from the
+    // same track or separate media elements within the same room.
+    if (enabled) {
+      if (!root.hasAttribute(playbackAttribute)) {
+        root.setAttribute(playbackAttribute, 'true');
+      }
+    } else if (root.hasAttribute(playbackAttribute)) {
+      root.removeAttribute(playbackAttribute);
+    }
   };
   const onMediaState = event => {
     const media = event.target;
