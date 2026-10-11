@@ -91,3 +91,19 @@ test('Stationhead recovery verification does not reintroduce PCM or Core Audio p
     assert.doesNotMatch(text, /PCM peak/i);
   }
 });
+
+test('six persistent Stationhead WebViews avoid redundant steady audio scripts and UI notifications', () => {
+  const from = player.indexOf('void StationheadPlayer::ApplyAudioPlaybackState(');
+  const to = player.indexOf('void StationheadPlayer::NavigateCurrentUrl(', from);
+  assert.ok(from >= 0 && to > from);
+  const apply = player.slice(from, to);
+  assert.match(apply, /const bool changed =\s*audioPlaying_\.exchange\(playing, std::memory_order_relaxed\) != playing/);
+  assert.match(apply, /if \(webview_ && changed\) \{\s*webview_->ExecuteScript\(/);
+  assert.match(apply, /if \(changed \|\| awaitingTrackBoundaryNavigation \|\|[\s\S]*preserveLoginRequired\) \{\s*PostChange\(/);
+  assert.match(apply, /if \(changed\) PostChange\(\)/);
+  // No short circuit before resetting audio-loss state or honoring recovery and
+  // login activity: only the redundant JS bridge/notification are suppressed.
+  assert.match(apply, /ResetAudioLossEscalation\(\)/);
+  assert.match(apply, /status_\.loginRequired = preserveLoginRequired/);
+  assert.match(apply, /audioPlayingSinceAt_\.store\(0, std::memory_order_relaxed\)/);
+});
