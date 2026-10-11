@@ -99,7 +99,9 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
   const bool changed =
       audioPlaying_.exchange(playing, std::memory_order_relaxed) != playing;
   const bool preserveLoginRequired = loginRequired_;
-  if (webview_) {
+  // A media clock can confirm the same audio state repeatedly across all six
+  // WebViews. Only cross the COM/JavaScript boundary when the state changes.
+  if (webview_ && changed) {
     webview_->ExecuteScript(
         playing ? L"window.__homepanelAudioPlaying = true;"
                 : L"window.__homepanelAudioPlaying = false;",
@@ -162,8 +164,13 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
       SetVisible(false);
     }
     if (changed) log_.Info(L"Stationhead " + std::wstring(RoleTag()) + L" audio playing (" + source + L")");
-    PostChange(preserveLoginRequired ? StationheadChangeNone
-                                      : StationheadChangeReturnMain);
+    // Keep exceptional recovery/authorization notifications, but do not post
+    // a redundant HWND message for every steady-state media clock sample.
+    if (changed || awaitingTrackBoundaryNavigation ||
+        trackBoundaryPlaybackRecoveryPending_ || preserveLoginRequired) {
+      PostChange(preserveLoginRequired ? StationheadChangeNone
+                                        : StationheadChangeReturnMain);
+    }
     return;
   }
 
@@ -180,7 +187,7 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
     nextAutoClickAt_ = UnixMillis() + kStationheadPostPlaybackStopClickDelayMs;
     log_.Warn(L"Stationhead " + std::wstring(RoleTag()) + L" audio stopped (" + source + L")");
   }
-  PostChange();
+  if (changed) PostChange();
 }
 
 void StationheadPlayer::NavigateCurrentUrl(int64_t nowMs, const std::wstring& reason) {
