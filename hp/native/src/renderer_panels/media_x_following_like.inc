@@ -24,10 +24,15 @@ LR"JS(
       Math.floor(Math.random() * likeWaitChoicesMs.length)];
   const text = element => (element?.innerText || element?.textContent || '')
       .replace(/\s+/g, ' ').trim();
-  const timelineArticles = () => Array.from(
-      document.querySelectorAll('article[data-testid="tweet"]'));
-  const followingTab = () => Array.from(document.querySelectorAll('[role="tab"]'))
-      .find(tab => /^(?:Following|フォロー中)$/i.test(text(tab)));
+  // Iterate static NodeLists directly instead of copying them every tick.
+  const timelineArticles = () =>
+      document.querySelectorAll('article[data-testid="tweet"]');
+  const followingTab = () => {
+    for (const tab of document.querySelectorAll('[role="tab"]')) {
+      if (/^(?:Following|フォロー中)$/i.test(text(tab))) return tab;
+    }
+    return null;
+  };
 
   const startupRequested =
       /(?:^|[?&])homepanel=startup(?:&|$)/.test(String(location.search || ''));
@@ -56,9 +61,13 @@ LR"JS(
   }
 
   const promotedLabel = /^(?:Promoted|Sponsored|広告|プロモーション|スポンサー|Boosted|ブースト|PR)$/i;
-  const hasPromotedLabel = article => Array.from(article?.querySelectorAll?.('span') || [])
-      .some(element => !element.closest?.('[data-testid="tweetText"]') &&
-          promotedLabel.test(text(element)));
+  const hasPromotedLabel = article => {
+    for (const element of article?.querySelectorAll?.('span') || []) {
+      if (!element.closest?.('[data-testid="tweetText"]') &&
+          promotedLabel.test(text(element))) return true;
+    }
+    return false;
+  };
   const isPromoted = article => hasPromotedLabel(article) ||
       Boolean(article.querySelector('[data-testid*="placement" i]'));
   const isRepost = article => {
@@ -82,16 +91,6 @@ LR"JS(
     `;
     root.appendChild(style);
   };
-  const markFilteredArticles = () => {
-    for (const article of timelineArticles()) {
-      const target = article.closest?.('[data-testid="cellInnerDiv"]') || article;
-      if (isPromoted(article) || isRepost(article)) {
-        target.setAttribute?.(filterAttribute, 'true');
-      } else {
-        target.removeAttribute?.(filterAttribute);
-      }
-    }
-  };
 )JS"
 LR"JS(
   const articleId = article => {
@@ -99,8 +98,12 @@ LR"JS(
         ?.getAttribute('href');
     return permalink?.match(/\/status\/(\d+)/)?.[1] || '';
   };
-  const articleForId = id => timelineArticles()
-      .find(article => articleId(article) === id);
+  const articleForId = id => {
+    for (const article of timelineArticles()) {
+      if (articleId(article) === id) return article;
+    }
+    return null;
+  };
   const validLikeButton = article => {
     const button = article?.querySelector?.('[data-testid="like"]');
     if (!button || button.disabled ||
@@ -111,21 +114,33 @@ LR"JS(
     return { button, rect };
   };
   const targetY = () => Math.round(innerHeight * 0.62);
-  const findNextCandidate = attempted => {
-    const preferredFloor = targetY() - targetTolerancePx;
-    const candidates = [];
-    for (const article of timelineArticles()) {
-      if (!article.isConnected || !isOrganic(article)) continue;
+  // Filter and select from one fresh timeline snapshot. Previously the room
+  // was queried three times per scroll tick, and eligible posts were sorted.
+  const scanTimeline = (articles, attempted = null) => {
+    const preferredFloor = attempted ? targetY() - targetTolerancePx : 0;
+    let nearest = null;
+    for (const article of articles) {
+      const filtered = isPromoted(article) || isRepost(article);
+      const target = article.closest?.('[data-testid="cellInnerDiv"]') || article;
+      // Re-applying the same attribute every ~0.5 seconds forces style work.
+      if (filtered) {
+        if (target.getAttribute?.(filterAttribute) !== 'true') {
+          target.setAttribute?.(filterAttribute, 'true');
+        }
+      } else if (target.hasAttribute?.(filterAttribute)) {
+        target.removeAttribute?.(filterAttribute);
+      }
+      if (!attempted || filtered || !article.isConnected) continue;
       const id = articleId(article);
       if (!id || attempted.has(id)) continue;
       const like = validLikeButton(article);
       if (!like) continue;
       const centerY = like.rect.top + like.rect.height / 2;
-      if (centerY < preferredFloor) continue;
-      candidates.push({ article, id, button: like.button, centerY });
+      if (centerY < preferredFloor ||
+          (nearest && centerY >= nearest.centerY)) continue;
+      nearest = { article, id, button: like.button, centerY };
     }
-    candidates.sort((a, b) => a.centerY - b.centerY);
-    return candidates[0] || null;
+    return nearest;
   };
   const clickLikeButton = button => {
     if (!button || typeof button.click !== 'function') return false;
@@ -146,12 +161,12 @@ LR"JS(
       }
 
       installTimelineFilterCss();
-      markFilteredArticles();
+      scanTimeline(timelineArticles());
 
       let tab = followingTab();
       while (!tab && performance.now() < deadline) {
         state.result = 'waiting-login';
-        markFilteredArticles();
+        scanTimeline(timelineArticles());
         await sleep(1000);
         tab = followingTab();
       }
@@ -181,11 +196,9 @@ LR"JS(
       state.unconfirmedCount = 0;
       state.likeWaitHistoryMs = [];
       while (performance.now() < deadline) {
-        markFilteredArticles();
-        if (followingTab()?.getAttribute('aria-selected') !== 'true') break;
-
         const articles = timelineArticles();
-        const candidate = findNextCandidate(attempted);
+        const candidate = scanTimeline(articles, attempted);
+        if (followingTab()?.getAttribute('aria-selected') !== 'true') break;
         if (!candidate) {
           if (articles.length === 0) {
             state.result = 'waiting-posts';
