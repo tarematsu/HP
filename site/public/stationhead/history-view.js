@@ -38,7 +38,13 @@ export function exportHistoryCsv(runtime) {
 
 function setHistorySummary(runtime, rows, total) {
   const max = rows.map((row) => finite(row.listener_max)).filter((value) => value != null);
-  const label = rows.length ? `${rows[0].period_key}〜${rows.at(-1).period_key}` : '—';
+  const first = String(rows[0]?.period_key || '');
+  const last = String(rows.at(-1)?.period_key || '');
+  const label = !rows.length ? '—' : first.slice(0, 7) === last.slice(0, 7)
+    ? `${first}〜${last.slice(8)}`
+    : first.slice(0, 4) === last.slice(0, 4)
+      ? `${first}〜${last.slice(5)}`
+      : `${first}〜${last}`;
   setText(runtime.root, 'history-periods', label);
   setText(runtime.root, 'history-max', max.length ? numberText(Math.max(...max)) : '—');
   setText(runtime.root, 'history-streams', rows.some((row) => finite(row.stream_growth) != null) ? signedText(total('stream_growth')) : '—');
