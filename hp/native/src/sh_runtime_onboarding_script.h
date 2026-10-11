@@ -29,7 +29,20 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
   // Most room nodes are not actionable. Test cheap DOM strings before
   // reading innerText (layout) or pseudo-element styles (computed style).
   // Keep both fallbacks for CSS-label-only Connect Spotify controls.
-  const onboardingLabelMatches = (element, pattern) => {
+  // Most recovery probes run while the room is in playback-only mode.
+  // Match all three eligible recovery labels against one read of each DOM
+  // field and CSS pseudo-label, instead of repeating innerText/style reads
+  // three times for every unrelated room node. Single-pattern callers still
+  // retain the exact same matching behavior.
+  const onboardingLabelMatches = (
+      element, pattern, additionalPattern = null, alternatePattern = null) => {
+    const matches = value => {
+      if (!value) return false;
+      const normalized = normalize(value);
+      return pattern.test(normalized) ||
+        (additionalPattern !== null && additionalPattern.test(normalized)) ||
+        (alternatePattern !== null && alternatePattern.test(normalized));
+    };
     for (const value of [
       element?.getAttribute?.('aria-label'),
       element?.getAttribute?.('data-testid'),
@@ -38,13 +51,11 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
       element?.getAttribute?.('value'),
       element?.textContent,
     ]) {
-      if (value && pattern.test(normalize(value))) return true;
+      if (matches(value)) return true;
     }
-    const renderedText = element?.innerText;
-    if (renderedText && pattern.test(normalize(renderedText))) return true;
+    if (matches(element?.innerText)) return true;
     for (const pseudo of ['::before', '::after']) {
-      const label = onboardingPseudoLabel(element, pseudo);
-      if (label && pattern.test(normalize(label))) return true;
+      if (matches(onboardingPseudoLabel(element, pseudo))) return true;
     }
     return false;
   };
@@ -69,9 +80,9 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
     // only for the exact allowlisted labels without reading layout, then restore
     // the UI so the native locator can validate visibility and click normally.
     for (const element of candidates) {
-      if (onboardingLabelMatches(element, keepStreamingPattern) ||
-          onboardingLabelMatches(element, recoverableOnboardingPattern) ||
-          onboardingLabelMatches(element, connectSurfaceLabelPattern)) {
+      if (onboardingLabelMatches(
+          element, keepStreamingPattern, recoverableOnboardingPattern,
+          connectSurfaceLabelPattern)) {
         root.removeAttribute(playbackOnlyAttribute);
         return true;
       }
