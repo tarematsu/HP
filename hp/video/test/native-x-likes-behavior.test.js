@@ -187,14 +187,14 @@ test('existing like count does not restrict eligible posts', async () => {
   assert.doesNotMatch(source, /parseCompactCount/);
 });
 
-test('pre-click wait is randomly selected from 5, 10, 15 and 20 seconds', async () => {
-  const result = await run({ randomValues: [0, 0.26, 0.51, 0.99] });
+test('pre-click wait is randomly selected from 4, 7 and 9 seconds', async () => {
+  const result = await run({ randomValues: [0, 0.34, 0.67, 0] });
   assert.ok(result.state.likeWaitHistoryMs.length >= 4);
   assert.deepEqual(
     Array.from(result.state.likeWaitHistoryMs.slice(0, 4)),
-    [5000, 10000, 15000, 20000],
+    [4000, 7000, 9000, 4000],
   );
-  assert.ok(result.state.likeWaitHistoryMs.every(ms => [5000, 10000, 15000, 20000].includes(ms)));
+  assert.ok(result.state.likeWaitHistoryMs.every(ms => [4000, 7000, 9000].includes(ms)));
   for (let i = 0; i < Math.min(result.clickTimes.length, result.state.likeWaitHistoryMs.length); i++) {
     const previousScroll = result.scrollTimes.filter(time => time <= result.clickTimes[i]).at(-1);
     assert.ok(previousScroll != null);
@@ -240,7 +240,7 @@ test('delayed timers and late posts never cause catch-up bursts', async () => {
     const result = await run(options);
     assert.ok(result.clickTimes.length > 0);
     for (let i = 1; i < result.clickTimes.length; i++) {
-      assert.ok(result.clickTimes[i] - result.clickTimes[i - 1] >= 5000);
+      assert.ok(result.clickTimes[i] - result.clickTimes[i - 1] >= 4000);
     }
     assert.ok(result.clickTimes.every(time => time < 120000));
   }
