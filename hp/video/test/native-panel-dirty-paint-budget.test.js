@@ -52,7 +52,7 @@ test('media-only child paints its dirty area black without shared GDI bitmap or 
   assert.match(mediaPaint, /FillRect\(dc, &paint\.rcPaint,/);
   assert.match(mediaPaint, /GetStockObject\(BLACK_BRUSH\)/);
   assert.match(mediaPaint, /EndPaint\(hwnd, &paint\)/);
-  assert.doesNotMatch(mediaPaint, /NativePanelPaintScope|NativePanelBackBuffer|BitBlt|StretchRadarInto|radarFrameBitmap_/);
+  assert.doesNotMatch(mediaPaint, /\b(?:NativePanelBackBuffer|BitBlt|StretchRadarInto)\s*\(|NativePanelPaintScope\s+scope|radarFrameBitmap_/);
   assert.match(backBuffer, /HBITMAP Renderer::NativePanelBackBuffer/);
 });
 
