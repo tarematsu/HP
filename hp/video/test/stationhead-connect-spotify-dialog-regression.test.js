@@ -31,7 +31,7 @@ test('CONNECT SPOTIFY is eligible before first playback and with stale audio sta
     'const publishRecoverableOnboarding = () => {',
     ')JS";',
   );
-  assert.match(publish, /recoverableOnboardingVisible\(\)/);
+  assert.match(publish, /recoverableOnboardingVisible\(candidates\)/);
   assert.match(publish, /releasePlaybackOnlyForOnboarding\(\)/);
   assert.doesNotMatch(publish, /playbackEstablished|\bplaying\(\)/);
   assert.match(publish, /postText\('start-visible'\)/);
