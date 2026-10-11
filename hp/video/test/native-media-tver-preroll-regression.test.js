@@ -7,7 +7,7 @@ const runtime = readExpandedNativeSource(
 
 test('short TVer media remains an ad even if 1.75x was inherited', () => {
   assert.match(runtime, /shortMedia = length >= 5 && length <= 65/);
-  assert.match(runtime, /return explicitAd\(\) \|\| shortMedia/);
+  assert.match(runtime, /return shortMedia \|\| explicitAd\(\)/);
   assert.doesNotMatch(runtime, /video\.playbackRate <= 1\.05/);
 });
 
