@@ -122,3 +122,33 @@ test('media element state check does not copy the queried NodeList to an Array',
   assert.match(lifecycle, /progressCandidateMedia = media;\s*return media;/);
   assert.match(lifecycle, /progressCandidateMedia = null;\s*return null;/);
 });
+
+
+test('unrelated auth controls never trigger layout checks', () => {
+  const { runtime } = authRuntime({ label: 'Open playlist' });
+  const controls = [{
+    getAttribute: () => null,
+    innerText: 'Open playlist',
+    textContent: 'Open playlist',
+    querySelector: () => null,
+    getBoundingClientRect: () => {
+      throw new Error('unrelated control should not force layout');
+    },
+  }];
+  assert.equal(runtime.accountVisible(controls), false);
+  assert.equal(runtime.blockingLogin(false, false, controls), false);
+});
+
+test('account and login candidates still require visible geometry', () => {
+  const { runtime } = authRuntime();
+  const candidate = {
+    getAttribute: name => name === 'aria-label' ? 'Profile' : null,
+    innerText: 'Profile',
+    textContent: 'Profile',
+    querySelector: () => null,
+    getBoundingClientRect: () => {
+      throw new Error('matched candidate must check geometry');
+    },
+  };
+  assert.throws(() => runtime.accountVisible([candidate]), /matched candidate must check geometry/);
+});
