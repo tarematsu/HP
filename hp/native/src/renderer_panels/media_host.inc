@@ -10,8 +10,16 @@ class NativeMediaPanelHost final {
   void ApplyPowerSavingMode() noexcept {
     if (!phaseStarted_) return;
     const ULONGLONG elapsed = GetTickCount64() - phaseStartedAt_;
-    if (elapsed >= kNativeMediaPhaseMs) {
-      phase_ == Phase::YouTube ? SwitchToTver() : SwitchToYouTube();
+    const UINT duration = startupXActive_ ? kNativeMediaStartupXPhaseMs : kNativeMediaPhaseMs;
+    if (elapsed >= duration) {
+      if (startupXActive_) {
+        startupXActive_ = false;
+        StopNavigationRetry();
+        NavigateCurrentPhase();
+        ArmPhaseTimer();
+      } else {
+        phase_ == Phase::YouTube ? SwitchToTver() : SwitchToYouTube();
+      }
       return;
     }
     // The one-time startup X phase is independent of the power-saving mode.
