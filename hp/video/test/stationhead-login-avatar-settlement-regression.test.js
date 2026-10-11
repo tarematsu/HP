@@ -39,8 +39,8 @@ test('legacy login-settlement registration is inert', () => {
 });
 
 test('interaction runtime owns login-required and stable auth-ready edges', () => {
-  assert.match(interaction, /const accountVisible = \(\) =>/);
-  assert.match(interaction, /const blockingLogin = \(authenticated, recoverableAction = false\) =>/);
+  assert.match(interaction, /const accountVisible = \(controls = document\.querySelectorAll\(controlSelector\)\) =>/);
+  assert.match(interaction, /const blockingLogin = \(authenticated, recoverableAction = false, controls = null\) =>/);
   assert.match(interaction, /postText\('login-required'\)/);
   assert.match(interaction, /post\(\{ type: 'stationhead-auth-ready', source: 'compact-runtime' \}\)/);
   assert.match(interaction, /authReadyTimer = nativeTimeout[\s\S]*3000/);
@@ -51,7 +51,7 @@ test('interaction runtime owns login-required and stable auth-ready edges', () =
 test('real blocking auth surfaces beat stale account presentation without blocking music-connect recovery', () => {
   const blocking = section(
     interaction,
-    'const blockingLogin = (authenticated, recoverableAction = false) => {',
+    'const blockingLogin = (authenticated, recoverableAction = false, controls = null) => {',
     'const cancelAuthReady = () => {',
   );
   assert.match(blocking, /if \(loginRoute\(\)\) return true;/);
