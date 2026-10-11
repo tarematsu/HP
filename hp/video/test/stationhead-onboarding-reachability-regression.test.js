@@ -28,7 +28,7 @@ test('recoverable Stationhead onboarding signals native click without claiming a
   assert.match(recoverablePolicy, /spotify/);
   assert.match(recoverablePolicy, /continue/);
   assert.match(recoverablePolicy, /let\(\?:'\|’\)\?s/);
-  assert.match(onboarding, /const recoverableOnboardingVisible = candidates =>/);
+  assert.match(onboarding, /const scanOnboardingCandidates = candidates =>/);
 
   const publish = section(
     onboarding,
@@ -61,7 +61,7 @@ test('stale playback-only rendering is released from exact onboarding labels bef
   const release = section(
     onboarding,
     'const releasePlaybackOnlyForOnboarding = candidates => {',
-    'const keepStreamingVisible = candidates => {',
+    'const onboardingActionKind = element => {',
   );
   assert.match(release, /hasAttribute\?\.\(playbackOnlyAttribute\)/);
   assert.match(release, /onboardingLabelMatches\([\s\S]*element, keepStreamingPattern, recoverableOnboardingPattern,[\s\S]*connectSurfaceLabelPattern\)/);
