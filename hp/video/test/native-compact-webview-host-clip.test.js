@@ -44,3 +44,19 @@ test('steady-state Stationhead layout skips identical GDI clipping operations', 
     clip.indexOf('CreateRectRgn(0, 0, 1, 1)'));
   assert.match(clip, /if \(!SetWindowRgn\(window, region, TRUE\)\) DeleteObject\(region\)/);
 });
+
+test('six Stationhead window labels are not repositioned or rewritten while unchanged', () => {
+  const raise = stationheadLayout.slice(
+    stationheadLayout.indexOf('void RaiseStationheadWindowNameOverlay('),
+    stationheadLayout.indexOf('void EnsureStationheadWindowNameOverlay('),
+  );
+  assert.match(raise, /EqualRect\(&bounds, &expected\) && IsWindowVisible\(overlay\)/);
+  assert.match(raise, /GetWindow\(overlay, GW_HWNDPREV\) == nullptr/);
+  assert.ok(raise.indexOf('return;') < raise.lastIndexOf('SetWindowPos(overlay, HWND_TOP,'));
+  const ensure = stationheadLayout.slice(
+    stationheadLayout.indexOf('void EnsureStationheadWindowNameOverlay('),
+    stationheadLayout.indexOf('int RectWidth('),
+  );
+  assert.match(ensure, /wcscmp\(currentName, windowName\) != 0/);
+  assert.match(ensure, /SetWindowTextW\(overlay, windowName\)/);
+});
