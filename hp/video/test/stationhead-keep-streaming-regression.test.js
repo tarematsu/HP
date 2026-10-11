@@ -21,23 +21,25 @@ function section(text, start, end) {
 test('Keep Streaming is published before the shared onboarding allowlist path', () => {
   assert.ok(runtime.includes('const keepStreamingPattern = /^keep\\s+streaming$/i;'));
 
-  const keepStreaming = section(
+  const scan = section(
     runtime,
-    'const publishKeepStreaming = candidates => {',
+    'const onboardingActionKind = element => {',
     'const splitConnectSurfaceVisible = candidates => {',
   );
-  assert.match(keepStreaming, /keepStreamingVisible\(candidates\)/);
-  assert.match(keepStreaming, /postText\('start-visible'\)/);
-  assert.doesNotMatch(keepStreaming, /playbackEstablished|playing\(\)/);
+  assert.match(scan, /keepStreamingPattern\.test\(label\)/);
+  assert.match(scan, /recoverableOnboardingPattern\.test\(label\)/);
+  assert.match(scan, /if \(kind === 1\) return 1;/);
+  assert.doesNotMatch(scan, /playbackEstablished|playing\(\)/);
 
   const publish = section(
     runtime,
     'const publishRecoverableOnboarding = () => {',
     ')JS";',
   );
-  const continuationAt = publish.indexOf('if (publishKeepStreaming(candidates)) return true;');
-  const onboardingAt = publish.indexOf('!recoverableOnboardingVisible(candidates)');
+  const continuationAt = publish.indexOf('if (actionKind === 1)');
+  const onboardingAt = publish.indexOf('actionKind !== 2');
   assert.ok(continuationAt >= 0 && onboardingAt > continuationAt);
+  assert.match(publish, /postText\('start-visible'\)/);
   assert.doesNotMatch(publish, /playbackEstablished|\bplaying\(\)/);
 });
 
