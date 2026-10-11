@@ -208,13 +208,17 @@ LR"JS(
     }, true);
   }
 
-  const controls = () => Array.from(player.querySelectorAll(
+  const controlSelector =
       'button,[role="button"],[role="menuitem"],[role="option"],'
-      + '[role="radio"],[aria-label],[title],[data-testid]'));
+      + '[role="radio"],[aria-label],[title],[data-testid]';
+  const controls = () => Array.from(player.querySelectorAll(controlSelector));
   const explicitAd = () => {
     const skipPattern = /(?:広告|CM).{0,14}スキップ|^スキップ$|skip\s+(?:this\s+)?ad/i;
-    if (controls().some(element => visible(element) && skipPattern.test(text(element)))) {
-      return true;
+    // This runs on media timeupdate as well as watchdog wakes. Most player
+    // controls are not ad buttons: avoid getComputedStyle / geometry (and
+    // temporary Array copies) unless a cheap label test first matches.
+    for (const element of player.querySelectorAll(controlSelector)) {
+      if (skipPattern.test(text(element)) && visible(element)) return true;
     }
     const selectors = [
       '[aria-label*="広告"]','[title*="広告"]',
@@ -223,17 +227,22 @@ LR"JS(
       '[class*="advert" i]','[class*="commercial" i]',
       '[id*="advert" i]','[id*="commercial" i]'
     ];
-    return Array.from(player.querySelectorAll(selectors.join(','))).some(element => {
-      if (!visible(element)) return false;
+    const adLabelPattern =
+        /広告|(?:^|\s)CM(?:\s|$|[:：\d])|Advertisement|Ad break/i;
+    for (const element of player.querySelectorAll(selectors.join(','))) {
       const value = text(element);
-      return value.length <= 180 &&
-          /広告|(?:^|\s)CM(?:\s|$|[:：\d])|Advertisement|Ad break/i.test(value);
-    });
+      if (value.length <= 180 && adLabelPattern.test(value) && visible(element)) {
+        return true;
+      }
+    }
+    return false;
   };
   const ad = () => {
     const length = duration();
     const shortMedia = length >= 5 && length <= 65;
-    return explicitAd() || shortMedia;
+    // A short pre-roll is already classified as an ad. Do not traverse the
+    // player DOM to reconfirm it for every timeupdate.
+    return shortMedia || explicitAd();
   };
 )JS" LR"JS(
 
