@@ -8,7 +8,7 @@ LR"JS(
   if (state.started) return true;
   state.started = true;
   const deadline = performance.now() + 120 * 1000;
-  const likeWaitChoicesMs = [5 * 1000, 10 * 1000, 15 * 1000, 20 * 1000];
+  const likeWaitChoicesMs = [4 * 1000, 7 * 1000, 9 * 1000];
   const maxLikeAttemptsPerPost = 3;
   const pauseAfterLikeMs = 800;
   const scrollDelayMs = 450;
