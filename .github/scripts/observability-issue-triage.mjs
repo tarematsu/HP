@@ -159,7 +159,9 @@ function telemetryFailureEvidence(summary) {
   const text = String(summary || '');
   const violations = metricCount(text, 'CPU violations');
   const errors = metricCount(text, 'Error invocations');
+  const missingCoverage = /CPU coverage:\s*`?MISSING\b/i.test(text);
   const metrics = [
+    missingCoverage ? 'CPU coverage: MISSING' : null,
     violations === null ? null : `CPU violations: ${violations}`,
     errors === null ? null : `Error invocations: ${errors}`,
   ].filter(Boolean);
