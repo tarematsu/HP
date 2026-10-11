@@ -90,17 +90,46 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
     return false;
   };
 
-  const keepStreamingVisible = candidates => {
-    for (const element of candidates) {
-      if (onboardingMatches(element, keepStreamingPattern)) return true;
+  // A normal probe must consider Keep Streaming before any other recovery
+  // prompt, even when a reconnect button occurs earlier in document order.
+  // Decode both labels in one pass over each element's text and pseudo labels;
+  // only matched candidates need a layout/visibility check.
+  const onboardingActionKind = element => {
+    let recoverable = false;
+    const consider = value => {
+      if (!value) return false;
+      const label = normalize(value);
+      if (keepStreamingPattern.test(label)) return true;
+      if (recoverableOnboardingPattern.test(label)) recoverable = true;
+      return false;
+    };
+    for (const value of [
+      element?.getAttribute?.('aria-label'),
+      element?.getAttribute?.('data-testid'),
+      element?.getAttribute?.('title'),
+      element?.getAttribute?.('alt'),
+      element?.getAttribute?.('value'),
+      element?.textContent,
+    ]) {
+      if (consider(value)) return onboardingRendered(element) ? 1 : 0;
     }
-    return false;
+    if (consider(element?.innerText)) return onboardingRendered(element) ? 1 : 0;
+    for (const pseudo of ['::before', '::after']) {
+      if (consider(onboardingPseudoLabel(element, pseudo))) {
+        return onboardingRendered(element) ? 1 : 0;
+      }
+    }
+    return recoverable && onboardingRendered(element) ? 2 : 0;
   };
 
-  const publishKeepStreaming = candidates => {
-    if (!pageActive || !document.body || !keepStreamingVisible(candidates)) return false;
-    postText('start-visible');
-    return true;
+  const scanOnboardingCandidates = candidates => {
+    let recoverable = false;
+    for (const element of candidates) {
+      const kind = onboardingActionKind(element);
+      if (kind === 1) return 1;
+      if (kind === 2) recoverable = true;
+    }
+    return recoverable ? 2 : 0;
   };
 
   const splitConnectSurfaceVisible = candidates => {
@@ -122,16 +151,6 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
     return false;
   };
 
-  const recoverableOnboardingVisible = candidates => {
-    // Do not depend on element semantics. A visually button-like Stationhead
-    // control may be a div/span. The shared action policy keeps this broad DOM
-    // search synchronized with the native trusted-click locator.
-    for (const element of candidates) {
-      if (onboardingMatches(element, recoverableOnboardingPattern)) return true;
-    }
-    return splitConnectSurfaceVisible(candidates);
-  };
-
   const publishRecoverableOnboarding = () => {
     if (!pageActive || !document.body) return false;
     // One DOM snapshot per probe, reused for hidden recovery detection,
@@ -140,16 +159,17 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
     const candidates = document.querySelectorAll(onboardingCandidateSelector);
     releasePlaybackOnlyForOnboarding(candidates);
 
-    // Keep Streaming is a continuation confirmation and is always eligible for
-    // the trusted native allowlist while visible.
-    if (publishKeepStreaming(candidates)) return true;
-
-    // Every allowlisted music-service recovery/continuation action is treated as
-    // an independent current-state action rather than a step in a fixed sequence.
-    // This covers full loops, shortened flows such as Connect Spotify -> Listen
-    // here instead, repeated steps, and future wording variants admitted by the
-    // shared policy. There is intentionally no one-shot or sequence latch.
-    if (!recoverableOnboardingVisible(candidates)) return false;
+    // One scan covers continuation and recovery candidates. Keep Streaming
+    // retains priority even if it follows an earlier Connect Spotify button.
+    // Other allowlisted actions remain sequence-independent; a split
+    // Connect/Reconnect surface is checked only if no single-node match exists.
+    // There is intentionally no one-shot or sequence latch.
+    const actionKind = scanOnboardingCandidates(candidates);
+    if (actionKind === 1) {
+      postText('start-visible');
+      return true;
+    }
+    if (actionKind !== 2 && !splitConnectSurfaceVisible(candidates)) return false;
 
     // An exact recoverable action is visible. Keep login routes and credential
     // inputs as hard guards while ignoring unrelated Log in links in the dialog.
