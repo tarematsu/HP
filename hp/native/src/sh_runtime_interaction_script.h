@@ -96,15 +96,15 @@ inline std::wstring_view StationheadRuntimeInteractionFragment() noexcept {
 
   const accountVisible = (controls = document.querySelectorAll(controlSelector)) => {
     for (const element of controls) {
-      if (!visible(element)) continue;
-      const label = labelOf(element);
+      // Avoid geometry and computed style for unrelated controls. Preserve
+      // the avatar-descendant fallback and verify visibility before accepting.
       const href = String(element.getAttribute?.('href') || '').toLowerCase();
-      if (accountPattern.test(label) ||
-          /(^|\/)(account|profile|settings|user)(?:\/|[?#]|$)/i.test(href) ||
-          element.querySelector?.(
-            "[data-testid*='avatar' i],[data-testid*='profile' i],[class*='avatar' i]")) {
-        return true;
-      }
+      const label = labelOf(element);
+      if (!accountPattern.test(label) &&
+          !/(^|\/)(account|profile|settings|user)(?:\/|[?#]|$)/i.test(href) &&
+          !element.querySelector?.(
+            "[data-testid*='avatar' i],[data-testid*='profile' i],[class*='avatar' i]")) continue;
+      if (visible(element)) return true;
     }
     return false;
   };
@@ -118,11 +118,11 @@ inline std::wstring_view StationheadRuntimeInteractionFragment() noexcept {
     // credential fields above remain hard stops.
     if (recoverableAction) return false;
     for (const element of controls || document.querySelectorAll(controlSelector)) {
-      if (!visible(element)) continue;
       const label = labelOf(element);
       const href = String(element.getAttribute?.('href') || '').toLowerCase();
       if (!loginPattern.test(label) &&
           !/(^|\/)(login|signin|sign-in)(?:\/|[?#]|$)/i.test(href)) continue;
+      if (!visible(element)) continue;
       const shell = element.closest?.(blockingShellSelector);
       if (!authenticated || (shell && visible(shell))) return true;
     }
