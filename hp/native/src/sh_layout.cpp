@@ -127,10 +127,21 @@ RECT StationheadMonitorPanelBounds(const RECT& workspaceBounds) noexcept {
 
 void ApplyHostVisualClip(HWND window, bool fullSize) noexcept {
   if (!window || !IsWindow(window)) return;
+  RECT current{};
+  const int regionType = GetWindowRgnBox(window, &current);
   if (fullSize) {
-    SetWindowRgn(window, nullptr, TRUE);
+    // SetWindowRgn triggers a window redraw even if nothing changed. Most
+    // Stationhead hosts spend hours with no clip, so leave that state alone.
+    if (regionType != ERROR) SetWindowRgn(window, nullptr, TRUE);
     return;
   }
+  const RECT backgroundClip{0, 0, 1, 1};
+  if (regionType == SIMPLEREGION && EqualRect(&current, &backgroundClip)) {
+    return;
+  }
+  // Background playback keeps its full 360x960 WebView viewport, while the
+  // native host region only paints 1x1. Avoid recreating an identical GDI
+  // region for every audio/status tick across all six Stationhead profiles.
   HRGN region = CreateRectRgn(0, 0, 1, 1);
   if (!region) return;
   if (!SetWindowRgn(window, region, TRUE)) DeleteObject(region);
