@@ -118,11 +118,11 @@ test('playback-only room CSS attribute is updated only on state transitions', ()
     document, window,
     location: { hostname: 'stationhead.com', pathname: '/sakuramankai' },
   });
-  const event = { target: { matches: selector => selector === 'audio,video' } };
-  listeners.get('playing')(event);
-  listeners.get('playing')(event);
+  const target = { matches: selector => selector === 'audio,video' };
+  listeners.get('playing')({ type: 'playing', target });
+  listeners.get('playing')({ type: 'playing', target });
   assert.equal(adds, 1);
-  listeners.get('pause')(event);
-  listeners.get('pause')(event);
+  listeners.get('pause')({ type: 'pause', target });
+  listeners.get('pause')({ type: 'pause', target });
   assert.equal(removals, 1);
 });
