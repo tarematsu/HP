@@ -64,9 +64,7 @@ test('stale playback-only rendering is released from exact onboarding labels bef
     'const keepStreamingVisible = candidates => {',
   );
   assert.match(release, /hasAttribute\?\.\(playbackOnlyAttribute\)/);
-  assert.match(release, /onboardingLabelMatches\(element, keepStreamingPattern\)/);
-  assert.match(release, /onboardingLabelMatches\(element, recoverableOnboardingPattern\)/);
-  assert.match(release, /onboardingLabelMatches\(element, connectSurfaceLabelPattern\)/);
+  assert.match(release, /onboardingLabelMatches\([\s\S]*element, keepStreamingPattern, recoverableOnboardingPattern,[\s\S]*connectSurfaceLabelPattern\)/);
   assert.match(release, /removeAttribute\(playbackOnlyAttribute\)/);
   assert.doesNotMatch(release, /getBoundingClientRect|getComputedStyle/);
 });
