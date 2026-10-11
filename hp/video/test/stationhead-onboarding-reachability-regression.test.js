@@ -28,7 +28,7 @@ test('recoverable Stationhead onboarding signals native click without claiming a
   assert.match(recoverablePolicy, /spotify/);
   assert.match(recoverablePolicy, /continue/);
   assert.match(recoverablePolicy, /let\(\?:'\|’\)\?s/);
-  assert.match(onboarding, /const recoverableOnboardingVisible = \(\) =>/);
+  assert.match(onboarding, /const recoverableOnboardingVisible = candidates =>/);
 
   const publish = section(
     onboarding,
@@ -50,7 +50,7 @@ test('allowlisted onboarding is signaled before first playback and despite stale
     ')JS";',
   );
   assert.match(publish, /if \(!pageActive \|\| !document\.body\) return false;/);
-  assert.match(publish, /releasePlaybackOnlyForOnboarding\(\);/);
+  assert.match(publish, /releasePlaybackOnlyForOnboarding\(candidates\);/);
   assert.doesNotMatch(publish, /!playbackEstablished|\bplaying\(\)/);
   assert.doesNotMatch(publish, /const authenticated = accountVisible\(\);/);
   assert.match(publish, /if \(blockingLogin\(true, true\)\) return false;/);
@@ -60,8 +60,8 @@ test('stale playback-only rendering is released from exact onboarding labels bef
   assert.match(onboarding, /const playbackOnlyAttribute = 'data-homepanel-stationhead-playback-only'/);
   const release = section(
     onboarding,
-    'const releasePlaybackOnlyForOnboarding = () => {',
-    'const keepStreamingVisible = () => {',
+    'const releasePlaybackOnlyForOnboarding = candidates => {',
+    'const keepStreamingVisible = candidates => {',
   );
   assert.match(release, /hasAttribute\?\.\(playbackOnlyAttribute\)/);
   assert.match(release, /onboardingLabelMatches\(element, keepStreamingPattern\)/);

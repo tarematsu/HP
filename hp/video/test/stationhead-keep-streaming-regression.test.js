@@ -23,10 +23,10 @@ test('Keep Streaming is published before the shared onboarding allowlist path', 
 
   const keepStreaming = section(
     runtime,
-    'const publishKeepStreaming = () => {',
-    'const splitConnectSurfaceVisible = () => {',
+    'const publishKeepStreaming = candidates => {',
+    'const splitConnectSurfaceVisible = candidates => {',
   );
-  assert.match(keepStreaming, /keepStreamingVisible\(\)/);
+  assert.match(keepStreaming, /keepStreamingVisible\(candidates\)/);
   assert.match(keepStreaming, /postText\('start-visible'\)/);
   assert.doesNotMatch(keepStreaming, /playbackEstablished|playing\(\)/);
 
@@ -35,8 +35,8 @@ test('Keep Streaming is published before the shared onboarding allowlist path', 
     'const publishRecoverableOnboarding = () => {',
     ')JS";',
   );
-  const continuationAt = publish.indexOf('if (publishKeepStreaming()) return true;');
-  const onboardingAt = publish.indexOf('!recoverableOnboardingVisible()');
+  const continuationAt = publish.indexOf('if (publishKeepStreaming(candidates)) return true;');
+  const onboardingAt = publish.indexOf('!recoverableOnboardingVisible(candidates)');
   assert.ok(continuationAt >= 0 && onboardingAt > continuationAt);
   assert.doesNotMatch(publish, /playbackEstablished|\bplaying\(\)/);
 });

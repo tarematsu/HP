@@ -60,7 +60,7 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
   const onboardingMatches = (element, pattern) =>
     onboardingLabelMatches(element, pattern) && onboardingRendered(element);
 
-  const releasePlaybackOnlyForOnboarding = () => {
+  const releasePlaybackOnlyForOnboarding = candidates => {
     const root = document.documentElement;
     if (!root?.hasAttribute?.(playbackOnlyAttribute)) return false;
     // Room rendering is normally hidden after a confirmed `playing` event. If
@@ -68,7 +68,7 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
     // waiting/stalled, geometry-based detection can never see that prompt. Look
     // only for the exact allowlisted labels without reading layout, then restore
     // the UI so the native locator can validate visibility and click normally.
-    for (const element of document.querySelectorAll(onboardingCandidateSelector)) {
+    for (const element of candidates) {
       if (onboardingLabelMatches(element, keepStreamingPattern) ||
           onboardingLabelMatches(element, recoverableOnboardingPattern) ||
           onboardingLabelMatches(element, connectSurfaceLabelPattern)) {
@@ -79,25 +79,25 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
     return false;
   };
 
-  const keepStreamingVisible = () => {
-    for (const element of document.querySelectorAll(onboardingCandidateSelector)) {
+  const keepStreamingVisible = candidates => {
+    for (const element of candidates) {
       if (onboardingMatches(element, keepStreamingPattern)) return true;
     }
     return false;
   };
 
-  const publishKeepStreaming = () => {
-    if (!pageActive || !document.body || !keepStreamingVisible()) return false;
+  const publishKeepStreaming = candidates => {
+    if (!pageActive || !document.body || !keepStreamingVisible(candidates)) return false;
     postText('start-visible');
     return true;
   };
 
-  const splitConnectSurfaceVisible = () => {
+  const splitConnectSurfaceVisible = candidates => {
     // Stationhead has rendered music-service prompts in several different DOM
     // shapes: semantic buttons, styled div/span controls, and a heading/label
     // with a separate Connect/Reconnect action. Treat the visible text as the
     // stable contract and keep all matching local to the same ancestor surface.
-    for (const anchor of document.querySelectorAll(onboardingCandidateSelector)) {
+    for (const anchor of candidates) {
       if (!onboardingMatches(anchor, connectSurfaceLabelPattern)) continue;
       for (let surface = anchor.parentElement, depth = 0;
            surface && surface !== document.body && depth < 10;
@@ -111,30 +111,34 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
     return false;
   };
 
-  const recoverableOnboardingVisible = () => {
+  const recoverableOnboardingVisible = candidates => {
     // Do not depend on element semantics. A visually button-like Stationhead
     // control may be a div/span. The shared action policy keeps this broad DOM
     // search synchronized with the native trusted-click locator.
-    for (const element of document.querySelectorAll(onboardingCandidateSelector)) {
+    for (const element of candidates) {
       if (onboardingMatches(element, recoverableOnboardingPattern)) return true;
     }
-    return splitConnectSurfaceVisible();
+    return splitConnectSurfaceVisible(candidates);
   };
 
   const publishRecoverableOnboarding = () => {
     if (!pageActive || !document.body) return false;
-    releasePlaybackOnlyForOnboarding();
+    // One DOM snapshot per probe, reused for hidden recovery detection,
+    // Keep Streaming priority, and the generic action fallback. Avoid 3-4
+    // separate full-room selector traversals on every healthy WebView tick.
+    const candidates = document.querySelectorAll(onboardingCandidateSelector);
+    releasePlaybackOnlyForOnboarding(candidates);
 
     // Keep Streaming is a continuation confirmation and is always eligible for
     // the trusted native allowlist while visible.
-    if (publishKeepStreaming()) return true;
+    if (publishKeepStreaming(candidates)) return true;
 
     // Every allowlisted music-service recovery/continuation action is treated as
     // an independent current-state action rather than a step in a fixed sequence.
     // This covers full loops, shortened flows such as Connect Spotify -> Listen
     // here instead, repeated steps, and future wording variants admitted by the
     // shared policy. There is intentionally no one-shot or sequence latch.
-    if (!recoverableOnboardingVisible()) return false;
+    if (!recoverableOnboardingVisible(candidates)) return false;
 
     // An exact recoverable action is visible. Keep login routes and credential
     // inputs as hard guards while ignoring unrelated Log in links in the dialog.

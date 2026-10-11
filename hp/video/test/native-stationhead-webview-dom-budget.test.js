@@ -14,7 +14,7 @@ function onboardingRuntime({ text = 'Some unrelated room content', pseudo = 'non
   const script = (
     fragment('sh_runtime_interaction_script.h') +
     fragment('sh_runtime_onboarding_script.h') +
-    '\nreturn { onboardingMatches, onboardingLabelMatches }; })()'
+    '\nreturn { onboardingMatches, onboardingLabelMatches, publishRecoverableOnboarding }; })()'
   ).replace('{{RECOVERABLE_ACTION_PATTERN}}', pattern)
     .replace('{{GLOBAL}}', '__budget')
     .replace('{{PREFIX}}', 'stationhead');
@@ -25,6 +25,8 @@ function onboardingRuntime({ text = 'Some unrelated room content', pseudo = 'non
   let normalStyles = 0;
   let pseudoStyles = 0;
   let innerTextReads = 0;
+  let roomSelectorScans = 0;
+  const messages = [];
   element.isConnected = true;
   element.textContent = text;
   Object.defineProperty(element, 'innerText', {
@@ -38,12 +40,21 @@ function onboardingRuntime({ text = 'Some unrelated room content', pseudo = 'non
 
   const window = {
     top: null, setTimeout: () => 1, clearTimeout: () => {},
-    chrome: { webview: { postMessage: () => {} } },
+    chrome: { webview: { postMessage: value => messages.push(value) } },
   };
   window.top = window;
   const runtime = runInNewContext(script, {
     window, Element,
-    document: { body: {}, documentElement: { hasAttribute: () => false }, querySelectorAll: () => [] },
+    document: {
+      body: {}, documentElement: { hasAttribute: () => false },
+      querySelectorAll: selector => {
+        if (selector.includes("h1,h2,h3,[role='heading'],div,span,p")) {
+          roomSelectorScans += 1;
+          return [element];
+        }
+        return [];
+      },
+    },
     location: { hostname: 'stationhead.com', pathname: '/sakuramankai' },
     navigator: {}, innerWidth: 360, innerHeight: 960,
     getComputedStyle: (_, selector) => {
@@ -55,7 +66,8 @@ function onboardingRuntime({ text = 'Some unrelated room content', pseudo = 'non
   });
   return {
     element, runtime,
-    counts: () => ({ rectReads, normalStyles, pseudoStyles, innerTextReads }),
+    counts: () => ({ rectReads, normalStyles, pseudoStyles, innerTextReads, roomSelectorScans }),
+    messages,
   };
 }
 
@@ -125,4 +137,26 @@ test('playback-only room CSS attribute is updated only on state transitions', ()
   listeners.get('pause')({ type: 'pause', target });
   listeners.get('pause')({ type: 'pause', target });
   assert.equal(removals, 1);
+});
+
+test('one Stationhead recovery probe shares a single room DOM query across its checks', () => {
+  const { runtime, counts } = onboardingRuntime();
+  assert.equal(runtime.publishRecoverableOnboarding(), false);
+  assert.equal(counts().roomSelectorScans, 1);
+  assert.equal(runtime.publishRecoverableOnboarding(), false);
+  assert.equal(counts().roomSelectorScans, 2);
+});
+
+test('Keep Streaming still wins before recoverable onboarding with one room query', () => {
+  const { runtime, counts, messages } = onboardingRuntime({ text: 'Keep Streaming' });
+  assert.equal(runtime.publishRecoverableOnboarding(), true);
+  assert.equal(counts().roomSelectorScans, 1);
+  assert.deepEqual(messages, ['stationhead-start-visible']);
+});
+
+test('Connect Spotify still triggers native click notification using one room query', () => {
+  const { runtime, counts, messages } = onboardingRuntime({ text: 'Connect Spotify' });
+  assert.equal(runtime.publishRecoverableOnboarding(), true);
+  assert.equal(counts().roomSelectorScans, 1);
+  assert.deepEqual(messages, ['stationhead-start-visible']);
 });
