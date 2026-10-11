@@ -110,8 +110,8 @@ test('telemetry triage prefers a non-zero CPU violation over zero error invocati
     },
     activeDeployments: deployments,
   });
-  assert.match(triage, /Highest priority: \*\*Current-deployment telemetry policy\*\* — - CPU violations: `1`/);
-  assert.doesNotMatch(triage, /Highest priority:[^\n]*Error invocations: `0`/);
+  assert.match(triage, /Highest priority: .*CPU violations: 1; Error invocations: 0/);
+  assert.match(triage, /Current-deployment telemetry policy \\| \\*\\*FAIL\\*\\* \\| CPU violations: 1; Error invocations: 0/);
 });
 
 test('deployment signal fails closed for unavailable or incomplete inventory', () => {
