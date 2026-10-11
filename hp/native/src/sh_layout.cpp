@@ -66,8 +66,9 @@ void RaiseStationheadWindowNameOverlay(HWND hostWindow) noexcept {
   if (!overlay || !IsWindow(overlay)) return;
   RECT bounds{};
   const HWND parent = GetParent(overlay);
-  if (parent && GetWindowRect(overlay, &bounds) &&
-      MapWindowPoints(nullptr, parent, reinterpret_cast<POINT*>(&bounds), 2)) {
+  if (parent && GetWindowRect(overlay, &bounds)) {
+    // MapWindowPoints can return zero for a successful zero-offset mapping.
+    MapWindowPoints(nullptr, parent, reinterpret_cast<POINT*>(&bounds), 2);
     const RECT expected{
         kStationheadWindowNameOverlayLeft, kStationheadWindowNameOverlayTop,
         kStationheadWindowNameOverlayLeft + kStationheadWindowNameOverlayWidth,
