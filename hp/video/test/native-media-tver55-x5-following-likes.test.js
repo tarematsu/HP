@@ -82,7 +82,9 @@ test('X timeline CSS only hides classified repost/promotion rows and placement a
   assert.match(xRuntime, /data-homepanel-x-filtered/);
   assert.match(xRuntime, /article\[data-testid="tweet"\]:has\(\[data-testid\*="placement" i\]\)/);
   assert.match(xRuntime, /display:\s*none !important/);
-  assert.match(xRuntime, /markFilteredArticles\(\)/);
+  assert.match(xRuntime, /const candidate = scanTimeline\(articles, attempted\)/);
+  assert.match(xRuntime, /if \(target\.getAttribute\?\.\(filterAttribute\) !== 'true'\)/);
+  assert.match(xRuntime, /target\.hasAttribute\?\.\(filterAttribute\)/);
   assert.doesNotMatch(xRuntime, /article\[data-testid="tweet"\]:has\(\[data-testid="socialContext"\]\)/);
   assert.doesNotMatch(xRuntime, /cellInnerDiv[^`]*socialContext/);
   assert.doesNotMatch(xRuntime, /const promotedText/);
