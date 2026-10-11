@@ -26,19 +26,28 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
           /^["'].*["']$/.test(value) ? value.slice(1, -1) : '';
     } catch (_) { return ''; }
   };
-  const onboardingLabelsOf = element => [
-    element?.getAttribute?.('aria-label'),
-    element?.getAttribute?.('data-testid'),
-    element?.getAttribute?.('title'),
-    element?.getAttribute?.('alt'),
-    element?.getAttribute?.('value'),
-    element?.innerText,
-    element?.textContent,
-    onboardingPseudoLabel(element, '::before'),
-    onboardingPseudoLabel(element, '::after'),
-  ].map(normalize).filter(Boolean);
-  const onboardingLabelMatches = (element, pattern) =>
-    onboardingLabelsOf(element).some(label => pattern.test(label));
+  // Most room nodes are not actionable. Test cheap DOM strings before
+  // reading innerText (layout) or pseudo-element styles (computed style).
+  // Keep both fallbacks for CSS-label-only Connect Spotify controls.
+  const onboardingLabelMatches = (element, pattern) => {
+    for (const value of [
+      element?.getAttribute?.('aria-label'),
+      element?.getAttribute?.('data-testid'),
+      element?.getAttribute?.('title'),
+      element?.getAttribute?.('alt'),
+      element?.getAttribute?.('value'),
+      element?.textContent,
+    ]) {
+      if (value && pattern.test(normalize(value))) return true;
+    }
+    const renderedText = element?.innerText;
+    if (renderedText && pattern.test(normalize(renderedText))) return true;
+    for (const pseudo of ['::before', '::after']) {
+      const label = onboardingPseudoLabel(element, pseudo);
+      if (label && pattern.test(normalize(label))) return true;
+    }
+    return false;
+  };
   const onboardingRendered = element => {
     if (!(element instanceof Element) || !element.isConnected ||
         element.getAttribute('aria-hidden') === 'true') return false;
@@ -49,7 +58,7 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
       Number(style.opacity || 1) > 0;
   };
   const onboardingMatches = (element, pattern) =>
-    onboardingRendered(element) && onboardingLabelMatches(element, pattern);
+    onboardingLabelMatches(element, pattern) && onboardingRendered(element);
 
   const releasePlaybackOnlyForOnboarding = () => {
     const root = document.documentElement;
