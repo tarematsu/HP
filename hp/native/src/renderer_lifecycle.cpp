@@ -167,13 +167,20 @@ UiAction Renderer::TakePendingAction() {
   return action;
 }
 
+void Renderer::Render(HDC dc, const RECT& dirty) {
+  if (!dc || !nativeDashboardVisible_ || IsRectEmpty(&dirty)) return;
+  // During WM_PAINT, the BeginPaint HDC already clips to the dirty region.
+  // Paint just that region instead of acquiring another unbounded screen DC
+  // and filling the entire top-level dashboard on each invalidation.
+  FillRect(dc, &dirty, DashboardBackgroundBrush());
+}
+
 void Renderer::Render() {
   if (!window_ || !nativeDashboardVisible_) return;
   HDC dc = GetDC(window_);
   if (!dc) return;
   RECT bounds{};
-  GetClientRect(window_, &bounds);
-  FillRect(dc, &bounds, DashboardBackgroundBrush());
+  if (GetClientRect(window_, &bounds)) Render(dc, bounds);
   ReleaseDC(window_, dc);
 }
 
