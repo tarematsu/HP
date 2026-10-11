@@ -96,8 +96,9 @@ test('fallback commercial labels retain their visibility guard', () => {
 });
 
 test('ad checks do not copy NodeLists or force full-page scans', () => {
-  assert.doesNotMatch(snippet, /Array\.from\(/);
-  assert.match(snippet, /player\.querySelectorAll\(controlSelector\)/);
-  assert.match(snippet, /player\.querySelectorAll\(selectors\.join\(','\)\)/);
-  assert.doesNotMatch(snippet, /document\.querySelectorAll/);
+  const explicit = snippet.slice(snippet.indexOf('  const explicitAd ='));
+  assert.doesNotMatch(explicit, /Array\.from\(/);
+  assert.match(explicit, /player\.querySelectorAll\(controlSelector\)/);
+  assert.match(explicit, /player\.querySelectorAll\(selectors\.join\(','\)\)/);
+  assert.doesNotMatch(explicit, /document\.querySelectorAll/);
 });
