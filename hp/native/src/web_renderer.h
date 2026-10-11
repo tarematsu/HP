@@ -76,6 +76,7 @@ class Renderer {
   bool LoadDashboard(const fs::path& jsonPath, bool* changed = nullptr);
   bool LoadSwitchBot(const fs::path& jsonPath, bool* changed = nullptr);
   void Render();
+  void Render(HDC dc, const RECT& dirty);
   void UpdateSensors(const SensorSnapshot& sensors);
   void UpdateAirHistory(const std::vector<AirHistorySample>& history);
   void TickNativePanels(int64_t nowMs, bool timerDriven = false);
