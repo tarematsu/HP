@@ -11,7 +11,7 @@ const base = read('renderer_panels/media_section_base.inc');
 const schedule = read('power_saving_schedule.inc');
 const section = (source, start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
 
-test('native timers honor power saving and keep TVer isolated from X', () => {
+test('startup-only X runs for two minutes even in power saving, then TVer stays uninterrupted', () => {
   const dir = mkdtempSync(join(tmpdir(), 'native-media-power-'));
   try {
     const code = `
@@ -30,9 +30,8 @@ bool IsWindow(HWND h) { return h != 0; }
 void KillTimer(HWND, UINT_PTR id) { timers.erase(id); }
 UINT_PTR SetTimer(HWND, UINT_PTR id, UINT delay, void*) { timers[id] = delay; return id; }
 bool gNativeMediaPowerSaving = false;
-bool NativeMediaXRuntimeAllowed() noexcept { return true; }
 ${section(base, 'constexpr wchar_t kNativeMediaYoutubeContentUrl', 'constexpr UINT kNativeMediaNavigationRetryMs')}
-${section(base, 'struct NativeMediaXCyclePlan', 'constexpr const wchar_t* kNativeMediaPlayAllScript')}
+${section(base, 'struct NativeMediaContentPlan', 'constexpr const wchar_t* kNativeMediaPlayAllScript')}
 #define kNativeMediaYoutubeContentPhaseMs NativeMediaYoutubeContentIntervalMs()
 #define kNativeMediaTverContentDurationMs NativeMediaTverContentIntervalMs()
 #define kNativeMediaPhaseMs NativeMediaPhaseIntervalMs(phase_ == Phase::Tver)
@@ -43,7 +42,7 @@ public:
   HWND hostWindow_ = 1;
   Phase phase_ = Phase::YouTube;
   ULONGLONG phaseStartedAt_ = 0;
-  bool phaseStarted_ = false, xPhaseActive_ = false;
+  bool phaseStarted_ = false, startupXActive_ = true;
   int navigations = 0, switches = 0;
   UINT_PTR ArmTimer(UINT_PTR id, UINT delay) { timers[id] = delay; return id; }
   void Fail() { assert(false); }
@@ -53,15 +52,8 @@ public:
   void ProbeYoutubeWatchdog() {}
   void ProbeTverWatchdog() {}
   void NavigateCurrentPhase() { ++navigations; }
-  void ForceAllXSlots(bool tverPhase) {
-    NativeMediaCurrentXCyclePlan() = {true, true};
-    NativeMediaXCyclePlanInitialized() = true;
-    NativeMediaXCycleLastPhaseTver() = tverPhase;
-    NativeMediaStartupXDeadlineTick() = 0;
-    NativeMediaStartupYoutubePhaseActive() = false;
-  }
-  void SwitchToTver() { phase_ = Phase::Tver; ++switches; ForceAllXSlots(true); ArmPhaseTimer(); }
-  void SwitchToYouTube() { phase_ = Phase::YouTube; ++switches; ForceAllXSlots(false); ArmPhaseTimer(); }
+  void SwitchToTver() { phase_ = Phase::Tver; ++switches; ArmPhaseTimer(); }
+  void SwitchToYouTube() { phase_ = Phase::YouTube; ++switches; ArmPhaseTimer(); }
 ${section(host, '  void ApplyPowerSavingMode()', '  void SetMuted(')}
 ${section(host, '  bool OnTimer(', '  void Paint(')}
 ${section(host, '  void ArmPhaseTimer(', '  void SwitchToYouTube()')}
@@ -69,48 +61,37 @@ ${section(host, '  void ArmPhaseTimer(', '  void SwitchToYouTube()')}
 int main() {
   constexpr UINT minute = 60000;
   Host h;
-  h.ForceAllXSlots(false);
+  gNativeMediaPowerSaving = true; // 12:00-20:00 must still allow the startup X.
   h.ArmPhaseTimer();
-  assert(timers[kNativeMediaPhaseTimer] == 64 * minute);
-  assert(timers[kNativeMediaXStartTimer] == 62 * minute);
-  h.OnTimer(kNativeMediaXStartTimer);
-  assert(!h.xPhaseActive_ && timers[kNativeMediaXStartTimer] == 62 * minute);
+  assert(timers[kNativeMediaPhaseTimer] == 2 * minute);
+  h.OnTimer(kNativeMediaPhaseTimer); // Queued early timer must not skip X.
+  assert(h.startupXActive_ && h.navigations == 0);
 
-  tick += 30 * minute;
-  gNativeMediaPowerSaving = true;
-  h.ApplyPowerSavingMode();
-  assert(timers[kNativeMediaPhaseTimer] == 30 * minute);
-  assert(timers.count(kNativeMediaXStartTimer) == 0);
-  h.OnTimer(kNativeMediaXStartTimer); // stale queued timer cannot open X
-  assert(!h.xPhaseActive_ && h.navigations == 0);
-
-  tick += 30 * minute;
+  tick += 2 * minute;
   h.OnTimer(kNativeMediaPhaseTimer);
-  assert(h.phase_ == Host::Phase::Tver);
+  assert(!h.startupXActive_ && h.navigations == 1);
+  assert(h.phase_ == Host::Phase::YouTube);
   assert(timers[kNativeMediaPhaseTimer] == 60 * minute);
-  assert(timers.count(kNativeMediaXStartTimer) == 0);
+
+  tick += 60 * minute;
+  h.OnTimer(kNativeMediaPhaseTimer);
+  assert(h.phase_ == Host::Phase::Tver && h.switches == 1);
+  assert(timers[kNativeMediaPhaseTimer] == 60 * minute);
 
   tick += 20 * minute;
   gNativeMediaPowerSaving = false;
   h.ApplyPowerSavingMode();
-  assert(timers[kNativeMediaPhaseTimer] == 30 * minute);
-  assert(timers[kNativeMediaXStartTimer] == 30 * minute + 1000);
+  const UINT remainingTver = timers[kNativeMediaPhaseTimer];
+  assert(remainingTver >= 25 * minute && remainingTver <= 35 * minute);
 
-  tick += 30 * minute;
-  h.OnTimer(kNativeMediaXStartTimer); // TVer X timer is still one second early.
-  assert(!h.xPhaseActive_ && h.navigations == 0);
+  tick += remainingTver;
   h.OnTimer(kNativeMediaPhaseTimer);
-  assert(h.phase_ == Host::Phase::YouTube);
-  assert(!h.xPhaseActive_);
-  assert(timers[kNativeMediaPhaseTimer] == 64 * minute);
-  assert(timers[kNativeMediaXStartTimer] == 62 * minute);
-
-  tick += 20 * minute;
-  gNativeMediaPowerSaving = true;
-  h.ApplyPowerSavingMode();
-  assert(timers[kNativeMediaPhaseTimer] == 40 * minute);
-  assert(timers.count(kNativeMediaXStartTimer) == 0);
+  assert(h.phase_ == Host::Phase::YouTube && h.switches == 2);
+  assert(timers[kNativeMediaPhaseTimer] >= 50 * minute);
+  assert(timers[kNativeMediaPhaseTimer] <= 60 * minute);
+  assert(!h.startupXActive_ && h.navigations == 1);
 }
+
 `;
     writeFileSync(join(dir, 'test.cpp'), code.replace('WM_USER + 0x4D', '0x400 + 0x4D'));
     execFileSync('g++', ['-std=c++17', '-Wall', '-Wextra', '-Werror', join(dir, 'test.cpp'), '-o', join(dir, 'test')]);
@@ -123,5 +104,5 @@ test('actual power-saving state controls media; monitor-only hiding does not', (
   assert.match(schedule, /boundary\.tm_hour = kPowerSavingStartMinute \/ 60/);
   assert.match(schedule, /boundary\.tm_hour = kPowerSavingEndMinute \/ 60/);
   assert.match(base, /TVer owns this WebView continuously/);
-  assert.match(read('renderer_panels/media_tver_cloud_queue_refresh.inc'), /NativeMediaTverXPhaseActive\(\) noexcept \{\s*if \(gNativeMediaPowerSaving \|\| !NativeMediaXSlotEnabled\(true\)\) return false/);
+  assert.doesNotMatch(read('renderer_panels/media_tver_cloud_queue_refresh.inc'), /NativeMediaTverXPhaseActive|NativeMediaXSlotEnabled/);
 });
