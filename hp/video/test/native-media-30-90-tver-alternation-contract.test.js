@@ -20,8 +20,7 @@ const tverQueue = readFileSync(
 const youtubeRuntime = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url);
 
-test('media cadence keeps zero to two two-minute X slots with variable YouTube and TVer durations', () => {
-  assert.match(mediaBase, /kNativeMediaXPhaseMs = 2U \* 60U \* 1000U/);
+test('media cadence keeps a single startup X phase and variable YouTube/TVer durations', () => {
   assert.match(mediaBase, /kNativeMediaStartupXPhaseMs = 2U \* 60U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaYoutubeMinContentDurationMinutes = 50U/);
   assert.match(mediaBase, /kNativeMediaYoutubeMaxContentDurationMinutes = 60U/);
@@ -29,20 +28,14 @@ test('media cadence keeps zero to two two-minute X slots with variable YouTube a
   assert.match(mediaBase, /kNativeMediaTverMaxContentDurationMinutes = 55U/);
   assert.match(mediaBase, /NativeMediaCurrentYoutubeContentDurationMs\(\)/);
   assert.match(mediaBase, /NativeMediaCurrentTverContentDurationMs\(\)/);
-  assert.match(mediaBase, /const UINT count = NativeMediaXRandomBelow\(3\)/);
-  assert.match(mediaBase, /else if \(count == 1\)/);
-  assert.match(mediaBase, /NativeMediaXSlotEnabled\(true\)/);
-  assert.match(mediaBase, /NativeMediaXSlotEnabled\(false\)/);
   assert.match(mediaBase, /NativeMediaPhaseIntervalMs\(phase_ == Phase::Tver\)/);
   assert.match(mediaBase, /NativeMediaYoutubeContentIntervalMs\(\)/);
   assert.match(mediaBase, /NativeMediaTverContentIntervalMs\(\)/);
-  assert.match(mediaBase, /NativeMediaYoutubeNavigationUrl\(\)/);
   assert.match(mediaBase, /https:\/\/x\.com\/home\?homepanel=startup/);
-  assert.match(mediaBase, /gNativeMediaPowerSaving[\s\S]*NativeMediaStartupXDeadlineTick\(\)[\s\S]*return kNativeMediaYoutubeContentPhaseMs/);
-  assert.doesNotMatch(mediaBase, /kNativeMediaTverWeekdayPhaseMs/);
-  assert.doesNotMatch(mediaBase, /NativeMediaTverPhaseIntervalMs/);
-  assert.doesNotMatch(mediaBase, /NetworkClockJstNow/);
-  assert.doesNotMatch(mediaHost, /SetSpotifyMediaPhase/);
+  assert.match(mediaHost, /startupXActive_ = false/);
+  assert.doesNotMatch(mediaBase, /NativeMediaXSlotEnabled|NativeMediaDrawXCyclePlan/);
+  assert.doesNotMatch(mediaBase, /kNativeMediaTverWeekdayPhaseMs|NativeMediaTverPhaseIntervalMs|NetworkClockJstNow/);
+  assert.doesNotMatch(mediaHost, /SetSpotifyMediaPhase|kNativeMediaXStartTimer/);
   assert.doesNotMatch(composition, /PhaseOverrideMs/);
 });
 
