@@ -30,3 +30,17 @@ test('Stationhead releases the empty auth host after completed authorization', (
   assert.match(stationheadLayout, /EnsureAuthHostWindow\(\)/);
 });
 
+
+test('steady-state Stationhead layout skips identical GDI clipping operations', () => {
+  const begin = stationheadLayout.indexOf('void ApplyHostVisualClip(');
+  const end = stationheadLayout.indexOf('HWND CreateStationheadChildHost(', begin);
+  assert.ok(begin >= 0 && end > begin);
+  const clip = stationheadLayout.slice(begin, end);
+  assert.match(clip, /GetWindowRgnBox\(window, &current\)/);
+  assert.match(clip, /if \(regionType != ERROR\) SetWindowRgn\(window, nullptr, TRUE\)/);
+  assert.match(clip, /const RECT backgroundClip\{0, 0, 1, 1\}/);
+  assert.match(clip, /regionType == SIMPLEREGION && EqualRect\(&current, &backgroundClip\)/);
+  assert.ok(clip.indexOf('EqualRect(&current, &backgroundClip)') <
+    clip.indexOf('CreateRectRgn(0, 0, 1, 1)'));
+  assert.match(clip, /if \(!SetWindowRgn\(window, region, TRUE\)\) DeleteObject\(region\)/);
+});
