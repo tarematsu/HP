@@ -32,7 +32,7 @@ test('CONNECT SPOTIFY is eligible before first playback and with stale audio sta
     ')JS";',
   );
   assert.match(publish, /recoverableOnboardingVisible\(candidates\)/);
-  assert.match(publish, /releasePlaybackOnlyForOnboarding\(\)/);
+  assert.match(publish, /releasePlaybackOnlyForOnboarding\(candidates\)/);
   assert.doesNotMatch(publish, /playbackEstablished|\bplaying\(\)/);
   assert.match(publish, /postText\('start-visible'\)/);
 });
