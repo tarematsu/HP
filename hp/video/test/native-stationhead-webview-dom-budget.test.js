@@ -15,13 +15,14 @@ function onboardingRuntime({ text = 'Some unrelated room content', pseudo = 'non
   const script = (
     fragment('sh_runtime_interaction_script.h') +
     fragment('sh_runtime_onboarding_script.h') +
-    '\nreturn { onboardingMatches, onboardingLabelMatches, publishRecoverableOnboarding, releasePlaybackOnlyForOnboarding }; })()'
+    '\nreturn { onboardingMatches, onboardingLabelMatches, publishRecoverableOnboarding, releasePlaybackOnlyForOnboarding, scanOnboardingCandidates }; })()'
   ).replace('{{RECOVERABLE_ACTION_PATTERN}}', pattern)
     .replace('{{GLOBAL}}', '__budget')
     .replace('{{PREFIX}}', 'stationhead');
 
   class Element {}
   const element = new Element();
+  const candidates = [element];
   let rectReads = 0;
   let normalStyles = 0;
   let pseudoStyles = 0;
@@ -56,7 +57,7 @@ function onboardingRuntime({ text = 'Some unrelated room content', pseudo = 'non
       querySelectorAll: selector => {
         if (selector.includes("h1,h2,h3,[role='heading'],div,span,p")) {
           roomSelectorScans += 1;
-          return [element];
+          return candidates;
         }
         return [];
       },
@@ -75,6 +76,16 @@ function onboardingRuntime({ text = 'Some unrelated room content', pseudo = 'non
     counts: () => ({ rectReads, normalStyles, pseudoStyles, innerTextReads, roomSelectorScans }),
     messages,
     playbackHidden: () => playbackHidden,
+    candidates,
+    addCandidate: label => {
+      const candidate = new Element();
+      candidate.isConnected = true;
+      candidate.textContent = candidate.innerText = label;
+      candidate.getAttribute = () => null;
+      candidate.getBoundingClientRect = element.getBoundingClientRect;
+      candidates.push(candidate);
+      return candidate;
+    },
   };
 }
 
@@ -198,4 +209,45 @@ test('CSS pseudo-only reconnect prompt reveals hidden UI in one style lookup', (
   assert.equal(runtime.releasePlaybackOnlyForOnboarding([element]), true);
   assert.equal(playbackHidden(), false);
   assert.equal(counts().pseudoStyles, 1);
+});
+
+
+test('fused recovery scanner reads an unrelated label and its pseudo-styles only once', () => {
+  const { runtime, candidates, counts } = onboardingRuntime();
+  assert.equal(runtime.scanOnboardingCandidates(candidates), 0);
+  assert.equal(counts().innerTextReads, 1);
+  assert.equal(counts().pseudoStyles, 2);
+  assert.equal(counts().rectReads, 0);
+});
+
+test('Keep Streaming outranks an earlier Connect Spotify candidate in a single pass', () => {
+  const { runtime, candidates, addCandidate, messages, counts } = onboardingRuntime({
+    text: 'Connect Spotify',
+  });
+  addCandidate('Keep Streaming');
+  assert.equal(runtime.scanOnboardingCandidates(candidates), 1);
+  assert.equal(runtime.publishRecoverableOnboarding(), true);
+  assert.equal(counts().roomSelectorScans, 1);
+  assert.deepEqual(messages, ['stationhead-start-visible']);
+});
+
+test('pseudo-element-only Keep Streaming retains priority and visible guard', () => {
+  const { runtime, candidates, counts } = onboardingRuntime({
+    text: '', pseudo: '"Keep Streaming"',
+  });
+  assert.equal(runtime.scanOnboardingCandidates(candidates), 1);
+  assert.ok(counts().pseudoStyles >= 1);
+  const invisible = onboardingRuntime({
+    text: '', pseudo: '"Keep Streaming"', visible: false,
+  });
+  assert.equal(invisible.runtime.scanOnboardingCandidates(invisible.candidates), 0);
+});
+
+test('hidden Connect Spotify UI is restored before the fused scanner checks geometry', () => {
+  const { runtime, playbackHidden, counts } = onboardingRuntime({
+    text: 'Connect Spotify', playbackOnly: true,
+  });
+  assert.equal(runtime.publishRecoverableOnboarding(), true);
+  assert.equal(playbackHidden(), false);
+  assert.equal(counts().roomSelectorScans, 1);
 });
