@@ -139,16 +139,19 @@ test('unrelated auth controls never trigger layout checks', () => {
   assert.equal(runtime.blockingLogin(false, false, controls), false);
 });
 
-test('account and login candidates still require visible geometry', () => {
-  const { runtime } = authRuntime();
-  const candidate = {
+test('matched account candidate still requires geometry and visibility', () => {
+  const { runtime } = authRuntime({ label: 'Profile' });
+  let checks = 0;
+  const element = {
     getAttribute: name => name === 'aria-label' ? 'Profile' : null,
     innerText: 'Profile',
     textContent: 'Profile',
     querySelector: () => null,
     getBoundingClientRect: () => {
-      throw new Error('matched candidate must check geometry');
+      checks += 1;
+      return { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 };
     },
   };
-  assert.throws(() => runtime.accountVisible([candidate]), /matched candidate must check geometry/);
+  assert.equal(runtime.accountVisible([element]), false);
+  assert.equal(checks, 0, 'non-Element candidates remain rejected by visibility guard');
 });
