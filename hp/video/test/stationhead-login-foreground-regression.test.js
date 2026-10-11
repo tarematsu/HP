@@ -22,8 +22,8 @@ function section(text, start, end) {
 test('interaction owner distinguishes account state from blocking login surfaces', () => {
   assert.match(interaction, /const accountPattern =/);
   assert.match(interaction, /account\|profile\|avatar/);
-  assert.match(interaction, /const accountVisible = \(\) =>/);
-  assert.match(interaction, /const blockingLogin = \(authenticated, recoverableAction = false\) =>/);
+  assert.match(interaction, /const accountVisible = \(controls = document\.querySelectorAll\(controlSelector\)\) =>/);
+  assert.match(interaction, /const blockingLogin = \(authenticated, recoverableAction = false, controls = null\) =>/);
   assert.match(interaction, /credentialSelector/);
   assert.doesNotMatch(interaction, /serviceConnectPattern/);
   assert.doesNotMatch(interaction, /querySelectorAll\("h1,h2,h3,\[role='heading'\]"\)/);
