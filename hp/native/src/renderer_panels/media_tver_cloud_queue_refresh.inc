@@ -232,19 +232,6 @@ void NativeMediaTverEndQueuePhase() noexcept {
   NativeMediaTverResetQueuePhaseLocked(state, false);
 }
 
-bool NativeMediaTverXPhaseActive() noexcept {
-  if (gNativeMediaPowerSaving || !NativeMediaXSlotEnabled(true)) return false;
-  if (!NativeMediaXRuntimeAllowed()) return false;
-  auto& state = NativeMediaTverNativeQueue();
-  std::lock_guard lock(state.mutex);
-  if (!state.phaseActive || state.phaseStartedAt == 0) return false;
-  ULONGLONG now = GetTickCount64();
-  if (now == 0 || now < state.phaseStartedAt) return false;
-  const ULONGLONG contentPhaseMs =
-      static_cast<ULONGLONG>(NativeMediaCurrentTverContentDurationMs());
-  return now - state.phaseStartedAt >= contentPhaseMs;
-}
-
 std::wstring NativeMediaTverCurrentEpisodeUrl(
     HWND hostWindow,
     const std::shared_ptr<std::atomic<bool>>& alive) noexcept {
