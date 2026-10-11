@@ -36,7 +36,9 @@ test('recoverable Stationhead onboarding signals native click without claiming a
     ')JS";',
   );
   const blockingAt = publish.indexOf('blockingLogin(true, true)');
-  const clickAt = publish.indexOf("postText('start-visible')");
+  // Keep Streaming has a separate early-return signal; the generic
+  // recoverable action must still pass the login blocker first.
+  const clickAt = publish.lastIndexOf("postText('start-visible')");
   assert.ok(blockingAt >= 0 && clickAt > blockingAt);
   assert.doesNotMatch(publish, /stationhead-auth-ready|lastBlocking = false|homepanelStationheadBlockingLoginVisible = false/);
   assert.match(interaction, /source: 'compact-runtime'/);
