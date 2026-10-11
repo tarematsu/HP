@@ -155,9 +155,31 @@ export function deploymentSignal(activeDeployments) {
   return { state: 'healthy', evidence: `${entries.length}/${entries.length} monitored Workers are active.` };
 }
 
+function telemetryFailureEvidence(summary) {
+  const text = String(summary || '');
+  const violations = metricCount(text, 'CPU violations');
+  const errors = metricCount(text, 'Error invocations');
+  const metrics = [
+    violations === null ? null : `CPU violations: ${violations}`,
+    errors === null ? null : `Error invocations: ${errors}`,
+  ].filter(Boolean);
+  const rows = markdownRows(text);
+  const offenders = rows
+    .filter((cells) => cells.length >= 6 && /^\\d+(?:\\.\\d+)?$/.test(cells[5]))
+    .filter((cells) => {
+      const budget = Number(cells[2]);
+      const maximum = Number(cells[5]);
+      return Number.isFinite(budget) && budget > 0 && maximum > budget;
+    })
+    .slice(0, 3)
+    .map((cells) => `${cells[0]} / ${cells[1]}: ${cells[5]}ms > ${cells[2]}ms`);
+  return [...metrics, ...offenders].join('; ') || firstDiagnosticLine(text);
+}
+
 function outcomeEvidence(key, outcome, summaries) {
   if (normalizeOutcome(outcome) === 'success') return 'No failure reported.';
   const summary = summaries?.[key] || '';
+  if (key === 'telemetry') return telemetryFailureEvidence(summary);
   if (key === 'daily' || key === 'freeTier') {
     const violations = extractViolationEvidence(summary);
     if (violations.length) return violations.join('; ');
