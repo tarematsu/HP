@@ -64,6 +64,19 @@ void RaiseStationheadWindowNameOverlay(HWND hostWindow) noexcept {
   HWND overlay = FindWindowExW(
       hostWindow, nullptr, kStationheadWindowNameOverlayClass, nullptr);
   if (!overlay || !IsWindow(overlay)) return;
+  RECT bounds{};
+  const HWND parent = GetParent(overlay);
+  if (parent && GetWindowRect(overlay, &bounds) &&
+      MapWindowPoints(nullptr, parent, reinterpret_cast<POINT*>(&bounds), 2)) {
+    const RECT expected{
+        kStationheadWindowNameOverlayLeft, kStationheadWindowNameOverlayTop,
+        kStationheadWindowNameOverlayLeft + kStationheadWindowNameOverlayWidth,
+        kStationheadWindowNameOverlayTop + kStationheadWindowNameOverlayHeight};
+    if (EqualRect(&bounds, &expected) && IsWindowVisible(overlay) &&
+        GetWindow(overlay, GW_HWNDPREV) == nullptr) {
+      return;
+    }
+  }
   SetWindowPos(overlay, HWND_TOP,
                kStationheadWindowNameOverlayLeft,
                kStationheadWindowNameOverlayTop,
@@ -102,7 +115,11 @@ void EnsureStationheadWindowNameOverlay(
         kStationheadWindowNameOverlayHeight,
         hostWindow, nullptr, instance, nullptr);
   } else {
-    SetWindowTextW(overlay, windowName);
+    wchar_t currentName[64]{};
+    GetWindowTextW(overlay, currentName, static_cast<int>(_countof(currentName)));
+    if (wcscmp(currentName, windowName) != 0) {
+      SetWindowTextW(overlay, windowName);
+    }
   }
   if (overlay) RaiseStationheadWindowNameOverlay(hostWindow);
 }
