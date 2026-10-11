@@ -87,7 +87,7 @@ function renderPlaylists(items, memberships) {
   }
   for (const item of items) {
     appendTableRow(body, [
-      item.playlist_name || item.service_playlist_id || '-',
+      [(MUSIC_ARTIST_LABELS[item.canonical_artist] || item.canonical_artist || ''), (item.playlist_name || item.service_playlist_id || '-')].filter(Boolean).join(' / '),
       item.playlist_type || '-',
       musicValueText(counts.get(String(item.service_playlist_id || '')) || 0),
     ]);
