@@ -57,6 +57,7 @@ LR"JS(
     if (timestamp === undefined) return false;
     if (activeTimestamp(timestamp, Date.now())) return true;
     likedAuthors.delete(handle);
+    saveLikedAuthors();
     return false;
   };
   const rememberLikedAuthor = handle => {
@@ -195,25 +196,34 @@ LR"JS(
     let nearest = null;
     for (const article of articles) {
       const filtered = isPromoted(article) || isRepost(article);
+      // Hiding the existing parent cell collapses the space consumed by a
+      // recently liked author's posts. Do NOT remove X-owned DOM nodes:
+      // React's virtualized timeline relies on those nodes and their keys.
+      const identity = !filtered && likedAuthors.size
+          ? articleIdentity(article) : null;
+      const authorFiltered = !!(identity && likedAuthors.has(identity.author) &&
+          recentlyLikedAuthor(identity.author));
+      const hidden = filtered || authorFiltered;
       const target = article.closest?.('[data-testid="cellInnerDiv"]') || article;
-      // Re-applying the same attribute every ~0.5 seconds forces style work.
-      if (filtered) {
+      // A recycled cell or expired 48h entry becomes visible again.
+      // Avoid repeated attribute writes that trigger style recalculation.
+      if (hidden) {
         if (target.getAttribute?.(filterAttribute) !== 'true') {
           target.setAttribute?.(filterAttribute, 'true');
         }
       } else if (target.hasAttribute?.(filterAttribute)) {
         target.removeAttribute?.(filterAttribute);
       }
-      if (!attempted || filtered || !article.isConnected) continue;
-      const identity = articleIdentity(article);
-      if (!identity || attempted.has(identity.id) ||
-          recentlyLikedAuthor(identity.author)) continue;
+      if (!attempted || hidden || !article.isConnected) continue;
+      const eligible = identity || articleIdentity(article);
+      if (!eligible || attempted.has(eligible.id) ||
+          recentlyLikedAuthor(eligible.author)) continue;
       const like = validLikeButton(article);
       if (!like) continue;
       const centerY = like.rect.top + like.rect.height / 2;
       if (centerY < preferredFloor ||
           (nearest && centerY >= nearest.centerY)) continue;
-      nearest = { article, id: identity.id, author: identity.author,
+      nearest = { article, id: eligible.id, author: eligible.author,
                   button: like.button, centerY };
     }
     return nearest;
