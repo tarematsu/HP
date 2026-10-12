@@ -19,21 +19,30 @@ LR"JS(
       element?.isConnected && !element.disabled &&
       element.getAttribute?.('aria-disabled') !== 'true');
   const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
-  const labels = element => [
-    element?.getAttribute?.('aria-label'),
-    element?.getAttribute?.('title'),
-    element?.innerText,
-    element?.textContent,
-    element?.getAttribute?.('data-testid')
-  ].map(clean).filter(Boolean);
+  const labels = element => {
+    // Build the usable labels in one pass rather than allocating an input
+    // array, a map result and a filtered result for every control.
+    const values = [];
+    for (const raw of [
+      element?.getAttribute?.('aria-label'),
+      element?.getAttribute?.('title'),
+      element?.innerText,
+      element?.textContent,
+      element?.getAttribute?.('data-testid')
+    ]) {
+      const value = clean(raw);
+      if (value) values.push(value);
+    }
+    return values;
+  };
   const selected = element => Boolean(element && (
       element.getAttribute?.('aria-checked') === 'true' ||
       element.getAttribute?.('aria-selected') === 'true' ||
       element.getAttribute?.('data-state') === 'checked' ||
       labels(element).some(value => /選択中|設定中|selected/i.test(value))));
-  const visible = element => {
+  const visible = (element, knownRect = null) => {
     if (!connected(element)) return false;
-    const rect = element.getBoundingClientRect?.();
+    const rect = knownRect || element.getBoundingClientRect?.();
     if (!rect || rect.width <= 0 || rect.height <= 0) return false;
     try {
       const style = getComputedStyle(element);
@@ -53,8 +62,6 @@ LR"JS(
     '[role="menuitemradio"]', '[role="option"]', '[role="radio"]',
     '[aria-label]', '[title]', '[data-testid]'
   ].join(',');
-  const controls = Array.from(document.querySelectorAll(controlSelector))
-      .filter(connected);
   const roleContainer = element => {
     const role = element?.getAttribute?.('role') || '';
     if (/^(?:menuitem|menuitemradio|option|radio)$/i.test(role)) return true;
@@ -80,9 +87,14 @@ LR"JS(
     }
   };
 
-  const questionnaire = Array.from(document.querySelectorAll('[role="dialog"]'))
-      .some(dialog => dialog.querySelector?.('form[id^="questionnaire-"]') ||
-          /アンケート/.test(clean(dialog.textContent)));
+  let questionnaire = false;
+  for (const dialog of document.querySelectorAll('[role="dialog"]')) {
+    if (dialog.querySelector?.('form[id^="questionnaire-"]') ||
+        /アンケート/.test(clean(dialog.textContent))) {
+      questionnaire = true;
+      break;
+    }
+  }
   const posterPlay = document.getElementById?.('episode-play');
   if (questionnaire || visible(posterPlay)) {
     state.fullscreenCornerTapAt = now;
@@ -91,21 +103,29 @@ LR"JS(
   }
 )JS" LR"JS(
 
-  const videos = Array.from(document.querySelectorAll('video'));
   const videoScore = video => {
     if (!video?.isConnected) return -1;
     const rect = video.getBoundingClientRect?.();
     const area = Math.max(0, Number(rect?.width) || 0) *
         Math.max(0, Number(rect?.height) || 0);
     let score = area;
-    if (visible(video)) score += 1000000000;
+    // Reuse the rectangle instead of forcing a second geometry read inside
+    // visible() for every video; score each candidate only once.
+    if (visible(video, rect)) score += 1000000000;
     if ((video.currentSrc || video.src || '').trim()) score += 500000000;
     if (!video.paused && !video.ended) score += 2000000000;
     if (Number(video.readyState || 0) >= 2) score += 250000000;
     return score;
   };
-  const video = videos.reduce((best, candidate) =>
-    videoScore(candidate) > videoScore(best) ? candidate : best, null);
+  let video = null;
+  let bestVideoScore = -1;
+  for (const candidate of document.querySelectorAll('video')) {
+    const score = videoScore(candidate);
+    if (score > bestVideoScore) {
+      video = candidate;
+      bestVideoScore = score;
+    }
+  }
   if (!video) {
     state.fullscreenCornerTapAt = now;
     schedule(900);
@@ -123,15 +143,6 @@ LR"JS(
 
   const duration = Number.isFinite(video.duration) && video.duration > 0
       ? video.duration : 0;
-  const adNodes = Array.from(document.querySelectorAll(
-      '[data-testid*="advert" i],[data-testid*="commercial" i],'
-      + '[class*="advert" i],[class*="commercial" i]')).filter(visible);
-  const adMarker = controls.some(element => visible(element) &&
-      labels(element).some(value =>
-        /(?:広告|CM).{0,14}スキップ|skip\s+(?:this\s+)?ad/i.test(value))) ||
-      adNodes.length > 0;
-  const programMedia = duration > 65 && !adMarker;
-
   const parseSpeed = value => {
     const compact = clean(value)
         .replace(/\s+/g, '')
@@ -139,13 +150,6 @@ LR"JS(
         .replace(/^(?:再生)?速度[:：]?/i, '');
     const match = compact.match(/^(?:×|x)?(1(?:\.0+|\.25|\.5(?:0)?|\.75))(?:選択中|設定中)?$/i);
     return match ? Number(match[1]) : null;
-  };
-  const speedValue = element => {
-    for (const value of labels(element)) {
-      const parsed = parseSpeed(value);
-      if (parsed != null) return parsed;
-    }
-    return null;
   };
   const parseQuality = value => {
     const compact = clean(value)
@@ -155,13 +159,53 @@ LR"JS(
         .replace(/(?:選択中|設定中)$/g, '');
     return /^(?:自動|高|中|低)$/i.test(compact) ? compact : null;
   };
-  const qualityValue = element => {
-    for (const value of labels(element)) {
-      const parsed = parseQuality(value);
-      if (parsed) return parsed;
+  // The old code scanned controls for ad markers, twice for speed and twice
+  // for quality. Each filter/find could read the same innerText and trigger
+  // layout again. Collect the first candidates in one semantic DOM pass.
+  let speed175Option = null;
+  let speedIndicator = null;
+  let lowOption = null;
+  let qualityIndicator = null;
+  let adMarker = false;
+  if (duration > 65) {
+    const skipPattern = /(?:広告|CM).{0,14}スキップ|skip\s+(?:this\s+)?ad/i;
+    for (const element of document.querySelectorAll(controlSelector)) {
+      if (!connected(element)) continue;
+      const values = labels(element);
+      if (values.some(value => skipPattern.test(value)) && visible(element)) {
+        adMarker = true;
+        break;
+      }
+      let speed = null;
+      let quality = null;
+      for (const value of values) {
+        if (speed == null) speed = parseSpeed(value);
+        if (quality == null) quality = parseQuality(value);
+        if (speed != null && quality != null) break;
+      }
+      if (speed == null && quality == null) continue;
+      const inMenu = roleContainer(element);
+      if (inMenu) {
+        if (!speed175Option && speed != null &&
+            Math.abs(speed - 1.75) < 0.001) speed175Option = element;
+        if (!lowOption && quality === '低') lowOption = element;
+      } else {
+        if (!speedIndicator && speed != null) speedIndicator = element;
+        if (!qualityIndicator && quality) qualityIndicator = element;
+      }
     }
-    return null;
-  };
+    if (!adMarker) {
+      for (const element of document.querySelectorAll(
+          '[data-testid*="advert" i],[data-testid*="commercial" i],'
+          + '[class*="advert" i],[class*="commercial" i]')) {
+        if (visible(element)) {
+          adMarker = true;
+          break;
+        }
+      }
+    }
+  }
+  const programMedia = duration > 65 && !adMarker;
 
   if (programMedia) {
     // Reinforce the media element immediately, but also synchronize TVer's own
@@ -175,23 +219,24 @@ LR"JS(
       const defaultRateSetter = mediaPrototype
           ? Object.getOwnPropertyDescriptor(mediaPrototype, 'defaultPlaybackRate')?.set
           : null;
-      if (defaultRateSetter) defaultRateSetter.call(video, 1.75);
-      else video.defaultPlaybackRate = 1.75;
-      if (rateSetter) rateSetter.call(video, 1.75);
-      else video.playbackRate = 1.75;
+      if (video.defaultPlaybackRate !== 1.75) {
+        if (defaultRateSetter) defaultRateSetter.call(video, 1.75);
+        else video.defaultPlaybackRate = 1.75;
+      }
+      if (video.playbackRate !== 1.75) {
+        if (rateSetter) rateSetter.call(video, 1.75);
+        else video.playbackRate = 1.75;
+      }
     } catch (_) {
       try {
-        video.defaultPlaybackRate = 1.75;
-        video.playbackRate = 1.75;
+        if (video.defaultPlaybackRate !== 1.75) video.defaultPlaybackRate = 1.75;
+        if (video.playbackRate !== 1.75) video.playbackRate = 1.75;
       } catch (_) {}
     }
 
-    const speedElements = controls.filter(element => speedValue(element) != null);
-    const speed175Option = speedElements.find(element =>
-      Math.abs(speedValue(element) - 1.75) < 0.001 && roleContainer(element));
-    const speedIndicator = speedElements.find(element => !roleContainer(element));
     const speedConfirmed = Boolean(
-        (speedIndicator && Math.abs(speedValue(speedIndicator) - 1.75) < 0.001) ||
+        (speedIndicator && labels(speedIndicator).some(value =>
+            parseSpeed(value) === 1.75)) ||
         (speed175Option && selected(speed175Option)));
     state.currentSettingsSpeedConfirmed = speedConfirmed;
     if (!speedConfirmed) {
@@ -202,12 +247,9 @@ LR"JS(
     }
 )JS" LR"JS(
 
-    const qualityElements = controls.filter(element => qualityValue(element));
-    const lowOption = qualityElements.find(element =>
-      qualityValue(element) === '低' && roleContainer(element));
-    const qualityIndicator = qualityElements.find(element => !roleContainer(element));
     const qualityConfirmed = Boolean(
-        (qualityIndicator && qualityValue(qualityIndicator) === '低') ||
+        (qualityIndicator && labels(qualityIndicator).some(value =>
+            parseQuality(value) === '低')) ||
         (lowOption && selected(lowOption)));
     state.currentSettingsQualityConfirmed = qualityConfirmed;
     if (qualityConfirmed) state.qualityApplied = true;
