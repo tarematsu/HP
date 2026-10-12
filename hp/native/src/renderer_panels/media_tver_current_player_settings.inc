@@ -19,16 +19,27 @@ LR"JS(
       element?.isConnected && !element.disabled &&
       element.getAttribute?.('aria-disabled') !== 'true');
   const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
+  // innerText can force synchronous layout on every probed control. Text
+  // content and attributes are cheaper; use a deliberately broad prefilter so
+  // all speed, quality, selection and ad/skip labels still take the full path.
+  const settingLabelHint =
+      /広告|CM|skip|スキップ|\\d|[低高中]|自動|画質|選択中|設定中|selected/i;
   const labels = element => {
-    // Build the usable labels in one pass rather than allocating an input
-    // array, a map result and a filtered result for every control.
+    const aria = element?.getAttribute?.('aria-label');
+    const title = element?.getAttribute?.('title');
+    const content = element?.textContent;
+    const testId = element?.getAttribute?.('data-testid');
+    // When textContent is unavailable, retain the old innerText fallback.
+    // Otherwise unrelated DOM nodes need no rendered-text/layout read.
+    const maybeRelevant = content == null ||
+        settingLabelHint.test(aria || '') ||
+        settingLabelHint.test(title || '') ||
+        settingLabelHint.test(content) ||
+        settingLabelHint.test(testId || '');
+    if (!maybeRelevant) return [];
     const values = [];
     for (const raw of [
-      element?.getAttribute?.('aria-label'),
-      element?.getAttribute?.('title'),
-      element?.innerText,
-      element?.textContent,
-      element?.getAttribute?.('data-testid')
+      aria, title, element?.innerText, content, testId
     ]) {
       const value = clean(raw);
       if (value) values.push(value);
