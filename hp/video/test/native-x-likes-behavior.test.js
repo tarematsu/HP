@@ -320,3 +320,94 @@ test('promoted and repost filter attributes are not rewritten on every scroll ti
   assert.equal(result.domBudget.filterRemovals, 0);
   assert.ok(result.domBudget.timelineQueries > result.domBudget.filterSets * 3);
 });
+
+
+test('X Following tab lookup reuses the attached tab and refreshes on SPA replacement', () => {
+  const start = source.indexOf('  const followingTab = () => {');
+  const end = source.indexOf('  const startupRequested =', start);
+  assert.ok(start >= 0 && end > start);
+  const state = {};
+  let searches = 0;
+  let tabs = [];
+  const following = { isConnected: true, textContent: 'フォロー中' };
+  tabs = [following];
+  const followingTab = vm.runInNewContext(
+    '(() => { ' + source.slice(start, end) + '\nreturn followingTab; })()',
+    {
+      state,
+      document: { querySelectorAll: selector => {
+        assert.equal(selector, '[role="tab"]');
+        searches++;
+        return tabs;
+      } },
+      text: tab => tab.textContent,
+    },
+  );
+  assert.equal(followingTab(), following);
+  for (let i = 0; i < 100; i++) assert.equal(followingTab(), following);
+  assert.equal(searches, 1, 'stable Following tab should avoid repeat queries');
+
+  following.isConnected = false;
+  const replacement = { isConnected: true, textContent: 'Following' };
+  tabs = [replacement];
+  assert.equal(followingTab(), replacement);
+  assert.equal(searches, 2);
+
+  replacement.textContent = 'For you';
+  tabs = [];
+  assert.equal(followingTab(), null);
+  assert.equal(searches, 3, 'reused node with a changed caption must be rejected');
+});
+
+test('X promotion and repost probes avoid rendered-text layout reads on unrelated nodes', () => {
+  const start = source.indexOf('  const promotedLabel =');
+  const end = source.indexOf('  const installTimelineFilterCss =', start);
+  assert.ok(start >= 0 && end > start);
+  const detectors = vm.runInNewContext(
+    '(() => { ' + source.slice(start, end) +
+      '\nreturn { hasPromotedLabel, isPromoted, isRepost, isOrganic }; })()',
+    { text: element => (element?.innerText || element?.textContent || '')
+        .replace(/\s+/g, ' ').trim() },
+  );
+  let renderedReads = 0;
+  const span = (content, rendered = content, body = false) => ({
+    textContent: content,
+    get innerText() { renderedReads++; return rendered; },
+    closest: selector => selector === '[data-testid="tweetText"]' && body ? {} : null,
+  });
+  const ordinary = Array.from({ length: 100 }, (_, i) => span('ordinary ' + i));
+  const article = (spans, social = null, placement = false) => ({
+    querySelectorAll: selector => {
+      assert.equal(selector, 'span');
+      return spans;
+    },
+    querySelector: selector => {
+      if (selector.includes('placement')) return placement ? {} : null;
+      if (selector === '[data-testid="socialContext"]') return social;
+      return null;
+    },
+  });
+  assert.equal(detectors.isOrganic(article(ordinary)), true);
+  assert.equal(renderedReads, 0, 'ordinary tweet spans should not read innerText');
+
+  const promotion = article([...ordinary, span('Promoted')]);
+  assert.equal(detectors.isPromoted(promotion), true);
+  assert.equal(renderedReads, 1, 'only promotion candidates need rendered verification');
+
+  renderedReads = 0;
+  assert.equal(detectors.isPromoted(article(ordinary, null, true)), true);
+  assert.equal(renderedReads, 0, 'explicit placement should short-circuit span scanning');
+  assert.equal(detectors.isPromoted(article([span('広告', '広告', true)])), false);
+
+  const pinned = span('Pinned');
+  assert.equal(detectors.isRepost(article([], pinned)), false);
+  assert.equal(renderedReads, 0, 'pinned context must not force layout');
+  const repost = span('user reposted');
+  assert.equal(detectors.isRepost(article([], repost)), true);
+  assert.equal(renderedReads, 1);
+
+  renderedReads = 0;
+  assert.equal(detectors.isPromoted(article([span('', 'Sponsored')])), true);
+  assert.equal(detectors.isRepost(article([], span('', 'retweeted'))), true);
+  assert.equal(renderedReads, 2, 'empty textContent still validates rendered labels');
+});
