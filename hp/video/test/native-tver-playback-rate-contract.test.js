@@ -41,6 +41,6 @@ test('TVer ad identity is reduced to media key plus explicit player facts', () =
   assert.match(runtime, /const mediaKey = \(\) => \(video\.currentSrc \|\| video\.src \|\| ''\)\.trim\(\)/);
   assert.match(runtime, /const explicitAd = \(\) =>/);
   assert.match(runtime, /const shortMedia = length >= 5 && length <= 65/);
-  assert.match(runtime, /return explicitAd\(\) \|\| shortMedia/);
+  assert.match(runtime, /return shortMedia \|\| explicitAd\(\)/);
   assert.doesNotMatch(runtime, /adIdentity|postrollAfterProgram/);
 });
