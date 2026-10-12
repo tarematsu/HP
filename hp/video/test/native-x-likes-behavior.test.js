@@ -203,14 +203,14 @@ async function run({
   };
 }
 
-test('approaches like buttons at 1.25x current scroll speed and uses the same DOM click style as Following', async () => {
+test('approaches like buttons at the restored scroll speed and uses the same DOM click style as Following', async () => {
   const result = await run({ randomValues: [0] });
   assert.ok(result.clickedIds.length >= 4);
   assert.ok(result.clickedIds.every(id => id >= 10));
   assert.equal(result.state.likedCount, result.clickedIds.length);
   assert.equal(result.state.clickCount, result.clickedIds.length);
   assert.ok(result.scrollSteps.length > 4);
-  assert.ok(result.scrollSteps.every(step => step > 0 && step <= 70));
+  assert.ok(result.scrollSteps.every(step => step > 0 && step <= 56));
   assert.ok(result.scrollSteps.some(step => step < 70));
   assert.equal(result.state.completed, true);
 });
@@ -258,15 +258,15 @@ test('unconfirmed DOM likes retry up to three times instead of being treated as 
   assert.ok([...counts.values()].some(count => count === 3));
 });
 
-test('runtime increases targeted scroll increments 1.25x and waits before each click', () => {
-  assert.match(source, /const maxScrollStepPx = 70/);
-  assert.match(source, /const minScrollStepPx = 25/);
+test('runtime uses restored targeted scroll increments and waits before each click', () => {
+  assert.match(source, /const maxScrollStepPx = 56/);
+  assert.match(source, /const minScrollStepPx = 20/);
   assert.match(source, /const targetY = \(\) => Math\.round\(innerHeight \* 0\.62\)/);
   assert.match(source, /state\.result = 'approaching-like'/);
   assert.match(source, /state\.result = 'paused-on-like'/);
   assert.match(source, /state\.result = 'waiting-before-like'/);
   assert.match(source, /await sleep\(waitMs\)/);
-  assert.match(source, /Math\.min\(maxScrollStepPx, Math\.ceil\(Math\.abs\(distance\) \* 0\.875\)\)/);
+  assert.match(source, /Math\.min\(maxScrollStepPx, Math\.ceil\(Math\.abs\(distance\) \* 0\.70\)\)/);
 });
 
 test('delayed timers and late posts never cause catch-up bursts', async () => {
@@ -555,12 +555,12 @@ test('X virtualization retains DOM nodes and unhides recycled or expired cells',
 });
 
 
-test('X scroll cadence is 1.25x faster without accelerating empty feed polls or like waits', async () => {
+test('X scroll cadence restores previous intervals without changing like waits', async () => {
   const targetedMs = Number(source.match(/const scrollDelayMs = (\d+);/)?.[1]);
   const seekingMs = Number(source.match(/const idleScrollDelayMs = (\d+);/)?.[1]);
   const emptyMs = Number(source.match(/const emptyTimelinePollMs = (\d+);/)?.[1]);
-  assert.equal(targetedMs, 450 / 1.25);
-  assert.equal(seekingMs, 600 / 1.25);
+  assert.equal(targetedMs, 450);
+  assert.equal(seekingMs, 600);
   assert.equal(emptyMs, 600);
   assert.match(source, /state\.result = 'waiting-posts';\s*await sleep\(emptyTimelinePollMs\)/);
   assert.match(source, /state\.result = 'seeking-like';[\s\S]*?window\.scrollBy\(\{ top: maxScrollStepPx, behavior: 'smooth' \}\);\s*await sleep\(idleScrollDelayMs\)/);
