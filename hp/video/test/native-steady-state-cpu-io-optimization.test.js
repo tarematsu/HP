@@ -109,3 +109,37 @@ test('unused artwork pipeline performs no steady-state memory, disk, or network 
     /MemoryIndex|WinHttpDownload|NetworkRequestCoordinator|spotify-artwork-cache/,
   );
 });
+
+test('Stationhead preview avoids deep status snapshots before audio is present', () => {
+  const begin = stationheadHandles.indexOf('void SyncStationheadBackgroundPreview(');
+  const end = stationheadHandles.indexOf('static_assert(', begin);
+  assert.ok(begin >= 0 && end > begin);
+  const body = stationheadHandles.slice(begin, end);
+  assert.match(body, /if \(!player\.AudioPlaying\(\)\) return;/);
+  assert.ok(body.indexOf('if (!player.AudioPlaying()) return;') <
+    body.indexOf('const StationheadStatus status = player.Status();'));
+  assert.match(body, /!status\.navigating && !status\.loginRequired/);
+  assert.match(body, /!status\.spotifyAuthorization/);
+  assert.match(body, /SetStationheadBackgroundPreview\(false\)/);
+});
+
+test('Stationhead retry map only allocates entries for armed recovery windows', () => {
+  const begin = stationheadHandles.indexOf('void StationheadHandleBase::Tick(');
+  const end = stationheadHandles.indexOf('void StationheadHandleBase::ShowAfterAudioStop(', begin);
+  assert.ok(begin >= 0 && end > begin);
+  const tick = stationheadHandles.slice(begin, end);
+  assert.match(tick, /auto found = boundaryRetries\.find\(this\);/);
+  assert.match(tick, /\(found == boundaryRetries\.end\(\) \|\| !found->second\.armed\) &&\s*!player_->AudioPlaying\(\)/);
+  assert.match(tick, /const bool active = player_->RetryPendingTrackBoundaryRefresh\(nowMs\);/);
+  assert.match(tick, /if \(active\) \{\s*ArmBoundaryRetryState\(this, nowMs\);/);
+  assert.match(tick, /if \(player_->Status\(\)\.navigating\) ClearBoundaryRetryState\(this\);/);
+  assert.match(tick, /found = boundaryRetries\.find\(this\);/);
+  assert.match(tick, /if \(found == boundaryRetries\.end\(\) \|\| !found->second\.armed\) return;/);
+  assert.doesNotMatch(tick, /BoundaryRetryStateFor\(this\)|boundaryRetries\[this\]/);
+  const allocator = stationheadHandles.slice(
+    stationheadHandles.indexOf('TrackBoundaryRetryState& BoundaryRetryStateFor('),
+    stationheadHandles.indexOf('bool RequiresInteractiveStationhead('),
+  );
+  assert.match(allocator, /boundaryRetries\[owner\]/);
+  assert.match(allocator, /ArmBoundaryRetryState\(/);
+});
