@@ -19,6 +19,10 @@ async function run({
   delayedTimers = false,
   emptyUntil = 0,
   randomValues = [0],
+  authors = {},
+  permalinkOverrides = {},
+  storage = new Map(),
+  wallClockAt = 1800000000000,
 } = {}) {
   let now = 0;
   let scrollOffset = 0;
@@ -96,7 +100,7 @@ async function run({
           return label === 'repost' ? { innerText: 'user reposted' } : null;
         }
         if (selector.includes('placement')) return options.placement ? {} : null;
-        if (selector === 'time') return { closest: () => ({ getAttribute: () => `/user/status/${id}` }) };
+        if (selector === 'time') return { closest: () => ({ getAttribute: () => options.permalink ?? `/${options.author ?? `user${id}`}/status/${id}` }) };
         if (selector === '[data-testid="unlike"]') return liked ? {} : null;
         if (selector === '[data-testid="like"]') return liked ? null : likeButton;
         return null;
@@ -118,6 +122,9 @@ async function run({
       320 + i * 220,
       {
         ...(i === 0 ? { socialContext: 'Pinned' } : {}),
+        ...(Object.hasOwn(authors, i + 10) ? { author: authors[i + 10] } : {}),
+        ...(Object.hasOwn(permalinkOverrides, i + 10)
+            ? { permalink: permalinkOverrides[i + 10] } : {}),
         likeCount: i === 0 ? 4 : 5 + i,
       },
     )),
@@ -150,6 +157,11 @@ async function run({
   const context = vm.createContext({
     location: { hostname: 'x.com' }, window, innerWidth: 720, innerHeight: 480,
     Math: testMath,
+    Date: { now: () => wallClockAt + now },
+    localStorage: {
+      getItem: key => storage.get(key) ?? null,
+      setItem: (key, value) => { storage.set(key, value); },
+    },
     document: {
       readyState: 'complete',
       querySelectorAll: selector => {
@@ -183,6 +195,7 @@ async function run({
     tabClicks,
     state: window.__homePanelXLikeRuntime,
     domBudget,
+    storage,
   };
 }
 
@@ -410,4 +423,78 @@ test('X promotion and repost probes avoid rendered-text layout reads on unrelate
   assert.equal(detectors.isPromoted(article([span('', 'Sponsored')])), true);
   assert.equal(detectors.isRepost(article([], span('', 'retweeted'))), true);
   assert.equal(renderedReads, 2, 'empty textContent still validates rendered labels');
+});
+
+
+test('a confirmed X like records @author and avoids all their posts for 48 hours', async () => {
+  const storage = new Map();
+  const authors = { 10: 'Sakura46', 11: 'sAkUrA46', 12: 'DifferentUser' };
+  const first = await run({ authors, storage, randomValues: [0] });
+  assert.ok(first.clickedIds.includes(10));
+  assert.ok(!first.clickedIds.includes(11), 'same author must be skipped in the same X slot');
+  assert.ok(first.clickedIds.includes(12), 'other authors remain eligible');
+  const key = 'homepanel:x-liked-authors:48h:v1';
+  const saved = JSON.parse(storage.get(key));
+  assert.equal(typeof saved['@sakura46'], 'number');
+  assert.equal(typeof saved['@differentuser'], 'number');
+  assert.equal(first.state.authorHistoryPersisted, true);
+
+  // Simulate another app launch with the same WebView2 storage 24 hours later.
+  const next = await run({
+    authors, storage, randomValues: [0], wallClockAt: 1800000000000 + 24 * 60 * 60 * 1000,
+  });
+  assert.equal(next.clickedIds.length, 0, 'all authors liked 24 hours ago are excluded');
+
+  // After 49 hours, all previous authors become eligible again.
+  const expired = await run({
+    authors, storage, randomValues: [0], wallClockAt: 1800000000000 + 49 * 60 * 60 * 1000,
+  });
+  assert.ok(expired.clickedIds.includes(10));
+  assert.ok(expired.clickedIds.includes(12));
+});
+
+test('unknown tweet authors are skipped rather than guessed from mentions or quote text', async () => {
+  const result = await run({
+    permalinkOverrides: { 10: '/i/status/10/extra', 11: '/invalid/link' },
+    randomValues: [0],
+  });
+  assert.ok(result.clickedIds.includes(12));
+  assert.ok(!result.clickedIds.includes(10));
+  assert.ok(!result.clickedIds.includes(11));
+  assert.match(source, /const articleIdentity = article =>/);
+  assert.match(source, /article\?\.querySelector\('time'\)\?\.closest\('a'\)/);
+  assert.match(source, /author: '@' \+ match\[1\]\.toLowerCase\(\)/);
+  assert.match(source, /if \(!identity \|\| attempted\.has\(identity\.id\) \|\|/);
+  assert.match(source, /recentlyLikedAuthor\(identity\.author\)/);
+  assert.match(source, /freshIdentity\.author !== candidate\.author/);
+  assert.match(source, /recentlyLikedAuthor\(freshIdentity\.author\)/);
+});
+
+test('unconfirmed like clicks do not put an author in persistent 48-hour cooldown', async () => {
+  const storage = new Map();
+  const first = await run({ failLike: true, storage, randomValues: [0] });
+  assert.equal(first.state.likedCount, 0);
+  assert.ok(first.clickedIds.length > 0);
+  assert.equal(storage.has('homepanel:x-liked-authors:48h:v1'), false);
+  const second = await run({ storage, randomValues: [0] });
+  assert.ok(second.clickedIds.includes(10), 'failed clicks must not block future confirmed likes');
+});
+
+test('old, malformed and future-dated author records are ignored and pruned', async () => {
+  const storage = new Map([['homepanel:x-liked-authors:48h:v1',
+    JSON.stringify({
+      '@user10': 1800000000000 - 48 * 60 * 60 * 1000,
+      '@user11': 1800000000000 + 999999,
+      '@user12': 'bogus',
+      '@wrong-handle': 1800000000000 - 1000,
+      '@user13': 1800000000000 - 5000,
+    })]]);
+  const result = await run({ storage, randomValues: [0] });
+  assert.ok(result.clickedIds.includes(10));
+  assert.ok(result.clickedIds.includes(11));
+  assert.ok(result.clickedIds.includes(12));
+  assert.ok(!result.clickedIds.includes(13));
+  const saved = JSON.parse(storage.get('homepanel:x-liked-authors:48h:v1'));
+  assert.equal(Object.hasOwn(saved, '@wrong-handle'), false);
+  assert.equal(typeof saved['@user13'], 'number');
 });
