@@ -62,7 +62,13 @@ test('only the first pending cloud refresh wakes the polling thread', () => {
   assert.ok(start >= 0 && end > start);
   const body = client.slice(start, end);
   assert.match(body, /immediate_\.exchange\(true, std::memory_order_acq_rel\)/);
-  assert.match(body, /if \(!immediate_\.exchange\([\s\S]*\)\)\s*wake_\.notify_one\(\)/);
+  assert.match(body, /std::lock_guard lock\(wakeMutex_\)/);
+  assert.match(body, /notify = !immediate_\.exchange\(true, std::memory_order_acq_rel\)/);
+  assert.match(body, /if \(notify\) wake_\.notify_one\(\)/);
+  const lock = body.indexOf('std::lock_guard lock(wakeMutex_)');
+  const predicate = body.indexOf('notify = !immediate_.exchange(');
+  const wake = body.indexOf('if (notify) wake_.notify_one()');
+  assert.ok(lock >= 0 && lock < predicate && predicate < wake);
   assert.doesNotMatch(body, /wake_\.notify_all\(\)/);
 
   // A callback after the worker consumes the pending bit still wakes it.
