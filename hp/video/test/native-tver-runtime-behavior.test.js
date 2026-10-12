@@ -339,3 +339,71 @@ test('replacement video with the same source starts fresh program completion sta
   scene.run();
   assert.equal(scene.messages.includes('homepanel:tver-ended'), false);
 });
+
+test('healthy TVer recovery does not repeatedly write defaultPlaybackRate', () => {
+  const scene = playerScenario(1800);
+  let defaultRate = 1;
+  let writes = 0;
+  Object.defineProperty(scene.video, 'defaultPlaybackRate', {
+    configurable: true,
+    get: () => defaultRate,
+    set: value => { writes++; defaultRate = value; },
+  });
+
+  scene.run();
+  assert.equal(defaultRate, 1.75);
+  assert.equal(writes, 1);
+  scene.advance(2000);
+  scene.run();
+  assert.equal(writes, 1, 'steady-state probes must not write the unchanged default');
+  defaultRate = 1;
+  scene.advance(2000);
+  scene.run();
+  assert.equal(defaultRate, 1.75);
+  assert.equal(writes, 2, 'site resets must still be repaired');
+});
+
+test('single TVer media selection bypasses visibility geometry without changing fallback', () => {
+  const start = script.indexOf('  const videos = document.querySelectorAll(\'video\');');
+  const end = script.indexOf('  let questionnaire = null;', start);
+  assert.ok(start >= 0 && end > start);
+  const selection = script.slice(start, end);
+  const select = videos => {
+    let visibilityChecks = 0;
+    const chosen = vm.runInNewContext(
+      '(() => { ' + selection + '\\nreturn video; })()',
+      { document: { querySelectorAll: () => videos },
+        visible: video => { visibilityChecks++; return video.visible; } },
+    );
+    return { chosen, visibilityChecks };
+  };
+
+  const lone = { id: 1, visible: false };
+  assert.equal(select([lone]).chosen, lone);
+  assert.equal(select([lone]).visibilityChecks, 0);
+  assert.equal(select([]).chosen, null);
+  assert.deepEqual(
+    { id: select([{ id: 1, visible: false }, { id: 2, visible: true }]).chosen.id },
+    { id: 2 },
+  );
+  assert.equal(select([{ id: 1, visible: false }, { id: 2, visible: false }]).chosen.id, 1);
+});
+
+test('TVer recovery ad button scan avoids visibility checks for unrelated controls', () => {
+  const start = script.indexOf('    const skipPattern =', script.indexOf('  if (adActive) {'));
+  const end = script.indexOf('    if (!fullscreen()) return requestFullscreen();', start);
+  assert.ok(start >= 0 && end > start);
+  const scan = script.slice(start, end);
+  let visibilityChecks = 0;
+  const controls = [
+    ...Array.from({ length: 100 }, () => ({ label: '再生' })),
+    { label: '広告をスキップ' },
+  ];
+  vm.runInNewContext('(() => { ' + scan + '\\nreturn null; })()', {
+    controls: () => controls,
+    text: item => item.label,
+    visible: () => { visibilityChecks++; return true; },
+    arm: () => null,
+  });
+  assert.equal(visibilityChecks, 1);
+});
