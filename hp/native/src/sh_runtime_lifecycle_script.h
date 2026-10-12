@@ -55,10 +55,15 @@ LR"JS(
   };
   const currentProgressMedia = () => {
     if (activeProgressMedia(progressCandidateMedia)) return progressCandidateMedia;
-    const media = Array.from(document.querySelectorAll('audio,video')).find(
-      activeProgressMedia) || null;
-    progressCandidateMedia = media;
-    return media;
+    // QuerySelectorAll already returns an iterable static NodeList. Avoid
+    // allocating a second array each time the active media element changes.
+    for (const media of document.querySelectorAll('audio,video')) {
+      if (!activeProgressMedia(media)) continue;
+      progressCandidateMedia = media;
+      return media;
+    }
+    progressCandidateMedia = null;
+    return null;
   };
 
   const beginKeyWait = event => {

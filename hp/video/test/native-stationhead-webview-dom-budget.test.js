@@ -7,26 +7,30 @@ const source = name => readFileSync(
   new URL('../../native/src/' + name, import.meta.url), 'utf8');
 const fragment = name => source(name).match(/LR"JS\(([\s\S]*?)\)JS"/)?.[1];
 
-function onboardingRuntime({ text = 'Some unrelated room content', pseudo = 'none', visible = true } = {}) {
+function onboardingRuntime({ text = 'Some unrelated room content', pseudo = 'none', visible = true,
+                             playbackOnly = false } = {}) {
   const policy = source('sh_recoverable_action_policy.h');
   const pattern = policy.match(/kStationheadRecoverableActionPattern = LR"JS\((.*?)\)JS"/s)?.[1];
   assert.ok(pattern);
   const script = (
     fragment('sh_runtime_interaction_script.h') +
     fragment('sh_runtime_onboarding_script.h') +
-    '\nreturn { onboardingMatches, onboardingLabelMatches, publishRecoverableOnboarding }; })()'
+    '\nreturn { onboardingMatches, onboardingLabelMatches, publishRecoverableOnboarding, releasePlaybackOnlyForOnboarding, scanOnboardingCandidates }; })()'
   ).replace('{{RECOVERABLE_ACTION_PATTERN}}', pattern)
     .replace('{{GLOBAL}}', '__budget')
     .replace('{{PREFIX}}', 'stationhead');
 
   class Element {}
   const element = new Element();
+  const candidates = [element];
   let rectReads = 0;
   let normalStyles = 0;
   let pseudoStyles = 0;
   let innerTextReads = 0;
   let roomSelectorScans = 0;
   const messages = [];
+  const playbackAttribute = 'data-homepanel-stationhead-playback-only';
+  let playbackHidden = playbackOnly;
   element.isConnected = true;
   element.textContent = text;
   Object.defineProperty(element, 'innerText', {
@@ -46,11 +50,14 @@ function onboardingRuntime({ text = 'Some unrelated room content', pseudo = 'non
   const runtime = runInNewContext(script, {
     window, Element,
     document: {
-      body: {}, documentElement: { hasAttribute: () => false },
+      body: {}, documentElement: {
+        hasAttribute: key => key === playbackAttribute && playbackHidden,
+        removeAttribute: key => { if (key === playbackAttribute) playbackHidden = false; },
+      },
       querySelectorAll: selector => {
         if (selector.includes("h1,h2,h3,[role='heading'],div,span,p")) {
           roomSelectorScans += 1;
-          return [element];
+          return candidates;
         }
         return [];
       },
@@ -68,6 +75,17 @@ function onboardingRuntime({ text = 'Some unrelated room content', pseudo = 'non
     element, runtime,
     counts: () => ({ rectReads, normalStyles, pseudoStyles, innerTextReads, roomSelectorScans }),
     messages,
+    playbackHidden: () => playbackHidden,
+    candidates,
+    addCandidate: label => {
+      const candidate = new Element();
+      candidate.isConnected = true;
+      candidate.textContent = candidate.innerText = label;
+      candidate.getAttribute = () => null;
+      candidate.getBoundingClientRect = element.getBoundingClientRect;
+      candidates.push(candidate);
+      return candidate;
+    },
   };
 }
 
@@ -159,4 +177,77 @@ test('Connect Spotify still triggers native click notification using one room qu
   assert.equal(runtime.publishRecoverableOnboarding(), true);
   assert.equal(counts().roomSelectorScans, 1);
   assert.deepEqual(messages, ['stationhead-start-visible']);
+});
+
+test('hidden Stationhead room checks three recovery patterns with only two pseudo-style reads', () => {
+  const { element, runtime, counts, playbackHidden } = onboardingRuntime({
+    playbackOnly: true,
+  });
+  assert.equal(runtime.releasePlaybackOnlyForOnboarding([element]), false);
+  assert.equal(playbackHidden(), true);
+  // Previously each of three patterns fetched ::before and ::after separately.
+  assert.equal(counts().pseudoStyles, 2);
+  assert.equal(counts().innerTextReads, 1);
+});
+
+test('hidden room immediately reveals Connect Spotify and Keep Streaming controls', () => {
+  for (const text of ['Connect Spotify', 'Keep Streaming', 'Reconnect Music']) {
+    const { element, runtime, playbackHidden, counts } = onboardingRuntime({
+      text, playbackOnly: true,
+    });
+    assert.equal(runtime.releasePlaybackOnlyForOnboarding([element]), true, text);
+    assert.equal(playbackHidden(), false, text);
+    assert.equal(counts().pseudoStyles, 0);
+    assert.equal(counts().innerTextReads, 0);
+  }
+});
+
+test('CSS pseudo-only reconnect prompt reveals hidden UI in one style lookup', () => {
+  const { element, runtime, playbackHidden, counts } = onboardingRuntime({
+    text: '', pseudo: '"Reconnect Music"', playbackOnly: true,
+  });
+  assert.equal(runtime.releasePlaybackOnlyForOnboarding([element]), true);
+  assert.equal(playbackHidden(), false);
+  assert.equal(counts().pseudoStyles, 1);
+});
+
+
+test('fused recovery scanner reads an unrelated label and its pseudo-styles only once', () => {
+  const { runtime, candidates, counts } = onboardingRuntime();
+  assert.equal(runtime.scanOnboardingCandidates(candidates), 0);
+  assert.equal(counts().innerTextReads, 1);
+  assert.equal(counts().pseudoStyles, 2);
+  assert.equal(counts().rectReads, 0);
+});
+
+test('Keep Streaming outranks an earlier Connect Spotify candidate in a single pass', () => {
+  const { runtime, candidates, addCandidate, messages, counts } = onboardingRuntime({
+    text: 'Connect Spotify',
+  });
+  addCandidate('Keep Streaming');
+  assert.equal(runtime.scanOnboardingCandidates(candidates), 1);
+  assert.equal(runtime.publishRecoverableOnboarding(), true);
+  assert.equal(counts().roomSelectorScans, 1);
+  assert.deepEqual(messages, ['stationhead-start-visible']);
+});
+
+test('pseudo-element-only Keep Streaming retains priority and visible guard', () => {
+  const { runtime, candidates, counts } = onboardingRuntime({
+    text: '', pseudo: '"Keep Streaming"',
+  });
+  assert.equal(runtime.scanOnboardingCandidates(candidates), 1);
+  assert.ok(counts().pseudoStyles >= 1);
+  const invisible = onboardingRuntime({
+    text: '', pseudo: '"Keep Streaming"', visible: false,
+  });
+  assert.equal(invisible.runtime.scanOnboardingCandidates(invisible.candidates), 0);
+});
+
+test('hidden Connect Spotify UI is restored before the fused scanner checks geometry', () => {
+  const { runtime, playbackHidden, counts } = onboardingRuntime({
+    text: 'Connect Spotify', playbackOnly: true,
+  });
+  assert.equal(runtime.publishRecoverableOnboarding(), true);
+  assert.equal(playbackHidden(), false);
+  assert.equal(counts().roomSelectorScans, 1);
 });

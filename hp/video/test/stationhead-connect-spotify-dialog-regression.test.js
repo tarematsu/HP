@@ -21,7 +21,7 @@ test('CONNECT SPOTIFY is detected across button, heading and non-semantic markup
   assert.match(onboarding, /recoverableOnboardingPattern/);
   assert.match(onboarding, /onboardingCandidateSelector/);
   assert.match(onboarding, /h1,h2,h3,\[role='heading'\],div,span,p/);
-  assert.match(onboarding, /onboardingMatches\(element, recoverableOnboardingPattern\)/);
+  assert.match(onboarding, /recoverableOnboardingPattern\.test\(label\)/);
   assert.doesNotMatch(onboarding, /join\s+the\s+party/i);
 });
 
@@ -31,7 +31,7 @@ test('CONNECT SPOTIFY is eligible before first playback and with stale audio sta
     'const publishRecoverableOnboarding = () => {',
     ')JS";',
   );
-  assert.match(publish, /recoverableOnboardingVisible\(candidates\)/);
+  assert.match(publish, /scanOnboardingCandidates\(candidates\)/);
   assert.match(publish, /releasePlaybackOnlyForOnboarding\(candidates\)/);
   assert.doesNotMatch(publish, /playbackEstablished|\bplaying\(\)/);
   assert.match(publish, /postText\('start-visible'\)/);

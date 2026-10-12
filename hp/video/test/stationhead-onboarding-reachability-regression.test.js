@@ -28,7 +28,7 @@ test('recoverable Stationhead onboarding signals native click without claiming a
   assert.match(recoverablePolicy, /spotify/);
   assert.match(recoverablePolicy, /continue/);
   assert.match(recoverablePolicy, /let\(\?:'\|’\)\?s/);
-  assert.match(onboarding, /const recoverableOnboardingVisible = candidates =>/);
+  assert.match(onboarding, /const scanOnboardingCandidates = candidates =>/);
 
   const publish = section(
     onboarding,
@@ -36,7 +36,9 @@ test('recoverable Stationhead onboarding signals native click without claiming a
     ')JS";',
   );
   const blockingAt = publish.indexOf('blockingLogin(true, true)');
-  const clickAt = publish.indexOf("postText('start-visible')");
+  // Keep Streaming has a separate early-return signal; the generic
+  // recoverable action must still pass the login blocker first.
+  const clickAt = publish.lastIndexOf("postText('start-visible')");
   assert.ok(blockingAt >= 0 && clickAt > blockingAt);
   assert.doesNotMatch(publish, /stationhead-auth-ready|lastBlocking = false|homepanelStationheadBlockingLoginVisible = false/);
   assert.match(interaction, /source: 'compact-runtime'/);
@@ -61,12 +63,10 @@ test('stale playback-only rendering is released from exact onboarding labels bef
   const release = section(
     onboarding,
     'const releasePlaybackOnlyForOnboarding = candidates => {',
-    'const keepStreamingVisible = candidates => {',
+    'const onboardingActionKind = element => {',
   );
   assert.match(release, /hasAttribute\?\.\(playbackOnlyAttribute\)/);
-  assert.match(release, /onboardingLabelMatches\(element, keepStreamingPattern\)/);
-  assert.match(release, /onboardingLabelMatches\(element, recoverableOnboardingPattern\)/);
-  assert.match(release, /onboardingLabelMatches\(element, connectSurfaceLabelPattern\)/);
+  assert.match(release, /onboardingLabelMatches\([\s\S]*element, keepStreamingPattern, recoverableOnboardingPattern,[\s\S]*connectSurfaceLabelPattern\)/);
   assert.match(release, /removeAttribute\(playbackOnlyAttribute\)/);
   assert.doesNotMatch(release, /getBoundingClientRect|getComputedStyle/);
 });

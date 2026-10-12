@@ -53,8 +53,8 @@ test('auth-ready requires a three-second stable non-blocking surface', () => {
   );
   assert.match(ready, /authReadyTimer = nativeTimeout/);
   assert.match(ready, /3000/);
-  assert.match(ready, /const stillAuthenticated = accountVisible\(\) \|\| playing\(\)/);
-  assert.match(ready, /blockingLogin\(stillAuthenticated\)/);
+  assert.match(ready, /const stillAuthenticated = accountVisible\(controls\) \|\| playing\(\)/);
+  assert.match(ready, /blockingLogin\(stillAuthenticated, false, controls\)/);
   assert.match(ready, /homepanelStationheadBlockingLoginVisible = false/);
   assert.match(ready, /stationhead-auth-ready/);
 });
