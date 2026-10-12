@@ -268,8 +268,10 @@ void CloudClient::StopNetworkChangeWatcher() {
 }
 
 void CloudClient::RefreshNow() {
-  immediate_ = true;
-  wake_.notify_all();
+  // Only one synchronizer waits on wake_. Repeated callbacks during a pending
+  // refresh should not repeatedly wake the same thread.
+  if (!immediate_.exchange(true, std::memory_order_acq_rel))
+    wake_.notify_one();
 }
 
 std::wstring CloudClient::LastSuccessText() const {
