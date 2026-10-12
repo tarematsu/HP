@@ -15,8 +15,8 @@ LR"JS(
   const scrollDelayMs = 450;
   const idleScrollDelayMs = 600;
   const emptyTimelinePollMs = 600;
-  const maxScrollStepPx = 70;
-  const minScrollStepPx = 25;
+  const maxScrollStepPx = 56;
+  const minScrollStepPx = 20;
   const targetTolerancePx = 18;
   const filterAttribute = 'data-homepanel-x-filtered';
   const filterStyleId = 'homepanel-x-timeline-filter';
@@ -304,7 +304,7 @@ LR"JS(
           state.result = 'approaching-like';
           const step = Math.max(
               minScrollStepPx,
-              Math.min(maxScrollStepPx, Math.ceil(Math.abs(distance) * 0.875)));
+              Math.min(maxScrollStepPx, Math.ceil(Math.abs(distance) * 0.70)));
           window.scrollBy({ top: Math.sign(distance) * step, behavior: 'smooth' });
           await sleep(scrollDelayMs);
           continue;
