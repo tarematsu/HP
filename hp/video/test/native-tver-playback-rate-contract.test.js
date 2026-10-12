@@ -17,7 +17,7 @@ test('TVer program playback settings are simple and event driven', () => {
 
 test('TVer quality discovery retries until low is confirmed and stays player-local', () => {
   assert.doesNotMatch(runtime, /qualityProbeIntervalMs|qualityProbeLimit|qualityProbeAttempts|qualityProbeAt/);
-  assert.match(runtime, /const controls = \(\) => Array\.from\(player\.querySelectorAll/);
+  assert.match(runtime, /const controls = \(\) => player\.querySelectorAll\(controlSelector\)/);
   assert.match(runtime, /state\.qualityApplied/);
   assert.match(runtime, /qualityLastAttemptAt/);
   assert.doesNotMatch(runtime, /qualityAttempts >= 4\) state\.qualityApplied = true/);
