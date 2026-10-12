@@ -98,6 +98,15 @@ class CloudClient {
   int radarVersion_ = -1;
   int switchbotVersion_ = -1;
   int deviceConfigVersion_ = -1;
+  // Synchronize() is confined to the cloud polling thread. A validated
+  // device-config.json need not be re-opened and parsed on every poll when
+  // its size, modification timestamp and expected version are unchanged.
+  struct DeviceConfigValidatedStamp {
+    std::uintmax_t size = 0;
+    fs::file_time_type modifiedAt{};
+    int version = -1;
+    bool valid = false;
+  } deviceConfigValidatedStamp_;
   bool cacheMetadataDirty_ = false;
   bool presenceFallbackActive_ = false;
 };
