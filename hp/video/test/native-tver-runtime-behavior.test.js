@@ -371,7 +371,7 @@ test('single TVer media selection bypasses visibility geometry without changing 
   const select = videos => {
     let visibilityChecks = 0;
     const chosen = vm.runInNewContext(
-      '(() => { ' + selection + '\\nreturn video; })()',
+      '(() => { ' + selection + '\nreturn video; })()',
       { document: { querySelectorAll: () => videos },
         visible: video => { visibilityChecks++; return video.visible; } },
     );
@@ -399,7 +399,7 @@ test('TVer recovery ad button scan avoids visibility checks for unrelated contro
     ...Array.from({ length: 100 }, () => ({ label: '再生' })),
     { label: '広告をスキップ' },
   ];
-  vm.runInNewContext('(() => { ' + scan + '\\nreturn null; })()', {
+  vm.runInNewContext('(() => { ' + scan + '\nreturn null; })()', {
     controls: () => controls,
     text: item => item.label,
     visible: () => { visibilityChecks++; return true; },
