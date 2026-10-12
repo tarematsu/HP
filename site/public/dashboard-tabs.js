@@ -160,7 +160,7 @@ async function showStationheadPanel(mode, route, options = {}) {
     await Promise.all([ensureModeStyles(mode), loadOnce(`${route.viewId}:shell`, shell)]);
     if (activeMode !== mode) return;
     const view = document.getElementById(route.viewId); showOnly(view); markRouteReady();
-    const runtime = await loadOnce('stationhead:runtime', () => import('/stationhead-channel.js?v=20261005.4'));
+    const runtime = await loadOnce('stationhead:runtime', () => import('/stationhead-channel.js?v=20261012.1'));
     if (activeMode !== mode) return;
     await runtime.selectStationheadChannelSection?.(view, route.panel);
   } catch (error) {

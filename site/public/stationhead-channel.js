@@ -5,7 +5,7 @@ import { stationheadChannelReadModel } from './stationhead-channel-read-model.js
 import { role, setNotice } from './stationhead/view-utils.js';
 import { renderCurrentDetail } from './stationhead/current-chart.js';
 import { renderCurrent, renderPlayback } from './stationhead/playback.js';
-import { renderDaily, exportHistoryCsv } from './stationhead/history-view.js';
+import { renderDaily, exportHistoryCsv } from './stationhead/history-view.js?v=20261012.1';
 import { loadPlayed } from './stationhead/played-tracks.js';
 import { renderLikes, exportLikesCsv } from './stationhead/likes.js';
 import { renderBroadcasts } from './stationhead/broadcasts.js';

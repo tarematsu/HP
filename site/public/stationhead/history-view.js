@@ -36,16 +36,35 @@ export function exportHistoryCsv(runtime) {
     [HISTORY_COLUMNS, ...[...rows].reverse().map(historyRowCells)]);
 }
 
+function compactHistoryDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
+  if (!match) return null;
+  return { year: match[1], shortYear: match[1].slice(2), month: Number(match[2]), day: Number(match[3]) };
+}
+
+export function historyPeriodLabels(rows) {
+  const first = String(rows?.[0]?.period_key || '');
+  const last = String(rows?.at?.(-1)?.period_key || '');
+  if (!first || !last) return { text: '—', title: '—' };
+  const start = compactHistoryDate(first);
+  const end = compactHistoryDate(last);
+  if (!start || !end) return { text: `${first}〜${last}`, title: `${first}〜${last}` };
+  const startText = `${start.shortYear}/${start.month}/${start.day}`;
+  const endText = start.year === end.year
+    ? start.month === end.month ? String(end.day) : `${end.month}/${end.day}`
+    : `${end.shortYear}/${end.month}/${end.day}`;
+  return { text: `${startText}〜${endText}`, title: `${first}〜${last}` };
+}
+
 function setHistorySummary(runtime, rows, total) {
   const max = rows.map((row) => finite(row.listener_max)).filter((value) => value != null);
-  const first = String(rows[0]?.period_key || '');
-  const last = String(rows.at(-1)?.period_key || '');
-  const label = !rows.length ? '—' : first.slice(0, 7) === last.slice(0, 7)
-    ? `${first}〜${last.slice(8)}`
-    : first.slice(0, 4) === last.slice(0, 4)
-      ? `${first}〜${last.slice(5)}`
-      : `${first}〜${last}`;
-  setText(runtime.root, 'history-periods', label);
+  const period = historyPeriodLabels(rows);
+  setText(runtime.root, 'history-periods', period.text);
+  const periodNode = role(runtime.root, 'history-periods');
+  if (periodNode) {
+    periodNode.classList.add('summary-date');
+    periodNode.title = period.title;
+  }
   setText(runtime.root, 'history-max', max.length ? numberText(Math.max(...max)) : '—');
   setText(runtime.root, 'history-streams', rows.some((row) => finite(row.stream_growth) != null) ? signedText(total('stream_growth')) : '—');
   setText(runtime.root, 'history-members', rows.some((row) => finite(row.member_growth) != null) ? signedText(total('member_growth')) : '—');
