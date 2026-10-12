@@ -11,9 +11,20 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     try { window.chrome?.webview?.postMessage('homepanel:youtube-wake'); }
     catch (_) {}
   };
+  // Coalesce bursts of video/DOM events without moving an already earlier
+  // wake later. In ad-heavy pages this avoids clearing and reallocating a
+  // timer for every MutationObserver callback.
   const wake = (delay = 80) => {
-    clearTimeout(state.wakeTimer);
-    state.wakeTimer = setTimeout(postWake, delay);
+    const wait = Math.max(0, Number(delay) || 0);
+    const dueAt = Date.now() + wait;
+    if (state.wakeTimer && state.wakeDueAt <= dueAt) return;
+    if (state.wakeTimer) clearTimeout(state.wakeTimer);
+    state.wakeDueAt = dueAt;
+    state.wakeTimer = setTimeout(() => {
+      state.wakeTimer = null;
+      state.wakeDueAt = 0;
+      postWake();
+    }, wait);
   };
   const recheck = () => wake(2000);
 
@@ -256,7 +267,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
 
   const bindVideo = () => {
     const video = player.querySelector('video');
-    if (!video || state.video === video) return;
+    if (!video || state.video === video) return video;
     state.videoAbort?.abort();
     state.videoAbort = new AbortController();
     state.video = video;
@@ -268,6 +279,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       });
     }
     wake(0);
+    return video;
   };
 
   const syncAdObserver = active => {
@@ -320,11 +332,12 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       state.popupObserver.observe(popup, { childList: true, subtree: true });
     }
   }
-  bindVideo();
+  // The same video node was previously looked up again after bindVideo().
+  // Reuse the fresh selection for playback/error and progress checks.
+  const video = bindVideo();
   const dialogAction = dismissMessageDialog();
   if (dialogAction) return dialogAction;
 
-  const video = player.querySelector('video');
   if (video?.error || player.classList.contains('ytp-error')) return 'reload';
 
   const now = Date.now();
