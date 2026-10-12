@@ -553,3 +553,22 @@ test('X virtualization retains DOM nodes and unhides recycled or expired cells',
   assert.match(body, /if \(!attempted \|\| hidden \|\| !article\.isConnected\) continue;/);
   assert.doesNotMatch(body, /\.remove\(\)|\.replaceChildren\(/);
 });
+
+
+test('X scroll cadence is 1.25x faster without accelerating empty feed polls or like waits', async () => {
+  const targetedMs = Number(source.match(/const scrollDelayMs = (\d+);/)?.[1]);
+  const seekingMs = Number(source.match(/const idleScrollDelayMs = (\d+);/)?.[1]);
+  const emptyMs = Number(source.match(/const emptyTimelinePollMs = (\d+);/)?.[1]);
+  assert.equal(targetedMs, 450 / 1.25);
+  assert.equal(seekingMs, 600 / 1.25);
+  assert.equal(emptyMs, 600);
+  assert.match(source, /state\.result = 'waiting-posts';\s*await sleep\(emptyTimelinePollMs\)/);
+  assert.match(source, /state\.result = 'seeking-like';[\s\S]*?window\.scrollBy\(\{ top: maxScrollStepPx, behavior: 'smooth' \}\);\s*await sleep\(idleScrollDelayMs\)/);
+  assert.match(source, /window\.scrollBy\(\{ top: Math\.sign\(distance\) \* step, behavior: 'smooth' \}\);\s*await sleep\(scrollDelayMs\)/);
+  assert.match(source, /const likeWaitChoicesMs = \[4 \* 1000, 7 \* 1000, 9 \* 1000\]/);
+  assert.match(source, /const maxScrollStepPx = 56/);
+  assert.match(source, /const minScrollStepPx = 20/);
+  const result = await run({ randomValues: [0] });
+  assert.ok(result.state.likedCount >= 4);
+  assert.ok(result.scrollSteps.every(step => step > 0 && step <= 56));
+});
