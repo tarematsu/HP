@@ -203,15 +203,15 @@ async function run({
   };
 }
 
-test('approaches like buttons at double scroll speed and uses the same DOM click style as Following', async () => {
+test('approaches like buttons at 1.25x current scroll speed and uses the same DOM click style as Following', async () => {
   const result = await run({ randomValues: [0] });
   assert.ok(result.clickedIds.length >= 4);
   assert.ok(result.clickedIds.every(id => id >= 10));
   assert.equal(result.state.likedCount, result.clickedIds.length);
   assert.equal(result.state.clickCount, result.clickedIds.length);
   assert.ok(result.scrollSteps.length > 4);
-  assert.ok(result.scrollSteps.every(step => step > 0 && step <= 56));
-  assert.ok(result.scrollSteps.some(step => step < 56));
+  assert.ok(result.scrollSteps.every(step => step > 0 && step <= 70));
+  assert.ok(result.scrollSteps.some(step => step < 70));
   assert.equal(result.state.completed, true);
 });
 
@@ -258,9 +258,9 @@ test('unconfirmed DOM likes retry up to three times instead of being treated as 
   assert.ok([...counts.values()].some(count => count === 3));
 });
 
-test('runtime doubles targeted scroll increments and waits before each click', () => {
-  assert.match(source, /const maxScrollStepPx = 56/);
-  assert.match(source, /const minScrollStepPx = 20/);
+test('runtime increases targeted scroll increments 1.25x and waits before each click', () => {
+  assert.match(source, /const maxScrollStepPx = 70/);
+  assert.match(source, /const minScrollStepPx = 25/);
   assert.match(source, /const targetY = \(\) => Math\.round\(innerHeight \* 0\.62\)/);
   assert.match(source, /state\.result = 'approaching-like'/);
   assert.match(source, /state\.result = 'paused-on-like'/);
