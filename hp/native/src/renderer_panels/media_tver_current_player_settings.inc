@@ -164,8 +164,10 @@ LR"JS(
   // layout again. Collect the first candidates in one semantic DOM pass.
   let speed175Option = null;
   let speedIndicator = null;
+  let speedIndicatorValue = null;
   let lowOption = null;
   let qualityIndicator = null;
+  let qualityIndicatorValue = null;
   let adMarker = false;
   if (duration > 65) {
     const skipPattern = /(?:広告|CM).{0,14}スキップ|skip\s+(?:this\s+)?ad/i;
@@ -190,8 +192,14 @@ LR"JS(
             Math.abs(speed - 1.75) < 0.001) speed175Option = element;
         if (!lowOption && quality === '低') lowOption = element;
       } else {
-        if (!speedIndicator && speed != null) speedIndicator = element;
-        if (!qualityIndicator && quality) qualityIndicator = element;
+        if (!speedIndicator && speed != null) {
+          speedIndicator = element;
+          speedIndicatorValue = speed;
+        }
+        if (!qualityIndicator && quality) {
+          qualityIndicator = element;
+          qualityIndicatorValue = quality;
+        }
       }
     }
     if (!adMarker) {
@@ -235,8 +243,7 @@ LR"JS(
     }
 
     const speedConfirmed = Boolean(
-        (speedIndicator && labels(speedIndicator).some(value =>
-            parseSpeed(value) === 1.75)) ||
+        (speedIndicator && Math.abs(speedIndicatorValue - 1.75) < 0.001) ||
         (speed175Option && selected(speed175Option)));
     state.currentSettingsSpeedConfirmed = speedConfirmed;
     if (!speedConfirmed) {
@@ -248,8 +255,7 @@ LR"JS(
 )JS" LR"JS(
 
     const qualityConfirmed = Boolean(
-        (qualityIndicator && labels(qualityIndicator).some(value =>
-            parseQuality(value) === '低')) ||
+        (qualityIndicator && qualityIndicatorValue === '低') ||
         (lowOption && selected(lowOption)));
     state.currentSettingsQualityConfirmed = qualityConfirmed;
     if (qualityConfirmed) state.qualityApplied = true;
