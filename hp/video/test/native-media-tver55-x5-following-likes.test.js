@@ -72,7 +72,7 @@ test('X likes use Following DOM clicks without an existing-like-count threshold 
 test('X scrolling is 1.25 times the current targeted speed', () => {
   assert.match(xRuntime, /const maxScrollStepPx = 70/);
   assert.match(xRuntime, /const minScrollStepPx = 25/);
-  assert.match(xRuntime, /Math\.ceil\(Math\.abs\(distance\) \* 0\.70\)/);
+  assert.match(xRuntime, /Math\.ceil\(Math\.abs\(distance\) \* 0\.875\)/);
   assert.match(xRuntime, /state\.result = 'approaching-like'/);
   assert.match(xRuntime, /window\.scrollBy\(\{ top: Math\.sign\(distance\) \* step, behavior: 'smooth' \}\)/);
 });
