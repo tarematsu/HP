@@ -13,7 +13,7 @@ LR"JS(
   const pauseAfterLikeMs = 800;
   // 1.25x scrolling cadence; do not accelerate the empty-timeline poll.
   const scrollDelayMs = 450;
-  const idleScrollDelayMs = 480;
+  const idleScrollDelayMs = 600;
   const emptyTimelinePollMs = 600;
   const maxScrollStepPx = 56;
   const minScrollStepPx = 20;
