@@ -23,7 +23,7 @@ LR"JS(
   // content and attributes are cheaper; use a deliberately broad prefilter so
   // all speed, quality, selection and ad/skip labels still take the full path.
   const settingLabelHint =
-      /広告|CM|skip|スキップ|\\d|[低高中]|自動|画質|選択中|設定中|selected/i;
+      /広告|CM|skip|スキップ|\d|[低高中]|自動|画質|選択中|設定中|selected/i;
   const labels = element => {
     const aria = element?.getAttribute?.('aria-label');
     const title = element?.getAttribute?.('title');
