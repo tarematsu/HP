@@ -127,6 +127,29 @@ HWND FindNativeMediaRootWindow() noexcept {
   return context.found;
 }
 
+// Offline overlays can repaint on media disconnects and window resizes.
+// Cache the exact Yu Gothic UI font for the 25 supported pixel sizes instead
+// of allocating/deleting a GDI font for every WM_PAINT. The cache has no
+// dynamic container allocations, and its GDI handles are freed on thread exit.
+struct CachedOfflineOverlayFonts {
+  std::array<HFONT, 25> fonts{};
+  ~CachedOfflineOverlayFonts() {
+    for (HFONT font : fonts) {
+      if (font) DeleteObject(font);
+    }
+  }
+  HFONT ForHeight(int height) noexcept {
+    HFONT& font = fonts[static_cast<size_t>(height - 28)];
+    if (!font) {
+      font = CreateFontW(
+          -height, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+          OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+          DEFAULT_PITCH | FF_DONTCARE, L"Yu Gothic UI");
+    }
+    return font;
+  }
+};
+
 LRESULT CALLBACK NativeMediaOfflineOverlayWindowProc(
     HWND window, UINT message, WPARAM wParam, LPARAM lParam) noexcept {
   if (message == WM_NCHITTEST) return HTTRANSPARENT;
@@ -142,15 +165,12 @@ LRESULT CALLBACK NativeMediaOfflineOverlayWindowProc(
     SetTextColor(dc, RGB(245, 245, 245));
     const int height = std::max(1L, client.bottom - client.top);
     const int fontHeight = std::clamp(height / 9, 28, 52);
-    HFONT font = CreateFontW(
-        -fontHeight, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-        DEFAULT_PITCH | FF_DONTCARE, L"Yu Gothic UI");
+    static thread_local CachedOfflineOverlayFonts cachedFonts;
+    HFONT font = cachedFonts.ForHeight(fontHeight);
     HGDIOBJ previous = font ? SelectObject(dc, font) : nullptr;
     DrawTextW(dc, L"インターネット接続がありません", -1, &client,
               DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
     if (previous) SelectObject(dc, previous);
-    if (font) DeleteObject(font);
     EndPaint(window, &paint);
     return 0;
   }
@@ -175,7 +195,9 @@ void SetNativeMediaOfflineOverlay(HWND hostWindow, bool visible) noexcept {
   HWND overlay = FindWindowExW(
       hostWindow, nullptr, kNativeMediaOfflineOverlayClass, nullptr);
   if (!visible) {
-    if (overlay) ShowWindow(overlay, SW_HIDE);
+    // Do not repeatedly hide an overlay that is already hidden.
+    if (overlay && (GetWindowLongPtrW(overlay, GWL_STYLE) & WS_VISIBLE))
+      ShowWindow(overlay, SW_HIDE);
     return;
   }
   if (!overlay) {
@@ -190,6 +212,20 @@ void SetNativeMediaOfflineOverlay(HWND hostWindow, bool visible) noexcept {
   if (!GetClientRect(hostWindow, &client)) return;
   const int width = std::max<LONG>(1, client.right - client.left);
   const int height = std::max<LONG>(1, client.bottom - client.top);
+  // A repeated disconnect with unchanged geometry does not require window
+  // repositioning or a fresh WM_PAINT. Still restore the overlay when the
+  // host resized, it was hidden, or its sibling z-order changed.
+  RECT overlayRect{};
+  const bool hasRect = GetWindowRect(overlay, &overlayRect) != FALSE;
+  if (hasRect)
+    MapWindowPoints(nullptr, hostWindow,
+                    reinterpret_cast<POINT*>(&overlayRect), 2);
+  const bool alreadyPlaced =
+      (GetWindowLongPtrW(overlay, GWL_STYLE) & WS_VISIBLE) &&
+      hasRect && overlayRect.left == 0 && overlayRect.top == 0 &&
+      overlayRect.right == width && overlayRect.bottom == height &&
+      GetWindow(overlay, GW_HWNDPREV) == nullptr;
+  if (alreadyPlaced) return;
   SetWindowPos(
       overlay, HWND_TOP, 0, 0, width, height,
       SWP_NOACTIVATE | SWP_SHOWWINDOW);
