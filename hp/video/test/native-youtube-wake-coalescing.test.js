@@ -113,3 +113,35 @@ test('YouTube media selection is reused without a second video DOM query', () =>
     /player\.querySelector\('video'\)/,
   );
 });
+
+test('YouTube SPA watch query is parsed once per URL, then refreshed on navigation', () => {
+  const code = section('  const href = location.href;', '  if (state.videoKey !== videoKey)');
+  const state = {};
+  const location = { href: 'https://www.youtube.com/watch?v=first&list=playlistA' };
+  const video = { currentSrc: 'media-source' };
+  let parses = 0;
+  class CountingURL extends URL {
+    constructor(...args) {
+      super(...args);
+      parses++;
+    }
+  }
+  const parse = () => vm.runInNewContext(
+    '(() => { ' + code + '\nreturn { videoKey, playlistId }; })()',
+    { state, location, video, URL: CountingURL },
+  );
+
+  for (let i = 0; i < 100; i++) {
+    assert.equal(parse().videoKey, 'first');
+  }
+  assert.equal(parses, 1);
+  location.href = 'https://www.youtube.com/watch?v=second&list=playlistB';
+  const result = parse();
+  assert.equal(result.videoKey, 'second');
+  assert.equal(result.playlistId, 'playlistB');
+  assert.equal(parses, 2);
+  location.href = 'https://www.youtube.com/watch';
+  assert.equal(parse().videoKey, 'media-source');
+  assert.equal(parse().playlistId, '');
+  assert.equal(parses, 3);
+});
