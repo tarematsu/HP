@@ -36,7 +36,7 @@ const DASHBOARD_ROUTE_MODULES = Object.freeze({
   }),
   'youtube-music': Object.freeze({
     shell: () => import('/youtube-music-shell.js?v=20261003.4'),
-    runtime: () => import('/youtube-music.js?v=20261004.2'),
+    runtime: () => import('/youtube-music.js?v=20261012.1'),
   }),
   kkbox: Object.freeze({
     shell: () => import('/kkbox-shell.js?v=20261004.1'),
