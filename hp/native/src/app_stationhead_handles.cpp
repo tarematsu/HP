@@ -37,9 +37,10 @@ bool RequiresInteractiveStationhead(const StationheadStatus& status) noexcept {
 
 void SyncStationheadBackgroundPreview(
     StationheadPlayer& player, const RECT& workspaceBounds) {
-  // No preview can be retired until playback is confirmed. Avoid copying
-  // StationheadStatus (including its strings) during startup/audio recovery.
-  if (!player.AudioPlaying()) return;
+  // Preview is already retired on the steady-state path. Avoid copying
+  // StationheadStatus (including its strings) across all six windows until
+  // another startup/reload explicitly requests the preview again.
+  if (!StationheadBackgroundPreview() || !player.AudioPlaying()) return;
   const StationheadStatus status = player.Status();
   if (!status.navigating && !status.loginRequired &&
       !status.spotifyAuthorization &&
