@@ -106,8 +106,12 @@
   white-space: nowrap;
 }
 .summary-cards .summary-date {
+  overflow: visible;
   font-size: clamp(.9rem, 3vw, 1.3rem);
   line-height: 1.25;
+  letter-spacing: 0;
+  text-overflow: clip;
+  white-space: normal;
 }
 .metric-value {
   margin-top: 4px;
