@@ -128,13 +128,19 @@ LR"JS(
     if (Number(video.readyState || 0) >= 2) score += 250000000;
     return score;
   };
-  let video = null;
-  let bestVideoScore = -1;
-  for (const candidate of document.querySelectorAll('video')) {
-    const score = videoScore(candidate);
-    if (score > bestVideoScore) {
-      video = candidate;
-      bestVideoScore = score;
+  const videos = document.querySelectorAll('video');
+  // A single connected media element needs no visibility or geometry ranking.
+  // This avoids getBoundingClientRect/getComputedStyle on the usual playback
+  // path, while keeping the full scoring policy for multi-video pages.
+  let video = videos.length === 1 && videos[0]?.isConnected ? videos[0] : null;
+  if (videos.length !== 1) {
+    let bestVideoScore = -1;
+    for (const candidate of videos) {
+      const score = videoScore(candidate);
+      if (score > bestVideoScore) {
+        video = candidate;
+        bestVideoScore = score;
+      }
     }
   }
   if (!video) {
