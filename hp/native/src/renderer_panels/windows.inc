@@ -284,7 +284,17 @@ void Renderer::PaintNativeSide(HWND hwnd) {
   const SidebarSections sections = SplitSidebarSections(scope.bounds);
   RECT overlap{};
   if (IntersectRect(&overlap, &scope.dirty, &sections.clock)) {
-    DrawClockSection(scope.dc, sections.clock);
+    const RECT timeRegion = ClockTimeRectFromCard(sections.clock);
+    const bool timeOnly =
+        scope.dirty.left >= timeRegion.left &&
+        scope.dirty.top >= timeRegion.top &&
+        scope.dirty.right <= timeRegion.right &&
+        scope.dirty.bottom <= timeRegion.bottom;
+    if (timeOnly) {
+      DrawClockTimeOnly(scope.dc, sections.clock, nativeClockTimeText_);
+    } else {
+      DrawClockSection(scope.dc, sections.clock);
+    }
   }
   if (IntersectRect(&overlap, &scope.dirty, &sections.controls)) {
     DrawControlsSection(scope.dc, sections.controls);
