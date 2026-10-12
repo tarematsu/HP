@@ -161,3 +161,35 @@ test('clock paint consumes cached network-clock strings', () => {
   assert.match(panelState, /nativeClockDateText_ = ClockDateText\(localTime\)/);
   assert.match(panelState, /nativeClockTimeText_ = ClockTimeText\(localTime\)/);
 });
+
+
+test('cached energy BitBlt reuses the existing source DC without per-paint GDI allocation', () => {
+  const start = energy.indexOf('void Renderer::DrawEnergySection(HDC dc, const RECT& card) {');
+  const end = energy.indexOf('void Renderer::DrawEnergySectionUncached(', start);
+  assert.ok(start >= 0 && end > start);
+  const cached = energy.slice(start, end);
+  const rebuild = cached.slice(cached.indexOf('  if (rebuild) {'), cached.indexOf('  if (energyBitmapCache_.bitmap) {', cached.indexOf('  if (rebuild) {') + 1));
+  const blit = cached.slice(cached.lastIndexOf('  if (energyBitmapCache_.bitmap) {'));
+
+  // Keep an independent compatible DC for uncached drawing because its
+  // translucent/icon helpers use SourceMemoryDc recursively.
+  assert.match(rebuild, /HDC memoryDc = CreateCompatibleDC\(dc\)/);
+  assert.match(rebuild, /DrawEnergySectionUncached\(memoryDc, localCard\)/);
+  assert.match(rebuild, /if \(memoryDc\) DeleteDC\(memoryDc\)/);
+  assert.doesNotMatch(rebuild, /SourceMemoryDc/);
+
+  // An unchanged chart must not allocate/delete a GDI DC on every repaint.
+  assert.match(blit, /HDC sourceDc = SourceMemoryDc\(dc\)/);
+  assert.doesNotMatch(blit, /CreateCompatibleDC|DeleteDC/);
+  assert.match(blit, /SelectObject\(sourceDc, energyBitmapCache_\.bitmap\)/);
+  assert.match(blit, /previousBitmap && previousBitmap != HGDI_ERROR/);
+  assert.match(blit, /BitBlt\(dc, card\.left, card\.top, width, height, sourceDc, 0, 0, SRCCOPY\)/);
+  assert.match(blit, /SelectObject\(sourceDc, previousBitmap\);\s*return;/);
+  assert.match(blit, /DrawEnergySectionUncached\(dc, card\)/);
+
+  const primitives = readFileSync(
+    new URL('../../native/src/renderer_panels/primitives.inc', import.meta.url), 'utf8');
+  assert.match(primitives, /thread_local CachedSourceMemoryDc cached/);
+  assert.match(primitives, /if \(!cached\.value\) cached\.value = CreateCompatibleDC\(compatibleDc\)/);
+  assert.match(primitives, /~CachedSourceMemoryDc\(\)[\s\S]*DeleteDC\(value\)/);
+});
