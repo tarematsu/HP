@@ -11,8 +11,10 @@ LR"JS(
   const likeWaitChoicesMs = [4 * 1000, 7 * 1000, 9 * 1000];
   const maxLikeAttemptsPerPost = 3;
   const pauseAfterLikeMs = 800;
-  const scrollDelayMs = 450;
-  const idleScrollDelayMs = 600;
+  // 1.25x scrolling cadence; do not accelerate the empty-timeline poll.
+  const scrollDelayMs = 360;
+  const idleScrollDelayMs = 480;
+  const emptyTimelinePollMs = 600;
   const maxScrollStepPx = 70; // 56 * 1.25
   const minScrollStepPx = 25; // 20 * 1.25
   const targetTolerancePx = 18;
@@ -288,7 +290,7 @@ LR"JS(
         if (!candidate) {
           if (articles.length === 0) {
             state.result = 'waiting-posts';
-            await sleep(idleScrollDelayMs);
+            await sleep(emptyTimelinePollMs);
             continue;
           }
           state.result = 'seeking-like';
