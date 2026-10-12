@@ -34,7 +34,9 @@ async function run({
   let scrolls = 0;
   let tabClicks = 0;
   let selectedTab = selected;
-  const domBudget = { timelineQueries: 0, filterSets: 0, filterRemovals: 0 };
+  const domBudget = {
+    timelineQueries: 0, filterSets: 0, filterRemovals: 0, hiddenIds: new Set(),
+  };
   const tab = {
     innerText: 'フォロー中',
     getAttribute: () => String(selectedTab),
@@ -75,11 +77,13 @@ async function run({
         if (key !== 'data-homepanel-x-filtered') return;
         domBudget.filterSets++;
         filtered = value === 'true';
+        if (filtered) domBudget.hiddenIds.add(id);
       },
       removeAttribute: key => {
         if (key !== 'data-homepanel-x-filtered') return;
         domBudget.filterRemovals++;
         filtered = false;
+        domBudget.hiddenIds.delete(id);
       },
       getBoundingClientRect: () => {
         const top = baseTop - scrollOffset;
@@ -327,9 +331,10 @@ test('one fresh timeline query per scan, with no full candidate sort or array co
 
 test('promoted and repost filter attributes are not rewritten on every scroll tick', async () => {
   const result = await run({ randomValues: [0] });
-  // Three initial filtered posts remain in the DOM throughout the simulation.
-  // Reapplying their filter on each scroll would force repeated CSS invalidation.
-  assert.equal(result.domBudget.filterSets, 3);
+  // Three promoted/repost posts plus at most one new hide per liked author.
+  // Each remains hidden without repeated attribute writes on later scans.
+  assert.ok(result.domBudget.filterSets >= 3);
+  assert.ok(result.domBudget.filterSets <= 3 + result.state.likedCount);
   assert.equal(result.domBudget.filterRemovals, 0);
   assert.ok(result.domBudget.timelineQueries > result.domBudget.filterSets * 3);
 });
@@ -497,4 +502,54 @@ test('old, malformed and future-dated author records are ignored and pruned', as
   const saved = JSON.parse(storage.get('homepanel:x-liked-authors:48h:v1'));
   assert.equal(Object.hasOwn(saved, '@wrong-handle'), false);
   assert.equal(typeof saved['@user13'], 'number');
+});
+
+
+test('posts by a confirmed liked author are collapsed while other accounts remain clickable', async () => {
+  const storage = new Map();
+  const result = await run({
+    authors: { 10: 'Sakura46', 11: 'SAKURA46', 12: 'OtherAccount' },
+    storage, randomValues: [0],
+  });
+  assert.ok(result.clickedIds.includes(10));
+  assert.ok(result.domBudget.hiddenIds.has(10), 'confirmed post collapses on next scan');
+  assert.ok(result.domBudget.hiddenIds.has(11), 'other posts from the same @handle collapse');
+  assert.ok(!result.clickedIds.includes(11), 'collapsed account is never clicked twice');
+  assert.ok(result.clickedIds.includes(12), 'unrelated account remains usable');
+  assert.match(source, /const authorFiltered = !!\(identity && likedAuthors\.has\(identity\.author\) &&/);
+  assert.match(source, /const hidden = filtered \|\| authorFiltered/);
+  assert.match(source, /target = article\.closest\?\.\('\[data-testid="cellInnerDiv"\]'\) \|\| article/);
+  assert.match(source, /if \(hidden\) \{[\s\S]*?target\.setAttribute\?\.\(filterAttribute, 'true'\)/);
+  assert.match(source, /\[\$\{filterAttribute\}="true"\]/);
+  assert.doesNotMatch(source, /article\.remove\(\)|target\.remove\(\)/);
+});
+
+test('only active 48-hour exclusions hide author cells; failed likes do not', async () => {
+  const now = 1800000000000;
+  const storage = new Map([['homepanel:x-liked-authors:48h:v1',
+    JSON.stringify({
+      '@user10': now - 47 * 60 * 60 * 1000,
+      '@user11': now - 49 * 60 * 60 * 1000,
+    })]]);
+  const result = await run({ failLike: true, storage, wallClockAt: now, randomValues: [0] });
+  assert.ok(result.domBudget.hiddenIds.has(10), 'active exclusion must collapse its cell');
+  assert.ok(!result.domBudget.hiddenIds.has(11), 'expired exclusion must not hide its cell');
+  assert.ok(!result.clickedIds.includes(10));
+  assert.ok(result.clickedIds.includes(11));
+  assert.ok(!result.domBudget.hiddenIds.has(12), 'unconfirmed likes do not hide posts');
+  const saved = JSON.parse(storage.get('homepanel:x-liked-authors:48h:v1'));
+  assert.equal(Object.hasOwn(saved, '@user11'), false, 'expiry pruned persistently');
+});
+
+test('X virtualization retains DOM nodes and unhides recycled or expired cells', () => {
+  const start = source.indexOf('  const scanTimeline = (articles, attempted = null) => {');
+  const end = source.indexOf('  const clickLikeButton =', start);
+  assert.ok(start >= 0 && end > start);
+  const body = source.slice(start, end);
+  assert.match(body, /if \(target\.getAttribute\?\.\(filterAttribute\) !== 'true'\)/);
+  assert.match(body, /target\.setAttribute\?\.\(filterAttribute, 'true'\)/);
+  assert.match(body, /else if \(target\.hasAttribute\?\.\(filterAttribute\)\)/);
+  assert.match(body, /target\.removeAttribute\?\.\(filterAttribute\)/);
+  assert.match(body, /if \(!attempted \|\| hidden \|\| !article\.isConnected\) continue;/);
+  assert.doesNotMatch(body, /\.remove\(\)|\.replaceChildren\(/);
 });
