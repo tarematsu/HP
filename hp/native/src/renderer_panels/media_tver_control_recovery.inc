@@ -38,13 +38,25 @@ LR"JS(
     return Boolean(rect && rect.width > 0 && rect.height > 0);
   };
 
-  const videos = Array.from(document.querySelectorAll('video'));
-  const video = videos.find(visible) || videos[0] || null;
+  // A single video is selected even if not visible in the existing fallback,
+  // so do not compute ancestor styles/geometry merely to select it.
+  const videos = document.querySelectorAll('video');
+  let video = videos[0] || null;
+  if (videos.length > 1) {
+    for (const candidate of videos) {
+      if (visible(candidate)) { video = candidate; break; }
+    }
+  }
 
-  const questionnaire = Array.from(document.querySelectorAll('[role="dialog"]'))
-      .find(dialog => dialog.querySelector('form[id^="questionnaire-"]') ||
-          /アンケート/.test(dialog.getAttribute('aria-label') || '') ||
-          /アンケート/.test(dialog.textContent || ''));
+  let questionnaire = null;
+  for (const dialog of document.querySelectorAll('[role="dialog"]')) {
+    if (dialog.querySelector('form[id^="questionnaire-"]') ||
+        /アンケート/.test(dialog.getAttribute('aria-label') || '') ||
+        /アンケート/.test(dialog.textContent || '')) {
+      questionnaire = dialog;
+      break;
+    }
+  }
   if (questionnaire) {
     if (!state.mediaInitSent) {
       state.mediaInitSent = true;
@@ -211,7 +223,9 @@ LR"JS(
   const controlSelector =
       'button,[role="button"],[role="menuitem"],[role="option"],'
       + '[role="radio"],[aria-label],[title],[data-testid]';
-  const controls = () => Array.from(player.querySelectorAll(controlSelector));
+  // Keep the native NodeList instead of allocating an Array during ad and
+  // playback recovery probes. Quality-menu selection builds its own shortlist.
+  const controls = () => player.querySelectorAll(controlSelector);
   const explicitAd = () => {
     const skipPattern = /(?:広告|CM).{0,14}スキップ|^スキップ$|skip\s+(?:this\s+)?ad/i;
     // This runs on media timeupdate as well as watchdog wakes. Most player
@@ -503,27 +517,29 @@ LR"JS(
     return 'recovery';
   }
 
-  const dialogs = Array.from(document.querySelectorAll(
-      '[role="dialog"],[aria-modal="true"]')).filter(valid);
-  for (const root of dialogs) {
-    if (root.querySelector('form[id^="questionnaire-"]') ||
+  for (const root of document.querySelectorAll(
+      '[role="dialog"],[aria-modal="true"]')) {
+    if (!valid(root) || root.querySelector('form[id^="questionnaire-"]') ||
         /アンケート/.test(root.textContent || '')) continue;
-    const close = Array.from(root.querySelectorAll(
-        'button,[role="button"],[aria-label],[title]')).find(element =>
-          valid(element) && /^(閉じる|とじる|close|dismiss)$/i.test(text(element)));
-    if (close) {
-      const action = arm(close, 'dialog-close', 500);
+    for (const element of root.querySelectorAll(
+        'button,[role="button"],[aria-label],[title]')) {
+      if (!valid(element) ||
+          !/^(閉じる|とじる|close|dismiss)$/i.test(text(element))) continue;
+      const action = arm(element, 'dialog-close', 500);
       if (action) return action;
+      // Preserve the first matching close control's priority.
+      break;
     }
   }
 
   if (adActive) {
     const skipPattern = /(?:広告|CM).{0,14}スキップ|^スキップ$|skip\s+(?:this\s+)?ad/i;
-    const skip = controls().find(element => visible(element) &&
-        skipPattern.test(text(element))) || null;
-    if (skip) {
-      const action = arm(skip, 'skip-ad', 600);
+    for (const element of controls()) {
+      // Do not walk computed styles/ancestor geometry for unrelated buttons.
+      if (!skipPattern.test(text(element)) || !visible(element)) continue;
+      const action = arm(element, 'skip-ad', 600);
       if (action) return action;
+      break;
     }
     if (!fullscreen()) return requestFullscreen();
     recheck();
@@ -531,7 +547,9 @@ LR"JS(
   }
 
   try {
-    video.defaultPlaybackRate = 1.75;
+    // Avoid redundant native property writes and ratechange wakeups on each
+    // healthy probe; restore values if the site or an ad resets them.
+    if (video.defaultPlaybackRate !== 1.75) video.defaultPlaybackRate = 1.75;
     if (video.playbackRate !== 1.75) video.playbackRate = 1.75;
     if (video.muted) video.muted = false;
     if (video.volume !== 1.0) video.volume = 1.0;
@@ -542,24 +560,25 @@ LR"JS(
     try { video.play()?.catch?.(() => {}); }
     catch (_) {}
     const playPattern = /^(再生|play)$/i;
-    const play = controls().find(element => valid(element) &&
-        playPattern.test(text(element))) || null;
-    const action = arm(play, 'play', 1200);
-    if (action) return action;
+    for (const element of controls()) {
+      if (!valid(element) || !playPattern.test(text(element))) continue;
+      const action = arm(element, 'play', 1200);
+      if (action) return action;
+      break;
+    }
     recheck();
     return 'recovery';
   }
 
   if (!state.qualityApplied) {
-    const candidates = controls().filter(valid);
+    const candidates = Array.from(controls()).filter(valid);
     const portalOptions = state.qualityLastAttemptAt ? Array.from(
       document.querySelectorAll(
         '[role="menu"] [role="menuitem"], [role="menu"] [role="radio"], '
         + '[role="dialog"] [role="option"], [role="listbox"] [role="option"]')) : [];
     const low = [...candidates, ...portalOptions].find(element =>
-      visible(element) &&
       /^(低|低画質|low)(?:[（(](?:選択中|設定中)[）)])?$/i
-        .test(text(element).trim())) || null;
+        .test(text(element).trim()) && visible(element)) || null;
     if (low) {
       const selected = low.getAttribute('aria-checked') === 'true' ||
           low.getAttribute('aria-selected') === 'true' ||
