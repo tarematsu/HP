@@ -95,12 +95,23 @@ void DrawFixedWidthClockTime(HDC dc, const std::wstring& text,
                              const RECT& rect) {
   if (text.empty() || rect.right <= rect.left || rect.bottom <= rect.top) return;
 
+  // CachedUiFont retains GDI font handles for the lifetime of the process.
+  // Their maximum digit advance only needs measuring once per selected font,
+  // not ten GetTextExtentPoint32W calls on every one-second clock repaint.
+  static thread_local std::map<HGDIOBJ, int> digitWidthByFont;
+  const HGDIOBJ font = GetCurrentObject(dc, OBJ_FONT);
+  const auto cached = font ? digitWidthByFont.find(font) : digitWidthByFont.end();
   int digitCellWidth = 1;
-  for (wchar_t digit = L'0'; digit <= L'9'; ++digit) {
-    SIZE extent{};
-    if (GetTextExtentPoint32W(dc, &digit, 1, &extent)) {
-      digitCellWidth = std::max(digitCellWidth, static_cast<int>(extent.cx));
+  if (cached != digitWidthByFont.end()) {
+    digitCellWidth = cached->second;
+  } else {
+    for (wchar_t digit = L'0'; digit <= L'9'; ++digit) {
+      SIZE extent{};
+      if (GetTextExtentPoint32W(dc, &digit, 1, &extent)) {
+        digitCellWidth = std::max(digitCellWidth, static_cast<int>(extent.cx));
+      }
     }
+    if (font) digitWidthByFont.emplace(font, digitCellWidth);
   }
   const int separatorCellWidth = std::max(1, digitCellWidth * 45 / 100);
 
@@ -127,6 +138,25 @@ void DrawFixedWidthClockTime(HDC dc, const std::wstring& text,
     left += cellWidth;
     if (left >= rect.right) break;
   }
+}
+
+// The clock's time-only invalidation must not redraw the date, waste
+// schedule, or footer. Keep the same font, text bounds and card background
+// as the complete clock paint path so no pixels change.
+void DrawClockTimeOnly(HDC dc, const RECT& card,
+                       const std::wstring& timeText) {
+  DrawSectionCard(dc, card);
+  const RECT content = CardContentRect(card);
+  const RECT timeRect{content.left, content.top + SpanY(content, 170),
+                      content.right, content.top + SpanY(content, 650)};
+  const int height = std::max(1L, timeRect.bottom - timeRect.top);
+  const int width = std::max(1L, timeRect.right - timeRect.left);
+  const int fontHeight = std::clamp(
+      std::min(height * 72 / 100, width * 18 / 100), 32, 88);
+  HGDIOBJ previous = SelectObject(dc, CachedUiFont(fontHeight, FW_SEMIBOLD));
+  SetTextColor(dc, kWidgetText);
+  DrawFixedWidthClockTime(dc, timeText, timeRect);
+  SelectObject(dc, previous);
 }
 
 #define HP_DRAW_CLOCK_WITH_STATUS(dc, card) do { \
