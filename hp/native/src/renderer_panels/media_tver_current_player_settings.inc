@@ -218,28 +218,32 @@ LR"JS(
   if (programMedia) {
     // Reinforce the media element immediately, but also synchronize TVer's own
     // player state below so it cannot later restore 1.0x from its UI model.
-    try {
-      const mediaPrototype = typeof HTMLMediaElement !== 'undefined'
-          ? HTMLMediaElement.prototype : null;
-      const rateSetter = mediaPrototype
-          ? Object.getOwnPropertyDescriptor(mediaPrototype, 'playbackRate')?.set
-          : null;
-      const defaultRateSetter = mediaPrototype
-          ? Object.getOwnPropertyDescriptor(mediaPrototype, 'defaultPlaybackRate')?.set
-          : null;
-      if (video.defaultPlaybackRate !== 1.75) {
-        if (defaultRateSetter) defaultRateSetter.call(video, 1.75);
-        else video.defaultPlaybackRate = 1.75;
-      }
-      if (video.playbackRate !== 1.75) {
-        if (rateSetter) rateSetter.call(video, 1.75);
-        else video.playbackRate = 1.75;
-      }
-    } catch (_) {
+    // Avoid even resolving native setters on a healthy tick: repeated writes
+    // can dispatch ratechange events and wake the watchdog again.
+    if (video.defaultPlaybackRate !== 1.75 || video.playbackRate !== 1.75) {
       try {
-        if (video.defaultPlaybackRate !== 1.75) video.defaultPlaybackRate = 1.75;
-        if (video.playbackRate !== 1.75) video.playbackRate = 1.75;
-      } catch (_) {}
+        const mediaPrototype = typeof HTMLMediaElement !== 'undefined'
+            ? HTMLMediaElement.prototype : null;
+        const rateSetter = mediaPrototype
+            ? Object.getOwnPropertyDescriptor(mediaPrototype, 'playbackRate')?.set
+            : null;
+        const defaultRateSetter = mediaPrototype
+            ? Object.getOwnPropertyDescriptor(mediaPrototype, 'defaultPlaybackRate')?.set
+            : null;
+        if (video.defaultPlaybackRate !== 1.75) {
+          if (defaultRateSetter) defaultRateSetter.call(video, 1.75);
+          else video.defaultPlaybackRate = 1.75;
+        }
+        if (video.playbackRate !== 1.75) {
+          if (rateSetter) rateSetter.call(video, 1.75);
+          else video.playbackRate = 1.75;
+        }
+      } catch (_) {
+        try {
+          if (video.defaultPlaybackRate !== 1.75) video.defaultPlaybackRate = 1.75;
+          if (video.playbackRate !== 1.75) video.playbackRate = 1.75;
+        } catch (_) {}
+      }
     }
 
     const speedConfirmed = Boolean(
