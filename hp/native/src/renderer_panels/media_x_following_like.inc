@@ -19,6 +19,53 @@ LR"JS(
   const filterAttribute = 'data-homepanel-x-filtered';
   const filterStyleId = 'homepanel-x-timeline-filter';
 
+  // Remember confirmed likes by the tweet author's @handle across restarts.
+  // Do not rely on display names or text mentions: only the tweet permalink
+  // identifies the author. Entries expire exactly 48 hours after confirmation.
+  const accountStorageKey = 'homepanel:x-liked-authors:48h:v1';
+  const accountCooldownMs = 48 * 60 * 60 * 1000;
+  const likedAuthors = new Map();
+  const validAuthor = handle => /^@[a-z0-9_]{1,15}$/.test(handle);
+  const activeTimestamp = (timestamp, now) =>
+      Number.isFinite(timestamp) && timestamp > 0 && timestamp <= now &&
+      now - timestamp < accountCooldownMs;
+  const saveLikedAuthors = () => {
+    try {
+      localStorage.setItem(accountStorageKey,
+          JSON.stringify(Object.fromEntries(likedAuthors)));
+      state.authorHistoryPersisted = true;
+    } catch (_) {
+      state.authorHistoryPersisted = false;
+    }
+  };
+  try {
+    const saved = JSON.parse(localStorage.getItem(accountStorageKey) || '{}');
+    if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+      const now = Date.now();
+      for (const [handle, timestamp] of Object.entries(saved)) {
+        const normalized = handle.toLowerCase();
+        if (validAuthor(normalized) && activeTimestamp(timestamp, now))
+          likedAuthors.set(normalized, timestamp);
+      }
+      // Also discard expired/corrupt entries from persistent storage.
+      if (Object.keys(saved).length !== likedAuthors.size) saveLikedAuthors();
+    }
+  } catch (_) {}
+  const recentlyLikedAuthor = handle => {
+    if (!validAuthor(handle)) return true; // unknown authors are not safe to like
+    const timestamp = likedAuthors.get(handle);
+    if (timestamp === undefined) return false;
+    if (activeTimestamp(timestamp, Date.now())) return true;
+    likedAuthors.delete(handle);
+    return false;
+  };
+  const rememberLikedAuthor = handle => {
+    if (!validAuthor(handle)) return;
+    likedAuthors.set(handle, Date.now());
+    saveLikedAuthors();
+  };
+
+
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const randomLikeWaitMs = () => likeWaitChoicesMs[
       Math.floor(Math.random() * likeWaitChoicesMs.length)];
@@ -117,11 +164,14 @@ LR"JS(
   };
 )JS"
 LR"JS(
-  const articleId = article => {
+  const articleIdentity = article => {
     const permalink = article?.querySelector('time')?.closest('a')
         ?.getAttribute('href');
-    return permalink?.match(/\/status\/(\d+)/)?.[1] || '';
+    const match = permalink?.match(
+        /^(?:https?:\/\/(?:www\.)?(?:x|twitter)\.com)?\/([a-z0-9_]{1,15})\/status\/(\d+)(?:[/?#]|$)/i);
+    return match ? { id: match[2], author: '@' + match[1].toLowerCase() } : null;
   };
+  const articleId = article => articleIdentity(article)?.id || '';
   const articleForId = id => {
     for (const article of timelineArticles()) {
       if (articleId(article) === id) return article;
@@ -155,14 +205,16 @@ LR"JS(
         target.removeAttribute?.(filterAttribute);
       }
       if (!attempted || filtered || !article.isConnected) continue;
-      const id = articleId(article);
-      if (!id || attempted.has(id)) continue;
+      const identity = articleIdentity(article);
+      if (!identity || attempted.has(identity.id) ||
+          recentlyLikedAuthor(identity.author)) continue;
       const like = validLikeButton(article);
       if (!like) continue;
       const centerY = like.rect.top + like.rect.height / 2;
       if (centerY < preferredFloor ||
           (nearest && centerY >= nearest.centerY)) continue;
-      nearest = { article, id, button: like.button, centerY };
+      nearest = { article, id: identity.id, author: identity.author,
+                  button: like.button, centerY };
     }
     return nearest;
   };
@@ -258,6 +310,10 @@ LR"JS(
         const freshArticle = articleForId(candidate.id);
         if (!freshArticle || !freshArticle.isConnected || !isOrganic(freshArticle))
           continue;
+        const freshIdentity = articleIdentity(freshArticle);
+        if (!freshIdentity || freshIdentity.id !== candidate.id ||
+            freshIdentity.author !== candidate.author ||
+            recentlyLikedAuthor(freshIdentity.author)) continue;
         const freshLike = validLikeButton(freshArticle);
         if (!freshLike) continue;
         const freshCenterY = freshLike.rect.top + freshLike.rect.height / 2;
@@ -287,6 +343,7 @@ LR"JS(
           failedAttempts.delete(candidate.id);
           state.attemptedCount = attempted.size;
           state.likedCount++;
+          rememberLikedAuthor(candidate.author);
           state.result = 'like-confirmed';
         } else {
           const failures = (failedAttempts.get(candidate.id) || 0) + 1;
