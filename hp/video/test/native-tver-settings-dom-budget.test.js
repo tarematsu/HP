@@ -98,7 +98,7 @@ test('steady TVer playback scans settings once per probe and avoids redundant me
   const scene = scenario();
   scene.run();
   assert.equal(scene.counters.controlQueries, 1);
-  assert.equal(scene.counters.videoRects, 1);
+  assert.equal(scene.counters.videoRects, 0);
   assert.equal(scene.counters.mediaRateWrites, 0);
   assert.equal(scene.counters.defaultRateWrites, 0);
   assert.equal(scene.window.__homePanelTverRuntime.currentSettingsSpeedConfirmed, true);
@@ -108,7 +108,7 @@ test('steady TVer playback scans settings once per probe and avoids redundant me
   scene.advance(1000);
   scene.run();
   assert.equal(scene.counters.controlQueries, 2);
-  assert.equal(scene.counters.videoRects, 2);
+  assert.equal(scene.counters.videoRects, 0);
   assert.equal(scene.counters.mediaRateWrites, 0);
   assert.equal(scene.counters.defaultRateWrites, 0);
 });
@@ -181,4 +181,43 @@ test('settings hot path uses a single controls NodeList and no filtered candidat
   assert.doesNotMatch(script, /controls\.filter\(|controls\.some\(|Array\.from\(document\.querySelectorAll/);
   assert.match(script, /video\.playbackRate !== 1\.75/);
   assert.doesNotMatch(script, /videos\.reduce\(/);
+});
+
+test('unrelated TVer controls do not trigger rendered-text layout reads', () => {
+  const scene = scenario();
+  const unrelated = Array.from({ length: 120 },
+    () => scene.makeControl('再生'));
+  scene.controls.unshift(...unrelated);
+  scene.run();
+  assert.equal(scene.counters.controlQueries, 1);
+  assert.equal(scene.counters.controlTextReads, 2);
+  assert.equal(scene.window.__homePanelTverRuntime.currentSettingsSpeedConfirmed, true);
+  assert.equal(scene.window.__homePanelTverRuntime.currentSettingsQualityConfirmed, true);
+});
+
+test('TVer ad classification still checks rendered labels for relevant controls', () => {
+  const scene = scenario({ initialRate: 1 });
+  scene.controls.unshift(scene.makeControl('広告をスキップ'));
+  scene.run();
+  assert.equal(scene.counters.adQueries, 0);
+  assert.equal(scene.counters.mediaRateWrites, 0);
+  assert.equal(scene.counters.controlTextReads, 1);
+});
+
+test('single TVer video bypasses geometry ranking without changing selection', () => {
+  const scene = scenario();
+  scene.run();
+  assert.equal(scene.counters.videoQueries, 1);
+  assert.equal(scene.counters.videoRects, 0);
+  assert.equal(scene.counters.controlQueries, 1);
+  assert.equal(scene.window.__homePanelTverRuntime.currentSettingsSpeedConfirmed, true);
+});
+
+test('disconnected single TVer video is not treated as playable', () => {
+  const scene = scenario();
+  scene.videoElements[0].isConnected = false;
+  scene.run();
+  assert.equal(scene.counters.videoRects, 0);
+  assert.equal(scene.counters.controlQueries, 0);
+  assert.equal(scene.messages.includes('homepanel:tver-fullscreen-key'), false);
 });
