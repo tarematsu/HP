@@ -182,3 +182,24 @@ test('settings hot path uses a single controls NodeList and no filtered candidat
   assert.match(script, /video\.playbackRate !== 1\.75/);
   assert.doesNotMatch(script, /videos\.reduce\(/);
 });
+
+test('unrelated TVer controls do not trigger rendered-text layout reads', () => {
+  const scene = scenario();
+  const unrelated = Array.from({ length: 120 },
+    () => scene.makeControl('再生'));
+  scene.controls.unshift(...unrelated);
+  scene.run();
+  assert.equal(scene.counters.controlQueries, 1);
+  assert.equal(scene.counters.controlTextReads, 2);
+  assert.equal(scene.window.__homePanelTverRuntime.currentSettingsSpeedConfirmed, true);
+  assert.equal(scene.window.__homePanelTverRuntime.currentSettingsQualityConfirmed, true);
+});
+
+test('TVer ad classification still checks rendered labels for relevant controls', () => {
+  const scene = scenario({ initialRate: 1 });
+  scene.controls.unshift(scene.makeControl('広告をスキップ'));
+  scene.run();
+  assert.equal(scene.counters.adQueries, 0);
+  assert.equal(scene.counters.mediaRateWrites, 0);
+  assert.equal(scene.counters.controlTextReads, 1);
+});
