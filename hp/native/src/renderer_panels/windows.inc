@@ -225,6 +225,8 @@ void Renderer::DestroyNativeStaticWindows() {
     std::lock_guard lock(radarFrameMutex_);
     if (radarFrameBitmap_) DeleteObject(radarFrameBitmap_);
     radarFrameBitmap_ = nullptr;
+    radarFrameSourcePath_.clear();
+    radarPngStamp_.clear();
   }
   for (const NativePanelSlot& slot : NativePanelSlots()) this->*slot.window = nullptr;
 }
