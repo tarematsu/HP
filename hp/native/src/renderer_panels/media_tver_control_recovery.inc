@@ -521,25 +521,32 @@ LR"JS(
       '[role="dialog"],[aria-modal="true"]')) {
     if (!valid(root) || root.querySelector('form[id^="questionnaire-"]') ||
         /アンケート/.test(root.textContent || '')) continue;
+    let close = null;
     for (const element of root.querySelectorAll(
         'button,[role="button"],[aria-label],[title]')) {
       if (!valid(element) ||
           !/^(閉じる|とじる|close|dismiss)$/i.test(text(element))) continue;
-      const action = arm(element, 'dialog-close', 500);
-      if (action) return action;
-      // Preserve the first matching close control's priority.
+      close = element;
       break;
+    }
+    if (close) {
+      const action = arm(close, 'dialog-close', 500);
+      if (action) return action;
     }
   }
 
   if (adActive) {
     const skipPattern = /(?:広告|CM).{0,14}スキップ|^スキップ$|skip\s+(?:this\s+)?ad/i;
+    let skip = null;
     for (const element of controls()) {
       // Do not walk computed styles/ancestor geometry for unrelated buttons.
       if (!skipPattern.test(text(element)) || !visible(element)) continue;
-      const action = arm(element, 'skip-ad', 600);
-      if (action) return action;
+      skip = element;
       break;
+    }
+    if (skip) {
+      const action = arm(skip, 'skip-ad', 600);
+      if (action) return action;
     }
     if (!fullscreen()) return requestFullscreen();
     recheck();
@@ -560,11 +567,15 @@ LR"JS(
     try { video.play()?.catch?.(() => {}); }
     catch (_) {}
     const playPattern = /^(再生|play)$/i;
+    let play = null;
     for (const element of controls()) {
       if (!valid(element) || !playPattern.test(text(element))) continue;
-      const action = arm(element, 'play', 1200);
-      if (action) return action;
+      play = element;
       break;
+    }
+    if (play) {
+      const action = arm(play, 'play', 1200);
+      if (action) return action;
     }
     recheck();
     return 'recovery';
