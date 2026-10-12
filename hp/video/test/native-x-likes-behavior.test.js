@@ -266,7 +266,7 @@ test('runtime increases targeted scroll increments 1.25x and waits before each c
   assert.match(source, /state\.result = 'paused-on-like'/);
   assert.match(source, /state\.result = 'waiting-before-like'/);
   assert.match(source, /await sleep\(waitMs\)/);
-  assert.match(source, /Math\.min\(maxScrollStepPx, Math\.ceil\(Math\.abs\(distance\) \* 0\.70\)\)/);
+  assert.match(source, /Math\.min\(maxScrollStepPx, Math\.ceil\(Math\.abs\(distance\) \* 0\.875\)\)/);
 });
 
 test('delayed timers and late posts never cause catch-up bursts', async () => {
