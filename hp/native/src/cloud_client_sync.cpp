@@ -71,10 +71,28 @@ void CloudClient::Synchronize() {
     return fs::exists(path, error) ? version : -1;
   };
   const auto requestedDeviceConfigVersion = [&]() {
-    std::error_code existsError;
-    if (deviceConfigVersion_ < 0 ||
-        !fs::exists(deviceConfigPath, existsError) || existsError) {
+    // Polls usually observe an unchanged cache file. Check its inexpensive
+    // filesystem stamp before opening, transcoding and parsing the JSON.
+    if (deviceConfigVersion_ < 0) {
+      deviceConfigValidatedStamp_.valid = false;
       return -1;
+    }
+    std::error_code stampError;
+    const auto size = fs::file_size(deviceConfigPath, stampError);
+    if (stampError || size == 0) {
+      deviceConfigValidatedStamp_.valid = false;
+      return -1;
+    }
+    const auto modifiedAt = fs::last_write_time(deviceConfigPath, stampError);
+    if (stampError) {
+      deviceConfigValidatedStamp_.valid = false;
+      return -1;
+    }
+    if (deviceConfigValidatedStamp_.valid &&
+        deviceConfigValidatedStamp_.version == deviceConfigVersion_ &&
+        deviceConfigValidatedStamp_.size == size &&
+        deviceConfigValidatedStamp_.modifiedAt == modifiedAt) {
+      return deviceConfigVersion_;
     }
 
     try {
@@ -94,11 +112,13 @@ void CloudClient::Synchronize() {
           envelope.GetNamedValue(L"config").ValueType() != JsonValueType::Object) {
         throw std::runtime_error("cache envelope mismatch");
       }
+      deviceConfigValidatedStamp_ = {
+          size, modifiedAt, deviceConfigVersion_, true};
       return deviceConfigVersion_;
     } catch (...) {
-      // Metadata and payload are one logical cache. If their versions or device
-      // identity disagree, advertise -1 so the next response is forced to carry
-      // a fresh deviceConfig instead of trusting an existing-but-stale file.
+      // On a mismatch (or missing/invalid JSON), force a fresh payload. Do not
+      // cache failed validation or promote the newly observed file stamp.
+      deviceConfigValidatedStamp_.valid = false;
       log_.Warn(
           L"Device config cache did not match cached metadata; forcing refresh");
       return -1;
