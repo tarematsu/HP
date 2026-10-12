@@ -268,10 +268,15 @@ void CloudClient::StopNetworkChangeWatcher() {
 }
 
 void CloudClient::RefreshNow() {
-  // Only one synchronizer waits on wake_. Repeated callbacks during a pending
-  // refresh should not repeatedly wake the same thread.
-  if (!immediate_.exchange(true, std::memory_order_acq_rel))
-    wake_.notify_one();
+  // Only one synchronizer waits on wake_. Guard the predicate transition with
+  // the wait mutex so a notification cannot slip between its predicate check
+  // and entering the condition-variable wait. Coalesce already-pending wakes.
+  bool notify = false;
+  {
+    std::lock_guard lock(wakeMutex_);
+    notify = !immediate_.exchange(true, std::memory_order_acq_rel);
+  }
+  if (notify) wake_.notify_one();
 }
 
 std::wstring CloudClient::LastSuccessText() const {
