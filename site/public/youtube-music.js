@@ -73,7 +73,26 @@ function renderTracks(items) {
   }
 }
 
-function renderPlaylists(items, memberships) {
+export function youtubeMusicPlaylistArtist(playlist, memberships, tracks) {
+  const direct = String(playlist?.canonical_artist || '').trim();
+  if (direct) return direct;
+
+  const playlistId = String(playlist?.service_playlist_id || '');
+  const artistByTrack = new Map(tracks.map((track) => [
+    String(track.service_track_id || ''),
+    String(track.canonical_artist || '').trim(),
+  ]));
+  const counts = new Map();
+  for (const membership of memberships) {
+    if (String(membership.service_playlist_id || '') !== playlistId) continue;
+    const artist = artistByTrack.get(String(membership.service_track_id || ''));
+    if (artist) counts.set(artist, (counts.get(artist) || 0) + 1);
+  }
+  return [...counts].sort(([leftArtist, leftCount], [rightArtist, rightCount]) =>
+    rightCount - leftCount || leftArtist.localeCompare(rightArtist))[0]?.[0] || '';
+}
+
+function renderPlaylists(items, memberships, tracks) {
   const body = replaceMusicTableBody('youtubeMusicPlaylistBody');
   if (!body) return;
   if (!items.length) {
@@ -86,8 +105,9 @@ function renderPlaylists(items, memberships) {
     counts.set(id, (counts.get(id) || 0) + 1);
   }
   for (const item of items) {
+    const artist = youtubeMusicPlaylistArtist(item, memberships, tracks);
     appendTableRow(body, [
-      [(MUSIC_ARTIST_LABELS[item.canonical_artist] || item.canonical_artist || ''), (item.playlist_name || item.service_playlist_id || '-')].filter(Boolean).join(' / '),
+      [(MUSIC_ARTIST_LABELS[artist] || artist), (item.playlist_name || item.service_playlist_id || '-')].filter(Boolean).join(' / '),
       item.playlist_type || '-',
       musicValueText(counts.get(String(item.service_playlist_id || '')) || 0),
     ]);
@@ -119,7 +139,7 @@ function render(payload) {
   renderArtists(artists);
   renderReleases(releases);
   renderTracks(tracks);
-  renderPlaylists(playlists, memberships);
+  renderPlaylists(playlists, memberships, tracks);
 }
 
 export async function loadYoutubeMusicView() {
