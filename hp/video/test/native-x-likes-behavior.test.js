@@ -455,7 +455,7 @@ test('a confirmed X like records @author and avoids all their posts for 48 hours
 
 test('unknown tweet authors are skipped rather than guessed from mentions or quote text', async () => {
   const result = await run({
-    permalinkOverrides: { 10: '/i/status/10/extra', 11: '/invalid/link' },
+    permalinkOverrides: { 10: '/i/status/not-a-number', 11: '/invalid/link' },
     randomValues: [0],
   });
   assert.ok(result.clickedIds.includes(12));
