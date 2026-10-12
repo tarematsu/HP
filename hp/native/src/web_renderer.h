@@ -226,7 +226,7 @@ class Renderer {
   UiAction pendingAction_ = UiAction::None;
   std::map<std::wstring, BitmapCacheEntry> nativeWeatherIconBitmaps_;
   uint64_t nativeWeatherIconUseCounter_ = 0;
-  std::map<HWND, PanelBackBuffer> nativeBackBuffers_;
+  PanelBackBuffer nativeBackBuffer_;
   EnergyBitmapCache energyBitmapCache_{};
   std::thread radarComposeThread_;
   std::condition_variable radarComposeWake_;

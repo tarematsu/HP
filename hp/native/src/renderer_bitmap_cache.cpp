@@ -42,7 +42,7 @@ HBITMAP Renderer::NativePanelBackBuffer(HWND, HDC dc, int width, int height) {
 
   // Native panels paint serially on the UI thread. Keep one grow-only backing
   // bitmap shared by all child HWNDs instead of retaining a bitmap per panel.
-  PanelBackBuffer& buffer = nativeBackBuffers_[nullptr];
+  PanelBackBuffer& buffer = nativeBackBuffer_;
   if (buffer.bitmap && buffer.width >= width && buffer.height >= height) {
     return buffer.bitmap;
   }
@@ -87,8 +87,8 @@ HBITMAP Renderer::NativeWeatherIconBitmap(
 }
 
 void Renderer::ReleaseNativePanelSurfaces() noexcept {
-  for (auto& item : nativeBackBuffers_) if (item.second.bitmap) DeleteObject(item.second.bitmap);
-  nativeBackBuffers_.clear();
+  if (nativeBackBuffer_.bitmap) DeleteObject(nativeBackBuffer_.bitmap);
+  nativeBackBuffer_ = {};
 }
 
 void Renderer::ResetNativeBitmapCaches() noexcept {

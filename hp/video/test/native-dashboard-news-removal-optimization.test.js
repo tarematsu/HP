@@ -189,9 +189,9 @@ test('native bitmap caching keeps only weather icons plus the single radar frame
 });
 
 test('native panels share one retained backing bitmap', () => {
-  assert.match(bitmapCache, /nativeBackBuffers_\[nullptr\]/);
+  assert.match(bitmapCache, /PanelBackBuffer& buffer = nativeBackBuffer_/);
   assert.match(bitmapCache, /buffer\.width >= width && buffer\.height >= height/);
-  assert.doesNotMatch(bitmapCache, /nativeBackBuffers_\[hwnd\]/);
+  assert.doesNotMatch(bitmapCache, /nativeBackBuffers_\[/);
 });
 
 test('clock second ticks redraw only the time while footer refreshes by minute', () => {
