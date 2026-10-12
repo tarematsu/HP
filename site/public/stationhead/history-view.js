@@ -37,7 +37,7 @@ export function exportHistoryCsv(runtime) {
 }
 
 function compactHistoryDate(value) {
-  const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(String(value || ''));
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
   if (!match) return null;
   return { year: match[1], shortYear: match[1].slice(2), month: Number(match[2]), day: Number(match[3]) };
 }
