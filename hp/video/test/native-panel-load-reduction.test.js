@@ -134,7 +134,7 @@ test('energy card uses a revision and size keyed bitmap while panel back buffers
   assert.match(bitmapCache, /if \(energyBitmapCache_\.bitmap\) DeleteObject\(energyBitmapCache_\.bitmap\)/);
   assert.match(bitmapCache, /energyBitmapCache_ = \{\};/);
   assert.doesNotMatch(rendererHeader, /PanelBitmapCache|nativeSectionBitmaps_|DrawCachedPanelSection/);
-  assert.match(rendererHeader, /std::map<HWND, PanelBackBuffer> nativeBackBuffers_/);
+  assert.match(rendererHeader, /PanelBackBuffer nativeBackBuffer_/);
   assert.match(panelWindows, /IntersectClipRect\(dc, dirty\.left, dirty\.top, dirty\.right, dirty\.bottom\)/);
 });
 
