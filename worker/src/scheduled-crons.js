@@ -15,3 +15,5 @@ export const QQ_TOPLIST_POLL_CRON = '30 9-21 * * 4';
 export const HISTORY_READ_MODEL_RECOVERY_CRON = '* * * * *';
 export const STATIONHEAD_FOLLOWERS_CRON = '0 15 * * *';
 export const STATIONHEAD_LEADERBOARD_CRON = '17 12 * * 1';
+
+export const DAILY_SUMMARY_PUBLICATION_CRON = '46 0 * * *';
