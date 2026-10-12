@@ -1,6 +1,7 @@
 import { dispatchScheduledService } from './internal-scheduled-dispatch.js';
 import {
   AMAZON_MUSIC_CRON,
+  DAILY_SUMMARY_PUBLICATION_CRON,
   CRON_DISPATCHER_CRON,
   HISTORY_READ_MODEL_RECOVERY_CRON,
   KKBOX_WEEKLY_CRON,
@@ -89,6 +90,7 @@ const due = {
   kugou: ({ day, hour, minute }) => day >= 1 && day <= 5 && hour === 2 && minute === 30,
   kugouAcg: ({ day, hour, minute }) => day === 3 && hour === 2 && minute === 40,
   qqToplists: ({ day, hour, minute }) => day === 4 && hour >= 9 && hour <= 21 && minute === 30,
+  dailySummary: ({ hour, minute }) => hour === 0 && minute === 46,
   leaderboard: ({ day, hour, minute }) => day === 1 && hour === 12 && minute === 17,
 };
 
@@ -110,6 +112,7 @@ const JOBS = Object.freeze([
   ['kugou-music', 'REGIONAL_MUSIC_SCHEDULED', KUGOU_WEEKDAY_CRON, due.kugou],
   ['kugou-acg', 'REGIONAL_MUSIC_SCHEDULED', KUGOU_ACG_WEEKLY_CRON, due.kugouAcg],
   ['qq-toplists', 'REGIONAL_MUSIC_SCHEDULED', QQ_TOPLIST_POLL_CRON, due.qqToplists],
+  ['daily-summary-publication', 'SCHEDULED_COLLECTION_JOBS', DAILY_SUMMARY_PUBLICATION_CRON, due.dailySummary],
   ['stationhead-leaderboard', 'SCHEDULED_COLLECTION_JOBS', STATIONHEAD_LEADERBOARD_CRON, due.leaderboard],
 ]);
 
