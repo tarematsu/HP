@@ -28,8 +28,21 @@ LR"JS(
   const timelineArticles = () =>
       document.querySelectorAll('article[data-testid="tweet"]');
   const followingTab = () => {
+    // X rebuilds the navigation tabs on route changes. Reuse the connected
+    // Following tab while its caption is unchanged, without querying every tab
+    // or forcing layout through innerText on each scroll/like recheck.
+    const cached = state.followingTab;
+    if (cached?.isConnected !== false) {
+      const caption = (cached?.textContent ?? cached?.innerText ?? '')
+          .replace(/\s+/g, ' ').trim();
+      if (/^(?:Following|フォロー中)$/i.test(caption)) return cached;
+    }
+    state.followingTab = null;
     for (const tab of document.querySelectorAll('[role="tab"]')) {
-      if (/^(?:Following|フォロー中)$/i.test(text(tab))) return tab;
+      if (/^(?:Following|フォロー中)$/i.test(text(tab))) {
+        state.followingTab = tab;
+        return tab;
+      }
     }
     return null;
   };
@@ -63,17 +76,28 @@ LR"JS(
   const promotedLabel = /^(?:Promoted|Sponsored|広告|プロモーション|スポンサー|Boosted|ブースト|PR)$/i;
   const hasPromotedLabel = article => {
     for (const element of article?.querySelectorAll?.('span') || []) {
+      // textContent does not trigger layout. The actual label is still
+      // validated against rendered text before marking a post as promoted.
+      const raw = element.textContent;
+      if (raw != null && !promotedLabel.test(raw.replace(/\s+/g, ' ').trim()))
+        continue;
       if (!element.closest?.('[data-testid="tweetText"]') &&
           promotedLabel.test(text(element))) return true;
     }
     return false;
   };
-  const isPromoted = article => hasPromotedLabel(article) ||
-      Boolean(article.querySelector('[data-testid*="placement" i]'));
+  const isPromoted = article =>
+      Boolean(article.querySelector('[data-testid*="placement" i]')) ||
+      hasPromotedLabel(article);
+  const repostPattern =
+      /(?:reposted|repost|retweeted|retweet|リポスト|リツイート)/i;
   const isRepost = article => {
     const socialContext = article.querySelector('[data-testid="socialContext"]');
-    const value = text(socialContext);
-    return /(?:reposted|repost|retweeted|retweet|リポスト|リツイート)/i.test(value);
+    if (!socialContext) return false;
+    // Avoid reading innerText for pinned/other non-repost social contexts.
+    const raw = socialContext.textContent;
+    if (raw != null && !repostPattern.test(raw)) return false;
+    return repostPattern.test(text(socialContext));
   };
   const isOrganic = article => !isPromoted(article) && !isRepost(article);
   const installTimelineFilterCss = () => {
