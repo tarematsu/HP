@@ -37,11 +37,13 @@ bool RequiresInteractiveStationhead(const StationheadStatus& status) noexcept {
 
 void SyncStationheadBackgroundPreview(
     StationheadPlayer& player, const RECT& workspaceBounds) {
+  // No preview can be retired until playback is confirmed. Avoid copying
+  // StationheadStatus (including its strings) during startup/audio recovery.
+  if (!player.AudioPlaying()) return;
   const StationheadStatus status = player.Status();
-  const bool settledPlayback =
-      player.AudioPlaying() && !status.navigating &&
-      !status.loginRequired && !status.spotifyAuthorization;
-  if (settledPlayback && SetStationheadBackgroundPreview(false)) {
+  if (!status.navigating && !status.loginRequired &&
+      !status.spotifyAuthorization &&
+      SetStationheadBackgroundPreview(false)) {
     player.SetBounds(workspaceBounds);
   }
 }
@@ -149,16 +151,20 @@ void StationheadHandleBase::Tick(int64_t nowMs) {
   SyncStationheadBackgroundPreview(*player_, workspaceBounds_);
   RaiseActiveHost();
 
-  auto& retry = BoundaryRetryStateFor(this);
-  if (!retry.armed && !player_->AudioPlaying()) {
+  // Healthy profiles must not allocate a map node just to discover there is
+  // no pending track-boundary retry. Allocate only when a retry is armed.
+  auto found = boundaryRetries.find(this);
+  if ((found == boundaryRetries.end() || !found->second.armed) &&
+      !player_->AudioPlaying()) {
     const bool active = player_->RetryPendingTrackBoundaryRefresh(nowMs);
     if (active) {
       ArmBoundaryRetryState(this, nowMs);
       if (player_->Status().navigating) ClearBoundaryRetryState(this);
+      // Arm and Clear can insert/erase the entry; refresh the iterator.
+      found = boundaryRetries.find(this);
     }
   }
 
-  auto found = boundaryRetries.find(this);
   if (found == boundaryRetries.end() || !found->second.armed) return;
   const StationheadStatus status = player_->Status();
   if (player_->AudioPlaying() || status.navigating ||
