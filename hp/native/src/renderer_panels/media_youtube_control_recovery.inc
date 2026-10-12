@@ -341,9 +341,18 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   if (video?.error || player.classList.contains('ytp-error')) return 'reload';
 
   const now = Date.now();
-  const url = new URL(location.href);
-  const videoKey = url.searchParams.get('v') || video?.currentSrc || '';
-  const playlistId = url.searchParams.get('list') || '';
+  // A YouTube SPA URL normally stays unchanged for thousands of player
+  // wakeups. Parse it only on navigation, while retaining the same video-key
+  // and playlist precedence when an in-place navigation changes the URL.
+  const href = location.href;
+  if (state.cachedPageHref !== href) {
+    const search = new URL(href).searchParams;
+    state.cachedVideoId = search.get('v') || '';
+    state.cachedPlaylistId = search.get('list') || '';
+    state.cachedPageHref = href;
+  }
+  const videoKey = state.cachedVideoId || video?.currentSrc || '';
+  const playlistId = state.cachedPlaylistId || '';
   if (state.videoKey !== videoKey) {
     Object.assign(state, {
       videoKey, qualityApplied: false, captionsApplied: false,
