@@ -224,20 +224,31 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
         + 'yt-confirm-dialog-renderer,ytd-confirm-dialog-renderer')) {
       if (!root.getClientRects().length || root.matches(surveySelector) ||
           root.querySelector(surveySelector)) continue;
-      const controls = Array.from(root.querySelectorAll(
-          'button,tp-yt-paper-button,[role="button"],[aria-label],[title]'))
-          .filter(element => element.getClientRects().length && valid(element));
       const dialogText = text(root);
-      if (/(視聴を続けていますか|動画がまもなく一時停止されます|動画が一時停止されました[。.!！]?\s*続きを視聴しますか|still watching|continue watching)/i
-          .test(dialogText)) {
-        const keepWatching = controls.find(element =>
-            /^(はい|yes|続ける|視聴を続ける|continue|continue watching)$/i
-                .test(text(element)));
-        if (keepWatching) {
-          return arm(keepWatching, 'dialog-continue-watching', 1000);
-        }
+      const continueDialog =
+          /(視聴を続けていますか|動画がまもなく一時停止されます|動画が一時停止されました[。.!！]?\s*続きを視聴しますか|still watching|continue watching)/i
+              .test(dialogText);
+      let keepWatching = null;
+      let close = null;
+      // Filter by label before getClientRects (which can force layout).
+      // Keep Watching has priority even when a Close button appears first.
+      // Do not allocate/filter a full array of unrelated dialog controls.
+      for (const element of root.querySelectorAll(
+          'button,tp-yt-paper-button,[role="button"],[aria-label],[title]')) {
+        if (!valid(element)) continue;
+        const label = text(element);
+        const keepLabel = continueDialog && !keepWatching &&
+            /^(はい|yes|続ける|視聴を続ける|continue|continue watching)$/i.test(label);
+        const closeLabel = !close && /^(閉じる|close)$/i.test(label);
+        if (!keepLabel && !closeLabel) continue;
+        if (!element.getClientRects().length) continue;
+        if (keepLabel) keepWatching = element;
+        if (closeLabel) close = element;
+        if (close && (!continueDialog || keepWatching)) break;
       }
-      const close = controls.find(element => /^(閉じる|close)$/i.test(text(element)));
+      if (keepWatching) {
+        return arm(keepWatching, 'dialog-continue-watching', 1000);
+      }
       if (close) return arm(close, 'dialog-close', 500);
     }
     return null;
@@ -334,11 +345,14 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     const canonicalAction = arm(canonical, 'fullscreen', 1200);
     if (canonicalAction) return canonicalAction;
     const fullscreenPattern = /(全画面|fullscreen|full screen)/i;
-    const fallback = Array.from(player.querySelectorAll(
-        'button,[role="button"],[aria-label],[title]'))
-        .find(element => element !== canonical && valid(element) &&
-            fullscreenPattern.test(text(element))) || null;
-    return arm(fallback, 'fullscreen', 1200);
+    for (const fallback of player.querySelectorAll(
+        'button,[role="button"],[aria-label],[title]')) {
+      if (fallback !== canonical && valid(fallback) &&
+          fullscreenPattern.test(text(fallback))) {
+        return arm(fallback, 'fullscreen', 1200);
+      }
+    }
+    return null;
   };
   const requestFullscreen = () => {
     if (fullscreen()) {
@@ -371,12 +385,23 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     const submitPattern = /^(送信|回答を送信|submit|send)$/i;
     for (const root of player.querySelectorAll(`${surveySelector},[role="dialog"]`)) {
       if (!valid(root)) continue;
-      const controls = Array.from(root.querySelectorAll(
-          'button,tp-yt-paper-button,[role="button"],[role="radio"]'))
-          .filter(valid);
-      const submit = controls.find(element => submitPattern.test(text(element)));
-      const option = controls.find(element => element !== submit &&
-          !/^(閉じる|キャンセル|cancel|close|skip|スキップ)$/i.test(text(element)));
+      let submit = null;
+      let firstOption = null;
+      let secondOption = null;
+      // Preserve the previous first-match ordering without copying all
+      // controls into an Array, or reading each label twice.
+      for (const element of root.querySelectorAll(
+          'button,tp-yt-paper-button,[role="button"],[role="radio"]')) {
+        if (!valid(element)) continue;
+        const label = text(element);
+        if (!submit && submitPattern.test(label)) submit = element;
+        if (!/^(閉じる|キャンセル|cancel|close|skip|スキップ)$/i.test(label)) {
+          if (!firstOption) firstOption = element;
+          else if (!secondOption) secondOption = element;
+        }
+        if (submit && firstOption && (firstOption !== submit || secondOption)) break;
+      }
+      const option = firstOption === submit ? secondOption : firstOption;
       if (submit && option) {
         if (!state.surveySelected) {
           state.surveySelected = true;
@@ -387,7 +412,10 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       }
     }
 
-    const target = Array.from(player.querySelectorAll(skipSelector)).find(valid) || null;
+    let target = null;
+    for (const element of player.querySelectorAll(skipSelector)) {
+      if (valid(element)) { target = element; break; }
+    }
     if (target) return arm(target, 'skip-ad', 600);
 
     if (!fullscreen()) return requestFullscreen();
