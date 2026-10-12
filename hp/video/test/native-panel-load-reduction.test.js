@@ -168,7 +168,10 @@ test('cached energy BitBlt reuses the existing source DC without per-paint GDI a
   const end = energy.indexOf('void Renderer::DrawEnergySectionUncached(', start);
   assert.ok(start >= 0 && end > start);
   const cached = energy.slice(start, end);
-  const rebuild = cached.slice(cached.indexOf('  if (rebuild) {'), cached.indexOf('  if (energyBitmapCache_.bitmap) {', cached.indexOf('  if (rebuild) {') + 1));
+  const rebuild = cached.slice(
+    cached.indexOf('  if (rebuild) {'),
+    cached.indexOf('  if (energyBitmapCache_.bitmap) {\n    // The cached energy card'),
+  );
   const blit = cached.slice(cached.lastIndexOf('  if (energyBitmapCache_.bitmap) {'));
 
   // Keep an independent compatible DC for uncached drawing because its
