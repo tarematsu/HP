@@ -79,7 +79,7 @@ LR"JS(
       // textContent does not trigger layout. The actual label is still
       // validated against rendered text before marking a post as promoted.
       const raw = element.textContent;
-      if (raw != null && !promotedLabel.test(raw.replace(/\s+/g, ' ').trim()))
+      if (raw && !promotedLabel.test(raw.replace(/\s+/g, ' ').trim()))
         continue;
       if (!element.closest?.('[data-testid="tweetText"]') &&
           promotedLabel.test(text(element))) return true;
@@ -96,7 +96,7 @@ LR"JS(
     if (!socialContext) return false;
     // Avoid reading innerText for pinned/other non-repost social contexts.
     const raw = socialContext.textContent;
-    if (raw != null && !repostPattern.test(raw)) return false;
+    if (raw && !repostPattern.test(raw)) return false;
     return repostPattern.test(text(socialContext));
   };
   const isOrganic = article => !isPromoted(article) && !isRepost(article);
