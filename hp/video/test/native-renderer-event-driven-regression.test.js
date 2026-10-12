@@ -84,7 +84,7 @@ test('normal app tick and paint do not publish aggregate renderer state', () => 
   const activeTick = tick.replace(/#if 0[\s\S]*?#endif/g, '');
   assert.doesNotMatch(activeTick, /PublishRenderState/);
   assert.doesNotMatch(draw, /PublishRenderState/);
-  assert.match(draw, /renderer_->Render\(\)/);
+  assert.match(draw, /renderer_->Render\(dc, paint\.rcPaint\)/);
 });
 
 test('News rotation compatibility state is completely removed', () => {

@@ -320,12 +320,17 @@ void Renderer::PaintNativeMain(HWND hwnd) {
 }
 
 void Renderer::PaintNativeMedia(HWND hwnd) {
-  NativePanelPaintScope scope(*this, hwnd);
-  if (!scope.Valid()) return;
+  // This panel only backs the YouTube/TVer WebView with solid black. Drawing
+  // directly on the WM_PAINT HDC avoids allocating/growing the dashboard's
+  // shared compatible bitmap for the much larger video-host surface and
+  // avoids a redundant full-area BitBlt for a constant-color backdrop.
+  PAINTSTRUCT paint{};
+  HDC dc = BeginPaint(hwnd, &paint);
+  if (!dc) return;
 
-  // This parent is only a WebView host. Never paint the rain-radar bitmap here:
-  // if WebView2 is momentarily unavailable during mute/navigation/controller
-  // transitions, the fallback must stay black instead of exposing the radar.
-  FillRect(scope.dc, &scope.bounds,
+  // Keep the fallback black across navigation/controller recreation; do not
+  // expose the rain radar or other dashboard content behind video.
+  FillRect(dc, &paint.rcPaint,
            static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
+  EndPaint(hwnd, &paint);
 }

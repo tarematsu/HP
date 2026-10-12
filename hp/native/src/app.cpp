@@ -581,9 +581,11 @@ void App::PerformPostRestartClick() {
 
 void App::Draw() {
   PAINTSTRUCT paint{};
-  BeginPaint(window_, &paint);
-  if (renderer_ && rendererStarted_) renderer_->Render();
-  EndPaint(window_, &paint);
+  HDC dc = BeginPaint(window_, &paint);
+  if (dc && renderer_ && rendererStarted_) {
+    renderer_->Render(dc, paint.rcPaint);
+  }
+  if (dc) EndPaint(window_, &paint);
 }
 
 void App::ShowToast(std::wstring message, int64_t durationMs, bool invalidate) {
