@@ -1,58 +1,50 @@
-// Unified YouTube runtime: event wakeups, trusted controls and recovery policy.
+// Unified YouTube runtime: keep script compact to avoid MSVC C2026.
 namespace {
 constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
 (() => {
   if (!/^(www\.)?youtube\.com$/.test(location.hostname) ||
-      !location.pathname.startsWith('/watch')) return null;
-
+    !location.pathname.startsWith('/watch')) return null;
   const state = window.__homePanelYoutubeRuntime ||
-      (window.__homePanelYoutubeRuntime = {});
+    (window.__homePanelYoutubeRuntime = {});
   const postWake = () => {
     try { window.chrome?.webview?.postMessage('homepanel:youtube-wake'); }
     catch (_) {}
   };
-  // Coalesce bursts of video/DOM events without moving an already earlier
-  // wake later. In ad-heavy pages this avoids clearing and reallocating a
-  // timer for every MutationObserver callback.
   const wake = (delay = 80) => {
-    const wait = Math.max(0, Number(delay) || 0);
-    const dueAt = Date.now() + wait;
+    const dueAt = Date.now() + delay;
     if (state.wakeTimer && state.wakeDueAt <= dueAt) return;
-    if (state.wakeTimer) clearTimeout(state.wakeTimer);
+    clearTimeout(state.wakeTimer);
     state.wakeDueAt = dueAt;
     state.wakeTimer = setTimeout(() => {
-      state.wakeTimer = null;
-      state.wakeDueAt = 0;
-      postWake();
-    }, wait);
+    state.wakeTimer = null;
+    state.wakeDueAt = 0;
+    postWake();
+    }, delay);
   };
   const recheck = () => wake(2000);
-
   const player = document.querySelector('#movie_player');
   if (!player) {
     recheck();
     return 'recovery';
   }
-
   const valid = element => Boolean(
-      element?.isConnected && !element.disabled &&
-      element.getAttribute?.('aria-disabled') !== 'true');
+    element?.isConnected && !element.disabled &&
+    element.getAttribute?.('aria-disabled') !== 'true');
   const text = element => (
-      element?.getAttribute?.('aria-label') ||
-      element?.getAttribute?.('title') || element?.textContent || '')
-      .replace(/\s+/g, ' ').trim();
+    element?.getAttribute?.('aria-label') ||
+    element?.getAttribute?.('title') || element?.textContent || '')
+    .replace(/\s+/g, ' ').trim();
   const ad = () => player.classList.contains('ad-showing') ||
-      player.classList.contains('ad-interrupting');
+    player.classList.contains('ad-interrupting');
   const fullscreen = () => Boolean(
-      document.fullscreenElement || player.classList.contains('ytp-fullscreen'));
+    document.fullscreenElement || player.classList.contains('ytp-fullscreen'));
   const surveySelector =
-      '.ytp-ad-survey,.ytp-ad-feedback-dialog,yt-survey-renderer,ytd-survey-renderer';
+    '.ytp-ad-survey,.ytp-ad-feedback-dialog,yt-survey-renderer,ytd-survey-renderer';
   const skipSelector =
-      '.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-skip-ad-button,'
-      + '.videoAdUiSkipButton,[class*="ytp-ad-skip"],[aria-label*="Skip ad" i],'
-      + '[aria-label*="広告をスキップ"],[aria-label*="広告を飛ばす"]';
+    '.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-skip-ad-button,'
+    + '.videoAdUiSkipButton,[class*="ytp-ad-skip"],[aria-label*="Skip ad" i],'
+    + '[aria-label*="広告をスキップ"],[aria-label*="広告を飛ばす"]';
 )JS" LR"JS(
-
   const actionLane = action => {
     if (action === 'fullscreen') return 'fullscreen';
     if (action === 'skip-ad' || action.startsWith('survey-')) return 'ad';
@@ -63,162 +55,156 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     const key = actionLane(action);
     return lanes[key] || (lanes[key] = {});
   };
-
   const arm = (element, action, cooldownMs) => {
     const now = Date.now();
     const lane = actionState(action);
     if (!valid(element) ||
-        (lane.action === action && now - Number(lane.actionAt || 0) < cooldownMs)) {
-      return null;
+      (lane.action === action && now - Number(lane.actionAt || 0) < cooldownMs)) {
+    return null;
     }
     lane.cleanup?.();
-
     const targetCss = element.style.cssText;
     const targetHidden = element.getAttribute('aria-hidden');
     const touched = [];
     const remember = node => {
-      if (!node?.style) return;
-      touched.push({
-        node,
-        pointerValue: node.style.getPropertyValue('pointer-events'),
-        pointerPriority: node.style.getPropertyPriority('pointer-events'),
-        visibilityValue: node.style.getPropertyValue('visibility'),
-        visibilityPriority: node.style.getPropertyPriority('visibility'),
-        overflowValue: node.style.getPropertyValue('overflow'),
-        overflowPriority: node.style.getPropertyPriority('overflow')
-      });
-      node.style.setProperty('pointer-events', 'auto', 'important');
-      node.style.setProperty('overflow', 'visible', 'important');
-      if (getComputedStyle(node).visibility === 'hidden') {
-        node.style.setProperty('visibility', 'visible', 'important');
-      }
+    if (!node?.style) return;
+    touched.push({
+      node,
+      pointerValue: node.style.getPropertyValue('pointer-events'),
+      pointerPriority: node.style.getPropertyPriority('pointer-events'),
+      visibilityValue: node.style.getPropertyValue('visibility'),
+      visibilityPriority: node.style.getPropertyPriority('visibility'),
+      overflowValue: node.style.getPropertyValue('overflow'),
+      overflowPriority: node.style.getPropertyPriority('overflow')
+    });
+    node.style.setProperty('pointer-events', 'auto', 'important');
+    node.style.setProperty('overflow', 'visible', 'important');
+    if (getComputedStyle(node).visibility === 'hidden') {
+      node.style.setProperty('visibility', 'visible', 'important');
+    }
     };
     for (let node = element; node && node !== player.parentElement;
-         node = node.parentElement) {
-      remember(node);
-      if (node === player) break;
+       node = node.parentElement) {
+    remember(node);
+    if (node === player) break;
     }
-
     const center = () => {
-      const rect = element.getBoundingClientRect?.();
-      const x = Number(rect?.left) + Number(rect?.width) / 2;
-      const y = Number(rect?.top) + Number(rect?.height) / 2;
-      if (!rect || rect.width <= 0 || rect.height <= 0 ||
-          !Number.isFinite(x) || !Number.isFinite(y) ||
-          x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight) {
-        return null;
-      }
-      return { rect, x, y };
-    };
-    const hitOwnControl = point => {
-      if (!point) return false;
-      const hit = document.elementFromPoint(point.x, point.y);
-      return Boolean(hit && (hit === element || element.contains(hit)));
-    };
-
-    let point = center();
-    if (!hitOwnControl(point)) {
-      element.style.cssText +=
-          ';position:fixed!important;left:calc(50vw - 48px)!important;'
-          + 'top:calc(50vh - 48px)!important;width:96px!important;height:96px!important;'
-          + 'margin:0!important;padding:0!important;transform:none!important;'
-          + 'opacity:0.001!important;visibility:visible!important;display:block!important;'
-          + 'pointer-events:auto!important;z-index:2147483647!important';
-      element.removeAttribute('aria-hidden');
-      point = center();
-    }
-    if (!point) {
-      for (const entry of touched.reverse()) {
-        if (entry.pointerValue) {
-          entry.node.style.setProperty(
-              'pointer-events', entry.pointerValue, entry.pointerPriority);
-        } else {
-          entry.node.style.removeProperty('pointer-events');
-        }
-        if (entry.visibilityValue) {
-          entry.node.style.setProperty(
-              'visibility', entry.visibilityValue, entry.visibilityPriority);
-        } else {
-          entry.node.style.removeProperty('visibility');
-        }
-        if (entry.overflowValue) {
-          entry.node.style.setProperty(
-              'overflow', entry.overflowValue, entry.overflowPriority);
-        } else {
-          entry.node.style.removeProperty('overflow');
-        }
-      }
-      element.style.cssText = targetCss;
-      if (targetHidden === null) element.removeAttribute('aria-hidden');
-      else element.setAttribute('aria-hidden', targetHidden);
+    const rect = element.getBoundingClientRect?.();
+    const x = Number(rect?.left) + Number(rect?.width) / 2;
+    const y = Number(rect?.top) + Number(rect?.height) / 2;
+    if (!rect || rect.width <= 0 || rect.height <= 0 ||
+        !Number.isFinite(x) || !Number.isFinite(y) ||
+        x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight) {
       return null;
     }
-
+    return { rect, x, y };
+    };
+    const hitOwnControl = point => {
+    if (!point) return false;
+    const hit = document.elementFromPoint(point.x, point.y);
+    return Boolean(hit && (hit === element || element.contains(hit)));
+    };
+    let point = center();
+    if (!hitOwnControl(point)) {
+    element.style.cssText +=
+        ';position:fixed!important;left:calc(50vw - 48px)!important;'
+        + 'top:calc(50vh - 48px)!important;width:96px!important;height:96px!important;'
+        + 'margin:0!important;padding:0!important;transform:none!important;'
+        + 'opacity:0.001!important;visibility:visible!important;display:block!important;'
+        + 'pointer-events:auto!important;z-index:2147483647!important';
+    element.removeAttribute('aria-hidden');
+    point = center();
+    }
+    if (!point) {
+    for (const entry of touched.reverse()) {
+      if (entry.pointerValue) {
+        entry.node.style.setProperty(
+            'pointer-events', entry.pointerValue, entry.pointerPriority);
+      } else {
+        entry.node.style.removeProperty('pointer-events');
+      }
+      if (entry.visibilityValue) {
+        entry.node.style.setProperty(
+            'visibility', entry.visibilityValue, entry.visibilityPriority);
+      } else {
+        entry.node.style.removeProperty('visibility');
+      }
+      if (entry.overflowValue) {
+        entry.node.style.setProperty(
+            'overflow', entry.overflowValue, entry.overflowPriority);
+      } else {
+        entry.node.style.removeProperty('overflow');
+      }
+    }
+    element.style.cssText = targetCss;
+    if (targetHidden === null) element.removeAttribute('aria-hidden');
+    else element.setAttribute('aria-hidden', targetHidden);
+    return null;
+    }
     lane.action = action;
     lane.actionAt = now;
     let timer = 0;
     const guardedEventTypes = ['pointerdown', 'mousedown', 'mouseup', 'click'];
     const guardClick = event => {
-      const eventX = Number(event.clientX);
-      const eventY = Number(event.clientY);
-      if (!Number.isFinite(eventX) || !Number.isFinite(eventY) ||
-          Math.abs(eventX - point.x) > 1 || Math.abs(eventY - point.y) > 1) {
-        return;
-      }
-      if (valid(element) && hitOwnControl(point)) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      setTimeout(cleanup, 0);
+    const eventX = Number(event.clientX);
+    const eventY = Number(event.clientY);
+    if (!Number.isFinite(eventX) || !Number.isFinite(eventY) ||
+        Math.abs(eventX - point.x) > 1 || Math.abs(eventY - point.y) > 1) {
+      return;
+    }
+    if (valid(element) && hitOwnControl(point)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    setTimeout(cleanup, 0);
     };
     const cleanup = () => {
-      clearTimeout(timer);
-      element.removeEventListener('click', onClick, true);
-      for (const type of guardedEventTypes) {
-        document.removeEventListener(type, guardClick, true);
+    clearTimeout(timer);
+    element.removeEventListener('click', onClick, true);
+    for (const type of guardedEventTypes) {
+      document.removeEventListener(type, guardClick, true);
+    }
+    for (const entry of touched.reverse()) {
+      if (!entry.node.isConnected) continue;
+      if (entry.pointerValue) {
+        entry.node.style.setProperty(
+            'pointer-events', entry.pointerValue, entry.pointerPriority);
+      } else {
+        entry.node.style.removeProperty('pointer-events');
       }
-      for (const entry of touched.reverse()) {
-        if (!entry.node.isConnected) continue;
-        if (entry.pointerValue) {
-          entry.node.style.setProperty(
-              'pointer-events', entry.pointerValue, entry.pointerPriority);
-        } else {
-          entry.node.style.removeProperty('pointer-events');
-        }
-        if (entry.visibilityValue) {
-          entry.node.style.setProperty(
-              'visibility', entry.visibilityValue, entry.visibilityPriority);
-        } else {
-          entry.node.style.removeProperty('visibility');
-        }
-        if (entry.overflowValue) {
-          entry.node.style.setProperty(
-              'overflow', entry.overflowValue, entry.overflowPriority);
-        } else {
-          entry.node.style.removeProperty('overflow');
-        }
+      if (entry.visibilityValue) {
+        entry.node.style.setProperty(
+            'visibility', entry.visibilityValue, entry.visibilityPriority);
+      } else {
+        entry.node.style.removeProperty('visibility');
       }
-      if (element.isConnected) {
-        element.style.cssText = targetCss;
-        if (targetHidden === null) element.removeAttribute('aria-hidden');
-        else element.setAttribute('aria-hidden', targetHidden);
+      if (entry.overflowValue) {
+        entry.node.style.setProperty(
+            'overflow', entry.overflowValue, entry.overflowPriority);
+      } else {
+        entry.node.style.removeProperty('overflow');
       }
-      if (lane.cleanup === cleanup) lane.cleanup = null;
+    }
+    if (element.isConnected) {
+      element.style.cssText = targetCss;
+      if (targetHidden === null) element.removeAttribute('aria-hidden');
+      else element.setAttribute('aria-hidden', targetHidden);
+    }
+    if (lane.cleanup === cleanup) lane.cleanup = null;
     };
     function onClick(event) {
-      const video = player.querySelector('video');
-      const accepted = valid(element) && hitOwnControl(point) &&
-          (action !== 'skip-ad' || ad()) &&
-          (action !== 'play' || (!ad() && video?.paused && !video.ended)) &&
-          (action !== 'fullscreen' || !fullscreen());
-      if (!accepted) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-      }
-      setTimeout(cleanup, 0);
+    const video = player.querySelector('video');
+    const accepted = valid(element) && hitOwnControl(point) &&
+        (action !== 'skip-ad' || ad()) &&
+        (action !== 'play' || (!ad() && video?.paused && !video.ended)) &&
+        (action !== 'fullscreen' || !fullscreen());
+    if (!accepted) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
     }
-
+    setTimeout(cleanup, 0);
+    }
     for (const type of guardedEventTypes) {
-      document.addEventListener(type, guardClick, true);
+    document.addEventListener(type, guardClick, true);
     }
     element.addEventListener('click', onClick, true);
     lane.cleanup = cleanup;
@@ -226,45 +212,40 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     return [point.x, point.y];
   };
 )JS" LR"JS(
-
   const dismissMessageDialog = () => {
     const popup = document.querySelector('ytd-popup-container');
     if (!popup) return null;
     for (const root of popup.querySelectorAll(
-        'tp-yt-paper-dialog[opened],[role="dialog"]:not([aria-hidden="true"]),'
-        + 'yt-confirm-dialog-renderer,ytd-confirm-dialog-renderer')) {
-      if (!root.getClientRects().length || root.matches(surveySelector) ||
-          root.querySelector(surveySelector)) continue;
-      const dialogText = text(root);
-      const continueDialog =
-          /(視聴を続けていますか|動画がまもなく一時停止されます|動画が一時停止されました[。.!！]?\s*続きを視聴しますか|still watching|continue watching)/i
-              .test(dialogText);
-      let keepWatching = null;
-      let close = null;
-      // Filter by label before getClientRects (which can force layout).
-      // Keep Watching has priority even when a Close button appears first.
-      // Do not allocate/filter a full array of unrelated dialog controls.
-      for (const element of root.querySelectorAll(
-          'button,tp-yt-paper-button,[role="button"],[aria-label],[title]')) {
-        if (!valid(element)) continue;
-        const label = text(element);
-        const keepLabel = continueDialog && !keepWatching &&
-            /^(はい|yes|続ける|視聴を続ける|continue|continue watching)$/i.test(label);
-        const closeLabel = !close && /^(閉じる|close)$/i.test(label);
-        if (!keepLabel && !closeLabel) continue;
-        if (!element.getClientRects().length) continue;
-        if (keepLabel) keepWatching = element;
-        if (closeLabel) close = element;
-        if (close && (!continueDialog || keepWatching)) break;
-      }
-      if (keepWatching) {
-        return arm(keepWatching, 'dialog-continue-watching', 1000);
-      }
-      if (close) return arm(close, 'dialog-close', 500);
+      'tp-yt-paper-dialog[opened],[role="dialog"]:not([aria-hidden="true"]),'
+      + 'yt-confirm-dialog-renderer,ytd-confirm-dialog-renderer')) {
+    if (!root.getClientRects().length || root.matches(surveySelector) ||
+        root.querySelector(surveySelector)) continue;
+    const dialogText = text(root);
+    const continueDialog =
+        /(視聴を続けていますか|動画がまもなく一時停止されます|動画が一時停止されました[。.!！]?\s*続きを視聴しますか|still watching|continue watching)/i
+            .test(dialogText);
+    let keepWatching = null;
+    let close = null;
+    for (const element of root.querySelectorAll(
+        'button,tp-yt-paper-button,[role="button"],[aria-label],[title]')) {
+      if (!valid(element)) continue;
+      const label = text(element);
+      const keepLabel = continueDialog && !keepWatching &&
+          /^(はい|yes|続ける|視聴を続ける|continue|continue watching)$/i.test(label);
+      const closeLabel = !close && /^(閉じる|close)$/i.test(label);
+      if (!keepLabel && !closeLabel) continue;
+      if (!element.getClientRects().length) continue;
+      if (keepLabel) keepWatching = element;
+      if (closeLabel) close = element;
+      if (close && (!continueDialog || keepWatching)) break;
+    }
+    if (keepWatching) {
+      return arm(keepWatching, 'dialog-continue-watching', 1000);
+    }
+    if (close) return arm(close, 'dialog-close', 500);
     }
     return null;
   };
-
   const bindVideo = () => {
     const video = player.querySelector('video');
     if (!video || state.video === video) return video;
@@ -272,33 +253,31 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     state.videoAbort = new AbortController();
     state.video = video;
     const handler = event => wake(
-        event.type === 'waiting' || event.type === 'stalled' ? 0 : 80);
+      event.type === 'waiting' || event.type === 'stalled' ? 0 : 80);
     for (const name of ['playing', 'pause', 'waiting', 'stalled', 'ended', 'error']) {
-      video.addEventListener(name, handler, {
-        passive: true, signal: state.videoAbort.signal
-      });
+    video.addEventListener(name, handler, {
+      passive: true, signal: state.videoAbort.signal
+    });
     }
     wake(0);
     return video;
   };
-
   const syncAdObserver = active => {
     if (!active) {
-      state.adObserver?.disconnect();
-      state.adObserver = null;
-      return;
+    state.adObserver?.disconnect();
+    state.adObserver = null;
+    return;
     }
     if (state.adObserver || typeof MutationObserver !== 'function') return;
     state.adObserver = new MutationObserver(() => wake(0));
     state.adObserver.observe(player, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['disabled', 'aria-disabled', 'aria-hidden', 'class']
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['disabled', 'aria-disabled', 'aria-hidden', 'class']
     });
   };
 )JS" LR"JS(
-
   if (state.player !== player) {
     state.pageAbort?.abort();
     state.videoAbort?.abort();
@@ -314,36 +293,29 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     state.pageAbort = new AbortController();
     state.classObserver = new MutationObserver(() => wake());
     state.classObserver.observe(player, {
-      attributes: true, attributeFilter: ['class']
+    attributes: true, attributeFilter: ['class']
     });
     const pageState = () => {
-      bindVideo();
-      wake(0);
+    bindVideo();
+    wake(0);
     };
     for (const name of ['yt-navigate-finish', 'yt-page-data-updated',
-                        'fullscreenchange']) {
-      document.addEventListener(name, pageState, {
-        capture: true, signal: state.pageAbort.signal
-      });
+                      'fullscreenchange']) {
+    document.addEventListener(name, pageState, {
+      capture: true, signal: state.pageAbort.signal
+    });
     }
     const popup = document.querySelector('ytd-popup-container');
     if (popup) {
-      state.popupObserver = new MutationObserver(() => wake(0));
-      state.popupObserver.observe(popup, { childList: true, subtree: true });
+    state.popupObserver = new MutationObserver(() => wake(0));
+    state.popupObserver.observe(popup, { childList: true, subtree: true });
     }
   }
-  // The same video node was previously looked up again after bindVideo().
-  // Reuse the fresh selection for playback/error and progress checks.
   const video = bindVideo();
   const dialogAction = dismissMessageDialog();
   if (dialogAction) return dialogAction;
-
   if (video?.error || player.classList.contains('ytp-error')) return 'reload';
-
   const now = Date.now();
-  // A YouTube SPA URL normally stays unchanged for thousands of player
-  // wakeups. Parse it only on navigation, while retaining the same video-key
-  // and playlist precedence when an in-place navigation changes the URL.
   const href = location.href;
   if (state.cachedPageHref !== href) {
     const search = new URL(href).searchParams;
@@ -355,45 +327,43 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   const playlistId = state.cachedPlaylistId || '';
   if (state.videoKey !== videoKey) {
     Object.assign(state, {
-      videoKey, qualityApplied: false, captionsApplied: false,
-      fullscreenApplied: false, fullscreenKeyRequestedAt: 0,
-      pausedSince: 0, directPlayRequestedAt: 0,
-      lastCurrentTime: -1, lastProgressAt: now, nextRequestedAt: 0
+    videoKey, qualityApplied: false, captionsApplied: false,
+    fullscreenApplied: false, fullscreenKeyRequestedAt: 0,
+    pausedSince: 0, directPlayRequestedAt: 0,
+    lastCurrentTime: -1, lastProgressAt: now, nextRequestedAt: 0
     });
   }
-
   const armFullscreen = () => {
     const canonical = player.querySelector('.ytp-fullscreen-button');
     const canonicalAction = arm(canonical, 'fullscreen', 1200);
     if (canonicalAction) return canonicalAction;
     const fullscreenPattern = /(全画面|fullscreen|full screen)/i;
     for (const fallback of player.querySelectorAll(
-        'button,[role="button"],[aria-label],[title]')) {
-      if (fallback !== canonical && valid(fallback) &&
-          fullscreenPattern.test(text(fallback))) {
-        return arm(fallback, 'fullscreen', 1200);
-      }
+      'button,[role="button"],[aria-label],[title]')) {
+    if (fallback !== canonical && valid(fallback) &&
+        fullscreenPattern.test(text(fallback))) {
+      return arm(fallback, 'fullscreen', 1200);
+    }
     }
     return null;
   };
   const requestFullscreen = () => {
     if (fullscreen()) {
-      state.fullscreenKeyRequestedAt = 0;
-      return null;
+    state.fullscreenKeyRequestedAt = 0;
+    return null;
     }
     if (!Number(state.fullscreenKeyRequestedAt || 0)) {
-      state.fullscreenKeyRequestedAt = now;
-      wake(1200);
-      try { window.chrome?.webview?.postMessage('homepanel:youtube-fullscreen-key'); }
-      catch (_) {}
-      return 'recovery';
+    state.fullscreenKeyRequestedAt = now;
+    wake(1200);
+    try { window.chrome?.webview?.postMessage('homepanel:youtube-fullscreen-key'); }
+    catch (_) {}
+    return 'recovery';
     }
     const fallback = armFullscreen();
     if (fallback) return fallback;
     recheck();
     return 'recovery';
   };
-
   const adActive = ad();
   syncAdObserver(adActive);
   state.fullscreenApplied = fullscreen();
@@ -401,99 +371,91 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   if (!adActive && !state.fullscreenApplied && !video?.paused) {
     return requestFullscreen();
   }
-
   if (adActive) {
     state.adActive = true;
     const submitPattern = /^(送信|回答を送信|submit|send)$/i;
     for (const root of player.querySelectorAll(`${surveySelector},[role="dialog"]`)) {
-      if (!valid(root)) continue;
-      let submit = null;
-      let firstOption = null;
-      let secondOption = null;
-      // Preserve the previous first-match ordering without copying all
-      // controls into an Array, or reading each label twice.
-      for (const element of root.querySelectorAll(
-          'button,tp-yt-paper-button,[role="button"],[role="radio"]')) {
-        if (!valid(element)) continue;
-        const label = text(element);
-        if (!submit && submitPattern.test(label)) submit = element;
-        if (!/^(閉じる|キャンセル|cancel|close|skip|スキップ)$/i.test(label)) {
-          if (!firstOption) firstOption = element;
-          else if (!secondOption) secondOption = element;
-        }
-        if (submit && firstOption && (firstOption !== submit || secondOption)) break;
+    if (!valid(root)) continue;
+    let submit = null;
+    let firstOption = null;
+    let secondOption = null;
+    for (const element of root.querySelectorAll(
+        'button,tp-yt-paper-button,[role="button"],[role="radio"]')) {
+      if (!valid(element)) continue;
+      const label = text(element);
+      if (!submit && submitPattern.test(label)) submit = element;
+      if (!/^(閉じる|キャンセル|cancel|close|skip|スキップ)$/i.test(label)) {
+        if (!firstOption) firstOption = element;
+        else if (!secondOption) secondOption = element;
       }
-      const option = firstOption === submit ? secondOption : firstOption;
-      if (submit && option) {
-        if (!state.surveySelected) {
-          state.surveySelected = true;
-          return arm(option, 'survey-option', 500);
-        }
-        state.surveySelected = false;
-        return arm(submit, 'survey-submit', 500);
-      }
+      if (submit && firstOption && (firstOption !== submit || secondOption)) break;
     }
-
+    const option = firstOption === submit ? secondOption : firstOption;
+    if (submit && option) {
+      if (!state.surveySelected) {
+        state.surveySelected = true;
+        return arm(option, 'survey-option', 500);
+      }
+      state.surveySelected = false;
+      return arm(submit, 'survey-submit', 500);
+    }
+    }
     let target = null;
     for (const element of player.querySelectorAll(skipSelector)) {
-      if (valid(element)) { target = element; break; }
+    if (valid(element)) { target = element; break; }
     }
     if (target) return arm(target, 'skip-ad', 600);
-
     if (!fullscreen()) return requestFullscreen();
     recheck();
     return 'recovery';
   }
   state.adActive = false;
   state.surveySelected = false;
-
   const currentTime = Number(video?.currentTime);
   if (Number.isFinite(currentTime)) {
     if (state.lastCurrentTime < 0 || currentTime > state.lastCurrentTime + 0.25 ||
-        currentTime + 2 < state.lastCurrentTime) {
-      state.lastProgressAt = now;
-      state.nextRequestedAt = 0;
+      currentTime + 2 < state.lastCurrentTime) {
+    state.lastProgressAt = now;
+    state.nextRequestedAt = 0;
     }
     state.lastCurrentTime = currentTime;
   }
-
   const advance = () => {
     if (now - state.nextRequestedAt < 8000) {
-      recheck();
-      return 'recovery';
+    recheck();
+    return 'recovery';
     }
     state.nextRequestedAt = now;
     const candidate = new URL(
-        player.querySelector('.ytp-next-button[href]')?.href || location.href);
+      player.querySelector('.ytp-next-button[href]')?.href || location.href);
     if (candidate.pathname === '/watch' && candidate.searchParams.get('v') &&
-        candidate.searchParams.get('list') === playlistId &&
-        candidate.href !== location.href) {
-      location.assign(candidate.href);
-      return 'recovery';
+      candidate.searchParams.get('list') === playlistId &&
+      candidate.href !== location.href) {
+    location.assign(candidate.href);
+    return 'recovery';
     }
     try {
-      if (typeof player.nextVideo === 'function') {
-        player.nextVideo();
-        recheck();
-        return 'recovery';
-      }
+    if (typeof player.nextVideo === 'function') {
+      player.nextVideo();
+      recheck();
+      return 'recovery';
+    }
     } catch (_) {}
     return arm(player.querySelector('.ytp-next-button'), 'next', 3000) || 'reload';
   };
-
   if (video?.ended) return advance();
   if (video?.paused && !video.ended) {
     if (!state.pausedSince) state.pausedSince = now;
     if (!state.directPlayRequestedAt) {
-      state.directPlayRequestedAt = now;
-      try { video.play()?.catch?.(() => {}); } catch (_) {}
-      wake(1200);
-      return 'recovery';
+    state.directPlayRequestedAt = now;
+    try { video.play()?.catch?.(() => {}); } catch (_) {}
+    wake(1200);
+    return 'recovery';
     }
     const directPlayAge = now - state.directPlayRequestedAt;
     if (directPlayAge < 1200) {
-      wake(Math.max(80, 1200 - directPlayAge));
-      return 'recovery';
+    wake(Math.max(80, 1200 - directPlayAge));
+    return 'recovery';
     }
     const action = arm(player.querySelector('.ytp-play-button'), 'play', 1500);
     if (action) return action;
@@ -501,40 +463,36 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     recheck();
     return 'recovery';
   }
-
   if (video) {
     state.pausedSince = 0;
     state.directPlayRequestedAt = 0;
     if (now - state.lastProgressAt >= 30 * 1000) return advance();
   }
-
   if (!state.qualityApplied) {
     const preferredQuality = 'medium';
     let applied = false;
     try {
-      if (typeof player.setPlaybackQualityRange === 'function') {
-        player.setPlaybackQualityRange(preferredQuality, preferredQuality);
-        applied = true;
-      }
-      if (typeof player.setPlaybackQuality === 'function') {
-        player.setPlaybackQuality(preferredQuality);
-        applied = true;
-      }
+    if (typeof player.setPlaybackQualityRange === 'function') {
+      player.setPlaybackQualityRange(preferredQuality, preferredQuality);
+      applied = true;
+    }
+    if (typeof player.setPlaybackQuality === 'function') {
+      player.setPlaybackQuality(preferredQuality);
+      applied = true;
+    }
     } catch (_) {}
     state.qualityApplied = applied;
   }
-
   if (!state.captionsApplied) {
     const captions = player.querySelector('.ytp-subtitles-button');
     if (captions?.getAttribute('aria-pressed') === 'true') {
-      return arm(captions, 'captions-off', 800) || 'recovery';
+    return arm(captions, 'captions-off', 800) || 'recovery';
     }
     try {
-      if (typeof player.setOption === 'function') player.setOption('captions', 'track', {});
-      state.captionsApplied = true;
+    if (typeof player.setOption === 'function') player.setOption('captions', 'track', {});
+    state.captionsApplied = true;
     } catch (_) {}
   }
-
   state.fullscreenApplied = fullscreen();
   if (state.fullscreenApplied) {
     state.fullscreenKeyRequestedAt = 0;
