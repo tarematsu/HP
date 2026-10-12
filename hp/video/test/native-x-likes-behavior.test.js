@@ -469,7 +469,7 @@ test('unknown tweet authors are skipped rather than guessed from mentions or quo
   assert.match(source, /const articleIdentity = article =>/);
   assert.match(source, /article\?\.querySelector\('time'\)\?\.closest\('a'\)/);
   assert.match(source, /author: '@' \+ match\[1\]\.toLowerCase\(\)/);
-  assert.match(source, /if \(!identity \|\| attempted\.has\(identity\.id\) \|\|/);
+  assert.match(source, /if \(!eligible \|\| attempted\.has\(eligible\.id\) \|\|/);
   assert.match(source, /recentlyLikedAuthor\(identity\.author\)/);
   assert.match(source, /freshIdentity\.author !== candidate\.author/);
   assert.match(source, /recentlyLikedAuthor\(freshIdentity\.author\)/);
