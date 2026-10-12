@@ -7,7 +7,7 @@ const source = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url),
   'utf8',
 );
-const runtime = [...source.matchAll(/LR"JS\\(([\\s\\S]*?)\\)JS"/g)]
+const runtime = [...source.matchAll(/LR"JS\(([\s\S]*?)\)JS"/g)]
   .map(([, part]) => part).join('');
 
 const section = (start, end) => {
@@ -27,7 +27,7 @@ function wakeScenario() {
   let cancelled = 0;
   const state = {};
   const { wake } = vm.runInNewContext(
-    '(() => { ' + code + '\\nreturn { wake }; })()',
+    '(() => { ' + code + '\nreturn { wake }; })()',
     {
       state,
       window: { chrome: { webview: { postMessage: value => messages.push(value) } } },
@@ -95,7 +95,7 @@ test('YouTube media selection is reused without a second video DOM query', () =>
   };
   const state = {};
   const chosen = vm.runInNewContext(
-    '(() => { ' + code + '\\nreturn bindVideo(); })()',
+    '(() => { ' + code + '\nreturn bindVideo(); })()',
     {
       state,
       player: { querySelector: () => { queries++; return media; } },
@@ -107,9 +107,9 @@ test('YouTube media selection is reused without a second video DOM query', () =>
   assert.equal(queries, 1);
   assert.equal(attached, 6);
   assert.equal(wakes, 1);
-  assert.match(runtime, /const video = bindVideo\\(\\);/);
+  assert.match(runtime, /const video = bindVideo\(\);/);
   assert.doesNotMatch(
     section('  const dialogAction = dismissMessageDialog();', '  const now = Date.now();'),
-    /player\\.querySelector\\('video'\\)/,
+    /player\.querySelector\('video'\)/,
   );
 });
