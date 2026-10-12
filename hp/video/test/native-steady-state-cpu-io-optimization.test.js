@@ -115,8 +115,8 @@ test('Stationhead preview avoids deep status snapshots before audio is present',
   const end = stationheadHandles.indexOf('static_assert(', begin);
   assert.ok(begin >= 0 && end > begin);
   const body = stationheadHandles.slice(begin, end);
-  assert.match(body, /if \(!player\.AudioPlaying\(\)\) return;/);
-  assert.ok(body.indexOf('if (!player.AudioPlaying()) return;') <
+  assert.match(body, /if \(!StationheadBackgroundPreview\(\) \|\| !player\.AudioPlaying\(\)\) return;/);
+  assert.ok(body.indexOf('if (!StationheadBackgroundPreview() || !player.AudioPlaying()) return;') <
     body.indexOf('const StationheadStatus status = player.Status();'));
   assert.match(body, /!status\.navigating && !status\.loginRequired/);
   assert.match(body, /!status\.spotifyAuthorization/);
