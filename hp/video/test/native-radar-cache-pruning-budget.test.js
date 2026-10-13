@@ -26,7 +26,11 @@ test('native radar cache prunes periodically, without scanning the filesystem on
 test('radar tile resolution remains immediate and no cleanup runs without retained files', () => {
   const tile = radar.indexOf('const auto localizeTile =');
   const pruning = radar.indexOf('constexpr uint64_t kRadarCachePruneIntervalMs');
-  assert.ok(tile >= 0 && pruning > tile);
+  assert.ok(tile >= 0 && pruning >= 0);
+  // The pruning budget is calculated once before bundle/tile localization,
+  // while the actual recursive filesystem traversal follows localization.
+  const directoryTraversal = radar.indexOf('fs::recursive_directory_iterator iterator(', tile);
+  assert.ok(directoryTraversal > tile);
   assert.match(radar.slice(tile, pruning), /if \(!fs::exists\(target, error\) \|\| fs::file_size\(target, error\) == 0\)/);
   assert.match(radar.slice(tile, pruning), /AtomicWriteBytes\(target, response\.body\)/);
   assert.match(radar.slice(tile, pruning), /item\.SetNamedValue\(L"url"/);
