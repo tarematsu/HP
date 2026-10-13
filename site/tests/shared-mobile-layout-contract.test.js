@@ -24,11 +24,11 @@ test('Stationhead leaderboard and followers share mobile table DOM, markup and s
 test('all regional music shells use one chart/history layout factory', () => {
   const shared = source('music-service-shell.js');
   for (const primitive of ['musicServiceSakamichiFilter', 'musicServiceRankingHistoryTable', 'musicServiceRankChart']) {
-    assert.match(shared, new RegExp(`export function ${primitive}\\\\(`));
+    assert.match(shared, new RegExp(`export function ${primitive}[(]`));
   }
   assert.match(shared, /export function musicServiceRegionalChartPair/);
   for (const page of ['qq-music-shell.js', 'kugou-music-shell.js', 'kkbox-shell.js']) {
-    assert.match(source(page), /musicServiceRegionalChartPair\\(/, `${page} should use the shared chart/history layout`);
+    assert.match(source(page), /musicServiceRegionalChartPair[(]/, `${page} should use the shared chart/history layout`);
     assert.doesNotMatch(source(page), /class="music-service-rank-chart"/);
     assert.doesNotMatch(source(page), /value: 'sakurazaka46', label: '櫻坂'/);
   }
