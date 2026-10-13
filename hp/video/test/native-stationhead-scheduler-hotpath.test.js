@@ -119,3 +119,14 @@ test('unchanged WM_SIZE avoids rebuilding dashboard and six WebView layouts', ()
   // A genuine resize and the initial/deferred layout still reach the normal path.
   assert.match(app, /void App::LayoutWorkspace\(\) \{/);
 });
+
+
+test('audio-loss recovery reuses the same validated playback flag as monitor selection', () => {
+  const recovery = section(audioLoss,
+    'void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {',
+    '}  // namespace hp');
+  assert.match(recovery, /const SchedulerState snapshot = ReadSchedulerState\(\)/);
+  assert.match(recovery, /const bool audioPlaying = snapshot\.audioPlaying;/);
+  assert.doesNotMatch(recovery, /const bool audioPlaying = AudioPlaying\(\)/);
+  assert.match(playerHeader, /playingSince > 0 &&\s*audioPlaying_\.load/);
+});
