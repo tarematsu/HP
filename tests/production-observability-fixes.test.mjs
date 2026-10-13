@@ -26,7 +26,10 @@ test('deployed runtime is queue-only with materialized-response serving and live
   assert.equal(config.main, 'src/runtime-orchestrator-deployed-entry.js');
   assert.equal(config.triggers, undefined);
   assert.deepEqual(config.durable_objects, {
-    bindings: [{ name: 'MINUTE_LIVE_JOB_COORDINATOR', class_name: 'MinuteLiveJobCoordinator' }],
+    bindings: [
+      { name: 'MINUTE_LIVE_JOB_COORDINATOR', class_name: 'MinuteLiveJobCoordinator' },
+      { name: 'PAGES_HISTORY_API_COORDINATOR', class_name: 'PagesHistoryApiCoordinator' },
+    ],
   });
   assert.doesNotMatch(entry, /scheduled\s*:|runRuntimeOrchestratorScheduled/);
   assert.match(entry, /MinuteLiveJobCoordinator/);
