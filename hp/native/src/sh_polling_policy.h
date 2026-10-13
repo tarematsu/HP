@@ -210,13 +210,19 @@ inline std::wstring StationheadAudioOnlyUiScript() {
   const nonPlaybackPattern = /\b(chat|comments?|listeners?|audience|gifts?|tipping|trending|threads?|reactions?|emoji)\b|チャット|コメント|リスナー|視聴者|ギフト|投げ銭|トレンド|スレッド|リアクション|絵文字/i;
   const protectedPattern = /\b(start listening|listen now|join station|join room|resume|continue|play|pause|volume|mute|spotify|log in|sign in|login|connect)\b|視聴を開始|再生|一時停止|音量|ミュート|ログイン|接続|続ける/i;
   const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
-  const labelOf = element => normalize([
-    element?.getAttribute?.('aria-label'),
-    element?.getAttribute?.('data-testid'),
-    element?.getAttribute?.('title'),
-    element?.innerText,
-    element?.textContent,
-  ].filter(Boolean).join(' '));
+  const labelOf = element => {
+    // Most DOM updates expose their labels through attributes or textContent.
+    // Reading innerText for every chat/listener node can synchronously flush
+    // Chromium layout across six background WebViews. Use it only if no cheap
+    // label exists (e.g. a custom widget without textContent).
+    const cheap = normalize([
+      element?.getAttribute?.('aria-label'),
+      element?.getAttribute?.('data-testid'),
+      element?.getAttribute?.('title'),
+      element?.textContent,
+    ].filter(Boolean).join(' '));
+    return cheap || normalize(element?.innerText);
+  };
   const protectedNode = element => {
     if (!(element instanceof Element)) return true;
     if (element.matches('audio,video') || element.querySelector?.('audio,video')) return true;
@@ -234,7 +240,12 @@ inline std::wstring StationheadAudioOnlyUiScript() {
     }
     const tag = String(target.tagName || '').toLowerCase();
     if (target === document.body || target === document.documentElement || tag === 'main') return;
-    target.setAttribute(hiddenAttribute, 'true');
+    // Repeated subtree mutations often rediscover already-hidden controls.
+    // An unchanged attribute still causes style invalidation; avoid that
+    // write after the initial suppression.
+    if (target.getAttribute(hiddenAttribute) !== 'true') {
+      target.setAttribute(hiddenAttribute, 'true');
+    }
   };
   const matching = (root, selector) => {
     const output = [];
