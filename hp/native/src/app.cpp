@@ -377,17 +377,17 @@ void App::Tick() {
   if (!renderer_ || !sensors_ || !cloud_) return;
   StartDeferredServices(now);
 
-  std::array<StationheadStatus, kStationheadPeerCount> peerStatuses{};
+  std::array<bool, kStationheadPeerCount> peerNeedsFastTick{};
   for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
     if (!stationheadPeerStarted_[i] || !stationheadPeers_[i]) continue;
     stationheadPeers_[i]->Tick(now);
-    peerStatuses[i] = stationheadPeers_[i]->Status();
+    peerNeedsFastTick[i] = stationheadPeers_[i]->NeedsFastTick();
   }
 
-  StationheadStatus stationheadStatus;
+  bool primaryNeedsFastTick = false;
   if (stationheadStarted_ && stationhead_) {
     stationhead_->Tick(now);
-    stationheadStatus = stationhead_->Status();
+    primaryNeedsFastTick = stationhead_->NeedsFastTick();
   }
   if (stationheadLeaderboardCollectorStarted_ && stationheadLeaderboardCollector_) {
     stationheadLeaderboardCollector_->Tick(now);
