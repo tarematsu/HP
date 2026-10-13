@@ -1,10 +1,8 @@
 name: Run daily deep repair
 
 on:
-  # Runs after the 09:31 JST four-hour integrity pass so bounded minute repairs
-  # can land before aggregate reconciliation.
-  schedule:
-    - cron: '46 0 * * *'
+  # Manual recovery fallback. Normal daily publication is dispatched by
+  # sh-cron-dispatcher to sh-scheduled-collection-jobs.
   workflow_dispatch:
 
 permissions:

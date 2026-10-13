@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  DAILY_SUMMARY_PUBLICATION_CRON,
   HISTORY_READ_MODEL_RECOVERY_CRON,
   STATIONHEAD_LEADERBOARD_CRON,
   runScheduledCollectionJob,
@@ -48,4 +49,22 @@ test('minute history cron is recovery-only reconciliation', async () => {
 
   assert.deepEqual(calls, [NOW]);
   assert.deepEqual(result, { queued: 0, keys: [] });
+});
+
+test('daily summary publication is routed to the bounded Worker-native publisher', async () => {
+  const calls = [];
+  const env = { marker: 'env' };
+  const result = await runScheduledCollectionJob(
+    { cron: DAILY_SUMMARY_PUBLICATION_CRON, scheduledTime: NOW },
+    env,
+    {
+      async publishDaily(receivedEnv, now) {
+        calls.push([receivedEnv, now]);
+        return { published: ['2026-10-05'], unavailable: [] };
+      },
+    },
+  );
+
+  assert.deepEqual(calls, [[env, NOW]]);
+  assert.deepEqual(result, { published: ['2026-10-05'], unavailable: [] });
 });

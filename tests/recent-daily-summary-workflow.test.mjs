@@ -10,8 +10,10 @@ const workflow = readFileSync(
 const publishCommand = 'node scripts/publish-recent-daily-summaries-actions.mjs';
 const maintenanceCommand = 'node scripts/run-runtime-offline-maintenance-actions.mjs';
 
-test('recent daily summaries run only before the isolated daily deep maintenance pass', () => {
-  assert.match(workflow, /cron: '46 0 \* \* \*'/);
+test('recent daily summary Actions remain a manual repair fallback after Worker cutover', () => {
+  assert.match(workflow, /^\s*workflow_dispatch:\s*$/m);
+  assert.doesNotMatch(workflow, /^\s*schedule:\s*$/m);
+  assert.doesNotMatch(workflow, /cron:/);
   assert.match(workflow, /name: Repair recent daily summaries/);
   assert.match(workflow, /publish-recent-daily-summaries-actions\.mjs/);
   assert.ok(workflow.indexOf(publishCommand) < workflow.indexOf(maintenanceCommand));
