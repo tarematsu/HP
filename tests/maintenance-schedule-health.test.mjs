@@ -21,7 +21,7 @@ test('repair layers use isolated lightweight, four-hour, and daily cadences', ()
 
   assert.equal(cron(runtime), '11,41 * * * *');
   assert.equal(cron(dataRepair), '31 */4 * * *');
-  assert.equal(cron(dailyDeep), '46 0 * * *');
+  assert.equal(cron(dailyDeep), '');
   assert.equal(cron(metadata), '16 0 * * *');
   assert.equal(cron(pages), '');
   assert.equal(cron(repair), '23 4 * * *');
@@ -91,12 +91,10 @@ test('runtime maintenance freshness is diagnostic after the runner warning', () 
 
 test('heavy repair and deep repair health match their lower frequencies', () => {
   const dataRepair = WORKFLOW_HEALTH_BY_KEY.dataRepair;
-  const dailyDeep = WORKFLOW_HEALTH_BY_KEY.dailyDeep;
   const metadata = WORKFLOW_HEALTH_BY_KEY.metadata;
   assert.equal(dataRepair.cadenceMinutes, 240);
   assert.equal(dataRepair.staleAfterMinutes, 330);
-  assert.equal(dailyDeep.cadenceMinutes, 1440);
-  assert.equal(dailyDeep.staleAfterMinutes, 1500);
+  assert.equal(WORKFLOW_HEALTH_BY_KEY.dailyDeep, undefined);
   assert.equal(metadata.cadenceMinutes, 1440);
   assert.equal(metadata.staleAfterMinutes, 1500);
   assert.equal(WORKFLOW_HEALTH_BY_KEY.pages, undefined);

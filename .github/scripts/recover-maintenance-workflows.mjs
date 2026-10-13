@@ -126,18 +126,6 @@ export async function recoverMaintenanceWorkflows({
     return { ok: true, dispatched, states, reason: `data-repair-${states.dataRepair.state}` };
   }
 
-  // Daily aggregate/read-model repair has its own workflow and health state so
-  // a later lightweight runtime success cannot hide a deep-repair failure.
-  if (shouldRecover(states.dailyDeep.state)) {
-    await dispatchWorkflow(repository, WORKFLOWS.dailyDeep, token, request);
-    dispatched.push('dailyDeep');
-    return { ok: true, dispatched, states, reason: 'daily-deep-recovered' };
-  }
-  if (states.dailyDeep.state !== 'fresh') {
-    return { ok: true, dispatched, states, reason: `daily-deep-${states.dailyDeep.state}` };
-  }
-
-
   // Metadata repair is a daily backlog/legacy safety net. Live unknown tracks
   // are enriched on the committed metadata path and do not depend on this job.
   if (shouldRecover(states.metadata.state)) {

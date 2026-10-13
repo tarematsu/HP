@@ -1,14 +1,17 @@
+import { publishRecentDailySummariesFromWorker } from './worker-daily-summary-publication.js';
 import { enqueueChangedHistoryModels, consumeHistoryRefresh } from './history-read-model-refresh.js';
 import { handleInternalScheduled } from './internal-scheduled-dispatch.js';
 import { collectStationheadFollowers } from './stationhead-followers-worker.js';
 import { refreshStationheadLeaderboard, consumeLeaderboardRefresh } from './leaderboard-refresh.js';
 import {
   HISTORY_READ_MODEL_RECOVERY_CRON,
+  DAILY_SUMMARY_PUBLICATION_CRON,
   STATIONHEAD_FOLLOWERS_CRON,
   STATIONHEAD_LEADERBOARD_CRON,
 } from './scheduled-crons.js';
 
 export {
+  DAILY_SUMMARY_PUBLICATION_CRON,
   HISTORY_READ_MODEL_RECOVERY_CRON,
   STATIONHEAD_FOLLOWERS_CRON,
   STATIONHEAD_LEADERBOARD_CRON,
@@ -18,10 +21,13 @@ export const SCHEDULED_COLLECTION_JOB_CRONS = Object.freeze([
   HISTORY_READ_MODEL_RECOVERY_CRON,
   STATIONHEAD_FOLLOWERS_CRON,
   STATIONHEAD_LEADERBOARD_CRON,
+  DAILY_SUMMARY_PUBLICATION_CRON,
 ]);
 
 export async function runScheduledCollectionJob(controller, env, dependencies = {}) {
   const scheduledAt = Number(controller?.scheduledTime) || Date.now();
+  const publishDaily = dependencies.publishDaily || publishRecentDailySummariesFromWorker;
+  if (controller?.cron === DAILY_SUMMARY_PUBLICATION_CRON) return publishDaily(env, scheduledAt);
   const enqueueHistory = dependencies.enqueueHistory || enqueueChangedHistoryModels;
   const collectFollowers = dependencies.collectFollowers || collectStationheadFollowers;
   const refreshLeaderboard = dependencies.refreshLeaderboard || refreshStationheadLeaderboard;

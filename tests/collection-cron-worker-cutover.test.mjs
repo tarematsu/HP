@@ -52,6 +52,8 @@ test('Sakurazaka and Buddies remain the only standalone collection cron owners',
   assert.deepEqual(sakurazaka.triggers?.crons, ['* * * * *']);
   assert.deepEqual(buddies.triggers?.crons, ['*/5 * * * *']);
   assert.equal(scheduledJobs.triggers, undefined);
+  assert.ok(scheduledJobs.d1_databases.some(({ binding }) => binding === 'MINUTE_DB'));
+  assert.ok(scheduledJobs.d1_databases.some(({ binding }) => binding === 'OTHER_DB'));
   assert.equal(amazon.triggers, undefined);
   assert.equal(regional.triggers, undefined);
 });

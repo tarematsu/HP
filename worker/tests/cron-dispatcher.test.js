@@ -131,6 +131,14 @@ test('daily midnight JST dispatches followers and YouTube Music from the shared 
   assert.equal(serviceCalls[3].body.cron, '0 15 * * *');
   assert.equal(calls.filter((call) => call.name.startsWith('homepanel')).length, 3);
 });
+
+test('daily summary publication is dispatched by the shared Worker at 09:46 JST', async () => {
+  const calls = [];
+  await runCronDispatcher({ scheduledTime: Date.UTC(2026, 9, 6, 0, 46) }, env(calls));
+  const publication = calls.filter(({ body }) => body?.cron === '46 0 * * *');
+  assert.equal(publication.length, 1);
+  assert.equal(publication[0].name, 'collection-jobs');
+});
 test('overlapping Stationhead dispatch waits for Ohisama before Nogizaka, even on failure', async () => {
   const calls = [];
   let releaseOhisama;
