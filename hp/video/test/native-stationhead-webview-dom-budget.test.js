@@ -127,7 +127,8 @@ test('recoverable action match avoids allocating arrays or eagerly reading later
   assert.equal(runtime.onboardingLabelMatches(element, /^keep streaming$/i), true);
   assert.deepEqual(readAttributes, ['aria-label']);
   assert.equal(runtime.scanOnboardingCandidates(candidates), 1);
-  assert.deepEqual(readAttributes, ['aria-label', 'aria-label']);
+  assert.deepEqual(readAttributes, ['aria-label', 'aria-label', 'aria-hidden'],
+    'the visibility guard still reads aria-hidden after identifying the action');
   assert.equal(counts().innerTextReads, 0);
   assert.equal(counts().pseudoStyles, 0);
 });
