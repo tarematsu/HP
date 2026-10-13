@@ -32,7 +32,10 @@ test('runtime is queue-only and retains bounded realtime consumers and live-job 
   assert.equal(config.main, 'src/runtime-orchestrator-deployed-entry.js');
   assert.equal(config.triggers, undefined);
   assert.deepEqual(config.durable_objects, {
-    bindings: [{ name: 'MINUTE_LIVE_JOB_COORDINATOR', class_name: 'MinuteLiveJobCoordinator' }],
+    bindings: [
+      { name: 'MINUTE_LIVE_JOB_COORDINATOR', class_name: 'MinuteLiveJobCoordinator' },
+      { name: 'PAGES_HISTORY_API_COORDINATOR', class_name: 'PagesHistoryApiCoordinator' },
+    ],
   });
   assert.equal(config.observability.head_sampling_rate, 1);
   assert.equal(config.observability.logs.head_sampling_rate, 1);
