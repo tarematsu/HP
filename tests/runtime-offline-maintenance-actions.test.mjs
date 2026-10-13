@@ -48,7 +48,8 @@ test('repair responsibilities are split across independent 30-minute, four-hour,
   assert.doesNotMatch(dataRepairWorkflow, /publish-recent-daily-summaries-actions\.mjs/);
   assert.doesNotMatch(dataRepairWorkflow, /detect-pages-read-model-revision-drift-actions\.mjs/);
 
-  assert.match(dailyDeepWorkflow, /cron: '46 0 \* \* \*'/);
+  assert.match(dailyDeepWorkflow, /^\s*workflow_dispatch:\s*$/m);
+  assert.doesNotMatch(dailyDeepWorkflow, /^\s*schedule:\s*$|cron:/m);
   assert.match(dailyDeepWorkflow, /RUNTIME_MAINTENANCE_COLLECTOR_ID: daily-deep-repair-actions/);
   assert.match(dailyDeepWorkflow, /RUNTIME_MAINTENANCE_SKIP_REBUILD: 'true'/);
   assert.match(dailyDeepWorkflow, /publish-recent-daily-summaries-actions\.mjs/);

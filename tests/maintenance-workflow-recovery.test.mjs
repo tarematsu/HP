@@ -32,12 +32,11 @@ function runSpec(value) {
 function requestFor({
   runtime = 10,
   dataRepair = 10,
-  dailyDeep = 10,
   metadata = 10,
   observability = 10,
 } = {}) {
   const calls = [];
-  const specs = { runtime, dataRepair, dailyDeep, metadata, observability };
+  const specs = { runtime, dataRepair, metadata, observability };
   const byFile = Object.fromEntries(Object.entries(WORKFLOWS).map(([key, definition]) => [definition.file, key]));
   return {
     calls,
@@ -64,7 +63,7 @@ test('generic recovery state preserves active and failed runs instead of retryin
 test('recovery policy leaves more than one watchdog interval before health stale', () => {
   assert.equal(RECOVERY_HEADROOM_MINUTES, 30);
   assert.equal(RECOVERY_WATCHDOG_INTERVAL_MINUTES, 15);
-  for (const key of ['runtime', 'dataRepair', 'dailyDeep', 'metadata']) {
+  for (const key of ['runtime', 'dataRepair', 'metadata']) {
     const definition = WORKFLOWS[key];
     assert.ok(definition.healthStaleAfterMs > definition.recoverAfterMs, key);
     assert.ok(
@@ -76,7 +75,7 @@ test('recovery policy leaves more than one watchdog interval before health stale
 });
 
 test('stale lightweight Runtime is recovered first', async () => {
-  const fixture = requestFor({ runtime: 80, dataRepair: 320, dailyDeep: 1480, metadata: 1480 });
+  const fixture = requestFor({ runtime: 80, dataRepair: 320, metadata: 1480 });
   const result = await recoverMaintenanceWorkflows({
     token: 'test-token', repository: 'tarematsu/HP', now, request: fixture.request,
   });
@@ -86,8 +85,8 @@ test('stale lightweight Runtime is recovered first', async () => {
   assert.match(posts[0].url, /run-runtime-offline-maintenance\.yml\/dispatches$/);
 });
 
-test('stale four-hour data repair is recovered before daily deep repair', async () => {
-  const fixture = requestFor({ runtime: 10, dataRepair: 310, dailyDeep: 1480, metadata: 1480 });
+test('stale four-hour data repair is recovered before metadata repair', async () => {
+  const fixture = requestFor({ runtime: 10, dataRepair: 310, metadata: 1480 });
   const result = await recoverMaintenanceWorkflows({
     token: 'test-token', repository: 'tarematsu/HP', now, request: fixture.request,
   });
@@ -102,7 +101,7 @@ test('active or failed data repair blocks downstream recovery', async () => {
     { minutesAgo: 310, status: 'in_progress', conclusion: '' },
     { minutesAgo: 310, conclusion: 'failure' },
   ]) {
-    const fixture = requestFor({ runtime: 10, dataRepair, dailyDeep: 1480, metadata: 1480 });
+    const fixture = requestFor({ runtime: 10, dataRepair, metadata: 1480 });
     const result = await recoverMaintenanceWorkflows({
       token: 'test-token', repository: 'tarematsu/HP', now, request: fixture.request,
     });
@@ -111,34 +110,8 @@ test('active or failed data repair blocks downstream recovery', async () => {
   }
 });
 
-test('stale daily deep repair is recovered independently before metadata repair', async () => {
-  const fixture = requestFor({ runtime: 10, dataRepair: 10, dailyDeep: 1480, metadata: 10 });
-  const result = await recoverMaintenanceWorkflows({
-    token: 'test-token', repository: 'tarematsu/HP', now, request: fixture.request,
-  });
-  assert.deepEqual(result.dispatched, ['dailyDeep']);
-  assert.equal(result.reason, 'daily-deep-recovered');
-  const posts = fixture.calls.filter((call) => call.options.method === 'POST');
-  assert.match(posts[0].url, /run-daily-deep-repair\.yml\/dispatches$/);
-});
-
-test('failed daily deep repair remains visible and blocks downstream recovery', async () => {
-  const fixture = requestFor({
-    pages: 1490,
-    runtime: 10,
-    dataRepair: 10,
-    dailyDeep: { minutesAgo: 1480, conclusion: 'failure' },
-    metadata: 1480,
-  });
-  const result = await recoverMaintenanceWorkflows({
-    token: 'test-token', repository: 'tarematsu/HP', now, request: fixture.request,
-  });
-  assert.deepEqual(result.dispatched, []);
-  assert.equal(result.reason, 'daily-deep-failed');
-});
-
 test('fresh repair layers recover the daily metadata safety net only', async () => {
-  const fixture = requestFor({ runtime: 10, dataRepair: 10, dailyDeep: 10, metadata: 1480 });
+  const fixture = requestFor({ runtime: 10, dataRepair: 10, metadata: 1480 });
   const result = await recoverMaintenanceWorkflows({
     token: 'test-token', repository: 'tarematsu/HP', now, request: fixture.request,
   });
@@ -149,7 +122,7 @@ test('fresh repair layers recover the daily metadata safety net only', async () 
 
 test('fresh repair layers allow an older failed observability diagnostic to refresh', async () => {
   const fixture = requestFor({
-    runtime: 5, dataRepair: 5, dailyDeep: 5, metadata: 5,
+    runtime: 5, dataRepair: 5, metadata: 5,
     observability: { minutesAgo: 20, conclusion: 'failure' },
   });
   const result = await recoverMaintenanceWorkflows({
@@ -166,7 +139,7 @@ test('maintenance workflows expose bounded four-hour repair and isolated daily d
   const metadataWorkflow = read('.github/workflows/run-track-metadata-repair.yml');
 
   assert.match(watchdog, /- "Run data integrity repair"/);
-  assert.match(watchdog, /- "Run daily deep repair"/);
+  assert.doesNotMatch(watchdog, /- "Run daily deep repair"/);
   assert.match(watchdog, /- "Repair track metadata"/);
 
   assert.match(runtimeWorkflow, /cron: '11,41 \* \* \* \*'/);
@@ -184,7 +157,8 @@ test('maintenance workflows expose bounded four-hour repair and isolated daily d
   assert.doesNotMatch(dataRepairWorkflow, /pages-revision-drift/);
   assert.doesNotMatch(dataRepairWorkflow, /publish-recent-daily-summaries-actions\.mjs/);
 
-  assert.match(dailyDeepWorkflow, /cron: '46 0 \* \* \*'/);
+  assert.match(dailyDeepWorkflow, /^\s*workflow_dispatch:\s*$/m);
+  assert.doesNotMatch(dailyDeepWorkflow, /^\s*schedule:\s*$|cron:/m);
   assert.match(dailyDeepWorkflow, /RUNTIME_MAINTENANCE_COLLECTOR_ID: daily-deep-repair-actions/);
   assert.match(dailyDeepWorkflow, /publish-recent-daily-summaries-actions\.mjs/);
   assert.doesNotMatch(dailyDeepWorkflow, /detect-pages-read-model-revision-drift-actions\.mjs|pages-revision-drift/);

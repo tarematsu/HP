@@ -9,7 +9,6 @@ on:
       - "Unified Cloudflare Observability"
       - "Run runtime offline maintenance"
       - "Run data integrity repair"
-      - "Run daily deep repair"
       - "Repair track metadata"
     types: [completed]
   push:
@@ -20,7 +19,6 @@ on:
       - '.github/scripts/workflow-health-policy.mjs'
       - '.github/workflows/run-runtime-offline-maintenance.yml'
       - '.github/workflows/run-data-integrity-repair.yml'
-      - '.github/workflows/run-daily-deep-repair.yml'
       - '.github/workflows/run-track-metadata-repair.yml'
   workflow_dispatch:
 
