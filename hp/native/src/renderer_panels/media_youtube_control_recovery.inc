@@ -8,7 +8,8 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     return window.__homePanelYoutubeProbe();
   // The document-start script installs one reusable probe per document.
   // Native watchdog calls normally send only the tiny dispatch script.
-  const probe = () => {
+  // Page-lifetime helpers: avoid recreating timers, selectors and utility
+  // closures on each native watchdog/event probe.
   const state = window.__homePanelYoutubeRuntime ||
     (window.__homePanelYoutubeRuntime = {});
   const postWake = () => {
@@ -27,17 +28,6 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     }, delay);
   };
   const recheck = () => wake(2000);
-  // Reuse the stable player root even during dense ad wake bursts.
-  // SPA navigation explicitly invalidates the root; a detached player
-  // is always rediscovered before installing new observers.
-  const player = !state.playerNeedsRefresh && state.player?.isConnected &&
-      state.player.id === 'movie_player'
-    ? state.player : document.querySelector('#movie_player');
-  state.playerNeedsRefresh = false;
-  if (!player) {
-    recheck();
-    return 'recovery';
-  }
   const valid = element => Boolean(
     element?.isConnected && !element.disabled &&
     element.getAttribute?.('aria-disabled') !== 'true');
@@ -45,10 +35,6 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     element?.getAttribute?.('aria-label') ||
     element?.getAttribute?.('title') || element?.textContent || '')
     .replace(/\s+/g, ' ').trim();
-  const ad = () => player.classList.contains('ad-showing') ||
-    player.classList.contains('ad-interrupting');
-  const fullscreen = () => Boolean(
-    document.fullscreenElement || player.classList.contains('ytp-fullscreen'));
   const surveySelector =
     '.ytp-ad-survey,.ytp-ad-feedback-dialog,yt-survey-renderer,ytd-survey-renderer';
   const skipSelector =
@@ -68,6 +54,23 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     const key = actionLane(action);
     return lanes[key] || (lanes[key] = {});
   };
+  const probe = () => {
+  // Reuse the stable player root even during dense ad wake bursts.
+  // SPA navigation explicitly invalidates the root; a detached player
+  // is always rediscovered before installing new observers.
+  const player = !state.playerNeedsRefresh && state.player?.isConnected &&
+      state.player.id === 'movie_player'
+    ? state.player : document.querySelector('#movie_player');
+  state.playerNeedsRefresh = false;
+  if (!player) {
+    recheck();
+    return 'recovery';
+  }
+
+  const ad = () => player.classList.contains('ad-showing') ||
+    player.classList.contains('ad-interrupting');
+  const fullscreen = () => Boolean(
+    document.fullscreenElement || player.classList.contains('ytp-fullscreen'));
   const arm = (element, action, cooldownMs) => {
     const now = Date.now();
     const lane = actionState(action);
