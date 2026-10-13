@@ -1,3 +1,4 @@
+import { queueRevisionPositionExists } from './minute-queue-revision-progress.js';
 import {
   processMinuteDeriveMessage as processLegacyMinuteDeriveMessage,
   processMinuteDeriveWriteStage,
@@ -108,9 +109,7 @@ async function preferredPositionExists(env, revision, dependencies = EMPTY_DEPEN
   const position = integer(revision?.fact_position);
   const revisionId = integer(revision?.revision_id);
   if (position == null || revisionId == null) return true;
-  const row = await env?.MINUTE_DB?.prepare(`SELECT 1 AS present FROM sh_queue_revision_items
-    WHERE revision_id=? AND position=? LIMIT 1`).bind(revisionId, position).first();
-  return Boolean(row);
+  return queueRevisionPositionExists(env?.MINUTE_DB, revisionId, position);
 }
 
 async function attachR2Progress(env, revision, payload, dependencies = EMPTY_DEPENDENCIES) {
