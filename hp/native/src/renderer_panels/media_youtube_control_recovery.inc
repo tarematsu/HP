@@ -432,7 +432,8 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       if (state.player !== player) return;
       state.playerNeedsRefresh = true;
       state.adCandidatesDirty = true;
-      state.dialogCheckedAt = 0;
+      // Retain the five-minute dialog budget across SPA video changes.
+      // Real player/document replacement already resets this in lifecycle.
       bindVideo(true);
       wake(0);
     });
@@ -508,6 +509,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   if (!adActive && !state.fullscreenApplied && !video?.paused) {
     return requestFullscreen();
   }
+ )JS" LR"JS(
   if (adActive) {
     state.adActive = true;
     // Surveys are rare. Query their subtree at most once every 5 minutes
@@ -571,6 +573,13 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     // unskippable ads less often when no event arrives.
     wake(5000);
     return 'recovery';
+  }
+  if (state.adActive) {
+    // An ad can occupy >30s without any content progress. Reset the
+    // content-only stall grace window on the transition back to video.
+    state.lastProgressAt = now;
+    state.lastCurrentTime = -1;
+    state.nextRequestedAt = 0;
   }
   state.adActive = false;
   state.surveySelected = false;
