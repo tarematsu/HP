@@ -80,7 +80,7 @@ test('radar cache localization is isolated from device version negotiation', () 
 test('precomposed radar version is accepted only after a local PNG exists', () => {
   assert.match(cloudClientSync, /requestedRadarVersion/);
   assert.match(cloudClientSync, /HasPngSignature\(representativeRadarPath\)/);
-  assert.match(cloudClientSync, /radarVersion=" \+ std::to_wstring\(requestedRadarVersion\(\)\)/);
+  assert.match(cloudClientSync, /path \+= L"&radarVersion=";\s*path \+= std::to_wstring\(requestedRadarVersion\(\)\)/);
   assert.match(cloudClientSync, /Radar payload withheld until representative PNG is available/);
 });
 
