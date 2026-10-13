@@ -23,6 +23,17 @@ LR"JS(
     }, delay);
   };
   const recheck = () => wake(2000);
+  const wakeForPlayerMutation = () => {
+    // TVer can churn player CSS classes throughout playback. Preserve the
+    // first immediate check and an eventual trailing check, but cap subsequent
+    // DOM-only wakes to one per 250 ms without a second observer/timer.
+    const observedAt = Date.now();
+    const untilEligible = Number(state.nextPlayerMutationWakeAt || 0) - observedAt;
+    const delay = untilEligible > 0 && untilEligible <= 250
+        ? untilEligible : 0;
+    if (delay === 0) state.nextPlayerMutationWakeAt = observedAt + 250;
+    wake(delay);
+  };
   const now = Date.now();
 
   const valid = element => Boolean(
@@ -483,8 +494,9 @@ LR"JS(
     state.actionLanes = {};
     state.player = player;
     state.video = null;
+    state.nextPlayerMutationWakeAt = 0;
     state.pageAbort = new AbortController();
-    state.playerObserver = new MutationObserver(() => wake(0));
+    state.playerObserver = new MutationObserver(wakeForPlayerMutation);
     state.playerObserver.observe(player, {
       childList: true,
       subtree: true,

@@ -13,6 +13,29 @@ function between(begin, end) {
   return host.slice(start, finish);
 }
 
+const bridge = readFileSync(
+  new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
+
+test('media wake bridge rejects unrelated messages before allocating a source URL', () => {
+  const start = bridge.indexOf('  const HRESULT registered = webview->add_WebMessageReceived(');
+  const end = bridge.indexOf('  EventRegistrationToken navigationStartingToken{};', start);
+  assert.ok(start >= 0 && end > start);
+  const handler = bridge.slice(start, end);
+  const filter = handler.indexOf('if (!mediaMessage) return S_OK;');
+  const urlRead = handler.indexOf('sender->get_Source(&rawSource)');
+  assert.ok(filter >= 0 && urlRead > filter, 'filter must precede COM URL lookup');
+  const allowed = ['youtube-fullscreen-key', 'youtube-wake', 'tver-fullscreen-key',
+    'tver-media-init', 'tver-ended', 'tver-wake'];
+  for (const command of allowed) {
+    assert.ok(handler.includes('homepanel:' + command.replace(/^youtube/, 'youtube').replace(/^tver/, 'tver')),
+      'missing native media message ' + command);
+  }
+  assert.match(handler, /message\.starts_with\(L"homepanel:x-like:"\)/);
+  assert.match(handler, /sourceContains\(L"x\.com\/home"\)/);
+  assert.match(handler, /sourceContains\(L"youtube\.com\/watch"\)/);
+  assert.match(handler, /sourceContains\(L"tver\.jp\/episodes\/"\)/);
+});
+
 test('YouTube playlist and watch URL classifiers fetch WebView source only once', () => {
   const methods = between('  bool IsYoutubePlaylistPage() noexcept {',
                           '  bool ScheduleNavigationRetry() noexcept {');
