@@ -46,7 +46,8 @@ test('native dashboard clock uses network time instead of Windows wall clock', (
   assert.match(panelState, /nativeClockTimeText_ = ClockTimeText\(localTime\)/);
   assert.doesNotMatch(panelState, /GetLocalTime/);
 
-  assert.match(http, /SynchronizeNetworkClockFromHttpResponse\(request\)/);
+  assert.match(http, /SynchronizeNetworkClockFromServerUnixMillis\(serverUnixMs\)/);
+  assert.match(http, /PersistNetworkClockOffsetFromServerUnixMillis\(serverUnixMs\)/);
   assert.match(helpers, /WINHTTP_QUERY_DATE\s*\|\s*WINHTTP_QUERY_FLAG_SYSTEMTIME/);
   assert.match(helpers, /GetTickCount64\(\)/);
   assert.doesNotMatch(helpers, /system_clock::now/);
