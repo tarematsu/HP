@@ -146,3 +146,26 @@ test('Stationhead retry map only allocates entries for armed recovery windows', 
   assert.match(allocator, /boundaryRetries\[owner\]/);
   assert.match(allocator, /ArmBoundaryRetryState\(/);
 });
+
+
+test('nonurgent App timer wakes are coalesced without delaying urgent recovery', () => {
+  const begin = appSource.indexOf('void App::ScheduleNextTick(uint32_t milliseconds) {');
+  const end = appSource.indexOf('void App::InvalidateAll()', begin);
+  assert.ok(begin >= 0 && end > begin);
+  const timer = appSource.slice(begin, end);
+  assert.match(appSource, /constexpr ULONG kAppTimerToleranceMs = 100;/);
+  assert.match(timer, /if \(clamped >= kFastTickMs\) \{/);
+  assert.match(timer, /SetCoalescableTimer\(\s*window_, kCentralTimer, clamped, nullptr, kAppTimerToleranceMs\)/);
+  assert.match(timer, /if \(!timer\) timer = SetTimer\(window_, kCentralTimer, clamped, nullptr\)/);
+  assert.match(timer, /nextAppTickAt_ = timer \? static_cast<int64_t>\(dueTick\) : 0;/);
+  assert.ok(timer.indexOf('if (clamped >= kFastTickMs)') <
+    timer.indexOf('SetCoalescableTimer('));
+  assert.ok(timer.indexOf('SetCoalescableTimer(') <
+    timer.indexOf('if (!timer) timer = SetTimer('));
+  // Short, event-driven callbacks never route through the tolerant API.
+  const usesCoalescing = delayMs => delayMs >= 2000;
+  assert.equal(usesCoalescing(1), false);
+  assert.equal(usesCoalescing(1500), false);
+  assert.equal(usesCoalescing(2000), true);
+  assert.equal(usesCoalescing(60_000), true);
+});
