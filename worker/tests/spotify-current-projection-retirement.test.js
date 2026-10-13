@@ -12,7 +12,7 @@ test('Spotify collection completes from canonical daily values without a current
   const detail = source('../src/spotify-read-model-detail.js');
   assert.doesNotMatch(consumer, /(?:INSERT INTO|UPDATE|DELETE FROM) sh_spotify_playcount_current/);
   assert.match(consumer, /spotifyDailyFinalizeStatement\(db, message, previousDate\)/);
-  assert.match(api, /FROM sh_spotify_playcount_daily AS d/);
+  assert.match(api, /JOIN sh_spotify_playcount_daily AS d/);
   assert.doesNotMatch(api, /FROM sh_spotify_playcount_current/);
   assert.doesNotMatch(detail, /FROM sh_spotify_playcount_current/);
 });
