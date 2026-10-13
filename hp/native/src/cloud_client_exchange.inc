@@ -63,8 +63,9 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
 
   // Keep the established Cloud field names for wire compatibility, but source
   // them exclusively from the rebuilt dedicated-WebView capture spool.
-  const std::vector<std::string> leaderboardCapture =
-      stationhead_leaderboard_capture_spool::ReadBatch();
+  const auto leaderboardSnapshot =
+      stationhead_leaderboard_capture_spool::ReadBatchWithCount();
+  const auto& leaderboardCapture = leaderboardSnapshot.batch;
   if (!leaderboardCapture.empty()) {
     body += ",\"leaderboardProbe\":[";
     for (size_t index = 0; index < leaderboardCapture.size(); ++index) {
@@ -74,8 +75,7 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
     body.push_back(']');
   }
 
-  const size_t leaderboardSpoolRecords =
-      stationhead_leaderboard_capture_spool::Count();
+  const size_t leaderboardSpoolRecords = leaderboardSnapshot.totalRecords;
   const auto leaderboardDiagnostics = stationhead_leaderboard_diagnostics::Read();
   body += ",\"leaderboardProbeStatus\":{\"spoolRecords\":";
   body += std::to_string(leaderboardSpoolRecords);
