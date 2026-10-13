@@ -1,3 +1,4 @@
+import { loadQueueRevisionPositions } from './minute-queue-revision-progress.js';
 import { insertPendingQueueRevision } from './minute-queue-revision-insert.js';
 import { saveMinuteFactWithinBudget } from './minute-facts-write-budget.js';
 import {
@@ -97,9 +98,7 @@ async function createRebuildRevision(db, sourceDb, input) {
 
   const revisionId = Number(revision?.id);
   if (!Number.isFinite(revisionId)) throw new Error('failed to create historical queue revision');
-  const existingResult = await db.prepare(
-    'SELECT position FROM sh_queue_revision_items WHERE revision_id=?',
-  ).bind(revisionId).all();
+  const existingResult = await loadQueueRevisionPositions(db, revisionId);
   const resolved = await resolveTracksBulk(db, sourceDb, payload.tracks, input.observedAt, {
     channelId: input.channelId,
     minuteAt: minuteBucket(input.observedAt),
