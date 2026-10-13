@@ -128,11 +128,33 @@ void CloudClient::Synchronize() {
       L"v1" / L"radar" / L"frame" / L"representative" / L"latest.png";
   const auto requestedRadarVersion = [&]() {
     std::error_code error;
-    if (!fs::exists(radarPath, error) ||
-        !fs::exists(representativeRadarPath, error) ||
-        !HasPngSignature(representativeRadarPath)) {
+    if (!fs::exists(radarPath, error)) {
+      radarRepresentativeValidatedStamp_.valid = false;
       return -1;
     }
+    // Opening the same representative PNG on every cloud poll is unnecessary.
+    // A newly written or externally replaced file is always revalidated.
+    const std::uintmax_t size = fs::file_size(representativeRadarPath, error);
+    if (error || size < 8) {
+      radarRepresentativeValidatedStamp_.valid = false;
+      return -1;
+    }
+    const fs::file_time_type modifiedAt =
+        fs::last_write_time(representativeRadarPath, error);
+    if (error) {
+      radarRepresentativeValidatedStamp_.valid = false;
+      return -1;
+    }
+    if (radarRepresentativeValidatedStamp_.valid &&
+        radarRepresentativeValidatedStamp_.size == size &&
+        radarRepresentativeValidatedStamp_.modifiedAt == modifiedAt) {
+      return radarVersion_;
+    }
+    if (!HasPngSignature(representativeRadarPath)) {
+      radarRepresentativeValidatedStamp_.valid = false;
+      return -1;
+    }
+    radarRepresentativeValidatedStamp_ = {size, modifiedAt, true};
     return radarVersion_;
   };
 

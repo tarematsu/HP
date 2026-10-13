@@ -5,7 +5,8 @@ import test from 'node:test';
 
 const source = name => readFileSync(
   new URL('../../native/src/' + name, import.meta.url), 'utf8');
-const fragment = name => source(name).match(/LR"JS\(([\s\S]*?)\)JS"/)?.[1];
+const fragment = name => [...source(name).matchAll(/LR"JS\(([\s\S]*?)\)JS"/g)]
+  .map(match => match[1]).join('');
 
 function authRuntime({ label = 'Profile', text = '', audioPlaying = false,
                        credential = false, route = '/sakuramankai' } = {}) {
@@ -33,6 +34,9 @@ function authRuntime({ label = 'Profile', text = '', audioPlaying = false,
   control.closest = () => null;
   let controlQueries = 0;
   let credentialQueries = 0;
+  let roomQueries = 0;
+  let nowMs = 1000;
+  class TestDate extends Date { static now() { return nowMs; } }
   const document = {
     body: {},
     documentElement: { hasAttribute: () => false },
@@ -42,7 +46,7 @@ function authRuntime({ label = 'Profile', text = '', audioPlaying = false,
         credentialQueries += 1;
         return credential ? [control] : [];
       }
-      if (selector.includes('h1,h2,h3,')) return [control]; // onboarding
+      if (selector.includes('h1,h2,h3,')) { roomQueries++; return [control]; } // onboarding
       controlQueries += 1;
       return [control];
     },
@@ -62,7 +66,7 @@ function authRuntime({ label = 'Profile', text = '', audioPlaying = false,
   };
   window.top = window;
   const runtime = runInNewContext(script, {
-    window, document, Element, navigator: {},
+    window, document, Element, navigator: {}, Date: TestDate,
     location: { hostname: 'stationhead.com', pathname: route },
     innerWidth: 360, innerHeight: 960,
     getComputedStyle: (_element, pseudo) => ({
@@ -73,7 +77,8 @@ function authRuntime({ label = 'Profile', text = '', audioPlaying = false,
   });
   return {
     runtime, window, messages, timers,
-    counts: () => ({ controlQueries, credentialQueries }),
+    counts: () => ({ controlQueries, credentialQueries, roomQueries }),
+    advanceClock: ms => { nowMs += ms; },
   };
 }
 
@@ -82,6 +87,58 @@ test('normal auth event shares one control query between account and login detec
   runtime.publishAuth();
   assert.equal(counts().controlQueries, 1);
   assert.equal(counts().credentialQueries, 1);
+});
+
+test('auth checks reuse the just-published audio state within one event', () => {
+  const { runtime, window } = authRuntime({ label: 'Settings', audioPlaying: true });
+  let audioFlagReads = 0;
+  Object.defineProperty(window, '__homepanelAudioPlaying', {
+    get() { audioFlagReads++; return true; },
+    configurable: true,
+  });
+  runtime.publishAuth(true);
+  assert.equal(audioFlagReads, 0,
+    'the event already sampled audio; auth must not query it again');
+  runtime.publishAuth();
+  assert.equal(audioFlagReads, 1,
+    'standalone authentication checks still query the live audio flag');
+  const lifecycle = source('sh_runtime_lifecycle_script.h');
+  assert.match(lifecycle, /const audio = publishAudio\(\);\s*publishAuth\(audio\);/);
+  const interaction = source('sh_runtime_interaction_script.h');
+  assert.match(interaction, /const publishAuth = \(knownAudio = null\) =>/);
+  assert.match(interaction, /knownAudio === null \? playing\(\) : knownAudio/);
+  assert.match(interaction, /const stillAuthenticated = accountVisible\(controls\) \|\| playing\(\)/,
+    'delayed auth validation must use fresh audio state');
+});
+
+test('healthy audio events share the watchdog room-scan budget', () => {
+  const { runtime, counts, advanceClock } = authRuntime({
+    label: 'Settings', audioPlaying: true,
+  });
+  runtime.publishAuth(true);
+  assert.equal(counts().roomQueries, 1);
+  for (let i = 0; i < 25; i++) runtime.publishAuth(true);
+  assert.equal(counts().roomQueries, 1,
+    'healthy media event bursts must not traverse the full room');
+  advanceClock(15999);
+  runtime.publishAuth(true);
+  assert.equal(counts().roomQueries, 1);
+  advanceClock(1);
+  runtime.publishAuth(true);
+  assert.equal(counts().roomQueries, 2,
+    'an elapsed healthy scan budget permits a new full-room check');
+  runtime.publishAuth(false);
+  assert.equal(counts().roomQueries, 3,
+    'stopped playback must recheck for Keep Streaming immediately');
+});
+
+test('interactive recovery always invalidates the healthy-scan budget', () => {
+  const lifecycle = source('sh_runtime_lifecycle_script.h');
+  const onboarding = source('sh_runtime_onboarding_script.h');
+  assert.match(lifecycle, /const onInteractiveEvent = \(\) => \{\s*lastOnboardingScanAt = 0;\s*schedule\(150\);/);
+  assert.match(lifecycle, /probeStartedAt - lastOnboardingScanAt >= recoverableHealthyProbeMs/);
+  assert.match(onboarding, /lastOnboardingScanAt = Date\.now\(\)/);
+  assert.doesNotMatch(lifecycle, /lastRecoverableProbeAt/);
 });
 
 test('login-required detection still works for a silent account', () => {

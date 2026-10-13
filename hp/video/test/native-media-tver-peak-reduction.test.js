@@ -24,7 +24,7 @@ test('TVer legacy ad detection stays inside the player subtree', () => {
 });
 
 test('TVer uses one scoped observer and media event bindings', () => {
-  assert.match(runtime, /state\.playerObserver = new MutationObserver\(\(\) => wake\(0\)\)/);
+  assert.match(runtime, /state\.playerObserver = new MutationObserver\(wakeForPlayerMutation\)/);
   assert.match(runtime, /state\.playerObserver\.observe\(player/);
   assert.match(runtime, /state\.videoAbort = new AbortController/);
   assert.doesNotMatch(runtime, /observe\(document\.(?:documentElement|body)/);

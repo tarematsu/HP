@@ -27,11 +27,15 @@ std::wstring RadarUtf8BytesToWide(const std::vector<uint8_t>& bytes) {
   return output;
 }
 
-bool HasPngSignature(const std::vector<uint8_t>& body) noexcept {
+bool HasPngSignature(const uint8_t* bytes, size_t size) noexcept {
   static constexpr uint8_t kPngSignature[] = {
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a};
-  return body.size() >= sizeof(kPngSignature) &&
-      std::memcmp(body.data(), kPngSignature, sizeof(kPngSignature)) == 0;
+  return size >= sizeof(kPngSignature) &&
+      std::memcmp(bytes, kPngSignature, sizeof(kPngSignature)) == 0;
+}
+
+bool HasPngSignature(const std::vector<uint8_t>& body) noexcept {
+  return HasPngSignature(body.data(), body.size());
 }
 
 bool HasPngSignature(const fs::path& path) noexcept {
@@ -43,8 +47,9 @@ bool HasPngSignature(const fs::path& path) noexcept {
     if (input.gcount() != static_cast<std::streamsize>(sizeof(signature))) {
       return false;
     }
-    const std::vector<uint8_t> bytes(std::begin(signature), std::end(signature));
-    return HasPngSignature(bytes);
+    // Synchronize() checks this cached image on every cloud poll. Do not
+    // allocate an eight-byte heap vector just to verify its PNG signature.
+    return HasPngSignature(signature, sizeof(signature));
   } catch (...) {
     return false;
   }
@@ -123,6 +128,12 @@ std::vector<uint8_t> CloudClient::LocalizeRadarTiles(
     return {text.begin(), text.end()};
   }
 
+  constexpr uint64_t kRadarCachePruneIntervalMs = 30ULL * 60ULL * 1'000ULL;
+  const uint64_t nowTick = GetTickCount64();
+  const bool pruneDue = lastRadarCachePruneTick_ == 0 ||
+      nowTick - lastRadarCachePruneTick_ >= kRadarCachePruneIntervalMs;
+  // Only collect the paths to retain when a recursive prune is actually due.
+  // Most frame updates need neither this set nor its per-tile allocations.
   std::set<std::wstring> retained;
   const std::wstring bundleUrl = root.GetNamedString(L"bundleUrl", L"").c_str();
   if (!bundleUrl.empty() && bundleUrl.front() == L'/') {
@@ -178,7 +189,7 @@ std::vector<uint8_t> CloudClient::LocalizeRadarTiles(
           throw std::runtime_error("radar bundle path invalid");
         }
         const fs::path target = localPathFor(pathname);
-        retained.insert(target.wstring());
+        if (pruneDue) retained.insert(target.wstring());
         std::error_code error;
         if (!fs::exists(target, error) || fs::file_size(target, error) == 0) {
           if (!AtomicWriteBytes(target, response.body.data() + offset, bodyLength)) {
@@ -200,7 +211,7 @@ std::vector<uint8_t> CloudClient::LocalizeRadarTiles(
     const std::wstring url = item.GetNamedString(L"url", L"").c_str();
     if (url.empty() || url.front() != L'/') return;
     const fs::path target = localPathFor(url);
-    retained.insert(target.wstring());
+    if (pruneDue) retained.insert(target.wstring());
     std::error_code error;
     if (!fs::exists(target, error) || fs::file_size(target, error) == 0) {
       const auto response = Request(L"GET", url, deviceToken_);
@@ -236,7 +247,10 @@ std::vector<uint8_t> CloudClient::LocalizeRadarTiles(
     }
   }
 
-  if (!retained.empty()) {
+  // Scanning every cached tile and directory on each radar payload causes
+  // unnecessary disk I/O. Keep stale cached frames temporarily and prune at
+  // most once every 30 minutes; a fresh process always prunes on first update.
+  if (pruneDue && !retained.empty()) {
     std::vector<fs::path> staleFiles;
     std::vector<fs::path> directories;
     std::error_code walkError;
@@ -267,6 +281,8 @@ std::vector<uint8_t> CloudClient::LocalizeRadarTiles(
       std::error_code ignored;
       fs::remove(directory, ignored);
     }
+    // If enumeration failed, retry cleanup on the next successful sync.
+    if (!walkError) lastRadarCachePruneTick_ = nowTick;
   }
 
   const std::string text = WideToUtf8(root.Stringify().c_str());

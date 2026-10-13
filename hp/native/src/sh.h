@@ -95,6 +95,20 @@ class StationheadPlayer {
   void SelectTab(StationheadTabKind tab);
   bool HasAuthTab() const;
   StationheadStatus Status() const;
+  // Scheduler/layout hot paths need only flags, not the URL/detail strings in
+  // the full StationheadStatus. Read them together under the status mutex.
+  struct SchedulerState {
+    bool audioPlaying = false;
+    bool loginRequired = false;
+    bool spotifyAuthorization = false;
+    bool processFailed = false;
+    bool visible = false;
+    // Audio-loss recovery requires these two lifecycle flags as well, but
+    // never needs the URL/detail strings held by StationheadStatus.
+    bool created = false;
+    bool navigating = false;
+  };
+  [[nodiscard]] SchedulerState ReadSchedulerState() const;
   HWND ActiveHostWindowForAccountSetup() const noexcept;
   [[nodiscard]] bool ForegroundRequested() const noexcept {
     return selectedTab_ == StationheadTabKind::Auth ||
@@ -238,6 +252,9 @@ class StationheadPlayer {
   bool audioLossProbeInFlight_ = false;
   bool audioLossProbeComplete_ = false;
   bool audioLossAuthUiDetected_ = false;
+  // UI-thread-owned generation. Monitor A only scans every few minutes, so
+  // healthy 2s App ticks need not lock the global per-profile probe map.
+  uint64_t monitorDomHandledGeneration_ = 0;
   bool managedPlaybackFallbackActive_ = false;
   bool managedPlaybackReturnRequested_ = false;
   bool managedPrimaryReturnPending_ = false;

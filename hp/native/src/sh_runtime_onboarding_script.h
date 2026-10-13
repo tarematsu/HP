@@ -43,16 +43,14 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
         (additionalPattern !== null && additionalPattern.test(normalized)) ||
         (alternatePattern !== null && alternatePattern.test(normalized));
     };
-    for (const value of [
-      element?.getAttribute?.('aria-label'),
-      element?.getAttribute?.('data-testid'),
-      element?.getAttribute?.('title'),
-      element?.getAttribute?.('alt'),
-      element?.getAttribute?.('value'),
-      element?.textContent,
-    ]) {
-      if (matches(value)) return true;
-    }
+    // Avoid allocating a temporary values array for every room node.
+    // Short-circuit attribute reads as soon as an actionable label matches.
+    if (matches(element?.getAttribute?.('aria-label')) ||
+        matches(element?.getAttribute?.('data-testid')) ||
+        matches(element?.getAttribute?.('title')) ||
+        matches(element?.getAttribute?.('alt')) ||
+        matches(element?.getAttribute?.('value')) ||
+        matches(element?.textContent)) return true;
     if (matches(element?.innerText)) return true;
     for (const pseudo of ['::before', '::after']) {
       if (matches(onboardingPseudoLabel(element, pseudo))) return true;
@@ -94,6 +92,7 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
   // prompt, even when a reconnect button occurs earlier in document order.
   // Decode both labels in one pass over each element's text and pseudo labels;
   // only matched candidates need a layout/visibility check.
+)JS" LR"JS(
   const onboardingActionKind = element => {
     let recoverable = false;
     const consider = value => {
@@ -103,15 +102,15 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
       if (recoverableOnboardingPattern.test(label)) recoverable = true;
       return false;
     };
-    for (const value of [
-      element?.getAttribute?.('aria-label'),
-      element?.getAttribute?.('data-testid'),
-      element?.getAttribute?.('title'),
-      element?.getAttribute?.('alt'),
-      element?.getAttribute?.('value'),
-      element?.textContent,
-    ]) {
-      if (consider(value)) return onboardingRendered(element) ? 1 : 0;
+    // A full-room probe runs on each of six playback windows. Avoid the
+    // per-node array allocation, and preserve Keep Streaming precedence.
+    if (consider(element?.getAttribute?.('aria-label')) ||
+        consider(element?.getAttribute?.('data-testid')) ||
+        consider(element?.getAttribute?.('title')) ||
+        consider(element?.getAttribute?.('alt')) ||
+        consider(element?.getAttribute?.('value')) ||
+        consider(element?.textContent)) {
+      return onboardingRendered(element) ? 1 : 0;
     }
     if (consider(element?.innerText)) return onboardingRendered(element) ? 1 : 0;
     for (const pseudo of ['::before', '::after']) {
@@ -153,6 +152,7 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
 
   const publishRecoverableOnboarding = () => {
     if (!pageActive || !document.body) return false;
+    lastOnboardingScanAt = Date.now();
     // One DOM snapshot per probe, reused for hidden recovery detection,
     // Keep Streaming priority, and the generic action fallback. Avoid 3-4
     // separate full-room selector traversals on every healthy WebView tick.

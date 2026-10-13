@@ -35,6 +35,8 @@ class StationheadHandleBase {
     return player_ && player_->ForegroundRequested();
   }
   StationheadStatus Status() const;
+  // Avoid copying diagnostic strings at every two-second App recovery tick.
+  [[nodiscard]] bool NeedsFastTick() const;
   int64_t NextWakeAt() const noexcept;
   void RefreshVisibility();
   void Start();

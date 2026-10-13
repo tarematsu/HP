@@ -38,6 +38,15 @@ test('visible monitor modes probe targeted Stationhead controls every five minut
   assert.doesNotMatch(monitorProbe, /getBoundingClientRect|getComputedStyle/);
   assert.match(audioLoss, /RequestStationheadMonitorDomProbe\(\) noexcept/);
   assert.match(bridge, /kStationheadMonitorProbeResultMessage/);
+  const monitor = audioLoss.slice(audioLoss.indexOf('void StationheadPlayer::EvaluateAudioLossRecovery('));
+  const generationGate = monitor.indexOf('requestedGeneration != monitorDomHandledGeneration_');
+  const lock = monitor.indexOf('std::lock_guard lock(monitorDomProbeStateMutex)');
+  assert.ok(generationGate >= 0 && lock > generationGate,
+    'unchanged monitor generations must bypass the global mutex');
+  assert.match(monitor, /if \(state\.seenGeneration == requestedGeneration\)/);
+  assert.match(monitor, /else if \(!state\.inFlight\)/);
+  assert.match(monitor, /state\.inFlight = true;\s*startMonitorProbe = true;/);
+  assert.match(monitor, /clearMonitorAuth = true;/);
 });
 
 test('named Stationhead monitor probes only the selected or authentication-candidate profiles', () => {

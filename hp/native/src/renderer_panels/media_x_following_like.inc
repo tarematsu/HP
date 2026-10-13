@@ -150,6 +150,22 @@ LR"JS(
     return repostPattern.test(text(socialContext));
   };
   const isOrganic = article => !isPromoted(article) && !isRepost(article);
+  // Scrolling revisits the same virtualized posts every 450-600 ms. Reuse
+  // their expensive span/social-context classification briefly, but detect
+  // recycled cells by permalink. The final pre-click safety check below
+  // deliberately calls isOrganic() live and never trusts this cache.
+  const scrollClassificationCache = new WeakMap();
+  const organicForScroll = article => {
+    const now = performance.now();
+    const permalink = article.querySelector('time')?.closest('a')
+        ?.getAttribute('href') || '';
+    const cached = scrollClassificationCache.get(article);
+    if (cached && cached.permalink === permalink && now >= cached.at &&
+        now - cached.at < 900) return cached.organic;
+    const organic = isOrganic(article);
+    scrollClassificationCache.set(article, { at: now, permalink, organic });
+    return organic;
+  };
   const installTimelineFilterCss = () => {
     const root = document.head || document.documentElement;
     if (!root || document.getElementById?.(filterStyleId) ||
@@ -197,14 +213,14 @@ LR"JS(
     const preferredFloor = attempted ? targetY() - targetTolerancePx : 0;
     let nearest = null;
     for (const article of articles) {
-      const filtered = isPromoted(article) || isRepost(article);
-      // Hiding the existing parent cell collapses the space consumed by a
-      // recently liked author's posts. Do NOT remove X-owned DOM nodes:
-      // React's virtualized timeline relies on those nodes and their keys.
-      const identity = !filtered && likedAuthors.size
-          ? articleIdentity(article) : null;
+      // An author already inside the 48-hour like cooldown must be hidden
+      // regardless of promotion/repost markers. Skip a deep span traversal
+      // entirely in that common case; otherwise use the bounded scroll cache.
+      const identity = likedAuthors.size ? articleIdentity(article) : null;
       const authorFiltered = !!(identity && likedAuthors.has(identity.author) &&
           recentlyLikedAuthor(identity.author));
+      const filtered = !authorFiltered && !organicForScroll(article);
+      // Hide the existing parent cell, never X-owned React DOM nodes.
       const hidden = filtered || authorFiltered;
       const target = article.closest?.('[data-testid="cellInnerDiv"]') || article;
       // A recycled cell or expired 48h entry becomes visible again.

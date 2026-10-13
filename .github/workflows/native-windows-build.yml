@@ -135,10 +135,10 @@ jobs:
             2>&1 | Tee-Object hp/native/ci-logs/build.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      # Full static analysis is expensive and duplicates the compile on every PR
-      # update. Keep it available as an explicit pre-merge manual check.
+      # Run MSVC /analyze for pull requests and manual verification.
+      # The full UI/updater runtime smoke workflow remains disabled on PRs.
       - name: Configure MSVC static analysis
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
         shell: pwsh
         env:
           HOMEPANEL_BUILD_VERSION: ${{ steps.version.outputs.version }}
@@ -151,7 +151,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run MSVC static analysis
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
         shell: pwsh
         env:
           HOMEPANEL_BUILD_VERSION: ${{ steps.version.outputs.version }}

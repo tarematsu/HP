@@ -47,7 +47,8 @@ test('YouTube ad skip readiness has one event-driven runtime owner', () => {
 });
 
 test('TVer skip controls use the same event-wake plus trusted-target model', () => {
-  assert.match(tver, /state\.playerObserver = new MutationObserver\(\(\) => wake\(0\)\)/);
+  assert.match(tver, /state\.playerObserver = new MutationObserver\(wakeForPlayerMutation\)/);
+  assert.match(tver, /const wakeForPlayerMutation = \(\) =>/);
   assert.match(
     tver,
     /attributeFilter: \['class','disabled','aria-disabled','aria-hidden'\]/,

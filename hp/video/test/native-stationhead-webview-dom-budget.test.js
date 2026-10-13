@@ -5,7 +5,10 @@ import test from 'node:test';
 
 const source = name => readFileSync(
   new URL('../../native/src/' + name, import.meta.url), 'utf8');
-const fragment = name => source(name).match(/LR"JS\(([\s\S]*?)\)JS"/)?.[1];
+// Fragments can contain multiple adjacent C++ raw literals to stay within
+// the MSVC C2026 limit. Join them before evaluating the page runtime.
+const fragment = name => [...source(name).matchAll(/LR"JS\(([\s\S]*?)\)JS"/g)]
+  .map(match => match[1]).join('');
 
 function onboardingRuntime({ text = 'Some unrelated room content', pseudo = 'none', visible = true,
                              playbackOnly = false } = {}) {
@@ -112,6 +115,22 @@ test('CSS pseudo-element-only recovery actions remain detectable', () => {
   assert.equal(runtime.onboardingMatches(element, /^connect spotify$/i), true);
   assert.equal(counts().pseudoStyles, 1);
   assert.equal(counts().rectReads, 1);
+});
+
+test('recoverable action match avoids allocating arrays or eagerly reading later attributes', () => {
+  const { element, runtime, counts, candidates } = onboardingRuntime();
+  const readAttributes = [];
+  element.getAttribute = key => {
+    readAttributes.push(key);
+    return key === 'aria-label' ? 'Keep Streaming' : null;
+  };
+  assert.equal(runtime.onboardingLabelMatches(element, /^keep streaming$/i), true);
+  assert.deepEqual(readAttributes, ['aria-label']);
+  assert.equal(runtime.scanOnboardingCandidates(candidates), 1);
+  assert.deepEqual(readAttributes, ['aria-label', 'aria-label', 'aria-hidden'],
+    'the visibility guard still reads aria-hidden after identifying the action');
+  assert.equal(counts().innerTextReads, 0);
+  assert.equal(counts().pseudoStyles, 0);
 });
 
 test('non-visible Connect Spotify remains ineligible for trusted interaction', () => {

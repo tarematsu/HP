@@ -831,19 +831,21 @@ class NativeMediaPanelHost final {
       InvalidateTverWatchdog();
       SetRecoveryState(RecoveryState::Suspect);
     }
-    if (!IsTverPage()) {
+    // The URL is needed for both page validation and the startup watchdog.
+    // Fetch it once and borrow the COM buffer rather than allocating a second
+    // string and then fetching the URL again on every event-driven wake.
+    LPWSTR rawSource = nullptr;
+    const HRESULT sourceResult = webview_->get_Source(&rawSource);
+    const std::unique_ptr<wchar_t, decltype(&CoTaskMemFree)> sourceOwner(
+        rawSource, &CoTaskMemFree);
+    const std::wstring_view source = SUCCEEDED(sourceResult) && rawSource
+        ? std::wstring_view(rawSource) : std::wstring_view{};
+    if (source.find(L"tver.jp/") == std::wstring_view::npos) {
       SetRecoveryState(RecoveryState::Reloading);
       NavigateCurrentPhase();
       return;
     }
-
-    LPWSTR rawSource = nullptr;
-    std::wstring source;
-    if (SUCCEEDED(webview_->get_Source(&rawSource)) && rawSource) {
-      source.assign(rawSource);
-      CoTaskMemFree(rawSource);
-    }
-    if (!source.empty() && NativeMediaTverStartupExpired(source, now)) {
+    if (NativeMediaTverStartupExpired(source, now)) {
       SetRecoveryState(RecoveryState::Reloading);
       if (NativeMediaTverAdvanceEpisode(source)) {
         NavigateCurrentPhase();

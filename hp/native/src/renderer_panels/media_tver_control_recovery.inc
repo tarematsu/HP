@@ -10,10 +10,30 @@ LR"JS(
     catch (_) {}
   };
   const wake = (delay = 80) => {
-    clearTimeout(state.wakeTimer);
-    state.wakeTimer = setTimeout(() => post('homepanel:tver-wake'), delay);
+    // DOM mutations may arrive in bursts. Keep the earliest pending wake
+    // rather than resetting the same timer on every unrelated mutation.
+    const dueAt = Date.now() + delay;
+    if (state.wakeTimer && state.wakeDueAt <= dueAt) return;
+    if (state.wakeTimer) clearTimeout(state.wakeTimer);
+    state.wakeDueAt = dueAt;
+    state.wakeTimer = setTimeout(() => {
+      state.wakeTimer = null;
+      state.wakeDueAt = 0;
+      post('homepanel:tver-wake');
+    }, delay);
   };
   const recheck = () => wake(2000);
+  const wakeForPlayerMutation = () => {
+    // TVer can churn player CSS classes throughout playback. Preserve the
+    // first immediate check and an eventual trailing check, but cap subsequent
+    // DOM-only wakes to one per 250 ms without a second observer/timer.
+    const observedAt = Date.now();
+    const untilEligible = Number(state.nextPlayerMutationWakeAt || 0) - observedAt;
+    const delay = untilEligible > 0 && untilEligible <= 250
+        ? untilEligible : 0;
+    if (delay === 0) state.nextPlayerMutationWakeAt = observedAt + 250;
+    wake(delay);
+  };
   const now = Date.now();
 
   const valid = element => Boolean(
@@ -254,9 +274,23 @@ LR"JS(
   const ad = () => {
     const length = duration();
     const shortMedia = length >= 5 && length <= 65;
-    // A short pre-roll is already classified as an ad. Do not traverse the
-    // player DOM to reconfirm it for every timeupdate.
     return shortMedia || explicitAd();
+  };
+  const adForProgress = key => {
+    // timeupdate may fire several times per second throughout a TVer episode.
+    // Keep the exact ad classifier but reuse its result for up to 1.5 seconds;
+    // native event/DOM wakes still run ad() immediately, and a new media
+    // source invalidates this cache on its very first timeupdate.
+    const checkedAt = Date.now();
+    if (state.progressAdVideo !== video || state.progressAdSource !== key ||
+        !state.progressAdCheckedAt || checkedAt < state.progressAdCheckedAt ||
+        checkedAt - state.progressAdCheckedAt >= 1500) {
+      state.progressAdVideo = video;
+      state.progressAdSource = key;
+      state.progressAdCheckedAt = checkedAt;
+      state.progressAdActive = ad();
+    }
+    return state.progressAdActive;
   };
 )JS" LR"JS(
 
@@ -383,26 +417,50 @@ LR"JS(
       state.fullscreenCornerTapAt = 0;
       return null;
     }
+    // CDP's requestFullscreen runs asynchronously after the settings bridge
+    // posts the native message. Do not immediately click the player UI: an
+    // overlapping click could toggle fullscreen back off.
+    if (state.currentSettingsFullscreenRequestAt &&
+        now - state.currentSettingsFullscreenRequestAt < 1500) {
+      wake(1500);
+      return 'recovery';
+    }
     if (state.fullscreenCornerTapAt &&
         now - state.fullscreenCornerTapAt < 1400) {
       wake(1400);
       return 'recovery';
     }
-    const rect = video.getBoundingClientRect?.();
-    if (!rect || rect.width < 24 || rect.height < 24) {
-      recheck();
-      return 'recovery';
+    // The right-bottom video pixel is not a stable fullscreen button on the
+    // redesigned player. Only dispatch trusted clicks to named controls.
+    const fullscreenSelector = [
+      'button[aria-label*="全画面"]', 'button[title*="全画面"]',
+      '[role="button"][aria-label*="全画面"]',
+      'button[aria-label*="fullscreen" i]',
+      'button[title*="fullscreen" i]',
+      '[role="button"][aria-label*="fullscreen" i]',
+      '[data-testid*="fullscreen" i]'
+    ].join(',');
+    for (const element of document.querySelectorAll(fullscreenSelector)) {
+      const name = [element.getAttribute?.('aria-label'),
+          element.getAttribute?.('title'),
+          element.getAttribute?.('data-testid')].filter(Boolean).join(' ');
+      if (/全画面を終了|全画面解除|exit.fullscreen|退出全画面/i.test(name) ||
+          !visible(element)) continue;
+      const action = arm(element, 'fullscreen', 1400);
+      if (!action) continue;
+      state.fullscreenCornerTapAt = now;
+      wake(1500);
+      return action;
     }
-    const x = Math.max(1, Math.min(innerWidth - 2, rect.right - 12));
-    const y = Math.max(1, Math.min(innerHeight - 2, rect.bottom - 12));
-    if (!Number.isFinite(x) || !Number.isFinite(y) ||
-        x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) {
-      recheck();
-      return 'recovery';
+    // No identifiable fullscreen control: retry browser fullscreen through
+    // the native user-gesture bridge, never click a guessed seek/play target.
+    if (!state.currentSettingsFullscreenRequestAt ||
+        now - state.currentSettingsFullscreenRequestAt >= 3000) {
+      state.currentSettingsFullscreenRequestAt = now;
+      post('homepanel:tver-fullscreen-key');
     }
-    state.fullscreenCornerTapAt = now;
     wake(1500);
-    return [x, y];
+    return 'recovery';
   };
 )JS" LR"JS(
 
@@ -420,8 +478,9 @@ LR"JS(
       if (event.type === 'timeupdate') {
         const at = currentTime();
         const delta = at - Number(state.programLastProgressTime || 0);
-        if (mediaKey() === state.programKey && !video.paused && !ad() &&
-            delta > 0 && delta <= 5) {
+        const key = mediaKey();
+        if (key === state.programKey && !video.paused &&
+            delta > 0 && delta <= 5 && !adForProgress(key)) {
           state.programPlayedSeconds += delta;
         }
         state.programLastProgressTime = at;
@@ -459,8 +518,9 @@ LR"JS(
     state.actionLanes = {};
     state.player = player;
     state.video = null;
+    state.nextPlayerMutationWakeAt = 0;
     state.pageAbort = new AbortController();
-    state.playerObserver = new MutationObserver(() => wake(0));
+    state.playerObserver = new MutationObserver(wakeForPlayerMutation);
     state.playerObserver.observe(player, {
       childList: true,
       subtree: true,
@@ -495,6 +555,10 @@ LR"JS(
   }
 
   const adActive = ad();
+  state.progressAdVideo = video;
+  state.progressAdSource = key;
+  state.progressAdCheckedAt = now;
+  state.progressAdActive = adActive;
   if (!adActive && key && !video.paused && !video.ended) {
     if (!state.programCandidateKey || state.programCandidateKey !== key) {
       state.programCandidateKey = key;

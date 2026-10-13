@@ -343,6 +343,17 @@ void NativeMediaEnsureEventWakeBridge(
             const std::unique_ptr<wchar_t, decltype(&CoTaskMemFree)> messageOwner(
                 rawMessage, &CoTaskMemFree);
             const std::wstring_view message(rawMessage);
+            // Many pages can post unrelated WebView2 messages. Reject them
+            // before get_Source() allocates a COM URL buffer. For every
+            // recognized operation, retain the original origin/route checks.
+            const bool mediaMessage = message == L"homepanel:youtube-fullscreen-key" ||
+                message == L"homepanel:youtube-wake" ||
+                message == L"homepanel:tver-fullscreen-key" ||
+                message == L"homepanel:tver-media-init" ||
+                message == L"homepanel:tver-ended" ||
+                message == L"homepanel:tver-wake" ||
+                message.starts_with(L"homepanel:x-like:");
+            if (!mediaMessage) return S_OK;
             LPWSTR rawSource = nullptr;
             if (FAILED(sender->get_Source(&rawSource)) || !rawSource) return S_OK;
             const std::unique_ptr<wchar_t, decltype(&CoTaskMemFree)> sourceOwner(

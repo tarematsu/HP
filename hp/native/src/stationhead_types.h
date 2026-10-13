@@ -15,6 +15,9 @@ enum StationheadChangeFlags : uint32_t {
   StationheadChangeReturnMain = 1u << 0,
   StationheadChangeReleaseAuth = 1u << 1,
   StationheadChangeShowPlayer = 1u << 2,
+  // PostChange() without a specific action still means this player's status
+  // changed. Distinguish that wake from an unrelated player's message.
+  StationheadChangeStatusUpdated = 1u << 3,
 };
 
 struct StationheadStatus {

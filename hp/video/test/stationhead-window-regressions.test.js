@@ -77,7 +77,9 @@ test('handle status and foregrounding use live player state', () => {
 
   const raise = section(handles, 'void StationheadHandleBase::RaiseActiveHost() const',
     'void StationheadHandleBase::ApplyBounds()');
-  assert.match(raise, /const StationheadStatus status = RawStatus\(\)/);
+  assert.match(raise, /const auto state = player_->ReadSchedulerState\(\)/);
+  assert.match(raise, /const bool interactive = state\.loginRequired \|\| state\.spotifyAuthorization/);
+  assert.match(raise, /if \(!interactive && !state\.visible\) return/);
   assert.match(raise, /SetWindowPos\(host, HWND_TOP/);
   assert.match(raise, /SWP_NOMOVE \| SWP_NOSIZE/);
 });

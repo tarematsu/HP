@@ -42,8 +42,9 @@ test('stable audio retires the startup preview without a periodic-refresh rearm 
     'static_assert(',
   );
   assert.match(sync, /if \(!StationheadBackgroundPreview\(\) \|\| !player\.AudioPlaying\(\)\) return;/);
-  assert.match(sync, /!status\.navigating && !status\.loginRequired/);
-  assert.match(sync, /!status\.spotifyAuthorization/);
+  assert.match(sync, /!state\.navigating && !state\.loginRequired/);
+  assert.match(sync, /!state\.spotifyAuthorization/);
+  assert.match(sync, /const auto state = player\.ReadSchedulerState\(\)/);
   assert.match(sync, /SetStationheadBackgroundPreview\(false\)/);
   assert.doesNotMatch(sync, /SetStationheadBackgroundPreview\(true\)/);
   assert.doesNotMatch(handles, /IsStationheadPeriodicRefresh|kStationheadPeriodicRefreshDetail|50-minute periodic refresh/);

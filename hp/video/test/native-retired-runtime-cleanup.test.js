@@ -21,7 +21,7 @@ test('Stationhead has one persistent configured room without time-of-day routing
 test('native monitor DOM authentication probes target selected or potentially unauthenticated profiles', () => {
   const code = source('sh_audio_loss.cpp');
   assert.match(code, /const bool needsDomProbe = selectedMonitor \|\|/);
-  assert.match(code, /!AudioPlaying\(\)/);
+  assert.match(code, /!snapshot\.audioPlaying/);
   assert.match(code, /if \(needsDomProbe\)/);
   assert.match(code, /clearMonitorAuth = true/);
 });

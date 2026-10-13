@@ -30,7 +30,7 @@ test('Stationhead backs off healthy probes but keeps fast frozen-media recovery'
   assert.match(stationheadLifecycle, /progressConfirmed = true/);
   assert.match(stationheadLifecycle, /healthyProgress \? progressHealthyProbeMs : progressProbeMs/);
   assert.match(stationheadLifecycle, /fastRecoverableProbe/);
-  assert.match(stationheadLifecycle, /probeStartedAt - lastRecoverableProbeAt >= recoverableHealthyProbeMs/);
+  assert.match(stationheadLifecycle, /probeStartedAt - lastOnboardingScanAt >= recoverableHealthyProbeMs/);
   assert.match(stationheadLifecycle, /publishRecoverableOnboarding\(\)/);
   assert.match(stationheadLifecycle, /media\.pause\(\)/);
   assert.match(stationheadLifecycle, /media\.play\?\.\(\)/);

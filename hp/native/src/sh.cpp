@@ -66,6 +66,14 @@ StationheadStatus StationheadPlayer::Status() const {
   return copy;
 }
 
+StationheadPlayer::SchedulerState StationheadPlayer::ReadSchedulerState() const {
+  std::lock_guard lock(mutex_);
+  return {
+      AudioPlaying(), status_.loginRequired, spotifyAuthorization_,
+      status_.processFailed, status_.visible,
+      status_.created, status_.navigating};
+}
+
 void StationheadPlayer::ResetNavigationRouteState() {
   audioPlaying_ = false;
   audioPlayingSinceAt_.store(0, std::memory_order_relaxed);
@@ -906,13 +914,16 @@ void StationheadPlayer::ToggleView() {
 
 uint32_t StationheadPlayer::ConsumeChangeFlags() {
   const uint32_t flags = pendingChangeFlags_.exchange(0, std::memory_order_acq_rel);
-  changeMessagePending_ = false;
+  const bool messagePending =
+      changeMessagePending_.exchange(false, std::memory_order_acq_rel);
   if (pendingChangeFlags_.load(std::memory_order_acquire) != 0 &&
       !changeMessagePending_.exchange(true, std::memory_order_acq_rel) &&
       window_ && IsWindow(window_)) {
     PostMessageW(window_, WM_HP_STATIONHEAD_CHANGED, 0, 0);
   }
-  return flags;
+  // PostChange() can have zero action bits. It must still update this
+  // profile, but messages from another profile must not update all six.
+  return flags | (messagePending ? StationheadChangeStatusUpdated : 0);
 }
 
 void StationheadPlayer::PostChange(uint32_t flags) {

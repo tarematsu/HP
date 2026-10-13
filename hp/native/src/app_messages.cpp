@@ -43,6 +43,16 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       return 1;
     case WM_SIZE:
       if (renderer_ && wParam != SIZE_MINIMIZED) {
+        const LONG width = static_cast<LONG>(LOWORD(lParam));
+        const LONG height = static_cast<LONG>(HIWORD(lParam));
+        // Repeated identical WM_SIZE messages must not relayout six WebView2
+        // hosts, refresh dashboard visibility and invalidate the entire UI.
+        // Initial/deferred startup still runs the full layout unconditionally.
+        if (rendererStarted_ && selectedTab_ == WorkspaceTab::Main &&
+            workspaceBounds_.right - workspaceBounds_.left == width &&
+            workspaceBounds_.bottom - workspaceBounds_.top == height) {
+          return 0;
+        }
         renderer_->Resize(LOWORD(lParam), HIWORD(lParam));
         LayoutWorkspace();
       }
@@ -91,6 +101,7 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
         if (!stationheadPeerStarted_[i] || !stationheadPeers_[i]) continue;
         const uint32_t changes = stationheadPeers_[i]->ConsumeChangeFlags();
+        if (changes == StationheadChangeNone) continue;
         if ((changes & StationheadChangeShowPlayer) != 0) {
           stationheadPeers_[i]->ShowAfterAudioStop();
         }
@@ -98,10 +109,12 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       }
       if (stationheadStarted_ && stationhead_) {
         const uint32_t changes = stationhead_->ConsumeChangeFlags();
-        if ((changes & StationheadChangeShowPlayer) != 0) {
-          stationhead_->ShowAfterAudioStop();
+        if (changes != StationheadChangeNone) {
+          if ((changes & StationheadChangeShowPlayer) != 0) {
+            stationhead_->ShowAfterAudioStop();
+          }
+          handled = true;
         }
-        handled = true;
       }
       if (!handled) return 0;
       MarkStationheadPlacementDirty();

@@ -357,26 +357,34 @@ void StationheadPlayer::SetManagedPlaybackFallback(
 }
 
 void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
+  // A single compact snapshot serves both the monitor-selection branch and
+  // audio-loss state machine; do not lock and copy flags twice per profile.
+  const SchedulerState snapshot = ReadSchedulerState();
   const uint64_t requestedGeneration =
       monitorDomProbeGeneration.load(std::memory_order_acquire);
   bool startMonitorProbe = false;
-  if (requestedGeneration != 0 && webview_) {
-    const StationheadStatus candidate = Status();
+  if (requestedGeneration != 0 && webview_ &&
+      requestedGeneration != monitorDomHandledGeneration_) {
     const unsigned selected = StationheadMonitorProfile();
     const bool selectedMonitor = selected != 0 &&
         selected == StationheadProfileNumber(profileName_);
     // WebView2 audio/authorization events already track healthy backgrounds.
     // Only probe the visible monitor profile or a session that could need login.
     const bool needsDomProbe = selectedMonitor ||
-        candidate.loginRequired || candidate.spotifyAuthorization ||
-        (selected == 0 && !AudioPlaying() &&
-         !candidate.navigating && !candidate.processFailed);
+        snapshot.loginRequired || snapshot.spotifyAuthorization ||
+        (selected == 0 && !snapshot.audioPlaying &&
+         !snapshot.navigating && !snapshot.processFailed);
     bool clearMonitorAuth = false;
     {
       std::lock_guard lock(monitorDomProbeStateMutex);
       auto& state = monitorDomProbeStates[this];
-      if (!state.inFlight && state.seenGeneration != requestedGeneration) {
+      if (state.seenGeneration == requestedGeneration) {
+        // Already consumed this request. Subsequent 2s ticks can skip the
+        // map mutex even if the asynchronous DOM probe is still in flight.
+        monitorDomHandledGeneration_ = requestedGeneration;
+      } else if (!state.inFlight) {
         state.seenGeneration = requestedGeneration;
+        monitorDomHandledGeneration_ = requestedGeneration;
         if (needsDomProbe) {
           state.inFlight = true;
           startMonitorProbe = true;
@@ -417,7 +425,9 @@ void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
     }
   }
 
-  const StationheadStatus snapshot = Status();
+  // This executes for all six profiles on every fast App recovery tick.
+  // Reuse the compact state already captured for the optional DOM monitor;
+  // no URL, room description, diagnostic copies or second status lock.
   const bool navigationActive =
       !snapshot.created || snapshot.navigating || snapshot.processFailed ||
       recreating_.load(std::memory_order_acquire) ||

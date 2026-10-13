@@ -58,9 +58,9 @@ test('pull-request native CI uses one Windows build and preserves manual full sm
     'PRs must still compile the native application');
   assert.match(nativeBuild, /-DHOMEPANEL_CI_STRICT=ON/);
   assert.match(nativeBuild,
-    /- name: Configure MSVC static analysis\n\s+if: github.event_name == 'workflow_dispatch'/);
+    /- name: Configure MSVC static analysis\n\s+if: github.event_name == 'pull_request' \|\| github.event_name == 'workflow_dispatch'/);
   assert.match(nativeBuild,
-    /- name: Run MSVC static analysis\n\s+if: github.event_name == 'workflow_dispatch'/);
+    /- name: Run MSVC static analysis\n\s+if: github.event_name == 'pull_request' \|\| github.event_name == 'workflow_dispatch'/);
   assert.match(nativeBuild,
     /- name: Package native release\n\s+if: github.ref == 'refs\/heads\/main' \|\| github.event_name == 'workflow_dispatch'/);
 });

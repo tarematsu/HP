@@ -119,11 +119,22 @@ std::wstring FriendlyCloudError(const std::string& raw) {
   return L"クラウドエラー: " + detail;
 }
 
-std::vector<uint8_t> DashboardWithCloudError(const fs::path& path, const std::wstring& message) {
+std::optional<std::vector<uint8_t>> DashboardWithCloudError(
+    const fs::path& path, const std::wstring& message) {
   JsonObject root;
   try {
     const std::optional<std::string> text = ReadTextFile(path);
-    if (text && !text->empty()) root = JsonObject::Parse(Utf8ToWide(*text));
+    if (text && !text->empty()) {
+      root = JsonObject::Parse(Utf8ToWide(*text));
+      // Repeated offline polls often report the same error for hours.
+      // Preserve the existing cache and avoid rewriting the JSON/triggering
+      // a UI reload unless the displayed error actually changed.
+      if (root.HasKey(L"__cloudError") &&
+          root.GetNamedValue(L"__cloudError").ValueType() == JsonValueType::String &&
+          root.GetNamedString(L"__cloudError") == message) {
+        return std::nullopt;
+      }
+    }
   } catch (...) {
     root = JsonObject{};
   }
@@ -334,7 +345,9 @@ void CloudClient::Loop() {
       cacheMetadataDirty_ = true;
       const std::wstring friendly = FriendlyCloudError(error.what());
       const auto dashboard = DashboardWithCloudError(dataDir_ / L"dashboard.json", friendly);
-      if (AtomicWriteBytes(dataDir_ / L"dashboard.json", dashboard)) PostMessageW(window_, WM_HP_CLOUD_UPDATED, 0, 0);
+      if (dashboard && AtomicWriteBytes(dataDir_ / L"dashboard.json", *dashboard)) {
+        PostMessageW(window_, WM_HP_CLOUD_UPDATED, 0, 0);
+      }
       const int count = ++failures_;
       log_.Warn(L"Cloudflare sync failed (" + std::to_wstring(count) + L"): " + Utf8ToWide(error.what()));
     }

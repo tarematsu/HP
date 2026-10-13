@@ -45,7 +45,7 @@ function video({ playing = true, width = 640, height = 360, src = 'program' } = 
   };
 }
 
-function scenario({ videos = [video()] } = {}) {
+function scenario({ videos = [video()], settingsAvailable = true } = {}) {
   let clock = 1000;
   let speedMenu = false;
   let qualityMenu = false;
@@ -62,12 +62,12 @@ function scenario({ videos = [video()] } = {}) {
     qualityIndicator.setLabel('低');
     qualityMenu = false;
   });
-  const controls = () => [
+  const controls = () => settingsAvailable ? [
     speedIndicator,
     qualityIndicator,
     ...(speedMenu ? [speed175] : []),
     ...(qualityMenu ? [low] : []),
-  ];
+  ] : [];
   const document = {
     fullscreenElement: null,
     webkitFullscreenElement: null,
@@ -109,18 +109,18 @@ function scenario({ videos = [video()] } = {}) {
   };
 }
 
-test('redesigned TVer UI is synchronized to 1.75x and low before fullscreen', () => {
+test('redesigned TVer UI is synchronized to 1.75x and low without blocking fullscreen', () => {
   const scene = scenario();
 
   scene.run();
   assert.equal(scene.videos[0].playbackRate, 1.75);
   assert.equal(scene.speedIndicator.innerText, '×1.0');
-  assert.equal(scene.messages.includes('homepanel:tver-fullscreen-key'), false);
+  assert.equal(scene.messages.includes('homepanel:tver-fullscreen-key'), true);
 
   scene.advance(1000);
   scene.run();
   assert.equal(scene.speedIndicator.innerText, '×1.75');
-  assert.equal(scene.messages.includes('homepanel:tver-fullscreen-key'), false);
+  assert.equal(scene.messages.includes('homepanel:tver-fullscreen-key'), true);
 
   scene.advance(1000);
   scene.run();
@@ -136,7 +136,27 @@ test('redesigned TVer UI is synchronized to 1.75x and low before fullscreen', ()
   assert.equal(scene.window.__homePanelTverRuntime.currentSettingsQualityConfirmed, true);
   assert.equal(scene.window.__homePanelTverRuntime.qualityApplied, true);
   assert.equal(scene.messages.filter(
-    value => value === 'homepanel:tver-fullscreen-key').length, 1);
+    value => value === 'homepanel:tver-fullscreen-key').length, 2);
+});
+
+test('missing speed or quality controls cannot prevent browser fullscreen', () => {
+  const scene = scenario({ settingsAvailable: false });
+  scene.run();
+  assert.equal(scene.messages.filter(x => x === 'homepanel:tver-fullscreen-key').length, 1);
+  assert.equal(scene.window.__homePanelTverRuntime.currentSettingsSpeedConfirmed, false);
+  assert.equal(scene.window.__homePanelTverRuntime.currentSettingsQualityConfirmed, false);
+  scene.advance(1000);
+  scene.run();
+  assert.equal(scene.messages.filter(x => x === 'homepanel:tver-fullscreen-key').length, 1,
+    'settings retry must respect native request budget');
+  scene.advance(2100);
+  scene.run();
+  assert.equal(scene.messages.filter(x => x === 'homepanel:tver-fullscreen-key').length, 2);
+  scene.document.fullscreenElement = {};
+  scene.advance(3100);
+  scene.run();
+  assert.equal(scene.messages.filter(x => x === 'homepanel:tver-fullscreen-key').length, 2,
+    'real fullscreen stops further CDP requests');
 });
 
 test('active playing video wins over a stale first video', () => {

@@ -377,17 +377,17 @@ void App::Tick() {
   if (!renderer_ || !sensors_ || !cloud_) return;
   StartDeferredServices(now);
 
-  std::array<StationheadStatus, kStationheadPeerCount> peerStatuses{};
+  std::array<bool, kStationheadPeerCount> peerNeedsFastTick{};
   for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
     if (!stationheadPeerStarted_[i] || !stationheadPeers_[i]) continue;
     stationheadPeers_[i]->Tick(now);
-    peerStatuses[i] = stationheadPeers_[i]->Status();
+    peerNeedsFastTick[i] = stationheadPeers_[i]->NeedsFastTick();
   }
 
-  StationheadStatus stationheadStatus;
+  bool primaryNeedsFastTick = false;
   if (stationheadStarted_ && stationhead_) {
     stationhead_->Tick(now);
-    stationheadStatus = stationhead_->Status();
+    primaryNeedsFastTick = stationhead_->NeedsFastTick();
   }
   if (stationheadLeaderboardCollectorStarted_ && stationheadLeaderboardCollector_) {
     stationheadLeaderboardCollector_->Tick(now);
@@ -409,21 +409,25 @@ void App::Tick() {
     foregroundOwner = static_cast<int>(kStationheadPeerCount);
   }
 
-  // Revoke every loser before granting the winner. This avoids a transition
-  // frame where two sibling WebView hosts are both allowed to claim HWND_TOP.
-  for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
-    if (stationheadPeers_[i] && static_cast<int>(i) != foregroundOwner) {
-      stationheadPeers_[i]->SetForegroundAllowed(false);
+  if (foregroundOwner != lastStationheadForegroundOwner_) {
+    // Revoke every loser before granting the winner. A stable owner already
+    // has the correct permission; reapplying six unchanged flags on each
+    // two-second recovery tick performs unnecessary native window work.
+    for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
+      if (stationheadPeers_[i] && static_cast<int>(i) != foregroundOwner) {
+        stationheadPeers_[i]->SetForegroundAllowed(false);
+      }
     }
-  }
-  if (stationhead_ && foregroundOwner != static_cast<int>(kStationheadPeerCount)) {
-    stationhead_->SetForegroundAllowed(false);
-  }
-  if (foregroundOwner >= 0 &&
-      foregroundOwner < static_cast<int>(kStationheadPeerCount)) {
-    stationheadPeers_[static_cast<size_t>(foregroundOwner)]->SetForegroundAllowed(true);
-  } else if (foregroundOwner == static_cast<int>(kStationheadPeerCount) && stationhead_) {
-    stationhead_->SetForegroundAllowed(true);
+    if (stationhead_ && foregroundOwner != static_cast<int>(kStationheadPeerCount)) {
+      stationhead_->SetForegroundAllowed(false);
+    }
+    if (foregroundOwner >= 0 &&
+        foregroundOwner < static_cast<int>(kStationheadPeerCount)) {
+      stationheadPeers_[static_cast<size_t>(foregroundOwner)]->SetForegroundAllowed(true);
+    } else if (foregroundOwner == static_cast<int>(kStationheadPeerCount) && stationhead_) {
+      stationhead_->SetForegroundAllowed(true);
+    }
+    lastStationheadForegroundOwner_ = foregroundOwner;
   }
 
   ApplyStationheadWindowPlacement();
@@ -451,8 +455,7 @@ void App::Tick() {
       continue;
     }
     if (!stationheadPeers_[i]) continue;
-    if (StationheadNeedsForeground(peerStatuses[i]) ||
-        !peerStatuses[i].audioPlaying) {
+    if (peerNeedsFastTick[i]) {
       nextTickMs = std::min(nextTickMs, kFastTickMs);
     } else {
       nextTickMs = std::min(
@@ -483,8 +486,7 @@ void App::Tick() {
     // Until Stationhead has established audio, keep the App scheduler alive at
     // the fast cadence even while the WebView stays behind the dashboard. This
     // makes Start Listening retries independent of monitor foreground wakes.
-    if (StationheadNeedsForeground(stationheadStatus) ||
-        !stationheadStatus.audioPlaying) {
+    if (primaryNeedsFastTick) {
       nextTickMs = std::min(nextTickMs, kFastTickMs);
     } else {
       nextTickMs = std::min(

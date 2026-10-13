@@ -40,6 +40,9 @@ inline std::wstring_view StationheadRuntimeInteractionFragment() noexcept {
   let lastAudio = null;
   let lastBlocking = null;
   let playbackEstablished = false;
+  // Share the last full-room scan between authentication events and the
+  // media watchdog. Stable audio should not rescan the room per event.
+  let lastOnboardingScanAt = 0;
 
   const postText = suffix => {
     try { webview?.postMessage?.('{{PREFIX}}-' + suffix); } catch (_) {}
@@ -70,9 +73,10 @@ inline std::wstring_view StationheadRuntimeInteractionFragment() noexcept {
     element?.textContent,
   ].filter(Boolean).join(' '));
   const playing = () => {
-    if (typeof window.__homepanelAudioPlaying === 'boolean') {
-      return window.__homepanelAudioPlaying;
-    }
+    // The shared native audio flag is written by the WebView event bridge.
+    // Read it once rather than twice on every audio/auth probe.
+    const nativeAudioPlaying = window.__homepanelAudioPlaying;
+    if (typeof nativeAudioPlaying === 'boolean') return nativeAudioPlaying;
     if (navigator.mediaSession?.playbackState === 'playing') return true;
     // Avoid creating a temporary Array on every audio state event.
     for (const element of document.querySelectorAll('audio,video')) {
@@ -133,14 +137,25 @@ inline std::wstring_view StationheadRuntimeInteractionFragment() noexcept {
     nativeClearTimeout(authReadyTimer);
     authReadyTimer = 0;
   };
-  const publishAuth = () => {
+  const publishAuth = (knownAudio = null) => {
     if (!pageActive || !document.body) return;
-    if (publishRecoverableOnboarding()) return;
+    // Uncertain/stopped audio still discovers recovery controls immediately.
+    // Confirmed playback shares a sixteen-second scanning budget with the
+    // watchdog; account/login guards below still run on every auth event.
+    const now = Date.now();
+    if (knownAudio !== true || !lastOnboardingScanAt ||
+        now < lastOnboardingScanAt || now - lastOnboardingScanAt >= 16000) {
+      if (publishRecoverableOnboarding()) return;
+    }
     // Reuse one fresh control snapshot for both auth checks. Recoverable
     // onboarding runs first and may update the page's playback-only CSS;
     // never cache controls across events or the delayed authorization check.
     const controls = document.querySelectorAll(controlSelector);
-    const authenticated = accountVisible(controls) || playing();
+    // Lifecycle just checked the audio state for this same event. Avoid a
+    // second audio/video query (and repeated mediaSession access) in the
+    // common account-absent path; standalone auth probes still query live.
+    const authenticated = accountVisible(controls) ||
+      (knownAudio === null ? playing() : knownAudio);
     const blocking = blockingLogin(authenticated, false, controls);
     if (blocking) {
       cancelAuthReady();

@@ -37,13 +37,13 @@ bool RequiresInteractiveStationhead(const StationheadStatus& status) noexcept {
 
 void SyncStationheadBackgroundPreview(
     StationheadPlayer& player, const RECT& workspaceBounds) {
-  // Preview is already retired on the steady-state path. Avoid copying
-  // StationheadStatus (including its strings) across all six windows until
-  // another startup/reload explicitly requests the preview again.
+  // Preview is already retired on the steady-state path. Read only the
+  // lifecycle/auth flags instead of cloning room URLs and diagnostics during
+  // startup, reload or a playback event on any of the six profiles.
   if (!StationheadBackgroundPreview() || !player.AudioPlaying()) return;
-  const StationheadStatus status = player.Status();
-  if (!status.navigating && !status.loginRequired &&
-      !status.spotifyAuthorization &&
+  const auto state = player.ReadSchedulerState();
+  if (!state.navigating && !state.loginRequired &&
+      !state.spotifyAuthorization &&
       SetStationheadBackgroundPreview(false)) {
     player.SetBounds(workspaceBounds);
   }
@@ -105,16 +105,35 @@ StationheadStatus StationheadHandleBase::Status() const {
   return status;
 }
 
+bool StationheadHandleBase::NeedsFastTick() const {
+  if (!player_) return false;
+  const auto state = player_->ReadSchedulerState();
+  const bool interactive =
+      state.loginRequired || state.spotifyAuthorization || state.processFailed;
+  // Mirror Status() and AppStationheadHandle::Status() without allocating or
+  // copying URL/fallback/diagnostic strings on every scheduler wake.
+  const bool suppressed = SuppressTrackTransitionGap(state.audioPlaying, interactive);
+  if (suppressed && state.visible) player_->KeepPlaybackBehindDashboard();
+  if (transitionSuppressed_ != suppressed) {
+    transitionSuppressed_ = suppressed;
+    ++contentRevision_;
+  }
+  return interactive || (!state.audioPlaying && !suppressed);
+}
+
 int64_t StationheadHandleBase::NextWakeAt() const noexcept {
   return player_ ? player_->NextWakeAt() : 0;
 }
 
 void StationheadHandleBase::RefreshVisibility() {
   if (!player_) return;
-  const StationheadStatus status = RawStatus();
-  if (SuppressTrackTransitionGap(
-          status.audioPlaying, RequiresInteractiveStationhead(status))) {
-    if (status.visible) player_->KeepPlaybackBehindDashboard();
+  // The placement pass may visit all six WebViews after a single profile
+  // changes. Avoid copying strings on this flag-only visibility decision.
+  const auto state = player_->ReadSchedulerState();
+  const bool interactive =
+      state.loginRequired || state.spotifyAuthorization || state.processFailed;
+  if (SuppressTrackTransitionGap(state.audioPlaying, interactive)) {
+    if (state.visible) player_->KeepPlaybackBehindDashboard();
     return;
   }
   player_->SelectTab(StationheadTabKind::None);
@@ -160,16 +179,17 @@ void StationheadHandleBase::Tick(int64_t nowMs) {
     const bool active = player_->RetryPendingTrackBoundaryRefresh(nowMs);
     if (active) {
       ArmBoundaryRetryState(this, nowMs);
-      if (player_->Status().navigating) ClearBoundaryRetryState(this);
+      if (player_->ReadSchedulerState().navigating) ClearBoundaryRetryState(this);
       // Arm and Clear can insert/erase the entry; refresh the iterator.
       found = boundaryRetries.find(this);
     }
   }
 
   if (found == boundaryRetries.end() || !found->second.armed) return;
-  const StationheadStatus status = player_->Status();
-  if (player_->AudioPlaying() || status.navigating ||
-      RequiresInteractiveStationhead(status) || nowMs >= found->second.deadline) {
+  const auto state = player_->ReadSchedulerState();
+  if (state.audioPlaying || state.navigating || state.loginRequired ||
+      state.spotifyAuthorization || state.processFailed ||
+      nowMs >= found->second.deadline) {
     player_->CancelPendingTrackBoundaryRefresh();
     ClearBoundaryRetryState(this);
   }
@@ -189,8 +209,11 @@ void StationheadHandleBase::ReleaseCompletedAuth() {
 
 uint32_t StationheadHandleBase::ConsumeChangeFlags() {
   if (!player_ || !startIssued_ || stopIssued_) return StationheadChangeNone;
-  SyncStationheadBackgroundPreview(*player_, workspaceBounds_);
   uint32_t flags = player_->ConsumeChangeFlags();
+  // A shared WM_HP_STATIONHEAD_CHANGED wake reaches all six handles. Only the
+  // originating profile needs preview checks, layout or content revision.
+  if (flags == StationheadChangeNone) return flags;
+  SyncStationheadBackgroundPreview(*player_, workspaceBounds_);
   if ((flags & StationheadChangeReleaseAuth) != 0) {
     player_->FinalizeCompletedAuth();
     ApplyBounds();
@@ -264,13 +287,17 @@ void StationheadHandleBase::RaiseActiveHost() const {
   HWND host = player_->ActiveHostWindowForAccountSetup();
   if (!host || !IsWindow(host)) return;
 
-  const StationheadStatus status = RawStatus();
-  const bool interactive = IsInteractive(status);
-  if (!interactive && !status.visible) return;
+  const auto state = player_->ReadSchedulerState();
+  const bool interactive = state.loginRequired || state.spotifyAuthorization;
+  if (!interactive && !state.visible) return;
 
-  SetWindowPos(host, HWND_TOP, 0, 0, 0, 0,
-               SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE |
-                   SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+  // Healthy foreground windows should not be re-raised every App tick.
+  // Still bring the root to the foreground during interactive auth.
+  if (!IsWindowVisible(host) || GetWindow(host, GW_HWNDPREV) != nullptr) {
+    SetWindowPos(host, HWND_TOP, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE |
+                     SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+  }
   if (interactive) BringMainWindowToFront(host);
 }
 
