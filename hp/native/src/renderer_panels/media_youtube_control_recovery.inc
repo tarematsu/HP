@@ -274,46 +274,65 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   };
   const syncAdObserver = active => {
     if (!active) {
-    state.adObserver?.disconnect();
-    state.adObserver = null;
-    return;
+      state.adObserver?.disconnect();
+      state.adControlObserver?.disconnect();
+      state.adObserver = null;
+      state.adControlObserver = null;
+      state.adObservedNodes = null;
+      return;
     }
     if (state.adObserver || typeof MutationObserver !== 'function') return;
-    // Ignore unrelated player DOM churn during ads. The class observer
-    // handles ad entry/exit; this observer only tracks actionable controls.
-    const actionableAdSelector = skipSelector + ',' + surveySelector + ',[role="dialog"]';
-    const adControlNode = (node, deep = false) => {
-    if (node?.nodeType !== 1 || node === player) return false;
-    return !!(node.matches?.(actionableAdSelector) ||
-      node.closest?.(actionableAdSelector) ||
-      (deep && node.querySelector?.(actionableAdSelector)));
-    };
-    const adMutationWake = records => {
-    for (const record of records) {
-      if (record.type === 'attributes') {
-        if (adControlNode(record.target,
-            record.attributeName === 'aria-hidden')) {
-          wake(180);
-          return;
-        }
-      } else if (record.type === 'childList') {
-        if (adControlNode(record.target)) { wake(180); return; }
-        for (const node of record.addedNodes) {
-          if (adControlNode(node, true)) { wake(180); return; }
-        }
-        for (const node of record.removedNodes) {
-          if (adControlNode(node, true)) { wake(180); return; }
+    // Observe child-list changes across the player, but watch class/ARIA
+    // attributes only on actionable ad controls and their ancestor chain.
+    // YouTube's unrelated UI classes change frequently during ad playback.
+    const adSelector = skipSelector + ',' + surveySelector + ',[role="dialog"]';
+    const relatedAdNode = (node, deep = false) =>
+      node?.nodeType === 1 && node !== player && !!(
+        node.matches?.(adSelector) || node.closest?.(adSelector) ||
+        (deep && node.querySelector?.(adSelector)));
+    state.adControlObserver = new MutationObserver(() => wake(180));
+    const observeAdAttributes = () => {
+      const nodes = new Set();
+      for (const control of player.querySelectorAll(adSelector)) {
+        for (let node = control; node && node !== player;
+             node = node.parentElement) {
+          nodes.add(node);
         }
       }
-    }
+      const previous = state.adObservedNodes;
+      if (previous?.size === nodes.size &&
+          [...nodes].every(node => previous.has(node))) return;
+      state.adControlObserver.disconnect();
+      for (const node of nodes) {
+        state.adControlObserver.observe(node, {
+          attributes: true,
+          attributeFilter: ['disabled', 'aria-disabled', 'aria-hidden', 'class']
+        });
+      }
+      state.adObservedNodes = nodes;
     };
-    state.adObserver = new MutationObserver(adMutationWake);
-    state.adObserver.observe(player, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['disabled', 'aria-disabled', 'aria-hidden', 'class']
+    state.adObserver = new MutationObserver(records => {
+      for (const record of records) {
+        if (record.type !== 'childList') continue;
+        let relevant = relatedAdNode(record.target);
+        if (!relevant) {
+          for (const node of record.addedNodes) {
+            if (relatedAdNode(node, true)) { relevant = true; break; }
+          }
+        }
+        if (!relevant) {
+          for (const node of record.removedNodes) {
+            if (relatedAdNode(node, true)) { relevant = true; break; }
+          }
+        }
+        if (!relevant) continue;
+        observeAdAttributes();
+        wake(180);
+        return;
+      }
     });
+    state.adObserver.observe(player, { childList: true, subtree: true });
+    observeAdAttributes();
   };
 )JS" LR"JS(
   if (state.player !== player) {
@@ -322,7 +341,10 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     state.classObserver?.disconnect();
     state.popupObserver?.disconnect();
     state.adObserver?.disconnect();
+    state.adControlObserver?.disconnect();
     state.adObserver = null;
+    state.adControlObserver = null;
+    state.adObservedNodes = null;
     state.actionCleanup?.();
     for (const lane of Object.values(state.actionLanes || {})) lane.cleanup?.();
     state.actionLanes = {};
