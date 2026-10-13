@@ -70,9 +70,10 @@ inline std::wstring_view StationheadRuntimeInteractionFragment() noexcept {
     element?.textContent,
   ].filter(Boolean).join(' '));
   const playing = () => {
-    if (typeof window.__homepanelAudioPlaying === 'boolean') {
-      return window.__homepanelAudioPlaying;
-    }
+    // The shared native audio flag is written by the WebView event bridge.
+    // Read it once rather than twice on every audio/auth probe.
+    const nativeAudioPlaying = window.__homepanelAudioPlaying;
+    if (typeof nativeAudioPlaying === 'boolean') return nativeAudioPlaying;
     if (navigator.mediaSession?.playbackState === 'playing') return true;
     // Avoid creating a temporary Array on every audio state event.
     for (const element of document.querySelectorAll('audio,video')) {
