@@ -70,12 +70,12 @@ test('all active client Canvas charts reuse the shared Canvas foundation', () =>
 
 test('Buddies Ohisama and Nogizaka share one HTML shell and one JS runtime', () => {
   for (const source of [currentShell, hinataShell, nogizakaShell]) {
-    assert.match(source, /mountStationheadChannelShell/);
+    assert.match(source, /mountStationheadSourceShell/);
     assert.doesNotMatch(source, /dashboardMetric|dashboardChartCard|dashboardTable|stationheadPlaybackCards/);
   }
-  assert.match(currentShell, /stationheadModel = 'buddies'/);
-  assert.match(hinataShell, /stationheadModel = 'ohisama'/);
-  assert.match(nogizakaShell, /stationheadModel = 'nogizaka'/);
+  assert.match(currentShell, /mountStationheadSourceShell\('buddies'\)/);
+  assert.match(hinataShell, /mountStationheadSourceShell\('ohisama'\)/);
+  assert.match(nogizakaShell, /mountStationheadSourceShell\('nogizaka'\)/);
   assert.match(stationheadShell, /export function stationheadChannelMarkup\(/);
   assert.match(stationheadShell, /dashboardModeTabs/);
   assert.match(stationheadRuntime, /stationheadChannelReadModel/);
