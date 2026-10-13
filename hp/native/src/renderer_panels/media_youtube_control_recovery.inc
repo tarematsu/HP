@@ -27,7 +27,13 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     }, delay);
   };
   const recheck = () => wake(2000);
-  const player = document.querySelector('#movie_player');
+  // Reuse the stable player root even during dense ad wake bursts.
+  // SPA navigation explicitly invalidates the root; a detached player
+  // is always rediscovered before installing new observers.
+  const player = !state.playerNeedsRefresh && state.player?.isConnected &&
+      state.player.id === 'movie_player'
+    ? state.player : document.querySelector('#movie_player');
+  state.playerNeedsRefresh = false;
   if (!player) {
     recheck();
     return 'recovery';
@@ -375,6 +381,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     queueMicrotask(() => {
       pageStateQueued = false;
       if (state.player !== player) return;
+      state.playerNeedsRefresh = true;
       bindVideo(true);
       wake(0);
     });
