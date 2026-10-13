@@ -15,7 +15,7 @@ test('KKBOX owns its chart history layout as a first-class music service', () =>
   assert.match(shell, /dataAttribute: 'kkbox-chart-filter'/);
   assert.match(shell, /KKBOX 日語チャート ランクイン履歴/);
   assert.match(shell, /kkboxJapaneseHistoryBody/);
-  assert.match(shell, /headers: \['更新日', 'グループ', '順位', '曲名'\]/);
+  assert.match(shell, /musicServiceRankingHistoryTable/);
   assert.match(shell, /dataAttribute: 'kkbox-artist-filter'/);
   assert.doesNotMatch(shell, /regional/i);
 
