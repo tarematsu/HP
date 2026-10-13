@@ -1,3 +1,4 @@
+import { insertPendingQueueRevision } from './minute-queue-revision-insert.js';
 import {
   bool,
   integer,
@@ -128,26 +129,12 @@ export async function prepareSparseRebuildRevision(env, payload, options = {}, d
   });
 
   if (!revision) {
-    const insertRevision = dependencies.insertRevision || (async () => db.prepare(`INSERT OR IGNORE INTO sh_queue_revisions(
-        session_id,channel_id,station_id,queue_id,queue_start_time,effective_at,received_at,
-        structural_hash,item_count,status,source,source_priority,materialized_item_count,
-        coverage_complete,source_job_id,source_visible_count,last_materialized_at
-      ) VALUES(?,?,?,?,?,?,?,?,?,'pending','live_reconstructed',?,0,0,?,?,NULL)`)
-      .bind(
-        sessionId,
-        channelId,
-        stationId,
-        integer(queue.queue_id),
-        queueStart,
-        observedAt,
-        receivedAt,
-        structuralHash,
-        visibleCount,
-        sourcePriority,
-        sourceJobId,
-        visibleCount,
-      )
-      .run());
+    const insertRevision = dependencies.insertRevision || (async () => insertPendingQueueRevision(db, {
+        sessionId, channelId, stationId, queueId: integer(queue.queue_id),
+        queueStart, observedAt, receivedAt, structuralHash, itemCount: visibleCount,
+        source: 'live_reconstructed', sourcePriority,
+        materialization: { sourceJobId, visibleCount },
+      }));
     await insertRevision();
     revision = await findRevision(db, {
       channelId,
