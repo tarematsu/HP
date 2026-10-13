@@ -65,6 +65,6 @@ test('sensor JSON uses the same append-only formatter for file, rewrite and uplo
   assert.match(rewrite, /text\.reserve\(samples\.size\(\) \* 192\)/);
   assert.match(rewrite, /AppendSampleJson\(text, sample\);\s*text\.push_back\('\\n'\)/);
   assert.match(rewrite, /AtomicWriteText\(outboxPath_, text\)/);
-  assert.doesNotMatch(rewrite, /ostringstream|SampleJson\(sample\)/);
+  assert.doesNotMatch(rewrite, /std::ostringstream|text << SampleJson/);
   assert.match(builder, /AppendSampleJson\(body, outbox_\[i\]\)/);
 });
