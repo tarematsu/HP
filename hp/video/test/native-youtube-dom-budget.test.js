@@ -104,6 +104,7 @@ test('hidden Keep Watching does not displace visible Close', () => {
 
 function adScenario({
   controls = [], skipButtons = [], state = {}, now = 1000,
+  skipArmUnavailable = false,
 } = {}) {
   const calls = [];
   const survey = {
@@ -146,7 +147,8 @@ function adScenario({
       },
       arm: (element, action) => {
         calls.push(action);
-        return { id: element.id, action };
+        return skipArmUnavailable && action === 'skip-ad'
+          ? null : { id: element.id, action };
       },
       requestFullscreen: () => 'fullscreen',
       fullscreen: () => true,
@@ -194,6 +196,16 @@ test('Skip Ad remains immediate even while survey checks are throttled', () => {
   assert.equal(skip.surveyQueries, 0);
   assert.equal(skip.skipQueries, 1);
   assert.equal(skip.skipIterations, 2);
+
+  const cooldown = adScenario({
+    skipButtons: [{ id: 3, connected: true }],
+    state, now: 2500, skipArmUnavailable: true,
+  });
+  assert.equal(cooldown.outcome, 'recovery');
+  assert.deepEqual(cooldown.calls, ['skip-ad', 'wake:1000'],
+    'a found-but-unarmable Skip Ad control must get a fast retry');
+  assert.equal(cooldown.surveyQueries, 0,
+    'the retry does not override five-minute survey rate limits');
 
   const missing = adScenario({ state, now: 3000 });
   assert.equal(missing.outcome, 'recovery');
@@ -253,5 +265,5 @@ test('YouTube hot paths avoid Array.from and preserve exact trusted action names
   assert.match(runtime, /return arm\(keepWatching, 'dialog-continue-watching', 1000\)/);
   assert.match(runtime, /return arm\(close, 'dialog-close', 500\)/);
   assert.match(runtime, /return arm\(fallback, 'fullscreen', 1200\)/);
-  assert.match(runtime, /return arm\(target, 'skip-ad', 600\)/);
+  assert.match(runtime, /const action = arm\(target, 'skip-ad', 600\)/);
 });
