@@ -17,17 +17,19 @@ test('TVer has no viewport-fill pseudo fullscreen', () => {
   assert.match(runtime, /document\.fullscreenElement/);
 });
 
-test('TVer fullscreen keeps the normal trusted bottom-right tap as its first attempt', () => {
+test('TVer fullscreen targets actual labeled controls, never a blind corner', () => {
   assert.match(runtime, /const requestFullscreen = \(\) =>/);
-  assert.match(runtime, /video\.getBoundingClientRect/);
-  assert.match(runtime, /rect\.right - 12/);
-  assert.match(runtime, /rect\.bottom - 12/);
-  assert.match(runtime, /return \[x, y\]/);
+  assert.match(runtime, /const fullscreenSelector = \[/);
+  assert.match(runtime, /document\.querySelectorAll\(fullscreenSelector\)/);
+  assert.match(runtime, /arm\(element, 'fullscreen', 1400\)/);
+  assert.match(runtime, /return action;/);
+  assert.doesNotMatch(runtime, /rect\.right - 12|rect\.bottom - 12/);
 });
 
-test('TVer corner tap retries until real browser fullscreen is observed', () => {
+test('TVer waits for native CDP result before attempting a labeled UI click', () => {
+  assert.match(runtime, /state\.currentSettingsFullscreenRequestAt/);
+  assert.match(runtime, /now - state\.currentSettingsFullscreenRequestAt < 1500/);
   assert.match(runtime, /state\.fullscreenCornerTapAt/);
-  assert.match(runtime, /now - state\.fullscreenCornerTapAt < 1400/);
   assert.match(runtime, /wake\(1500\)/);
   assert.match(runtime, /document\.fullscreenElement/);
 });

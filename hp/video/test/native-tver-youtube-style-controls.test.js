@@ -16,14 +16,14 @@ test('TVer uses one YouTube-style control recovery runtime', () => {
   assert.doesNotMatch(watchdog, /media_tver_playback_policy_(?:guard|main1|main2)\.inc/);
 });
 
-test('TVer fullscreen uses a direct trusted video-corner tap', () => {
+test('TVer fullscreen uses native gesture and verified fullscreen controls', () => {
   assert.match(runtime, /const requestFullscreen = \(\) =>/);
-  assert.match(runtime, /video\.getBoundingClientRect/);
-  assert.match(runtime, /rect\.right - 12/);
-  assert.match(runtime, /rect\.bottom - 12/);
+  assert.match(runtime, /fullscreenSelector/);
+  assert.match(runtime, /arm\(element, 'fullscreen', 1400\)/);
   assert.match(runtime, /state\.fullscreenCornerTapAt/);
   assert.match(runtime, /document\.fullscreenElement/);
-  assert.doesNotMatch(runtime, /homepanel:tver-fullscreen-key|fullscreenControl/);
+  assert.match(runtime, /homepanel:tver-fullscreen-key/);
+  assert.doesNotMatch(runtime, /rect\.right - 12|rect\.bottom - 12/);
   assert.doesNotMatch(runtime, /data-homepanel-tver-fill|homepanel-tver-viewport-fill/);
 });
 

@@ -33,13 +33,13 @@ test('TVer ad skip is chosen before ordinary legacy program recovery', () => {
   assert.doesNotMatch(adBranch, /video\.playbackRate = 1\.75/);
 });
 
-test('TVer fullscreen waits for current settings and uses the native trusted bridge', () => {
+test('TVer fullscreen is independent of settings confirmation and uses native gesture', () => {
   const speedConfirmed = runtime.indexOf('currentSettingsSpeedConfirmed');
   const qualityConfirmed = runtime.indexOf('currentSettingsQualityConfirmed');
   const gate = runtime.indexOf('if (!speedConfirmed || !qualityConfirmed)');
-  const fullscreen = runtime.indexOf("post('homepanel:tver-fullscreen-key')", gate);
+  const fullscreen = runtime.indexOf("post('homepanel:tver-fullscreen-key')");
   assert.ok(speedConfirmed >= 0 && qualityConfirmed > speedConfirmed);
-  assert.ok(gate > qualityConfirmed && fullscreen > gate);
+  assert.ok(fullscreen >= 0 && fullscreen < gate && gate > qualityConfirmed);
   assert.match(runtime, /currentSettingsFullscreenRequestAt/);
   assert.match(runtime, /state\.fullscreenCornerTapAt = now/);
   assert.doesNotMatch(runtime, /data-homepanel-tver-fill|homepanel-tver-viewport-fill/);

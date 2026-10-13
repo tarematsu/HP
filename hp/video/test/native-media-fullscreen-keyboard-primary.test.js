@@ -36,12 +36,12 @@ test('YouTube requests F before falling back to fullscreen button click', () => 
   assert.doesNotMatch(youtube, /const videoFullscreenPoint = media =>/);
 });
 
-test('TVer redesigned player confirms speed and quality before native fullscreen', () => {
+test('TVer requests real fullscreen before waiting for speed and quality menus', () => {
   const speed = tver.indexOf('currentSettingsSpeedConfirmed');
   const quality = tver.indexOf('currentSettingsQualityConfirmed');
   const gate = tver.indexOf('if (!speedConfirmed || !qualityConfirmed)');
-  const nativeFullscreen = tver.indexOf("post('homepanel:tver-fullscreen-key')", gate);
-  assert.ok(speed >= 0 && quality > speed && gate > quality && nativeFullscreen > gate);
+  const nativeFullscreen = tver.indexOf("post('homepanel:tver-fullscreen-key')");
+  assert.ok(nativeFullscreen >= 0 && nativeFullscreen < gate && gate > quality && speed >= 0);
   assert.match(tver, /Runtime\.evaluate\(userGesture=true\)/);
   assert.match(tver, /state\.fullscreenCornerTapAt = now/);
   assert.doesNotMatch(tver, /data-homepanel-tver-fill|homepanel-tver-viewport-fill/);
