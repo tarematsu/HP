@@ -10,7 +10,7 @@ const trustedInput = read('../../native/src/renderer_panels/media_trusted_input.
 const runtime = read('../../native/src/renderer_panels/media_youtube_control_recovery.inc');
 
 test('YouTube steady watchdog stays low frequency and event assisted', () => {
-  assert.match(base, /kNativeMediaYoutubeWatchdogHealthyMs = 30U \* 1000U/);
+  assert.match(base, /kNativeMediaYoutubeWatchdogHealthyMs = 60U \* 1000U/);
   assert.match(base, /kNativeMediaYoutubeWatchdogRecoveryMs = 2U \* 1000U/);
   assert.match(host, /ProbeYoutubeWatchdog/);
   assert.match(runtime, /homepanel:youtube-wake/);
