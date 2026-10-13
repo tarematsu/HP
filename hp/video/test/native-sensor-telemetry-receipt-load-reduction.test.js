@@ -76,7 +76,7 @@ test('sensor collection and receipt writes maintain their existing persistence c
   assert.match(body, /persistedAck > acknowledgedSequence_/);
   assert.match(body, /nextSequence_ = std::max\(nextSequence_, candidate\)/);
   assert.match(body, /Failed to persist telemetry outbox update; retaining the existing outbox/);
-  assert.match(body, /Rebased.*telemetry samples above the server sequence high-water mark/);
+  assert.match(body, /Rebased[\s\S]*telemetry samples above the server sequence high-water mark/);
   assert.match(outbox, /bool SensorHub::AppendOutbox\(const Sample& sample\)/);
   assert.match(outbox, /HANDLE file = CreateFileW\(outboxPath_\.c_str\(\), FILE_APPEND_DATA/);
 });
