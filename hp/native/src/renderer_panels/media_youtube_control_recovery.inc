@@ -322,12 +322,19 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       state.adObserver = null;
       state.adControlObserver = null;
       state.adObservedNodes = null;
+      state.refreshAdAttributes = null;
       state.adCandidates = null;
       state.adCandidatesDirty = true;
       state.adCandidatesAt = 0;
       return;
     }
-    if (state.adObserver || typeof MutationObserver !== 'function') return;
+    if (state.adObserver) {
+      // Reconcile mutated controls once on the next native probe rather than
+      // scanning/rebinding observers inside a burst of MutationObserver events.
+      if (state.adCandidatesDirty) state.refreshAdAttributes?.();
+      return;
+    }
+    if (typeof MutationObserver !== 'function') return;
     // Observe child-list changes across the player, but watch class/ARIA
     // attributes only on actionable ad controls and their ancestor chain.
     // YouTube's unrelated UI classes change frequently during ad playback.
@@ -357,6 +364,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       }
       state.adObservedNodes = nodes;
     };
+    state.refreshAdAttributes = observeAdAttributes;
     state.adObserver = new MutationObserver(records => {
       for (const record of records) {
         if (record.type !== 'childList') continue;
@@ -373,7 +381,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
         }
         if (!relevant) continue;
         state.adCandidatesDirty = true;
-        observeAdAttributes();
+        // A wake coalesces the expensive query + attribute subscription update.
         wake(180);
         return;
       }
@@ -397,6 +405,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     state.adObserver = null;
     state.adControlObserver = null;
     state.adObservedNodes = null;
+    state.refreshAdAttributes = null;
     state.adCandidates = null;
     state.adCandidatesDirty = true;
     state.adCandidatesAt = 0;
