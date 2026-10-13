@@ -342,9 +342,11 @@ inline void ApplyStationheadAdditionalScriptBlocking(
             if (FAILED(args->get_Request(&request)) || !request) return S_OK;
             LPWSTR uriRaw = nullptr;
             if (FAILED(request->get_Uri(&uriRaw)) || !uriRaw) return S_OK;
-            const std::wstring uriLower = StationheadLowerAscii(uriRaw);
+            StationheadLowerAsciiInPlace(uriRaw);
+            const bool blockScript =
+                StationheadAdditionalNonPlaybackScriptUrl(std::wstring_view(uriRaw));
             CoTaskMemFree(uriRaw);
-            if (!StationheadAdditionalNonPlaybackScriptUrl(uriLower)) return S_OK;
+            if (!blockScript) return S_OK;
 
             ComPtr<ICoreWebView2WebResourceResponse> response;
             if (SUCCEEDED(env->CreateWebResourceResponse(
