@@ -175,3 +175,49 @@ test('YouTube ad observers avoid page-wide attribute monitoring', () => {
   assert.equal(state.adObservedNodes, null);
   assert.match(runtime, /wake\(\(flags & 5\) \? 0 : 80\)/);
 });
+
+
+test('YouTube ad candidate selector is reused for 1.5s, but mutations bypass cache', () => {
+  const source = section('  const scanAdCandidates = () => {',
+    '  const syncAdObserver = active => {');
+  let now = 1000;
+  let queries = 0;
+  let candidates = [{ id: 'first' }];
+  const state = {};
+  const scanAdCandidates = vm.runInNewContext(
+    '(() => { ' + source + '\nreturn scanAdCandidates; })()',
+    {
+      state,
+      Date: class extends Date { static now() { return now; } },
+      player: {
+        querySelectorAll(selector) {
+          assert.equal(selector, 'ad-control');
+          queries++;
+          return candidates;
+        },
+      },
+      adControlSelector: 'ad-control',
+    },
+  );
+  const original = scanAdCandidates();
+  for (let i = 0; i < 500; i++) assert.equal(scanAdCandidates(), original);
+  assert.equal(queries, 1, 'bursty ad probes reuse the same control snapshot');
+
+  now = 2499;
+  assert.equal(scanAdCandidates(), original);
+  assert.equal(queries, 1);
+  now = 2500;
+  candidates = [{ id: 'replaced' }];
+  assert.equal(scanAdCandidates(), candidates);
+  assert.equal(queries, 2, 'unobserved class/label changes recover within 1.5s');
+
+  now = 2510;
+  candidates = [{ id: 'new skip button' }];
+  state.adCandidatesDirty = true;
+  assert.equal(scanAdCandidates(), candidates);
+  assert.equal(queries, 3, 'child-list changes invalidate even a fresh snapshot');
+
+  now = 2400;
+  assert.equal(scanAdCandidates(), candidates);
+  assert.equal(queries, 4, 'clock rewinds do not lock stale cache forever');
+});
