@@ -52,9 +52,15 @@ test('lowest numbered Stationhead request is the only foreground owner', () => {
   assert.ok(peerScan >= 0 && peerWinner > peerScan && sixthFallback > peerWinner);
   assert.match(tick, /if \(stationheadPeers_\[i\]->ForegroundRequested\(\)\) \{[\s\S]*break;/);
 
-  const revoke = tick.indexOf('SetForegroundAllowed(false);', sixthFallback);
+  const ownershipChange = tick.indexOf('if (foregroundOwner != lastStationheadForegroundOwner_)', sixthFallback);
+  const revoke = tick.indexOf('SetForegroundAllowed(false);', ownershipChange);
   const grant = tick.indexOf('SetForegroundAllowed(true);', revoke);
-  assert.ok(revoke > sixthFallback && grant > revoke, 'losers must be revoked before the winner is granted');
+  const commit = tick.indexOf('lastStationheadForegroundOwner_ = foregroundOwner;', grant);
+  assert.ok(ownershipChange > sixthFallback && revoke > ownershipChange &&
+    grant > revoke && commit > grant,
+    'only owner changes revoke losers before granting the winner');
+  assert.ok(tick.indexOf('ApplyStationheadWindowPlacement();', commit) > commit,
+    'the stable dashboard/window placement path must still run after arbitration');
 });
 
 test('non-owner auth and recovery surfaces remain backgrounded and cannot steal focus', () => {
@@ -75,4 +81,20 @@ test('non-owner auth and recovery surfaces remain backgrounded and cannot steal 
     'void StationheadPlayer::SetVisible(bool visible)',
     'void StationheadPlayer::LayoutControllers()');
   assert.match(visible, /if \(!foregroundGranted\) return;/);
+});
+
+
+test('foreground owner transitions are delta-based but keep the six-window priority', () => {
+  const header = source('app.h');
+  assert.match(header, /int lastStationheadForegroundOwner_ = -1/);
+  const ownerSequence = [-1, -1, 4, 4, 4, 2, 2, -1, -1, 5, 5, 0, 0];
+  let appliedOwner = -1;
+  const changes = [];
+  for (const owner of ownerSequence) {
+    if (owner === appliedOwner) continue;
+    changes.push(owner);
+    appliedOwner = owner;
+  }
+  assert.deepEqual(changes, [4, 2, -1, 5, 0],
+    'the previous owner is withdrawn before the new owner is allowed');
 });
