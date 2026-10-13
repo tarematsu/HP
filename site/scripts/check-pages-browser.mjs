@@ -230,6 +230,11 @@ try {
         assert.equal(await row.locator('td').count(), 6, 'ranking fixture renders all six labelled fields');
         assert.equal(await row.evaluate((node) => getComputedStyle(node).display), 'grid', 'narrow leaderboard uses full-width cards');
         assert.equal(await row.locator('td').nth(2).getAttribute('data-label'), 'ホスト');
+        const hiddenCells = await row.locator('td').evaluateAll((cells) => cells
+          .map((cell) => ({ label: cell.dataset.label, bounds: cell.getBoundingClientRect() }))
+          .filter(({ bounds }) => bounds.left < -2 || bounds.right > innerWidth + 2)
+          .map(({ label }) => label));
+        assert.deepEqual(hiddenCells, [], 'every leaderboard field fits the phone viewport');
       }
       await page.screenshot({ path: `${output}/${label}.png`, fullPage: true });
       if (!live && width === 320 && ['broadcasts', 'ranking', 'youtube-music', 'kkbox'].includes(mode)) await stressVisibleLayout(page, label);
