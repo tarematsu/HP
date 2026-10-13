@@ -12,7 +12,8 @@ function section(start, end) {
   const begin = runtime.indexOf(start);
   const finish = runtime.indexOf(end, begin + start.length);
   assert.ok(begin >= 0 && finish > begin, `runtime section missing: ${start}`);
-  return runtime.slice(begin, finish);
+  // Adjacent C++ raw-string chunks are one JS program at runtime.
+  return runtime.slice(begin, finish).replace(/\)JS" LR"JS\(/g, '');
 }
 
 class FakeMutationObserver {
