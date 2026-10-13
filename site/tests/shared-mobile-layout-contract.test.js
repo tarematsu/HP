@@ -7,7 +7,7 @@ const source = (name) => readFileSync(new URL(`../public/${name}`, import.meta.u
 test('Stationhead leaderboard and followers share mobile table DOM, markup and style contracts', () => {
   const table = source('dashboard-table-dom.js');
   const shell = source('dashboard-ui-common.js');
-  const css = source('dashboard-ui-common.css');
+  const css = source('dashboard-responsive-cards.css');
   for (const page of ['leaderboard-shell.js', 'followers-shell.js']) {
     assert.match(source(page), /dashboardUpdateMeta/);
     assert.match(source(page), /mobileCardsId:/);
