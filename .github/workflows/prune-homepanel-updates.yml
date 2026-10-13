@@ -90,18 +90,47 @@ jobs:
           current_version="$(jq -er '.version | select(test("^[0-9]{10}$"))' "$manifest_file")"
           current_prefix="updates/releases/${current_version}/"
 
+          # A client keeps the manifest version it fetched until every binary
+          # has been downloaded and verified. Never erase a release immediately
+          # after publishing a newer manifest: in-flight downloads use immutable
+          # updates/releases/<version>/... URLs.
+          # Retain both the 10 most recent releases (even if they are old) and
+          # every release from the last 72 hours (even during a merge burst).
+          retention_cutoff="$(TZ=Asia/Tokyo date -d '72 hours ago' +%y%m%d%H%M)"
           list_keys 'updates/releases/' objects-before.jsonl
-          jq -Rrc \
-            --arg releases_prefix 'updates/releases/' \
-            --arg current_prefix "$current_prefix" \
-            --arg current_version "$current_version" \
-            'fromjson as $key |
-             ($key | ltrimstr($releases_prefix) | split("/")[0]) as $version |
-             select(
-               ($key | startswith($current_prefix) | not) and
-               (($version | test("^[0-9]{10}$") | not) or $version <= $current_version)
-             )' \
-            objects-before.jsonl > obsolete-keys.jsonl
+          recent_versions_json="$(
+            jq -Rr --arg releases_prefix 'updates/releases/' '
+              fromjson
+              | select(startswith($releases_prefix))
+              | ltrimstr($releases_prefix) | split("/")[0]
+              | select(test("^[0-9]{10}$"))
+            ' objects-before.jsonl |
+              LC_ALL=C sort -u | tail -n 10 | jq -Rn '[inputs]'
+          )"
+
+          obsolete_keys() {
+            jq -Rrc \
+              --arg releases_prefix 'updates/releases/' \
+              --arg current_prefix "$current_prefix" \
+              --arg current_version "$current_version" \
+              --arg retention_cutoff "$retention_cutoff" \
+              --argjson retained_versions "$recent_versions_json" \
+              'fromjson as $key |
+               ($key | ltrimstr($releases_prefix) | split("/")[0]) as $version |
+               select(
+                 ($key | startswith($current_prefix) | not) and
+                 (
+                   ($version | test("^[0-9]{10}$") | not) or
+                   (
+                     $version <= $current_version and
+                     $version < $retention_cutoff and
+                     (($retained_versions | index($version)) == null)
+                   )
+                 )
+               )' "$1"
+          }
+
+          obsolete_keys objects-before.jsonl > obsolete-keys.jsonl
 
           deleted=0
           while IFS= read -r encoded_key; do
@@ -115,17 +144,7 @@ jobs:
 
           list_keys 'updates/releases/' objects-after.jsonl
           remaining="$(grep -c . objects-after.jsonl || true)"
-          unexpected_remaining="$(jq -Rr \
-            --arg releases_prefix 'updates/releases/' \
-            --arg current_prefix "$current_prefix" \
-            --arg current_version "$current_version" \
-            'fromjson as $key |
-             ($key | ltrimstr($releases_prefix) | split("/")[0]) as $version |
-             select(
-               ($key | startswith($current_prefix) | not) and
-               (($version | test("^[0-9]{10}$") | not) or $version <= $current_version)
-             )' \
-            objects-after.jsonl | grep -c . || true)"
+          unexpected_remaining="$(obsolete_keys objects-after.jsonl | grep -c . || true)"
           [[ "$unexpected_remaining" -eq 0 ]] || {
             echo "Obsolete HomePanel release objects remain after cleanup: $unexpected_remaining" >&2
             exit 1
