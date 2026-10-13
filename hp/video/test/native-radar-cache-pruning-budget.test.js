@@ -12,10 +12,12 @@ test('native radar cache prunes periodically, without scanning the filesystem on
   assert.match(radar, /kRadarCachePruneIntervalMs = 30ULL \* 60ULL \* 1'000ULL/);
   assert.match(radar, /const uint64_t nowTick = GetTickCount64\(\)/);
   assert.match(radar,
-    /if \(!retained\.empty\(\) &&\s*\(lastRadarCachePruneTick_ == 0 \|\|\s*nowTick - lastRadarCachePruneTick_ >= kRadarCachePruneIntervalMs\)\)/);
+    /const bool pruneDue = lastRadarCachePruneTick_ == 0 \|\|\s*nowTick - lastRadarCachePruneTick_ >= kRadarCachePruneIntervalMs/);
+  assert.match(radar, /if \(pruneDue && !retained\.empty\(\)\)/);
+  assert.match(radar, /if \(pruneDue\) retained\.insert\(target\.wstring\(\)\)/);
   assert.match(radar, /fs::recursive_directory_iterator iterator\(/);
   assert.match(radar, /if \(!walkError\) lastRadarCachePruneTick_ = nowTick/);
-  const pruneGuard = radar.indexOf('if (!retained.empty() &&');
+  const pruneGuard = radar.indexOf('if (pruneDue && !retained.empty())');
   const walk = radar.indexOf('fs::recursive_directory_iterator iterator(', pruneGuard);
   assert.ok(pruneGuard >= 0 && walk > pruneGuard,
     'expensive directory enumeration must happen only inside the prune interval guard');
@@ -28,7 +30,7 @@ test('radar tile resolution remains immediate and no cleanup runs without retain
   assert.match(radar.slice(tile, pruning), /if \(!fs::exists\(target, error\) \|\| fs::file_size\(target, error\) == 0\)/);
   assert.match(radar.slice(tile, pruning), /AtomicWriteBytes\(target, response\.body\)/);
   assert.match(radar.slice(tile, pruning), /item\.SetNamedValue\(L"url"/);
-  assert.match(radar.slice(pruning), /if \(!retained\.empty\(\)/);
+  assert.match(radar.slice(pruning), /if \(pruneDue && !retained\.empty\(\)/);
 });
 
 test('successful prune throttles the next six five-minute radar refreshes', () => {
