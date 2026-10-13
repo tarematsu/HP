@@ -34,7 +34,7 @@ test('shared leaderboard owns only metadata, chart, and data surfaces', () => {
 test('mobile leaderboard uses the shared card contract rather than bespoke layout code', () => {
   const table = readFileSync(new URL('../public/leaderboard/table.js', import.meta.url), 'utf8');
   const base = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
-  const styles = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
+  const styles = readFileSync(new URL('../public/dashboard-responsive-cards.css', import.meta.url), 'utf8');
   assert.match(table, /renderResponsiveTable/);
   assert.doesNotMatch(table, /createElement\\('article'\\)/);
   assert.match(base, /mobileCardsId/);
