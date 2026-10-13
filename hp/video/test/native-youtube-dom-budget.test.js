@@ -243,7 +243,9 @@ test('unfinished survey followup expires rather than polling forever', () => {
   const second = adScenario({ state, now: 16000 });
   assert.equal(second.surveyQueries, 0);
   assert.equal(state.surveySelected, false);
-  assert.equal(adScenario({ state, now: 301000 }).surveyQueries, 1);
+  assert.equal(adScenario({ state, now: 314999 }).surveyQueries, 0);
+  assert.equal(adScenario({ state, now: 315000 }).surveyQueries, 1,
+    'the five-minute interval begins with the last followup check');
 });
 
 test('YouTube hot paths avoid Array.from and preserve exact trusted action names', () => {
