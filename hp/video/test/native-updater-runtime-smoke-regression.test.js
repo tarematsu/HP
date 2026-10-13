@@ -44,3 +44,23 @@ test('updater smoke verifies manifest cleanup, binary integrity and restart dire
   assert.match(script, /unexpectedly created data\/homepanel\.log/);
   assert.match(script, /Windows Application log contains HomePanel or updater error events/);
 });
+
+
+test('pull-request native CI uses one Windows build and preserves manual full smoke', () => {
+  const nativeBuild = readFileSync(
+    new URL('../../../.github/workflows/native-windows-build.yml', import.meta.url), 'utf8',
+  );
+  assert.doesNotMatch(workflow, /^  pull_request:/m,
+    'duplicate native runtime smoke should not run for every PR push');
+  assert.match(workflow, /^  push:\n\s+branches:\n\s+- main/m);
+  assert.match(workflow, /^  workflow_dispatch:/m);
+  assert.match(nativeBuild, /^  pull_request:/m,
+    'PRs must still compile the native application');
+  assert.match(nativeBuild, /-DHOMEPANEL_CI_STRICT=ON/);
+  assert.match(nativeBuild,
+    /- name: Configure MSVC static analysis\n\s+if: github.event_name == 'workflow_dispatch'/);
+  assert.match(nativeBuild,
+    /- name: Run MSVC static analysis\n\s+if: github.event_name == 'workflow_dispatch'/);
+  assert.match(nativeBuild,
+    /- name: Package native release\n\s+if: github.ref == 'refs\/heads\/main' \|\| github.event_name == 'workflow_dispatch'/);
+});
