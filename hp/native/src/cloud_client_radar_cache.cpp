@@ -236,7 +236,14 @@ std::vector<uint8_t> CloudClient::LocalizeRadarTiles(
     }
   }
 
-  if (!retained.empty()) {
+  // Scanning every cached tile and directory on each radar payload causes
+  // unnecessary disk I/O. Keep stale cached frames temporarily and prune at
+  // most once every 30 minutes; a fresh process always prunes on first update.
+  constexpr uint64_t kRadarCachePruneIntervalMs = 30ULL * 60ULL * 1'000ULL;
+  const uint64_t nowTick = GetTickCount64();
+  if (!retained.empty() &&
+      (lastRadarCachePruneTick_ == 0 ||
+       nowTick - lastRadarCachePruneTick_ >= kRadarCachePruneIntervalMs)) {
     std::vector<fs::path> staleFiles;
     std::vector<fs::path> directories;
     std::error_code walkError;
