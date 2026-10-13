@@ -68,3 +68,23 @@ test('cloud exchange decodes binary JSON without an intermediate UTF-8 string co
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+
+test('cloud exchange never copies unused radar binary when no matching bundle URL is present', () => {
+  const start = source.indexOf('    pendingExchangeBundlePath_ = std::move(bundlePath);');
+  const end = source.indexOf('  if (telemetry && root.HasKey', start);
+  assert.ok(start >= 0 && end > start);
+  const cache = source.slice(start, end);
+  assert.match(cache, /if \(pendingExchangeBundlePath_\.empty\(\) \|\| jsonEnd == exchange\.body\.size\(\)\)/);
+  const clear = cache.indexOf('pendingExchangeRadar_.clear()');
+  const copy = cache.indexOf('pendingExchangeRadar_.assign(');
+  assert.ok(clear >= 0 && copy > clear);
+  assert.match(cache, /pendingExchangeRadar_\.assign\(exchange\.body\.begin\(\) \+ jsonEnd, exchange\.body\.end\(\)\)/);
+  const handle = (path, bytes, jsonLength) => {
+    if (!path || jsonLength === bytes.length) return [];
+    return bytes.slice(jsonLength);
+  };
+  assert.deepEqual(handle('', [1, 2, 3, 4], 2), []);
+  assert.deepEqual(handle('/v1/radar/bundle/1', [1, 2], 2), []);
+  assert.deepEqual(handle('/v1/radar/bundle/1', [1, 2, 3, 4], 2), [3, 4]);
+});
