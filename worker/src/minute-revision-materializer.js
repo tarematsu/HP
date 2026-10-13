@@ -1,3 +1,7 @@
+import { queueRevisionItemStatement } from './minute-facts-normalize.js';
+import { countQueueRevisionItems } from './minute-queue-revision-progress.js';
+import { findReusableQueueRevision, findStoredQueueRevision } from './minute-queue-revision-lookup.js';
+import { insertPendingQueueRevision } from './minute-queue-revision-insert.js';
 import {
   bool,
   integer,
@@ -48,34 +52,14 @@ export function preferredQueuePosition(queue, observedAt) {
 }
 
 async function findReusableRevision(db, input) {
-  return db.prepare(`SELECT id,status,effective_at,item_count,materialized_item_count,
-      coverage_complete,source_job_id,source_visible_count
-    FROM sh_queue_revisions
-    WHERE channel_id=? AND structural_hash=? AND session_id IS ? AND queue_start_time IS ?
-      AND status IN ('complete','pending')
-    ORDER BY CASE status WHEN 'complete' THEN 0 ELSE 1 END,effective_at DESC,id DESC
-    LIMIT 1`)
-    .bind(input.channelId, input.structuralHash, input.sessionId, input.queueStart)
-    .first();
+  return findReusableQueueRevision(db, input, { extended: true });
 }
-
 async function findStoredRevision(db, input) {
-  return db.prepare(`SELECT id,status,effective_at,item_count,materialized_item_count,
-      coverage_complete,source_job_id,source_visible_count
-    FROM sh_queue_revisions
-    WHERE channel_id=? AND effective_at=? AND structural_hash=?
-    LIMIT 1`)
-    .bind(input.channelId, input.observedAt, input.structuralHash)
-    .first();
+  return findStoredQueueRevision(db, input);
 }
-
 async function revisionProgress(db, revisionId) {
-  const row = await db.prepare(
-    'SELECT COUNT(*) AS item_count FROM sh_queue_revision_items WHERE revision_id=?',
-  ).bind(revisionId).first();
-  return Number(row?.item_count || 0);
+  return countQueueRevisionItems(db, revisionId);
 }
-
 function compactQueueIdentity(queue, totalCount) {
   return {
     station_id: integer(queue?.station_id),
@@ -126,25 +110,11 @@ export async function prepareSparseLiveRevision(env, payload, options = {}, depe
   });
 
   if (!revision) {
-    const insertRevision = dependencies.insertRevision || (async () => db.prepare(`INSERT OR IGNORE INTO sh_queue_revisions(
-        session_id,channel_id,station_id,queue_id,queue_start_time,effective_at,received_at,
-        structural_hash,item_count,status,source,source_priority,materialized_item_count,
-        coverage_complete,source_job_id,source_visible_count,last_materialized_at
-      ) VALUES(?,?,?,?,?,?,?,?,?,'pending','live_collector',100,0,0,?,?,NULL)`)
-      .bind(
-        sessionId,
-        channelId,
-        stationId,
-        integer(queue.queue_id),
-        queueStart,
-        observedAt,
-        receivedAt,
-        structuralHash,
-        totalCount,
-        sourceJobId,
-        visibleCount,
-      )
-      .run());
+    const insertRevision = dependencies.insertRevision || (async () => insertPendingQueueRevision(db, {
+        sessionId, channelId, stationId, queueId: integer(queue.queue_id),
+        queueStart, observedAt, receivedAt, structuralHash, itemCount: totalCount,
+        materialization: { sourceJobId, visibleCount },
+      }));
     await insertRevision();
     revision = await findRevision(db, {
       channelId,
@@ -304,48 +274,17 @@ export async function writeSparseLiveRevisionChunk(env, revisionState, dependenc
   const byPosition = new Map(sourceTracks.map((track) => [integer(track.position), track]));
   const statements = resolved.map((track) => {
     const source = byPosition.get(integer(track.position)) || {};
-    return db.prepare(`INSERT INTO sh_queue_revision_items(
-        revision_id,position,track_id,queue_track_id,stationhead_track_id,isrc,spotify_id,
-        deezer_id,duration_ms,playback_offset_ms,schedule_valid,bite_count
-      ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
-      ON CONFLICT(revision_id,position) DO UPDATE SET
-        track_id=excluded.track_id,queue_track_id=excluded.queue_track_id,
-        stationhead_track_id=excluded.stationhead_track_id,isrc=excluded.isrc,
-        spotify_id=excluded.spotify_id,deezer_id=excluded.deezer_id,
-        duration_ms=excluded.duration_ms,playback_offset_ms=excluded.playback_offset_ms,
-        schedule_valid=excluded.schedule_valid,bite_count=excluded.bite_count
-      WHERE track_id IS NOT excluded.track_id
-        OR queue_track_id IS NOT excluded.queue_track_id
-        OR stationhead_track_id IS NOT excluded.stationhead_track_id
-        OR isrc IS NOT excluded.isrc
-        OR spotify_id IS NOT excluded.spotify_id
-        OR deezer_id IS NOT excluded.deezer_id
-        OR duration_ms IS NOT excluded.duration_ms
-        OR playback_offset_ms IS NOT excluded.playback_offset_ms
-        OR schedule_valid IS NOT excluded.schedule_valid
-        OR bite_count IS NOT excluded.bite_count`)
-      .bind(
-        state.revision_id,
-        track.position,
-        track.trackId,
-        track.queue_track_id,
-        track.stationhead_track_id,
-        track.isrc,
-        track.spotify_id,
-        track.deezer_id,
-        track.duration_ms,
-        integer(source.playback_offset_ms),
-        Number(source.schedule_valid || 0) === 1 ? 1 : 0,
-        integer(source.bite_count),
-      );
+    return queueRevisionItemStatement(db, state.revision_id, {
+      ...track,
+      playbackOffset: integer(source.playback_offset_ms),
+      scheduleValid: Number(source.schedule_valid || 0) === 1,
+    }, integer(source.bite_count), { updateBite: true });
   });
   if (statements.length) await batchRun(db, statements);
 
   const countResult = dependencies.materializedCount
     ? await dependencies.materializedCount(db, state.revision_id)
-    : await db.prepare('SELECT COUNT(*) AS item_count FROM sh_queue_revision_items WHERE revision_id=?')
-      .bind(state.revision_id)
-      .first();
+    : await countQueueRevisionItems(db, state.revision_id);
   const materializedCount = Number(countResult?.item_count ?? countResult ?? 0);
   if (!sourceTracks.length && materializedCount < state.visible_item_count) {
     throw new Error(`queue revision ${state.revision_id} source payload is unavailable or incomplete`);

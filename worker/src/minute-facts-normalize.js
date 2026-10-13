@@ -119,7 +119,7 @@ export function scheduleQueueTracks(tracks) {
   });
 }
 
-export function queueRevisionItemStatement(db, revisionId, track, biteCount) {
+export function queueRevisionItemStatement(db, revisionId, track, biteCount, { updateBite = false } = {}) {
   return db.prepare(`INSERT INTO sh_queue_revision_items(
       revision_id,position,track_id,queue_track_id,stationhead_track_id,isrc,spotify_id,
       deezer_id,duration_ms,playback_offset_ms,schedule_valid,bite_count
@@ -129,7 +129,7 @@ export function queueRevisionItemStatement(db, revisionId, track, biteCount) {
       stationhead_track_id=excluded.stationhead_track_id,isrc=excluded.isrc,
       spotify_id=excluded.spotify_id,deezer_id=excluded.deezer_id,
       duration_ms=excluded.duration_ms,playback_offset_ms=excluded.playback_offset_ms,
-      schedule_valid=excluded.schedule_valid
+      schedule_valid=excluded.schedule_valid${updateBite ? ',bite_count=excluded.bite_count' : ''}
     WHERE track_id IS NOT excluded.track_id
       OR queue_track_id IS NOT excluded.queue_track_id
       OR stationhead_track_id IS NOT excluded.stationhead_track_id
@@ -138,7 +138,7 @@ export function queueRevisionItemStatement(db, revisionId, track, biteCount) {
       OR deezer_id IS NOT excluded.deezer_id
       OR duration_ms IS NOT excluded.duration_ms
       OR playback_offset_ms IS NOT excluded.playback_offset_ms
-      OR schedule_valid IS NOT excluded.schedule_valid`).bind(
+      OR schedule_valid IS NOT excluded.schedule_valid${updateBite ? '\n      OR bite_count IS NOT excluded.bite_count' : ''}`).bind(
     revisionId, track.position, track.trackId, track.queue_track_id, track.stationhead_track_id,
     track.isrc, track.spotify_id, track.deezer_id, track.duration_ms,
     track.playbackOffset, track.scheduleValid ? 1 : 0, biteCount,

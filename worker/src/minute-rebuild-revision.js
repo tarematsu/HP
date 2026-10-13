@@ -1,3 +1,7 @@
+import { queueRevisionPositionExists } from './minute-queue-revision-progress.js';
+import { countQueueRevisionItems } from './minute-queue-revision-progress.js';
+import { findReusableQueueRevision } from './minute-queue-revision-lookup.js';
+import { insertPendingQueueRevision } from './minute-queue-revision-insert.js';
 import {
   bool,
   integer,
@@ -27,29 +31,14 @@ async function findHistoricalSession(db, input) {
 }
 
 async function findReusableRevision(db, input) {
-  return db.prepare(`SELECT id,status,effective_at,item_count,materialized_item_count,
-      coverage_complete,source_job_id,source_visible_count
-    FROM sh_queue_revisions
-    WHERE channel_id=? AND structural_hash=? AND session_id IS ? AND queue_start_time IS ?
-      AND status IN ('complete','pending')
-    ORDER BY CASE status WHEN 'complete' THEN 0 ELSE 1 END,effective_at DESC,id DESC
-    LIMIT 1`)
-    .bind(input.channelId, input.structuralHash, input.sessionId, input.queueStart)
-    .first();
+  return findReusableQueueRevision(db, input, { extended: true });
 }
-
 async function revisionProgress(db, revisionId) {
-  const row = await db.prepare(
-    'SELECT COUNT(*) AS item_count FROM sh_queue_revision_items WHERE revision_id=?',
-  ).bind(revisionId).first();
-  return Number(row?.item_count || 0);
+  return countQueueRevisionItems(db, revisionId);
 }
-
 async function revisionPositionExists(db, revisionId, position) {
   if (position == null) return false;
-  const row = await db.prepare(`SELECT 1 AS present FROM sh_queue_revision_items
-    WHERE revision_id=? AND position=? LIMIT 1`).bind(revisionId, position).first();
-  return Boolean(row);
+  return queueRevisionPositionExists(db, revisionId, position);
 }
 
 function compactQueueIdentity(queue, totalCount) {
@@ -128,26 +117,12 @@ export async function prepareSparseRebuildRevision(env, payload, options = {}, d
   });
 
   if (!revision) {
-    const insertRevision = dependencies.insertRevision || (async () => db.prepare(`INSERT OR IGNORE INTO sh_queue_revisions(
-        session_id,channel_id,station_id,queue_id,queue_start_time,effective_at,received_at,
-        structural_hash,item_count,status,source,source_priority,materialized_item_count,
-        coverage_complete,source_job_id,source_visible_count,last_materialized_at
-      ) VALUES(?,?,?,?,?,?,?,?,?,'pending','live_reconstructed',?,0,0,?,?,NULL)`)
-      .bind(
-        sessionId,
-        channelId,
-        stationId,
-        integer(queue.queue_id),
-        queueStart,
-        observedAt,
-        receivedAt,
-        structuralHash,
-        visibleCount,
-        sourcePriority,
-        sourceJobId,
-        visibleCount,
-      )
-      .run());
+    const insertRevision = dependencies.insertRevision || (async () => insertPendingQueueRevision(db, {
+        sessionId, channelId, stationId, queueId: integer(queue.queue_id),
+        queueStart, observedAt, receivedAt, structuralHash, itemCount: visibleCount,
+        source: 'live_reconstructed', sourcePriority,
+        materialization: { sourceJobId, visibleCount },
+      }));
     await insertRevision();
     revision = await findRevision(db, {
       channelId,

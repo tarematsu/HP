@@ -1,3 +1,7 @@
+import { queueRevisionItemStatement } from './minute-facts-normalize.js';
+import { countQueueRevisionItems, loadQueueRevisionPositions, resolveMissingQueueRevisionTracks } from './minute-queue-revision-progress.js';
+import { findReusableQueueRevision } from './minute-queue-revision-lookup.js';
+import { insertPendingQueueRevision } from './minute-queue-revision-insert.js';
 import {
   aliasKey,
   buildTrackDescriptor,
@@ -242,15 +246,8 @@ export async function resolveTracksBulk(db, oldDb, tracks, observedAt, context =
 }
 
 async function findReusableRevision(db, input) {
-  return db.prepare(`SELECT id,status,effective_at,item_count FROM sh_queue_revisions
-    WHERE channel_id=? AND structural_hash=? AND session_id IS ? AND queue_start_time IS ?
-      AND status IN ('complete','pending')
-    ORDER BY CASE status WHEN 'complete' THEN 0 ELSE 1 END,effective_at DESC,id DESC
-    LIMIT 1`)
-    .bind(input.channelId, input.structuralHash, input.sessionId, input.queueStart)
-    .first();
+  return findReusableQueueRevision(db, input);
 }
-
 export function missingRevisionPositions(tracks, existingRows = []) {
   const existing = new Set((existingRows || []).map((row) => integer(row.position)).filter((value) => value != null));
   return (tracks || []).filter((track) => !existing.has(integer(track.position)));
@@ -274,27 +271,16 @@ export async function createOptimizedRevision(db, oldDb, input) {
     queueStart,
     structuralHash,
   }));
+  const created = !revision;
   if (revision?.status === 'complete') {
     return { revisionId: Number(revision.id), created: false, resumed: false };
   }
 
   if (!revision) {
-    await timedStage('insert_queue_revision', context, () => db.prepare(`INSERT OR IGNORE INTO sh_queue_revisions(
-        session_id,channel_id,station_id,queue_id,queue_start_time,effective_at,received_at,
-        structural_hash,item_count,status,source,source_priority
-      ) VALUES(?,?,?,?,?,?,?,?,?,'pending','live_collector',100)`)
-      .bind(
-        sessionId,
-        channelId,
-        stationId,
-        integer(queue?.queue_id),
-        queueStart,
-        observedAt,
-        receivedAt,
-        structuralHash,
-        payload.tracks.length,
-      )
-      .run());
+    await timedStage('insert_queue_revision', context, () => insertPendingQueueRevision(db, {
+        sessionId, channelId, stationId, queueId: integer(queue?.queue_id),
+        queueStart, observedAt, receivedAt, structuralHash, itemCount: payload.tracks.length,
+      }));
     revision = await db.prepare(`SELECT id,status,effective_at,item_count FROM sh_queue_revisions
       WHERE channel_id=? AND effective_at=? AND structural_hash=?`)
       .bind(channelId, observedAt, structuralHash)
@@ -305,77 +291,28 @@ export async function createOptimizedRevision(db, oldDb, input) {
   if (!Number.isFinite(revisionId)) throw new Error('failed to create or resume queue revision');
   context.revisionId = revisionId;
 
-  const existingResult = await timedStage('load_revision_progress', context, () => db.prepare(
-    'SELECT position FROM sh_queue_revision_items WHERE revision_id=?',
-  ).bind(revisionId).all());
+  const existingResult = await timedStage('load_revision_progress', context, () => loadQueueRevisionPositions(db, revisionId));
   const existingRows = existingResult.results || [];
-  const resolved = await resolveTracksBulk(db, oldDb, payload.tracks, observedAt, context);
-  let offset = 0;
-  let scheduleValid = true;
-  const scheduled = resolved.map((track) => {
-    const duration = integer(track.duration_ms);
-    const validItem = scheduleValid && duration != null && duration > 0;
-    const result = {
-      ...track,
-      playbackOffset: scheduleValid ? offset : null,
-      scheduleValid: validItem,
-    };
-    if (validItem) offset += duration;
-    else scheduleValid = false;
-    return result;
-  });
-
-  const missing = missingRevisionPositions(scheduled, existingRows);
+  const missing = await resolveMissingQueueRevisionTracks(payload.tracks, existingRows,
+    (tracks) => resolveTracksBulk(db, oldDb, tracks, observedAt, context));
   const byPosition = new Map((queue?.tracks || []).map((track, index) => [integer(track?.position) ?? index, track]));
-  const statements = missing.map((track) => db.prepare(`INSERT INTO sh_queue_revision_items(
-      revision_id,position,track_id,queue_track_id,stationhead_track_id,isrc,spotify_id,
-      deezer_id,duration_ms,playback_offset_ms,schedule_valid,bite_count
-    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
-    ON CONFLICT(revision_id,position) DO UPDATE SET
-      track_id=excluded.track_id,queue_track_id=excluded.queue_track_id,
-      stationhead_track_id=excluded.stationhead_track_id,isrc=excluded.isrc,
-      spotify_id=excluded.spotify_id,deezer_id=excluded.deezer_id,
-      duration_ms=excluded.duration_ms,playback_offset_ms=excluded.playback_offset_ms,
-      schedule_valid=excluded.schedule_valid,bite_count=excluded.bite_count
-    WHERE track_id IS NOT excluded.track_id
-      OR queue_track_id IS NOT excluded.queue_track_id
-      OR stationhead_track_id IS NOT excluded.stationhead_track_id
-      OR isrc IS NOT excluded.isrc
-      OR spotify_id IS NOT excluded.spotify_id
-      OR deezer_id IS NOT excluded.deezer_id
-      OR duration_ms IS NOT excluded.duration_ms
-      OR playback_offset_ms IS NOT excluded.playback_offset_ms
-      OR schedule_valid IS NOT excluded.schedule_valid
-      OR bite_count IS NOT excluded.bite_count`).bind(
-    revisionId,
-    track.position,
-    track.trackId,
-    track.queue_track_id,
-    track.stationhead_track_id,
-    track.isrc,
-    track.spotify_id,
-    track.deezer_id,
-    track.duration_ms,
-    track.playbackOffset,
-    track.scheduleValid ? 1 : 0,
-    integer(byPosition.get(track.position)?.bite_count),
+  const statements = missing.map((track) => queueRevisionItemStatement(
+    db, revisionId, track, integer(byPosition.get(track.position)?.bite_count), { updateBite: true },
   ));
   if (statements.length) {
     await timedStage('write_revision_items', context, () => batchRun(db, statements));
   }
 
-  const count = await db.prepare('SELECT COUNT(*) AS item_count FROM sh_queue_revision_items WHERE revision_id=?')
-    .bind(revisionId)
-    .first();
-  if (Number(count?.item_count || 0) !== payload.tracks.length) {
-    throw new Error(`queue revision ${revisionId} incomplete: ${Number(count?.item_count || 0)}/${payload.tracks.length}`);
+  const count = await countQueueRevisionItems(db, revisionId);
+  if (count !== payload.tracks.length) {
+    throw new Error(`queue revision ${revisionId} incomplete: ${count}/${payload.tracks.length}`);
   }
   await timedStage('complete_queue_revision', context, () => db.prepare(
     "UPDATE sh_queue_revisions SET status='complete' WHERE id=?",
   ).bind(revisionId).run());
   return {
     revisionId,
-    created: !revision?.id,
+    created,
     resumed: existingRows.length > 0,
   };
 }

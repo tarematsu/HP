@@ -1,3 +1,5 @@
+import { findReusableQueueRevision } from './minute-queue-revision-lookup.js';
+import { insertPendingQueueRevision } from './minute-queue-revision-insert.js';
 import {
   bool,
   integer,
@@ -36,15 +38,8 @@ export function shouldStageLiveRevision(env, payload) {
 }
 
 async function findReusableRevision(db, input) {
-  return db.prepare(`SELECT id,status,effective_at,item_count FROM sh_queue_revisions
-    WHERE channel_id=? AND structural_hash=? AND session_id IS ? AND queue_start_time IS ?
-      AND status IN ('complete','pending')
-    ORDER BY CASE status WHEN 'complete' THEN 0 ELSE 1 END,effective_at DESC,id DESC
-    LIMIT 1`)
-    .bind(input.channelId, input.structuralHash, input.sessionId, input.queueStart)
-    .first();
+  return findReusableQueueRevision(db, input);
 }
-
 async function revisionProgress(db, revisionId) {
   const row = await db.prepare(`SELECT position,
       CASE WHEN schedule_valid=1 THEN playback_offset_ms+duration_ms END AS playback_end,
@@ -101,22 +96,10 @@ export async function prepareLiveRevisionStage(env, payload, dependencies = {}) 
   });
 
   if (!revision) {
-    const insertRevision = dependencies.insertRevision || (async () => db.prepare(`INSERT OR IGNORE INTO sh_queue_revisions(
-        session_id,channel_id,station_id,queue_id,queue_start_time,effective_at,received_at,
-        structural_hash,item_count,status,source,source_priority
-      ) VALUES(?,?,?,?,?,?,?,?,?,'pending','live_collector',100)`)
-      .bind(
-        sessionId,
-        channelId,
-        stationId,
-        integer(queue.queue_id),
-        queueStart,
-        observedAt,
-        receivedAt,
-        structuralHash,
-        totalCount,
-      )
-      .run());
+    const insertRevision = dependencies.insertRevision || (async () => insertPendingQueueRevision(db, {
+        sessionId, channelId, stationId, queueId: integer(queue?.queue_id),
+        queueStart, observedAt, receivedAt, structuralHash, itemCount: totalCount,
+      }));
     await insertRevision();
     revision = await findRevision(db, {
       channelId,
