@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { NAVIGATION, ROUTES } from '../public/dashboard-navigation-config.js';
+import { NAVIGATION, ROUTES, stationheadSourceFunctions } from '../public/dashboard-navigation-config.js';
 import { readFileSync } from 'node:fs';
 
 const shell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
@@ -21,6 +21,25 @@ test('Buddies and Ohisama use identical source tab labels and shared panels', ()
   }
   assert.match(router, /STATIONHEAD_SHELLS/);
   assert.match(client, /selectStationheadChannelSection/);
+});
+
+test('Nogizaka, Ohisama and Buddies use Buddies-based navigation ordering and route type', () => {
+  const section = NAVIGATION[0];
+  const sections = [
+    ['buddies', ['現在', '過去', '再生履歴', 'いいね', 'リスパ']],
+    ['hinata', ['現在', '過去', '再生履歴', 'いいね']],
+    ['nogizaka', ['リスパ']],
+  ];
+  for (const [id, labels] of sections) {
+    const source = section.sources.find((item) => item.id === id);
+    assert.deepEqual(source.functions.map(({ label }) => label), labels);
+    assert.deepEqual(stationheadSourceFunctions(id).map(({ label }) => label), labels);
+  }
+  for (const mode of ['current', 'hinata', 'nogizaka']) {
+    assert.equal(ROUTES[mode].kind, 'stationhead');
+  }
+  assert.equal(ROUTES.nogizaka.panel, 'broadcasts');
+  assert.equal(ROUTES.nogizaka.viewId, 'nogizakaListeningPartyView');
 });
 
 test('shared history controls support daily and weekly, ranges, summary and CSV once', () => {
