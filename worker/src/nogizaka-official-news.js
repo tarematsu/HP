@@ -133,7 +133,7 @@ async function markMissedAnnouncements(env, cfg, now) {
     .run();
 }
 
-async function saveAnnouncement(env, article, scheduledAt, detectedAt) {
+export async function saveAnnouncement(env, article, scheduledAt, detectedAt) {
   const rawText = String(article.text || '').slice(0, 50_000);
   if (scheduledAt != null) {
     await env.OTHER_DB.prepare(`INSERT INTO ${ANNOUNCEMENTS}
