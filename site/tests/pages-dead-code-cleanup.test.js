@@ -29,8 +29,8 @@ test('unreferenced legacy and post-render correction assets are removed from the
 });
 
 test('current view ships the same final Stationhead DOM as Ohisama and Nogizaka', () => {
-  assert.match(currentShell, /mountStationheadChannelShell/);
-  assert.match(currentShell, /stationheadModel = 'buddies'/);
+  assert.match(currentShell, /mountStationheadSourceShell/);
+  assert.match(currentShell, /mountStationheadSourceShell\('buddies'\)/);
   assert.match(stationheadShell, /class="primary-grid"/);
   assert.match(stationheadShell, /role\('station-link'\)/);
   assert.match(stationheadShell, /role\('live-chart'\)/);
