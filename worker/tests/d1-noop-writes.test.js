@@ -37,12 +37,28 @@ test('Spotify candidate winners skip losing album observations and preserve equa
     INSERT INTO sh_spotify_collection_runs VALUES('2026-10-09','run','queued');
     CREATE TABLE sh_spotify_playcount_candidates(snapshot_date,run_token,track_id,album_id,playcount,collected_at,UNIQUE(snapshot_date,track_id));`);
   const statement = db.prepare(sql);
-  const run = (album, count, time) => statement.run('2026-10-09','run','track',album,count,time,'2026-10-09','run','2026-10-09','run').changes;
+  // A single statement-level active-run guard is sufficient for both insert and conflict paths.
+  const run = (album, count, time, token = 'run') => statement.run(
+    '2026-10-09',token,'track',album,count,time,'2026-10-09',token,
+  ).changes;
   assert.equal(run('album-a',100,1000),1);
   assert.equal(run('album-b',90,2000),0);
   assert.equal(run('album-a',100,1000),0);
   assert.equal(run('album-a',100,2000),1);
   assert.equal(run('album-b',110,3000),1);
   assert.equal(db.prepare('SELECT playcount FROM sh_spotify_playcount_candidates').get().playcount,110);
+
+  // Completed runs must not mutate an existing candidate or insert a new one.
+  db.exec("UPDATE sh_spotify_collection_runs SET status='complete'");
+  assert.equal(run('album-c', 150, 4000), 0);
+  assert.equal(db.prepare('SELECT playcount FROM sh_spotify_playcount_candidates').get().playcount,110);
+
+  // Replacement runs may adopt a lower value; stale tokens remain blocked.
+  db.exec("UPDATE sh_spotify_collection_runs SET status='queued',run_token='run-next'");
+  assert.equal(run('album-stale', 200, 5000), 0);
+  assert.equal(run('album-next', 80, 6000, 'run-next'), 1);
+  assert.deepEqual({ ...db.prepare('SELECT run_token,album_id,playcount,collected_at FROM sh_spotify_playcount_candidates').get() }, {
+    run_token: 'run-next', album_id: 'album-next', playcount: 80, collected_at: 6000,
+  });
   db.close();
 });
