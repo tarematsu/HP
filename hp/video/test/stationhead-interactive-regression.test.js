@@ -23,8 +23,8 @@ test('Stationhead handles expose interactive states as pending playback', () => 
   assert.match(handle, /status\.audioPlaying = false;/);
 
   const tick = section(app, 'void App::Tick()', 'void App::Draw()');
-  assert.match(tick, /stationheadPeers_\[i\]->Status\(\)/);
-  assert.match(tick, /stationheadStatus = stationhead_->Status\(\)/);
+  assert.match(tick, /stationheadPeers_\[i\]->NeedsFastTick\(\)/);
+  assert.match(tick, /primaryNeedsFastTick = stationhead_->NeedsFastTick\(\)/);
   assert.match(tick, /ApplyStationheadWindowPlacement\(\);/);
 });
 
