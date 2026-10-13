@@ -120,7 +120,12 @@ test('YouTube ad observers avoid page-wide attribute monitoring', () => {
       },
     },
   );
-  syncAdObserver(true);
+  const probeAdObservers = () => {
+    // The full probe consumes any pending wake before it reaches syncAdObserver.
+    state.adMutationWakePending = false;
+    syncAdObserver(true);
+  };
+  probeAdObservers();
   const observer = state.adObserver;
   const attrObserver = state.adControlObserver;
   assert.equal(observer.target, player);
@@ -152,7 +157,7 @@ test('YouTube ad observers avoid page-wide attribute monitoring', () => {
   }
   assert.equal(wakeCalls, 1, 'dense child-list bursts have just one wake attempt');
   assert.equal(controlScans, 1, 'dense Skip Ad DOM bursts also defer the scan');
-  syncAdObserver(true);
+  probeAdObservers();
   assert.equal(controlScans, 2, 'the next coalesced probe rebuilds subscriptions once');
   assert.deepEqual(attrObserver.observations.map(x => x.target), [skip, wrapper]);
   assert.deepEqual(Array.from(attrObserver.observations[0].options.attributeFilter),
@@ -164,14 +169,14 @@ test('YouTube ad observers avoid page-wide attribute monitoring', () => {
 
   now = 1180;
   dueAt = null;
-  syncAdObserver(true);
+  probeAdObservers();
   attrObserver.callback([attr(wrapper)]);
   assert.equal(scheduled, 2, 'ancestor class changes still trigger detection');
   assert.equal(dueAt, 1360);
 
   now = 1360;
   dueAt = null;
-  syncAdObserver(true);
+  probeAdObservers();
   controls = [skip, survey];
   survey.parentElement = player;
   observer.callback([event(player, [survey])]);
@@ -184,7 +189,7 @@ test('YouTube ad observers avoid page-wide attribute monitoring', () => {
   assert.equal(scheduled, 3, 'removed Skip Ad controls remain actionable');
   assert.ok(attrObserver.observations.some(x => x.target === skip),
     'subscriptions remain until the next probe rather than rebuilding in the callback');
-  syncAdObserver(true);
+  probeAdObservers();
   assert.equal(controlScans, 3);
   assert.ok(!attrObserver.observations.some(x => x.target === skip));
 
@@ -279,4 +284,17 @@ test('YouTube ad cleanup stays dormant during 1000 steady non-ad watchdog probes
   assert.equal(state.adControlObserver, null);
   assert.equal(state.adCandidates, null);
   assert.equal(state.adCandidatesAt, 0);
+});
+
+
+test('YouTube ad wake coalescing unlocks on probe entry before any early return', () => {
+  const code = section('  const probe = () => {', '  // Reuse the stable player root');
+  const state = { adMutationWakePending: true };
+  const cleared = vm.runInNewContext(
+    '(() => { ' + code + '\nreturn state.adMutationWakePending; })()',
+    { state },
+  );
+  assert.equal(cleared, false,
+    'a dialog or error probe cannot leave Skip Ad mutation wakes suppressed');
+  assert.equal(state.adMutationWakePending, false);
 });
