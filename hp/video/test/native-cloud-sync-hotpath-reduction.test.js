@@ -123,3 +123,22 @@ test('replayed cloud payloads keep versions without unnecessary file writes or U
   assert.equal(shouldWrite(null, 'abc'), true);
   assert.equal(shouldWrite('abc', 'abcd'), true);
 });
+
+
+test('repeat cloud errors do not reparse dashboard JSON on every offline poll', () => {
+  assert.match(header, /std::wstring lastPublishedCloudError_/);
+  const failure = client.slice(
+    client.indexOf('void CloudClient::Loop()'),
+    client.indexOf('bool CloudClient::RequestRemoteRefresh()'),
+  );
+  assert.match(failure, /if \(friendly != lastPublishedCloudError_\)/);
+  assert.match(failure, /const auto dashboard = DashboardWithCloudError/);
+  assert.match(failure, /if \(!dashboard\) \{\s*lastPublishedCloudError_ = friendly;/);
+  assert.match(failure, /else if \(AtomicWriteBytes\(dataDir_ \/ L"dashboard\.json", \*dashboard\)\)/);
+  assert.match(failure, /PostMessageW\(window_, WM_HP_CLOUD_UPDATED, 0, 0\)/);
+  assert.ok(failure.indexOf('if (friendly != lastPublishedCloudError_)') <
+    failure.indexOf('DashboardWithCloudError'));
+  assert.match(sync, /lastPublishedCloudError_\.clear\(\);\s*failures_ = 0;/);
+  // Don't mark failed writes as successfully displayed, so they retry.
+  assert.doesNotMatch(failure, /lastPublishedCloudError_ = friendly;\s*if \(dashboard/);
+});
