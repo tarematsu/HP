@@ -109,34 +109,35 @@ test('six persistent Stationhead WebViews avoid redundant steady audio scripts a
 });
 
 
-test('steady Stationhead media-clock confirmations do not re-enter Win32/WebView2 visibility checks', () => {
+test('steady Stationhead media-clock confirmations repair hidden surfaces only every minute', () => {
   const from = player.indexOf('void StationheadPlayer::ApplyAudioPlaybackState(');
   const to = player.indexOf('void StationheadPlayer::NavigateCurrentUrl(', from);
   const apply = player.slice(from, to);
-  const condition = apply.indexOf('if (!preserveLoginRequired && !startupPreviewActive_ && !spotifyAuthorization_ &&');
-  const viewCheck = apply.indexOf('(viewVisible_ || selectedTab_ != StationheadTabKind::None)', condition);
-  const reconcile = apply.indexOf('SetVisible(false);', viewCheck);
-  assert.ok(condition >= 0 && viewCheck > condition && reconcile > viewCheck,
-    'healthy hidden profiles must avoid expensive surface and COM geometry inspection');
-  assert.match(apply, /if \(changed \|\| awaitingTrackBoundaryNavigation \|\|[\s\S]*preserveLoginRequired\) \{\s*PostChange\(/);
+  assert.match(player, /constexpr uint64_t kStationheadHealthySurfaceRepairIntervalMs = 60'000/);
+  assert.match(player, /lastHealthySurfaceRepairTick_ = 0;/);
+  assert.match(apply,
+    /if \(!preserveLoginRequired && !startupPreviewActive_ && !spotifyAuthorization_\) \{/);
+  assert.match(apply, /viewVisible_ \|\| selectedTab_ != StationheadTabKind::None \|\|/);
+  assert.match(apply, /lastHealthySurfaceRepairTick_ == 0 \|\|/);
+  assert.match(apply, /nowTick - lastHealthySurfaceRepairTick_ >=\s*kStationheadHealthySurfaceRepairIntervalMs/);
+  assert.match(apply, /lastHealthySurfaceRepairTick_ = nowTick;\s*SetVisible\(false\)/);
   assert.match(apply, /ResetAudioLossEscalation\(\)/);
   assert.match(apply, /status_\.loginRequired = preserveLoginRequired/);
-  // A confirmed foreground/recovery surface still returns behind dashboard.
-  const needsVisibilityRepair = ({ login, startup, auth, visible, tab }) =>
-    !login && !startup && !auth && (visible || tab !== 'none');
-  assert.equal(needsVisibilityRepair({
-    login: false, startup: false, auth: false, visible: false, tab: 'none',
-  }), false);
-  assert.equal(needsVisibilityRepair({
-    login: false, startup: false, auth: false, visible: true, tab: 'none',
-  }), true);
-  assert.equal(needsVisibilityRepair({
-    login: false, startup: false, auth: false, visible: false, tab: 'stationhead',
-  }), true);
-  assert.equal(needsVisibilityRepair({
-    login: true, startup: false, auth: false, visible: true, tab: 'stationhead',
-  }), false);
-  assert.equal(needsVisibilityRepair({
-    login: false, startup: true, auth: false, visible: true, tab: 'none',
-  }), false);
+  const needsRepair = ({ login = false, startup = false, auth = false,
+    visible = false, tab = 'none', last = 1000, now = 1500 } = {}) =>
+    !login && !startup && !auth &&
+      (visible || tab !== 'none' || last === 0 || now - last >= 60000);
+  assert.equal(needsRepair(), false, 'steady audio must not inspect six hidden surfaces');
+  assert.equal(needsRepair({ visible: true }), true, 'interactive window retires immediately');
+  assert.equal(needsRepair({ tab: 'stationhead' }), true, 'foreground tab retires immediately');
+  assert.equal(needsRepair({ last: 0 }), true, 'startup validates hidden surface');
+  assert.equal(needsRepair({ last: 1000, now: 60999 }), false);
+  assert.equal(needsRepair({ last: 1000, now: 61000 }), true,
+    'external layout drift is repaired after a bounded interval');
+  assert.equal(needsRepair({ login: true, visible: true }), false,
+    'login surface remains interactive');
+  assert.equal(needsRepair({ startup: true, visible: true }), false,
+    'startup preview remains interactive');
+  assert.equal(needsRepair({ auth: true, visible: true }), false,
+    'Spotify authorization keeps control of its surface');
 });
