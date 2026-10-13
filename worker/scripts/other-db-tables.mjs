@@ -27,6 +27,7 @@ export const OTHER_REQUIRED_TABLES = Object.freeze([
   'sh_official_broadcast_summary',
   'sh_official_broadcast_series',
   'sh_channel_rankings',
+  'sh_weekly_leaderboard_import_state',
   'sh_weekly_ranking_read_model',
   'sh_weekly_ranking_read_model_chunks',
   'sh_weekly_ranking_revision_state',

@@ -41,14 +41,36 @@ function completeRanking({ prefix = 'channel', firstName = null, firstStreams = 
 function createFakeDb(initialRows = []) {
   const state = {
     rows: initialRows.map((row) => ({ ...row })),
+    checkpoints: new Map(),
+    checkpointWrites: 0,
     batches: 0,
+  };
+  const writeCheckpoint = (values) => {
+    const [ranking_date, observed_at, source_digest, content_json] = values;
+    const previous = state.checkpoints.get(ranking_date);
+    if (previous && previous.observed_at > observed_at) return;
+    state.checkpoints.set(ranking_date, { observed_at, source_digest, content_json });
+    state.checkpointWrites += 1;
   };
   const statement = (sql, bindings = []) => ({
     sql,
     bindings,
     bind(...values) { return statement(sql, values); },
+    async first() {
+      if (!/^SELECT observed_at,source_digest,content_json\s+FROM sh_weekly_leaderboard_import_state/i.test(sql.trim())) {
+        throw new Error(`unexpected first SQL: ${sql}`);
+      }
+      return state.checkpoints.get(bindings[0]) || null;
+    },
+    async run() {
+      if (!/^INSERT INTO sh_weekly_leaderboard_import_state/i.test(sql.trim())) {
+        throw new Error(`unexpected run SQL: ${sql}`);
+      }
+      writeCheckpoint(bindings);
+      return { success: true };
+    },
     async all() {
-      if (!/^SELECT raw_json\s+FROM sh_channel_rankings/i.test(sql.trim())) {
+      if (!/^SELECT rank,channel_name,channel_alias,total_listens,raw_json\s+FROM sh_channel_rankings/i.test(sql.trim())) {
         throw new Error(`unexpected all SQL: ${sql}`);
       }
       const [rankingDate, rankingType] = bindings;
@@ -56,7 +78,10 @@ function createFakeDb(initialRows = []) {
         results: state.rows
           .filter((row) => row.ranking_date === rankingDate && row.ranking_type === rankingType)
           .sort((a, b) => Number(a.rank) - Number(b.rank))
-          .map((row) => ({ raw_json: row.raw_json })),
+          .map((row) => ({
+            rank: row.rank, channel_name: row.channel_name, channel_alias: row.channel_alias,
+            total_listens: row.total_listens, raw_json: row.raw_json,
+          })),
       };
     },
   });
@@ -82,6 +107,10 @@ function createFakeDb(initialRows = []) {
             listener_count, member_count, total_listens, source_sheet, source_row,
             quality_score, quality_flags, raw_json, imported_at,
           });
+          continue;
+        }
+        if (/^INSERT INTO sh_weekly_leaderboard_import_state/i.test(item.sql.trim())) {
+          writeCheckpoint(item.bindings);
           continue;
         }
         throw new Error(`unexpected batch SQL: ${item.sql}`);
@@ -220,6 +249,62 @@ test('a late older observation cannot overwrite a newer same-week ranking', asyn
   assert.equal(db.state.batches, 1);
   assert.equal(db.state.rows[0].total_listens, 1200);
 });
+
+test('a newer capture with identical ranks, streams and days writes only a checkpoint', async () => {
+  const db = createFakeDb();
+  const snapshot = { ranking: completeRanking({ firstName: 'sakurazaka46jp' }) };
+  const first = artifactWith(snapshot, { digest: 'capture-1', observed_at: Date.parse('2026-09-21T15:30:00Z') });
+  const newer = artifactWith(snapshot, { digest: 'capture-2', observed_at: Date.parse('2026-09-21T16:30:00Z') });
+  assert.equal((await importLeaderboardArtifact(first, db, 100)).status, 'imported');
+  const originalRows = db.state.rows.map((row) => row.raw_json);
+  const changes = await importLeaderboardArtifact(newer, db, 200);
+  assert.equal(changes.status, 'unchanged');
+  assert.equal(db.state.batches, 1, 'no 100-row delete + insert');
+  assert.deepEqual(db.state.rows.map((row) => row.raw_json), originalRows);
+  assert.equal(db.state.checkpointWrites, 2);
+
+  const repeated = await importLeaderboardArtifact(newer, db, 300);
+  assert.equal(repeated.status, 'unchanged');
+  assert.equal(db.state.checkpointWrites, 2, 'identical observation makes no D1 write');
+
+  const staleChanged = artifactWith({ ranking: completeRanking({ prefix: 'stale' }) }, {
+    digest: 'stale-content', observed_at: Date.parse('2026-09-21T15:45:00Z'),
+  });
+  assert.equal((await importLeaderboardArtifact(staleChanged, db, 400)).status, 'stale');
+  assert.equal(db.state.batches, 1);
+  assert.equal(db.state.checkpointWrites, 2);
+});
+
+test('changes to days or streams still replace weekly content', async () => {
+  const db = createFakeDb();
+  const base = artifactWith({ ranking: completeRanking({ firstStreams: 1000 }) }, {
+    digest: 'first', observed_at: Date.parse('2026-09-21T15:30:00Z'),
+  });
+  const next = artifactWith({ ranking: completeRanking({ firstStreams: 1001 }) }, {
+    digest: 'changed', observed_at: Date.parse('2026-09-21T16:30:00Z'),
+  });
+  await importLeaderboardArtifact(base, db, 100);
+  assert.equal((await importLeaderboardArtifact(next, db, 200)).status, 'imported');
+  assert.equal(db.state.batches, 2);
+  assert.equal(db.state.rows[0].total_listens, 1001);
+});
+
+test('legacy rows seed the new checkpoint without replacing a matching Top 100', async () => {
+  const seed = createFakeDb();
+  const base = artifactWith({ ranking: completeRanking({ firstStreams: 1000 }) }, {
+    digest: 'previous-capture', observed_at: Date.parse('2026-09-21T15:30:00Z'),
+  });
+  await importLeaderboardArtifact(base, seed, 100);
+  const legacy = createFakeDb(seed.state.rows);
+  const unchanged = artifactWith({ ranking: completeRanking({ firstStreams: 1000 }) }, {
+    digest: 'new-capture', observed_at: Date.parse('2026-09-21T16:30:00Z'),
+  });
+  assert.equal((await importLeaderboardArtifact(unchanged, legacy, 200)).status, 'unchanged');
+  assert.equal(legacy.state.batches, 0);
+  assert.equal(legacy.state.checkpointWrites, 1);
+  assert.equal(legacy.state.rows.length, 100);
+});
+
 
 test('Actions and Worker use the same parser and importer', async () => {
   const worker = await import('../src/stationhead-leaderboard-worker.js');
