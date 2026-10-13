@@ -325,3 +325,33 @@ test('healthy TVer settings do not postpone fullscreen recovery', () => {
     message => message === 'homepanel:tver-fullscreen-key').length, 2,
     'fullscreen retries must remain independent of the settings scan budget');
 });
+
+
+test('confirmed TVer playback limits duplicate questionnaire queries to one per three seconds', () => {
+  const scene = scenario();
+  scene.run();
+  assert.equal(scene.counters.dialogQueries, 1);
+  scene.advance(1000);
+  scene.run();
+  assert.equal(scene.counters.dialogQueries, 1,
+    'unchanged confirmed settings should not scan global dialogs on each wake');
+  scene.advance(2100);
+  scene.run();
+  assert.equal(scene.counters.dialogQueries, 2,
+    'the periodic fallback must still detect newly opened questionnaires');
+  scene.window.__homePanelTverRuntime.questionnaireActive = true;
+  scene.advance(100);
+  scene.run();
+  assert.equal(scene.counters.dialogQueries, 3,
+    'an active questionnaire reported by the playback controller must bypass the cache');
+});
+
+test('unconfirmed TVer settings always scan blocking questionnaires', () => {
+  const scene = scenario({ speed: '×1.0', quality: '自動' });
+  scene.run();
+  assert.equal(scene.counters.dialogQueries, 1);
+  scene.advance(100);
+  scene.run();
+  assert.equal(scene.counters.dialogQueries, 2,
+    'setup and recovery screens must not inherit the healthy playback throttle');
+});
