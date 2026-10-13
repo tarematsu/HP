@@ -34,7 +34,11 @@ test('login-required state survives audio callbacks', () => {
     'void StationheadPlayer::NavigateCurrentUrl(');
   assert.match(applyAudio, /preserveLoginRequired = loginRequired_/);
   assert.match(applyAudio, /status_\.loginRequired = preserveLoginRequired;/);
-  assert.match(applyAudio, /Stationhead login required; audio continues/);
+  assert.match(applyAudio,
+    /UpdateHealthyAudioDetail\(\s*status_\.detail, preserveLoginRequired, usingFallback_, source\)/);
+  const formatting = section(player, 'void UpdateHealthyAudioDetail(', 'bool CallbackAlive(');
+  assert.match(formatting, /Stationhead login required; audio continues/);
+  assert.match(formatting, /const bool hasSource = !loginRequired && !source.empty\(\)/);
 });
 
 test('login detection rejects stale auth and re-arms after authentication', () => {
