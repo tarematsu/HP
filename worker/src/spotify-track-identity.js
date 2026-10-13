@@ -77,6 +77,23 @@ export function spotifyKnownAliasStatement(db, sourceTrackIds) {
     .bind(...sourceTrackIds);
 }
 
+// Group primary-key identity insertions into one SQLite statement per bounded
+// chunk. Preserve first-seen canonical ownership and the existing seven-day
+// throttle; real changes in song identity still flow through the alias mapping.
+export function spotifySongIdentityBatchStatement(db, entries, seenAt) {
+  if (!Array.isArray(entries) || entries.length < 1 || entries.length > WRITE_CHUNK_SIZE) {
+    throw new RangeError('Spotify identity batch must contain 1-50 song keys');
+  }
+  return db.prepare(`INSERT INTO sh_spotify_song_identities (
+      song_key,canonical_track_id,created_at,updated_at
+    ) SELECT json_extract(value,'$[0]'),json_extract(value,'$[1]'),?,?
+    FROM json_each(?) WHERE 1
+    ON CONFLICT(song_key) DO UPDATE SET updated_at=MAX(
+      sh_spotify_song_identities.updated_at,excluded.updated_at
+    ) WHERE excluded.updated_at>=sh_spotify_song_identities.updated_at+?`)
+    .bind(seenAt, seenAt, JSON.stringify(entries), IDENTITY_SEEN_REFRESH_MS);
+}
+
 async function readKnownAliases(db, keyedTracks) {
   const sourceTrackIds = [...new Set(keyedTracks
     .map(({ track }) => String(track?.track_id || '').trim())
@@ -150,15 +167,9 @@ export async function resolveCanonicalSpotifyTracks(db, tracks, seenAt) {
     }
   }
 
-  await batchWrites(db, [...initialCanonicalByKey].map(([songKey, trackId]) => (
-    db.prepare(`INSERT INTO sh_spotify_song_identities (
-        song_key,canonical_track_id,created_at,updated_at
-      ) VALUES (?,?,?,?)
-      ON CONFLICT(song_key) DO UPDATE SET updated_at=MAX(
-        sh_spotify_song_identities.updated_at,excluded.updated_at
-      ) WHERE excluded.updated_at>=sh_spotify_song_identities.updated_at+?`)
-      .bind(songKey, trackId, seenAt, seenAt, IDENTITY_SEEN_REFRESH_MS)
-  )));
+  const songIdentityStatements = chunks([...initialCanonicalByKey], WRITE_CHUNK_SIZE)
+    .map((entries) => spotifySongIdentityBatchStatement(db, entries, seenAt));
+  await batchWrites(db, songIdentityStatements);
 
   const canonicalByKey = new Map();
   const songKeys = [...initialCanonicalByKey.keys()];
