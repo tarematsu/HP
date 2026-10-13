@@ -6,6 +6,7 @@ const native = file => readFileSync(
   new URL('../../native/src/' + file, import.meta.url), 'utf8',
 );
 const app = native('app.cpp');
+const appMessages = native('app_messages.cpp');
 const playerHeader = native('sh.h');
 const player = native('sh.cpp');
 const handlesHeader = native('app_stationhead_handles.h');
@@ -66,4 +67,19 @@ test('Stationhead foreground maintenance avoids redundant topmost window operati
   assert.match(foreground,
     /if \(!IsWindowVisible\(host\) \|\| GetWindow\(host, GW_HWNDPREV\) != nullptr\) \{/);
   assert.match(foreground, /if \(interactive\) BringMainWindowToFront\(host\)/);
+});
+
+
+test('unchanged WM_SIZE avoids rebuilding dashboard and six WebView layouts', () => {
+  const resize = section(appMessages,
+    '    case WM_SIZE:', '    case WM_LBUTTONUP:');
+  assert.match(resize, /rendererStarted_ && selectedTab_ == WorkspaceTab::Main/);
+  assert.match(resize, /workspaceBounds_\.right - workspaceBounds_\.left == width/);
+  assert.match(resize, /workspaceBounds_\.bottom - workspaceBounds_\.top == height/);
+  assert.match(resize, /return 0;/);
+  assert.ok(resize.indexOf('return 0;') < resize.indexOf('renderer_->Resize('));
+  assert.match(resize, /renderer_->Resize\(LOWORD\(lParam\), HIWORD\(lParam\)\);\s*LayoutWorkspace\(\)/);
+  assert.match(resize, /wParam != SIZE_MINIMIZED/);
+  // A genuine resize and the initial/deferred layout still reach the normal path.
+  assert.match(app, /void App::LayoutWorkspace\(\) \{/);
 });
