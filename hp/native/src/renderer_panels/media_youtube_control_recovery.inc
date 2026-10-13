@@ -541,7 +541,9 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     }
     if (target) return arm(target, 'skip-ad', 600);
     if (!fullscreen()) return requestFullscreen();
-    recheck();
+    // Skip/ad state observers wake promptly on actionable changes. Poll
+    // unskippable ads less often when no event arrives.
+    wake(5000);
     return 'recovery';
   }
   state.adActive = false;
