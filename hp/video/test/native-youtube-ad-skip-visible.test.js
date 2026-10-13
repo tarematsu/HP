@@ -27,6 +27,8 @@ test('YouTube runtime accepts current skip layouts inside the player', () => {
   assert.match(runtime, /\[class\*=\"ytp-ad-skip\"\]/);
   assert.match(runtime, /aria-label\*=\"Skip ad\" i/);
   assert.match(runtime, /aria-label\*=\"広告を飛ばす\"/);
-  assert.match(runtime, /return arm\(target, 'skip-ad', 600\)/);
+  assert.match(runtime, /const action = arm\(target, 'skip-ad', 600\)/);
+  assert.match(runtime, /if \(action\) return action;/);
+  assert.match(runtime, /wake\(1000\);\s*return 'recovery';/);
   assert.doesNotMatch(runtime, /document\.querySelectorAll\([^)]*skip/);
 });
