@@ -209,10 +209,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     };
     function onClick(event) {
     // Only Play needs media state; ad, dialog and fullscreen clicks do not.
-    const playVideo = action === 'play'
-      ? (state.video?.isConnected && player.contains(state.video)
-          ? state.video : player.querySelector('video'))
-      : null;
+    const playVideo = action === 'play' ? player.querySelector('video') : null;
     const accepted = valid(element) && hitOwnControl(point) &&
         (action !== 'skip-ad' || ad()) &&
         (action !== 'play' || (!ad() && playVideo?.paused && !playVideo.ended)) &&
@@ -517,11 +514,8 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     for (const root of adCandidates) {
     // Keep the first enabled skip candidate, but finish inspecting surveys
     // before acting so an active survey always takes precedence.
-    if (!root.matches(surveyDialogSelector)) {
-      if (!target && root.matches(skipSelector) && valid(root)) target = root;
-      continue;
-    }
-    if (!valid(root)) continue;
+    if (!target && root.matches(skipSelector) && valid(root)) target = root;
+    if (!root.matches(surveyDialogSelector) || !valid(root)) continue;
     let submit = null;
     let firstOption = null;
     let secondOption = null;
