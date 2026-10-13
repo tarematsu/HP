@@ -130,3 +130,29 @@ test('audio-loss recovery reuses the same validated playback flag as monitor sel
   assert.doesNotMatch(recovery, /const bool audioPlaying = AudioPlaying\(\)/);
   assert.match(playerHeader, /playingSince > 0 &&\s*audioPlaying_\.load/);
 });
+
+
+test('Stationhead placement reconciles bounds once before refreshing visibility', () => {
+  const placement = section(app,
+    'void App::ApplyStationheadWindowPlacement() {',
+    'void App::ScheduleNextTick(');
+  assert.match(placement,
+    /stationheadPeers_\[i\]->SetBounds\(bounds\);\s*stationheadPeers_\[i\]->RefreshVisibility\(\)/);
+  assert.match(placement,
+    /stationhead_->SetBounds\(bounds\);\s*stationhead_->RefreshVisibility\(\)/);
+
+  const refresh = section(handles,
+    'void StationheadHandleBase::RefreshVisibility() {',
+    'void StationheadHandleBase::Start() {');
+  assert.match(refresh, /player_->SelectTab\(StationheadTabKind::None\)/);
+  assert.doesNotMatch(refresh, /\bApplyBounds\(\)/,
+    'the preceding SetBounds already restores geometry and z-order');
+
+  const bounds = section(handles,
+    'void StationheadHandleBase::SetBounds(const RECT& bounds) {',
+    'StationheadStatus StationheadHandleBase::RawStatus() const {');
+  assert.match(bounds, /ApplyBounds\(\)/,
+    'genuine bounds changes and unchanged-bounds repair must still work');
+  assert.match(refresh, /player_->KeepPlaybackBehindDashboard\(\)/,
+    'track transition suppression must still restore the hidden surface');
+});
