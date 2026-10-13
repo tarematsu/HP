@@ -243,6 +243,9 @@ class StationheadPlayer {
   bool loginRequired_ = false;
   bool nativeAudioTracking_ = false;
   bool viewVisible_ = false;
+  // Keep a low-frequency Win32/WebView2 surface repair during steady audio,
+  // without checking geometry on every positive media-clock callback.
+  uint64_t lastHealthySurfaceRepairTick_ = 0;
   bool startupPreviewActive_ = false;
   bool foregroundAllowed_ = true;
   bool usingFallback_ = false;
