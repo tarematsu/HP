@@ -226,26 +226,27 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   };
 )JS" LR"JS(
   const dismissMessageDialog = () => {
+    // Confirmation prompts are exceptionally rare during the 50-60 minute
+    // YouTube phase. Do not observe every popup mutation or scan on ad wakes.
+    // Recheck absent dialogs once per 5 minutes; an active dialog gets a
+    // shorter 30s retry window so a missed trusted click can recover.
+    const now = Date.now();
+    const interval = state.dialogActive ? 30 * 1000 : 5 * 60 * 1000;
+    if (state.dialogCheckedAt > 0 && now >= state.dialogCheckedAt &&
+        now - state.dialogCheckedAt < interval) return null;
+    state.dialogCheckedAt = now;
+    state.dialogActive = false;
     const popup = state.popup?.isConnected ? state.popup :
       document.querySelector('ytd-popup-container');
-    if (!popup) return null;
-    // Avoid repeated popup subtree scans during frequent ad wakeups.
-    // Relevant dialog mutations invalidate the cache immediately; the bounded
-    // 5s rescan covers delayed overlays or a missed mutation notification.
-    const now = Date.now();
-    if (state.dialogCheckedPopup === popup && !state.dialogDirty &&
-        now - state.dialogCheckedAt < 5000) return null;
-    state.dialogCheckedPopup = popup;
-    state.dialogCheckedAt = now;
-    state.dialogDirty = false;
+    if (!popup) { state.popup = null; return null; }
+    state.popup = popup;
     for (const root of popup.querySelectorAll(
       'tp-yt-paper-dialog[opened],[role="dialog"]:not([aria-hidden="true"]),'
       + 'yt-confirm-dialog-renderer,ytd-confirm-dialog-renderer')) {
     if (!root.getClientRects().length || root.matches(surveySelector) ||
         root.querySelector(surveySelector)) continue;
-    // Keep actively checking visible dialogs until they are dismissed.
-    // Only empty/inert popup scans should be cached.
-    state.dialogDirty = true;
+    // Only a visible dialog enters the shorter retry cadence.
+    state.dialogActive = true;
     const dialogText = text(root);
     const continueDialog =
         /(視聴を続けていますか|動画がまもなく一時停止されます|動画が一時停止されました[。.!！]?\s*続きを視聴しますか|still watching|continue watching)/i
@@ -359,9 +360,8 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     state.pageAbort?.abort();
     state.videoAbort?.abort();
     state.classObserver?.disconnect();
-    state.popupObserver?.disconnect();
-    state.dialogCheckedPopup = null;
-    state.dialogDirty = true;
+    state.popup = null;
+    state.dialogActive = false;
     state.dialogCheckedAt = 0;
     state.adObserver?.disconnect();
     state.adControlObserver?.disconnect();
@@ -399,6 +399,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       pageStateQueued = false;
       if (state.player !== player) return;
       state.playerNeedsRefresh = true;
+      state.dialogCheckedAt = 0;
       bindVideo(true);
       wake(0);
     });
@@ -412,39 +413,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     document.addEventListener('fullscreenchange', () => {
       if (state.player === player) wake(0);
     }, { capture: true, signal: state.pageAbort.signal });
-    state.popup = document.querySelector('ytd-popup-container');
-    if (state.popup) {
-    const dialogSelector = 'tp-yt-paper-dialog,[role="dialog"],' +
-      'yt-confirm-dialog-renderer,ytd-confirm-dialog-renderer';
-    const relatedDialog = (node, deep = false) => {
-      if (node?.nodeType !== 1 || node === state.popup) return false;
-      return !!(node.matches?.(dialogSelector) ||
-        node.closest?.(dialogSelector) ||
-        (deep && node.firstElementChild && node.querySelector?.(dialogSelector)));
-    };
-    const dialogMutations = records => {
-      for (const record of records) {
-        let relevant = relatedDialog(record.target);
-        if (!relevant) {
-          for (const node of record.addedNodes) {
-            if (relatedDialog(node, true)) { relevant = true; break; }
-          }
-        }
-        if (!relevant) {
-          for (const node of record.removedNodes) {
-            if (relatedDialog(node, true)) { relevant = true; break; }
-          }
-        }
-        if (relevant) {
-          state.dialogDirty = true;
-          wake(80);
-          return;
-        }
-      }
-    };
-    state.popupObserver = new MutationObserver(dialogMutations);
-    state.popupObserver.observe(state.popup, { childList: true, subtree: true });
-    }
+
   }
   const video = bindVideo();
   const dialogAction = dismissMessageDialog();
