@@ -12,3 +12,10 @@ export function loadQueueRevisionPositions(db, revisionId) {
     'SELECT position FROM sh_queue_revision_items WHERE revision_id=?',
   ).bind(revisionId).all();
 }
+
+// Lightweight membership check; do not load the full revision item set.
+export async function queueRevisionPositionExists(db, revisionId, position) {
+  const row = await db.prepare(`SELECT 1 AS present FROM sh_queue_revision_items
+    WHERE revision_id=? AND position=? LIMIT 1`).bind(revisionId, position).first();
+  return Boolean(row);
+}
