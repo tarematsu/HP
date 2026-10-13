@@ -12,8 +12,8 @@ LR"JS(
   const zoomOut = () => document.documentElement?.style.setProperty('zoom', '0.5');
   const run = () => {
     if (!pageActive) return;
-    publishAudio();
-    publishAuth();
+    const audio = publishAudio();
+    publishAuth(audio);
   };
   const schedule = (delay = 0) => {
     if (!pageActive || eventTimer) return;
