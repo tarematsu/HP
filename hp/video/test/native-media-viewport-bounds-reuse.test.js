@@ -21,6 +21,7 @@ test('media host does not issue WebView2 layout calls for identical effective bo
   assert.match(resize, /GetClientRect\(parent, &parentClient\)/);
   assert.match(resize, /hasAppliedControllerBounds_ &&\s*EqualRect\(&lastAppliedControllerBounds_, &client\)\) return/);
   assert.match(resize, /if \(SUCCEEDED\(controller_->put_Bounds\(client\)\)\) \{\s*lastAppliedControllerBounds_ = client;\s*hasAppliedControllerBounds_ = true;/);
+  assert.match(resize, /hasAppliedControllerBounds_ = true;\s*} else \{[\s\S]*hasAppliedControllerBounds_ = false;/);
   assert.equal((resize.match(/controller_->put_Bounds\(/g) || []).length, 1);
   assert.ok(resize.indexOf('EqualRect(&lastAppliedControllerBounds_, &client)') <
             resize.indexOf('controller_->put_Bounds(client)'));
