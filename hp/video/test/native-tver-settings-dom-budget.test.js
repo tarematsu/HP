@@ -355,3 +355,19 @@ test('unconfirmed TVer settings always scan blocking questionnaires', () => {
   assert.equal(scene.counters.dialogQueries, 2,
     'setup and recovery screens must not inherit the healthy playback throttle');
 });
+
+
+test('paused playback bypasses TVer questionnaire throttle when controller reports its video', () => {
+  const scene = scenario();
+  scene.run();
+  const state = scene.window.__homePanelTverRuntime;
+  state.video = scene.videoElements[0];
+  scene.advance(100);
+  scene.run();
+  assert.equal(scene.counters.dialogQueries, 1);
+  scene.videoElements[0].paused = true;
+  scene.advance(100);
+  scene.run();
+  assert.equal(scene.counters.dialogQueries, 2,
+    'a paused video must not defer a newly blocking dialog until the fallback');
+});
