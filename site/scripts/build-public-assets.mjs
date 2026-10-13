@@ -25,6 +25,7 @@ const cssGroups = Object.freeze({
     'history/history-lite.css',
     'first-week-comparison.css',
     'played-tracks.css',
+    'dashboard-responsive-cards.css',
     'followers.css',
     'leaderboard.css',
     'hinata.css',
