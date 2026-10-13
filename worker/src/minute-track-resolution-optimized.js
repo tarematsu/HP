@@ -1,3 +1,4 @@
+import { checkpointTrackStatement, TRACK_SEEN_CHECKPOINT_MS } from './minute-track-write-statements.js';
 import {
   aliasKey,
   buildTrackDescriptor,
@@ -19,7 +20,6 @@ const IDENTITY_DESCRIPTOR_CHUNK_SIZE = Math.floor(
 const TRACK_INSERT_BATCH_LIMIT = Math.floor(D1_SAFE_BOUND_PARAMETERS / TRACK_INSERT_BINDINGS);
 const TRACK_UPDATE_BATCH_LIMIT = Math.floor(D1_SAFE_BOUND_PARAMETERS / TRACK_UPDATE_BINDINGS);
 const ALIAS_UPSERT_BATCH_LIMIT = Math.floor(D1_SAFE_BOUND_PARAMETERS / ALIAS_UPSERT_BINDINGS);
-const TRACK_SEEN_CHECKPOINT_MS = 24 * 60 * 60_000;
 
 function normalizedIsrc(value) {
   return text(value)?.toUpperCase() || null;
@@ -232,17 +232,6 @@ async function insertTracks(db, descriptors, observedAt) {
   await runStatementBatches(db, statements, TRACK_INSERT_BATCH_LIMIT);
 }
 
-function trackRefreshConditions(descriptor) {
-  const conditions = [];
-  if (descriptor.isrc != null) conditions.push('isrc IS NULL');
-  if (descriptor.spotify_id != null) conditions.push('spotify_id IS NULL');
-  if (descriptor.stationhead_track_id != null) conditions.push('stationhead_track_id IS NULL');
-  if (descriptor.title != null) conditions.push('title IS NULL');
-  if (descriptor.artist != null) conditions.push('artist IS NULL');
-  conditions.push('last_seen_at<=?');
-  return conditions.join('\n        OR ');
-}
-
 async function persistTrackAliases(db, descriptors, observedAt) {
   const uniqueTracks = new Map();
   for (const descriptor of descriptors) {
@@ -253,23 +242,7 @@ async function persistTrackAliases(db, descriptors, observedAt) {
   const trackStatements = [];
   const aliasStatements = [];
   for (const descriptor of uniqueTracks.values()) {
-    trackStatements.push(db.prepare(`UPDATE sh_tracks SET
-        isrc=COALESCE(isrc,?),spotify_id=COALESCE(spotify_id,?),
-        stationhead_track_id=COALESCE(stationhead_track_id,?),
-        title=COALESCE(title,?),artist=COALESCE(artist,?),last_seen_at=MAX(last_seen_at,?)
-      WHERE id=? AND (
-        ${trackRefreshConditions(descriptor)}
-      )`)
-      .bind(
-        descriptor.isrc,
-        descriptor.spotify_id,
-        descriptor.stationhead_track_id,
-        descriptor.title,
-        descriptor.artist,
-        observedAt,
-        descriptor.trackId,
-        observedAt - TRACK_SEEN_CHECKPOINT_MS,
-      ));
+    trackStatements.push(checkpointTrackStatement(db, descriptor, observedAt));
     for (const alias of descriptor.aliases || []) {
       aliasStatements.push(db.prepare(`INSERT INTO sh_track_aliases(
           alias_type,alias_value,track_id,first_seen_at,last_seen_at
