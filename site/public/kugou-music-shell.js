@@ -4,7 +4,6 @@ import {
   musicServiceRankingHistoryTable,
   musicServiceRankChart,
   musicServiceSection,
-  musicServiceTable,
 } from './music-service-shell.js?v=20261004.2';
 
 mountMusicServiceView({
