@@ -199,15 +199,19 @@ void CloudClient::Synchronize() {
   std::wstring path = L"/v1/device/sync?deviceId=";
   path.reserve(256);
   path += config_.deviceId;
-  path += L"&dashboardVersion=" +
-      std::to_wstring(requestedVersion(dashboardPath, dashboardVersion_));
-  path += L"&radarVersion=" + std::to_wstring(requestedRadarVersion());
-  path += L"&switchbotVersion=" + std::to_wstring(
+  // Build directly into the reserved request buffer. "literal" + to_wstring
+  // creates four temporary wide strings on each periodic cloud poll.
+  path += L"&dashboardVersion=";
+  path += std::to_wstring(requestedVersion(dashboardPath, dashboardVersion_));
+  path += L"&radarVersion=";
+  path += std::to_wstring(requestedRadarVersion());
+  path += L"&switchbotVersion=";
+  path += std::to_wstring(
       presenceFallbackActive_
           ? -1
           : requestedVersion(switchbotPath, switchbotVersion_));
-  path += L"&configVersion=" +
-      std::to_wstring(requestedDeviceConfigVersion());
+  path += L"&configVersion=";
+  path += std::to_wstring(requestedDeviceConfigVersion());
 
   const auto response = Request(L"GET", path, deviceToken_);
   if (response.status != 200) {
