@@ -124,6 +124,24 @@ inline bool Append(std::wstring_view payload) {
   return true;
 }
 
+struct UploadSnapshot {
+  std::vector<std::string> batch;
+  size_t totalRecords = 0;
+};
+
+// Exchange needs both the bounded upload batch and the full spool count.
+// Read the same NDJSON once under one lock instead of reopening and parsing
+// it for Count() after ReadBatch(). Concurrent Append/Acknowledge cannot make
+// the reported total inconsistent with the batch being uploaded.
+inline UploadSnapshot ReadBatchWithCount(
+    size_t maximum = kCaptureUploadBatchSize) {
+  std::lock_guard lock(SpoolMutex());
+  auto lines = ReadLinesLocked();
+  const size_t total = lines.size();
+  if (lines.size() > maximum) lines.resize(maximum);
+  return {std::move(lines), total};
+}
+
 inline size_t Count() {
   std::lock_guard lock(SpoolMutex());
   return ReadLinesLocked().size();
