@@ -227,6 +227,15 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     const popup = state.popup?.isConnected ? state.popup :
       document.querySelector('ytd-popup-container');
     if (!popup) return null;
+    // Avoid repeated popup subtree scans during frequent ad wakeups.
+    // Relevant dialog mutations invalidate the cache immediately; the bounded
+    // 5s rescan covers delayed overlays or a missed mutation notification.
+    const now = Date.now();
+    if (state.dialogCheckedPopup === popup && !state.dialogDirty &&
+        now - state.dialogCheckedAt < 5000) return null;
+    state.dialogCheckedPopup = popup;
+    state.dialogCheckedAt = now;
+    state.dialogDirty = false;
     for (const root of popup.querySelectorAll(
       'tp-yt-paper-dialog[opened],[role="dialog"]:not([aria-hidden="true"]),'
       + 'yt-confirm-dialog-renderer,ytd-confirm-dialog-renderer')) {
@@ -346,6 +355,9 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     state.videoAbort?.abort();
     state.classObserver?.disconnect();
     state.popupObserver?.disconnect();
+    state.dialogCheckedPopup = null;
+    state.dialogDirty = true;
+    state.dialogCheckedAt = 0;
     state.adObserver?.disconnect();
     state.adControlObserver?.disconnect();
     state.adObserver = null;
@@ -407,12 +419,21 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     };
     const dialogMutations = records => {
       for (const record of records) {
-        if (relatedDialog(record.target)) { wake(80); return; }
-        for (const node of record.addedNodes) {
-          if (relatedDialog(node, true)) { wake(80); return; }
+        let relevant = relatedDialog(record.target);
+        if (!relevant) {
+          for (const node of record.addedNodes) {
+            if (relatedDialog(node, true)) { relevant = true; break; }
+          }
         }
-        for (const node of record.removedNodes) {
-          if (relatedDialog(node, true)) { wake(80); return; }
+        if (!relevant) {
+          for (const node of record.removedNodes) {
+            if (relatedDialog(node, true)) { relevant = true; break; }
+          }
+        }
+        if (relevant) {
+          state.dialogDirty = true;
+          wake(80);
+          return;
         }
       }
     };
