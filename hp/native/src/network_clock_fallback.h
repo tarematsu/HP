@@ -122,21 +122,11 @@ inline bool BootstrapNetworkClockFromPersistedOffset() noexcept {
   }
 }
 
-inline bool PersistNetworkClockOffsetFromHttpResponse(HINTERNET request) noexcept {
-  if (!request) return false;
+inline bool PersistNetworkClockOffsetFromServerUnixMillis(
+    int64_t serverUnixMs) noexcept {
   try {
-    SYSTEMTIME serverUtc{};
-    DWORD size = sizeof(serverUtc);
-    if (!WinHttpQueryHeaders(
-            request, WINHTTP_QUERY_DATE | WINHTTP_QUERY_FLAG_SYSTEMTIME,
-            WINHTTP_HEADER_NAME_BY_INDEX, &serverUtc, &size,
-            WINHTTP_NO_HEADER_INDEX)) {
-      return false;
-    }
-
-    int64_t serverUnixMs = 0;
     int64_t windowsUnixMs = 0;
-    if (!UnixMillisFromUtcSystemTime(serverUtc, &serverUnixMs) ||
+    if (serverUnixMs < 0 ||
         serverUnixMs > std::numeric_limits<int64_t>::max() - 500 ||
         !WindowsWallClockUnixMillis(&windowsUnixMs)) {
       return false;
@@ -171,6 +161,23 @@ inline bool PersistNetworkClockOffsetFromHttpResponse(HINTERNET request) noexcep
   } catch (...) {
     return false;
   }
+}
+
+// Other callers can still pass a raw HTTP handle. CloudClient::Request uses
+// the already parsed server timestamp to avoid querying/converting Date twice.
+inline bool PersistNetworkClockOffsetFromHttpResponse(HINTERNET request) noexcept {
+  if (!request) return false;
+  SYSTEMTIME serverUtc{};
+  DWORD size = sizeof(serverUtc);
+  if (!WinHttpQueryHeaders(
+          request, WINHTTP_QUERY_DATE | WINHTTP_QUERY_FLAG_SYSTEMTIME,
+          WINHTTP_HEADER_NAME_BY_INDEX, &serverUtc, &size,
+          WINHTTP_NO_HEADER_INDEX)) {
+    return false;
+  }
+  int64_t serverUnixMs = 0;
+  return UnixMillisFromUtcSystemTime(serverUtc, &serverUnixMs) &&
+         PersistNetworkClockOffsetFromServerUnixMillis(serverUnixMs);
 }
 
 }  // namespace hp
