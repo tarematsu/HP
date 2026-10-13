@@ -64,6 +64,9 @@ inline std::vector<std::string> ReadLinesLocked() {
   if (path.empty()) return lines;
   std::ifstream input(path, std::ios::binary);
   if (!input) return lines;
+  // The spool retains at most 20 records. Reserve once rather than growing
+  // and relocating the batch vector during every periodic cloud upload.
+  lines.reserve(kMaxCaptureRecords);
   std::string line;
   while (std::getline(input, line)) {
     if (line.empty() || line.size() > kMaxCaptureRecordBytes) continue;
