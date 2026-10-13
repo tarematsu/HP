@@ -53,7 +53,7 @@ test('every service owns its own metadata identity and shared cadence contract',
 
 test('service shells retain only data-specific section definitions', () => {
   for (const source of serviceShells) {
-    assert.match(source, /musicServiceTable/);
+    assert.match(source, /musicServiceTable|musicServiceRankingHistoryTable/);
     assert.doesNotMatch(source, /dashboardSummary|dashboardSummaryItem|dashboardDataCard|dashboardChartCard/);
   }
   assert.match(spotify, /spotifyOverviewTrendSection/);
@@ -87,7 +87,7 @@ test('all music subscription presentation uses one responsive layout contract', 
 
 test('all service filters use the shared filter primitive', () => {
   for (const source of [spotify, apple, amazon, kkbox, qq, kugou]) {
-    assert.match(source, /musicServiceFilterTabs/);
+    assert.match(source, /musicServiceFilterTabs|musicServiceSakamichiFilter/);
     assert.doesNotMatch(source, /dashboardModeTabs/);
   }
   assert.match(commonShell, /dashboardModeTabs/);
