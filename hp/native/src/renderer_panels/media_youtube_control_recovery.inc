@@ -4,6 +4,11 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
 (() => {
   if (!/^(www\.)?youtube\.com$/.test(location.hostname) ||
     !location.pathname.startsWith('/watch')) return null;
+  if (typeof window.__homePanelYoutubeProbe === 'function')
+    return window.__homePanelYoutubeProbe();
+  // The document-start script installs one reusable probe per document.
+  // Native watchdog calls normally send only the tiny dispatch script.
+  const probe = () => {
   const state = window.__homePanelYoutubeRuntime ||
     (window.__homePanelYoutubeRuntime = {});
   const postWake = () => {
@@ -563,6 +568,15 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     return null;
   }
   return requestFullscreen();
+  };
+  window.__homePanelYoutubeProbe = probe;
+  return probe();
+})()
+)JS";
+constexpr wchar_t kNativeMediaYoutubeCachedProbeScript[] = LR"JS(
+(() => {
+  const probe = window.__homePanelYoutubeProbe;
+  return typeof probe === 'function' ? probe() : 'bootstrap';
 })()
 )JS";
 }  // namespace
