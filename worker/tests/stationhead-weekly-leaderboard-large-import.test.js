@@ -10,8 +10,14 @@ function statement(sql, bindings = []) {
     bind(...values) {
       return statement(sql, values);
     },
+    async first() {
+      if (!sql.includes('FROM sh_weekly_leaderboard_import_state')) {
+        throw new Error(`unexpected first SQL: ${sql}`);
+      }
+      return null;
+    },
     async all() {
-      if (!/^SELECT raw_json\s+FROM sh_channel_rankings/i.test(sql.trim())) {
+      if (!sql.includes('FROM sh_channel_rankings')) {
         throw new Error(`unexpected all SQL: ${sql}`);
       }
       return { results: [] };
@@ -72,7 +78,8 @@ test('100-row leaderboard import uses script instead of oversized remote batch',
   assert.equal(result.row_count, 100);
   assert.equal(calls.script, 1);
   assert.equal(calls.batch, 0);
-  assert.equal(calls.statements.length, 101);
+  assert.equal(calls.statements.length, 102);
   assert.match(calls.statements[0].sql, /^DELETE FROM sh_channel_rankings/i);
-  assert.match(calls.statements.at(-1).sql, /^INSERT INTO sh_channel_rankings/i);
+  assert.match(calls.statements.at(-2).sql, /^INSERT INTO sh_channel_rankings/i);
+  assert.match(calls.statements.at(-1).sql, /^INSERT INTO sh_weekly_leaderboard_import_state/i);
 });
