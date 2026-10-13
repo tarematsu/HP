@@ -156,8 +156,9 @@ test('new native capture spool is durable, bounded, wakes cloud, and deletes leg
 });
 
 test('device exchange preserves the secure Cloud wire contract with the rebuilt capture spool', () => {
-  assert.match(exchange, /stationhead_leaderboard_capture_spool::ReadBatch\(\)/);
-  assert.match(exchange, /stationhead_leaderboard_capture_spool::Count\(\)/);
+  assert.match(exchange, /stationhead_leaderboard_capture_spool::ReadBatchWithCount\(\)/);
+  assert.match(exchange, /leaderboardSnapshot\.totalRecords/);
+  assert.match(exchange, /const auto& leaderboardCapture = leaderboardSnapshot\.batch/);
   assert.match(exchange, /stationhead_leaderboard_diagnostics::Read\(\)/);
   assert.match(exchange, /,\\"leaderboardProbe\\":\[/);
   assert.match(exchange, /,\\"leaderboardProbeStatus\\":\{\\"spoolRecords\\":/);
