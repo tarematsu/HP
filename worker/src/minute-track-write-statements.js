@@ -19,3 +19,11 @@ export function checkpointTrackStatement(db, descriptor, observedAt) {
       observedAt - TRACK_SEEN_CHECKPOINT_MS,
     );
 }
+
+// Reuse the alias row already read during identity resolution. Missing or changed
+// identities must still reach the guarded upsert; no cross-request cache is used.
+export function aliasObservationIsFresh(row, trackId, observedAt) {
+  if (row?.last_seen_at == null || Number(row.track_id) !== trackId) return false;
+  const lastSeen = Number(row.last_seen_at);
+  return Number.isFinite(lastSeen) && observedAt - lastSeen < TRACK_SEEN_CHECKPOINT_MS;
+}

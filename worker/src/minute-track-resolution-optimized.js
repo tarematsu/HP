@@ -1,4 +1,4 @@
-import { checkpointTrackStatement, TRACK_SEEN_CHECKPOINT_MS } from './minute-track-write-statements.js';
+import { aliasObservationIsFresh, checkpointTrackStatement, TRACK_SEEN_CHECKPOINT_MS } from './minute-track-write-statements.js';
 import {
   aliasKey,
   buildTrackDescriptor,
@@ -100,17 +100,19 @@ function aliasValuesByType(descriptors) {
   return grouped;
 }
 
-async function loadAliasMap(db, descriptors) {
+async function loadAliasMap(db, descriptors, observations) {
   const result = new Map();
   for (const [aliasType, values] of aliasValuesByType(descriptors)) {
     for (const part of chunks(values, ALIAS_VALUE_CHUNK_SIZE)) {
       const placeholders = part.map(() => '?').join(',');
-      const rows = await db.prepare(`SELECT alias_type,alias_value,track_id
+      const rows = await db.prepare(`SELECT alias_type,alias_value,track_id,last_seen_at
         FROM sh_track_aliases
         WHERE alias_type=? AND alias_value IN (${placeholders})`)
         .bind(aliasType, ...part).all();
       for (const row of rows.results || []) {
-        result.set(aliasKey(row.alias_type, row.alias_value), integer(row.track_id));
+        const key = aliasKey(row.alias_type, row.alias_value);
+        result.set(key, integer(row.track_id));
+        observations.set(key, row);
       }
     }
   }
@@ -232,7 +234,7 @@ async function insertTracks(db, descriptors, observedAt) {
   await runStatementBatches(db, statements, TRACK_INSERT_BATCH_LIMIT);
 }
 
-async function persistTrackAliases(db, descriptors, observedAt) {
+async function persistTrackAliases(db, descriptors, observedAt, observations) {
   const uniqueTracks = new Map();
   for (const descriptor of descriptors) {
     if (descriptor.trackId != null && !uniqueTracks.has(descriptor.trackId)) {
@@ -244,6 +246,8 @@ async function persistTrackAliases(db, descriptors, observedAt) {
   for (const descriptor of uniqueTracks.values()) {
     trackStatements.push(checkpointTrackStatement(db, descriptor, observedAt));
     for (const alias of descriptor.aliases || []) {
+      const key = aliasKey(alias.type, alias.value);
+      if (aliasObservationIsFresh(observations.get(key), descriptor.trackId, observedAt)) continue;
       aliasStatements.push(db.prepare(`INSERT INTO sh_track_aliases(
           alias_type,alias_value,track_id,first_seen_at,last_seen_at
         ) VALUES(?,?,?,?,?) ON CONFLICT(alias_type,alias_value) DO UPDATE SET
@@ -282,10 +286,11 @@ async function runSubstage(name, operation) {
 
 export async function resolveTracksAliasFirst(db, fallbackDb, tracks, observedAt) {
   if (!Array.isArray(tracks) || !tracks.length) return [];
+  const observations = new Map();
   let descriptors = tracks.map((track, index) => buildTrackDescriptor(track, {}, index));
   assignAliases(descriptors, await runSubstage(
     'load_alias_map_initial',
-    async () => addUnaliasedIsrcRows(db, descriptors, await loadAliasMap(db, descriptors)),
+    async () => addUnaliasedIsrcRows(db, descriptors, await loadAliasMap(db, descriptors, observations)),
   ));
 
   const unresolvedIndexes = [];
@@ -306,7 +311,7 @@ export async function resolveTracksAliasFirst(db, fallbackDb, tracks, observedAt
     const enrichedUnresolved = descriptors.filter((descriptor) => descriptor.trackId == null);
     assignAliases(enrichedUnresolved, await runSubstage(
       'load_alias_map_enriched',
-      async () => addUnaliasedIsrcRows(db, enrichedUnresolved, await loadAliasMap(db, enrichedUnresolved)),
+      async () => addUnaliasedIsrcRows(db, enrichedUnresolved, await loadAliasMap(db, enrichedUnresolved, observations)),
     ));
   }
 
@@ -323,6 +328,6 @@ export async function resolveTracksAliasFirst(db, fallbackDb, tracks, observedAt
   if (unresolved.length) {
     throw new Error(`failed to resolve ${unresolved.length} queue track identities`);
   }
-  await runSubstage('persist_track_aliases', () => persistTrackAliases(db, descriptors, observedAt));
+  await runSubstage('persist_track_aliases', () => persistTrackAliases(db, descriptors, observedAt, observations));
   return descriptors;
 }
