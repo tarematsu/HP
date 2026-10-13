@@ -109,8 +109,8 @@ test('YouTube ad observers avoid page-wide attribute monitoring', () => {
     {
       state, player, MutationObserver: FakeMutationObserver, wake,
       skipSelector: '.ytp-ad-skip-button', surveySelector: '.ytp-ad-survey',
-      adControlSelector: '.ytp-ad-survey,[role="dialog"],.ytp-ad-skip-button',
-      scanAdCandidates: () => controls,
+      adControlSelector: '.ytp-ad-skip-button',
+      scanAdCandidates: () => controls.filter(control => control.kind === 'skip'),
     },
   );
   syncAdObserver(true);
@@ -151,13 +151,13 @@ test('YouTube ad observers avoid page-wide attribute monitoring', () => {
   controls = [skip, survey];
   survey.parentElement = player;
   observer.callback([event(player, [survey])]);
-  assert.equal(scheduled, 3);
-  assert.ok(attrObserver.observations.some(x => x.target === survey));
+  assert.equal(scheduled, 2, 'survey additions do not trigger fast ad monitoring');
+  assert.ok(!attrObserver.observations.some(x => x.target === survey));
   now = 1540;
   dueAt = null;
   controls = [survey];
   observer.callback([event(player, [], [wrapper])]);
-  assert.equal(scheduled, 4, 'removed controls remain actionable');
+  assert.equal(scheduled, 3, 'removed Skip Ad controls remain actionable');
   assert.ok(!attrObserver.observations.some(x => x.target === skip));
 
   now = 1720;
@@ -165,7 +165,7 @@ test('YouTube ad observers avoid page-wide attribute monitoring', () => {
   controls = [survey, dialog];
   dialog.parentElement = player;
   observer.callback([event(player, [dialog])]);
-  assert.equal(scheduled, 5, 'survey/dialog overlays remain actionable');
+  assert.equal(scheduled, 3, 'survey/dialog overlays no longer trigger fast Skip Ad observer');
 
   syncAdObserver(false);
   assert.equal(observer.disconnected, true);
