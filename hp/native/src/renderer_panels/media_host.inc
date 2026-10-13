@@ -82,7 +82,19 @@ class NativeMediaPanelHost final {
             std::max<LONG>(1, parentClient.bottom - videoTop)};
       }
     }
-    controller_->put_Bounds(client);
+    // Windows can send repeated WM_SIZE events for the same effective WebView
+    // viewport (notably when the host is clipped to 1x1). Avoid repeatedly
+    // invoking the cross-process controller layout path for identical bounds.
+    if (hasAppliedControllerBounds_ &&
+        EqualRect(&lastAppliedControllerBounds_, &client)) return;
+    if (SUCCEEDED(controller_->put_Bounds(client))) {
+      lastAppliedControllerBounds_ = client;
+      hasAppliedControllerBounds_ = true;
+    } else {
+      // Do not trust even the previous rectangle after a failed controller
+      // update: the COM implementation may have changed its internal bounds.
+      hasAppliedControllerBounds_ = false;
+    }
   }
 
   bool OnTimer(UINT_PTR timerId) noexcept {
@@ -222,6 +234,7 @@ class NativeMediaPanelHost final {
     webview_.Reset();
     if (controller_) controller_->Close();
     controller_.Reset();
+    hasAppliedControllerBounds_ = false;
   }
 
   void CreateControllerForCurrentPhase() noexcept {
@@ -269,6 +282,7 @@ class NativeMediaPanelHost final {
                   return S_OK;
                 }
                 controller_ = controller;
+                hasAppliedControllerBounds_ = false;
                 controller_->get_CoreWebView2(&webview_);
                 if (!webview_) {
                   controller_->Close();
@@ -313,6 +327,10 @@ class NativeMediaPanelHost final {
 
       webview_->AddScriptToExecuteOnDocumentCreated(
           kNativeMediaYoutubeCleanPlayerScript, nullptr);
+      // Install the full YouTube runtime once per document. The native
+      // watchdog then uses only a compact cached-function invocation.
+      webview_->AddScriptToExecuteOnDocumentCreated(
+          kNativeMediaYoutubeControlRecoveryScript, nullptr);
       webview_->AddScriptToExecuteOnDocumentCreated(
           kNativeMediaCursorSuppressionScript, nullptr);
 
@@ -461,24 +479,33 @@ class NativeMediaPanelHost final {
   }
 
   bool IsYoutubePlaylistPage() noexcept {
-    return SourceContains(L"youtube.com/playlist") &&
-           SourceContains(L"list=PLMWqSdpIVl30");
+    return SourceContains(L"youtube.com/playlist", L"list=PLMWqSdpIVl30");
   }
 
   bool IsYoutubeWatchPage() noexcept {
-    return SourceContains(L"youtube.com/watch") &&
-           SourceContains(L"list=PLMWqSdpIVl30");
+    return SourceContains(L"youtube.com/watch", L"list=PLMWqSdpIVl30");
   }
 
   bool IsTverPage() noexcept { return SourceContains(L"tver.jp/"); }
 
-  bool SourceContains(std::wstring_view needle) noexcept {
+  bool SourceContains(std::wstring_view needle,
+                      std::wstring_view required = {}) noexcept {
     if (!webview_) return false;
     LPWSTR source = nullptr;
-    if (FAILED(webview_->get_Source(&source)) || !source) return false;
-    const std::wstring value(source);
+    const HRESULT result = webview_->get_Source(&source);
+    if (FAILED(result) || !source) {
+      if (source) CoTaskMemFree(source);
+      return false;
+    }
+    // Inspect the COM-owned URL in place, before freeing it. YouTube's
+    // playlist/watch page checks need one get_Source rather than two, and
+    // neither platform allocates an unnecessary std::wstring copy.
+    const std::wstring_view value(source);
+    const bool matches =
+        value.find(needle) != std::wstring_view::npos &&
+        (required.empty() || value.find(required) != std::wstring_view::npos);
     CoTaskMemFree(source);
-    return value.find(needle) != std::wstring::npos;
+    return matches;
   }
 
   bool ScheduleNavigationRetry() noexcept {
@@ -677,6 +704,69 @@ class NativeMediaPanelHost final {
     }
   }
 
+  HRESULT HandleYoutubeWatchdogResult(
+      HRESULT result, LPCWSTR json,
+      const ComPtr<ICoreWebView2>& requestView,
+      uint64_t requestGeneration) noexcept {
+    if (!alive_->load(std::memory_order_acquire) ||
+        requestGeneration != youtubeWatchdogRequestGeneration_ ||
+        webview_.Get() != requestView.Get()) return S_OK;
+    if (SUCCEEDED(result) && json &&
+        std::wstring_view(json) == L"\"bootstrap\"") {
+      // Document-start injection can miss an already-open SPA document.
+      // Install the full reusable probe just once, without reloading media.
+      const auto alive = alive_;
+      const HRESULT bootstrap = ExecutePolicyScript(
+          requestView.Get(), kNativeMediaYoutubeControlRecoveryScript,
+          Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+              [this, alive, requestView, requestGeneration](
+                  HRESULT nextResult, LPCWSTR nextJson) -> HRESULT {
+                if (!alive->load(std::memory_order_acquire)) return S_OK;
+                return HandleYoutubeWatchdogResult(
+                    nextResult, nextJson, requestView, requestGeneration);
+              }).Get());
+      if (SUCCEEDED(bootstrap)) return S_OK;
+      result = bootstrap;
+    }
+    youtubeWatchdogInFlight_ = false;
+    youtubeWatchdogStartedTick_ = 0;
+    if (phase_ != Phase::YouTube || !IsYoutubeWatchPage()) return S_OK;
+    if (SUCCEEDED(result) && json &&
+        std::wstring_view(json) == L"\"reload\"") {
+      SetRecoveryState(RecoveryState::Reloading);
+      ReloadYoutubePlaylist();
+      return S_OK;
+    }
+    double cssX = 0.0;
+    double cssY = 0.0;
+    if (SUCCEEDED(result) &&
+        ParseCssPoint(json, &cssX, &cssY)) {
+      SetRecoveryState(
+          RecoveryState::Recovering,
+          kNativeMediaYoutubeWatchdogRecoveryMs);
+      DispatchMediaCssPoint(requestView.Get(), cssX, cssY, false);
+      if (hostWindow_ && IsWindow(hostWindow_)) {
+        ArmTimer(kNativeMediaYoutubeWatchdogTimer,
+                 kNativeMediaYoutubeWatchdogRecoveryMs);
+      }
+      return S_OK;
+    }
+    if (SUCCEEDED(result)) {
+      SetRecoveryState(RecoveryState::Healthy);
+      if (hostWindow_ && IsWindow(hostWindow_)) {
+        ArmTimer(kNativeMediaYoutubeWatchdogTimer,
+                 kNativeMediaYoutubeWatchdogHealthyMs);
+      }
+    } else {
+      SetRecoveryState(RecoveryState::Suspect);
+      if (hostWindow_ && IsWindow(hostWindow_)) {
+        ArmTimer(kNativeMediaYoutubeWatchdogTimer,
+                 kNativeMediaYoutubeWatchdogRecoveryMs);
+      }
+    }
+    return S_OK;
+  }
+
   void ProbeYoutubeWatchdog() noexcept {
     if (phase_ != Phase::YouTube || !webview_ || !IsYoutubeWatchPage()) return;
 
@@ -710,48 +800,9 @@ class NativeMediaPanelHost final {
         Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
             [this, alive, requestView, requestGeneration](
                 HRESULT result, LPCWSTR json) -> HRESULT {
-              if (!alive->load(std::memory_order_acquire) ||
-                  requestGeneration != youtubeWatchdogRequestGeneration_ ||
-                  webview_.Get() != requestView.Get()) {
-                return S_OK;
-              }
-              youtubeWatchdogInFlight_ = false;
-              youtubeWatchdogStartedTick_ = 0;
-              if (phase_ != Phase::YouTube || !IsYoutubeWatchPage()) return S_OK;
-              if (SUCCEEDED(result) && json &&
-                  std::wstring_view(json) == L"\"reload\"") {
-                SetRecoveryState(RecoveryState::Reloading);
-                ReloadYoutubePlaylist();
-                return S_OK;
-              }
-              double cssX = 0.0;
-              double cssY = 0.0;
-              if (SUCCEEDED(result) &&
-                  ParseCssPoint(json, &cssX, &cssY)) {
-                SetRecoveryState(
-                    RecoveryState::Recovering,
-                    kNativeMediaYoutubeWatchdogRecoveryMs);
-                DispatchMediaCssPoint(requestView.Get(), cssX, cssY, false);
-                if (hostWindow_ && IsWindow(hostWindow_)) {
-                  ArmTimer(kNativeMediaYoutubeWatchdogTimer,
-                           kNativeMediaYoutubeWatchdogRecoveryMs);
-                }
-                return S_OK;
-              }
-              if (SUCCEEDED(result)) {
-                SetRecoveryState(RecoveryState::Healthy);
-                if (hostWindow_ && IsWindow(hostWindow_)) {
-                  ArmTimer(kNativeMediaYoutubeWatchdogTimer,
-                           kNativeMediaYoutubeWatchdogHealthyMs);
-                }
-              } else {
-                SetRecoveryState(RecoveryState::Suspect);
-                if (hostWindow_ && IsWindow(hostWindow_)) {
-                  ArmTimer(kNativeMediaYoutubeWatchdogTimer,
-                           kNativeMediaYoutubeWatchdogRecoveryMs);
-                }
-              }
-              return S_OK;
+              if (!alive->load(std::memory_order_acquire)) return S_OK;
+              return HandleYoutubeWatchdogResult(
+                  result, json, requestView, requestGeneration);
             }).Get());
     if (FAILED(started) &&
         requestGeneration == youtubeWatchdogRequestGeneration_ &&
@@ -944,6 +995,8 @@ class NativeMediaPanelHost final {
   std::shared_ptr<std::atomic<bool>> alive_;
   ComPtr<ICoreWebView2Environment> environment_;
   ComPtr<ICoreWebView2Controller> controller_;
+  RECT lastAppliedControllerBounds_{};
+  bool hasAppliedControllerBounds_ = false;
   ComPtr<ICoreWebView2> webview_;
   EventRegistrationToken newWindowToken_{};
   EventRegistrationToken navigationCompletedToken_{};

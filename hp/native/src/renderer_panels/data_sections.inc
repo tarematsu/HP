@@ -33,13 +33,19 @@ void Renderer::DrawEnergySection(HDC dc, const RECT& card) {
   }
 
   if (energyBitmapCache_.bitmap) {
-    HDC memoryDc = CreateCompatibleDC(dc);
-    if (memoryDc) {
-      HGDIOBJ previousBitmap = SelectObject(memoryDc, energyBitmapCache_.bitmap);
-      BitBlt(dc, card.left, card.top, width, height, memoryDc, 0, 0, SRCCOPY);
-      SelectObject(memoryDc, previousBitmap);
-      DeleteDC(memoryDc);
-      return;
+    // The cached energy card is copied to the panel frequently even when its
+    // content has not changed. Reuse the source DC instead of creating and
+    // destroying a compatible GDI DC for every cached BitBlt. The uncached
+    // renderer above must retain its separate DC: it can call helpers which
+    // themselves use SourceMemoryDc for icons and translucent fills.
+    HDC sourceDc = SourceMemoryDc(dc);
+    if (sourceDc) {
+      HGDIOBJ previousBitmap = SelectObject(sourceDc, energyBitmapCache_.bitmap);
+      if (previousBitmap && previousBitmap != HGDI_ERROR) {
+        BitBlt(dc, card.left, card.top, width, height, sourceDc, 0, 0, SRCCOPY);
+        SelectObject(sourceDc, previousBitmap);
+        return;
+      }
     }
   }
 

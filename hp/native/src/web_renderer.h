@@ -235,6 +235,10 @@ class Renderer {
   HBITMAP radarFrameBitmap_ = nullptr;
   std::wstring radarSignature_;
   std::string radarJsonStamp_;
+  // Both fields are guarded by radarFrameMutex_. An unchanged local PNG can
+  // skip path/UTF-8 signature construction and image decoding on a wake.
+  fs::path radarFrameSourcePath_;
+  std::string radarPngStamp_;
   std::map<std::wstring, int64_t> radarFailedTiles_;
   bool radarComposePending_ = false;
   std::atomic<bool> radarComposeStarted_{false};

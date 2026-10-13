@@ -15,7 +15,7 @@ test('TVer unified runtime is scoped to episode pages without page-wide presenta
 
 test('TVer controls stay player-local while dialogs remain independently actionable', () => {
   assert.match(runtime, /const player = video\.closest/);
-  assert.match(runtime, /const controls = \(\) => Array\.from\(player\.querySelectorAll/);
+  assert.match(runtime, /const controls = \(\) => player\.querySelectorAll\(controlSelector\)/);
   assert.match(runtime, /\[role="dialog"\],\[aria-modal="true"\]/);
   assert.match(runtime, /arm\(close, 'dialog-close', 500\)/);
   assert.doesNotMatch(runtime, /display:none !important|overflow:hidden !important/);

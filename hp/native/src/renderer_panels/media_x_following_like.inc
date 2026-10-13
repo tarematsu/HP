@@ -11,13 +11,63 @@ LR"JS(
   const likeWaitChoicesMs = [4 * 1000, 7 * 1000, 9 * 1000];
   const maxLikeAttemptsPerPost = 3;
   const pauseAfterLikeMs = 800;
+  // 1.25x scroll distance per tick; retain original DOM scan cadence.
   const scrollDelayMs = 450;
   const idleScrollDelayMs = 600;
+  const emptyTimelinePollMs = 600;
   const maxScrollStepPx = 56;
   const minScrollStepPx = 20;
   const targetTolerancePx = 18;
   const filterAttribute = 'data-homepanel-x-filtered';
   const filterStyleId = 'homepanel-x-timeline-filter';
+
+  // Remember confirmed likes by the tweet author's @handle across restarts.
+  // Do not rely on display names or text mentions: only the tweet permalink
+  // identifies the author. Entries expire exactly 48 hours after confirmation.
+  const accountStorageKey = 'homepanel:x-liked-authors:48h:v1';
+  const accountCooldownMs = 48 * 60 * 60 * 1000;
+  const likedAuthors = new Map();
+  const validAuthor = handle => /^@[a-z0-9_]{1,15}$/.test(handle);
+  const activeTimestamp = (timestamp, now) =>
+      Number.isFinite(timestamp) && timestamp > 0 && timestamp <= now &&
+      now - timestamp < accountCooldownMs;
+  const saveLikedAuthors = () => {
+    try {
+      localStorage.setItem(accountStorageKey,
+          JSON.stringify(Object.fromEntries(likedAuthors)));
+      state.authorHistoryPersisted = true;
+    } catch (_) {
+      state.authorHistoryPersisted = false;
+    }
+  };
+  try {
+    const saved = JSON.parse(localStorage.getItem(accountStorageKey) || '{}');
+    if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+      const now = Date.now();
+      for (const [handle, timestamp] of Object.entries(saved)) {
+        const normalized = handle.toLowerCase();
+        if (validAuthor(normalized) && activeTimestamp(timestamp, now))
+          likedAuthors.set(normalized, timestamp);
+      }
+      // Also discard expired/corrupt entries from persistent storage.
+      if (Object.keys(saved).length !== likedAuthors.size) saveLikedAuthors();
+    }
+  } catch (_) {}
+  const recentlyLikedAuthor = handle => {
+    if (!validAuthor(handle)) return true; // unknown authors are not safe to like
+    const timestamp = likedAuthors.get(handle);
+    if (timestamp === undefined) return false;
+    if (activeTimestamp(timestamp, Date.now())) return true;
+    likedAuthors.delete(handle);
+    saveLikedAuthors();
+    return false;
+  };
+  const rememberLikedAuthor = handle => {
+    if (!validAuthor(handle)) return;
+    likedAuthors.set(handle, Date.now());
+    saveLikedAuthors();
+  };
+
 
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const randomLikeWaitMs = () => likeWaitChoicesMs[
@@ -28,8 +78,21 @@ LR"JS(
   const timelineArticles = () =>
       document.querySelectorAll('article[data-testid="tweet"]');
   const followingTab = () => {
+    // X rebuilds the navigation tabs on route changes. Reuse the connected
+    // Following tab while its caption is unchanged, without querying every tab
+    // or forcing layout through innerText on each scroll/like recheck.
+    const cached = state.followingTab;
+    if (cached?.isConnected !== false) {
+      const caption = (cached?.textContent ?? cached?.innerText ?? '')
+          .replace(/\s+/g, ' ').trim();
+      if (/^(?:Following|フォロー中)$/i.test(caption)) return cached;
+    }
+    state.followingTab = null;
     for (const tab of document.querySelectorAll('[role="tab"]')) {
-      if (/^(?:Following|フォロー中)$/i.test(text(tab))) return tab;
+      if (/^(?:Following|フォロー中)$/i.test(text(tab))) {
+        state.followingTab = tab;
+        return tab;
+      }
     }
     return null;
   };
@@ -63,17 +126,28 @@ LR"JS(
   const promotedLabel = /^(?:Promoted|Sponsored|広告|プロモーション|スポンサー|Boosted|ブースト|PR)$/i;
   const hasPromotedLabel = article => {
     for (const element of article?.querySelectorAll?.('span') || []) {
+      // textContent does not trigger layout. The actual label is still
+      // validated against rendered text before marking a post as promoted.
+      const raw = element.textContent;
+      if (raw && !promotedLabel.test(raw.replace(/\s+/g, ' ').trim()))
+        continue;
       if (!element.closest?.('[data-testid="tweetText"]') &&
           promotedLabel.test(text(element))) return true;
     }
     return false;
   };
-  const isPromoted = article => hasPromotedLabel(article) ||
-      Boolean(article.querySelector('[data-testid*="placement" i]'));
+  const isPromoted = article =>
+      Boolean(article.querySelector('[data-testid*="placement" i]')) ||
+      hasPromotedLabel(article);
+  const repostPattern =
+      /(?:reposted|repost|retweeted|retweet|リポスト|リツイート)/i;
   const isRepost = article => {
     const socialContext = article.querySelector('[data-testid="socialContext"]');
-    const value = text(socialContext);
-    return /(?:reposted|repost|retweeted|retweet|リポスト|リツイート)/i.test(value);
+    if (!socialContext) return false;
+    // Avoid reading innerText for pinned/other non-repost social contexts.
+    const raw = socialContext.textContent;
+    if (raw && !repostPattern.test(raw)) return false;
+    return repostPattern.test(text(socialContext));
   };
   const isOrganic = article => !isPromoted(article) && !isRepost(article);
   const installTimelineFilterCss = () => {
@@ -93,11 +167,14 @@ LR"JS(
   };
 )JS"
 LR"JS(
-  const articleId = article => {
+  const articleIdentity = article => {
     const permalink = article?.querySelector('time')?.closest('a')
         ?.getAttribute('href');
-    return permalink?.match(/\/status\/(\d+)/)?.[1] || '';
+    const match = permalink?.match(
+        /^(?:https?:\/\/(?:www\.)?(?:x|twitter)\.com)?\/([a-z0-9_]{1,15})\/status\/(\d+)(?:[/?#]|$)/i);
+    return match ? { id: match[2], author: '@' + match[1].toLowerCase() } : null;
   };
+  const articleId = article => articleIdentity(article)?.id || '';
   const articleForId = id => {
     for (const article of timelineArticles()) {
       if (articleId(article) === id) return article;
@@ -121,24 +198,35 @@ LR"JS(
     let nearest = null;
     for (const article of articles) {
       const filtered = isPromoted(article) || isRepost(article);
+      // Hiding the existing parent cell collapses the space consumed by a
+      // recently liked author's posts. Do NOT remove X-owned DOM nodes:
+      // React's virtualized timeline relies on those nodes and their keys.
+      const identity = !filtered && likedAuthors.size
+          ? articleIdentity(article) : null;
+      const authorFiltered = !!(identity && likedAuthors.has(identity.author) &&
+          recentlyLikedAuthor(identity.author));
+      const hidden = filtered || authorFiltered;
       const target = article.closest?.('[data-testid="cellInnerDiv"]') || article;
-      // Re-applying the same attribute every ~0.5 seconds forces style work.
-      if (filtered) {
+      // A recycled cell or expired 48h entry becomes visible again.
+      // Avoid repeated attribute writes that trigger style recalculation.
+      if (hidden) {
         if (target.getAttribute?.(filterAttribute) !== 'true') {
           target.setAttribute?.(filterAttribute, 'true');
         }
       } else if (target.hasAttribute?.(filterAttribute)) {
         target.removeAttribute?.(filterAttribute);
       }
-      if (!attempted || filtered || !article.isConnected) continue;
-      const id = articleId(article);
-      if (!id || attempted.has(id)) continue;
+      if (!attempted || hidden || !article.isConnected) continue;
+      const eligible = identity || articleIdentity(article);
+      if (!eligible || attempted.has(eligible.id) ||
+          recentlyLikedAuthor(eligible.author)) continue;
       const like = validLikeButton(article);
       if (!like) continue;
       const centerY = like.rect.top + like.rect.height / 2;
       if (centerY < preferredFloor ||
           (nearest && centerY >= nearest.centerY)) continue;
-      nearest = { article, id, button: like.button, centerY };
+      nearest = { article, id: eligible.id, author: eligible.author,
+                  button: like.button, centerY };
     }
     return nearest;
   };
@@ -202,7 +290,7 @@ LR"JS(
         if (!candidate) {
           if (articles.length === 0) {
             state.result = 'waiting-posts';
-            await sleep(idleScrollDelayMs);
+            await sleep(emptyTimelinePollMs);
             continue;
           }
           state.result = 'seeking-like';
@@ -234,6 +322,10 @@ LR"JS(
         const freshArticle = articleForId(candidate.id);
         if (!freshArticle || !freshArticle.isConnected || !isOrganic(freshArticle))
           continue;
+        const freshIdentity = articleIdentity(freshArticle);
+        if (!freshIdentity || freshIdentity.id !== candidate.id ||
+            freshIdentity.author !== candidate.author ||
+            recentlyLikedAuthor(freshIdentity.author)) continue;
         const freshLike = validLikeButton(freshArticle);
         if (!freshLike) continue;
         const freshCenterY = freshLike.rect.top + freshLike.rect.height / 2;
@@ -263,6 +355,7 @@ LR"JS(
           failedAttempts.delete(candidate.id);
           state.attemptedCount = attempted.size;
           state.likedCount++;
+          rememberLikedAuthor(candidate.author);
           state.result = 'like-confirmed';
         } else {
           const failures = (failedAttempts.get(candidate.id) || 0) + 1;

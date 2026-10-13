@@ -69,7 +69,7 @@ test('X likes use Following DOM clicks without an existing-like-count threshold 
   assert.match(xRuntime, /failedAttempts\.set\(candidate\.id, failures\)/);
 });
 
-test('X scrolling is twice the previous targeted speed', () => {
+test('X targeted scroll distance is restored speed the previous setting', () => {
   assert.match(xRuntime, /const maxScrollStepPx = 56/);
   assert.match(xRuntime, /const minScrollStepPx = 20/);
   assert.match(xRuntime, /Math\.ceil\(Math\.abs\(distance\) \* 0\.70\)/);

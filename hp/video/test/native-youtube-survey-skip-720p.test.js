@@ -27,7 +27,7 @@ test('paused playback recovers through direct play then trusted Play', () => {
 
 test('YouTube surveys stay inside active ad handling', () => {
   const adStart = runtime.indexOf('if (adActive) {');
-  const survey = runtime.indexOf('for (const root of player.querySelectorAll', adStart);
+  const survey = runtime.indexOf('for (const root of player.querySelectorAll(surveyDialogSelector))', adStart);
   const content = runtime.indexOf('const currentTime = Number(video?.currentTime);');
   assert.ok(adStart >= 0 && survey > adStart && content > survey);
   assert.match(runtime, /arm\(option, 'survey-option', 500\)/);
@@ -35,7 +35,7 @@ test('YouTube surveys stay inside active ad handling', () => {
 });
 
 test('ad skip and fullscreen fallback recover hidden controls without a fixed wait', () => {
-  assert.match(runtime, /arm\(target, 'skip-ad', 600\)/);
+  assert.match(runtime, /const action = arm\(target, 'skip-ad', 600\)/);
   assert.match(runtime, /arm\(canonical, 'fullscreen', 1200\)/);
   assert.match(runtime, /return arm\(fallback, 'fullscreen', 1200\)/);
   assert.doesNotMatch(runtime, /fullscreenSettleMs|fullscreenReadyAt|adFullscreenReadyAt/);

@@ -64,8 +64,37 @@ test('TVer event wakeups use one debounced timer with no recovery ticker', () =>
   assert.doesNotMatch(tverEpisode, /lastWakeSignature|pendingWakeSignature|recoveryWakeTimer|recovery:tick:/);
 });
 
+test('native YouTube wake bridge borrows COM string buffers without duplicate heap copies', () => {
+  const start = mediaWrapper.indexOf('const HRESULT registered = webview->add_WebMessageReceived(');
+  const end = mediaWrapper.indexOf('if (FAILED(registered)) return;', start);
+  assert.ok(start >= 0 && end > start);
+  const callback = mediaWrapper.slice(start, end);
+  for (const variable of ['messageOwner', 'sourceOwner']) {
+    assert.match(callback,
+      new RegExp('const std::unique_ptr<wchar_t, decltype\\(&CoTaskMemFree\\)> ' +
+        variable));
+  }
+  assert.match(callback, /const std::wstring_view message\(rawMessage\)/);
+  assert.match(callback, /const std::wstring_view source\(rawSource\)/);
+  assert.match(callback, /sender->get_Source\(&rawSource\)/);
+  assert.match(callback, /swscanf_s\(rawMessage,/);
+  assert.doesNotMatch(callback, /const std::wstring message\(rawMessage\)/);
+  assert.doesNotMatch(callback, /std::wstring source;/);
+  assert.match(callback, /sourceContains\(L"youtube\.com\/watch"\)/);
+  assert.match(callback, /sourceContains\(L"list=PLMWqSdpIVl30"\)/);
+  assert.match(callback, /NativeMediaTverMarkMediaReady\(source\)/);
+  assert.match(callback, /NativeMediaTverAdvanceEpisode\(source\)/);
+  const navigation = mediaWrapper.slice(
+    mediaWrapper.indexOf('const HRESULT navigationRegistered = webview->add_NavigationStarting('),
+    mediaWrapper.indexOf('const HRESULT processRegistered ='),
+  );
+  assert.match(navigation, /const std::wstring_view requested\(rawUri\)/);
+  assert.match(navigation, /uriOwner\(\s*rawUri, &CoTaskMemFree\)/);
+  assert.doesNotMatch(navigation, /std::wstring requested\(rawUri\)/);
+});
+
 test('YouTube runtime owns event wakeups and the only ad readiness observer', () => {
-  assert.match(mediaBase, /kNativeMediaYoutubeWatchdogHealthyMs = 30U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaYoutubeWatchdogHealthyMs = 60U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogRecoveryMs = 2U \* 1000U/);
   assert.match(youtubeRuntime, /homepanel:youtube-wake/);
   assert.match(youtubeRuntime, /new AbortController\(\)/);

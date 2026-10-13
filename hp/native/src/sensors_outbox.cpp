@@ -91,6 +91,35 @@ void SensorHub::ApplyTelemetryReceipt(const std::vector<uint64_t>& acknowledgedS
     persistedAck = std::max(persistedAck, acknowledgedSequences.back());
   }
 
+  // Telemetry replies can be repeated while the offline outbox is unchanged.
+  // Compute the next sequence without copying the deque; only construct a
+  // transactional working copy when an acknowledgement removes an entry or a
+  // sequence actually requires rebasing.
+  uint64_t nextUnchangedSequence =
+      persistedAck == std::numeric_limits<uint64_t>::max()
+          ? persistedAck : persistedAck + 1;
+  bool needsOutboxRewrite = false;
+  for (const Sample& sample : outbox_) {
+    if (std::binary_search(acknowledgedSequences.begin(),
+                           acknowledgedSequences.end(), sample.sequence) ||
+        nextUnchangedSequence > kMaxTelemetrySequence ||
+        sample.sequence < nextUnchangedSequence) {
+      needsOutboxRewrite = true;
+      break;
+    }
+    nextUnchangedSequence = sample.sequence >= kMaxTelemetrySequence
+        ? kMaxTelemetrySequence + 1 : sample.sequence + 1;
+  }
+  if (!needsOutboxRewrite) {
+    if (persistedAck > acknowledgedSequence_ &&
+        !AtomicWriteText(outboxAckPath_, std::to_string(persistedAck))) {
+      log_.Warn(L"Failed to persist the telemetry acknowledgement high-water mark");
+    }
+    acknowledgedSequence_ = std::max(acknowledgedSequence_, persistedAck);
+    nextSequence_ = std::max(nextSequence_, nextUnchangedSequence);
+    return;
+  }
+
   std::deque<Sample> updated = outbox_;
   const size_t before = updated.size();
   std::erase_if(updated, [&](const Sample& sample) {

@@ -151,6 +151,8 @@ void Renderer::ApplyDashboardVisibility() {
     if (radarFrameBitmap_) DeleteObject(radarFrameBitmap_);
     radarFrameBitmap_ = nullptr;
     radarSignature_.clear();
+    radarFrameSourcePath_.clear();
+    radarPngStamp_.clear();
   }
   radarFailedTiles_.clear();
   ResetNativeBitmapCaches();

@@ -87,11 +87,17 @@ bool InvalidStamp(const std::string& stamp) {
 
 void Renderer::NotifyRadarUpdated() {
   if (!radarComposeStarted_.load(std::memory_order_acquire)) return;
+  bool notify = false;
   {
     std::lock_guard lock(radarComposeWakeMutex_);
-    radarComposePending_ = true;
+    if (!radarComposePending_) {
+      radarComposePending_ = true;
+      notify = true;
+    }
   }
-  radarComposeWake_.notify_all();
+  // A pending request already guarantees the single composing thread will
+  // wake. Suppress redundant notifications during bursty cloud updates.
+  if (notify) radarComposeWake_.notify_one();
 }
 
 void Renderer::StartRadarCompose() {
@@ -171,12 +177,26 @@ void Renderer::ComposeRadarFrame() {
 
   const std::string stamp = file::Stamp(*framePath);
   if (InvalidStamp(stamp)) return;
-  const std::wstring signature = RepresentativeRadarSignature(*framePath, stamp);
 
+  {
+    std::lock_guard lock(radarFrameMutex_);
+    // Before building a wide signature (path conversion + UTF-8 decoding),
+    // use the exact PNG path and file stamp cached with the visible bitmap.
+    // A new radar.json may still point to the identical decoded frame.
+    if (radarFrameBitmap_ && radarFrameSourcePath_ == *framePath &&
+        radarPngStamp_ == stamp) {
+      radarJsonStamp_ = jsonStamp;
+      return;
+    }
+  }
+
+  const std::wstring signature = RepresentativeRadarSignature(*framePath, stamp);
   {
     std::lock_guard lock(radarFrameMutex_);
     if (radarFrameBitmap_ && radarSignature_ == signature) {
       radarJsonStamp_ = jsonStamp;
+      radarFrameSourcePath_ = *framePath;
+      radarPngStamp_ = stamp;
       return;
     }
   }
@@ -190,6 +210,8 @@ void Renderer::ComposeRadarFrame() {
     std::lock_guard lock(radarFrameMutex_);
     if (radarFrameBitmap_ && radarSignature_ == signature) {
       radarJsonStamp_ = jsonStamp;
+      radarFrameSourcePath_ = *framePath;
+      radarPngStamp_ = stamp;
       DeleteObject(decoded);
       return;
     }
@@ -197,6 +219,8 @@ void Renderer::ComposeRadarFrame() {
     radarFrameBitmap_ = decoded;
     radarSignature_ = signature;
     radarJsonStamp_ = jsonStamp;
+    radarFrameSourcePath_ = *framePath;
+    radarPngStamp_ = stamp;
   }
   if (previous) DeleteObject(previous);
   InvalidatePanelSection(nativeMainWindow_, PanelSection::Radar);

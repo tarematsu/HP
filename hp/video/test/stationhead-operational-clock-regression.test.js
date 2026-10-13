@@ -60,6 +60,8 @@ test('polling and recovery expressions bind to monotonic arithmetic', () => {
   const handleTick = section(handleSource, 'void StationheadHandleBase::Tick(int64_t nowMs)',
     'void StationheadHandleBase::ShowAfterAudioStop()');
   assert.match(handleTick, /nowMs >= found->second\.deadline/);
-  assert.match(handleTick, /BoundaryRetryStateFor\(this\)/);
+  assert.match(handleTick, /auto found = boundaryRetries\.find\(this\);/);
+  assert.match(handleTick, /ArmBoundaryRetryState\(this, nowMs\)/);
+  assert.doesNotMatch(handleTick, /BoundaryRetryStateFor\(this\)/);
   assert.doesNotMatch(handleTick, /retryAt|handoff/);
 });

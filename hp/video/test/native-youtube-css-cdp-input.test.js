@@ -64,7 +64,7 @@ test('YouTube and TVer trusted clicks share direct CSS-to-CDP input', () => {
 test('YouTube watchdog uses the shared CSS path without native coordinate conversion', () => {
   const youtube = section(
     host,
-    'void ProbeYoutubeWatchdog()',
+    'HRESULT HandleYoutubeWatchdogResult(',
     'void ProbeTverWatchdog()',
   );
   assert.match(youtube, /ParseCssPoint\(json, &cssX, &cssY\)/);

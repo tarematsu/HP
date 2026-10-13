@@ -25,7 +25,14 @@ test('YouTube ad skip readiness has one event-driven runtime owner', () => {
 
   assert.match(youtubeRuntime, /const skipSelector =/);
   assert.match(youtubeRuntime, /const syncAdObserver = active =>/);
-  assert.match(youtubeRuntime, /state\.adObserver = new MutationObserver\(\(\) => wake\(0\)\)/);
+  assert.match(youtubeRuntime, /state\.adObserver = new MutationObserver\(records =>/);
+  assert.match(youtubeRuntime, /const wakeForAdMutation = \(\) =>/);
+  assert.match(youtubeRuntime, /state\.adControlObserver = new MutationObserver\(wakeForAdMutation\)/);
+  assert.match(youtubeRuntime, /if \(state\.adMutationWakePending\) return/);
+  assert.match(youtubeRuntime, /state\.adMutationWakePending = true/);
+  assert.match(youtubeRuntime, /const relatedAdNode = \(node, deep = false\) =>/);
+  assert.match(youtubeRuntime, /state\.adObserver\.observe\(player, \{ childList: true, subtree: true \}\)/);
+  assert.doesNotMatch(youtubeRuntime, /state\.adObserver\.observe\(player, \{[^}]*attributes: true/);
   assert.match(
     youtubeRuntime,
     /state\.adObserver\.observe\(player, \{[\s\S]*childList: true,[\s\S]*subtree: true/,
