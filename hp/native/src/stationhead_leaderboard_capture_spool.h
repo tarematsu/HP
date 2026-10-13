@@ -111,9 +111,28 @@ inline bool WriteLinesLocked(const std::vector<std::string>& lines) {
   return true;
 }
 
+inline std::string CapturePayloadUtf8(std::wstring_view payload) {
+  // The capture is already a bounded view; constructing std::wstring(payload)
+  // duplicates as much as 72 KiB of UTF-16 before each conversion.
+  if (payload.empty() || payload.size() > kMaxCaptureRecordBytes) return {};
+  const int inputLength = static_cast<int>(payload.size());
+  const int outputLength = WideCharToMultiByte(
+      CP_UTF8, WC_ERR_INVALID_CHARS, payload.data(), inputLength,
+      nullptr, 0, nullptr, nullptr);
+  if (outputLength <= 0 ||
+      static_cast<size_t>(outputLength) > kMaxCaptureRecordBytes) return {};
+  std::string output(static_cast<size_t>(outputLength), '\0');
+  if (WideCharToMultiByte(
+          CP_UTF8, WC_ERR_INVALID_CHARS, payload.data(), inputLength,
+          output.data(), outputLength, nullptr, nullptr) != outputLength) {
+    return {};
+  }
+  return output;
+}
+
 inline bool Append(std::wstring_view payload) {
   if (payload.empty() || payload.size() > kMaxCaptureRecordBytes) return false;
-  const std::string utf8 = WideToUtf8(std::wstring(payload));
+  const std::string utf8 = CapturePayloadUtf8(payload);
   if (utf8.empty() || utf8.size() > kMaxCaptureRecordBytes ||
       utf8.find('\r') != std::string::npos ||
       utf8.find('\n') != std::string::npos) {
