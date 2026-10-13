@@ -27,7 +27,8 @@ constexpr UINT kNativeMediaTverContentDurationMs = 50U * 60U * 1000U;
 constexpr UINT kNativeMediaTverMinContentDurationMinutes = 45U;
 constexpr UINT kNativeMediaTverMaxContentDurationMinutes = 55U;
 constexpr UINT kNativeMediaNavigationRetryMs = 3U * 1000U;
-constexpr UINT kNativeMediaYoutubeWatchdogHealthyMs = 30U * 1000U;
+// Healthy playback is event-driven; this is only a safety backstop.
+constexpr UINT kNativeMediaYoutubeWatchdogHealthyMs = 60U * 1000U;
 constexpr UINT kNativeMediaYoutubeWatchdogRecoveryMs = 2U * 1000U;
 constexpr UINT kNativeMediaTverWatchdogMs = 30U * 1000U;
 constexpr ULONGLONG kNativeMediaWatchdogExecutionTimeoutMs = 5ULL * 1000ULL;
