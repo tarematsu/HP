@@ -30,15 +30,14 @@ test('shared leaderboard owns only metadata, chart, and data surfaces', () => {
   assert.doesNotMatch(historyShell, /rankingCompactMeta|rankingUpdatedAt|history-ranking-compact-layout\.js/);
 });
 
-test('mobile leaderboard has separate full-width cards without desktop table overflow', () => {
+test('mobile leaderboard uses the shared card contract rather than bespoke layout code', () => {
   const table = readFileSync(new URL('../public/leaderboard/table.js', import.meta.url), 'utf8');
-  const css = readFileSync(new URL('../public/leaderboard.css', import.meta.url), 'utf8');
-  assert.match(table, /leaderboard-mobile-card/);
-  assert.match(table, /leaderboard-mobile-field/);
-  assert.match(table, /field\.dataset\.key = column\.key/);
-  assert.match(css, /@media \(max-width: 600px\)/);
-  assert.match(css, /\.leaderboard-mobile-card\s*\{\s*display: grid/);
-  assert.match(css, /\.leaderboard-view \.table-wrap\.table-fit-mobile\s*\{\s*display: none/);
-  assert.match(shell, /id="leaderboardMobileList"/);
+  const base = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
+  const styles = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
+  assert.match(table, /renderResponsiveTable/);
+  assert.doesNotMatch(table, /createElement\\('article'\\)/);
+  assert.match(base, /mobileCardsId/);
+  assert.match(styles, /\\.dashboard-responsive-card/);
+  assert.match(shell, /mobileCardsId: 'leaderboardMobileList'/);
   assert.match(shell, /週間リーダーボード/);
 });
