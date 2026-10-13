@@ -338,20 +338,25 @@ void NativeMediaEnsureEventWakeBridge(
             LPWSTR rawMessage = nullptr;
             if (FAILED(args->TryGetWebMessageAsString(&rawMessage)) || !rawMessage)
               return S_OK;
-            const std::wstring message(rawMessage);
-            CoTaskMemFree(rawMessage);
-
-            std::wstring source;
-            if (!NativeMediaReadWebViewSource(sender, source)) return S_OK;
-            const auto sourceContains = [&source](std::wstring_view needle) {
-              return source.find(needle) != std::wstring::npos;
+            // Keep WebView2 COM strings in RAII owners; borrowed string views
+            // avoid copying each message and URL during repeated media wakes.
+            const std::unique_ptr<wchar_t, decltype(&CoTaskMemFree)> messageOwner(
+                rawMessage, &CoTaskMemFree);
+            const std::wstring_view message(rawMessage);
+            LPWSTR rawSource = nullptr;
+            if (FAILED(sender->get_Source(&rawSource)) || !rawSource) return S_OK;
+            const std::unique_ptr<wchar_t, decltype(&CoTaskMemFree)> sourceOwner(
+                rawSource, &CoTaskMemFree);
+            const std::wstring_view source(rawSource);
+            const auto sourceContains = [source](std::wstring_view needle) {
+              return source.find(needle) != std::wstring_view::npos;
             };
 
             unsigned long long statusId = 0;
             int x = -1;
             int y = -1;
             if (sourceContains(L"x.com/home") &&
-                swscanf_s(message.c_str(), L"homepanel:x-like:%llu:%d:%d",
+                swscanf_s(rawMessage, L"homepanel:x-like:%llu:%d:%d",
                           &statusId, &x, &y) == 3 &&
                 statusId != 0 && x >= 0 && y >= 0 && x <= 10000 && y <= 10000) {
               NativeMediaDispatchTrustedCssClick(
