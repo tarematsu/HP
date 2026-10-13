@@ -169,6 +169,21 @@ LR"JS(
     state.currentSettingsFullscreenRequestAt = 0;
   }
 
+  // Browser fullscreen is independent of TVer's speed/quality UI. If a
+  // setting menu is missing or renamed, video must still enter fullscreen.
+  // Retain a 3-second CDP budget per media source.
+  const fullscreen = Boolean(
+      document.fullscreenElement || document.webkitFullscreenElement ||
+      document.msFullscreenElement);
+  if (fullscreen) {
+    state.currentSettingsFullscreenRequestAt = 0;
+    state.fullscreenCornerTapAt = 0;
+  } else if (!state.currentSettingsFullscreenRequestAt ||
+      now - state.currentSettingsFullscreenRequestAt >= 3000) {
+    state.currentSettingsFullscreenRequestAt = now;
+    post('homepanel:tver-fullscreen-key');
+  }
+
   const duration = Number.isFinite(video.duration) && video.duration > 0
       ? video.duration : 0;
   const parseSpeed = value => {
@@ -314,25 +329,8 @@ LR"JS(
     schedule(900);
   }
 
-  const fullscreen = Boolean(
-      document.fullscreenElement || document.webkitFullscreenElement ||
-      document.msFullscreenElement);
-  if (fullscreen) {
-    state.currentSettingsFullscreenRequestAt = 0;
-    state.fullscreenCornerTapAt = 0;
-    return;
-  }
-
-  // Fullscreen requires a trusted user gesture. Ask the native WebView2 bridge
-  // to use Runtime.evaluate(userGesture=true), with its trusted F-key fallback,
-  // instead of guessing that the bottom-right pixel is still the fullscreen
-  // button after TVer's redesign.
-  state.fullscreenCornerTapAt = now;
-  if (!state.currentSettingsFullscreenRequestAt ||
-      now - state.currentSettingsFullscreenRequestAt >= 3000) {
-    state.currentSettingsFullscreenRequestAt = now;
-    post('homepanel:tver-fullscreen-key');
-  }
-  schedule(900);
+  // CDP has already received the independent fullscreen request above.
+  // Keep recovery wakeups only until real browser fullscreen is observed.
+  if (!fullscreen) schedule(900);
 })()
 )JS"
