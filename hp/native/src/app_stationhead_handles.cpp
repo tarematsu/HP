@@ -205,8 +205,11 @@ void StationheadHandleBase::ReleaseCompletedAuth() {
 
 uint32_t StationheadHandleBase::ConsumeChangeFlags() {
   if (!player_ || !startIssued_ || stopIssued_) return StationheadChangeNone;
-  SyncStationheadBackgroundPreview(*player_, workspaceBounds_);
   uint32_t flags = player_->ConsumeChangeFlags();
+  // A shared WM_HP_STATIONHEAD_CHANGED wake reaches all six handles. Only the
+  // originating profile needs preview checks, layout or content revision.
+  if (flags == StationheadChangeNone) return flags;
+  SyncStationheadBackgroundPreview(*player_, workspaceBounds_);
   if ((flags & StationheadChangeReleaseAuth) != 0) {
     player_->FinalizeCompletedAuth();
     ApplyBounds();
