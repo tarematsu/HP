@@ -84,6 +84,20 @@ test('YouTube and TVer watchdog decisions retain page classification and recover
   assert.match(youtube, /phase_ != Phase::YouTube \|\| !webview_ \|\| !IsYoutubeWatchPage\(\)/);
   assert.match(youtube, /phase_ != Phase::YouTube \|\| !IsYoutubeWatchPage\(\)/);
   assert.match(tver, /phase_ != Phase::Tver \|\| !webview_\) return;/);
-  assert.match(tver, /if \(!IsTverPage\(\)\) \{\s*SetRecoveryState\(RecoveryState::Reloading\);\s*NavigateCurrentPhase\(\)/);
+  assert.match(tver, /if \(source\.find\(L"tver\.jp\/"\) == std::wstring_view::npos\) \{\s*SetRecoveryState\(RecoveryState::Reloading\);\s*NavigateCurrentPhase\(\)/);
   assert.match(tver, /phase_ != Phase::Tver \|\| !IsTverPage\(\)/);
+});
+
+test('TVer watchdog reads one borrowed source URL for classification and startup recovery', () => {
+  const tver = between('  void ProbeTverWatchdog() noexcept {',
+                       '  void Fail() noexcept {');
+  assert.equal((tver.match(/webview_->get_Source\(&rawSource\)/g) || []).length, 1);
+  assert.match(tver, /const std::unique_ptr<wchar_t, decltype\(&CoTaskMemFree\)> sourceOwner\(/);
+  assert.match(tver, /const std::wstring_view source = SUCCEEDED\(sourceResult\) && rawSource/);
+  assert.match(tver, /NativeMediaTverStartupExpired\(source, now\)/);
+  assert.doesNotMatch(tver, /std::wstring source;|source\.assign\(rawSource\)/);
+  const isTver = url => url.includes('tver.jp/');
+  assert.equal(isTver('https://tver.jp/episodes/abc'), true);
+  assert.equal(isTver('https://www.youtube.com/watch?v=abc'), false);
+  assert.equal(isTver(''), false);
 });

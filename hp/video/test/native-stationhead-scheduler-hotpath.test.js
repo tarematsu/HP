@@ -75,6 +75,18 @@ test('fast scheduler maintains transition grace, interactive overrides, and cont
   assert.match(scheduler, /return interactive \|\| \(!state\.audioPlaying && !suppressed\)/);
 });
 
+test('Stationhead visibility refresh consumes only lifecycle flags on placement wakes', () => {
+  const visibility = section(handles,
+    'void StationheadHandleBase::RefreshVisibility() {',
+    'void StationheadHandleBase::Start() {');
+  assert.match(visibility, /const auto state = player_->ReadSchedulerState\(\)/);
+  assert.match(visibility, /SuppressTrackTransitionGap\(state\.audioPlaying, interactive\)/);
+  assert.match(visibility, /state\.loginRequired \|\| state\.spotifyAuthorization \|\| state\.processFailed/);
+  assert.match(visibility, /if \(state\.visible\) player_->KeepPlaybackBehindDashboard\(\)/);
+  assert.match(visibility, /player_->SelectTab\(StationheadTabKind::None\)/);
+  assert.doesNotMatch(visibility, /RawStatus\(\)|StationheadStatus|player_->Status\(\)/);
+});
+
 test('Stationhead foreground maintenance avoids redundant topmost window operations', () => {
   const foreground = section(handles,
     'void StationheadHandleBase::RaiseActiveHost() const {',

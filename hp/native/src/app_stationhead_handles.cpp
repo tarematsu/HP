@@ -37,13 +37,13 @@ bool RequiresInteractiveStationhead(const StationheadStatus& status) noexcept {
 
 void SyncStationheadBackgroundPreview(
     StationheadPlayer& player, const RECT& workspaceBounds) {
-  // Preview is already retired on the steady-state path. Avoid copying
-  // StationheadStatus (including its strings) across all six windows until
-  // another startup/reload explicitly requests the preview again.
+  // Preview is already retired on the steady-state path. Read only the
+  // lifecycle/auth flags instead of cloning room URLs and diagnostics during
+  // startup, reload or a playback event on any of the six profiles.
   if (!StationheadBackgroundPreview() || !player.AudioPlaying()) return;
-  const StationheadStatus status = player.Status();
-  if (!status.navigating && !status.loginRequired &&
-      !status.spotifyAuthorization &&
+  const auto state = player.ReadSchedulerState();
+  if (!state.navigating && !state.loginRequired &&
+      !state.spotifyAuthorization &&
       SetStationheadBackgroundPreview(false)) {
     player.SetBounds(workspaceBounds);
   }
@@ -127,10 +127,13 @@ int64_t StationheadHandleBase::NextWakeAt() const noexcept {
 
 void StationheadHandleBase::RefreshVisibility() {
   if (!player_) return;
-  const StationheadStatus status = RawStatus();
-  if (SuppressTrackTransitionGap(
-          status.audioPlaying, RequiresInteractiveStationhead(status))) {
-    if (status.visible) player_->KeepPlaybackBehindDashboard();
+  // The placement pass may visit all six WebViews after a single profile
+  // changes. Avoid copying strings on this flag-only visibility decision.
+  const auto state = player_->ReadSchedulerState();
+  const bool interactive =
+      state.loginRequired || state.spotifyAuthorization || state.processFailed;
+  if (SuppressTrackTransitionGap(state.audioPlaying, interactive)) {
+    if (state.visible) player_->KeepPlaybackBehindDashboard();
     return;
   }
   player_->SelectTab(StationheadTabKind::None);
@@ -176,16 +179,17 @@ void StationheadHandleBase::Tick(int64_t nowMs) {
     const bool active = player_->RetryPendingTrackBoundaryRefresh(nowMs);
     if (active) {
       ArmBoundaryRetryState(this, nowMs);
-      if (player_->Status().navigating) ClearBoundaryRetryState(this);
+      if (player_->ReadSchedulerState().navigating) ClearBoundaryRetryState(this);
       // Arm and Clear can insert/erase the entry; refresh the iterator.
       found = boundaryRetries.find(this);
     }
   }
 
   if (found == boundaryRetries.end() || !found->second.armed) return;
-  const StationheadStatus status = player_->Status();
-  if (player_->AudioPlaying() || status.navigating ||
-      RequiresInteractiveStationhead(status) || nowMs >= found->second.deadline) {
+  const auto state = player_->ReadSchedulerState();
+  if (state.audioPlaying || state.navigating || state.loginRequired ||
+      state.spotifyAuthorization || state.processFailed ||
+      nowMs >= found->second.deadline) {
     player_->CancelPendingTrackBoundaryRefresh();
     ClearBoundaryRetryState(this);
   }

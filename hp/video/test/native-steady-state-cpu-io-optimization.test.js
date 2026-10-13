@@ -117,9 +117,10 @@ test('Stationhead preview avoids deep status snapshots before audio is present',
   const body = stationheadHandles.slice(begin, end);
   assert.match(body, /if \(!StationheadBackgroundPreview\(\) \|\| !player\.AudioPlaying\(\)\) return;/);
   assert.ok(body.indexOf('if (!StationheadBackgroundPreview() || !player.AudioPlaying()) return;') <
-    body.indexOf('const StationheadStatus status = player.Status();'));
-  assert.match(body, /!status\.navigating && !status\.loginRequired/);
-  assert.match(body, /!status\.spotifyAuthorization/);
+    body.indexOf('const auto state = player.ReadSchedulerState();'));
+  assert.match(body, /!state\.navigating && !state\.loginRequired/);
+  assert.match(body, /!state\.spotifyAuthorization/);
+  assert.doesNotMatch(body, /StationheadStatus|player\.Status\(\)/);
   assert.match(body, /SetStationheadBackgroundPreview\(false\)/);
 });
 
@@ -132,10 +133,12 @@ test('Stationhead retry map only allocates entries for armed recovery windows', 
   assert.match(tick, /\(found == boundaryRetries\.end\(\) \|\| !found->second\.armed\) &&\s*!player_->AudioPlaying\(\)/);
   assert.match(tick, /const bool active = player_->RetryPendingTrackBoundaryRefresh\(nowMs\);/);
   assert.match(tick, /if \(active\) \{\s*ArmBoundaryRetryState\(this, nowMs\);/);
-  assert.match(tick, /if \(player_->Status\(\)\.navigating\) ClearBoundaryRetryState\(this\);/);
+  assert.match(tick, /if \(player_->ReadSchedulerState\(\)\.navigating\) ClearBoundaryRetryState\(this\);/);
   assert.match(tick, /found = boundaryRetries\.find\(this\);/);
   assert.match(tick, /if \(found == boundaryRetries\.end\(\) \|\| !found->second\.armed\) return;/);
   assert.doesNotMatch(tick, /BoundaryRetryStateFor\(this\)|boundaryRetries\[this\]/);
+  assert.doesNotMatch(tick, /player_->Status\(\)/,
+    'retry supervision should not copy playback details or URLs');
   const allocator = stationheadHandles.slice(
     stationheadHandles.indexOf('TrackBoundaryRetryState& BoundaryRetryStateFor('),
     stationheadHandles.indexOf('bool RequiresInteractiveStationhead('),
