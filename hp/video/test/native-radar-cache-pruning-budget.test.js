@@ -31,10 +31,10 @@ test('radar tile resolution remains immediate and no cleanup runs without retain
   // while the actual recursive filesystem traversal follows localization.
   const directoryTraversal = radar.indexOf('fs::recursive_directory_iterator iterator(', tile);
   assert.ok(directoryTraversal > tile);
-  assert.match(radar.slice(tile, pruning), /if \(!fs::exists\(target, error\) \|\| fs::file_size\(target, error\) == 0\)/);
-  assert.match(radar.slice(tile, pruning), /AtomicWriteBytes\(target, response\.body\)/);
-  assert.match(radar.slice(tile, pruning), /item\.SetNamedValue\(L"url"/);
-  assert.match(radar.slice(pruning), /if \(pruneDue && !retained\.empty\(\)/);
+  assert.match(radar.slice(tile, directoryTraversal), /if \(!fs::exists\(target, error\) \|\| fs::file_size\(target, error\) == 0\)/);
+  assert.match(radar.slice(tile, directoryTraversal), /AtomicWriteBytes\(target, response\.body\)/);
+  assert.match(radar.slice(tile, directoryTraversal), /item\.SetNamedValue\(L"url"/);
+  assert.match(radar.slice(tile), /if \(pruneDue && !retained\.empty\(\)/);
 });
 
 test('successful prune throttles the next six five-minute radar refreshes', () => {
