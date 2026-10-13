@@ -133,7 +133,7 @@ inline std::wstring_view StationheadRuntimeInteractionFragment() noexcept {
     nativeClearTimeout(authReadyTimer);
     authReadyTimer = 0;
   };
-  const publishAuth = () => {
+  const publishAuth = (knownAudio = null) => {
     if (!pageActive || !document.body) return;
     if (publishRecoverableOnboarding()) return;
     // Reuse one fresh control snapshot for both auth checks. Recoverable
