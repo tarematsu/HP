@@ -369,3 +369,50 @@
     text-align: left;
   }
 }
+
+/* Shared responsive table/card contract used by Stationhead summary pages. */
+.dashboard-responsive-cards { display: none; }
+.dashboard-number { text-align: right; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 600px) {
+  .dashboard-responsive-table { display: none; }
+  .dashboard-responsive-cards {
+    display: grid;
+    width: 100%;
+    min-width: 0;
+  }
+  .dashboard-responsive-card {
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    gap: 8px 12px;
+    padding: 12px 2px;
+    border-bottom: 1px solid var(--line);
+  }
+  .dashboard-responsive-field {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    line-height: 1.35;
+  }
+  .dashboard-responsive-label {
+    display: block;
+    margin-bottom: 3px;
+    color: var(--muted);
+    font-size: var(--dashboard-small-size);
+  }
+  .dashboard-responsive-value {
+    display: block;
+    font-size: var(--dashboard-copy-size);
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+  .dashboard-responsive-field[data-key="rank"],
+  .dashboard-responsive-field.dashboard-number { text-align: right; }
+  .dashboard-responsive-field[data-key="host"] .dashboard-responsive-value,
+  .dashboard-responsive-field[data-key="account"] .dashboard-responsive-value {
+    font-weight: 700;
+  }
+}
