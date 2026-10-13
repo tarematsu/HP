@@ -417,26 +417,50 @@ LR"JS(
       state.fullscreenCornerTapAt = 0;
       return null;
     }
+    // CDP's requestFullscreen runs asynchronously after the settings bridge
+    // posts the native message. Do not immediately click the player UI: an
+    // overlapping click could toggle fullscreen back off.
+    if (state.currentSettingsFullscreenRequestAt &&
+        now - state.currentSettingsFullscreenRequestAt < 1500) {
+      wake(1500);
+      return 'recovery';
+    }
     if (state.fullscreenCornerTapAt &&
         now - state.fullscreenCornerTapAt < 1400) {
       wake(1400);
       return 'recovery';
     }
-    const rect = video.getBoundingClientRect?.();
-    if (!rect || rect.width < 24 || rect.height < 24) {
-      recheck();
-      return 'recovery';
+    // The right-bottom video pixel is not a stable fullscreen button on the
+    // redesigned player. Only dispatch trusted clicks to named controls.
+    const fullscreenSelector = [
+      'button[aria-label*="全画面"]', 'button[title*="全画面"]',
+      '[role="button"][aria-label*="全画面"]',
+      'button[aria-label*="fullscreen" i]',
+      'button[title*="fullscreen" i]',
+      '[role="button"][aria-label*="fullscreen" i]',
+      '[data-testid*="fullscreen" i]'
+    ].join(',');
+    for (const element of document.querySelectorAll(fullscreenSelector)) {
+      const name = [element.getAttribute?.('aria-label'),
+          element.getAttribute?.('title'),
+          element.getAttribute?.('data-testid')].filter(Boolean).join(' ');
+      if (/全画面を終了|全画面解除|exit.fullscreen|退出全画面/i.test(name) ||
+          !visible(element)) continue;
+      const action = arm(element, 'fullscreen', 1400);
+      if (!action) continue;
+      state.fullscreenCornerTapAt = now;
+      wake(1500);
+      return action;
     }
-    const x = Math.max(1, Math.min(innerWidth - 2, rect.right - 12));
-    const y = Math.max(1, Math.min(innerHeight - 2, rect.bottom - 12));
-    if (!Number.isFinite(x) || !Number.isFinite(y) ||
-        x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) {
-      recheck();
-      return 'recovery';
+    // No identifiable fullscreen control: retry browser fullscreen through
+    // the native user-gesture bridge, never click a guessed seek/play target.
+    if (!state.currentSettingsFullscreenRequestAt ||
+        now - state.currentSettingsFullscreenRequestAt >= 3000) {
+      state.currentSettingsFullscreenRequestAt = now;
+      post('homepanel:tver-fullscreen-key');
     }
-    state.fullscreenCornerTapAt = now;
     wake(1500);
-    return [x, y];
+    return 'recovery';
   };
 )JS" LR"JS(
 
