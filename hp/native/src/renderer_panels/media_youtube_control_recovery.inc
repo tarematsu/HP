@@ -42,7 +42,8 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     + '.videoAdUiSkipButton,[class*="ytp-ad-skip"],[aria-label*="Skip ad" i],'
     + '[aria-label*="広告をスキップ"],[aria-label*="広告を飛ばす"]';
   const surveyDialogSelector = surveySelector + ',[role="dialog"]';
-  const adControlSelector = surveyDialogSelector + ',' + skipSelector;
+  // Keep high-frequency mutation monitoring specific to Skip Ad controls.
+  const adControlSelector = skipSelector;
 )JS" LR"JS(
   const actionLane = action => {
     if (action === 'fullscreen') return 'fullscreen';
@@ -388,6 +389,9 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     state.popup = null;
     state.dialogActive = false;
     state.dialogCheckedAt = 0;
+    state.surveyCheckedAt = 0;
+    state.surveySelected = false;
+    state.surveyFollowupUntil = 0;
     state.adObserver?.disconnect();
     state.adControlObserver?.disconnect();
     state.adObserver = null;
@@ -506,39 +510,60 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   }
   if (adActive) {
     state.adActive = true;
-    const submitPattern = /^(送信|回答を送信|submit|send)$/i;
-    // One subtree query replaces separate full-player surveys and skip
-    // queries. DOM order and survey-before-skip priority are preserved.
-    const adCandidates = scanAdCandidates();
-    let target = null;
-    for (const root of adCandidates) {
-    // Keep the first enabled skip candidate, but finish inspecting surveys
-    // before acting so an active survey always takes precedence.
-    if (!target && root.matches(skipSelector) && valid(root)) target = root;
-    if (!root.matches(surveyDialogSelector) || !valid(root)) continue;
-    let submit = null;
-    let firstOption = null;
-    let secondOption = null;
-    for (const element of root.querySelectorAll(
-        'button,tp-yt-paper-button,[role="button"],[role="radio"]')) {
-      if (!valid(element)) continue;
-      const label = text(element);
-      if (!submit && submitPattern.test(label)) submit = element;
-      if (!/^(閉じる|キャンセル|cancel|close|skip|スキップ)$/i.test(label)) {
-        if (!firstOption) firstOption = element;
-        else if (!secondOption) secondOption = element;
-      }
-      if (submit && firstOption && (firstOption !== submit || secondOption)) break;
-    }
-    const option = firstOption === submit ? secondOption : firstOption;
-    if (submit && option) {
-      if (!state.surveySelected) {
-        state.surveySelected = true;
-        return arm(option, 'survey-option', 500);
-      }
+    // Surveys are rare. Query their subtree at most once every 5 minutes
+    // across ads and playlist SPA changes, not on each Skip Ad wake.
+    // Only a just-started option/submit interaction gets a bounded followup.
+    const surveyFollowup = state.surveySelected &&
+      now < Number(state.surveyFollowupUntil || 0);
+    if (state.surveySelected && !surveyFollowup) {
       state.surveySelected = false;
-      return arm(submit, 'survey-submit', 500);
+      state.surveyFollowupUntil = 0;
     }
+    if (surveyFollowup || !state.surveyCheckedAt ||
+        now < state.surveyCheckedAt ||
+        now - state.surveyCheckedAt >= 5 * 60 * 1000) {
+      state.surveyCheckedAt = now;
+      const submitPattern = /^(送信|回答を送信|submit|send)$/i;
+      for (const root of player.querySelectorAll(surveyDialogSelector)) {
+        if (!valid(root)) continue;
+        let submit = null;
+        let firstOption = null;
+        let secondOption = null;
+        for (const element of root.querySelectorAll(
+            'button,tp-yt-paper-button,[role="button"],[role="radio"]')) {
+          if (!valid(element)) continue;
+          const label = text(element);
+          if (!submit && submitPattern.test(label)) submit = element;
+          if (!/^(閉じる|キャンセル|cancel|close|skip|スキップ)$/i.test(label)) {
+            if (!firstOption) firstOption = element;
+            else if (!secondOption) secondOption = element;
+          }
+          if (submit && firstOption && (firstOption !== submit || secondOption)) break;
+        }
+        const option = firstOption === submit ? secondOption : firstOption;
+        if (submit && option) {
+          if (!state.surveySelected) {
+            const action = arm(option, 'survey-option', 500);
+            if (action) {
+              state.surveySelected = true;
+              state.surveyFollowupUntil = now + 15000;
+              return action;
+            }
+          } else {
+            const action = arm(submit, 'survey-submit', 500);
+            if (action) {
+              state.surveySelected = false;
+              state.surveyFollowupUntil = 0;
+              return action;
+            }
+          }
+        }
+      }
+    }
+    // Skip Ad retains the fast event-driven observer and 1.5s cache.
+    let target = null;
+    for (const element of scanAdCandidates()) {
+      if (valid(element)) { target = element; break; }
     }
     if (target) return arm(target, 'skip-ad', 600);
     if (!fullscreen()) return requestFullscreen();
@@ -549,6 +574,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   }
   state.adActive = false;
   state.surveySelected = false;
+  state.surveyFollowupUntil = 0;
 )JS" LR"JS(
   const currentTime = Number(video?.currentTime);
   if (Number.isFinite(currentTime)) {
