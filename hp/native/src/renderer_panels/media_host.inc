@@ -704,6 +704,69 @@ class NativeMediaPanelHost final {
     }
   }
 
+  HRESULT HandleYoutubeWatchdogResult(
+      HRESULT result, LPCWSTR json,
+      const ComPtr<ICoreWebView2>& requestView,
+      uint64_t requestGeneration) noexcept {
+    if (!alive_->load(std::memory_order_acquire) ||
+        requestGeneration != youtubeWatchdogRequestGeneration_ ||
+        webview_.Get() != requestView.Get()) return S_OK;
+    if (SUCCEEDED(result) && json &&
+        std::wstring_view(json) == L"\"bootstrap\"") {
+      // Document-start injection can miss an already-open SPA document.
+      // Install the full reusable probe just once, without reloading media.
+      const auto alive = alive_;
+      const HRESULT bootstrap = ExecutePolicyScript(
+          requestView.Get(), kNativeMediaYoutubeControlRecoveryScript,
+          Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+              [this, alive, requestView, requestGeneration](
+                  HRESULT nextResult, LPCWSTR nextJson) -> HRESULT {
+                if (!alive->load(std::memory_order_acquire)) return S_OK;
+                return HandleYoutubeWatchdogResult(
+                    nextResult, nextJson, requestView, requestGeneration);
+              }).Get());
+      if (SUCCEEDED(bootstrap)) return S_OK;
+      result = bootstrap;
+    }
+    youtubeWatchdogInFlight_ = false;
+    youtubeWatchdogStartedTick_ = 0;
+    if (phase_ != Phase::YouTube || !IsYoutubeWatchPage()) return S_OK;
+    if (SUCCEEDED(result) && json &&
+        std::wstring_view(json) == L"\"reload\"") {
+      SetRecoveryState(RecoveryState::Reloading);
+      ReloadYoutubePlaylist();
+      return S_OK;
+    }
+    double cssX = 0.0;
+    double cssY = 0.0;
+    if (SUCCEEDED(result) &&
+        ParseCssPoint(json, &cssX, &cssY)) {
+      SetRecoveryState(
+          RecoveryState::Recovering,
+          kNativeMediaYoutubeWatchdogRecoveryMs);
+      DispatchMediaCssPoint(requestView.Get(), cssX, cssY, false);
+      if (hostWindow_ && IsWindow(hostWindow_)) {
+        ArmTimer(kNativeMediaYoutubeWatchdogTimer,
+                 kNativeMediaYoutubeWatchdogRecoveryMs);
+      }
+      return S_OK;
+    }
+    if (SUCCEEDED(result)) {
+      SetRecoveryState(RecoveryState::Healthy);
+      if (hostWindow_ && IsWindow(hostWindow_)) {
+        ArmTimer(kNativeMediaYoutubeWatchdogTimer,
+                 kNativeMediaYoutubeWatchdogHealthyMs);
+      }
+    } else {
+      SetRecoveryState(RecoveryState::Suspect);
+      if (hostWindow_ && IsWindow(hostWindow_)) {
+        ArmTimer(kNativeMediaYoutubeWatchdogTimer,
+                 kNativeMediaYoutubeWatchdogRecoveryMs);
+      }
+    }
+    return S_OK;
+  }
+
   void ProbeYoutubeWatchdog() noexcept {
     if (phase_ != Phase::YouTube || !webview_ || !IsYoutubeWatchPage()) return;
 
@@ -737,48 +800,9 @@ class NativeMediaPanelHost final {
         Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
             [this, alive, requestView, requestGeneration](
                 HRESULT result, LPCWSTR json) -> HRESULT {
-              if (!alive->load(std::memory_order_acquire) ||
-                  requestGeneration != youtubeWatchdogRequestGeneration_ ||
-                  webview_.Get() != requestView.Get()) {
-                return S_OK;
-              }
-              youtubeWatchdogInFlight_ = false;
-              youtubeWatchdogStartedTick_ = 0;
-              if (phase_ != Phase::YouTube || !IsYoutubeWatchPage()) return S_OK;
-              if (SUCCEEDED(result) && json &&
-                  std::wstring_view(json) == L"\"reload\"") {
-                SetRecoveryState(RecoveryState::Reloading);
-                ReloadYoutubePlaylist();
-                return S_OK;
-              }
-              double cssX = 0.0;
-              double cssY = 0.0;
-              if (SUCCEEDED(result) &&
-                  ParseCssPoint(json, &cssX, &cssY)) {
-                SetRecoveryState(
-                    RecoveryState::Recovering,
-                    kNativeMediaYoutubeWatchdogRecoveryMs);
-                DispatchMediaCssPoint(requestView.Get(), cssX, cssY, false);
-                if (hostWindow_ && IsWindow(hostWindow_)) {
-                  ArmTimer(kNativeMediaYoutubeWatchdogTimer,
-                           kNativeMediaYoutubeWatchdogRecoveryMs);
-                }
-                return S_OK;
-              }
-              if (SUCCEEDED(result)) {
-                SetRecoveryState(RecoveryState::Healthy);
-                if (hostWindow_ && IsWindow(hostWindow_)) {
-                  ArmTimer(kNativeMediaYoutubeWatchdogTimer,
-                           kNativeMediaYoutubeWatchdogHealthyMs);
-                }
-              } else {
-                SetRecoveryState(RecoveryState::Suspect);
-                if (hostWindow_ && IsWindow(hostWindow_)) {
-                  ArmTimer(kNativeMediaYoutubeWatchdogTimer,
-                           kNativeMediaYoutubeWatchdogRecoveryMs);
-                }
-              }
-              return S_OK;
+              if (!alive->load(std::memory_order_acquire)) return S_OK;
+              return HandleYoutubeWatchdogResult(
+                  result, json, requestView, requestGeneration);
             }).Get());
     if (FAILED(started) &&
         requestGeneration == youtubeWatchdogRequestGeneration_ &&
