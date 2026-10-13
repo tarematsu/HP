@@ -108,3 +108,17 @@ test('leaderboard data path is resolved once for the native process', () => {
     spool.indexOf('inline void RemoveLegacyProbeSpool()'));
   assert.equal((pathSection.match(/GetModuleFileNameW\(/g) || []).length, 1);
 });
+
+
+test('bounded Stationhead leaderboard reads reserve exactly the maximum retained records', () => {
+  const spool = readFileSync(new URL('../../native/src/stationhead_leaderboard_capture_spool.h', import.meta.url), 'utf8');
+  const begin = spool.indexOf('inline std::vector<std::string> ReadLinesLocked() {');
+  const end = spool.indexOf('inline bool WriteLinesLocked(', begin);
+  assert.ok(begin >= 0 && end > begin);
+  const body = spool.slice(begin, end);
+  assert.match(body, /if \(!input\) return lines;\s*\/\/[\s\S]*?lines\.reserve\(kMaxCaptureRecords\)/);
+  assert.match(body, /if \(lines\.size\(\) > kMaxCaptureRecords\)/);
+  assert.match(body, /lines\.erase\(lines\.begin\(\), lines\.begin\(\) \+/);
+  assert.ok(body.indexOf('lines.reserve(kMaxCaptureRecords)') <
+            body.indexOf('while (std::getline(input, line))'));
+});
