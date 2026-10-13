@@ -205,6 +205,52 @@ function legacyLeaderboardContent(rows) {
   }));
 }
 
+// Rank is unique within an accepted complete Top 100, even though the legacy
+// D1 table has no rank-level UNIQUE constraint. Check the actual stored set
+// before using targeted UPDATEs; malformed/missing rows require a full repair.
+function completeStoredTop100(rows) {
+  return Array.isArray(rows) && rows.length === MAX_ROWS
+    && rows.every((row, index) => Number(row.rank) === index + 1);
+}
+
+function leaderboardRowValues(extracted, row, now) {
+  return [
+    extracted.ranking_date, extracted.observed_at, RANKING_TYPE, row.rank,
+    row.channel_name, row.channel_alias, null, null, row.streams,
+    SOURCE_SHEET, row.rank, 1,
+    JSON.stringify(['stationhead_r2', 'weekly_leaderboard', extracted.parser]),
+    JSON.stringify({
+      source: 'stationhead_r2', source_digest: extracted.digest || null,
+      parser: extracted.parser, captured_at: extracted.captured_at,
+      observed_at: extracted.observed_at, weekly_streams: row.streams,
+      active_days: row.days, row_count: extracted.rows.length,
+    }),
+    now,
+  ];
+}
+
+function changedRankingStatement(db, extracted, row, now) {
+  const values = leaderboardRowValues(extracted, row, now);
+  return db.prepare(`UPDATE sh_channel_rankings SET
+      observed_at=?,channel_name=?,channel_alias=?,listener_count=?,
+      member_count=?,total_listens=?,source_sheet=?,source_row=?,
+      quality_score=?,quality_flags=?,raw_json=?,imported_at=?
+    WHERE ranking_date=? AND ranking_type=? AND rank=?`).bind(
+    values[1],
+    ...values.slice(4, 15),
+    values[0], values[2], values[3],
+  );
+}
+
+function newRankingStatement(db, extracted, row, now) {
+  return db.prepare(`INSERT INTO sh_channel_rankings(
+    ranking_date,observed_at,ranking_type,rank,channel_name,channel_alias,
+    listener_count,member_count,total_listens,source_sheet,source_row,
+    quality_score,quality_flags,raw_json,imported_at
+  ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .bind(...leaderboardRowValues(extracted, row, now));
+}
+
 function completeTop100(rows) {
   return Array.isArray(rows) && rows.length === MAX_ROWS && rows.every((row, index) => row?.rank === index + 1);
 }
@@ -266,15 +312,32 @@ export async function importLeaderboardArtifact(artifact, db, now = Date.now()) 
     return { status: 'unchanged', ranking_date: extracted.ranking_date, row_count: extracted.rows.length, digest: extracted.digest, parser: extracted.parser };
   }
 
-  const statements = [db.prepare('DELETE FROM sh_channel_rankings WHERE ranking_date=? AND ranking_type=?').bind(extracted.ranking_date, RANKING_TYPE)];
-  for (const row of extracted.rows) {
-    statements.push(db.prepare(`INSERT INTO sh_channel_rankings(ranking_date,observed_at,ranking_type,rank,channel_name,channel_alias,listener_count,member_count,total_listens,source_sheet,source_row,quality_score,quality_flags,raw_json,imported_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
-      extracted.ranking_date, extracted.observed_at, RANKING_TYPE, row.rank, row.channel_name, row.channel_alias,
-      null, null, row.streams, SOURCE_SHEET, row.rank, 1,
-      JSON.stringify(['stationhead_r2', 'weekly_leaderboard', extracted.parser]),
-      JSON.stringify({ source: 'stationhead_r2', source_digest: extracted.digest || null, parser: extracted.parser, captured_at: extracted.captured_at, observed_at: extracted.observed_at, weekly_streams: row.streams, active_days: row.days, row_count: extracted.rows.length }),
-      now,
-    ));
+  // Check actual persisted rows whenever content changes. The checkpoint can
+  // outlive an interrupted migration or a manual repair of the legacy table.
+  if (state) {
+    const result = await db.prepare(`SELECT rank,channel_name,channel_alias,total_listens,raw_json
+      FROM sh_channel_rankings WHERE ranking_date=? AND ranking_type=? ORDER BY rank ASC`)
+      .bind(extracted.ranking_date, RANKING_TYPE).all();
+    existingRows = result?.results || [];
+  }
+
+  const statements = [];
+  if (!completeStoredTop100(existingRows)) {
+    // Repair malformed, duplicate or incomplete historical rankings atomically.
+    statements.push(db.prepare('DELETE FROM sh_channel_rankings WHERE ranking_date=? AND ranking_type=?')
+      .bind(extracted.ranking_date, RANKING_TYPE));
+    for (const row of extracted.rows) {
+      statements.push(newRankingStatement(db, extracted, row, now));
+    }
+  } else {
+    // Rank 1..100 is complete. Only mutate a rank when one of the five
+    // user-visible ranking values actually differs; old snapshots elsewhere
+    // retain their own original capture metadata.
+    for (let index = 0; index < extracted.rows.length; index += 1) {
+      const row = extracted.rows[index];
+      if (legacyLeaderboardContent([existingRows[index]]) === leaderboardContent([row])) continue;
+      statements.push(changedRankingStatement(db, extracted, row, now));
+    }
   }
   // The checkpoint moves only if the full ranking update commits.
   statements.push(importStateStatement(db, extracted, content));
