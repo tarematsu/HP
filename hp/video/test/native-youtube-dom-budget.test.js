@@ -36,6 +36,7 @@ function dialogScenario({ label = 'Still watching?', controls = [] } = {}) {
     '(() => { ' + code + '\nreturn dismissMessageDialog(); })()',
     {
       document,
+      state: {},
       surveySelector: '.survey',
       valid: element => element.connected !== false,
       text: element => element.label,
