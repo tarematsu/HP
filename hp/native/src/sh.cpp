@@ -9,6 +9,7 @@ constexpr int64_t kStationheadTrackBoundaryRefreshDelayMs = 52 * 60'000;
 constexpr int64_t kStationheadTrackBoundaryNavigationTimeoutMs = 30'000;
 constexpr int64_t kStationheadTrackBoundaryPlaybackRecoveryTimeoutMs = 30'000;
 constexpr size_t kStationheadDiagnosticsMaxCharacters = 2'048;
+constexpr uint64_t kStationheadHealthySurfaceRepairIntervalMs = 60'000;
 
 bool CallbackAlive(const std::shared_ptr<std::atomic<bool>>& alive) {
   return alive && alive->load(std::memory_order_acquire);
@@ -37,6 +38,7 @@ void StationheadPlayer::Start() {
   trackBoundaryPlaybackRecoveryPending_ = false;
   trackBoundaryPlaybackRecoveryAwaitingNavigation_ = false;
   trackBoundaryPlaybackRecoveryDeadline_ = 0;
+  lastHealthySurfaceRepairTick_ = 0;
   ResetMediaRecoveryEpisode(mediaRecoveryEpisode_, 1);
   ResetNavigationRouteState();
   Create();
@@ -168,13 +170,18 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
           : (usingFallback_ ? L"fallback audio detected" : L"audio detected") +
                 (source.empty() ? L"" : L" (" + source + L")");
     }
-    // Media clock confirmations can arrive repeatedly while six profiles
-    // remain healthy. Only enter the WebView2/Win32 visibility reconciliation
-    // when a foreground or startup surface actually needs to be retired.
-    // The App placement path still repairs external window/z-order changes.
-    if (!preserveLoginRequired && !startupPreviewActive_ && !spotifyAuthorization_ &&
-        (viewVisible_ || selectedTab_ != StationheadTabKind::None)) {
-      SetVisible(false);
+    // Healthy media clocks arrive far more often than window geometry can
+    // change. Repair immediately when an interactive surface needs retiring;
+    // retain a periodic Win32/WebView2 check for external z-order/layout drift.
+    if (!preserveLoginRequired && !startupPreviewActive_ && !spotifyAuthorization_) {
+      const uint64_t nowTick = GetTickCount64();
+      if (viewVisible_ || selectedTab_ != StationheadTabKind::None ||
+          lastHealthySurfaceRepairTick_ == 0 ||
+          nowTick - lastHealthySurfaceRepairTick_ >=
+              kStationheadHealthySurfaceRepairIntervalMs) {
+        lastHealthySurfaceRepairTick_ = nowTick;
+        SetVisible(false);
+      }
     }
     if (changed) log_.Info(L"Stationhead " + std::wstring(RoleTag()) + L" audio playing (" + source + L")");
     // Keep exceptional recovery/authorization notifications, but do not post
