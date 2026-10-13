@@ -64,7 +64,7 @@ test('radar tile resolution remains immediate and no cleanup runs without retain
   // while the actual recursive filesystem traversal follows localization.
   const directoryTraversal = radar.indexOf('fs::recursive_directory_iterator iterator(', tile);
   assert.ok(directoryTraversal > tile);
-  assert.match(radar.slice(tile, directoryTraversal), /if \(!fs::exists\(target, error\) \|\| fs::file_size\(target, error\) == 0\)/);
+  assert.match(radar.slice(tile, directoryTraversal), /const auto cachedSize = fs::file_size\(target, error\);\s*if \(error \|\| cachedSize == 0\)/);
   assert.match(radar.slice(tile, directoryTraversal), /AtomicWriteBytes\(target, response\.body\)/);
   assert.match(radar.slice(tile, directoryTraversal), /item\.SetNamedValue\(L"url"/);
   assert.match(radar.slice(tile), /if \(pruneDue && !retained\.empty\(\)/);
@@ -82,4 +82,30 @@ test('successful prune throttles the next six five-minute radar refreshes', () =
     }
   }
   assert.equal(scans, 3, '13 frame updates at 5-minute intervals should scan only 3 times');
+});
+
+
+test('radar bundle and standalone tiles reuse one filesystem size query, including missing/empty fallback', () => {
+  const bundleStart = radar.indexOf('      for (uint32_t record = 0; record < recordCount; ++record) {');
+  const bundleEnd = radar.indexOf('      if (offset != response.body.size())', bundleStart);
+  const standaloneStart = radar.indexOf('  const auto localizeTile =');
+  const standaloneEnd = radar.indexOf('  if (root.HasKey(L"frames")', standaloneStart);
+  assert.ok(bundleStart >= 0 && bundleEnd > bundleStart &&
+    standaloneStart > bundleEnd && standaloneEnd > standaloneStart);
+  for (const section of [
+    radar.slice(bundleStart, bundleEnd),
+    radar.slice(standaloneStart, standaloneEnd),
+  ]) {
+    assert.equal((section.match(/fs::file_size\(target, error\)/g) || []).length, 1);
+    assert.match(section, /const auto cachedSize = fs::file_size\(target, error\)/);
+    assert.match(section, /if \(error \|\| cachedSize == 0\)/);
+    assert.doesNotMatch(section, /fs::exists\(target, error\)/);
+    assert.match(section, /AtomicWriteBytes\(target, response\.body/);
+  }
+  // A missing tile reports an error from file_size. Existing zero-byte tiles
+  // must be repaired; positive-size cached tiles must avoid further fetches.
+  const shouldRefetch = (error, size) => error || size === 0;
+  assert.equal(shouldRefetch(true, 0), true);
+  assert.equal(shouldRefetch(false, 0), true);
+  assert.equal(shouldRefetch(false, 28412), false);
 });
