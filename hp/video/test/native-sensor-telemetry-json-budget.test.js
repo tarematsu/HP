@@ -20,7 +20,7 @@ test('telemetry uses one reserved string buffer instead of stream formatting', (
   assert.match(builder, /std::min<size_t>\(60, outbox_\.size\(\)\)/);
   assert.match(builder, /body\.reserve\(160 \+ escapedId\.size\(\) \+ escapedVersion\.size\(\) \+ count \* 208\)/);
   assert.match(builder, /AppendInteger\(body, outbox_\.size\(\)\)/);
-  assert.match(builder, /body \+= SampleJson\(outbox_\[i\]\)/);
+  assert.match(builder, /AppendSampleJson\(body, outbox_\[i\]\)/);
   assert.doesNotMatch(builder, /std::ostringstream|std::stringstream|std::to_string/);
   assert.match(builder, /std::lock_guard lock\(mutex_\)/);
 });
@@ -49,4 +49,22 @@ test('compiled production telemetry JSON preserves schema, escaping and 60-sampl
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+
+test('sensor JSON uses the same append-only formatter for file, rewrite and upload without per-sample strings', () => {
+  assert.match(serializer, /void AppendSampleJson\(std::string& output, const SensorHub::Sample& sample\)/);
+  assert.doesNotMatch(serializer, /std::string SampleJson\(/);
+  const append = outbox.slice(outbox.indexOf('bool SensorHub::AppendOutbox('),
+    outbox.indexOf('void SensorHub::LoadOutbox('));
+  assert.match(append, /line\.reserve\(192\)/);
+  assert.match(append, /AppendSampleJson\(line, sample\);\s*line\.push_back\('\\n'\)/);
+  assert.match(append, /WriteFile\(file, line\.data\(\)/);
+  const rewrite = outbox.slice(outbox.indexOf('bool SensorHub::RewriteOutboxLocked('),
+    outbox.indexOf('std::string SensorHub::BuildTelemetryPayload('));
+  assert.match(rewrite, /text\.reserve\(samples\.size\(\) \* 192\)/);
+  assert.match(rewrite, /AppendSampleJson\(text, sample\);\s*text\.push_back\('\\n'\)/);
+  assert.match(rewrite, /AtomicWriteText\(outboxPath_, text\)/);
+  assert.doesNotMatch(rewrite, /ostringstream|SampleJson\(sample\)/);
+  assert.match(builder, /AppendSampleJson\(body, outbox_\[i\]\)/);
 });
