@@ -23,59 +23,76 @@ import {
 } from './spotify-track-identity.js';
 import { spotifyArtistDailyRefreshStatements } from './spotify-playcount-summary.js';
 
+// Batch the album's candidate observations so that the active-run guard is
+// checked once per chunk, rather than once for every track. Each INSERT is
+// atomic: stale/completed run tokens cannot write even during replacement.
+export const SPOTIFY_CANDIDATE_CHUNK_SIZE = 40;
+
+export function spotifyCandidateBatchStatement(db, message, tracks, collectedAt) {
+  if (!Array.isArray(tracks) || tracks.length < 1 || tracks.length > SPOTIFY_CANDIDATE_CHUNK_SIZE) {
+    throw new RangeError('Spotify candidate batch must contain 1-40 tracks');
+  }
+  const values = JSON.stringify(tracks.map((track) => [track.track_id, track.playcount]));
+  return db.prepare(`INSERT INTO sh_spotify_playcount_candidates (
+      snapshot_date,run_token,track_id,album_id,playcount,collected_at
+    ) SELECT ?,?,json_extract(item.value,'$[0]'),?,json_extract(item.value,'$[1]'),?
+    FROM json_each(?) AS item
+    WHERE EXISTS (
+      SELECT 1 FROM sh_spotify_collection_runs
+      WHERE snapshot_date=? AND run_token=? AND status IN ('catalog','queued')
+    )
+    ORDER BY CAST(item.key AS INTEGER)
+    ON CONFLICT(snapshot_date,track_id) DO UPDATE SET
+      run_token=excluded.run_token,
+      album_id=CASE
+        WHEN sh_spotify_playcount_candidates.run_token=excluded.run_token
+          AND sh_spotify_playcount_candidates.playcount>excluded.playcount
+        THEN sh_spotify_playcount_candidates.album_id ELSE excluded.album_id END,
+      playcount=CASE
+        WHEN sh_spotify_playcount_candidates.run_token=excluded.run_token
+        THEN MAX(sh_spotify_playcount_candidates.playcount,excluded.playcount)
+        ELSE excluded.playcount END,
+      collected_at=CASE
+        WHEN sh_spotify_playcount_candidates.run_token=excluded.run_token
+          AND sh_spotify_playcount_candidates.playcount>excluded.playcount
+        THEN sh_spotify_playcount_candidates.collected_at
+        WHEN sh_spotify_playcount_candidates.run_token=excluded.run_token
+          AND sh_spotify_playcount_candidates.playcount=excluded.playcount
+        THEN MAX(sh_spotify_playcount_candidates.collected_at,excluded.collected_at)
+        ELSE excluded.collected_at END
+    WHERE (sh_spotify_playcount_candidates.run_token IS NOT excluded.run_token
+      OR excluded.playcount>sh_spotify_playcount_candidates.playcount
+      OR (excluded.playcount=sh_spotify_playcount_candidates.playcount AND (
+        sh_spotify_playcount_candidates.album_id IS NOT excluded.album_id
+        OR excluded.collected_at>sh_spotify_playcount_candidates.collected_at
+      )))`)
+    .bind(message.snapshot_date, message.run_token, message.album_id,
+      collectedAt, values, message.snapshot_date, message.run_token);
+}
+
 async function persistCandidateTracks(db, message, tracks, collectedAt) {
   const resolvedTracks = await resolveCanonicalSpotifyTracks(db, tracks, collectedAt);
   const writes = [];
-  for (const track of resolvedTracks) {
-    if (!track.identity_cached) {
-      writes.push(
-        db.prepare(`INSERT OR IGNORE INTO sh_spotify_tracks (
-            track_id,album_id,name,disc_number,track_number,duration_ms,artists_json,updated_at
-          ) VALUES (?,?,?,?,?,?,?,?)`)
-          .bind(track.track_id, message.album_id, track.name, track.disc_number,
-            track.track_number, track.duration_ms, track.artists_json, collectedAt),
-      );
+  for (let index = 0; index < resolvedTracks.length; index += SPOTIFY_CANDIDATE_CHUNK_SIZE) {
+    const group = resolvedTracks.slice(index, index + SPOTIFY_CANDIDATE_CHUNK_SIZE);
+    // Persist new track metadata before references to these tracks.
+    for (const track of group) {
+      if (!track.identity_cached) {
+        writes.push(
+          db.prepare(`INSERT OR IGNORE INTO sh_spotify_tracks (
+              track_id,album_id,name,disc_number,track_number,duration_ms,artists_json,updated_at
+            ) VALUES (?,?,?,?,?,?,?,?)`)
+            .bind(track.track_id, message.album_id, track.name, track.disc_number,
+              track.track_number, track.duration_ms, track.artists_json, collectedAt),
+        );
+      }
     }
-    writes.push(
-      db.prepare(`INSERT INTO sh_spotify_playcount_candidates (
-          snapshot_date,run_token,track_id,album_id,playcount,collected_at
-        ) SELECT ?,?,?,?,?,? WHERE EXISTS (
-          SELECT 1 FROM sh_spotify_collection_runs
-          WHERE snapshot_date=? AND run_token=? AND status IN ('catalog','queued')
-        ) ON CONFLICT(snapshot_date,track_id) DO UPDATE SET
-          run_token=excluded.run_token,
-          album_id=CASE
-            WHEN sh_spotify_playcount_candidates.run_token=excluded.run_token
-              AND sh_spotify_playcount_candidates.playcount>excluded.playcount
-            THEN sh_spotify_playcount_candidates.album_id ELSE excluded.album_id END,
-          playcount=CASE
-            WHEN sh_spotify_playcount_candidates.run_token=excluded.run_token
-            THEN MAX(sh_spotify_playcount_candidates.playcount,excluded.playcount)
-            ELSE excluded.playcount END,
-          collected_at=CASE
-            WHEN sh_spotify_playcount_candidates.run_token=excluded.run_token
-              AND sh_spotify_playcount_candidates.playcount>excluded.playcount
-            THEN sh_spotify_playcount_candidates.collected_at
-            WHEN sh_spotify_playcount_candidates.run_token=excluded.run_token
-              AND sh_spotify_playcount_candidates.playcount=excluded.playcount
-            THEN MAX(sh_spotify_playcount_candidates.collected_at,excluded.collected_at)
-            ELSE excluded.collected_at END
-        -- The INSERT SELECT already gates on the active run. Rechecking it
-        -- on the conflict path is redundant within the same SQL statement.
-        WHERE (sh_spotify_playcount_candidates.run_token IS NOT excluded.run_token
-          OR excluded.playcount>sh_spotify_playcount_candidates.playcount
-          OR (excluded.playcount=sh_spotify_playcount_candidates.playcount AND (
-            sh_spotify_playcount_candidates.album_id IS NOT excluded.album_id
-            OR excluded.collected_at>sh_spotify_playcount_candidates.collected_at
-          )))`)
-        .bind(
-          message.snapshot_date, message.run_token, track.track_id, message.album_id,
-          track.playcount, collectedAt, message.snapshot_date, message.run_token,
-        ),
-    );
-    for (const artistKey of track.target_keys) {
-      writes.push(db.prepare(`INSERT OR IGNORE INTO sh_spotify_track_targets (track_id,artist_key) VALUES (?,?)`)
-        .bind(track.track_id, artistKey));
+    writes.push(spotifyCandidateBatchStatement(db, message, group, collectedAt));
+    for (const track of group) {
+      for (const artistKey of track.target_keys) {
+        writes.push(db.prepare(`INSERT OR IGNORE INTO sh_spotify_track_targets (track_id,artist_key) VALUES (?,?)`)
+          .bind(track.track_id, artistKey));
+      }
     }
   }
   await batchStatements(db, writes);
