@@ -1,4 +1,4 @@
-import { checkpointTrackStatement, TRACK_SEEN_CHECKPOINT_MS } from './minute-track-write-statements.js';
+import { aliasObservationIsFresh, checkpointTrackStatement, TRACK_SEEN_CHECKPOINT_MS } from './minute-track-write-statements.js';
 import { queueRevisionItemStatement } from './minute-facts-normalize.js';
 import { countQueueRevisionItems, loadQueueRevisionPositions, resolveMissingQueueRevisionTracks } from './minute-queue-revision-progress.js';
 import { findReusableQueueRevision } from './minute-queue-revision-lookup.js';
@@ -79,7 +79,9 @@ async function loadTrackMetadataFromDb(db, ids, metadata) {
 }
 
 async function loadTrackMetadata(db, fallbackDb, tracks) {
-  const ids = unique((tracks || []).map((track) => text(track?.spotify_id)));
+  const ids = unique((tracks || [])
+    .filter((track) => !text(track?.title) || !text(track?.artist ?? track?.artist_name))
+    .map((track) => text(track?.spotify_id)));
   if (!ids.length) return new Map();
 
   const metadata = await loadTrackMetadataFromDb(db, ids, new Map());
@@ -92,7 +94,7 @@ async function loadTrackMetadata(db, fallbackDb, tracks) {
   return loadTrackMetadataFromDb(fallbackDb, incomplete, metadata);
 }
 
-async function loadAliasMap(db, descriptors) {
+async function loadAliasMap(db, descriptors, observations) {
   const groups = new Map();
   for (const descriptor of descriptors) {
     for (const alias of descriptor.aliases) {
@@ -105,10 +107,12 @@ async function loadAliasMap(db, descriptors) {
     const values = [...valuesSet];
     for (const part of chunks(values)) {
       const placeholders = part.map(() => '?').join(',');
-      const result = await db.prepare(`SELECT alias_type,alias_value,track_id FROM sh_track_aliases
+      const result = await db.prepare(`SELECT alias_type,alias_value,track_id,last_seen_at FROM sh_track_aliases
         WHERE alias_type=? AND alias_value IN (${placeholders})`).bind(type, ...part).all();
       for (const row of result.results || []) {
-        resultMap.set(aliasKey(row.alias_type, row.alias_value), Number(row.track_id));
+        const key = aliasKey(row.alias_type, row.alias_value);
+        resultMap.set(key, Number(row.track_id));
+        observations.set(key, row);
       }
     }
   }
@@ -162,7 +166,8 @@ export async function resolveTracksBulk(db, oldDb, tracks, observedAt, context =
     index,
   ));
 
-  const aliases = await timedStage('load_track_aliases', context, () => loadAliasMap(db, descriptors));
+  const observations = new Map();
+  const aliases = await timedStage('load_track_aliases', context, () => loadAliasMap(db, descriptors, observations));
   const emptyMap = new Map();
   assignKnownTrackIds(descriptors, { aliases, isrc: emptyMap, spotify: emptyMap, canonical: emptyMap });
   const withoutAliases = descriptors.filter((track) => track.trackId == null);
@@ -229,6 +234,7 @@ export async function resolveTracksBulk(db, oldDb, tracks, observedAt, context =
       const key = aliasKey(alias.type, alias.value);
       if (seenAliases.has(key)) continue;
       seenAliases.add(key);
+      if (aliasObservationIsFresh(observations.get(key), descriptor.trackId, observedAt)) continue;
       aliasStatements.push(db.prepare(`INSERT INTO sh_track_aliases(
           alias_type,alias_value,track_id,first_seen_at,last_seen_at
         ) VALUES(?,?,?,?,?) ON CONFLICT(alias_type,alias_value) DO UPDATE SET
