@@ -9,7 +9,10 @@ constexpr uint64_t kMaxTelemetrySequence = 9'007'199'254'740'990ULL;
 
 bool SensorHub::AppendOutbox(const Sample& sample) {
   std::lock_guard lock(mutex_);
-  const std::string line = SampleJson(sample) + "\n";
+  std::string line;
+  line.reserve(192);
+  AppendSampleJson(line, sample);
+  line.push_back('\n');
   HANDLE file = CreateFileW(outboxPath_.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ, nullptr,
                             OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
   if (file == INVALID_HANDLE_VALUE) return false;
