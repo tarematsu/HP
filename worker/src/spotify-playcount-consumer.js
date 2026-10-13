@@ -339,24 +339,9 @@ async function finalizeAttempt(db, message) {
       )`)
       .bind(message.snapshot_date),
     ...spotifyArtistDailyRefreshStatements(db, message.snapshot_date, now),
-    db.prepare(`INSERT INTO sh_spotify_playcount_current (
-        track_id,playcount,snapshot_date,collected_at
-      )
-      SELECT c.track_id,c.playcount,?,c.collected_at
-      FROM sh_spotify_playcount_candidates c
-      WHERE c.snapshot_date=? AND c.run_token=?
-      ON CONFLICT(track_id) DO UPDATE SET
-        playcount=excluded.playcount,snapshot_date=excluded.snapshot_date,collected_at=excluded.collected_at
-      WHERE excluded.snapshot_date>=sh_spotify_playcount_current.snapshot_date
-        AND (sh_spotify_playcount_current.playcount IS NOT excluded.playcount
-          OR sh_spotify_playcount_current.snapshot_date IS NOT excluded.snapshot_date
-          OR sh_spotify_playcount_current.collected_at IS NOT excluded.collected_at)`)
-      .bind(message.snapshot_date, message.snapshot_date, message.run_token),
-    db.prepare(`DELETE FROM sh_spotify_playcount_current
-      WHERE track_id IN (
-        SELECT source_track_id FROM sh_spotify_track_aliases
-        WHERE source_track_id<>canonical_track_id
-      )`),
+    // The canonical daily table is the sole latest-value source. The former
+    // sh_spotify_playcount_current copy had no production readers and doubled
+    // the per-track writes at every completed snapshot.
     db.prepare(`UPDATE sh_spotify_collection_runs
       SET status='complete',tracks_collected=?,errors=0,completed_at=?,updated_at=?,last_error=NULL
       WHERE snapshot_date=? AND run_token=? AND status='finalizing'`)

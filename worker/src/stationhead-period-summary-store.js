@@ -18,7 +18,10 @@ export async function upsertStationheadPeriodSummary(db, period, row) {
     VALUES(${COLUMNS.map(() => '?').join(',')})
     ON CONFLICT(period_key) DO UPDATE SET
       ${COLUMNS.slice(1).map(column => `${column}=excluded.${column}`).join(',\n      ')}
-    WHERE excluded.updated_at${table.condition}${table.name}.updated_at`;
+    WHERE excluded.updated_at${table.condition}${table.name}.updated_at
+      AND (
+        ${COLUMNS.slice(1, -1).map(column => `excluded.${column} IS NOT ${table.name}.${column}`).join('\n        OR ')}
+      )`;
   const values = COLUMNS.map(column => column === 'updated_at'
     ? row.updated_at ?? row.period_end : row[column]);
   await db.prepare(sql).bind(...values).run();
