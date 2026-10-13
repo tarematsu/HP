@@ -451,8 +451,7 @@ void App::Tick() {
       continue;
     }
     if (!stationheadPeers_[i]) continue;
-    if (StationheadNeedsForeground(peerStatuses[i]) ||
-        !peerStatuses[i].audioPlaying) {
+    if (peerNeedsFastTick[i]) {
       nextTickMs = std::min(nextTickMs, kFastTickMs);
     } else {
       nextTickMs = std::min(
