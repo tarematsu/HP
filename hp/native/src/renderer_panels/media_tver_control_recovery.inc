@@ -10,8 +10,17 @@ LR"JS(
     catch (_) {}
   };
   const wake = (delay = 80) => {
-    clearTimeout(state.wakeTimer);
-    state.wakeTimer = setTimeout(() => post('homepanel:tver-wake'), delay);
+    // DOM mutations may arrive in bursts. Keep the earliest pending wake
+    // rather than resetting the same timer on every unrelated mutation.
+    const dueAt = Date.now() + delay;
+    if (state.wakeTimer && state.wakeDueAt <= dueAt) return;
+    if (state.wakeTimer) clearTimeout(state.wakeTimer);
+    state.wakeDueAt = dueAt;
+    state.wakeTimer = setTimeout(() => {
+      state.wakeTimer = null;
+      state.wakeDueAt = 0;
+      post('homepanel:tver-wake');
+    }, delay);
   };
   const recheck = () => wake(2000);
   const now = Date.now();
@@ -254,9 +263,23 @@ LR"JS(
   const ad = () => {
     const length = duration();
     const shortMedia = length >= 5 && length <= 65;
-    // A short pre-roll is already classified as an ad. Do not traverse the
-    // player DOM to reconfirm it for every timeupdate.
     return shortMedia || explicitAd();
+  };
+  const adForProgress = key => {
+    // timeupdate may fire several times per second throughout a TVer episode.
+    // Keep the exact ad classifier but reuse its result for up to 1.5 seconds;
+    // native event/DOM wakes still run ad() immediately, and a new media
+    // source invalidates this cache on its very first timeupdate.
+    const checkedAt = Date.now();
+    if (state.progressAdVideo !== video || state.progressAdSource !== key ||
+        !state.progressAdCheckedAt || checkedAt < state.progressAdCheckedAt ||
+        checkedAt - state.progressAdCheckedAt >= 1500) {
+      state.progressAdVideo = video;
+      state.progressAdSource = key;
+      state.progressAdCheckedAt = checkedAt;
+      state.progressAdActive = ad();
+    }
+    return state.progressAdActive;
   };
 )JS" LR"JS(
 
@@ -420,8 +443,9 @@ LR"JS(
       if (event.type === 'timeupdate') {
         const at = currentTime();
         const delta = at - Number(state.programLastProgressTime || 0);
-        if (mediaKey() === state.programKey && !video.paused && !ad() &&
-            delta > 0 && delta <= 5) {
+        const key = mediaKey();
+        if (key === state.programKey && !video.paused &&
+            delta > 0 && delta <= 5 && !adForProgress(key)) {
           state.programPlayedSeconds += delta;
         }
         state.programLastProgressTime = at;
@@ -495,6 +519,10 @@ LR"JS(
   }
 
   const adActive = ad();
+  state.progressAdVideo = video;
+  state.progressAdSource = key;
+  state.progressAdCheckedAt = now;
+  state.progressAdActive = adActive;
   if (!adActive && key && !video.paused && !video.ended) {
     if (!state.programCandidateKey || state.programCandidateKey !== key) {
       state.programCandidateKey = key;

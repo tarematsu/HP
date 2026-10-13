@@ -14,7 +14,8 @@ function playerScenario(duration, controls = [], portalOptions = [], dialogs = [
   const messages = [];
   const stored = new Map();
   let handlers = new Map();
-  const player = { querySelectorAll: () => controls };
+  let playerQueries = 0;
+  const player = { querySelectorAll: () => { playerQueries++; return controls; } };
   let video = {
     isConnected: true, disabled: false, currentSrc: 'program-or-ad',
     duration, currentTime: 0, playbackRate: 1.75, defaultPlaybackRate: 1,
@@ -61,6 +62,7 @@ function playerScenario(duration, controls = [], portalOptions = [], dialogs = [
   });
   return {
     get video() { return video; }, messages, window, stored, submitButtons,
+    get playerQueries() { return playerQueries; },
     removeDialog: dialog => {
       const index = dialogs.indexOf(dialog);
       if (index !== -1) dialogs.splice(index, 1);
@@ -338,6 +340,25 @@ test('replacement video with the same source starts fresh program completion sta
   scene.ended();
   scene.run();
   assert.equal(scene.messages.includes('homepanel:tver-ended'), false);
+});
+
+test('regular TVer timeupdates reuse recent ad detection without losing played seconds', () => {
+  const scene = playerScenario(1800);
+  scene.run();
+  scene.video.currentTime = 2;
+  scene.advance(2000);
+  scene.run();
+  assert.equal(scene.window.__homePanelTverRuntime.programKey, 'program-or-ad');
+  const before = scene.playerQueries;
+  for (let i = 0; i < 20; i++) {
+    scene.advance(100);
+    scene.video.currentTime += 0.1;
+    scene.timeupdate();
+  }
+  assert.ok(scene.playerQueries - before <= 4,
+    'twenty timeupdates should run at most two full ad scans');
+  assert.ok(scene.window.__homePanelTverRuntime.programPlayedSeconds > 1,
+    'normal playback time must still accumulate');
 });
 
 test('healthy TVer recovery does not repeatedly write defaultPlaybackRate', () => {

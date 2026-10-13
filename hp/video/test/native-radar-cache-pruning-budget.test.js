@@ -7,6 +7,12 @@ const source = name => readFileSync(
 const radar = source('cloud_client_radar_cache.cpp');
 const cloud = source('cloud_client.h');
 
+test('cloud polling verifies the cached PNG header without allocating a vector', () => {
+  assert.match(radar, /bool HasPngSignature\(const uint8_t\* bytes, size_t size\) noexcept/);
+  assert.match(radar, /return HasPngSignature\(signature, sizeof\(signature\)\);/);
+  assert.doesNotMatch(radar, /const std::vector<uint8_t> bytes\(std::begin\(signature\)/);
+});
+
 test('native radar cache prunes periodically, without scanning the filesystem on every frame', () => {
   assert.match(cloud, /uint64_t lastRadarCachePruneTick_ = 0;/);
   assert.match(radar, /kRadarCachePruneIntervalMs = 30ULL \* 60ULL \* 1'000ULL/);

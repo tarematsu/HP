@@ -27,11 +27,15 @@ std::wstring RadarUtf8BytesToWide(const std::vector<uint8_t>& bytes) {
   return output;
 }
 
-bool HasPngSignature(const std::vector<uint8_t>& body) noexcept {
+bool HasPngSignature(const uint8_t* bytes, size_t size) noexcept {
   static constexpr uint8_t kPngSignature[] = {
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a};
-  return body.size() >= sizeof(kPngSignature) &&
-      std::memcmp(body.data(), kPngSignature, sizeof(kPngSignature)) == 0;
+  return size >= sizeof(kPngSignature) &&
+      std::memcmp(bytes, kPngSignature, sizeof(kPngSignature)) == 0;
+}
+
+bool HasPngSignature(const std::vector<uint8_t>& body) noexcept {
+  return HasPngSignature(body.data(), body.size());
 }
 
 bool HasPngSignature(const fs::path& path) noexcept {
@@ -43,8 +47,9 @@ bool HasPngSignature(const fs::path& path) noexcept {
     if (input.gcount() != static_cast<std::streamsize>(sizeof(signature))) {
       return false;
     }
-    const std::vector<uint8_t> bytes(std::begin(signature), std::end(signature));
-    return HasPngSignature(bytes);
+    // Synchronize() checks this cached image on every cloud poll. Do not
+    // allocate an eight-byte heap vector just to verify its PNG signature.
+    return HasPngSignature(signature, sizeof(signature));
   } catch (...) {
     return false;
   }

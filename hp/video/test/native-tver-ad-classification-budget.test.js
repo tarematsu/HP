@@ -51,8 +51,11 @@ test('healthy long-form TVer media skips geometry checks for unrelated controls'
   assert.equal(scene.counts.controls, 1);
   assert.equal(scene.counts.markers, 1);
   assert.equal(scene.counts.visibility, 0);
-  // This path is also reached from video timeupdate handlers.
-  assert.match(expanded, /event\.type === 'timeupdate'[\s\S]*?!ad\(\)/);
+  // High-frequency timeupdate reuses the recent exact classifier result,
+  // while the watchdog and episode-end paths still call ad() directly.
+  assert.match(expanded, /event\.type === 'timeupdate'[\s\S]*?!adForProgress\(key\)/);
+  assert.match(expanded, /checkedAt - state\.progressAdCheckedAt >= 1500/);
+  assert.match(expanded, /const adActive = ad\(\)/);
 });
 
 test('short TVer pre-roll is an ad without querying controls or layout', () => {
