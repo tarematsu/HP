@@ -63,19 +63,27 @@ export function spotifySongKey(track) {
   return `song:v2:${name}\u001f${artistIds.join(',')}`;
 }
 
+// Use a covering source-id index: both the alias identity and its freshness
+// timestamp are returned without a second table-body lookup.
+export function spotifyKnownAliasStatement(db, sourceTrackIds) {
+  if (!Array.isArray(sourceTrackIds) || !sourceTrackIds.length || sourceTrackIds.length > QUERY_CHUNK_SIZE) {
+    throw new RangeError('Spotify alias lookup requires 1-80 source track IDs');
+  }
+  const placeholders = sourceTrackIds.map(() => '?').join(',');
+  return db.prepare(`SELECT
+      source_track_id,song_key,canonical_track_id,last_seen_at
+    FROM sh_spotify_track_aliases INDEXED BY idx_sh_spotify_track_aliases_source_cover
+    WHERE source_track_id IN (${placeholders})`)
+    .bind(...sourceTrackIds);
+}
+
 async function readKnownAliases(db, keyedTracks) {
   const sourceTrackIds = [...new Set(keyedTracks
     .map(({ track }) => String(track?.track_id || '').trim())
     .filter(Boolean))];
   const aliasBySourceTrackId = new Map();
   for (const group of chunks(sourceTrackIds, QUERY_CHUNK_SIZE)) {
-    const placeholders = group.map(() => '?').join(',');
-    const result = await db.prepare(`SELECT
-        source_track_id,song_key,canonical_track_id,last_seen_at
-      FROM sh_spotify_track_aliases
-      WHERE source_track_id IN (${placeholders})`)
-      .bind(...group)
-      .all();
+    const result = await spotifyKnownAliasStatement(db, group).all();
     for (const row of rowsOf(result)) {
       aliasBySourceTrackId.set(String(row.source_track_id), {
         songKey: String(row.song_key || ''),
