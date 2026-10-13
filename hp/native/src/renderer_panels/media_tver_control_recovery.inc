@@ -69,13 +69,24 @@ LR"JS(
   }
 
   let questionnaire = null;
-  for (const dialog of document.querySelectorAll('[role="dialog"]')) {
-    if (dialog.querySelector('form[id^="questionnaire-"]') ||
-        /アンケート/.test(dialog.getAttribute('aria-label') || '') ||
-        /アンケート/.test(dialog.textContent || '')) {
-      questionnaire = dialog;
-      break;
+  // Media events arrive throughout normal playback. A global dialog query
+  // on every progress wake is wasted work, but a visible questionnaire needs
+  // uninterrupted input/retry and an interrupted player needs immediate checks.
+  const scanQuestionnaire = !video || video.paused || video.ended ||
+      state.questionnaireActive ||
+      !state.questionnaireCheckedAt || now < state.questionnaireCheckedAt ||
+      now - state.questionnaireCheckedAt >= 5 * 1000;
+  if (scanQuestionnaire) {
+    state.questionnaireCheckedAt = now;
+    for (const dialog of document.querySelectorAll('[role="dialog"]')) {
+      if (dialog.querySelector('form[id^="questionnaire-"]') ||
+          /アンケート/.test(dialog.getAttribute('aria-label') || '') ||
+          /アンケート/.test(dialog.textContent || '')) {
+        questionnaire = dialog;
+        break;
+      }
     }
+    state.questionnaireActive = Boolean(questionnaire);
   }
   if (questionnaire) {
     if (!state.mediaInitSent) {
