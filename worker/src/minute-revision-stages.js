@@ -1,3 +1,4 @@
+import { insertPendingQueueRevision } from './minute-queue-revision-insert.js';
 import {
   bool,
   integer,
@@ -101,22 +102,10 @@ export async function prepareLiveRevisionStage(env, payload, dependencies = {}) 
   });
 
   if (!revision) {
-    const insertRevision = dependencies.insertRevision || (async () => db.prepare(`INSERT OR IGNORE INTO sh_queue_revisions(
-        session_id,channel_id,station_id,queue_id,queue_start_time,effective_at,received_at,
-        structural_hash,item_count,status,source,source_priority
-      ) VALUES(?,?,?,?,?,?,?,?,?,'pending','live_collector',100)`)
-      .bind(
-        sessionId,
-        channelId,
-        stationId,
-        integer(queue.queue_id),
-        queueStart,
-        observedAt,
-        receivedAt,
-        structuralHash,
-        totalCount,
-      )
-      .run());
+    const insertRevision = dependencies.insertRevision || (async () => insertPendingQueueRevision(db, {
+        sessionId, channelId, stationId, queueId: integer(queue?.queue_id),
+        queueStart, observedAt, receivedAt, structuralHash, itemCount: totalCount,
+      }));
     await insertRevision();
     revision = await findRevision(db, {
       channelId,
