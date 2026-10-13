@@ -168,8 +168,14 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
   {
     std::lock_guard lock(pendingExchangeMutex_);
     pendingExchangeBundlePath_ = std::move(bundlePath);
-    pendingExchangeRadar_.assign(exchange.body.begin() + jsonEnd, exchange.body.end());
-    if (pendingExchangeBundlePath_.empty()) pendingExchangeRadar_.clear();
+    // The normal exchange often has no radar bundle URL. Do not allocate
+    // and copy trailing response bytes merely to clear them immediately.
+    // A valid bundle URL still retains its binary tail for the later GET.
+    if (pendingExchangeBundlePath_.empty() || jsonEnd == exchange.body.size()) {
+      pendingExchangeRadar_.clear();
+    } else {
+      pendingExchangeRadar_.assign(exchange.body.begin() + jsonEnd, exchange.body.end());
+    }
   }
 
   if (telemetry && root.HasKey(L"telemetry") &&
