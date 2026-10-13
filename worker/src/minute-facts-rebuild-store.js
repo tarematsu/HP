@@ -1,3 +1,4 @@
+import { insertPendingQueueRevision } from './minute-queue-revision-insert.js';
 import { saveMinuteFactWithinBudget } from './minute-facts-write-budget.js';
 import {
   missingRevisionPositions,
@@ -81,23 +82,13 @@ async function createRebuildRevision(db, sourceDb, input) {
   if (revision?.status === 'complete') return Number(revision.id);
 
   if (!revision) {
-    await db.prepare(`INSERT OR IGNORE INTO sh_queue_revisions(
-        session_id,channel_id,station_id,queue_id,queue_start_time,effective_at,received_at,
-        structural_hash,item_count,status,source,source_priority
-      ) VALUES(?,?,?,?,?,?,?,?,?,'pending','live_reconstructed',?)`)
-      .bind(
-        input.sessionId,
-        input.channelId,
-        input.stationId,
-        integer(input.queue?.queue_id),
-        queueStart,
-        input.observedAt,
-        input.receivedAt,
-        structuralHash,
-        payload.tracks.length,
-        input.sourcePriority,
-      )
-      .run();
+    await insertPendingQueueRevision(db, {
+        sessionId: input.sessionId, channelId: input.channelId,
+        stationId: input.stationId, queueId: integer(input.queue?.queue_id),
+        queueStart, observedAt: input.observedAt, receivedAt: input.receivedAt,
+        structuralHash, itemCount: payload.tracks.length,
+        source: 'live_reconstructed', sourcePriority: input.sourcePriority,
+      });
     revision = await db.prepare(`SELECT id,status,item_count,session_id FROM sh_queue_revisions
       WHERE channel_id=? AND effective_at=? AND structural_hash=?`)
       .bind(input.channelId, input.observedAt, structuralHash)
