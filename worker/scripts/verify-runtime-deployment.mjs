@@ -2,10 +2,13 @@ const API_BASE = 'https://api.cloudflare.com/client/v4';
 const DEFAULT_ATTEMPTS = 30;
 const DEFAULT_DELAY_MS = 2_000;
 const LIVE_JOB_COORDINATOR_BINDING = 'MINUTE_LIVE_JOB_COORDINATOR';
+const PAGES_HISTORY_COORDINATOR_BINDING = 'PAGES_HISTORY_API_COORDINATOR';
+const ACTIVE_DO_BINDINGS = new Set([LIVE_JOB_COORDINATOR_BINDING, PAGES_HISTORY_COORDINATOR_BINDING]);
 const RUNTIME_MIGRATIONS = Object.freeze([
   Object.freeze({ tag: 'runtime-coordinator-v1', new_sqlite_classes: ['RuntimeCoordinator'] }),
   Object.freeze({ tag: 'runtime-coordinator-v2-retired', deleted_classes: ['RuntimeCoordinator'] }),
   Object.freeze({ tag: 'minute-live-job-coordinator-v1', new_sqlite_classes: ['MinuteLiveJobCoordinator'] }),
+  Object.freeze({ tag: 'pages-history-api-coordinator-v1', new_sqlite_classes: ['PagesHistoryApiCoordinator'] }),
 ]);
 
 function required(value, name) {
@@ -38,7 +41,7 @@ export function queueOnlyRuntimeDeployConfig(value = {}) {
   const config = structuredClone(value || {});
   config.triggers = { crons: [] };
   const bindings = (config.durable_objects?.bindings || [])
-    .filter((binding) => binding?.name === LIVE_JOB_COORDINATOR_BINDING);
+    .filter((binding) => ACTIVE_DO_BINDINGS.has(binding?.name));
   if (bindings.length) config.durable_objects = { bindings };
   else delete config.durable_objects;
   config.migrations = structuredClone(RUNTIME_MIGRATIONS);
@@ -144,12 +147,14 @@ export async function verifyRuntimeDeployment(options = {}) {
   const settings = await requestJson(`/workers/scripts/${encodedScript}/settings`, options);
   const durableObjectBindings = durableObjectBindingsFromPayload(settings);
   const names = durableObjectBindings.map((item) => String(item?.name || '')).filter(Boolean);
-  const unexpected = names.filter((name) => name !== LIVE_JOB_COORDINATOR_BINDING);
+  const unexpected = names.filter((name) => !ACTIVE_DO_BINDINGS.has(name));
   if (unexpected.length) {
     throw new Error(`runtime deployment has unexpected Durable Object bindings: ${unexpected.join(',')}`);
   }
-  if (!names.includes(LIVE_JOB_COORDINATOR_BINDING)) {
-    throw new Error(`runtime deployment is missing Durable Object binding: ${LIVE_JOB_COORDINATOR_BINDING}`);
+  for (const binding of ACTIVE_DO_BINDINGS) {
+    if (!names.includes(binding)) {
+      throw new Error(`runtime deployment is missing Durable Object binding: ${binding}`);
+    }
   }
 
   return {
@@ -158,11 +163,12 @@ export async function verifyRuntimeDeployment(options = {}) {
     active_version_ids: [...activeVersionIds].sort(),
     version_changed: changed,
     cron_triggers: 0,
-    durable_object_bindings: 1,
+    durable_object_bindings: ACTIVE_DO_BINDINGS.size,
   };
 }
 
 export const RUNTIME_DEPLOYMENT_CONTRACT = Object.freeze({
   live_job_coordinator_binding: LIVE_JOB_COORDINATOR_BINDING,
+  pages_history_api_coordinator_binding: PAGES_HISTORY_COORDINATOR_BINDING,
   migrations: RUNTIME_MIGRATIONS,
 });
