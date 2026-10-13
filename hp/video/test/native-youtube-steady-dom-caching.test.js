@@ -26,6 +26,7 @@ class MockObserver {
 function makeNode(kind = 'other', children = [], parent = null) {
   const node = {
     nodeType: 1, kind, isConnected: true, parentElement: parent, children,
+    firstElementChild: children[0] || null,
     matches: selector => kind === 'dialog' && selector.includes('[role="dialog"]'),
     closest: selector => {
       for (let p = node; p; p = p.parentElement) {
@@ -94,7 +95,7 @@ test('stable YouTube playback reuses its video node until SPA refresh or detach'
   assert.equal(bindVideo(), first);
   assert.deepEqual({ queries, attached, wakes, aborted },
     { queries: 4, attached: 24, wakes: 4, aborted: 3 });
-  assert.match(runtime, /const pageState = \(\) => \{\s*bindVideo\(true\)/);
+  assert.match(runtime, /const pageState = \(\) => \{[\s\S]*queueMicrotask\(\(\) => \{[\s\S]*bindVideo\(true\)/);
 });
 
 test('popup observer ignores decorative nodes and wakes only for dialog changes', () => {
