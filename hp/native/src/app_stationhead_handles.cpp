@@ -136,8 +136,11 @@ void StationheadHandleBase::RefreshVisibility() {
     if (state.visible) player_->KeepPlaybackBehindDashboard();
     return;
   }
+  // App::ApplyStationheadWindowPlacement always calls SetBounds() before
+  // RefreshVisibility(). SetBounds already performs the geometry/z-order
+  // repair, and SelectTab handles any visibility transition. A second
+  // ApplyBounds here repeats a full six-window layout for no new state.
   player_->SelectTab(StationheadTabKind::None);
-  ApplyBounds();
 }
 
 void StationheadHandleBase::Start() {
