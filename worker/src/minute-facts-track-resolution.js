@@ -1,3 +1,4 @@
+import { loadQueueRevisionPositions } from './minute-queue-revision-progress.js';
 import { findReusableQueueRevision } from './minute-queue-revision-lookup.js';
 import { insertPendingQueueRevision } from './minute-queue-revision-insert.js';
 import {
@@ -288,9 +289,7 @@ export async function createOptimizedRevision(db, oldDb, input) {
   if (!Number.isFinite(revisionId)) throw new Error('failed to create or resume queue revision');
   context.revisionId = revisionId;
 
-  const existingResult = await timedStage('load_revision_progress', context, () => db.prepare(
-    'SELECT position FROM sh_queue_revision_items WHERE revision_id=?',
-  ).bind(revisionId).all());
+  const existingResult = await timedStage('load_revision_progress', context, () => loadQueueRevisionPositions(db, revisionId));
   const existingRows = existingResult.results || [];
   const resolved = await resolveTracksBulk(db, oldDb, payload.tracks, observedAt, context);
   let offset = 0;
