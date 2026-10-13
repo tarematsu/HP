@@ -15,7 +15,10 @@ test('event-driven generation publishes its in-memory model without DDL or point
             ranking_date: '2026-10-05', host_name: 'sakuramankai', rank: 1,
           }] : [] };
         },
-        first() { throw new Error('unnecessary pointer read'); },
+        first() {
+          if (sql.includes('MAX(ranking_date) AS latest_ranking_date')) return { latest_ranking_date: '2026-10-12' };
+          throw new Error('unnecessary pointer read');
+        },
         run() { throw new Error('unnecessary schema write'); },
       };
       return statement;
@@ -27,7 +30,8 @@ test('event-driven generation publishes its in-memory model without DDL or point
   });
   assert.equal(result.status, 'materialized');
   assert.equal(result.model.actual_rows[0].rank, 1);
-  assert.equal(queries.filter(sql => /^SELECT/.test(sql)).length, 3);
+  assert.equal(queries.filter(sql => /^SELECT/.test(sql)).length, 4);
+  assert.equal(result.model.source_max_ranking_date, '2026-10-12');
   assert.ok(!queries.some(sql => /CREATE TABLE/.test(sql)));
   const stored = writes.filter(s => s.args?.length === 4).map(s => s.args[2]).join('');
   assert.deepEqual(JSON.parse(stored), result.model);

@@ -84,6 +84,7 @@ export function normalizeStationheadLeaderboard(payload = {}) {
   const rows = timelineRows.filter((row) => row.rank_status !== '欠測' && row.rank_status !== '圏外');
   const sourceWeek = String(payload?.source_max_ranking_date || '');
   const isStale = /^\d{4}-\d{2}-\d{2}$/.test(sourceWeek) && sourceWeek < currentJstRankingWeek();
+  const latestRankedWeek = rows[0]?.period || '';
   const chartHosts = (Array.isArray(payload?.chart_hosts) && payload.chart_hosts.length
     ? payload.chart_hosts
     : STATIONHEAD_FEATURED)
@@ -121,8 +122,11 @@ export function normalizeStationheadLeaderboard(payload = {}) {
     series,
     missing_ranges: STATIONHEAD_MISSING_RANGES,
     notice: isStale
-      ? `今週のリーダーボードは未反映です（公開データの最新週: ${sourceWeek}）。`
-      : rows.length ? '' : 'リーダーボードデータはまだありません。',
+      ? `今週分の収集・公開を確認できません（収集済み最新週: ${sourceWeek}）。`
+      : !rows.length ? 'リーダーボードデータはまだありません。'
+        : sourceWeek && latestRankedWeek && latestRankedWeek < sourceWeek
+          ? `収集済み最新週: ${sourceWeek}。対象ホストの最終ランクイン週: ${latestRankedWeek}。`
+          : '',
   };
 }
 

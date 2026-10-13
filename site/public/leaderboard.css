@@ -36,3 +36,62 @@
     overflow-wrap: anywhere;
   }
 }
+
+/* Keep the native desktop table; cards avoid table intrinsic-width overflow on phones. */
+.leaderboard-mobile-list {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  .leaderboard-view .table-wrap.table-fit-mobile {
+    display: none;
+  }
+
+  .leaderboard-mobile-list {
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    gap: 0;
+  }
+
+  .leaderboard-mobile-card {
+    display: grid;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 12px;
+    row-gap: 8px;
+    padding: 12px 2px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .leaderboard-mobile-field {
+    display: block;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    line-height: 1.35;
+  }
+
+  .leaderboard-mobile-label {
+    display: block;
+    color: var(--muted);
+    font-size: var(--dashboard-small-size);
+    margin-bottom: 3px;
+  }
+
+  .leaderboard-mobile-value {
+    display: block;
+    font-size: var(--dashboard-copy-size);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .leaderboard-mobile-field[data-key="rank"] {
+    text-align: right;
+  }
+
+  .leaderboard-mobile-field[data-key="host"] .leaderboard-mobile-value {
+    font-weight: 700;
+  }
+}

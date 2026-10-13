@@ -29,7 +29,7 @@ mountDashboardShell({
     position: 'afterend',
     html: `
       ${meta}
-      <h2 id="leaderboardPageTitle" class="dashboard-view-title">Weekly Leaderboad</h2>
+      <h2 id="leaderboardPageTitle" class="dashboard-view-title">週間リーダーボード</h2>
       ${dashboardNotice({ id: 'leaderboardNotice' })}
       ${dashboardChartCard({
         id: 'leaderboardChartPanel',
@@ -46,7 +46,7 @@ mountDashboardShell({
         title: '過去ランクイン一覧',
         titleId: 'leaderboardTableTitle',
         kicker: 'DATA',
-        bodyHtml: table,
+        bodyHtml: `${table}<div id="leaderboardMobileList" class="leaderboard-mobile-list"></div>`,
       })}`,
   },
 });

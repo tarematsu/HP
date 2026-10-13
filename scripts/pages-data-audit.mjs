@@ -23,6 +23,22 @@ export function missingRecentDays(dates, now, lookback = 7) {
   return missing;
 }
 
+// The weekly leaderboard is published on Monday night (21:17 JST).
+// Allow three hours for collection and publication before calling the source stale.
+export function leaderboardSourceIssues(payload, now = Date.now()) {
+  if (payload?.setup_required) return ['leaderboard read model is unavailable'];
+  const latest = String(payload?.source_max_ranking_date || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(latest)) return ['leaderboard source week is missing'];
+  const jst = new Date(now + 9 * HOUR);
+  jst.setUTCHours(0, 0, 0, 0);
+  jst.setUTCDate(jst.getUTCDate() - ((jst.getUTCDay() + 6) % 7));
+  const expected = jst.toISOString().slice(0, 10);
+  const deadline = Date.parse(`${expected}T12:17:00Z`) + 3 * HOUR;
+  return now >= deadline && latest < expected
+    ? [`leaderboard collection not confirmed for ${expected} (latest imported week: ${latest})`]
+    : [];
+}
+
 export async function auditPagesData(getJson, now = Date.now()) {
   const checks = [];
   const check = async (name, path, inspect) => {
@@ -41,6 +57,7 @@ export async function auditPagesData(getJson, now = Date.now()) {
     tasks.push(check(`${source}:daily`, historyPath, (p) => missingRecentDays((p.rows || p.daily || []).map((r) => r.period_key), now).map((d) => `completed UTC day missing: ${d}`)));
     tasks.push(check(`${source}:played-dates`, `/api/track-history?source=${source}&dates_only=1`, (p) => missingRecentDays(p.dates, now).map((d) => `playback UTC day missing: ${d}`)));
   }
+  tasks.push(check('stationhead:leaderboard', `/api/history?mode=ranking&from=2024-06-01&to=${dayKey(now)}&scope=featured&limit=5000`, (p) => leaderboardSourceIssues(p, now)));
   tasks.push(check('amazon', '/api/amazon-music', (p) => [timestampIssue(p.observed_at, now, 36 * HOUR), p.scan?.complete !== true ? 'published Amazon scan is incomplete' : null, !p.tracks?.length ? 'Amazon track model is empty' : null]));
   tasks.push(check('apple', '/api/apple-music', (p) => {
     const artists = Array.isArray(p.artists) && p.artists.length ? p.artists : [p];

@@ -3,7 +3,7 @@ import {
   stationheadRankingHostKey as hostKey,
 } from '../../packages/sh-shared/stationhead-ranking-hosts.mjs';
 const DAY_MS = 86_400_000;
-export const WEEKLY_RANKING_MODEL_VERSION = 3;
+export const WEEKLY_RANKING_MODEL_VERSION = 4;
 const MODEL_VERSION = WEEKLY_RANKING_MODEL_VERSION;
 const CHUNK_STORAGE = 'chunked-json-v1';
 // D1 limits each SQL statement to 100,000 bytes. Keep source chunks well below
@@ -131,9 +131,12 @@ function completeTimeline(actualRows, rankingWeeks) {
   return completed;
 }
 
-export function buildWeeklyRankingReadModel(rankingRows, fandomRows, weeklyRows, refreshedAt = Date.now()) {
+export function buildWeeklyRankingReadModel(rankingRows, fandomRows, weeklyRows, refreshedAt = Date.now(), latestImportedWeek = null) {
   const actualRows = decorateRows((rankingRows || []).map((row) => ({ ...row })), fandomRows);
-  const rankingWeeks = expandWeeklyDates(actualRows.map((row) => row.ranking_date));
+  // Source freshness must reflect the full imported Top 100, even when no featured host ranked.
+  const sourceWeeks = actualRows.map((row) => row.ranking_date);
+  if (validDate(latestImportedWeek)) sourceWeeks.push(latestImportedWeek);
+  const rankingWeeks = expandWeeklyDates(sourceWeeks);
   const completedRows = completeTimeline(actualRows, rankingWeeks);
   return {
     version: MODEL_VERSION,
@@ -219,7 +222,7 @@ async function runWriteScript(db, statements) {
 
 export async function materializeWeeklyRankingReadModel(db, now = Date.now(), { force = false, initialize = true, includeModel = false } = {}) {
   if (initialize) await ensureReadModelTable(db);
-  const [rankingResult, fandomResult, weeklyResult, existing] = await Promise.all([
+  const [rankingResult, fandomResult, weeklyResult, latestResult, existing] = await Promise.all([
     db.prepare(`SELECT ranking_date,observed_at,ranking_type,rank,
       channel_name AS host_name,channel_alias AS host_alias,
       source_sheet,quality_score,quality_flags
@@ -234,6 +237,8 @@ export async function materializeWeeklyRankingReadModel(db, now = Date.now(), { 
       member_start,member_end,member_growth,likes_max,distinct_tracks,primary_host,
       quality_score,quality_flags
       FROM sh_weekly_summary ORDER BY period_key ASC`).all(),
+    db.prepare(`SELECT MAX(ranking_date) AS latest_ranking_date
+      FROM sh_channel_rankings WHERE ranking_type='週間リーダーボード'`).first(),
     force ? null : db.prepare('SELECT source_max_ranking_date,payload_json,refreshed_at FROM sh_weekly_ranking_read_model WHERE id=1').first(),
   ]);
 
@@ -242,6 +247,7 @@ export async function materializeWeeklyRankingReadModel(db, now = Date.now(), { 
     fandomResult.results || [],
     weeklyResult.results || [],
     now,
+    String(latestResult?.latest_ranking_date || ''),
   );
   if (!force && await existingModelIsComplete(db, existing, model.source_max_ranking_date)) {
     return {
