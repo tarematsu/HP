@@ -46,7 +46,7 @@ mountDashboardShell({
         title: '過去ランクイン一覧',
         titleId: 'leaderboardTableTitle',
         kicker: 'DATA',
-        bodyHtml: table,
+        bodyHtml: `${table}<div id="leaderboardMobileList" class="leaderboard-mobile-list"></div>`,
       })}`,
   },
 });
