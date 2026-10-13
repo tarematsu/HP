@@ -107,6 +107,9 @@ class CloudClient {
     int version = -1;
     bool valid = false;
   } deviceConfigValidatedStamp_;
+  // Radar payloads may update every few minutes. Full recursive cache
+  // cleanup is periodic; tile reads and cache misses remain immediate.
+  uint64_t lastRadarCachePruneTick_ = 0;
   bool cacheMetadataDirty_ = false;
   bool presenceFallbackActive_ = false;
 };
