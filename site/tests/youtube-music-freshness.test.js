@@ -15,6 +15,7 @@ function render(payload, now) {
     setNotice: (...args) => notices.push(args),
     musicDateTimeText: value => String(value || '-'),
     replaceMusicTableBody: () => null,
+    renderMusicBarComparison: () => {},
   });
   return { texts, notices };
 }

@@ -1,3 +1,5 @@
+import { renderMusicBarComparison } from './music-service-bar-chart.js';
+import { observeDashboardChartResize } from './dashboard-chart-runtime.js';
 import {
   appendEmptyTableRow,
   byId,
@@ -13,6 +15,7 @@ import {
   replaceMusicTableBody,
 } from './music-service-runtime-common.js?v=20261004.2';
 
+let latestPayload = null;
 const SERVICE = 'youtube_music';
 
 function optionalText(value) {
@@ -115,6 +118,7 @@ function renderPlaylists(items, memberships, tracks) {
 }
 
 function render(payload) {
+  latestPayload = payload;
   const state = (payload.services || []).find((item) => item.service === SERVICE) || null;
   const artists = (payload.artists || []).filter((item) => item.service === SERVICE);
   const tracks = (payload.tracks || []).filter((item) => item.service === SERVICE);
@@ -137,6 +141,19 @@ function render(payload) {
   }
 
   renderArtists(artists);
+  const label = item => MUSIC_ARTIST_LABELS[item.canonical_artist] || item.display_name || '-';
+  renderMusicBarComparison('youtubeAudienceChart', artists.map(item => ({ name: label(item), value: item.monthly_audience })), '月間視聴者');
+  renderMusicBarComparison('youtubeSubscribersChart', artists.map(item => ({ name: label(item), value: item.followers })), '登録者');
+  const subscribers = replaceMusicTableBody('youtubeSubscribersBody');
+  if (subscribers) {
+    for (const item of artists) appendTableRow(subscribers, [label(item), musicValueText(item.followers)]);
+    if (!artists.length) appendEmptyTableRow(subscribers, 'アーティストデータがありません。', 2);
+  }
+  renderMusicBarComparison('youtubePlaysChart', [...tracks].sort((a, b) => Number(b.plays || 0) - Number(a.plays || 0)).map(item => ({ name: item.title, value: item.plays })), '楽曲再生数');
+  renderMusicBarComparison('youtubeReleaseChart', artists.map(item => ({ name: label(item), value: releases.filter(release => release.canonical_artist === item.canonical_artist).length })), '作品数');
+  const playlistCounts = new Map();
+  for (const member of memberships) playlistCounts.set(member.service_playlist_id, (playlistCounts.get(member.service_playlist_id) || 0) + 1);
+  renderMusicBarComparison('youtubePlaylistChart', playlists.map(item => ({ name: item.playlist_name, value: playlistCounts.get(item.service_playlist_id) || 0 })), '対象曲数');
   renderReleases(releases);
   renderTracks(tracks);
   renderPlaylists(playlists, memberships, tracks);
@@ -153,3 +170,4 @@ export async function loadYoutubeMusicView() {
     }
   }
 }
+if (typeof document !== 'undefined') observeDashboardChartResize(byId('youtubeMusicView'), () => { if (latestPayload) render(latestPayload); }, { enabled: () => Boolean(latestPayload) });

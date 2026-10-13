@@ -14,7 +14,7 @@ const popularityTable = musicServiceTable({
 
 const rankingSections = [
   {
-    chartSectionId: 'qqJapanChartSection',
+    chartSectionId: 'qqJapanChartSection', group: 'japan',
     historySectionId: 'qqJapanHistorySection',
     chartTitle: 'QQ音乐 日本榜 グループ別最高順位推移',
     historyTitle: 'QQ音乐 日本榜 ランクイン履歴',
@@ -24,7 +24,7 @@ const rankingSections = [
     filterAriaLabel: 'QQ音乐 日本榜 表示グループ',
   },
   {
-    chartSectionId: 'qqAnimeChartSection',
+    chartSectionId: 'qqAnimeChartSection', group: 'anime',
     historySectionId: 'qqAnimeHistorySection',
     chartTitle: 'QQ音乐 动漫音乐榜 グループ別最高順位推移',
     historyTitle: 'QQ音乐 动漫音乐榜 ランクイン履歴',
@@ -41,6 +41,7 @@ const rankingSections = [
 mountMusicServiceView({
   viewId: 'qqMusicView',
   className: 'qq-music-view',
+  groupLabels: { japan: '日本榜', anime: 'アニメ榜', popular: '人気曲' },
   noticeId: 'qqMusicNotice',
   meta: {
     valueId: 'qqMusicUpdatedAt',
@@ -50,9 +51,9 @@ mountMusicServiceView({
     ...rankingSections,
     musicServiceSection({
       id: 'qqArtistPopularitySection',
-      group: 'list',
+      group: 'popular',
       title: 'QQ音乐 アーティスト別人気曲順位',
-      bodyHtml: popularityTable,
+      bodyHtml: '<div id="qqPopularityChart"></div>' + popularityTable,
     }),
   ],
 });

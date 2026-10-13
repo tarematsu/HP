@@ -10,9 +10,9 @@ test('KKBOX owns its chart history layout as a first-class music service', () =>
   assert.match(shell, /KKBOX 日語チャート グループ別最高順位推移/);
   assert.match(shell, /kkboxJapaneseRankChart/);
   assert.match(shell, /kkboxJapaneseRankLegend/);
-  assert.match(shell, /dataAttribute: 'kkbox-territory-filter'/);
+  assert.match(shell, /dataAttribute: 'kkbox-series-filter'/);
   assert.match(shell, /dataAttribute: 'kkbox-period-filter'/);
-  assert.match(shell, /dataAttribute: 'kkbox-chart-filter'/);
+  for (const label of ['台湾新曲', '香港新曲', '台湾楽曲', '香港楽曲']) assert.ok(shell.includes(label));
   assert.match(shell, /KKBOX 日語チャート ランクイン履歴/);
   assert.match(shell, /kkboxJapaneseHistoryBody/);
   assert.match(shell, /musicServiceRegionalChartPair/);

@@ -5,16 +5,16 @@ import test from 'node:test';
 import { spotifyAllTracksPayload } from '../public/spotify-all-tracks.js';
 
 const shell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
-const runtime = readFileSync(new URL('../public/spotify-all-tracks.js', import.meta.url), 'utf8');
+const runtime = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
 
 test('Spotify track list exposes an all-groups filter before the three Sakamichi buttons', () => {
   assert.match(shell, /value: 'all', label: 'すべて'/);
-  assert.match(shell, /value: 'sakurazaka46', label: '櫻坂46', active: true/);
+  assert.match(shell, /value: 'all', label: 'すべて', active: true/);
   assert.match(shell, /value: 'nogizaka46', label: '乃木坂46'/);
   assert.match(shell, /value: 'hinatazaka46', label: '日向坂46'/);
-  assert.match(shell, /installSpotifyAllTracksFilter\(\)/);
+  assert.match(runtime, /spotifyAllTracksPayload\(model\)/);
   assert.match(runtime, /loadSpotifyReadModel/);
-  assert.match(runtime, /坂道3グループの再生数一覧/);
+
 });
 
 test('all-groups payload merges the three latest lists, deduplicates canonical tracks, and ranks by delta', () => {

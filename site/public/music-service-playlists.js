@@ -1,3 +1,4 @@
+import { renderMusicBarComparison } from './music-service-bar-chart.js';
 import { loadDashboardJson } from './dashboard-data-client.js?v=20261005.2';
 import {
   appendEmptyTableRow,
@@ -187,6 +188,7 @@ function renderTable(service, config, payload) {
   const tracks = filteredTracks(service, config, payload)
     .filter((track) => Array.isArray(track.playlists) && track.playlists.length)
     .sort((a, b) => String(a.title).localeCompare(String(b.title), 'ja'));
+  renderMusicBarComparison(`${config.mountId}Chart`, tracks.map(track => ({ name: track.title, value: track.playlists.length })), 'プレイリスト掲載数');
   setMetric(config.playlistCountId, playlistSet(tracks).size);
   setMetric(config.trackCountId, tracks.length);
 
@@ -261,6 +263,13 @@ export async function loadMusicServicePlaylists(service, { force = false } = {})
   if (!config) throw new Error(`Unknown music service: ${service}`);
   if (config.defaultArtistKey && !selectedArtists.has(key)) selectedArtists.set(key, config.defaultArtistKey);
   bindArtistFilter(key, config);
+  const root = element(config.mountId)?.closest('.dashboard-view');
+  if (root && !root.dataset.playlistChartBound) {
+    root.dataset.playlistChartBound = '1';
+    root.addEventListener('music-service:group-change', () => {
+      if (payloads.has(key)) renderTable(key, config, payloads.get(key));
+    });
+  }
   if (!force && payloads.has(key)) {
     const payload = payloads.get(key);
     renderTable(key, config, payload);

@@ -106,12 +106,12 @@ test('Spotify detail UI switches the shared table between all three Sakamichi gr
 
   assert.match(shell, /musicServiceFilterTabs/);
   assert.match(commonShell, /dashboardModeTabs/);
-  assert.match(shell, /value: 'sakurazaka46', label: '櫻坂46', active: true/);
+  assert.match(shell, /value: 'all', label: 'すべて', active: true/);
   assert.match(shell, /value: 'nogizaka46', label: '乃木坂46'/);
   assert.match(shell, /value: 'hinatazaka46', label: '日向坂46'/);
   assert.match(shell, /dataAttribute: 'spotify-artist'/);
   assert.match(sharedUi, /data-\$\{attribute\}="\$\{item\.value\}"/);
-  assert.match(runtime, /let selectedArtistKey = 'sakurazaka46'/);
+  assert.match(runtime, /let selectedArtistKey = 'all'/);
   assert.match(runtime, /model\?\.groups\?\.\[selectedArtistKey\]/);
   assert.match(runtime, /selectedArtistKey = button\.dataset\.spotifyArtist/);
   assert.match(runtime, /`\$\{artistName\}の再生数一覧`/);

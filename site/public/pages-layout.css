@@ -553,3 +553,59 @@
 .dashboard-view { overflow-wrap: anywhere; }
 .chart-head > *, .chart-legend, .legend { min-width: 0; max-width: 100%; }
 .chart-legend > span, .legend > span { white-space: normal; overflow-wrap: anywhere; }
+
+/* One navy presentation contract for all Pages views. */
+body {
+  --text:#152033;
+  --muted:#4b5563;
+  --line:#cbd3de;
+  --accent:#17384f;
+  --accent-soft:#edf3f8;
+  --panel-2:#edf3f8;
+}
+#channelName, .section-head h2, .dashboard-view-title {
+  color:#101827;
+  opacity:1;
+  font-weight:700;
+}
+.section-head h2 { font-size:17px; line-height:1.45; }
+.dashboard-view { font-size:14px; line-height:1.5; }
+.dashboard-header .dashboard-section-tabs > button.active { background:var(--accent); color:#fff; }
+.metrics, .summary-cards {
+  background:var(--accent);
+  color:#fff;
+  padding:12px;
+  border-radius:8px;
+  border:0;
+}
+.metrics :is(span,strong,small), .summary-cards :is(span,strong) { color:#fff; }
+.metrics .metric, .summary-cards article { border-right-color:#627989; }
+.metrics .metric > span, .summary-cards article > span { color:#eef3f8; }
+.metrics .metric strong, .summary-cards strong { letter-spacing:0; }
+.music-service-view-tabs { display:flex; gap:4px; flex-wrap:wrap; }
+.music-service-view-tabs button { min-height:46px; flex:1 1 100px; white-space:normal; text-wrap:balance; }
+.music-service-view-tabs button.active { background:var(--panel-2); border-bottom:3px solid var(--accent); color:var(--text); font-weight:700; }
+.music-service-group { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:16px; align-items:start; }
+.music-service-group[hidden] { display:none!important; }
+.music-service-group > .music-service-section { min-width:0; }
+.music-service-section:only-child { grid-column:1/-1; }
+.dashboard-view :is(th,td) { color:var(--text); }
+.dashboard-view th { background:var(--panel-2); font-weight:650; }
+.dashboard-view tbody tr:nth-child(even) { background:#f8fafc; }
+.dashboard-view select { font-size:16px; color:var(--text); }
+.spotify-trend-name { color:var(--text); }
+.spotify-trend-latest { color:var(--text); font-weight:650; }
+@media (max-width:760px) {
+  .current-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .current-metrics .metric.featured { grid-column:1/-1; display:flex; align-items:baseline; justify-content:space-between; border-right:0; border-bottom:1px solid #627989; }
+  .current-metrics .metric.featured strong { font-size:36px; }
+  .music-service-group { grid-template-columns:minmax(0,1fr); }
+  .music-service-view-tabs button { flex-basis:70px; font-size:14px; }
+  .dashboard-function-tabs > button { white-space:normal; text-wrap:balance; }
+  .dashboard-view :is(.subtle,.notice,.chart-detail,.host) { font-size:13px; }
+  .table-wrap > table.spotify-table { min-width:0; table-layout:fixed; }
+  .spotify-table :is(th,td) { white-space:normal; overflow-wrap:anywhere; padding-inline:4px; font-size:13px; }
+  .spotify-table col.col-compact { width:9%; }
+  .spotify-table col.col-number { width:25%; }
+  .spotify-table col.col-delta { width:22%; }
+}

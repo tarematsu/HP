@@ -6,6 +6,7 @@ import {
   dashboardUpdateMeta,
   mountDashboardShell,
 } from './dashboard-ui-common.js?v=20261004.1';
+import { bindRovingTabs, syncRovingTabs } from './dashboard-roving-tabs.js';
 
 function joinClasses(...values) {
   return values.flat().filter(Boolean).join(' ');
@@ -84,17 +85,18 @@ export function musicServiceRankChart({ legendId, chartId }) {
 export function musicServiceRegionalChartPair({
   chartSectionId, historySectionId, chartTitle, historyTitle,
   chartId, legendId, historyBodyId, filterAttribute, filterAriaLabel,
-  dateLabel = '更新日', leadingChartHtml = '',
+  dateLabel = '更新日', leadingChartHtml = '', group = 'ranks',
 }) {
   return [
     musicServiceSection({
       id: chartSectionId,
+      group,
       title: chartTitle,
       bodyHtml: leadingChartHtml + musicServiceRankChart({ legendId, chartId }),
     }),
     musicServiceSection({
       id: historySectionId,
-      group: 'list',
+      group,
       title: historyTitle,
       trailingHtml: musicServiceSakamichiFilter({
         dataAttribute: filterAttribute,
@@ -135,6 +137,7 @@ export function mountMusicServiceView({
   noticeId = '',
   meta = null,
   sections = [],
+  groupLabels = {},
   beforeSectionsHtml = '',
   afterSectionsHtml = '',
   anchorId = 'likesView',
@@ -157,17 +160,17 @@ export function mountMusicServiceView({
     },
   });
   const root = document.getElementById(viewId);
-  if (root) bindServiceGroups(root);
+  if (root) bindServiceGroups(root, groupLabels);
 }
 
-function bindServiceGroups(root) {
+export function bindServiceGroups(root, labels = {}) {
   const sections = [...root.querySelectorAll('[data-service-group]')];
-  const groups = [...new Set(sections.map((section) => section.dataset.serviceGroup))];
+  const present = [...new Set(sections.map((section) => section.dataset.serviceGroup))];
+  const groups = [...Object.keys(labels).filter(group => present.includes(group)), ...present.filter(group => !(group in labels))];
   if (groups.length < 2) return;
   const nav = document.createElement('div');
   nav.className = 'mode-tabs music-service-view-tabs';
   nav.setAttribute('aria-label', '表示内容');
-  const labels = { overview: '概要', list: '一覧', playlists: 'プレイリスト' };
   // Group visibility must not overwrite runtime-owned empty/filter visibility.
   const panels = groups.map((group) => {
     const panel = document.createElement('div');
@@ -181,12 +184,14 @@ function bindServiceGroups(root) {
   let active = groups[0];
   function select(group) {
     active = group;
+    root.dataset.activeServiceGroup = group;
     for (const panel of panels) panel.hidden = panel.dataset.group !== group;
     for (const button of nav.querySelectorAll('button')) {
       const selected = button.dataset.serviceGroup === group;
       button.classList.toggle('active', selected);
       button.setAttribute('aria-pressed', String(selected));
     }
+    syncRovingTabs(nav);
     root.dispatchEvent(new CustomEvent('music-service:group-change', { detail: { group } }));
     window.dispatchEvent(new Event('resize'));
   }
@@ -201,4 +206,5 @@ function bindServiceGroups(root) {
   const meta = root.querySelector('.music-service-meta');
   if (meta) meta.after(nav); else root.prepend(nav);
   select(active);
+  bindRovingTabs(nav, button => select(button.dataset.serviceGroup));
 }

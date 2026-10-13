@@ -5,7 +5,7 @@ import {
 
 const rankingSections = [
   {
-    chartSectionId: 'kugouJapanChartSection',
+    chartSectionId: 'kugouJapanChartSection', group: 'japan',
     historySectionId: 'kugouJapanHistorySection',
     chartTitle: '酷狗音乐 日本榜 グループ別最高順位推移',
     historyTitle: '酷狗音乐 日本榜 ランクイン履歴',
@@ -16,7 +16,7 @@ const rankingSections = [
     dateLabel: '年月日',
   },
   {
-    chartSectionId: 'kugouAcgChartSection',
+    chartSectionId: 'kugouAcgChartSection', group: 'acg',
     historySectionId: 'kugouAcgHistorySection',
     chartTitle: '酷狗音乐 ACG新歌榜 グループ別最高順位推移',
     historyTitle: '酷狗音乐 ACG新歌榜 ランクイン履歴',
@@ -33,6 +33,7 @@ const rankingSections = [
 mountMusicServiceView({
   viewId: 'kugouMusicView',
   className: 'kugou-music-view',
+  groupLabels: { japan: '日本榜', acg: 'ACG新曲' },
   noticeId: 'kugouMusicNotice',
   meta: {
     valueId: 'kugouMusicUpdatedAt',

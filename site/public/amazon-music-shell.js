@@ -28,7 +28,7 @@ const modeButtons = musicServiceFilterTabs([
 });
 
 const rankSection = musicServiceSection({
-  id: 'amazonTrendSection',
+  id: 'amazonTrendSection', group: 'ranks',
   title: 'Amazon Music総合順位推移',
   titleId: 'amazonAllRankTitle',
   trailingHtml: modeButtons,
@@ -40,12 +40,13 @@ const rankSection = musicServiceSection({
   }),
 });
 
-const tracksSection = musicServiceSection({ id: 'amazonTrackSection', group: 'list', title: '全楽曲順位', titleId: 'amazonTracksTitle', bodyHtml: tracksTable });
-const playlistSection = musicServiceSection({ id: 'amazonPlaylistSection', group: 'playlists', title: 'Amazon Music プレイリスト掲載一覧', bodyHtml: '<div id="amazonPlaylistMount"></div>' });
+const tracksSection = musicServiceSection({ id: 'amazonTrackSection', group: 'ranks', title: '全楽曲順位', titleId: 'amazonTracksTitle', bodyHtml: tracksTable });
+const playlistSection = musicServiceSection({ id: 'amazonPlaylistSection', group: 'playlists', title: 'Amazon Music プレイリスト掲載一覧', bodyHtml: '<div id="amazonPlaylistMountChart"></div><div id="amazonPlaylistMount"></div>' });
 
 mountMusicServiceView({
   viewId: 'amazonMusicView',
   className: 'amazon-music-view',
+  groupLabels: { ranks: '順位', playlists: 'プレイリスト' },
   noticeId: 'amazonMusicNotice',
   meta: { valueId: 'amazonUpdatedAt', cadence: '毎日5:00開始' },
   sections: [rankSection, tracksSection, playlistSection],

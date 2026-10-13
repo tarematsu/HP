@@ -1,16 +1,5 @@
-import { loadSpotifyReadModel } from './dashboard-data-client.js?v=20261005.2';
-import {
-  fullDate as formatDate,
-  integerFormat as numberFormat,
-  safeInteger as integer,
-  setNotice as setSharedNotice,
-  signedInteger,
-} from './dashboard-ui-common.js?v=20260930.1';
-import { appendTableRow } from './dashboard-table-dom.js?v=20261001.1';
-import {
-  MUSIC_ARTIST_ORDER,
-  replaceMusicTableBody,
-} from './music-service-runtime-common.js?v=20261004.1';
+import { safeInteger as integer } from './dashboard-ui-common.js?v=20260930.1';
+import { MUSIC_ARTIST_ORDER } from './music-service-runtime-common.js?v=20261004.1';
 
 const ARTIST_KEYS = Object.freeze(MUSIC_ARTIST_ORDER.slice(0, 3));
 const ARTIST_NAMES = Object.freeze({
@@ -18,7 +7,6 @@ const ARTIST_NAMES = Object.freeze({
   nogizaka46: '乃木坂46',
   hinatazaka46: '日向坂46',
 });
-let readModelPromise = null;
 
 function compareTracks(left, right) {
   const leftDelta = integer(left?.delta);
@@ -79,81 +67,4 @@ export function spotifyAllTracksPayload(model = {}) {
     track_count: uniqueTracks.length,
     tracks: uniqueTracks,
   };
-}
-
-function renderRows(payload) {
-  const body = replaceMusicTableBody('spotifyTbody');
-  if (!body) return;
-  for (const track of payload.tracks || []) {
-    const row = appendTableRow(body, [
-      numberFormat.format(Number(track.rank) || 0),
-      `${track.artist_name || ''} · ${String(track.name || '曲名不明')}`,
-      { text:numberFormat.format(Number(track.playcount) || 0), className:'spotify-number' },
-      { text:signedInteger(track.delta), className:'spotify-number' },
-    ]);
-    if (row) row.dataset.artistKey = track.artist_key || '';
-  }
-}
-
-function syncButtons(activeValue) {
-  document.querySelectorAll('[data-spotify-artist]').forEach((button) => {
-    const active = button.dataset.spotifyArtist === activeValue;
-    button.classList.toggle('active', active);
-    button.setAttribute('aria-pressed', active ? 'true' : 'false');
-  });
-}
-
-function renderAll(model) {
-  const payload = spotifyAllTracksPayload(model);
-  const title = document.getElementById('spotifyTableTitle');
-  if (title) title.textContent = '坂道3グループの再生数一覧';
-
-  const date = document.getElementById('spotifySnapshotDate');
-  if (date) {
-    date.textContent = formatDate(payload.snapshot_date);
-    date.title = payload.snapshot_dates.map(([artist, value]) => `${artist}: ${formatDate(value)}`).join(' / ');
-  }
-
-  renderRows(payload);
-  syncButtons('all');
-
-  if (!payload.track_count) {
-    setSharedNotice('spotifyNotice', '坂道3グループのSpotify再生数はまだ収集されていません。');
-  } else if (payload.carried_forward_artists.length) {
-    setSharedNotice('spotifyNotice', `${payload.carried_forward_artists.join('・')}はSpotify公開値の更新待ちのため、直近の累計値を表示しています。`);
-  } else {
-    setSharedNotice('spotifyNotice', '');
-  }
-}
-
-async function fetchReadModel() {
-  readModelPromise = loadSpotifyReadModel();
-  return readModelPromise;
-}
-
-async function selectAll() {
-  try {
-    renderAll(await fetchReadModel());
-  } catch (error) {
-    setSharedNotice('spotifyNotice', `Spotify再生数の取得に失敗しました：${error.message}`, true);
-  }
-}
-
-export function installSpotifyAllTracksFilter() {
-  const allButton = document.querySelector('[data-spotify-artist="all"]');
-  if (!allButton || allButton.dataset.spotifyAllInstalled === '1') return;
-  allButton.dataset.spotifyAllInstalled = '1';
-  allButton.addEventListener('click', (event) => {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    void selectAll();
-  }, true);
-
-  document.querySelectorAll('[data-spotify-artist]').forEach((button) => {
-    if (button === allButton) return;
-    button.addEventListener('click', () => {
-      allButton.classList.remove('active');
-      allButton.setAttribute('aria-pressed', 'false');
-    }, true);
-  });
 }

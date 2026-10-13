@@ -1,3 +1,4 @@
+import { renderMusicBarComparison } from './music-service-bar-chart.js';
 import {
   appendEmptyTableRow,
   byId,
@@ -79,6 +80,7 @@ function renderPopularity(payload) {
   const body = replaceMusicTableBody('qqArtistPopularityBody'); if (!body) return;
   const trackById = new Map((Array.isArray(payload?.tracks) ? payload.tracks : []).filter((item) => item?.service === SERVICE).map((item) => [String(item.service_track_id || ''), item]));
   const rows = (Array.isArray(payload?.artist_track_orders) ? payload.artist_track_orders : []).filter((item) => item?.service === SERVICE).filter((item) => ARTIST_ORDER.includes(item?.canonical_artist)).filter((item) => artistVisible(item?.canonical_artist)).filter((item) => Number.isFinite(Number(item?.position)) && Number(item.position) > 0).sort((a, b) => ARTIST_ORDER.indexOf(a.canonical_artist) - ARTIST_ORDER.indexOf(b.canonical_artist) || Number(a.position) - Number(b.position) || String(trackById.get(String(a.service_track_id || ''))?.title || '').localeCompare(String(trackById.get(String(b.service_track_id || ''))?.title || '')));
+  renderMusicBarComparison('qqPopularityChart', rows.map(item => ({ name: trackById.get(String(item.service_track_id || ''))?.title || item.service_track_id, value: item.position })), '人気曲順位');
   if (!rows.length) { appendEmptyTableRow(body, 'QQ Music のアーティスト別人気曲順位はありません。', 3); return; }
   for (const item of rows) { const track = trackById.get(String(item.service_track_id || '')); appendTableRow(body, [MUSIC_ARTIST_LABELS[item.canonical_artist] || item.canonical_artist || '-', `${integerFormat.format(Number(item.position))}位`, track?.title || item.service_track_id || '-']); }
 }

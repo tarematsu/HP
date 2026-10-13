@@ -99,12 +99,13 @@ function renderHistory(chart) {
 }
 
 const regionalFilters = createRegionalFilters([
-  { attribute: 'kkbox-territory-filter', get: () => activeTerritory,
-    set: (value) => { activeTerritory = value; } },
+  { attribute: 'kkbox-series-filter', get: () => `${activeTerritory}:${activeChartType}`,
+    set: (value) => {
+      if (!['tw:newrelease', 'hk:newrelease', 'tw:song', 'hk:song'].includes(value)) return;
+      [activeTerritory, activeChartType] = value.split(':');
+    } },
   { attribute: 'kkbox-period-filter', get: () => activePeriodType,
     set: (value) => { activePeriodType = value; } },
-  { attribute: 'kkbox-chart-filter', get: () => activeChartType,
-    set: (value) => { activeChartType = value; } },
   { attribute: 'kkbox-artist-filter', get: () => activeArtistFilter,
     set: (value) => { activeArtistFilter = value; } },
 ], () => { if (lastPayload) render(lastPayload); });
