@@ -82,7 +82,15 @@ class NativeMediaPanelHost final {
             std::max<LONG>(1, parentClient.bottom - videoTop)};
       }
     }
-    controller_->put_Bounds(client);
+    // Windows can send repeated WM_SIZE events for the same effective WebView
+    // viewport (notably when the host is clipped to 1x1). Avoid repeatedly
+    // invoking the cross-process controller layout path for identical bounds.
+    if (hasAppliedControllerBounds_ &&
+        EqualRect(&lastAppliedControllerBounds_, &client)) return;
+    if (SUCCEEDED(controller_->put_Bounds(client))) {
+      lastAppliedControllerBounds_ = client;
+      hasAppliedControllerBounds_ = true;
+    }
   }
 
   bool OnTimer(UINT_PTR timerId) noexcept {
@@ -222,6 +230,7 @@ class NativeMediaPanelHost final {
     webview_.Reset();
     if (controller_) controller_->Close();
     controller_.Reset();
+    hasAppliedControllerBounds_ = false;
   }
 
   void CreateControllerForCurrentPhase() noexcept {
@@ -269,6 +278,7 @@ class NativeMediaPanelHost final {
                   return S_OK;
                 }
                 controller_ = controller;
+                hasAppliedControllerBounds_ = false;
                 controller_->get_CoreWebView2(&webview_);
                 if (!webview_) {
                   controller_->Close();
@@ -944,6 +954,8 @@ class NativeMediaPanelHost final {
   std::shared_ptr<std::atomic<bool>> alive_;
   ComPtr<ICoreWebView2Environment> environment_;
   ComPtr<ICoreWebView2Controller> controller_;
+  RECT lastAppliedControllerBounds_{};
+  bool hasAppliedControllerBounds_ = false;
   ComPtr<ICoreWebView2> webview_;
   EventRegistrationToken newWindowToken_{};
   EventRegistrationToken navigationCompletedToken_{};
