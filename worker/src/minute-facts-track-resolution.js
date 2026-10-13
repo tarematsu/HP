@@ -1,3 +1,4 @@
+import { insertPendingQueueRevision } from './minute-queue-revision-insert.js';
 import {
   aliasKey,
   buildTrackDescriptor,
@@ -279,22 +280,10 @@ export async function createOptimizedRevision(db, oldDb, input) {
   }
 
   if (!revision) {
-    await timedStage('insert_queue_revision', context, () => db.prepare(`INSERT OR IGNORE INTO sh_queue_revisions(
-        session_id,channel_id,station_id,queue_id,queue_start_time,effective_at,received_at,
-        structural_hash,item_count,status,source,source_priority
-      ) VALUES(?,?,?,?,?,?,?,?,?,'pending','live_collector',100)`)
-      .bind(
-        sessionId,
-        channelId,
-        stationId,
-        integer(queue?.queue_id),
-        queueStart,
-        observedAt,
-        receivedAt,
-        structuralHash,
-        payload.tracks.length,
-      )
-      .run());
+    await timedStage('insert_queue_revision', context, () => insertPendingQueueRevision(db, {
+        sessionId, channelId, stationId, queueId: integer(queue?.queue_id),
+        queueStart, observedAt, receivedAt, structuralHash, itemCount: payload.tracks.length,
+      }));
     revision = await db.prepare(`SELECT id,status,effective_at,item_count FROM sh_queue_revisions
       WHERE channel_id=? AND effective_at=? AND structural_hash=?`)
       .bind(channelId, observedAt, structuralHash)
