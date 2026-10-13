@@ -1,6 +1,5 @@
 // Device-state synchronization only. Radar localization and dormant
 // Stationhead health projection live in dedicated implementation files.
-#include "cloud_client_radar_cache.cpp"
 #include "cloud_client.h"
 #include <limits>
 #include <winrt/Windows.Data.Json.h>
@@ -59,6 +58,10 @@ CacheWriteResult WriteCacheIfChanged(
       ? CacheWriteResult::Written : CacheWriteResult::Failed;
 }
 }  // namespace
+
+// Radar localization shares the same byte-comparison writer as other cloud
+// payloads; include it after the helper so identical PNGs are not replaced.
+#include "cloud_client_radar_cache.cpp"
 
 void CloudClient::ApplyPresenceFallback() {
   if (presenceFallbackActive_) return;
@@ -284,7 +287,13 @@ void CloudClient::Synchronize() {
           L"deviceId", JsonValue::CreateStringValue(config_.deviceId));
       envelope.SetNamedValue(L"commands", commands);
       const std::string text = WideToUtf8(envelope.Stringify().c_str());
-      if (!AtomicWriteText(dataDir_ / L"commands.json", text)) {
+      // Commands may be replayed when the previous acknowledgement failed.
+      // Avoid replacing identical cache bytes, but always notify the UI:
+      // ProcessRemoteCommands must still retry any pending acknowledgements.
+      const std::vector<uint8_t> commandBytes(text.begin(), text.end());
+      const auto written = WriteCacheIfChanged(
+          dataDir_ / L"commands.json", commandBytes);
+      if (written == CacheWriteResult::Failed) {
         throw std::runtime_error("device command cache write failed");
       }
       PostMessageW(window_, WM_HP_COMMANDS_UPDATED, 0, 0);
