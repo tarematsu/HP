@@ -59,7 +59,11 @@ test('targeted previous-day read is equivalent to the legacy canonical view with
       ORDER BY daily.track_id`).all(previousDate, ...keys).map(row => ({ ...row }));
     let sql;
     const stmt = spotifyPreviousTargetPlaycountsStatement({
-      prepare(query) { sql = query; return db.prepare(query); },
+      prepare(query) {
+        sql = query;
+        // Model the Cloudflare D1 bind(...).all() interface using SQLite.
+        return { bind(...args) { return { all() { return db.prepare(query).all(...args); } }; } };
+      },
     }, previousDate, keys);
     const current = stmt.all().map(row => ({ ...row }));
     assert.deepEqual(current, old);
