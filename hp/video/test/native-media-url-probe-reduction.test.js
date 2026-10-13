@@ -54,7 +54,7 @@ test('URL search uses COM-owned buffer as a view and always frees it', () => {
 });
 
 test('YouTube and TVer watchdog decisions retain page classification and recovery', () => {
-  const youtube = between('  void ProbeYoutubeWatchdog() noexcept {',
+  const youtube = between('  HRESULT HandleYoutubeWatchdogResult(',
                           '  void ProbeTverWatchdog() noexcept {');
   const tver = between('  void ProbeTverWatchdog() noexcept {',
                        '  void Fail() noexcept {');
