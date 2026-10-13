@@ -183,32 +183,89 @@ export function extractLeaderboardFromArtifact(artifact) {
   return { status: 'skipped', reason: 'no-authenticated-ready-snapshot' };
 }
 
-function rawDigest(value) {
-  try { return JSON.parse(String(value || '{}'))?.source_digest || null; } catch { return null; }
+// The ranking payload is keyed by its actual displayed values, not by a
+// capture-specific R2 digest or observed_at timestamp.
+function leaderboardContent(rows) {
+  return JSON.stringify(rows.map((row) => [
+    Number(row.rank), row.channel_name, row.channel_alias,
+    row.streams == null ? null : Number(row.streams),
+    row.days == null ? null : Number(row.days),
+  ]));
+}
+
+function legacyLeaderboardContent(rows) {
+  return JSON.stringify(rows.map((row) => {
+    let details = {};
+    try { details = JSON.parse(String(row.raw_json || '{}')); } catch {}
+    return [
+      Number(row.rank), row.channel_name, row.channel_alias,
+      row.total_listens == null ? null : Number(row.total_listens),
+      details.active_days == null ? null : Number(details.active_days),
+    ];
+  }));
 }
 
 function completeTop100(rows) {
   return Array.isArray(rows) && rows.length === MAX_ROWS && rows.every((row, index) => row?.rank === index + 1);
 }
 
+function importStateStatement(db, extracted, content) {
+  return db.prepare(`INSERT INTO sh_weekly_leaderboard_import_state
+      (ranking_date,observed_at,source_digest,content_json)
+      VALUES (?,?,?,?)
+      ON CONFLICT(ranking_date) DO UPDATE SET
+        observed_at=excluded.observed_at,
+        source_digest=excluded.source_digest,
+        content_json=excluded.content_json
+      WHERE excluded.observed_at>=sh_weekly_leaderboard_import_state.observed_at
+        AND (sh_weekly_leaderboard_import_state.observed_at<>excluded.observed_at
+          OR sh_weekly_leaderboard_import_state.source_digest IS NOT excluded.source_digest
+          OR sh_weekly_leaderboard_import_state.content_json<>excluded.content_json)`)
+    .bind(extracted.ranking_date, extracted.observed_at, extracted.digest || null, content);
+}
+
 export async function importLeaderboardArtifact(artifact, db, now = Date.now()) {
   const extracted = extractLeaderboardFromArtifact(artifact);
   if (extracted.status !== 'ready') return extracted;
   if (!completeTop100(extracted.rows)) return { status: 'incomplete', reason: 'expected-complete-top-100', ranking_date: extracted.ranking_date, row_count: extracted.rows.length, digest: extracted.digest, parser: extracted.parser };
-  const existing = await db.prepare('SELECT raw_json FROM sh_channel_rankings WHERE ranking_date=? AND ranking_type=? ORDER BY rank ASC')
-    .bind(extracted.ranking_date, RANKING_TYPE).all();
-  const existingRows = existing.results || [];
-  if (extracted.digest && existingRows.length === extracted.rows.length && existingRows.every((row) => rawDigest(row.raw_json) === extracted.digest)) {
-    return { status: 'unchanged', ranking_date: extracted.ranking_date, row_count: extracted.rows.length, digest: extracted.digest, parser: extracted.parser };
+
+  const content = leaderboardContent(extracted.rows);
+  const state = await db.prepare(`SELECT observed_at,source_digest,content_json
+    FROM sh_weekly_leaderboard_import_state WHERE ranking_date=?`)
+    .bind(extracted.ranking_date).first();
+
+  // An offline native spool can deliver an older snapshot after a newer one.
+  // Track freshness independently of the 100 historical ranking rows.
+  let existingRows = [];
+  let previousObservation = Number(state?.observed_at) || 0;
+  if (!state) {
+    const existing = await db.prepare(`SELECT rank,channel_name,channel_alias,total_listens,raw_json
+      FROM sh_channel_rankings WHERE ranking_date=? AND ranking_type=? ORDER BY rank ASC`)
+      .bind(extracted.ranking_date, RANKING_TYPE).all();
+    existingRows = existing.results || [];
+    previousObservation = Math.max(0, ...existingRows.map((row) => {
+      try { return Number(JSON.parse(row.raw_json || '{}').observed_at) || 0; } catch { return 0; }
+    }));
   }
-  // Use observation time, not delivery time: an offline native spool may
-  // deliver an older snapshot after the current week's corrected ranking.
-  const existingObservedAt = Math.max(0, ...existingRows.map((row) => {
-    try { return Number(JSON.parse(row.raw_json || '{}').observed_at) || 0; } catch { return 0; }
-  }));
-  if (existingObservedAt > extracted.observed_at) {
+  if (previousObservation > extracted.observed_at) {
     return { status: 'stale', reason: 'older-observation', ranking_date: extracted.ranking_date, digest: extracted.digest };
   }
+
+  const matchingContent = state
+    ? state.content_json === content
+    : existingRows.length === extracted.rows.length
+      && legacyLeaderboardContent(existingRows) === content;
+
+  if (matchingContent) {
+    // One checkpoint write for a new observation instead of 100 DELETEs,
+    // 100 INSERTs and their per-row revision-trigger writes.
+    if (!state || previousObservation !== extracted.observed_at
+        || (state.source_digest || '') !== (extracted.digest || '')) {
+      await importStateStatement(db, extracted, content).run();
+    }
+    return { status: 'unchanged', ranking_date: extracted.ranking_date, row_count: extracted.rows.length, digest: extracted.digest, parser: extracted.parser };
+  }
+
   const statements = [db.prepare('DELETE FROM sh_channel_rankings WHERE ranking_date=? AND ranking_type=?').bind(extracted.ranking_date, RANKING_TYPE)];
   for (const row of extracted.rows) {
     statements.push(db.prepare(`INSERT INTO sh_channel_rankings(ranking_date,observed_at,ranking_type,rank,channel_name,channel_alias,listener_count,member_count,total_listens,source_sheet,source_row,quality_score,quality_flags,raw_json,imported_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(
@@ -219,6 +276,8 @@ export async function importLeaderboardArtifact(artifact, db, now = Date.now()) 
       now,
     ));
   }
+  // The checkpoint moves only if the full ranking update commits.
+  statements.push(importStateStatement(db, extracted, content));
   if (typeof db.script === 'function') await db.script(statements);
   else await db.batch(statements);
   return { status: 'imported', ranking_date: extracted.ranking_date, row_count: extracted.rows.length, digest: extracted.digest, parser: extracted.parser };
