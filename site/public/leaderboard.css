@@ -61,11 +61,17 @@
   }
 
   .leaderboard-table tbody {
-    display: grid;
+    display: block;
+    width: 100%;
+    min-width: 0;
   }
 
   .leaderboard-table tbody tr {
     display: grid;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     column-gap: 12px;
     row-gap: 5px;
