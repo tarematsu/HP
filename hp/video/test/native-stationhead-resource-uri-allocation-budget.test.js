@@ -8,6 +8,8 @@ import test from 'node:test';
 const shared = readFileSync(new URL('../../native/src/sh_shared.h', import.meta.url), 'utf8');
 const scriptPolicy = readFileSync(new URL('../../native/src/sh_polling_policy.h', import.meta.url), 'utf8');
 const scriptExtra = readFileSync(new URL('../../native/src/sh_script_blocking_extension.h', import.meta.url), 'utf8');
+const activePolicy = readFileSync(new URL('../../native/src/sh_runtime_script_resource_policy_fix.h', import.meta.url), 'utf8');
+const cmake = readFileSync(new URL('../../native/CMakeLists.txt', import.meta.url), 'utf8');
 
 test('all three Stationhead WebResourceRequested callbacks avoid allocating URI copies', () => {
   const nativeResource = shared.slice(shared.indexOf('inline void ApplyStationheadResourceBlocking('));
@@ -17,6 +19,24 @@ test('all three Stationhead WebResourceRequested callbacks avoid allocating URI 
   assert.match(nativeResource, /StationheadCorePlaybackRequest\(lower\)/);
   assert.match(nativeResource, /CoTaskMemFree\(uriRaw\)/);
   assert.doesNotMatch(nativeResource, /lower = StationheadLowerAscii\(uriRaw\)/);
+  // PCH macro overlays mean this is the callback actually used by
+  // StationheadPlayer::ConfigureWebView in the Windows build. Guard it
+  // separately so optimizations to superseded handlers cannot give false
+  // confidence about runtime allocations.
+  const pch = cmake.slice(cmake.indexOf('target_precompile_headers(HomePanel PRIVATE'));
+  assert.ok(pch.indexOf('src/sh_runtime_script_resource_policy_fix.h') >
+    pch.indexOf('src/sh_runtime_resource_boundary_policy_fix.h'));
+  assert.match(activePolicy,
+    /#define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingScriptFixed/);
+  const active = activePolicy.slice(activePolicy.indexOf('inline void ApplyStationheadResourceBlockingScriptFixed('));
+  assert.equal((active.match(/add_WebResourceRequested\(/g) || []).length, 1);
+  assert.match(active, /StationheadLowerAsciiInPlace\(uriRaw\)/);
+  assert.match(active, /const std::wstring_view lower\(uriRaw\)/);
+  assert.match(active, /StationheadKnownOptionalModuleStubBoundaryFixed\(lower\)/);
+  assert.match(active, /StationheadExpandedNonPlaybackScriptBoundaryFixed\(lower\)/);
+  assert.match(active, /StationheadCorePlaybackRequestBoundaryFixed\(lower\)/);
+  assert.match(active, /CoTaskMemFree\(uriRaw\)/);
+  assert.doesNotMatch(active, /lower = StationheadLowerAscii\(uriRaw\)/);
   for (const policy of [scriptPolicy, scriptExtra]) {
     const callback = policy.slice(policy.indexOf('inline void ApplyStationhead'));
     assert.match(callback, /StationheadLowerAsciiInPlace\(uriRaw\)/);
