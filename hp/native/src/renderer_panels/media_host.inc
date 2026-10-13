@@ -90,6 +90,10 @@ class NativeMediaPanelHost final {
     if (SUCCEEDED(controller_->put_Bounds(client))) {
       lastAppliedControllerBounds_ = client;
       hasAppliedControllerBounds_ = true;
+    } else {
+      // Do not trust even the previous rectangle after a failed controller
+      // update: the COM implementation may have changed its internal bounds.
+      hasAppliedControllerBounds_ = false;
     }
   }
 
