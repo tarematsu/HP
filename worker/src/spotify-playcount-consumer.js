@@ -60,10 +60,9 @@ async function persistCandidateTracks(db, message, tracks, collectedAt) {
               AND sh_spotify_playcount_candidates.playcount=excluded.playcount
             THEN MAX(sh_spotify_playcount_candidates.collected_at,excluded.collected_at)
             ELSE excluded.collected_at END
-        WHERE EXISTS (
-          SELECT 1 FROM sh_spotify_collection_runs
-          WHERE snapshot_date=? AND run_token=? AND status IN ('catalog','queued')
-        ) AND (sh_spotify_playcount_candidates.run_token IS NOT excluded.run_token
+        -- The INSERT SELECT already gates on the active run. Rechecking it
+        -- on the conflict path is redundant within the same SQL statement.
+        WHERE (sh_spotify_playcount_candidates.run_token IS NOT excluded.run_token
           OR excluded.playcount>sh_spotify_playcount_candidates.playcount
           OR (excluded.playcount=sh_spotify_playcount_candidates.playcount AND (
             sh_spotify_playcount_candidates.album_id IS NOT excluded.album_id
@@ -72,7 +71,6 @@ async function persistCandidateTracks(db, message, tracks, collectedAt) {
         .bind(
           message.snapshot_date, message.run_token, track.track_id, message.album_id,
           track.playcount, collectedAt, message.snapshot_date, message.run_token,
-          message.snapshot_date, message.run_token,
         ),
     );
     for (const artistKey of track.target_keys) {
