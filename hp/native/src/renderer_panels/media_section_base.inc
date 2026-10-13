@@ -108,7 +108,7 @@ UINT NativeMediaPhaseIntervalMs(bool tver) noexcept {
 }
 
 constexpr const wchar_t* kNativeMediaPlayAllScript = kNativeMediaYoutubeReliablePlayAllScript;
-constexpr const wchar_t* kNativeMediaYoutubeWatchdogScript = kNativeMediaYoutubeControlRecoveryScript;
+constexpr const wchar_t* kNativeMediaYoutubeWatchdogScript = kNativeMediaYoutubeCachedProbeScript;
 constexpr wchar_t kNativeMediaTverWatchdogScript[] =
     L"null/*homepanel-tver-watchdog-routing-key*/";
 
