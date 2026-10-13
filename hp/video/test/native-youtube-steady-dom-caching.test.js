@@ -219,3 +219,63 @@ test('YouTube SPA event burst refreshes video selection once per microtask', () 
   assert.equal(state.playerNeedsRefresh, false,
     'fullscreen does not invalidate the cached player');
 });
+
+
+test('YouTube empty popup scans are reused until mutation, timeout or replacement', () => {
+  const code = section('  const dismissMessageDialog = () => {', '  const bindVideo =');
+  let now = 1000;
+  let scans = 0;
+  let lookups = 0;
+  let roots = [];
+  const first = {
+    isConnected: true,
+    querySelectorAll: () => { scans++; return roots; },
+  };
+  const replacement = { isConnected: true, querySelectorAll: () => { scans++; return []; } };
+  let current = first;
+  const state = { popup: first };
+  const dismiss = vm.runInNewContext(
+    '(() => { ' + code + '\nreturn dismissMessageDialog; })()',
+    {
+      state,
+      Date: class extends Date { static now() { return now; } },
+      document: { querySelector: () => { lookups++; return current; } },
+      surveySelector: '.survey',
+      text: node => node.label || '',
+      valid: () => true,
+      arm: () => null,
+    },
+  );
+  for (let i = 0; i < 500; i++) assert.equal(dismiss(), null);
+  assert.equal(scans, 1, 'steady ad wake bursts need only one empty-dialog scan');
+  assert.equal(lookups, 0);
+  state.dialogDirty = true;
+  assert.equal(dismiss(), null);
+  assert.equal(scans, 2, 'dialog mutations invalidate the empty scan immediately');
+  now += 4999;
+  dismiss();
+  assert.equal(scans, 2);
+  now += 1;
+  dismiss();
+  assert.equal(scans, 3, 'missed popup changes are reconciled every 5 seconds');
+  first.isConnected = false;
+  current = replacement;
+  dismiss();
+  assert.equal(scans, 4, 'newly replaced popup is scanned even inside the cache window');
+  assert.equal(lookups, 1);
+
+  const visibleDialog = {
+    label: 'Still watching',
+    getClientRects: () => [1],
+    matches: () => false,
+    querySelector: () => null,
+    querySelectorAll: () => [],
+  };
+  roots = [visibleDialog];
+  first.isConnected = true;
+  state.popup = first;
+  state.dialogDirty = true;
+  dismiss();
+  dismiss();
+  assert.equal(scans, 6, 'visible actionable dialogs are never cached as empty');
+});
