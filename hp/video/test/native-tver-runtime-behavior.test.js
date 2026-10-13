@@ -455,8 +455,9 @@ test('normal TVer playback amortizes global questionnaire scans without delaying
 });
 
 test('active TVer questionnaire is never throttled while collecting answers', () => {
+  const form = { id: 'questionnaire-test', addEventListener() {}, querySelector: () => null };
   const dialog = {
-    querySelector: selector => selector.includes('questionnaire-') ? {} : null,
+    querySelector: selector => selector.includes('questionnaire-') ? form : null,
     getAttribute: () => null,
     textContent: 'アンケート',
   };
