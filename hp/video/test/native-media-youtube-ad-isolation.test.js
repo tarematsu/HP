@@ -11,9 +11,10 @@ test('YouTube ad handling precedes content settings', () => {
   assert.ok(adStart >= 0 && contentStart > adStart);
   const adBranch = runtime.slice(adStart, contentStart);
   assert.match(runtime, /const skipSelector =/);
-  assert.match(adBranch, /const adCandidates = scanAdCandidates\(\)/);
+  assert.match(adBranch, /for \(const root of player\.querySelectorAll\(surveyDialogSelector\)\)/);
+  assert.match(adBranch, /for \(const element of scanAdCandidates\(\)\)/);
   assert.match(runtime, /player\.querySelectorAll\(adControlSelector\)/);
-  assert.match(adBranch, /root\.matches\(skipSelector\)/);
+  assert.match(adBranch, /if \(valid\(element\)\) \{ target = element; break; \}/);
   assert.match(adBranch, /arm\(target, 'skip-ad', 600\)/);
   assert.match(adBranch, /return requestFullscreen\(\)/);
   assert.doesNotMatch(adBranch, /setPlaybackQuality|video\.play\(|setOption\('captions'/);
