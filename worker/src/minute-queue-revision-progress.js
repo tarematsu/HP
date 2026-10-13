@@ -5,3 +5,10 @@ export async function countQueueRevisionItems(db, revisionId) {
   ).bind(revisionId).first();
   return Number(row?.item_count || 0);
 }
+
+// Load only positions needed to resume an incomplete revision.
+export function loadQueueRevisionPositions(db, revisionId) {
+  return db.prepare(
+    'SELECT position FROM sh_queue_revision_items WHERE revision_id=?',
+  ).bind(revisionId).all();
+}
