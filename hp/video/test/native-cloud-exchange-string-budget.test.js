@@ -23,7 +23,7 @@ test('Cloudflare exchange JSON avoids temporary literal concatenations', () => {
 
 test('production Cloudflare exchange version encoder retains wire values and missing-key fallback', () => {
   const a = source.indexOf('  const auto number = [&](const wchar_t* name) {');
-  const z = source.indexOf('  std::optional<PendingTelemetry> telemetry;', a);
+  const z = source.indexOf('  std::shared_ptr<PendingTelemetry> telemetry;', a);
   assert.ok(a >= 0 && z > a);
   const fragment = source.slice(a, z);
   const dir = mkdtempSync(join(tmpdir(), 'native-cloud-exchange-json-'));
