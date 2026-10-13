@@ -102,29 +102,30 @@ test('hidden Keep Watching does not displace visible Close', () => {
   assert.deepEqual(result.actions, ['dialog-close']);
 });
 
-function adScenario({ controls = [], skipButtons = [], selected = false, skipFirst = false } = {}) {
+function adScenario({
+  controls = [], skipButtons = [], state = {}, now = 1000,
+} = {}) {
   const calls = [];
-  const state = { surveySelected: selected };
   const survey = {
-    matches: selector => selector.includes('.survey'),
     querySelectorAll: () => controls,
+    connected: true,
   };
-  let queryCount = 0;
-  let iterated = 0;
+  let surveyQueries = 0;
+  let skipQueries = 0;
+  let skipIterations = 0;
   const player = {
-    querySelectorAll: selector => {
-      assert.equal(selector, '.survey,[role="dialog"],.skip');
-      queryCount++;
-      const skips = skipButtons.map(button => ({
-        ...button,
-        matches: target => target.includes('.skip'),
-      }));
-      const candidates = skipFirst ? [...skips, survey] : [survey, ...skips];
+    querySelectorAll(selector) {
+      if (selector === '.survey,[role="dialog"]') {
+        surveyQueries++;
+        return [survey];
+      }
+      assert.equal(selector, '.skip');
+      skipQueries++;
       return {
         *[Symbol.iterator]() {
-          for (const candidate of candidates) {
-            iterated++;
-            yield candidate;
+          for (const element of skipButtons) {
+            skipIterations++;
+            yield element;
           }
         },
       };
@@ -134,77 +135,115 @@ function adScenario({ controls = [], skipButtons = [], selected = false, skipFir
   const outcome = runInNewContext(
     '(() => { ' + code + "\nreturn 'normal'; })()",
     {
-      adActive: true, state, player,
-      surveySelector: '.survey', skipSelector: '.skip',
-      adControlSelector: '.survey,[role="dialog"],.skip',
+      adActive: true, state, player, now,
       surveyDialogSelector: '.survey,[role="dialog"]',
-      scanAdCandidates: () => player.querySelectorAll('.survey,[role="dialog"],.skip'),
+      skipSelector: '.skip',
+      scanAdCandidates: () => player.querySelectorAll('.skip'),
       valid: element => element.connected !== false,
       text: element => {
         element.labelReads = (element.labelReads || 0) + 1;
         return element.label;
       },
-      arm: (element, action) => { calls.push(action); return { id: element.id, action }; },
+      arm: (element, action) => {
+        calls.push(action);
+        return { id: element.id, action };
+      },
       requestFullscreen: () => 'fullscreen',
       fullscreen: () => true,
-      recheck: () => {},
       wake: delay => calls.push('wake:' + delay),
     },
   );
-  return { calls, outcome, state, queryCount, iterated };
+  return { calls, outcome, state, surveyQueries, skipQueries, skipIterations };
 }
 
-test('YouTube ad survey retains option-first, then submit, with one label read per control', () => {
+test('YouTube ad survey preserves option then submit within a bounded followup', () => {
   const option = { id: 2, label: '回答1' };
   const submit = { id: 1, label: '送信' };
   const unrelated = { id: 0, label: 'キャンセル' };
-  const inputs = [unrelated, submit, option];
-  const first = adScenario({ controls: inputs });
+  const controls = [unrelated, submit, option];
+  const state = {};
+  const first = adScenario({ controls, state, now: 1000 });
   assert.equal(first.outcome.action, 'survey-option');
   assert.equal(first.outcome.id, 2);
-  assert.equal(first.queryCount, 1, 'survey and skip share a single subtree query');
+  assert.equal(first.surveyQueries, 1);
+  assert.equal(first.skipQueries, 0);
   assert.equal(option.labelReads, 1);
   assert.equal(submit.labelReads, 1);
-  // Re-run with a fresh DOM label count; state.surveySelected is passed in.
-  const second = adScenario({ controls: inputs, selected: true });
+  assert.equal(state.surveySelected, true);
+  assert.equal(state.surveyFollowupUntil, 16000);
+  const second = adScenario({ controls, state, now: 3000 });
   assert.equal(second.outcome.action, 'survey-submit');
   assert.equal(second.outcome.id, 1);
+  assert.equal(second.surveyQueries, 1);
+  assert.equal(second.skipQueries, 0);
+  assert.equal(state.surveySelected, false);
   assert.equal(option.labelReads, 2);
   assert.equal(submit.labelReads, 2);
 });
 
-test('skip-ad first-valid candidate and ad fallback remain intact without an array copy', () => {
-  const skip = adScenario({
-    skipButtons: [{ id: 1, label: 'skip', connected: false }, { id: 2, label: 'skip' }],
-  });
+test('Skip Ad remains immediate even while survey checks are throttled', () => {
+  const skipButtons = [
+    { id: 1, label: 'skip', connected: false },
+    { id: 2, label: 'skip' },
+  ];
+  const state = { surveyCheckedAt: 1000, surveySelected: false };
+  const skip = adScenario({ skipButtons, state, now: 2000 });
   assert.equal(skip.outcome.id, 2);
   assert.equal(skip.outcome.action, 'skip-ad');
   assert.deepEqual(skip.calls, ['skip-ad']);
-  assert.equal(skip.queryCount, 1, 'skip-only ads also scan the player only once');
-  assert.equal(skip.iterated, 3,
-    'skip fallback uses one candidate traversal including its survey root');
+  assert.equal(skip.surveyQueries, 0);
+  assert.equal(skip.skipQueries, 1);
+  assert.equal(skip.skipIterations, 2);
 
-  const missing = adScenario();
+  const missing = adScenario({ state, now: 3000 });
   assert.equal(missing.outcome, 'recovery');
-  assert.deepEqual(missing.calls, ['wake:5000'],
-    'unskippable ads wait 5s while DOM observers catch appearing skip controls');
+  assert.deepEqual(missing.calls, ['wake:5000']);
+  assert.equal(missing.surveyQueries, 0);
   assert.doesNotMatch(runtime.slice(runtime.indexOf('if (adActive) {'),
-    runtime.indexOf('  state.adActive = false;')), /recheck\(\)/,
-    'ordinary ad fallback should not emit 2s recovery wakeups');
+    runtime.indexOf('  state.adActive = false;')), /recheck\(\)/);
 });
 
-test('surveys take priority even when a valid Skip Ad appears earlier in DOM order', () => {
-  const submit = { id: 11, label: '送信' };
-  const option = { id: 12, label: '回答1' };
-  const first = adScenario({
-    skipButtons: [{ id: 1, label: 'skip' }],
-    controls: [submit, option],
-    skipFirst: true,
-  });
+test('YouTube surveys run once per 5 minutes across ad wake bursts', () => {
+  const state = {};
+  const first = adScenario({ state, now: 1000 });
+  assert.equal(first.surveyQueries, 1);
+  for (let i = 0; i < 200; i++) {
+    const result = adScenario({ state, now: 1001 + i * 1000 });
+    assert.equal(result.surveyQueries, 0);
+    assert.equal(result.skipQueries, 1);
+  }
+  assert.equal(adScenario({ state, now: 300999 }).surveyQueries, 0);
+  assert.equal(adScenario({ state, now: 301000 }).surveyQueries, 1);
+  assert.equal(adScenario({ state, now: 302000 }).surveyQueries, 0);
+});
+
+test('an active survey takes priority over Skip Ad only on scheduled checks', () => {
+  const controls = [{ id: 11, label: '送信' }, { id: 12, label: '回答1' }];
+  const skipButtons = [{ id: 1, label: 'skip' }];
+  const state = {};
+  const first = adScenario({ controls, skipButtons, state, now: 1000 });
   assert.equal(first.outcome.action, 'survey-option');
   assert.equal(first.outcome.id, 12);
-  assert.equal(first.queryCount, 1);
-  assert.equal(first.iterated, 2, 'prior Skip Ad and survey are checked in one pass');
+  assert.equal(first.skipQueries, 0);
+  const second = adScenario({ controls, skipButtons, state, now: 3000 });
+  assert.equal(second.outcome.action, 'survey-submit');
+  assert.equal(second.skipQueries, 0);
+  const third = adScenario({ controls, skipButtons, state, now: 4000 });
+  assert.equal(third.outcome.action, 'skip-ad');
+  assert.equal(third.surveyQueries, 0);
+  assert.equal(third.skipQueries, 1);
+});
+
+test('unfinished survey followup expires rather than polling forever', () => {
+  const state = {
+    surveyCheckedAt: 1000, surveySelected: true, surveyFollowupUntil: 16000,
+  };
+  const first = adScenario({ state, now: 15000 });
+  assert.equal(first.surveyQueries, 1, 'active followup may briefly query survey');
+  const second = adScenario({ state, now: 16000 });
+  assert.equal(second.surveyQueries, 0);
+  assert.equal(state.surveySelected, false);
+  assert.equal(adScenario({ state, now: 301000 }).surveyQueries, 1);
 });
 
 test('YouTube hot paths avoid Array.from and preserve exact trusted action names', () => {
