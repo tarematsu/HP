@@ -187,7 +187,8 @@ test('YouTube SPA event burst refreshes video selection once per microtask', () 
   assert.deepEqual([...listeners.keys()],
     ['yt-navigate-finish', 'yt-page-data-updated', 'fullscreenchange']);
   const notify = () => {
-    for (const handler of listeners.values()) handler();
+    listeners.get('yt-navigate-finish')();
+    listeners.get('yt-page-data-updated')();
   };
   for (let i = 0; i < 100; i++) notify();
   assert.equal(pending.length, 1);
@@ -207,4 +208,14 @@ test('YouTube SPA event burst refreshes video selection once per microtask', () 
   pending.shift()();
   assert.equal(binds, 2, 'stale player callbacks must not rebind the replaced player');
   assert.equal(wakes, 2);
+  listeners.get('fullscreenchange')();
+  assert.equal(wakes, 2, 'stale player fullscreen notifications are ignored');
+  state.player = player;
+  state.playerNeedsRefresh = false;
+  listeners.get('fullscreenchange')();
+  assert.equal(wakes, 3, 'fullscreen still triggers an immediate watchdog wake');
+  assert.equal(binds, 2, 'fullscreen never re-queries/rebinds the media node');
+  assert.equal(pending.length, 0);
+  assert.equal(state.playerNeedsRefresh, false,
+    'fullscreen does not invalidate the cached player');
 });
