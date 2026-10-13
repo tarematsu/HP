@@ -114,6 +114,21 @@ test('CSS pseudo-element-only recovery actions remain detectable', () => {
   assert.equal(counts().rectReads, 1);
 });
 
+test('recoverable action match avoids allocating arrays or eagerly reading later attributes', () => {
+  const { element, runtime, counts, candidates } = onboardingRuntime();
+  const readAttributes = [];
+  element.getAttribute = key => {
+    readAttributes.push(key);
+    return key === 'aria-label' ? 'Keep Streaming' : null;
+  };
+  assert.equal(runtime.onboardingLabelMatches(element, /^keep streaming$/i), true);
+  assert.deepEqual(readAttributes, ['aria-label']);
+  assert.equal(runtime.scanOnboardingCandidates(candidates), 1);
+  assert.deepEqual(readAttributes, ['aria-label', 'aria-label']);
+  assert.equal(counts().innerTextReads, 0);
+  assert.equal(counts().pseudoStyles, 0);
+});
+
 test('non-visible Connect Spotify remains ineligible for trusted interaction', () => {
   const { element, runtime } = onboardingRuntime({
     text: 'Connect Spotify', visible: false,
