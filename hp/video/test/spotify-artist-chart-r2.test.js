@@ -39,7 +39,7 @@ test('Stationhead leaderboard collection and native upload remain enabled', () =
   assert.match(appMessages, /kStationheadLeaderboardCaptureWakeMessage/);
   assert.match(appMessages, /ScheduleNextTick\(1\)/);
   assert.match(appMessages, /cloud_->RefreshNow\(\)/);
-  assert.match(exchange, /stationhead_leaderboard_capture_spool::ReadBatch\(\)/);
+  assert.match(exchange, /stationhead_leaderboard_capture_spool::ReadBatchWithCount\(\)/);
   assert.match(exchange, /"leaderboardProbe"/);
   assert.match(exchange, /stationhead_leaderboard_capture_spool::Acknowledge/);
 });
