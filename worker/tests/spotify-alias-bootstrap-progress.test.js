@@ -13,6 +13,11 @@ const migration = readFileSync(
   'utf8',
 );
 
+const aliasCoveringMigration = readFileSync(
+  new URL('../../database/other-migrations/074_spotify_alias_covering_source_lookup.sql', import.meta.url),
+  'utf8',
+);
+
 function boundStatement(sqlite, sql, bindings = []) {
   return {
     sql,
@@ -81,6 +86,7 @@ function createDatabase() {
     );
   `);
   sqlite.exec(migration);
+  sqlite.exec(aliasCoveringMigration);
 
   const insertTrack = sqlite.prepare(`INSERT INTO sh_spotify_tracks
     (track_id,name,duration_ms,artists_json) VALUES (?,?,?,?)`);

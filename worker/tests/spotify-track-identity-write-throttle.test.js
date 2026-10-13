@@ -1,8 +1,14 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 
 import { resolveCanonicalSpotifyTracks } from '../src/spotify-track-identity.js';
+
+const aliasCoveringMigration = readFileSync(
+  new URL('../../database/other-migrations/074_spotify_alias_covering_source_lookup.sql', import.meta.url),
+  'utf8',
+);
 
 function boundStatement(sqlite, sql, bindings = []) {
   return {
@@ -64,6 +70,7 @@ function createDatabase() {
       last_seen_at INTEGER NOT NULL
     );
   `);
+  sqlite.exec(aliasCoveringMigration);
   return sqlite;
 }
 
