@@ -513,6 +513,13 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   };
   const adActive = ad();
   syncAdObserver(adActive);
+  if (!adActive && state.adActive) {
+    // Do this before fullscreen restoration can return early: a long ad
+    // must not be mistaken for a stalled content video.
+    state.lastProgressAt = now;
+    state.lastCurrentTime = -1;
+    state.nextRequestedAt = 0;
+  }
   state.fullscreenApplied = fullscreen();
   if (state.fullscreenApplied) state.fullscreenKeyRequestedAt = 0;
   if (!adActive && !state.fullscreenApplied && !video?.paused) {
@@ -582,13 +589,6 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     // unskippable ads less often when no event arrives.
     wake(5000);
     return 'recovery';
-  }
-  if (state.adActive) {
-    // An ad can occupy >30s without any content progress. Reset the
-    // content-only stall grace window on the transition back to video.
-    state.lastProgressAt = now;
-    state.lastCurrentTime = -1;
-    state.nextRequestedAt = 0;
   }
   state.adActive = false;
   state.surveySelected = false;
