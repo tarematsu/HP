@@ -36,17 +36,30 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
   };
   const std::wstring deviceId = ExchangeQueryValue(path, L"deviceId");
   std::string body = "{\"versions\":{";
-  body += "\"dashboard\":" + number(L"dashboardVersion");
-  body += ",\"radar\":" + number(L"radarVersion");
-  body += ",\"switchbot\":" + number(L"switchbotVersion");
-  body += ",\"config\":" + number(L"configVersion") + "}";
+  // The exchange runs at every cloud sync. Reserve for the fixed envelope and
+  // append directly; repeatedly concatenating literals and JSON values
+  // allocates temporary strings before appending to the request buffer.
+  body.reserve(512);
+  body += "\"dashboard\":";
+  body += number(L"dashboardVersion");
+  body += ",\"radar\":";
+  body += number(L"radarVersion");
+  body += ",\"switchbot\":";
+  body += number(L"switchbotVersion");
+  body += ",\"config\":";
+  body += number(L"configVersion");
+  body.push_back('}');
 
   std::optional<PendingTelemetry> telemetry;
   {
     std::lock_guard lock(pendingTelemetryMutex_);
     telemetry = pendingTelemetry_;
   }
-  if (telemetry && !telemetry->json.empty()) body += ",\"telemetry\":" + telemetry->json;
+  if (telemetry && !telemetry->json.empty()) {
+    body.reserve(body.size() + telemetry->json.size() + 512);
+    body += ",\"telemetry\":";
+    body += telemetry->json;
+  }
 
   // Keep the established Cloud field names for wire compatibility, but source
   // them exclusively from the rebuilt dedicated-WebView capture spool.
@@ -70,8 +83,12 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
   body += std::to_string(leaderboardCapture.size());
   body += ",\"diagnosticSchema\":";
   body += std::to_string(leaderboardDiagnostics.schema);
-  body += ",\"collectorStage\":\"" + leaderboardDiagnostics.stage + "\"";
-  body += ",\"lastSuccessStage\":\"" + leaderboardDiagnostics.lastSuccessStage + "\"";
+  body += ",\"collectorStage\":\"";
+  body += leaderboardDiagnostics.stage;
+  body.push_back('"');
+  body += ",\"lastSuccessStage\":\"";
+  body += leaderboardDiagnostics.lastSuccessStage;
+  body.push_back('"');
   body += ",\"collectorStarted\":";
   body += leaderboardDiagnostics.started ? "true" : "false";
   body += ",\"collectorTicked\":";
@@ -80,8 +97,11 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
   body += std::to_string(leaderboardDiagnostics.lastTransitionAt);
   body += ",\"lastFailureAt\":";
   body += std::to_string(leaderboardDiagnostics.lastFailureAt);
-  body += ",\"lastError\":\"" + leaderboardDiagnostics.lastError + "\"";
-  body += ",\"exchangeAt\":" + std::to_string(UnixMillis());
+  body += ",\"lastError\":\"";
+  body += leaderboardDiagnostics.lastError;
+  body.push_back('"');
+  body += ",\"exchangeAt\":";
+  body += std::to_string(UnixMillis());
   body += "}";
   body.push_back('}');
 
