@@ -15,9 +15,15 @@ const full = scripts.slice(0, -1).join('');
 const call = scripts.at(-1);
 
 function environment(path = '/watch') {
-  const calls = { queries: 0, timers: 0, messages: [] };
+  const calls = { queries: 0, timers: 0, messages: [], stateReads: 0, stateWrites: 0 };
   const location = { hostname: 'www.youtube.com', pathname: path };
   const window = { chrome: { webview: { postMessage: x => calls.messages.push(x) } } };
+  let runtime;
+  Object.defineProperty(window, '__homePanelYoutubeRuntime', {
+    get() { calls.stateReads++; return runtime; },
+    set(value) { calls.stateWrites++; runtime = value; },
+    configurable: true,
+  });
   const document = {
     querySelector: selector => {
       assert.equal(selector, '#movie_player');
@@ -58,6 +64,9 @@ test('bootstrap establishes one reusable probe and avoids repeated timer allocat
   for (let i = 0; i < 100; i++) assert.equal(page.invoke(), 'recovery');
   assert.equal(page.calls.timers, 1, 'pending recovery wake must be reused');
   assert.equal(page.calls.queries, 101);
+  assert.equal(page.calls.stateReads, 1,
+    'cached probes retain the page runtime instead of reading window state 100 times');
+  assert.equal(page.calls.stateWrites, 1);
   assert.equal(page.window.__homePanelYoutubeProbe, probe);
   assert.equal(page.inject(), 'recovery', 're-injection reuses the existing probe');
   assert.equal(page.window.__homePanelYoutubeProbe, probe);
@@ -84,4 +93,25 @@ test('probe cache belongs to the page, not to another WebView document', () => {
   next.inject();
   assert.notEqual(original.window.__homePanelYoutubeProbe, next.window.__homePanelYoutubeProbe);
   assert.equal(next.invoke(), 'recovery');
+});
+
+
+test('YouTube selectors and pure watchdog helpers are allocated once per document', () => {
+  const outerStart = full.indexOf('  const state = window.__homePanelYoutubeRuntime');
+  const probeStart = full.indexOf('  const probe = () => {');
+  assert.ok(outerStart > 0 && probeStart > outerStart);
+  for (const token of [
+    'const postWake = () => {', 'const wake = (delay = 80) => {',
+    'const recheck = () => wake(2000);',
+    'const valid = element => Boolean(', 'const text = element => (',
+    'const surveySelector =', 'const skipSelector =',
+    'const adControlSelector =', 'const actionLane = action => {',
+    'const actionState = action => {',
+  ]) {
+    const pos = full.indexOf(token);
+    assert.ok(pos > outerStart && pos < probeStart,
+      token + ' should not be recreated on each event/watchdog probe');
+  }
+  assert.ok(full.indexOf('const arm = (element, action, cooldownMs) => {') > probeStart,
+    'player-dependent actions remain scoped to the current player');
 });
