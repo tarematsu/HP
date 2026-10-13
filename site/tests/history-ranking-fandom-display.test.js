@@ -175,5 +175,5 @@ test('Stationhead ranking UI exposes stale source week instead of silently prese
   const source = browserSource('leaderboard-read-model.js');
   assert.match(source, /source_max_ranking_date/);
   assert.match(source, /currentJstRankingWeek/);
-  assert.match(source, /今週のリーダーボードは未反映です/);
+  assert.match(source, /今週分の収集・公開を確認できません/);
 });
