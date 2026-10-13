@@ -274,6 +274,8 @@ std::vector<uint8_t> CloudClient::LocalizeRadarTiles(
       std::error_code ignored;
       fs::remove(directory, ignored);
     }
+    // If enumeration failed, retry cleanup on the next successful sync.
+    if (!walkError) lastRadarCachePruneTick_ = nowTick;
   }
 
   const std::string text = WideToUtf8(root.Stringify().c_str());
