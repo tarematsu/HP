@@ -153,3 +153,58 @@ test('known popup stays cached for routine dialog checks', () => {
   assert.equal(dismiss(), null);
   assert.equal(queries, 1, 'disconnected popup falls back to document lookup');
 });
+
+
+test('YouTube SPA event burst refreshes video selection once per microtask', () => {
+  const source = section('    let pageStateQueued = false;',
+    "    state.popup = document.querySelector('ytd-popup-container');");
+  const listeners = new Map();
+  const pending = [];
+  let binds = 0;
+  let wakes = 0;
+  const player = {};
+  const state = { player, pageAbort: { signal: {} } };
+  vm.runInNewContext(
+    '(() => { ' + source + '\nreturn null; })()',
+    {
+      state, player,
+      bindVideo: refresh => {
+        assert.equal(refresh, true);
+        binds++;
+      },
+      wake: delay => {
+        assert.equal(delay, 0);
+        wakes++;
+      },
+      queueMicrotask: callback => { pending.push(callback); },
+      document: {
+        addEventListener(name, handler) {
+          listeners.set(name, handler);
+        },
+      },
+    },
+  );
+  assert.deepEqual([...listeners.keys()],
+    ['yt-navigate-finish', 'yt-page-data-updated', 'fullscreenchange']);
+  const notify = () => {
+    for (const handler of listeners.values()) handler();
+  };
+  for (let i = 0; i < 100; i++) notify();
+  assert.equal(pending.length, 1);
+  assert.equal(binds, 0, 'defer redundant queries until after the event burst');
+  pending.shift()();
+  assert.equal(binds, 1);
+  assert.equal(wakes, 1);
+
+  for (let i = 0; i < 50; i++) notify();
+  assert.equal(pending.length, 1);
+  pending.shift()();
+  assert.equal(binds, 2, 'a later navigation burst must still be handled');
+  assert.equal(wakes, 2);
+
+  notify();
+  state.player = {};
+  pending.shift()();
+  assert.equal(binds, 2, 'stale player callbacks must not rebind the replaced player');
+  assert.equal(wakes, 2);
+});
