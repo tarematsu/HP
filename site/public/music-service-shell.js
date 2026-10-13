@@ -79,6 +79,32 @@ export function musicServiceRankChart({ legendId, chartId }) {
     <div id="${chartId}" class="music-service-rank-chart"></div>`;
 }
 
+// A regional chart and its companion history table always have one layout.
+// Provider differences are IDs, titles and optional extra chart filters.
+export function musicServiceRegionalChartPair({
+  chartSectionId, historySectionId, chartTitle, historyTitle,
+  chartId, legendId, historyBodyId, filterAttribute, filterAriaLabel,
+  dateLabel = '更新日', leadingChartHtml = '',
+}) {
+  return [
+    musicServiceSection({
+      id: chartSectionId,
+      title: chartTitle,
+      bodyHtml: leadingChartHtml + musicServiceRankChart({ legendId, chartId }),
+    }),
+    musicServiceSection({
+      id: historySectionId,
+      group: 'list',
+      title: historyTitle,
+      trailingHtml: musicServiceSakamichiFilter({
+        dataAttribute: filterAttribute,
+        ariaLabel: filterAriaLabel,
+      }),
+      bodyHtml: musicServiceRankingHistoryTable(historyBodyId, dateLabel),
+    }),
+  ];
+}
+
 export function musicServiceSection({
   id = '',
   title = '',
