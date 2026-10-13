@@ -4,6 +4,7 @@ import {
   dashboardLegend,
   dashboardNotice,
   dashboardTable,
+  dashboardUpdateMeta,
   mountDashboardShell,
 } from './dashboard-ui-common.js?v=20261004.1';
 
@@ -13,14 +14,15 @@ const followersTable = dashboardTable({
   colgroupHtml: '<colgroup><col class="followers-account-col"><col class="followers-affiliation-col"><col><col><col></colgroup>',
   headId: 'followersThead',
   bodyId: 'followersTbody',
+  mobileCardsId: 'followersMobileList',
   numeric: false,
 });
 
-const followersMeta = `
-  <div id="followersCompactMeta" class="regional-chart-meta">
-    <span>更新日時 <strong id="followersUpdatedAt">-</strong></span>
-    <span>更新周期 <strong id="followersCadence">-</strong></span>
-  </div>`;
+const followersMeta = dashboardUpdateMeta({
+  id: 'followersCompactMeta',
+  valueId: 'followersUpdatedAt',
+  cadenceId: 'followersCadence',
+});
 
 mountDashboardShell({
   view: {
