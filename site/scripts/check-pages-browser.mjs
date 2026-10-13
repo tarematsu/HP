@@ -151,7 +151,26 @@ try {
     page.on('pageerror', (error) => runtimeErrors.push({ viewport: viewportLabel, message: error.message, url: page.url() }));
     await page.route('**/api/**', async (route) => {
       const url = new URL(route.request().url()); const path = url.pathname + url.search;
-      if (!live) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(emptyFixture()) });
+      if (!live) {
+        const fixture = emptyFixture();
+        if (url.pathname === '/api/history' && url.searchParams.get('mode') === 'ranking') {
+          Object.assign(fixture, {
+            source_max_ranking_date: '2026-10-12',
+            materialized_at: Date.now(),
+            chart_hosts: ['sakuramankai', 'sakurazaka46jp', 'nogizaka46smej'],
+            rows: [
+              { ranking_date: '2026-10-05', rank: 41, host_name: 'nogizaka46smej',
+                stationhead_channel_name: '乃木坂46公式', artist_name: '乃木坂46', fandom_type: 'official' },
+              { ranking_date: '2026-09-28', rank: 7, host_name: 'sakurazaka46jp',
+                stationhead_channel_name: '櫻坂46公式', artist_name: '櫻坂46', fandom_type: 'official' },
+              { ranking_date: '2026-10-12', rank: null, host_name: 'nogizaka46smej',
+                stationhead_channel_name: '乃木坂46公式', artist_name: '乃木坂46', fandom_type: 'official',
+                synthetic: true, is_out_of_rank: true },
+            ],
+          });
+        }
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(fixture) });
+      }
       if (!snapshots.has(path)) snapshots.set(path, fetchLiveApiSnapshot(path));
       try { await route.fulfill(await snapshots.get(path)); }
       catch (error) { apiResults.push({ path, error: error.message }); await route.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'snapshot unavailable' }) }); }
@@ -206,8 +225,14 @@ try {
         }
         assert.match(await page.locator('.dashboard-view:not([hidden]) [data-role="daily-tbody"] tr td').first().textContent(), /^\d{4}/, `${mode}: history data did not load`);
       }
-      if (!live && width === 320 && ['broadcasts', 'ranking', 'youtube-music', 'kkbox'].includes(mode)) await stressVisibleLayout(page, label);
+      if (!live && mode === 'ranking' && width <= 390) {
+        const row = page.locator('#leaderboardTbody tr').first();
+        assert.equal(await row.locator('td').count(), 6, 'ranking fixture renders all six labelled fields');
+        assert.equal(await row.evaluate((node) => getComputedStyle(node).display), 'grid', 'narrow leaderboard uses full-width cards');
+        assert.equal(await row.locator('td').nth(2).getAttribute('data-label'), 'ホスト');
+      }
       await page.screenshot({ path: `${output}/${label}.png`, fullPage: true });
+      if (!live && width === 320 && ['broadcasts', 'ranking', 'youtube-music', 'kkbox'].includes(mode)) await stressVisibleLayout(page, label);
       const downloads = await checkCsv(page, label);
       for (const button of await page.locator('.dashboard-view:not([hidden]) .music-service-view-tabs button').all()) {
         await button.click(); await page.waitForTimeout(400); await page.waitForLoadState('networkidle', { timeout: 45000 });
