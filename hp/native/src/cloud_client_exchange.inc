@@ -2,6 +2,32 @@
 #include "stationhead_leaderboard_diagnostics.h"
 
 namespace hp {
+namespace {
+// Decode the already-sliced binary exchange JSON directly. Constructing a
+// temporary std::string from translated.body copies the full JSON response on
+// every normal cloud poll before WinRT parses it.
+std::wstring ExchangeJsonUtf8ToWide(
+    const uint8_t* data, size_t length) {
+  if (!data || length == 0 ||
+      length > static_cast<size_t>(std::numeric_limits<int>::max())) {
+    throw std::runtime_error("device exchange JSON length invalid");
+  }
+  const int bytes = static_cast<int>(length);
+  const char* utf8 = reinterpret_cast<const char*>(data);
+  const int wideLength = MultiByteToWideChar(
+      CP_UTF8, MB_ERR_INVALID_CHARS, utf8, bytes, nullptr, 0);
+  if (wideLength <= 0) {
+    throw std::runtime_error("device exchange JSON invalid UTF-8");
+  }
+  std::wstring output(static_cast<size_t>(wideLength), L'\0');
+  if (MultiByteToWideChar(
+          CP_UTF8, MB_ERR_INVALID_CHARS, utf8, bytes,
+          output.data(), wideLength) != wideLength) {
+    throw std::runtime_error("device exchange JSON transcoding failed");
+  }
+  return output;
+}
+}  // namespace
 
 void CloudClient::QueueTelemetry(std::string json, TelemetryCallback callback) {
   if (json.empty()) return;
@@ -122,8 +148,8 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
   HttpResponse translated;
   translated.status = 200;
   translated.body.assign(exchange.body.begin() + 12, exchange.body.begin() + jsonEnd);
-  const JsonObject root = JsonObject::Parse(Utf8ToWide(std::string(
-      reinterpret_cast<const char*>(translated.body.data()), translated.body.size())));
+  const JsonObject root = JsonObject::Parse(
+      ExchangeJsonUtf8ToWide(translated.body.data(), translated.body.size()));
 
   std::wstring bundlePath;
   if (root.HasKey(L"radar") && root.GetNamedValue(L"radar").ValueType() == JsonValueType::String) {
