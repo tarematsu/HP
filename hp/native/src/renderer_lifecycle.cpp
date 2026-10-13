@@ -101,6 +101,9 @@ void Renderer::SetBounds(const RECT& bounds) {
 }
 
 void Renderer::SetVisible(bool visible) {
+  // LayoutWorkspace can reassert an unchanged dashboard state. Power-saving
+  // transitions still call ApplyDashboardVisibility via SetPowerSavingMode.
+  if (requestedDashboardVisible_ == visible) return;
   requestedDashboardVisible_ = visible;
   ApplyDashboardVisibility();
 }
