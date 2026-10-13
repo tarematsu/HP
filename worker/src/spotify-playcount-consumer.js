@@ -201,6 +201,30 @@ async function failRun(db, message, error) {
     .bind(Date.now(), truncateError(error), message.snapshot_date, message.run_token).run();
 }
 
+// Filter the date before canonical aggregation. The unfiltered
+// sh_spotify_playcount_daily_canonical view groups every historical date first,
+// causing excessive D1 rows read even though finalization needs only yesterday.
+export function spotifyPreviousTargetPlaycountsStatement(db, previousDate, targetKeys) {
+  const keys = [...new Set((targetKeys || []).map(String).filter(Boolean))];
+  if (!keys.length) throw new Error('Spotify previous-day target keys are required');
+  const placeholders = keys.map(() => '?').join(',');
+  return db.prepare(`SELECT
+      COALESCE(alias.canonical_track_id,daily.track_id) AS track_id,
+      MAX(daily.playcount) AS playcount
+    FROM sh_spotify_playcount_daily AS daily
+    LEFT JOIN sh_spotify_track_aliases AS alias
+      ON alias.source_track_id=daily.track_id
+    WHERE daily.snapshot_date=?
+      AND EXISTS (
+        SELECT 1 FROM sh_spotify_track_targets AS target
+        WHERE target.track_id=COALESCE(alias.canonical_track_id,daily.track_id)
+          AND target.artist_key IN (${placeholders})
+      )
+    GROUP BY COALESCE(alias.canonical_track_id,daily.track_id)
+    ORDER BY track_id`)
+    .bind(previousDate, ...keys);
+}
+
 async function finalizeAttempt(db, message) {
   const run = await readRun(db, message.snapshot_date);
   if (!run || run.run_token !== message.run_token || run.status === 'complete') return { staleMessage: true };
@@ -230,13 +254,9 @@ async function finalizeAttempt(db, message) {
 
   const previousDate = previousDateKey(message.snapshot_date);
   const targetKeys = SPOTIFY_TARGET_ARTISTS.map((artist) => artist.artist_key);
-  const placeholders = targetKeys.map(() => '?').join(',');
-  const previous = resultsOf(await db.prepare(`SELECT DISTINCT d.track_id,d.playcount
-    FROM sh_spotify_playcount_daily_canonical d
-    INNER JOIN sh_spotify_track_targets t ON t.track_id=d.track_id
-    WHERE d.snapshot_date=? AND t.artist_key IN (${placeholders})
-    ORDER BY d.track_id`)
-    .bind(previousDate, ...targetKeys).all());
+  const previous = resultsOf(await spotifyPreviousTargetPlaycountsStatement(
+    db, previousDate, targetKeys,
+  ).all());
   if (previous.length) {
     const candidateIds = new Set(candidates.map((row) => String(row.track_id)));
     const missing = previous.filter((row) => !candidateIds.has(String(row.track_id)));

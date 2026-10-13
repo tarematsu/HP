@@ -14,7 +14,7 @@ test('Spotify finalization is claimed before candidate and previous-day heavy re
 
   const claim = finalize.indexOf("SET status='finalizing'");
   const candidates = finalize.indexOf('FROM sh_spotify_playcount_candidates');
-  const previous = finalize.indexOf('FROM sh_spotify_playcount_daily_canonical');
+  const previous = finalize.indexOf('spotifyPreviousTargetPlaycountsStatement');
 
   assert.ok(claim >= 0, 'finalization claim must exist');
   assert.ok(candidates > claim, 'candidate read must happen after claim');
