@@ -39,7 +39,7 @@ test('Spotify candidate winners skip losing album observations and preserve equa
   const statement = db.prepare(sql);
   // A single statement-level active-run guard is sufficient for both insert and conflict paths.
   const run = (album, count, time, token = 'run') => statement.run(
-    '2026-10-09',token,'track',album,count,time,'2026-10-09',token,
+    '2026-10-09',token,album,time,JSON.stringify([['track',count]]),'2026-10-09',token,
   ).changes;
   assert.equal(run('album-a',100,1000),1);
   assert.equal(run('album-b',90,2000),0);
