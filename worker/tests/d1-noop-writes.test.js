@@ -57,7 +57,7 @@ test('Spotify candidate winners skip losing album observations and preserve equa
   db.exec("UPDATE sh_spotify_collection_runs SET status='queued',run_token='run-next'");
   assert.equal(run('album-stale', 200, 5000), 0);
   assert.equal(run('album-next', 80, 6000, 'run-next'), 1);
-  assert.deepEqual(db.prepare('SELECT run_token,album_id,playcount,collected_at FROM sh_spotify_playcount_candidates').get(), {
+  assert.deepEqual({ ...db.prepare('SELECT run_token,album_id,playcount,collected_at FROM sh_spotify_playcount_candidates').get() }, {
     run_token: 'run-next', album_id: 'album-next', playcount: 80, collected_at: 6000,
   });
   db.close();
