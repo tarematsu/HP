@@ -95,11 +95,22 @@ HttpResponse CloudClient::Request(const std::wstring& method, const std::wstring
       throw std::runtime_error("WinHTTP request failed (" + std::to_string(requestError) + ")");
     }
 
-    // Online operation is anchored directly to the HTTPS Date header. Windows
-    // wall time is sampled only to persist network-minus-Windows offset for a
-    // later offline startup; it never drives the live online clock.
-    SynchronizeNetworkClockFromHttpResponse(request);
-    PersistNetworkClockOffsetFromHttpResponse(request);
+    // Read HTTPS Date once for both the live monotonic clock and the optional
+    // persisted offline offset. These previously queried and converted the
+    // same header separately on every successful HTTP response.
+    // Windows wall time still never drives the live online clock.
+    SYSTEMTIME serverUtc{};
+    DWORD serverUtcSize = sizeof(serverUtc);
+    if (WinHttpQueryHeaders(
+            request, WINHTTP_QUERY_DATE | WINHTTP_QUERY_FLAG_SYSTEMTIME,
+            WINHTTP_HEADER_NAME_BY_INDEX, &serverUtc, &serverUtcSize,
+            WINHTTP_NO_HEADER_INDEX)) {
+      int64_t serverUnixMs = 0;
+      if (UnixMillisFromUtcSystemTime(serverUtc, &serverUnixMs)) {
+        SynchronizeNetworkClockFromServerUnixMillis(serverUnixMs);
+        PersistNetworkClockOffsetFromServerUnixMillis(serverUnixMs);
+      }
+    }
 
     HttpResponse output;
     DWORD statusSize = sizeof(output.status);
