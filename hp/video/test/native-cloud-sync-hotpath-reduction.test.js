@@ -87,3 +87,39 @@ test('only the first pending cloud refresh wakes the polling thread', () => {
   assert.match(client, /wake_\.wait_for\(lock, std::chrono::seconds\(seconds\), \[this\] \{ return stopping_\.load\(\) \|\| immediate_\.exchange\(false\); \}\)/);
   assert.match(client, /void CloudClient::Stop\(\)[\s\S]*wake_\.notify_all\(\)/);
 });
+
+
+test('replayed cloud payloads keep versions without unnecessary file writes or UI paints', () => {
+  const helperStart = sync.indexOf('CacheWriteResult WriteCacheIfChanged(');
+  const helperEnd = sync.indexOf('void CloudClient::ApplyPresenceFallback()', helperStart);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart);
+  const helper = sync.slice(helperStart, helperEnd);
+  assert.match(helper, /fs::file_size\(path, error\)/);
+  assert.match(helper, /existingSize == bytes\.size\(\)/);
+  assert.match(helper, /std::array<char, 8192> chunk/);
+  assert.match(helper, /std::memcmp\(chunk\.data\(\), bytes\.data\(\) \+ offset, count\) != 0/);
+  assert.match(helper, /if \(equal\) return CacheWriteResult::Unchanged/);
+  assert.match(helper, /AtomicWriteBytes\(path, bytes\)/);
+
+  for (const [source, label, applied, message] of [
+    ['dashboardPath', 'dashboard', 'dashboardApplied', 'WM_HP_CLOUD_UPDATED'],
+    ['radarPath', 'radar', 'radarApplied', 'WM_HP_RADAR_UPDATED'],
+    ['switchbotPath', 'SwitchBot', 'switchbotApplied', 'WM_HP_SWITCHBOT_UPDATED'],
+    ['deviceConfigPath', 'device config', 'configApplied', 'WM_HP_CONFIG_UPDATED'],
+  ]) {
+    const start = sync.indexOf('WriteCacheIfChanged(' + source);
+    assert.ok(start >= 0, label + ' must use the shared dedupe writer');
+    const piece = sync.slice(start, start + 460);
+    assert.match(piece, /CacheWriteResult::Failed/);
+    assert.match(piece, new RegExp(applied + ' = true;'));
+    assert.match(piece, new RegExp('if \\(written == CacheWriteResult::Written\\) \\{\\s*PostMessageW\\(window_, ' + message));
+  }
+
+  // Equal data does not require a write, but a missing/changed target does.
+  const shouldWrite = (existing, next) => existing === null ||
+    !Buffer.from(existing).equals(Buffer.from(next));
+  assert.equal(shouldWrite('abc', 'abc'), false);
+  assert.equal(shouldWrite('abc', 'abd'), true);
+  assert.equal(shouldWrite(null, 'abc'), true);
+  assert.equal(shouldWrite('abc', 'abcd'), true);
+});
