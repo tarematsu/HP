@@ -44,6 +44,10 @@ function createFakeDb(initialRows = []) {
     checkpoints: new Map(),
     checkpointWrites: 0,
     batches: 0,
+    rankingRowWrites: 0,
+    rankingUpdates: 0,
+    rankingDeletes: 0,
+    rankingInserts: 0,
   };
   const writeCheckpoint = (values) => {
     const [ranking_date, observed_at, source_digest, content_json] = values;
@@ -93,7 +97,28 @@ function createFakeDb(initialRows = []) {
       for (const item of statements) {
         if (/^DELETE FROM sh_channel_rankings/i.test(item.sql.trim())) {
           const [rankingDate, rankingType] = item.bindings;
+          const previousCount = state.rows.length;
           state.rows = state.rows.filter((row) => row.ranking_date !== rankingDate || row.ranking_type !== rankingType);
+          state.rankingDeletes += previousCount - state.rows.length;
+          state.rankingRowWrites += previousCount - state.rows.length;
+          continue;
+        }
+        if (/^UPDATE sh_channel_rankings SET/i.test(item.sql.trim())) {
+          const [
+            observed_at, channel_name, channel_alias, listener_count, member_count,
+            total_listens, source_sheet, source_row, quality_score, quality_flags,
+            raw_json, imported_at, rankingDate, rankingType, rank,
+          ] = item.bindings;
+          const matches = state.rows.filter((row) =>
+            row.ranking_date === rankingDate && row.ranking_type === rankingType && Number(row.rank) === Number(rank));
+          assert.equal(matches.length, 1, 'targeted update must only touch one existing ranking row');
+          Object.assign(matches[0], {
+            observed_at, channel_name, channel_alias, listener_count, member_count,
+            total_listens, source_sheet, source_row, quality_score, quality_flags,
+            raw_json, imported_at,
+          });
+          state.rankingUpdates += 1;
+          state.rankingRowWrites += 1;
           continue;
         }
         if (/^INSERT INTO sh_channel_rankings/i.test(item.sql.trim())) {
@@ -107,6 +132,8 @@ function createFakeDb(initialRows = []) {
             listener_count, member_count, total_listens, source_sheet, source_row,
             quality_score, quality_flags, raw_json, imported_at,
           });
+          state.rankingInserts += 1;
+          state.rankingRowWrites += 1;
           continue;
         }
         if (/^INSERT INTO sh_weekly_leaderboard_import_state/i.test(item.sql.trim())) {
@@ -209,7 +236,7 @@ test('imports the weekly leaderboard once and skips the same R2 digest', async (
   assert.equal(db.state.rows.length, 100);
 });
 
-test('a new R2 digest replaces the whole weekly ranking instead of duplicating it', async () => {
+test('a fully changed R2 digest updates the complete weekly ranking without duplication', async () => {
   const db = createFakeDb();
   const firstArtifact = artifactWith({
     schema: 2,
@@ -231,6 +258,8 @@ test('a new R2 digest replaces the whole weekly ranking instead of duplicating i
 
   assert.equal(result.status, 'imported');
   assert.equal(db.state.batches, 2);
+  assert.equal(db.state.rankingDeletes, 0, 'a complete prior ranking needs no wholesale delete');
+  assert.equal(db.state.rankingUpdates, 100, 'each changed rank is updated once');
   assert.equal(db.state.rows.length, 100);
   assert.equal(db.state.rows[0].channel_name, 'buddies');
   assert.equal(JSON.parse(db.state.rows[0].raw_json).source_digest, 'digest-2');
@@ -310,4 +339,75 @@ test('Actions and Worker use the same parser and importer', async () => {
   const worker = await import('../src/stationhead-leaderboard-worker.js');
   assert.strictEqual(importLeaderboardArtifact, worker.importLeaderboardArtifact);
   assert.strictEqual(parseLeaderboardSnapshot, worker.parseLeaderboardSnapshot);
+});
+
+test('one changed ranking entry rewrites one row rather than deleting and reinserting Top 100', async () => {
+  const db = createFakeDb();
+  const baseRows = completeRanking({ prefix: 'stable' });
+  const a = artifactWith({ ranking: baseRows }, {
+    digest: 'first',
+    observed_at: Date.parse('2026-09-21T15:30:00Z'),
+  });
+  const b = artifactWith({ ranking: baseRows.map((row, index) =>
+    index === 21 ? { ...row, streams: row.streams + 10 } : row) }, {
+    digest: 'one-changed',
+    observed_at: Date.parse('2026-09-21T16:30:00Z'),
+  });
+  assert.equal((await importLeaderboardArtifact(a, db, 100)).status, 'imported');
+  assert.equal(db.state.rankingInserts, 100);
+  assert.equal(db.state.rankingDeletes, 0);
+  const oldRows = db.state.rows.map((row) => ({ ...row }));
+  const previousWrites = db.state.rankingRowWrites;
+  const changed = await importLeaderboardArtifact(b, db, 200);
+  assert.equal(changed.status, 'imported');
+  assert.equal(db.state.rankingRowWrites - previousWrites, 1);
+  assert.equal(db.state.rankingUpdates, 1);
+  assert.equal(db.state.rankingDeletes, 0);
+  assert.equal(db.state.rankingInserts, 100);
+  assert.equal(db.state.rows[21].total_listens, baseRows[21].streams + 10);
+  assert.equal(JSON.parse(db.state.rows[21].raw_json).source_digest, 'one-changed');
+  assert.deepEqual(db.state.rows[0], oldRows[0], 'unchanged ranks retain their original capture record');
+  assert.deepEqual(db.state.rows[99], oldRows[99]);
+  assert.deepEqual(db.state.rows.map(row => row.rank), Array.from({ length: 100 }, (_, i) => i + 1));
+
+  const after = db.state.rankingRowWrites;
+  assert.equal((await importLeaderboardArtifact(b, db, 300)).status, 'unchanged');
+  assert.equal(db.state.rankingRowWrites, after, 'identical retry writes no ranking rows');
+});
+
+test('rank swaps update only the changed ranks and preserve unique complete positions', async () => {
+  const db = createFakeDb();
+  const rows = completeRanking({ prefix: 'swappable' });
+  await importLeaderboardArtifact(artifactWith({ ranking: rows }, { digest: 'swap-before' }), db, 100);
+  const swapped = rows.map((row) => ({ ...row }));
+  [swapped[0].name, swapped[1].name] = [swapped[1].name, swapped[0].name];
+  [swapped[0].streams, swapped[1].streams] = [swapped[1].streams, swapped[0].streams];
+  const before = db.state.rankingRowWrites;
+  assert.equal((await importLeaderboardArtifact(artifactWith({ ranking: swapped }, {
+    digest: 'swap-after', observed_at: Date.parse('2026-09-21T16:30:00Z'),
+  }), db, 200)).status, 'imported');
+  assert.equal(db.state.rankingRowWrites - before, 2);
+  assert.equal(db.state.rankingUpdates, 2);
+  assert.deepEqual(db.state.rows.slice(0, 2).map(row => row.channel_name),
+    [rows[1].name, rows[0].name]);
+  assert.equal(new Set(db.state.rows.map(row => row.channel_name)).size, 100);
+});
+
+test('incomplete or duplicated stored ranking rows trigger a full self-repair', async () => {
+  const db = createFakeDb();
+  const rows = completeRanking({ prefix: 'repair' });
+  const base = artifactWith({ ranking: rows }, { digest: 'repair-before' });
+  await importLeaderboardArtifact(base, db, 100);
+  // Simulate an interrupted external/manual maintenance action that duplicates a rank
+  // and drops another; the source checkpoint still refers to a complete Top 100.
+  db.state.rows[55].rank = 54;
+  const next = artifactWith({ ranking: rows.map((row, index) =>
+    index === 10 ? { ...row, streams: row.streams + 1 } : row) }, {
+    digest: 'repair-after', observed_at: Date.parse('2026-09-21T16:30:00Z'),
+  });
+  const before = db.state.rankingRowWrites;
+  assert.equal((await importLeaderboardArtifact(next, db, 200)).status, 'imported');
+  assert.equal(db.state.rankingRowWrites - before, 200,
+    'corrupt stored ranking must be replaced rather than applying a partial update');
+  assert.deepEqual(db.state.rows.map(row => row.rank), Array.from({ length: 100 }, (_, i) => i + 1));
 });
