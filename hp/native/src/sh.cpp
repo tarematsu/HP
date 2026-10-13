@@ -70,7 +70,8 @@ StationheadPlayer::SchedulerState StationheadPlayer::ReadSchedulerState() const 
   std::lock_guard lock(mutex_);
   return {
       AudioPlaying(), status_.loginRequired, spotifyAuthorization_,
-      status_.processFailed, status_.visible};
+      status_.processFailed, status_.visible,
+      status_.created, status_.navigating};
 }
 
 void StationheadPlayer::ResetNavigationRouteState() {

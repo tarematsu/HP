@@ -103,6 +103,10 @@ class StationheadPlayer {
     bool spotifyAuthorization = false;
     bool processFailed = false;
     bool visible = false;
+    // Audio-loss recovery requires these two lifecycle flags as well, but
+    // never needs the URL/detail strings held by StationheadStatus.
+    bool created = false;
+    bool navigating = false;
   };
   [[nodiscard]] SchedulerState ReadSchedulerState() const;
   HWND ActiveHostWindowForAccountSetup() const noexcept;

@@ -11,6 +11,7 @@ const playerHeader = native('sh.h');
 const player = native('sh.cpp');
 const handlesHeader = native('app_stationhead_handles.h');
 const handles = native('app_stationhead_handles.cpp');
+const audioLoss = native('sh_audio_loss.cpp');
 
 function section(source, start, end) {
   const a = source.indexOf(start);
@@ -34,7 +35,7 @@ test('App recovery scheduler reads six compact booleans without copying Stationh
 test('compact scheduler flags are obtained under one status lock with atomic audio validity', () => {
   assert.match(playerHeader, /struct SchedulerState \{/);
   for (const name of ['audioPlaying', 'loginRequired', 'spotifyAuthorization',
-    'processFailed', 'visible']) {
+    'processFailed', 'visible', 'created', 'navigating']) {
     assert.match(playerHeader, new RegExp('bool ' + name + ' = false;'));
   }
   const flags = section(player,
@@ -45,6 +46,22 @@ test('compact scheduler flags are obtained under one status lock with atomic aud
   assert.match(flags, /status_\.processFailed, status_\.visible/);
   assert.doesNotMatch(flags, /std::wstring|StationheadStatus copy|status_;/);
   assert.match(handlesHeader, /\[\[nodiscard\]\] bool NeedsFastTick\(\) const/);
+});
+
+test('six-profile audio-loss watchdog uses compact flags without cloning status strings', () => {
+  const state = section(audioLoss,
+    'void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {',
+    '}  // namespace hp');
+  assert.match(state, /const SchedulerState candidate = ReadSchedulerState\(\)/);
+  assert.match(state, /const SchedulerState snapshot = ReadSchedulerState\(\)/);
+  assert.doesNotMatch(state, /StationheadStatus|\bStatus\(\)/,
+    'audio recovery only needs authentication and navigation flags');
+  assert.match(state, /snapshot\.created/);
+  assert.match(state, /snapshot\.navigating/);
+  assert.match(state, /snapshot\.processFailed/);
+  assert.match(state, /snapshot\.loginRequired \|\| snapshot\.spotifyAuthorization/);
+  assert.match(state, /BeginAudioLossAuthProbe\(nowMs\)/);
+  assert.match(state, /StationheadAudioLossCanFallback\(/);
 });
 
 test('fast scheduler maintains transition grace, interactive overrides, and content revision', () => {

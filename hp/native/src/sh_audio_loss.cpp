@@ -361,7 +361,7 @@ void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
       monitorDomProbeGeneration.load(std::memory_order_acquire);
   bool startMonitorProbe = false;
   if (requestedGeneration != 0 && webview_) {
-    const StationheadStatus candidate = Status();
+    const SchedulerState candidate = ReadSchedulerState();
     const unsigned selected = StationheadMonitorProfile();
     const bool selectedMonitor = selected != 0 &&
         selected == StationheadProfileNumber(profileName_);
@@ -417,7 +417,10 @@ void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
     }
   }
 
-  const StationheadStatus snapshot = Status();
+  // This executes for all six profiles on every fast App recovery tick.
+  // Avoid copying URL, room description and diagnostic strings just to
+  // evaluate lifecycle and authentication booleans.
+  const SchedulerState snapshot = ReadSchedulerState();
   const bool navigationActive =
       !snapshot.created || snapshot.navigating || snapshot.processFailed ||
       recreating_.load(std::memory_order_acquire) ||
