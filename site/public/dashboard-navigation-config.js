@@ -1,26 +1,35 @@
+import { STATIONHEAD_CHANNEL_TABS } from './stationhead-channel-model.js?v=20261004.1';
+
 export const HISTORY_MODES = Object.freeze(new Set(['daily', 'weekly', 'broadcasts']));
 
-const stationheadFunctions = Object.freeze([
-  { mode: 'current', label: '現在' },
-  { mode: 'past', label: '過去' },
-  { mode: 'played-tracks', label: '再生履歴' },
-  { mode: 'likes', label: 'いいね' },
-  { mode: 'broadcasts', label: 'リスパ' },
-]);
-// Source-specific URL modes point to the same Stationhead panel implementation.
-const ohisamaFunctions = Object.freeze([
-  { mode: 'hinata', label: '現在' },
-  { mode: 'hinata-past', label: '過去' },
-  { mode: 'hinata-played-tracks', label: '再生履歴' },
-  { mode: 'hinata-likes', label: 'いいね' },
-]);
+// Buddies defines the canonical Stationhead section labels and ordering.
+const sourceModes = Object.freeze({
+  buddies: Object.freeze({
+    current: 'current', history: 'past', 'played-tracks': 'played-tracks',
+    likes: 'likes', broadcasts: 'broadcasts',
+  }),
+  hinata: Object.freeze({
+    current: 'hinata', history: 'hinata-past',
+    'played-tracks': 'hinata-played-tracks', likes: 'hinata-likes',
+  }),
+  nogizaka: Object.freeze({ broadcasts: 'nogizaka' }),
+});
+export function stationheadSourceFunctions(source) {
+  const modes = sourceModes[source] || sourceModes.buddies;
+  return Object.freeze(STATIONHEAD_CHANNEL_TABS
+    .filter((tab) => Boolean(modes[tab.value]))
+    .map((tab) => Object.freeze({ mode: modes[tab.value], label: tab.label })));
+}
+const stationheadFunctions = stationheadSourceFunctions('buddies');
+const ohisamaFunctions = stationheadSourceFunctions('hinata');
+const nogizakaFunctions = stationheadSourceFunctions('nogizaka');
 
 export const NAVIGATION = Object.freeze([
   {
     id: 'stationhead', label: 'Stationhead', sources: Object.freeze([
       { id: 'buddies', label: 'Buddies', defaultMode: 'current', functions: stationheadFunctions },
       { id: 'hinata', label: 'Ohisama', defaultMode: 'hinata', functions: ohisamaFunctions },
-      { id: 'nogizaka', label: 'Nogizaka', defaultMode: 'nogizaka', functions: Object.freeze([{ mode: 'nogizaka', label: 'リスパ' }]) },
+      { id: 'nogizaka', label: 'Nogizaka', defaultMode: 'nogizaka', functions: nogizakaFunctions },
       { id: 'ranking', label: 'リーダーボード', defaultMode: 'ranking', functions: Object.freeze([{ mode: 'ranking', label: 'リーダーボード' }]) },
       { id: 'followers', label: 'フォロワー', defaultMode: 'followers', functions: Object.freeze([{ mode: 'followers', label: 'フォロワー' }]) },
     ]),
@@ -63,7 +72,7 @@ export const ROUTES = Object.freeze({
   kkbox: lazy('kkboxView', 'kkbox', 'loadKkboxView', 'kkboxNotice', 'kkbox', 'KKBOXデータの初期化に失敗しました。再読み込みしてください。'),
   qq_music: lazy('qqMusicView', 'qq_music', 'loadQqMusicView', 'qqMusicNotice', 'qq music', 'QQ音乐データの初期化に失敗しました。再読み込みしてください。'),
   kugou_music: lazy('kugouMusicView', 'kugou_music', 'loadKugouMusicView', 'kugouMusicNotice', 'kugou music', '酷狗音乐データの初期化に失敗しました。再読み込みしてください。'),
-  nogizaka: lazy('nogizakaListeningPartyView', 'nogizaka', 'loadNogizakaListeningPartyView', 'nogizakaListeningPartyNotice', 'nogizaka listening party', '乃木坂公式リスパデータの初期化に失敗しました。再読み込みしてください。'),
+  nogizaka: Object.freeze({ kind: 'stationhead', panel: 'broadcasts', viewId: 'nogizakaListeningPartyView' }),
 });
 
 const modeNavigation = new Map();
