@@ -266,23 +266,12 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     if (!active) {
     state.adObserver?.disconnect();
     state.adObserver = null;
-    state.lastAdMutationWakeAt = 0;
     return;
     }
     if (state.adObserver || typeof MutationObserver !== 'function') return;
-    // Cap noisy ad DOM changes to one immediate native wake per 200ms.
-    // The existing wake timer coalesces any deferred follow-up.
-    const adMutationWake = () => {
-    const now = Date.now();
-    const elapsed = now - Number(state.lastAdMutationWakeAt || 0);
-    if (elapsed >= 0 && elapsed < 200) {
-      wake(200 - elapsed);
-    } else {
-      state.lastAdMutationWakeAt = now;
-      wake(0);
-    }
-    };
-    state.adObserver = new MutationObserver(adMutationWake);
+    // Batch ad DOM mutation bursts into 180ms windows; the player class
+    // observer still issues immediate wakes when an ad starts or ends.
+    state.adObserver = new MutationObserver(() => wake(180));
     state.adObserver.observe(player, {
     childList: true,
     subtree: true,
