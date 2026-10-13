@@ -29,9 +29,10 @@ test('Pages keeps Ohisama behind the shared lazy dashboard route', () => {
   assert.equal(navigation.source.id, 'hinata');
   assert.equal(navigation.source.label, 'Ohisama');
   assert.equal(navigation.source.defaultMode, 'hinata');
-  assert.match(shellWrapper, /mountStationheadChannelShell/);
-  assert.match(shellWrapper, /id: 'hinataView'/);
-  assert.match(shellWrapper, /stationheadModel = 'ohisama'/);
+  assert.match(shellWrapper, /mountStationheadSourceShell\\('ohisama'\\)/);
+  const sourceFactory = readFileSync(new URL('../public/stationhead-source-shell.js', import.meta.url), 'utf8');
+  assert.match(sourceFactory, /viewId: 'hinataView'/);
+  assert.match(sourceFactory, /model: 'ohisama'/);
 });
 
 test('Ohisama, Buddies and Nogizaka use the same Stationhead HTML shell', () => {
