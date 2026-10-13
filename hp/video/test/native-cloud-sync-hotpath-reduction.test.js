@@ -174,3 +174,35 @@ test('identical command payloads skip disk writes but preserve command retry not
   replay(true);
   assert.equal(attempts, 2);
 });
+
+
+test('periodic cloud sync builds version query without temporary concatenated wide strings', () => {
+  const begin = sync.indexOf('  std::wstring path = L"/v1/device/sync?deviceId=";');
+  const end = sync.indexOf('  const auto response = Request(', begin);
+  assert.ok(begin >= 0 && end > begin);
+  const query = sync.slice(begin, end);
+  assert.match(query, /path\.reserve\(256\)/);
+  assert.match(query, /path \+= config_\.deviceId/);
+  for (const key of ['dashboardVersion', 'radarVersion', 'switchbotVersion', 'configVersion']) {
+    assert.match(query, new RegExp('path \\+= L"&' + key + '=";\\s*path \\+= std::to_wstring\\('));
+    assert.doesNotMatch(query, new RegExp('L"&' + key + '=" \\+ std::to_wstring'));
+  }
+  assert.match(query, /std::to_wstring\(requestedRadarVersion\(\)\)/);
+  assert.match(query, /std::to_wstring\(requestedDeviceConfigVersion\(\)\)/);
+  assert.match(query, /presenceFallbackActive_\s*\? -1\s*: requestedVersion\(switchbotPath, switchbotVersion_\)/);
+  assert.ok(query.indexOf('"&dashboardVersion="') < query.indexOf('"&radarVersion="'));
+  assert.ok(query.indexOf('"&radarVersion="') < query.indexOf('"&switchbotVersion="'));
+  assert.ok(query.indexOf('"&switchbotVersion="') < query.indexOf('"&configVersion="'));
+  const makeQuery = (deviceId, versions, fallback) => {
+    const p = new URLSearchParams({
+      deviceId,
+      dashboardVersion: String(versions.dashboard),
+      radarVersion: String(versions.radar),
+      switchbotVersion: String(fallback ? -1 : versions.switchbot),
+      configVersion: String(versions.config),
+    });
+    return p;
+  };
+  assert.equal(makeQuery('homepanel', {dashboard:3,radar:7,switchbot:9,config:2}, false).get('switchbotVersion'), '9');
+  assert.equal(makeQuery('homepanel', {dashboard:3,radar:7,switchbot:9,config:2}, true).get('switchbotVersion'), '-1');
+});
