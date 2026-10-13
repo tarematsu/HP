@@ -475,24 +475,33 @@ class NativeMediaPanelHost final {
   }
 
   bool IsYoutubePlaylistPage() noexcept {
-    return SourceContains(L"youtube.com/playlist") &&
-           SourceContains(L"list=PLMWqSdpIVl30");
+    return SourceContains(L"youtube.com/playlist", L"list=PLMWqSdpIVl30");
   }
 
   bool IsYoutubeWatchPage() noexcept {
-    return SourceContains(L"youtube.com/watch") &&
-           SourceContains(L"list=PLMWqSdpIVl30");
+    return SourceContains(L"youtube.com/watch", L"list=PLMWqSdpIVl30");
   }
 
   bool IsTverPage() noexcept { return SourceContains(L"tver.jp/"); }
 
-  bool SourceContains(std::wstring_view needle) noexcept {
+  bool SourceContains(std::wstring_view needle,
+                      std::wstring_view required = {}) noexcept {
     if (!webview_) return false;
     LPWSTR source = nullptr;
-    if (FAILED(webview_->get_Source(&source)) || !source) return false;
-    const std::wstring value(source);
+    const HRESULT result = webview_->get_Source(&source);
+    if (FAILED(result) || !source) {
+      if (source) CoTaskMemFree(source);
+      return false;
+    }
+    // Inspect the COM-owned URL in place, before freeing it. YouTube's
+    // playlist/watch page checks need one get_Source rather than two, and
+    // neither platform allocates an unnecessary std::wstring copy.
+    const std::wstring_view value(source);
+    const bool matches =
+        value.find(needle) != std::wstring_view::npos &&
+        (required.empty() || value.find(required) != std::wstring_view::npos);
     CoTaskMemFree(source);
-    return value.find(needle) != std::wstring::npos;
+    return matches;
   }
 
   bool ScheduleNavigationRetry() noexcept {
