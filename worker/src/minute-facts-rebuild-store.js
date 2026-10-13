@@ -1,8 +1,7 @@
-import { loadQueueRevisionPositions } from './minute-queue-revision-progress.js';
+import { countQueueRevisionItems, loadQueueRevisionPositions, resolveMissingQueueRevisionTracks } from './minute-queue-revision-progress.js';
 import { insertPendingQueueRevision } from './minute-queue-revision-insert.js';
 import { saveMinuteFactWithinBudget } from './minute-facts-write-budget.js';
 import {
-  missingRevisionPositions,
   resolveTracksBulk,
 } from './minute-facts-fast-store.js';
 import {
@@ -17,7 +16,6 @@ import {
   queueStructurePayload,
   reportedStreamCount,
   resolveHost,
-  scheduleQueueTracks,
   timestampMs,
   TRACK_DETECTION_METHOD_CODES,
   upsertMinuteFact,
@@ -99,15 +97,13 @@ async function createRebuildRevision(db, sourceDb, input) {
   const revisionId = Number(revision?.id);
   if (!Number.isFinite(revisionId)) throw new Error('failed to create historical queue revision');
   const existingResult = await loadQueueRevisionPositions(db, revisionId);
-  const resolved = await resolveTracksBulk(db, sourceDb, payload.tracks, input.observedAt, {
-    channelId: input.channelId,
-    minuteAt: minuteBucket(input.observedAt),
-    queueTracks: payload.tracks.length,
-    revisionId,
-  });
-
-  const scheduled = scheduleQueueTracks(resolved);
-  const missing = missingRevisionPositions(scheduled, existingResult.results || []);
+  const missing = await resolveMissingQueueRevisionTracks(payload.tracks, existingResult.results || [],
+    (tracks) => resolveTracksBulk(db, sourceDb, tracks, input.observedAt, {
+      channelId: input.channelId,
+      minuteAt: minuteBucket(input.observedAt),
+      queueTracks: payload.tracks.length,
+      revisionId,
+    }));
   const byPosition = new Map((input.queue?.tracks || []).map(
     (track, index) => [integer(track?.position) ?? index, track],
   ));
@@ -116,10 +112,8 @@ async function createRebuildRevision(db, sourceDb, input) {
   ));
   await batchRun(db, statements);
 
-  const count = await db.prepare(
-    'SELECT COUNT(*) AS item_count FROM sh_queue_revision_items WHERE revision_id=?',
-  ).bind(revisionId).first();
-  if (Number(count?.item_count || 0) !== payload.tracks.length) {
+  const count = await countQueueRevisionItems(db, revisionId);
+  if (count !== payload.tracks.length) {
     throw new Error(`historical queue revision ${revisionId} incomplete`);
   }
   await db.prepare("UPDATE sh_queue_revisions SET status='complete' WHERE id=?")
