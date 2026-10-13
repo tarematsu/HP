@@ -288,7 +288,8 @@ test('YouTube ad cleanup stays dormant during 1000 steady non-ad watchdog probes
 
 
 test('YouTube ad wake coalescing unlocks on probe entry before any early return', () => {
-  const code = section('  const probe = () => {', '  // Reuse the stable player root');
+  const code = section('  const probe = () => {', '  // Reuse the stable player root')
+    .replace('  const probe = () => {', '');
   const state = { adMutationWakePending: true };
   const cleared = vm.runInNewContext(
     '(() => { ' + code + '\nreturn state.adMutationWakePending; })()',
