@@ -35,7 +35,7 @@ test('YouTube surveys stay inside active ad handling', () => {
 });
 
 test('ad skip and fullscreen fallback recover hidden controls without a fixed wait', () => {
-  assert.match(runtime, /arm\(target, 'skip-ad', 600\)/);
+  assert.match(runtime, /const action = arm\(target, 'skip-ad', 600\)/);
   assert.match(runtime, /arm\(canonical, 'fullscreen', 1200\)/);
   assert.match(runtime, /return arm\(fallback, 'fullscreen', 1200\)/);
   assert.doesNotMatch(runtime, /fullscreenSettleMs|fullscreenReadyAt|adFullscreenReadyAt/);
