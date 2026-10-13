@@ -109,10 +109,12 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       }
       if (stationheadStarted_ && stationhead_) {
         const uint32_t changes = stationhead_->ConsumeChangeFlags();
-        if ((changes & StationheadChangeShowPlayer) != 0) {
-          stationhead_->ShowAfterAudioStop();
+        if (changes != StationheadChangeNone) {
+          if ((changes & StationheadChangeShowPlayer) != 0) {
+            stationhead_->ShowAfterAudioStop();
+          }
+          handled = true;
         }
-        handled = true;
       }
       if (!handled) return 0;
       MarkStationheadPlacementDirty();
