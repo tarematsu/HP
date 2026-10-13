@@ -45,3 +45,26 @@ test('production Cloudflare exchange version encoder retains wire values and mis
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+
+test('cloud exchange decodes binary JSON without an intermediate UTF-8 string copy', () => {
+  const begin = source.indexOf('std::wstring ExchangeJsonUtf8ToWide(');
+  const end = source.indexOf('}  // namespace', begin);
+  assert.ok(begin >= 0 && end > begin);
+  const helper = source.slice(begin, end);
+  assert.match(helper, /MultiByteToWideChar\(\s*CP_UTF8, MB_ERR_INVALID_CHARS/);
+  assert.match(helper, /length > static_cast<size_t>\(std::numeric_limits<int>::max\(\)\)/);
+  assert.match(helper, /output\.data\(\), wideLength\)/);
+  assert.match(source, /JsonObject::Parse\(\s*ExchangeJsonUtf8ToWide\(translated\.body\.data\(\), translated\.body\.size\(\)\)\)/);
+  assert.doesNotMatch(source, /Utf8ToWide\(std::string\(/);
+  const directory = mkdtempSync(join(tmpdir(), 'native-exchange-decoder-'));
+  try {
+    const input = join(directory, 'test.cpp');
+    const executable = join(directory, process.platform === 'win32' ? 'test.exe' : 'test');
+    writeFileSync(input, "#include <cassert>\n#include <cstdint>\n#include <iostream>\n#include <limits>\n#include <stdexcept>\n#include <string>\nusing std::size_t;\nconstexpr int CP_UTF8 = 65001;\nconstexpr int MB_ERR_INVALID_CHARS = 8;\nint MultiByteToWideChar(int codepage, int flags, const char* bytes, int n, wchar_t* dest, int cap) {\n  assert(codepage == CP_UTF8 && flags == MB_ERR_INVALID_CHARS);\n  if (!bytes || n <= 0) return 0;\n  // Synthetic Win32 boundary for these ASCII / malformed-UTF8 fixtures.\n  for (int i = 0; i < n; ++i) if (static_cast<unsigned char>(bytes[i]) >= 128) return 0;\n  if (!dest) return n;\n  if (cap < n) return 0;\n  for (int i = 0; i < n; ++i) dest[i] = static_cast<unsigned char>(bytes[i]);\n  return n;\n}\n" + helper + "\nint main() {\n  const char json[] = \"{\\\"versions\\\":{\\\"dashboard\\\":3}}\";\n  const auto wide = ExchangeJsonUtf8ToWide(\n      reinterpret_cast<const uint8_t*>(json), sizeof(json) - 1);\n  assert(wide == L\"{\\\"versions\\\":{\\\"dashboard\\\":3}}\");\n  bool threw = false;\n  try { (void)ExchangeJsonUtf8ToWide(nullptr, 0); }\n  catch (const std::runtime_error&) { threw = true; }\n  assert(threw);\n  const uint8_t malformed[] = {0xFF};\n  threw = false;\n  try { (void)ExchangeJsonUtf8ToWide(malformed, 1); }\n  catch (const std::runtime_error&) { threw = true; }\n  assert(threw);\n}\n");
+    execFileSync('g++', ['-std=c++17', '-Wall', '-Wextra', '-Werror', input, '-o', executable]);
+    execFileSync(executable);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
