@@ -24,10 +24,10 @@ const historyPageUrl = new URL('../public/history/index.html', import.meta.url);
 const likesPageUrl = new URL('../public/history/likes/index.html', import.meta.url);
 
 test('dashboard starts on the shared Buddies Stationhead view without duplicate outer subtabs', () => {
-  assert.match(currentShell, /mountStationheadChannelShell/);
+  assert.match(currentShell, /mountStationheadSourceShell/);
   assert.match(currentShell, /id: 'currentView'/);
   assert.match(currentShell, /hidden: false/);
-  assert.match(currentShell, /stationheadModel = 'buddies'/);
+  assert.match(currentShell, /mountStationheadSourceShell\('buddies'\)/);
   assert.doesNotMatch(registry, /dashboard-tab-registry|modeTabs/);
   assert.doesNotMatch(registry, /querySelector.*modeTabs/);
   assert.doesNotMatch(registry, /STATIONHEAD_CHANNEL_TABS|BUDDIES_ROUTES|createElement\('button'\)/);
