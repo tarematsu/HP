@@ -51,6 +51,9 @@ export function sanitizeFollowersPayload(payload) {
   const rows = Array.isArray(payload.rows)
     ? payload.rows.map((row) => {
       if (!row || typeof row !== 'object' || Array.isArray(row)) return row;
+      // Most historical rows already exclude retired handles. Avoid copying
+      // every row when there is nothing to remove.
+      if (!Object.hasOwn(row, '46fm') && !Object.hasOwn(row, 'buddy46')) return row;
       const next = { ...row };
       for (const handle of FOLLOWER_EXCLUDED_HANDLES) delete next[handle];
       return next;
