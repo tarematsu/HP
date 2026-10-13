@@ -23,7 +23,7 @@ class FakeMutationObserver {
     this.options = options;
     (this.observations ||= []).push({ target, options });
   }
-  disconnect() { this.disconnected = true; }
+  disconnect() { this.disconnected = true; this.observations = []; }
 }
 
 test('YouTube player class observer ignores cosmetic changes but detects recovery flags', () => {
