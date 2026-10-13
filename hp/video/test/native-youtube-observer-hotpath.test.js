@@ -221,3 +221,32 @@ test('YouTube ad candidate selector is reused for 1.5s, but mutations bypass cac
   assert.equal(scanAdCandidates(), candidates);
   assert.equal(queries, 4, 'clock rewinds do not lock stale cache forever');
 });
+
+
+test('YouTube ad cleanup stays dormant during 1000 steady non-ad watchdog probes', () => {
+  const source = section('  const syncAdObserver = active => {', '  if (state.player !== player)');
+  let writes = 0;
+  const state = new Proxy({}, {
+    set(target, key, value) {
+      writes++;
+      target[key] = value;
+      return true;
+    },
+  });
+  const syncAdObserver = vm.runInNewContext(
+    '(() => { ' + source + '\nreturn syncAdObserver; })()',
+    { state, player: {}, MutationObserver: FakeMutationObserver },
+  );
+  for (let i = 0; i < 1000; i++) syncAdObserver(false);
+  assert.equal(writes, 0, 'non-ad video must not churn observer/cache state');
+  let stopped = 0;
+  state.adObserver = { disconnect: () => { stopped++; } };
+  state.adControlObserver = { disconnect: () => { stopped++; } };
+  state.adCandidates = [{ id: 'skip' }];
+  syncAdObserver(false);
+  assert.equal(stopped, 2, 'ad-ending cleanup still disconnects active observers');
+  assert.equal(state.adObserver, null);
+  assert.equal(state.adControlObserver, null);
+  assert.equal(state.adCandidates, null);
+  assert.equal(state.adCandidatesAt, 0);
+});
