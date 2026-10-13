@@ -229,7 +229,12 @@ inline std::wstring StationheadAudioOnlyUiScript() {
     return protectedPattern.test(labelOf(element));
   };
   const hide = (element, expand = false) => {
-    if (!(element instanceof Element) || protectedNode(element)) return;
+    if (!(element instanceof Element)) return;
+    // A plain control already hidden by this policy needs no repeated media
+    // subtree query or label inspection on subsequent DOM mutations. Expanded
+    // headings/tabs must still check their parent container.
+    if (!expand && element.getAttribute(hiddenAttribute) === 'true') return;
+    if (protectedNode(element)) return;
     let target = element;
     if (expand) {
       const container = element.closest?.('aside,[role="tabpanel"],[role="dialog"]');
