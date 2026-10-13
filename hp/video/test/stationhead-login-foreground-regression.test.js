@@ -63,7 +63,7 @@ test('native login-required message always surfaces Stationhead', () => {
 test('audible playback cannot clear a confirmed login-required surface', () => {
   const branch = section(
     audioLoss,
-    'const bool audioPlaying = AudioPlaying();',
+    'const bool audioPlaying = snapshot.audioPlaying;',
     'const bool authenticationPending =',
   );
   assert.match(branch, /!spotifyAuthorization_ && !loginRequired_/);
