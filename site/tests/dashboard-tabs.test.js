@@ -9,6 +9,7 @@ import { HISTORY_MODES, ROUTES } from '../public/dashboard-navigation-config.js'
 const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const registry = browserSource('dashboard-metrics.js');
 const currentShell = readFileSync(new URL('../public/current-shell.js', import.meta.url), 'utf8');
+const sourceFactory = readFileSync(new URL('../public/stationhead-source-shell.js', import.meta.url), 'utf8');
 const stationheadShell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
 const stationheadRuntime = browserSource('stationhead-channel.js');
 const historyShell = readFileSync(new URL('../public/history-shell.js', import.meta.url), 'utf8');
@@ -25,8 +26,8 @@ const likesPageUrl = new URL('../public/history/likes/index.html', import.meta.u
 
 test('dashboard starts on the shared Buddies Stationhead view without duplicate outer subtabs', () => {
   assert.match(currentShell, /mountStationheadSourceShell/);
-  assert.match(currentShell, /id: 'currentView'/);
-  assert.match(currentShell, /hidden: false/);
+  assert.match(sourceFactory, /viewId: 'currentView'/);
+  assert.match(sourceFactory, /hidden: false/);
   assert.match(currentShell, /mountStationheadSourceShell\('buddies'\)/);
   assert.doesNotMatch(registry, /dashboard-tab-registry|modeTabs/);
   assert.doesNotMatch(registry, /querySelector.*modeTabs/);
