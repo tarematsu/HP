@@ -1,3 +1,4 @@
+import { checkpointTrackStatement, TRACK_SEEN_CHECKPOINT_MS } from './minute-track-write-statements.js';
 import { queueRevisionItemStatement } from './minute-facts-normalize.js';
 import { countQueueRevisionItems, loadQueueRevisionPositions, resolveMissingQueueRevisionTracks } from './minute-queue-revision-progress.js';
 import { findReusableQueueRevision } from './minute-queue-revision-lookup.js';
@@ -153,6 +154,7 @@ function assignKnownTrackIds(descriptors, maps) {
 }
 
 export async function resolveTracksBulk(db, oldDb, tracks, observedAt, context = {}) {
+  if (!Array.isArray(tracks) || !tracks.length) return [];
   const metadata = await timedStage('load_track_metadata', context, () => loadTrackMetadata(db, oldDb, tracks));
   const descriptors = (tracks || []).map((track, index) => buildTrackDescriptor(
     track,
@@ -161,10 +163,13 @@ export async function resolveTracksBulk(db, oldDb, tracks, observedAt, context =
   ));
 
   const aliases = await timedStage('load_track_aliases', context, () => loadAliasMap(db, descriptors));
+  const emptyMap = new Map();
+  assignKnownTrackIds(descriptors, { aliases, isrc: emptyMap, spotify: emptyMap, canonical: emptyMap });
+  const withoutAliases = descriptors.filter((track) => track.trackId == null);
   const [isrc, spotify, canonical] = await timedStage('load_track_identities', context, () => Promise.all([
-    loadTrackColumnMap(db, 'isrc', descriptors.map((track) => track.isrc)),
-    loadTrackColumnMap(db, 'spotify_id', descriptors.map((track) => track.spotify_id)),
-    loadTrackColumnMap(db, 'canonical_key', descriptors.map((track) => track.canonicalKey)),
+    loadTrackColumnMap(db, 'isrc', withoutAliases.map((track) => track.isrc)),
+    loadTrackColumnMap(db, 'spotify_id', withoutAliases.map((track) => track.spotify_id)),
+    loadTrackColumnMap(db, 'canonical_key', withoutAliases.map((track) => track.canonicalKey)),
   ]));
   assignKnownTrackIds(descriptors, { aliases, isrc, spotify, canonical });
 
@@ -212,18 +217,8 @@ export async function resolveTracksBulk(db, oldDb, tracks, observedAt, context =
       representativeById.set(descriptor.trackId, descriptor);
     }
   }
-  const updates = [...representativeById.entries()].map(([trackId, track]) => db.prepare(`UPDATE sh_tracks SET
-      isrc=COALESCE(isrc,?),spotify_id=COALESCE(spotify_id,?),
-      stationhead_track_id=COALESCE(stationhead_track_id,?),
-      title=COALESCE(title,?),artist=COALESCE(artist,?),last_seen_at=MAX(last_seen_at,?)
-    WHERE id=?`).bind(
-    track.isrc,
-    track.spotify_id,
-    track.stationhead_track_id,
-    track.title,
-    track.artist,
-    observedAt,
-    trackId,
+  const updates = [...representativeById.values()].map((track) => (
+    checkpointTrackStatement(db, track, observedAt)
   ));
 
   const aliasStatements = [];
@@ -237,8 +232,9 @@ export async function resolveTracksBulk(db, oldDb, tracks, observedAt, context =
       aliasStatements.push(db.prepare(`INSERT INTO sh_track_aliases(
           alias_type,alias_value,track_id,first_seen_at,last_seen_at
         ) VALUES(?,?,?,?,?) ON CONFLICT(alias_type,alias_value) DO UPDATE SET
-          last_seen_at=MAX(sh_track_aliases.last_seen_at,excluded.last_seen_at)`)
-        .bind(alias.type, alias.value, descriptor.trackId, observedAt, observedAt));
+          last_seen_at=excluded.last_seen_at
+        WHERE excluded.last_seen_at-sh_track_aliases.last_seen_at>=?`)
+        .bind(alias.type, alias.value, descriptor.trackId, observedAt, observedAt, TRACK_SEEN_CHECKPOINT_MS));
     }
   }
   await timedStage('update_tracks_and_aliases', context, () => batchRun(db, [...updates, ...aliasStatements]));
