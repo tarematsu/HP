@@ -8,12 +8,12 @@ test('known Spotify tracks skip repeated metadata persistence but keep playcount
   assert.match(consumer, /if \(!track\.identity_cached\) \{/);
   assert.match(consumer, /INSERT OR IGNORE INTO sh_spotify_tracks/);
   assert.match(consumer, /INSERT INTO sh_spotify_playcount_candidates/);
-  assert.match(consumer, /for \(const artistKey of track\.target_keys\)/);
+  assert.match(consumer, /spotifyTargetBatchStatement\(db, group\)/);
 
   const guard = consumer.indexOf('if (!track.identity_cached)');
   const metadata = consumer.indexOf('INSERT OR IGNORE INTO sh_spotify_tracks', guard);
   const candidate = consumer.indexOf('spotifyCandidateBatchStatement(db, message, group, collectedAt)', guard);
-  const targets = consumer.indexOf('for (const artistKey of track.target_keys)', guard);
+  const targets = consumer.indexOf('spotifyTargetBatchStatement(db, group)', guard);
   assert.ok(guard >= 0 && metadata > guard);
   assert.ok(candidate > metadata);
   assert.ok(targets > candidate);

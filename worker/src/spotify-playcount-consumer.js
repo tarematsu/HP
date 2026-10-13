@@ -70,6 +70,34 @@ export function spotifyCandidateBatchStatement(db, message, tracks, collectedAt)
       collectedAt, values, message.snapshot_date, message.run_token);
 }
 
+// Each album can contain many references to the same canonical track/artist.
+// Deduplicate the pairs and issue one D1 INSERT per chunk instead of
+// preparing an individual INSERT OR IGNORE for every track credit.
+export function spotifyTargetBatchStatement(db, tracks) {
+  const pairs = [];
+  const seen = new Set();
+  for (const track of tracks || []) {
+    const trackId = String(track?.track_id || '').trim();
+    if (!trackId) continue;
+    for (const rawKey of track?.target_keys || []) {
+      const artistKey = String(rawKey || '').trim();
+      if (!artistKey) continue;
+      const key = JSON.stringify([trackId, artistKey]);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      pairs.push([trackId, artistKey]);
+    }
+  }
+  if (!pairs.length) return null;
+  return db.prepare(`INSERT OR IGNORE INTO sh_spotify_track_targets (
+      track_id,artist_key
+    ) SELECT
+      json_extract(item.value,'$[0]'),
+      json_extract(item.value,'$[1]')
+    FROM json_each(?) AS item`)
+    .bind(JSON.stringify(pairs));
+}
+
 async function persistCandidateTracks(db, message, tracks, collectedAt) {
   const resolvedTracks = await resolveCanonicalSpotifyTracks(db, tracks, collectedAt);
   const writes = [];
@@ -88,12 +116,8 @@ async function persistCandidateTracks(db, message, tracks, collectedAt) {
       }
     }
     writes.push(spotifyCandidateBatchStatement(db, message, group, collectedAt));
-    for (const track of group) {
-      for (const artistKey of track.target_keys) {
-        writes.push(db.prepare(`INSERT OR IGNORE INTO sh_spotify_track_targets (track_id,artist_key) VALUES (?,?)`)
-          .bind(track.track_id, artistKey));
-      }
-    }
+    const targetInsert = spotifyTargetBatchStatement(db, group);
+    if (targetInsert) writes.push(targetInsert);
   }
   await batchStatements(db, writes);
 }
