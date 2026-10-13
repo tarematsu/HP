@@ -86,7 +86,9 @@ class CloudClient {
   DWORD accessType_ = WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY;
 
   std::mutex pendingTelemetryMutex_;
-  std::optional<PendingTelemetry> pendingTelemetry_;
+  // Cloud polls hold a stable immutable-payload snapshot without cloning the
+  // full pending JSON every time; acknowledgement still checks its generation.
+  std::shared_ptr<PendingTelemetry> pendingTelemetry_;
   uint64_t pendingTelemetryGeneration_ = 0;
   std::mutex pendingExchangeMutex_;
   std::wstring pendingExchangeBundlePath_;
