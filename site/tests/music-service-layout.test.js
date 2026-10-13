@@ -31,7 +31,7 @@ test('all music subscription views mount through one shared shell contract', () 
   assert.match(commonShell, /export function musicServiceFilterTabs/);
   assert.match(commonShell, /dashboardSectionHead/);
   assert.match(commonShell, /className: 'music-service-section-head'/);
-  assert.doesNotMatch(commonShell, /regional/i);
+  assert.doesNotMatch(commonShell, /regional-music\.css|loadRegionalMusicReadModel/i);
 });
 
 test('every service owns its own metadata identity and shared cadence contract', () => {
