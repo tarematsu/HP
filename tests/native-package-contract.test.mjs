@@ -31,7 +31,7 @@ test('native package installs the repository third-party notices file', () => {
   );
 });
 
-test('native pull requests build and package hp/native changes without publishing', () => {
+test('native pull requests build hp/native changes without release packaging or publishing', () => {
   const pullRequestTrigger = nativeWorkflow.slice(
     nativeWorkflow.indexOf('  pull_request:\n'),
     nativeWorkflow.indexOf('  push:\n'),
@@ -39,7 +39,8 @@ test('native pull requests build and package hp/native changes without publishin
   assert.match(pullRequestTrigger, /- "hp\/native\/\*\*"/);
 
   const packageStep = stepSection('Package native release', 'Prepare release assets');
-  assert.match(packageStep, /if: github\.event_name == 'pull_request'/);
+  assert.match(packageStep, /if: github\.ref == 'refs\/heads\/main' \|\| github\.event_name == 'workflow_dispatch'/);
+  assert.doesNotMatch(packageStep, /github\.event_name == 'pull_request'/);
   assert.match(packageStep, /cmake --install hp\/native\/build-ci/);
 
   const publishStep = stepSection('Upload update assets to R2', 'Trigger immediate update rollout');
