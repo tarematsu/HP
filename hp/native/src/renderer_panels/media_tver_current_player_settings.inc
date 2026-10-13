@@ -110,12 +110,27 @@ LR"JS(
   };
 
   let questionnaire = false;
-  for (const dialog of document.querySelectorAll('[role="dialog"]')) {
-    if (dialog.querySelector?.('form[id^="questionnaire-"]') ||
-        /アンケート/.test(clean(dialog.textContent))) {
-      questionnaire = true;
-      break;
+  // The playback controller also checks blocking questionnaires. When both
+  // settings are confirmed and it reports no dialog, a separate global scan
+  // in this settings bridge on every media wake is redundant. Still check
+  // periodically, and never throttle the questionnaire itself or any
+  // unconfirmed/startup player.
+  const lastDialogScan = Number(state.currentSettingsDialogScanAt || 0);
+  const skipDialogScan = state.currentSettingsSpeedConfirmed &&
+      state.currentSettingsQualityConfirmed &&
+      !state.questionnaireActive && !state.currentSettingsQuestionnaireActive &&
+      lastDialogScan > 0 && now >= lastDialogScan &&
+      now - lastDialogScan < 3 * 1000;
+  if (!skipDialogScan) {
+    state.currentSettingsDialogScanAt = now;
+    for (const dialog of document.querySelectorAll('[role="dialog"]')) {
+      if (dialog.querySelector?.('form[id^="questionnaire-"]') ||
+          /アンケート/.test(clean(dialog.textContent))) {
+        questionnaire = true;
+        break;
+      }
     }
+    state.currentSettingsQuestionnaireActive = questionnaire;
   }
   const posterPlay = document.getElementById?.('episode-play');
   if (questionnaire || visible(posterPlay)) {
