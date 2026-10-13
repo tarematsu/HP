@@ -95,6 +95,16 @@ class StationheadPlayer {
   void SelectTab(StationheadTabKind tab);
   bool HasAuthTab() const;
   StationheadStatus Status() const;
+  // Scheduler/layout hot paths need only flags, not the URL/detail strings in
+  // the full StationheadStatus. Read them together under the status mutex.
+  struct SchedulerState {
+    bool audioPlaying = false;
+    bool loginRequired = false;
+    bool spotifyAuthorization = false;
+    bool processFailed = false;
+    bool visible = false;
+  };
+  [[nodiscard]] SchedulerState ReadSchedulerState() const;
   HWND ActiveHostWindowForAccountSetup() const noexcept;
   [[nodiscard]] bool ForegroundRequested() const noexcept {
     return selectedTab_ == StationheadTabKind::Auth ||
