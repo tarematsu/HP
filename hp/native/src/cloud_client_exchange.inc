@@ -32,8 +32,9 @@ std::wstring ExchangeJsonUtf8ToWide(
 void CloudClient::QueueTelemetry(std::string json, TelemetryCallback callback) {
   if (json.empty()) return;
   std::lock_guard lock(pendingTelemetryMutex_);
-  pendingTelemetry_ = PendingTelemetry{
-      ++pendingTelemetryGeneration_, std::move(json), std::move(callback)};
+  pendingTelemetry_ = std::make_shared<PendingTelemetry>(
+      PendingTelemetry{
+          ++pendingTelemetryGeneration_, std::move(json), std::move(callback)});
 }
 
 std::optional<HttpResponse> CloudClient::TryCompressedExchange(
@@ -76,9 +77,11 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
   body += number(L"configVersion");
   body.push_back('}');
 
-  std::optional<PendingTelemetry> telemetry;
+  std::shared_ptr<PendingTelemetry> telemetry;
   {
     std::lock_guard lock(pendingTelemetryMutex_);
+    // Hold one stable generation while HTTP is in flight; copying the shared
+    // pointer is constant-time even for a 60-sample telemetry JSON payload.
     telemetry = pendingTelemetry_;
   }
   if (telemetry && !telemetry->json.empty()) {
