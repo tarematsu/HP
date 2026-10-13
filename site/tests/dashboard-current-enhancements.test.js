@@ -18,8 +18,8 @@ test('current Stationhead renderer and markup are shared instead of Buddies-spec
   assert.match(dashboardRouterSource(), /stationhead-channel\.js\?v=/);
   assert.match(dashboardRouterSource(), /async function showStationheadPanel\(/);
   assert.match(browserSource('stationhead-channel-read-model.js'), /import \{ fetchDashboard \}/);
-  assert.match(currentShell, /mountStationheadChannelShell/);
-  assert.match(currentShell, /stationheadModel = 'buddies'/);
+  assert.match(currentShell, /mountStationheadSourceShell/);
+  assert.match(currentShell, /mountStationheadSourceShell\('buddies'\)/);
   assert.match(sharedShell, /metric\('オンライン', 'online', true\)/);
   assert.match(sharedShell, /metric\('総再生数', 'streams'\)/);
   assert.match(sharedShell, /metric\('総メンバー数', 'members'\)/);
