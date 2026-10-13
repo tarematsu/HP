@@ -1,3 +1,4 @@
+import { queueRevisionPositionExists } from './minute-queue-revision-progress.js';
 import { countQueueRevisionItems } from './minute-queue-revision-progress.js';
 import { findReusableQueueRevision } from './minute-queue-revision-lookup.js';
 import { insertPendingQueueRevision } from './minute-queue-revision-insert.js';
@@ -37,9 +38,7 @@ async function revisionProgress(db, revisionId) {
 }
 async function revisionPositionExists(db, revisionId, position) {
   if (position == null) return false;
-  const row = await db.prepare(`SELECT 1 AS present FROM sh_queue_revision_items
-    WHERE revision_id=? AND position=? LIMIT 1`).bind(revisionId, position).first();
-  return Boolean(row);
+  return queueRevisionPositionExists(db, revisionId, position);
 }
 
 function compactQueueIdentity(queue, totalCount) {
