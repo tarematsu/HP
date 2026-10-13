@@ -58,11 +58,13 @@ CacheWriteResult WriteCacheIfChanged(
       ? CacheWriteResult::Written : CacheWriteResult::Failed;
 }
 }  // namespace
+}  // namespace hp
 
 // Radar localization shares the same byte-comparison writer as other cloud
-// payloads; include it after the helper so identical PNGs are not replaced.
+// payloads; include it after the helper without nesting the hp namespace.
 #include "cloud_client_radar_cache.cpp"
 
+namespace hp {
 void CloudClient::ApplyPresenceFallback() {
   if (presenceFallbackActive_) return;
   JsonObject fallback;
