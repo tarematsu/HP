@@ -105,6 +105,22 @@ StationheadStatus StationheadHandleBase::Status() const {
   return status;
 }
 
+bool StationheadHandleBase::NeedsFastTick() const {
+  if (!player_) return false;
+  const auto state = player_->ReadSchedulerState();
+  const bool interactive =
+      state.loginRequired || state.spotifyAuthorization || state.processFailed;
+  // Mirror Status() and AppStationheadHandle::Status() without allocating or
+  // copying URL/fallback/diagnostic strings on every scheduler wake.
+  const bool suppressed = SuppressTrackTransitionGap(state.audioPlaying, interactive);
+  if (suppressed && state.visible) player_->KeepPlaybackBehindDashboard();
+  if (transitionSuppressed_ != suppressed) {
+    transitionSuppressed_ = suppressed;
+    ++contentRevision_;
+  }
+  return interactive || (!state.audioPlaying && !suppressed);
+}
+
 int64_t StationheadHandleBase::NextWakeAt() const noexcept {
   return player_ ? player_->NextWakeAt() : 0;
 }
