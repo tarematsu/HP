@@ -29,7 +29,7 @@ test('Pages keeps Ohisama behind the shared lazy dashboard route', () => {
   assert.equal(navigation.source.id, 'hinata');
   assert.equal(navigation.source.label, 'Ohisama');
   assert.equal(navigation.source.defaultMode, 'hinata');
-  assert.match(shellWrapper, /mountStationheadSourceShell\\('ohisama'\\)/);
+  assert.ok(shellWrapper.includes("mountStationheadSourceShell('ohisama')"));
   const sourceFactory = readFileSync(new URL('../public/stationhead-source-shell.js', import.meta.url), 'utf8');
   assert.match(sourceFactory, /viewId: 'hinataView'/);
   assert.match(sourceFactory, /model: 'ohisama'/);
