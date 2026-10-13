@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { missingRecentDays, timestampIssue, auditPagesData } from '../scripts/pages-data-audit.mjs';
+import { missingRecentDays, timestampIssue, leaderboardSourceIssues, auditPagesData } from '../scripts/pages-data-audit.mjs';
 const now = Date.parse('2026-10-10T16:00:00Z');
 test('daily audit respects UTC closure and detects internal missing dates', () => {
   assert.deepEqual(missingRecentDays(['2026-10-06', '2026-10-08', '2026-10-09'], now), ['2026-10-07']);
@@ -26,4 +26,13 @@ test('fresh partial collection remains a data failure', async () => {
   const youtube = report.checks.find(row => row.name === 'youtube-music');
   assert.equal(youtube.ok, false);
   assert.deepEqual(youtube.issues, ['collector status: degraded']);
+});
+
+test('leaderboard source freshness is checked after Monday publication deadline', () => {
+  const mondayBeforeDeadline = Date.parse('2026-10-12T14:00:00Z');
+  const tuesday = Date.parse('2026-10-13T14:00:00Z');
+  assert.deepEqual(leaderboardSourceIssues({ source_max_ranking_date: '2026-10-05' }, mondayBeforeDeadline), []);
+  assert.match(leaderboardSourceIssues({ source_max_ranking_date: '2026-10-05' }, tuesday)[0], /2026-10-12/);
+  assert.deepEqual(leaderboardSourceIssues({ source_max_ranking_date: '2026-10-12' }, tuesday), []);
+  assert.match(leaderboardSourceIssues({ setup_required: true }, tuesday)[0], /unavailable/);
 });
