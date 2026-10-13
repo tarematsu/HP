@@ -14,6 +14,7 @@ function launchRoom({ text = 'Chat messages', hasCheapLabel = true } = {}) {
   const pending = [];
   let innerTextReads = 0;
   let hiddenWrites = 0;
+  let protectedMediaQueries = 0;
   class Element {
     constructor() {
       this.isConnected = true;
@@ -27,7 +28,7 @@ function launchRoom({ text = 'Chat messages', hasCheapLabel = true } = {}) {
     }
     matches(selector) { return selector.includes('button'); }
     querySelectorAll() { return []; }
-    querySelector() { return null; }
+    querySelector() { protectedMediaQueries++; return null; }
     closest() { return null; }
   }
   const element = new Element();
@@ -64,6 +65,7 @@ function launchRoom({ text = 'Chat messages', hasCheapLabel = true } = {}) {
     element, observers, window,
     reads: () => innerTextReads,
     writes: () => hiddenWrites,
+    mediaQueries: () => protectedMediaQueries,
     nextMutation: () => {
       for (const observer of observers)
         observer.callback([{ type: 'attributes', target: element }]);
@@ -76,8 +78,12 @@ test('Stationhead room suppression uses textContent without a synchronous innerT
   const room = launchRoom();
   assert.equal(room.writes(), 1, 'chat control is hidden');
   assert.equal(room.reads(), 0, 'cheap DOM content must avoid layout-forcing innerText');
+  const initialMediaQueries = room.mediaQueries();
+  assert.ok(initialMediaQueries > 0, 'first scan protects audio/video elements');
   room.nextMutation();
   room.nextMutation();
+  assert.equal(room.mediaQueries(), initialMediaQueries,
+    'already hidden ordinary controls must avoid repeated audio/video subtree scans');
   assert.equal(room.writes(), 1, 'repeated scans do not reapply the same DOM attribute');
   assert.equal(room.reads(), 0);
 });
@@ -99,4 +105,10 @@ test('Stationhead room suppression retains bounded mutations and hidden-page sus
   assert.match(script, /if \(pending\.size >= 24\)/);
   assert.match(script, /if \(pageHidden\(\)\) \{\s*rescanOnVisible = true;/);
   assert.match(script, /attributeFilter: \['id', 'data-testid', 'aria-label', 'role', 'href'\]/);
+});
+
+test('already hidden controls exit before protected-node traversal and label parsing', () => {
+  assert.match(script, /if \(!expand && element\.getAttribute\(hiddenAttribute\) === 'true'\) return;/);
+  assert.match(script, /if \(element\.getAttribute\(hiddenAttribute\) === 'true' &&\s*!element\.matches\('h1,h2,h3,\[role="tab"\]'\)\) continue;/);
+  assert.match(script, /if \(protectedNode\(element\)\) return;/);
 });
