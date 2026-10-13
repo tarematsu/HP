@@ -55,6 +55,8 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     '.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-skip-ad-button,'
     + '.videoAdUiSkipButton,[class*="ytp-ad-skip"],[aria-label*="Skip ad" i],'
     + '[aria-label*="広告をスキップ"],[aria-label*="広告を飛ばす"]';
+  const surveyDialogSelector = surveySelector + ',[role="dialog"]';
+  const adControlSelector = surveyDialogSelector + ',' + skipSelector;
 )JS" LR"JS(
   const actionLane = action => {
     if (action === 'fullscreen') return 'fullscreen';
@@ -303,7 +305,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     // Observe child-list changes across the player, but watch class/ARIA
     // attributes only on actionable ad controls and their ancestor chain.
     // YouTube's unrelated UI classes change frequently during ad playback.
-    const adSelector = skipSelector + ',' + surveySelector + ',[role="dialog"]';
+    const adSelector = adControlSelector;
     const relatedAdNode = (node, deep = false) =>
       node?.nodeType === 1 && node !== player && !!(
         node.matches?.(adSelector) || node.closest?.(adSelector) ||
@@ -507,8 +509,11 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   if (adActive) {
     state.adActive = true;
     const submitPattern = /^(送信|回答を送信|submit|send)$/i;
-    for (const root of player.querySelectorAll(`${surveySelector},[role="dialog"]`)) {
-    if (!valid(root)) continue;
+    // One subtree query replaces separate full-player surveys and skip
+    // queries. DOM order and survey-before-skip priority are preserved.
+    const adCandidates = player.querySelectorAll(adControlSelector);
+    for (const root of adCandidates) {
+    if (!root.matches(surveyDialogSelector) || !valid(root)) continue;
     let submit = null;
     let firstOption = null;
     let secondOption = null;
@@ -534,8 +539,11 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     }
     }
     let target = null;
-    for (const element of player.querySelectorAll(skipSelector)) {
-    if (valid(element)) { target = element; break; }
+    for (const element of adCandidates) {
+    if (element.matches(skipSelector) && valid(element)) {
+      target = element;
+      break;
+    }
     }
     if (target) return arm(target, 'skip-ad', 600);
     if (!fullscreen()) return requestFullscreen();
