@@ -138,6 +138,7 @@ function adScenario({ controls = [], skipButtons = [], selected = false } = {}) 
       requestFullscreen: () => 'fullscreen',
       fullscreen: () => true,
       recheck: () => {},
+      wake: delay => calls.push('wake:' + delay),
     },
   );
   return { calls, outcome, state, queryCount };
@@ -173,6 +174,11 @@ test('skip-ad first-valid candidate and ad fallback remain intact without an arr
 
   const missing = adScenario();
   assert.equal(missing.outcome, 'recovery');
+  assert.deepEqual(missing.calls, ['wake:5000'],
+    'unskippable ads wait 5s while DOM observers catch appearing skip controls');
+  assert.doesNotMatch(runtime.slice(runtime.indexOf('if (adActive) {'),
+    runtime.indexOf('  state.adActive = false;')), /recheck\(\)/,
+    'ordinary ad fallback should not emit 2s recovery wakeups');
 });
 
 test('YouTube hot paths avoid Array.from and preserve exact trusted action names', () => {
