@@ -4,6 +4,7 @@ import {
   dashboardLegend,
   dashboardNotice,
   dashboardTable,
+  dashboardUpdateMeta,
   mountDashboardShell,
 } from './dashboard-ui-common.js?v=20261004.1';
 
@@ -12,14 +13,15 @@ const table = dashboardTable({
   wrapClassName: 'table-fit-mobile',
   headId: 'leaderboardThead',
   bodyId: 'leaderboardTbody',
+  mobileCardsId: 'leaderboardMobileList',
   numeric: false,
 });
 
-const meta = `
-  <div id="leaderboardCompactMeta" class="regional-chart-meta">
-    <span>更新日時 <strong id="leaderboardUpdatedAt">-</strong></span>
-    <span>更新周期 <strong id="leaderboardCadence">-</strong></span>
-  </div>`;
+const meta = dashboardUpdateMeta({
+  id: 'leaderboardCompactMeta',
+  valueId: 'leaderboardUpdatedAt',
+  cadenceId: 'leaderboardCadence',
+});
 
 mountDashboardShell({
   view: {
@@ -46,7 +48,7 @@ mountDashboardShell({
         title: '過去ランクイン一覧',
         titleId: 'leaderboardTableTitle',
         kicker: 'DATA',
-        bodyHtml: `${table}<div id="leaderboardMobileList" class="leaderboard-mobile-list"></div>`,
+        bodyHtml: table,
       })}`,
   },
 });
