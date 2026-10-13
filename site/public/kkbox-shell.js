@@ -1,10 +1,7 @@
 import {
   mountMusicServiceView,
   musicServiceFilterTabs,
-  musicServiceSection,
-  musicServiceSakamichiFilter,
-  musicServiceRankingHistoryTable,
-  musicServiceRankChart,
+  musicServiceRegionalChartPair,
 } from './music-service-shell.js?v=20261004.2';
 
 const seriesFilters = [
@@ -22,12 +19,6 @@ const seriesFilters = [
   ], { dataAttribute: 'kkbox-chart-filter', ariaLabel: 'KKBOX チャート種別' }),
 ].join('');
 
-const artistFilter = musicServiceSakamichiFilter({
-  dataAttribute: 'kkbox-artist-filter',
-  ariaLabel: 'KKBOX 日語チャート 表示グループ',
-});
-const historyTable = musicServiceRankingHistoryTable('kkboxJapaneseHistoryBody');
-
 mountMusicServiceView({
   viewId: 'kkboxView',
   className: 'kkbox-view',
@@ -36,17 +27,16 @@ mountMusicServiceView({
     valueId: 'kkboxUpdatedAt',
     cadenceId: 'kkboxCadence',
   },
-  sections: [
-    musicServiceSection({
-      id: 'kkboxJapaneseChartSection',
-      title: 'KKBOX 日語チャート グループ別最高順位推移',
-      bodyHtml: `${seriesFilters}${musicServiceRankChart({ legendId: 'kkboxJapaneseRankLegend', chartId: 'kkboxJapaneseRankChart' })}`,
-    }),
-    musicServiceSection({
-      id: 'kkboxJapaneseHistorySection', group: 'list',
-      title: 'KKBOX 日語チャート ランクイン履歴',
-      trailingHtml: artistFilter,
-      bodyHtml: historyTable,
-    }),
-  ],
+  sections: musicServiceRegionalChartPair({
+    chartSectionId: 'kkboxJapaneseChartSection',
+    historySectionId: 'kkboxJapaneseHistorySection',
+    chartTitle: 'KKBOX 日語チャート グループ別最高順位推移',
+    historyTitle: 'KKBOX 日語チャート ランクイン履歴',
+    chartId: 'kkboxJapaneseRankChart',
+    legendId: 'kkboxJapaneseRankLegend',
+    historyBodyId: 'kkboxJapaneseHistoryBody',
+    filterAttribute: 'kkbox-artist-filter',
+    filterAriaLabel: 'KKBOX 日語チャート 表示グループ',
+    leadingChartHtml: seriesFilters,
+  }),
 });
