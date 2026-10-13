@@ -119,6 +119,7 @@ LR"JS(
   const skipDialogScan = state.currentSettingsSpeedConfirmed &&
       state.currentSettingsQualityConfirmed &&
       !state.questionnaireActive && !state.currentSettingsQuestionnaireActive &&
+      !(state.video && (state.video.paused || state.video.ended)) &&
       lastDialogScan > 0 && now >= lastDialogScan &&
       now - lastDialogScan < 3 * 1000;
   if (!skipDialogScan) {
