@@ -21,19 +21,18 @@ test('Stationhead leaderboard and followers share mobile table DOM, markup and s
   assert.doesNotMatch(source('leaderboard.css'), /leaderboard-mobile-card|leaderboard-mobile-field/);
 });
 
-test('regional music shells reuse one Sakamichi filter, rank chart and history table implementation', () => {
+test('all regional music shells use one chart/history layout factory', () => {
   const shared = source('music-service-shell.js');
   for (const primitive of ['musicServiceSakamichiFilter', 'musicServiceRankingHistoryTable', 'musicServiceRankChart']) {
-    assert.match(shared, new RegExp(`export function ${primitive}\\(`));
-    for (const page of ['qq-music-shell.js', 'kugou-music-shell.js', 'kkbox-shell.js']) {
-      assert.match(source(page), new RegExp(`${primitive}\\(`), `${page} should use ${primitive}`);
-    }
+    assert.match(shared, new RegExp(`export function ${primitive}\\\\(`));
+  }
+  assert.match(shared, /export function musicServiceRegionalChartPair/);
+  for (const page of ['qq-music-shell.js', 'kugou-music-shell.js', 'kkbox-shell.js']) {
+    assert.match(source(page), /musicServiceRegionalChartPair\\(/, `${page} should use the shared chart/history layout`);
+    assert.doesNotMatch(source(page), /class="music-service-rank-chart"/);
+    assert.doesNotMatch(source(page), /value: 'sakurazaka46', label: '櫻坂'/);
   }
   assert.equal((shared.match(/value: 'sakurazaka46', label: '櫻坂'/g) || []).length, 1);
-  for (const page of ['qq-music-shell.js', 'kugou-music-shell.js', 'kkbox-shell.js']) {
-    assert.doesNotMatch(source(page), /value: 'sakurazaka46', label: '櫻坂'/);
-    assert.doesNotMatch(source(page), /class="music-service-rank-chart"/);
-  }
 });
 
 test('service meta delegates to the dashboard meta generator', () => {
