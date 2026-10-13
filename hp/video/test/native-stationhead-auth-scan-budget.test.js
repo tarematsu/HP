@@ -5,7 +5,8 @@ import test from 'node:test';
 
 const source = name => readFileSync(
   new URL('../../native/src/' + name, import.meta.url), 'utf8');
-const fragment = name => source(name).match(/LR"JS\(([\s\S]*?)\)JS"/)?.[1];
+const fragment = name => [...source(name).matchAll(/LR"JS\(([\s\S]*?)\)JS"/g)]
+  .map(match => match[1]).join('');
 
 function authRuntime({ label = 'Profile', text = '', audioPlaying = false,
                        credential = false, route = '/sakuramankai' } = {}) {
