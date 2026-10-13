@@ -8,7 +8,7 @@ import { ROUTES, navigationForMode } from '../public/dashboard-navigation-config
 import { stationheadReadModelKey } from '../../packages/sh-shared/stationhead-read-models.mjs';
 
 const shellWrapper = readFileSync(new URL('../public/nogizaka-listening-party-shell.js', import.meta.url), 'utf8');
-const runtimeWrapper = readFileSync(new URL('../public/nogizaka-listening-party.js', import.meta.url), 'utf8');
+const sharedSourceMount = readFileSync(new URL('../public/stationhead-source-shell.js', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../public/stationhead-channel-shell.js', import.meta.url), 'utf8');
 const runtime = browserSource('stationhead-channel.js');
 const readModel = browserSource('stationhead-channel-read-model.js');
@@ -19,18 +19,19 @@ const materializedProxy = readFileSync(new URL('../functions/lib/stationhead-mat
 const readModelService = readFileSync(new URL('../functions/lib/pages-read-model-service.js', import.meta.url), 'utf8');
 const publisher = readFileSync(new URL('../../worker/src/nogizaka-pages-read-model.js', import.meta.url), 'utf8');
 
-test('Nogizaka is a lazy source route mounted through the shared Stationhead shell', () => {
-  assert.equal(ROUTES.nogizaka.kind, 'lazy');
+test('Nogizaka uses the same shared Stationhead routing lifecycle as Buddies', () => {
+  assert.equal(ROUTES.nogizaka.kind, 'stationhead');
+  assert.equal(ROUTES.nogizaka.panel, 'broadcasts');
   assert.equal(ROUTES.nogizaka.viewId, 'nogizakaListeningPartyView');
-  assert.equal(ROUTES.nogizaka.moduleId, 'nogizaka');
-  assert.equal(ROUTES.nogizaka.loadExport, 'loadNogizakaListeningPartyView');
   const navigation = navigationForMode('nogizaka');
   assert.equal(navigation.source.id, 'nogizaka');
   assert.equal(navigation.source.label, 'Nogizaka');
   assert.equal(navigation.source.defaultMode, 'nogizaka');
-  assert.match(shellWrapper, /mountStationheadChannelShell/);
-  assert.match(shellWrapper, /stationheadModel = 'nogizaka'/);
-  assert.match(runtimeWrapper, /loadStationheadChannelView/);
+  assert.ok(shellWrapper.includes("mountStationheadSourceShell('nogizaka')"));
+  assert.match(sharedSourceMount, /viewId: 'nogizakaListeningPartyView'/);
+  assert.match(sharedSourceMount, /model: 'nogizaka'/);
+  assert.ok(tabs.includes('nogizakaListeningPartyView: () => import'));
+  assert.doesNotMatch(tabs, /'nogizaka-listening-party\\.js'/);
 });
 
 test('Nogizaka shares all five Stationhead subtab markup but enables only its read-model capability', () => {

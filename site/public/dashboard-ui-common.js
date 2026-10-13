@@ -167,6 +167,14 @@ function dashboardTableHead({ headHtml = '', headId = '', headers = [] } = {}) {
   return `<thead${headId ? ` id="${headId}"` : ''}>${cells ? `<tr>${cells}</tr>` : ''}</thead>`;
 }
 
+export function dashboardUpdateMeta({ id = '', className = 'regional-chart-meta',
+  label = '更新日時', valueId = '', cadence = '-', cadenceId = '' } = {}) {
+  return `<div${id ? ` id="${id}"` : ''} class="${joinClasses(className)}">
+    <span>${label} <strong${valueId ? ` id="${valueId}"` : ''}>-</strong></span>
+    <span>更新周期 <strong${cadenceId ? ` id="${cadenceId}"` : ''}>${cadence || '-'}</strong></span>
+  </div>`;
+}
+
 export function dashboardTable({
   id = '',
   className = '',
@@ -177,10 +185,11 @@ export function dashboardTable({
   bodyId = '',
   bodyHtml = '',
   wrapClassName = '',
+  mobileCardsId = '',
   numeric = true,
 } = {}) {
   const tableHead = dashboardTableHead({ headHtml, headId, headers });
-  return `<div class="${joinClasses('table-wrap', wrapClassName)}"><table${id ? ` id="${id}"` : ''} class="${joinClasses(numeric && 'shared-numeric-table', className)}">${colgroupHtml}${tableHead}<tbody${bodyId ? ` id="${bodyId}"` : ''}>${bodyHtml}</tbody></table></div>`;
+  return `<div class="${joinClasses('table-wrap', wrapClassName, mobileCardsId && 'dashboard-responsive-table')}"><table${id ? ` id="${id}"` : ''} class="${joinClasses(numeric && 'shared-numeric-table', className)}">${colgroupHtml}${tableHead}<tbody${bodyId ? ` id="${bodyId}"` : ''}>${bodyHtml}</tbody></table></div>${mobileCardsId ? `<div id="${mobileCardsId}" class="dashboard-responsive-cards"></div>` : ''}`;
 }
 
 export function dashboardModeTabs(items = [], {

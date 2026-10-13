@@ -41,8 +41,8 @@ test('dashboard skeleton and shared Stationhead shell keep accessibility, privac
   assert.match(html, /name="viewport"/);
   assert.match(html, /noindex,nofollow/);
   for (const id of ['channelName', 'updated']) assert.match(html, new RegExp(`id="${id}"`));
-  assert.match(currentShell, /mountStationheadChannelShell/);
-  assert.match(currentShell, /stationheadModel = 'buddies'/);
+  assert.match(currentShell, /mountStationheadSourceShell/);
+  assert.match(currentShell, /mountStationheadSourceShell\('buddies'\)/);
   assert.match(stationheadShell, /metric\('オンライン', 'online', true\)/);
   assert.match(stationheadShell, /metric\('総再生数', 'streams'\)/);
   assert.match(stationheadShell, /metric\('総メンバー数', 'members'\)/);
@@ -70,7 +70,7 @@ test('dashboard current page renders online history and direct five-minute playb
   const entry = await text('public/dashboard-metrics.js');
   const cache = await text('public/dashboard-fetch-cache.js');
 
-  assert.match(currentShell, /mountStationheadChannelShell/);
+  assert.match(currentShell, /mountStationheadSourceShell/);
   assert.match(stationheadShell, /role\('live-chart'\)/);
   assert.match(stationheadShell, /過去24時間/);
   assert.match(stationheadRuntime, /payload\?\.history_24h/);

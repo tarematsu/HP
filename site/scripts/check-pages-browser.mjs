@@ -226,17 +226,26 @@ try {
         assert.match(await page.locator('.dashboard-view:not([hidden]) [data-role="daily-tbody"] tr td').first().textContent(), /^\d{4}/, `${mode}: history data did not load`);
       }
       if (!live && mode === 'ranking' && width <= 390) {
-        const card = page.locator('#leaderboardMobileList > .leaderboard-mobile-card').first();
-        assert.equal(await card.locator('.leaderboard-mobile-field').count(), 6, 'each ranking card exposes all six fields');
+        const card = page.locator('#leaderboardMobileList > .dashboard-responsive-card').first();
+        assert.equal(await card.locator('.dashboard-responsive-field').count(), 6, 'each ranking card exposes all six fields');
         assert.equal(await card.evaluate((node) => getComputedStyle(node).display), 'grid', 'phone uses leaderboard cards');
         assert.equal(await card.locator('[data-key="host"]').count(), 1, 'host is visible in each card');
-        const hiddenFields = await card.locator('.leaderboard-mobile-field').evaluateAll((fields) => fields
+        const hiddenFields = await card.locator('.dashboard-responsive-field').evaluateAll((fields) => fields
           .map((field) => ({ label: field.dataset.key, bounds: field.getBoundingClientRect() }))
           .filter(({ bounds }) => bounds.left < -2 || bounds.right > innerWidth + 2)
           .map(({ label }) => label));
         assert.deepEqual(hiddenFields, [], 'every leaderboard field fits the phone viewport');
-        assert.equal(await page.locator('.leaderboard-view .table-wrap.table-fit-mobile').isVisible(), false,
+        assert.equal(await page.locator('.leaderboard-view .dashboard-responsive-table').isVisible(), false,
           'desktop leaderboard table is hidden on phones');
+      }
+      if (!live && mode === 'followers' && width <= 390) {
+        const card = page.locator('#followersMobileList > .dashboard-responsive-card').first();
+        assert.equal(await card.locator('.dashboard-responsive-field').count(), 5,
+          'followers use the same shared responsive card renderer');
+        const clipped = await card.locator('.dashboard-responsive-field').evaluateAll((nodes) => nodes
+          .filter((node) => node.getBoundingClientRect().right > innerWidth + 2)
+          .map((node) => node.dataset.key));
+        assert.deepEqual(clipped, [], 'follower cards stay within the viewport');
       }
       await page.screenshot({ path: `${output}/${label}.png`, fullPage: true });
       if (!live && width === 320 && ['broadcasts', 'ranking', 'youtube-music', 'kkbox'].includes(mode)) await stressVisibleLayout(page, label);

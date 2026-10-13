@@ -17,6 +17,14 @@ import {
   replaceMusicTableBody,
 } from './music-service-runtime-common.js?v=20261004.2';
 
+import {
+  createRegionalFilters,
+  regionalProviderDate as dateOnly,
+  regionalProviderDateText as dateText,
+  regionalRankChartOptions,
+  renderRegionalServiceStatus,
+} from './music-service-regional-ui.js';
+
 const SERVICE = 'kkbox';
 const BODY_ID = 'kkboxJapaneseHistoryBody';
 const OUT_OF_CHART_RANK = 101;
@@ -31,11 +39,6 @@ let activeArtistFilter = 'all';
 let activeRange = '1y';
 let lastPayload = null;
 
-function dateOnly(value) {
-  const text = String(value || '').trim();
-  return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : '';
-}
-function dateText(value) { const date = dateOnly(value); return date ? date.replaceAll('-', '/') : '-'; }
 function itemArtists(item) { return Array.isArray(item?.canonical_artists) ? item.canonical_artists.filter((artist) => ARTIST_ORDER.includes(artist)) : []; }
 function artistText(item) { const artists = itemArtists(item); return artists.length ? artists.map((artist) => MUSIC_ARTIST_LABELS[artist] || artist).join(' / ') : '-'; }
 function seriesSelected(item) { return item?.territory === activeTerritory && item?.period_type === activePeriodType && item?.chart_type === activeChartType; }
@@ -77,8 +80,13 @@ function renderChart(chart) {
   const dates = selectedPeriods(chart, history); const series = rankSeries(history, dates); const container = byId('kkboxJapaneseRankChart');
   ensureChartRangeControls(container, { owner: 'kkbox-japanese-rank', value: activeRange, onChange: (value) => { if (value === activeRange) return; activeRange = value; if (lastPayload) render(lastPayload); } });
   renderRankHistoryChart({
-    container, series, dates, height: 320, margin: { left: 58, right: 18, top: 12, bottom: 34 }, yMax: OUT_OF_CHART_RANK, rankTicks: [1, 25, 50, 75, OUT_OF_CHART_RANK], dateTickCount: 5,
-    ariaLabel: 'KKBOX 日語チャートにおける選択条件・選択グループの最高順位推移。表示期間内の取得済み更新日の圏外も含み、1位が上。', lineClass: 'kugou-rank-line', emptyClass: 'music-service-rank-empty', emptyText: 'KKBOX 日語チャートの順位履歴はまだありません。', rankLabel: (rank) => rank === OUT_OF_CHART_RANK ? '圏外' : `${rank}位`, dateLabel: dateText, latestPoint: { radius: () => 2.5 }, legendContainer: byId('kkboxJapaneseRankLegend'),
+    ...regionalRankChartOptions({
+      containerId: 'kkboxJapaneseRankChart', legendId: 'kkboxJapaneseRankLegend',
+      series, dates,
+      ariaLabel: 'KKBOX 日語チャートにおける選択条件・選択グループの最高順位推移。表示期間内の取得済み更新日の圏外も含み、1位が上。',
+      emptyText: 'KKBOX 日語チャートの順位履歴はまだありません。',
+      dateLabel: dateText,
+    }),
   });
 }
 
@@ -90,29 +98,21 @@ function renderHistory(chart) {
   for (const item of ordered) { const rank = Number(item?.rank); appendTableRow(body, [dateText(item?.period), artistText(item), Number.isFinite(rank) && rank > 0 ? `${integerFormat.format(rank)}位` : '-', item?.title || '-']); }
 }
 
-function filterValue(button, attribute) { return String(button.getAttribute(`data-${attribute}`) || ''); }
-function syncFilterButtons() {
-  const filters = [['kkbox-territory-filter', activeTerritory], ['kkbox-period-filter', activePeriodType], ['kkbox-chart-filter', activeChartType], ['kkbox-artist-filter', activeArtistFilter]];
-  for (const [attribute, current] of filters) for (const button of document.querySelectorAll(`[data-${attribute}]`)) { const active = filterValue(button, attribute) === current; button.classList.toggle('active', active); button.setAttribute('aria-pressed', active ? 'true' : 'false'); }
-}
-function bindFilter(attribute, current, update) {
-  for (const button of document.querySelectorAll(`[data-${attribute}]`)) {
-    if (button.dataset.kkboxFilterBound === '1') continue; button.dataset.kkboxFilterBound = '1';
-    button.addEventListener('click', () => { const next = filterValue(button, attribute); if (!next || next === current()) return; update(next); if (lastPayload) render(lastPayload); else syncFilterButtons(); });
-  }
-}
-function bindFilters() {
-  bindFilter('kkbox-territory-filter', () => activeTerritory, (value) => { activeTerritory = value; });
-  bindFilter('kkbox-period-filter', () => activePeriodType, (value) => { activePeriodType = value; });
-  bindFilter('kkbox-chart-filter', () => activeChartType, (value) => { activeChartType = value; });
-  bindFilter('kkbox-artist-filter', () => activeArtistFilter, (value) => { activeArtistFilter = value; });
-}
+const regionalFilters = createRegionalFilters([
+  { attribute: 'kkbox-territory-filter', get: () => activeTerritory,
+    set: (value) => { activeTerritory = value; } },
+  { attribute: 'kkbox-period-filter', get: () => activePeriodType,
+    set: (value) => { activePeriodType = value; } },
+  { attribute: 'kkbox-chart-filter', get: () => activeChartType,
+    set: (value) => { activeChartType = value; } },
+  { attribute: 'kkbox-artist-filter', get: () => activeArtistFilter,
+    set: (value) => { activeArtistFilter = value; } },
+], () => { if (lastPayload) render(lastPayload); });
+function syncFilterButtons() { regionalFilters.sync(); }
+function bindFilters() { regionalFilters.bind(); }
 
 function renderStatus(payload) {
-  const state = (payload.services || []).find((item) => item.service === SERVICE) || null;
-  if (state?.status === 'error') setNotice('kkboxNotice', 'KKBOXの収集でエラーが発生しています。直前までの正常データを表示しています。', true);
-  else if (state?.status === 'degraded') setNotice('kkboxNotice', 'KKBOXの一部項目の取得に失敗しています。取得できたデータのみ表示しています。');
-  else setNotice('kkboxNotice');
+  renderRegionalServiceStatus(payload, { service: SERVICE, noticeId: 'kkboxNotice', label: 'KKBOX' });
 }
 function render(payload) {
   lastPayload = payload; setText('kkboxUpdatedAt', musicDateTimeText(payload.updated_at)); setText('kkboxCadence', MUSIC_SERVICE_CADENCE[SERVICE] || '-'); renderStatus(payload); syncFilterButtons(); const chart = payload?.kkbox_japanese_chart || {}; renderChart(chart); renderHistory(chart);

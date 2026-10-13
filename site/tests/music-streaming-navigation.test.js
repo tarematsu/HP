@@ -107,7 +107,7 @@ test('KKBOX owns its shell runtime filters and charts', () => {
   assert.match(kkboxRuntime, /activePeriodType/);
   assert.match(kkboxRuntime, /activeChartType/);
   assert.match(kkboxRuntime, /renderRankHistoryChart/);
-  assert.doesNotMatch(kkboxRuntime, /hashchange|popstate|regional/i);
+  assert.doesNotMatch(kkboxRuntime, /hashchange|popstate|loadRegionalMusicReadModel/i);
 });
 
 test('QQ owns Japan anime and popularity presentation', () => {
@@ -119,7 +119,7 @@ test('QQ owns Japan anime and popularity presentation', () => {
   assert.match(qqRuntime, /activeArtistFilter/);
   assert.match(qqRuntime, /renderRankHistoryChart/);
   assert.match(qqRuntime, /appendTableRow/);
-  assert.doesNotMatch(qqRuntime, /hashchange|popstate|regional/i);
+  assert.doesNotMatch(qqRuntime, /hashchange|popstate|loadRegionalMusicReadModel/i);
 });
 
 test('Kugou owns Japan and ACG chart history', () => {
@@ -130,7 +130,7 @@ test('Kugou owns Japan and ACG chart history', () => {
   assert.match(kugouRuntime, /payload\?\.kugou_acg_chart/);
   assert.match(kugouRuntime, /loadMusicServiceReadModel\(SERVICE\)/);
   assert.match(kugouRuntime, /renderRankHistoryChart/);
-  assert.doesNotMatch(kugouRuntime, /regional/i);
+  assert.doesNotMatch(kugouRuntime, /loadRegionalMusicReadModel/i);
 });
 
 test('YouTube Music uses the same direct service read-model loader', () => {

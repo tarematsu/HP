@@ -50,10 +50,6 @@ const DASHBOARD_ROUTE_MODULES = Object.freeze({
     shell: () => import('/kugou-music-shell.js?v=20261004.1'),
     runtime: () => import('/kugou-music.js?v=20261004.1'),
   }),
-  nogizaka: Object.freeze({
-    shell: () => import('/nogizaka-listening-party-shell.js?v=20261003.1'),
-    runtime: () => import('/nogizaka-listening-party.js?v=20260930.1'),
-  }),
 });
 
 function lazyRouteModules(route) {
@@ -150,6 +146,7 @@ function setRoute(mode, view, { updateUrl = true, replaceUrl = false } = {}) {
 const STATIONHEAD_SHELLS = Object.freeze({
   currentView: () => import('/current-shell.js?v=20261005.2'),
   hinataView: () => import('/hinata-shell.js?v=20261001.2'),
+  nogizakaListeningPartyView: () => import('/nogizaka-listening-party-shell.js?v=20261003.1'),
 });
 
 async function showStationheadPanel(mode, route, options = {}) {

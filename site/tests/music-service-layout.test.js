@@ -19,7 +19,7 @@ const serviceShells = [spotify, apple, amazon, youtube, kkbox, qq, kugou];
 test('all music subscription views mount through one shared shell contract', () => {
   for (const source of serviceShells) {
     assert.match(source, /mountMusicServiceView/);
-    assert.match(source, /musicServiceSection/);
+    assert.match(source, /musicServiceSection|musicServiceRegionalChartPair/);
     assert.doesNotMatch(source, /mountDashboardShell|dashboardNotice|dashboardTable/);
   }
   assert.match(commonShell, /export function mountMusicServiceView/);
@@ -31,7 +31,7 @@ test('all music subscription views mount through one shared shell contract', () 
   assert.match(commonShell, /export function musicServiceFilterTabs/);
   assert.match(commonShell, /dashboardSectionHead/);
   assert.match(commonShell, /className: 'music-service-section-head'/);
-  assert.doesNotMatch(commonShell, /regional/i);
+  assert.doesNotMatch(commonShell, /regional-music\.css|loadRegionalMusicReadModel/i);
 });
 
 test('every service owns its own metadata identity and shared cadence contract', () => {
@@ -53,7 +53,7 @@ test('every service owns its own metadata identity and shared cadence contract',
 
 test('service shells retain only data-specific section definitions', () => {
   for (const source of serviceShells) {
-    assert.match(source, /musicServiceTable/);
+    assert.match(source, /musicServiceTable|musicServiceRankingHistoryTable|musicServiceRegionalChartPair/);
     assert.doesNotMatch(source, /dashboardSummary|dashboardSummaryItem|dashboardDataCard|dashboardChartCard/);
   }
   assert.match(spotify, /spotifyOverviewTrendSection/);
@@ -87,7 +87,7 @@ test('all music subscription presentation uses one responsive layout contract', 
 
 test('all service filters use the shared filter primitive', () => {
   for (const source of [spotify, apple, amazon, kkbox, qq, kugou]) {
-    assert.match(source, /musicServiceFilterTabs/);
+    assert.match(source, /musicServiceFilterTabs|musicServiceSakamichiFilter|musicServiceRegionalChartPair/);
     assert.doesNotMatch(source, /dashboardModeTabs/);
   }
   assert.match(commonShell, /dashboardModeTabs/);

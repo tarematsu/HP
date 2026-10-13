@@ -3,6 +3,7 @@ import {
   dashboardNotice,
   dashboardSectionHead,
   dashboardTable,
+  dashboardUpdateMeta,
   mountDashboardShell,
 } from './dashboard-ui-common.js?v=20261004.1';
 
@@ -18,18 +19,10 @@ export function musicServiceViewClassName(...classes) {
   return joinClasses('is-chart-compact', 'music-service-view', classes);
 }
 
-export function musicServiceMeta({
-  label = '更新日時',
-  valueId = '',
-  cadence = '-',
-  cadenceId = '',
-  id = '',
-  className = '',
-} = {}) {
-  return `<div${id ? ` id="${id}"` : ''} class="${joinClasses('music-service-meta', className)}">
-    <span>${label} <strong${valueId ? ` id="${valueId}"` : ''}>-</strong></span>
-    <span>更新周期 <strong${cadenceId ? ` id="${cadenceId}"` : ''}>${cadence || '-'}</strong></span>
-  </div>`;
+export function musicServiceMeta(options = {}) {
+  return dashboardUpdateMeta({ ...options,
+    className: joinClasses('music-service-meta', options.className),
+  });
 }
 
 export function musicServiceNotice(id) {
@@ -59,6 +52,57 @@ export function musicServiceTable({
     ...options,
     className: joinClasses('music-service-table', `music-service-${kind}-table`, className),
   });
+}
+
+const SAKAMICHI_FILTER_ITEMS = Object.freeze([
+  { value: 'all', label: 'すべて', active: true },
+  { value: 'sakurazaka46', label: '櫻坂' },
+  { value: 'nogizaka46', label: '乃木坂' },
+  { value: 'hinatazaka46', label: '日向坂' },
+]);
+
+export function musicServiceSakamichiFilter({ dataAttribute, ariaLabel }) {
+  return musicServiceFilterTabs(SAKAMICHI_FILTER_ITEMS, { dataAttribute, ariaLabel });
+}
+
+export function musicServiceRankingHistoryTable(bodyId, dateLabel = '更新日') {
+  return musicServiceTable({
+    className: 'music-service-history-table',
+    wrapClassName: 'music-service-table-wrap',
+    headers: [dateLabel, 'グループ', '順位', '曲名'],
+    bodyId,
+  });
+}
+
+export function musicServiceRankChart({ legendId, chartId }) {
+  return `<div id="${legendId}" class="music-service-rank-legend" aria-label="グループ凡例"></div>
+    <div id="${chartId}" class="music-service-rank-chart"></div>`;
+}
+
+// A regional chart and its companion history table always have one layout.
+// Provider differences are IDs, titles and optional extra chart filters.
+export function musicServiceRegionalChartPair({
+  chartSectionId, historySectionId, chartTitle, historyTitle,
+  chartId, legendId, historyBodyId, filterAttribute, filterAriaLabel,
+  dateLabel = '更新日', leadingChartHtml = '',
+}) {
+  return [
+    musicServiceSection({
+      id: chartSectionId,
+      title: chartTitle,
+      bodyHtml: leadingChartHtml + musicServiceRankChart({ legendId, chartId }),
+    }),
+    musicServiceSection({
+      id: historySectionId,
+      group: 'list',
+      title: historyTitle,
+      trailingHtml: musicServiceSakamichiFilter({
+        dataAttribute: filterAttribute,
+        ariaLabel: filterAriaLabel,
+      }),
+      bodyHtml: musicServiceRankingHistoryTable(historyBodyId, dateLabel),
+    }),
+  ];
 }
 
 export function musicServiceSection({

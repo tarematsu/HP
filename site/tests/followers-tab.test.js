@@ -29,9 +29,10 @@ test('Stationhead followers use one lazy shell and runtime', () => {
 });
 
 test('follower shell is source-neutral and exposes dynamic metadata and table headings', () => {
-  assert.match(shell, /id="followersCompactMeta" class="regional-chart-meta"/);
-  assert.match(shell, /id="followersUpdatedAt"/);
-  assert.match(shell, /id="followersCadence"/);
+  assert.match(shell, /dashboardUpdateMeta/);
+  assert.match(shell, /id: 'followersCompactMeta'/);
+  assert.match(shell, /valueId: 'followersUpdatedAt'/);
+  assert.match(shell, /cadenceId: 'followersCadence'/);
   assert.match(shell, /headId: 'followersThead'/);
   assert.match(shell, /bodyId: 'followersTbody'/);
   assert.match(shell, /titleId: 'followersChartTitle'/);

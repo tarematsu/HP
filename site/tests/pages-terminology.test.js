@@ -65,7 +65,7 @@ test('user-facing wording is stored at its source instead of rewritten during re
 });
 
 test('shared Stationhead current view contains no Buddies-only goal card', () => {
-  assert.match(currentShell, /mountStationheadChannelShell/);
+  assert.match(currentShell, /mountStationheadSourceShell/);
   assert.match(stationheadShell, /総再生数/);
   assert.doesNotMatch(stationheadShell, /総再生数の目標|metricGoalCompact|streamGoal|goalEta|goal-card|streamCount|goalBar|goalRate/);
 });

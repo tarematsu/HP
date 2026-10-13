@@ -15,12 +15,16 @@ const sharedCss = navigationCss + readFileSync(new URL('../public/dashboard-ui-c
 
 test('all three Stationhead sources mount the exact same shared subtree', () => {
   for (const wrapper of [buddies, ohisama, nogizaka]) {
-    assert.match(wrapper, /mountStationheadChannelShell/);
+    assert.match(wrapper, /mountStationheadSourceShell/);
     assert.doesNotMatch(wrapper, /dashboardMetric|dashboardChartCard|dashboardTable|stationheadPlaybackCards/);
   }
-  assert.match(buddies, /stationheadModel = 'buddies'/);
-  assert.match(ohisama, /stationheadModel = 'ohisama'/);
-  assert.match(nogizaka, /stationheadModel = 'nogizaka'/);
+  assert.ok(buddies.includes("mountStationheadSourceShell('buddies')"));
+  assert.ok(ohisama.includes("mountStationheadSourceShell('ohisama')"));
+  assert.ok(nogizaka.includes("mountStationheadSourceShell('nogizaka')"));
+  const sourceFactory = readFileSync(new URL('../public/stationhead-source-shell.js', import.meta.url), 'utf8');
+  assert.match(sourceFactory, /export function mountStationheadSourceShell/);
+  assert.match(sourceFactory, /mountStationheadChannelShell/);
+  assert.match(sourceFactory, /showTabs: false/);
   assert.match(shell, /export function stationheadChannelMarkup\(/);
 });
 
