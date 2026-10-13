@@ -19,7 +19,7 @@ test('background Stationhead keeps App ticks alive until audio starts', () => {
 
   assert.match(
     scheduler,
-    /StationheadNeedsForeground\(stationheadStatus\) \|\|\s*!stationheadStatus\.audioPlaying/,
+    /if \(primaryNeedsFastTick\)/,
   );
   assert.match(scheduler, /nextTickMs = std::min\(nextTickMs, kFastTickMs\)/);
   assert.match(
