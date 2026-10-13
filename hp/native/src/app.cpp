@@ -409,21 +409,25 @@ void App::Tick() {
     foregroundOwner = static_cast<int>(kStationheadPeerCount);
   }
 
-  // Revoke every loser before granting the winner. This avoids a transition
-  // frame where two sibling WebView hosts are both allowed to claim HWND_TOP.
-  for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
-    if (stationheadPeers_[i] && static_cast<int>(i) != foregroundOwner) {
-      stationheadPeers_[i]->SetForegroundAllowed(false);
+  if (foregroundOwner != lastStationheadForegroundOwner_) {
+    // Revoke every loser before granting the winner. A stable owner already
+    // has the correct permission; reapplying six unchanged flags on each
+    // two-second recovery tick performs unnecessary native window work.
+    for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
+      if (stationheadPeers_[i] && static_cast<int>(i) != foregroundOwner) {
+        stationheadPeers_[i]->SetForegroundAllowed(false);
+      }
     }
-  }
-  if (stationhead_ && foregroundOwner != static_cast<int>(kStationheadPeerCount)) {
-    stationhead_->SetForegroundAllowed(false);
-  }
-  if (foregroundOwner >= 0 &&
-      foregroundOwner < static_cast<int>(kStationheadPeerCount)) {
-    stationheadPeers_[static_cast<size_t>(foregroundOwner)]->SetForegroundAllowed(true);
-  } else if (foregroundOwner == static_cast<int>(kStationheadPeerCount) && stationhead_) {
-    stationhead_->SetForegroundAllowed(true);
+    if (stationhead_ && foregroundOwner != static_cast<int>(kStationheadPeerCount)) {
+      stationhead_->SetForegroundAllowed(false);
+    }
+    if (foregroundOwner >= 0 &&
+        foregroundOwner < static_cast<int>(kStationheadPeerCount)) {
+      stationheadPeers_[static_cast<size_t>(foregroundOwner)]->SetForegroundAllowed(true);
+    } else if (foregroundOwner == static_cast<int>(kStationheadPeerCount) && stationhead_) {
+      stationhead_->SetForegroundAllowed(true);
+    }
+    lastStationheadForegroundOwner_ = foregroundOwner;
   }
 
   ApplyStationheadWindowPlacement();
