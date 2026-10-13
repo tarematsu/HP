@@ -1,3 +1,4 @@
+import { findReusableQueueRevision } from './minute-queue-revision-lookup.js';
 import { insertPendingQueueRevision } from './minute-queue-revision-insert.js';
 import {
   aliasKey,
@@ -243,15 +244,8 @@ export async function resolveTracksBulk(db, oldDb, tracks, observedAt, context =
 }
 
 async function findReusableRevision(db, input) {
-  return db.prepare(`SELECT id,status,effective_at,item_count FROM sh_queue_revisions
-    WHERE channel_id=? AND structural_hash=? AND session_id IS ? AND queue_start_time IS ?
-      AND status IN ('complete','pending')
-    ORDER BY CASE status WHEN 'complete' THEN 0 ELSE 1 END,effective_at DESC,id DESC
-    LIMIT 1`)
-    .bind(input.channelId, input.structuralHash, input.sessionId, input.queueStart)
-    .first();
+  return findReusableQueueRevision(db, input);
 }
-
 export function missingRevisionPositions(tracks, existingRows = []) {
   const existing = new Set((existingRows || []).map((row) => integer(row.position)).filter((value) => value != null));
   return (tracks || []).filter((track) => !existing.has(integer(track.position)));
