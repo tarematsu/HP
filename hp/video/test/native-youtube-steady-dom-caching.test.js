@@ -98,62 +98,10 @@ test('stable YouTube playback reuses its video node until SPA refresh or detach'
   assert.match(runtime, /const pageState = \(\) => \{[\s\S]*queueMicrotask\(\(\) => \{[\s\S]*bindVideo\(true\)/);
 });
 
-test('popup observer ignores decorative nodes and wakes only for dialog changes', () => {
-  const code = section("    state.popup = document.querySelector('ytd-popup-container');",
-    '  const video = bindVideo();').replace(/\n  }\s*$/, '');
-  const popup = makeNode('popup');
-  const dialog = makeNode('dialog');
-  const icon = makeNode('icon');
-  const insideDialog = makeNode('inside', [], dialog);
-  const wrapper = makeNode('wrapper', [dialog]);
-  let wakes = 0;
-  const state = {};
-  vm.runInNewContext(
-    `(() => { ${code}\nreturn state.popupObserver; })()`,
-    {
-      state,
-      document: { querySelector: () => popup },
-      MutationObserver: MockObserver,
-      wake: () => { wakes++; },
-    },
-  );
-  const observer = state.popupObserver;
-  assert.equal(observer.target, popup);
-  assert.equal(observer.options.subtree, true);
-  for (let i = 0; i < 100; i++) {
-    observer.callback([{ type: 'childList', target: popup,
-      addedNodes: [icon], removedNodes: [] }]);
-  }
-  assert.equal(wakes, 0, 'ordinary popup chrome must not wake the native watchdog');
-  observer.callback([{ type: 'childList', target: popup,
-    addedNodes: [wrapper], removedNodes: [] }]);
-  assert.equal(wakes, 1, 'dialog added inside a wrapper must wake');
-  observer.callback([{ type: 'childList', target: insideDialog,
-    addedNodes: [icon], removedNodes: [] }]);
-  assert.equal(wakes, 2, 'updates inside an active dialog must wake');
-  observer.callback([{ type: 'childList', target: popup,
-    addedNodes: [], removedNodes: [dialog] }]);
-  assert.equal(wakes, 3, 'dialog removal must wake');
+test('rare YouTube dialogs do not subscribe to popup MutationObserver', () => {
+  assert.doesNotMatch(runtime, /popupObserver|dialogMutations/);
+  assert.match(runtime, /state\.dialogActive \? 30 \* 1000 : 5 \* 60 \* 1000/);
 });
-
-test('known popup stays cached for routine dialog checks', () => {
-  const code = section('  const dismissMessageDialog = () => {', '  const bindVideo =');
-  let queries = 0;
-  const popup = { isConnected: true, querySelectorAll: () => [] };
-  const dismiss = vm.runInNewContext(
-    `(() => { ${code}\nreturn dismissMessageDialog; })()`,
-    {
-      state: { popup },
-      document: { querySelector: () => { queries++; return popup; } },
-    },
-  );
-  for (let i = 0; i < 100; i++) assert.equal(dismiss(), null);
-  assert.equal(queries, 0);
-  popup.isConnected = false;
-  assert.equal(dismiss(), null);
-  assert.equal(queries, 1, 'disconnected popup falls back to document lookup');
-});
-
 
 test('YouTube SPA event burst refreshes video selection once per microtask', () => {
   const source = section('    let pageStateQueued = false;',
@@ -221,17 +169,17 @@ test('YouTube SPA event burst refreshes video selection once per microtask', () 
 });
 
 
-test('YouTube empty popup scans are reused until mutation, timeout or replacement', () => {
+test('rare YouTube dialogs scan every five minutes and retry visible prompts in 30 seconds', () => {
   const code = section('  const dismissMessageDialog = () => {', '  const bindVideo =');
   let now = 1000;
   let scans = 0;
   let lookups = 0;
   let roots = [];
-  const first = {
+  const first = { isConnected: true, querySelectorAll: () => { scans++; return []; } };
+  const replacement = {
     isConnected: true,
     querySelectorAll: () => { scans++; return roots; },
   };
-  const replacement = { isConnected: true, querySelectorAll: () => { scans++; return []; } };
   let current = first;
   const state = { popup: first };
   const dismiss = vm.runInNewContext(
@@ -247,35 +195,66 @@ test('YouTube empty popup scans are reused until mutation, timeout or replacemen
     },
   );
   for (let i = 0; i < 500; i++) assert.equal(dismiss(), null);
-  assert.equal(scans, 1, 'steady ad wake bursts need only one empty-dialog scan');
+  assert.equal(scans, 1, '500 ad wakeups do not rescan an empty popup');
   assert.equal(lookups, 0);
-  state.dialogDirty = true;
-  assert.equal(dismiss(), null);
-  assert.equal(scans, 2, 'dialog mutations invalidate the empty scan immediately');
-  now += 4999;
+  now += 5 * 60 * 1000 - 1;
   dismiss();
-  assert.equal(scans, 2);
+  assert.equal(scans, 1);
   now += 1;
   dismiss();
-  assert.equal(scans, 3, 'missed popup changes are reconciled every 5 seconds');
+  assert.equal(scans, 2, 'idle dialogs are checked at five-minute boundaries');
+
   first.isConnected = false;
   current = replacement;
+  now += 5 * 60 * 1000;
   dismiss();
-  assert.equal(scans, 4, 'newly replaced popup is scanned even inside the cache window');
+  assert.equal(scans, 3, 'replaced popup is reacquired at the next scheduled check');
   assert.equal(lookups, 1);
 
-  const visibleDialog = {
+  roots = [{
     label: 'Still watching',
     getClientRects: () => [1],
     matches: () => false,
     querySelector: () => null,
     querySelectorAll: () => [],
-  };
-  roots = [visibleDialog];
-  first.isConnected = true;
-  state.popup = first;
-  state.dialogDirty = true;
+  }];
+  now += 5 * 60 * 1000;
   dismiss();
+  assert.equal(scans, 4);
+  assert.equal(state.dialogActive, true, 'visible dialog activates 30-second retries');
+  for (let i = 0; i < 100; i++) dismiss();
+  assert.equal(scans, 4, 'active dialog is not polled on every ad wake');
+  now += 30000;
   dismiss();
-  assert.equal(scans, 6, 'visible actionable dialogs are never cached as empty');
+  assert.equal(scans, 5);
+  assert.equal(state.dialogActive, true);
+
+  roots = [];
+  now += 30000;
+  dismiss();
+  assert.equal(scans, 6);
+  assert.equal(state.dialogActive, false, 'dismissed dialog returns to five-minute cadence');
+  now += 30000;
+  dismiss();
+  assert.equal(scans, 6);
+});
+
+test('missing popup also waits five minutes before its next DOM lookup', () => {
+  const code = section('  const dismissMessageDialog = () => {', '  const bindVideo =');
+  let now = 1000;
+  let lookups = 0;
+  const state = {};
+  const dismiss = vm.runInNewContext(
+    '(() => { ' + code + '\nreturn dismissMessageDialog; })()',
+    {
+      state,
+      Date: class extends Date { static now() { return now; } },
+      document: { querySelector: () => { lookups++; return null; } },
+    },
+  );
+  for (let i = 0; i < 500; i++) dismiss();
+  assert.equal(lookups, 1);
+  now += 300000;
+  dismiss();
+  assert.equal(lookups, 2);
 });
