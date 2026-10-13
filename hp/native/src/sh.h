@@ -117,6 +117,16 @@ class StationheadPlayer {
   [[nodiscard]] bool SurfaceVisible() const noexcept {
     return startupPreviewActive_ || viewVisible_;
   }
+  // App already ran SetBounds before RefreshVisibility. In this exact steady
+  // state there is no interactive/auth host to retire, and the bounds pass
+  // already verified the hidden playback surface's geometry and z-order.
+  [[nodiscard]] bool HiddenPlaybackFullyReconciled() const noexcept {
+    return selectedTab_ == StationheadTabKind::None &&
+           !viewVisible_ && !startupPreviewActive_ &&
+           !authHostWindow_ && !authController_ && !authWebview_ &&
+           !authControllerStartedAt_.Active() && authPendingUrl_.empty() &&
+           !spotifyAuthorization_ && !loginRequired_;
+  }
   void KeepPlaybackBehindDashboard();
 
  private:
