@@ -94,6 +94,9 @@ class CloudClient {
 
   std::wstring lastSuccess_;
   std::wstring workerVersion_;
+  // Owned by the cloud sync thread. Identical repeated failures should not
+  // reopen and reparse dashboard.json after the error was already published.
+  std::wstring lastPublishedCloudError_;
   int dashboardVersion_ = -1;
   int radarVersion_ = -1;
   int switchbotVersion_ = -1;
