@@ -270,6 +270,19 @@ inline std::wstring StationheadLowerAscii(const wchar_t* text) {
   return lower;
 }
 
+// ASCII-lowercase the temporary buffer returned by WebView2::get_Uri in
+// place. The caller owns this CoTaskMemAlloc'd buffer and frees it after
+// classification; constructing another wide string on every request is
+// unnecessary across six persistent browser profiles.
+inline void StationheadLowerAsciiInPlace(wchar_t* uri) noexcept {
+  if (!uri) return;
+  for (wchar_t* cursor = uri; *cursor; ++cursor) {
+    if (*cursor >= L'A' && *cursor <= L'Z') {
+      *cursor = static_cast<wchar_t>(*cursor - L'A' + L'a');
+    }
+  }
+}
+
 // True for requests that a background audio-only Stationhead window never
 // needs: third-party analytics/crash/marketing/push telemetry, and the
 // social surfaces of the Stationhead API (chat, tipping, emoji, trending
@@ -280,22 +293,22 @@ inline std::wstring StationheadLowerAscii(const wchar_t* text) {
 
 
 
-inline std::wstring_view StationheadProductionApiPath(const std::wstring& uriLower) {
+inline std::wstring_view StationheadProductionApiPath(std::wstring_view uriLower) {
   static constexpr std::wstring_view kApiHost = L"production1.stationhead.com";
   const size_t schemeEnd = uriLower.find(L"://");
-  if (schemeEnd == std::wstring::npos) return {};
+  if (schemeEnd == std::wstring_view::npos) return {};
   const size_t hostAt = schemeEnd + 3;
   const size_t pathAt = uriLower.find_first_of(L"/?#", hostAt);
-  if (pathAt == std::wstring::npos || uriLower[pathAt] != L'/' ||
+  if (pathAt == std::wstring_view::npos || uriLower[pathAt] != L'/' ||
       uriLower.compare(hostAt, pathAt - hostAt, kApiHost) != 0) {
     return {};
   }
   const size_t pathEnd = uriLower.find_first_of(L"?#", pathAt);
-  return std::wstring_view(uriLower).substr(
-      pathAt, pathEnd == std::wstring::npos ? std::wstring::npos : pathEnd - pathAt);
+  return uriLower.substr(
+      pathAt, pathEnd == std::wstring_view::npos ? std::wstring_view::npos : pathEnd - pathAt);
 }
 
-inline bool StationheadRequestIsBlockable(const std::wstring& uriLower) {
+inline bool StationheadRequestIsBlockable(std::wstring_view uriLower) {
   static constexpr const wchar_t* kNeedles[] = {
 
       L"firebaseinstallations.googleapis.com",
@@ -347,7 +360,7 @@ inline bool StationheadRequestIsBlockable(const std::wstring& uriLower) {
       L"/gifts",
   };
   for (const wchar_t* needle : kNeedles) {
-    if (uriLower.find(needle) != std::wstring::npos) return true;
+    if (uriLower.find(needle) != std::wstring_view::npos) return true;
   }
   // Capture-confirmed presentation endpoints: Plus decorates premium UI and
   // /station/{id}/listener returns the visible listener roster. The similarly
@@ -364,43 +377,43 @@ inline bool StationheadRequestIsBlockable(const std::wstring& uriLower) {
   return false;
 }
 
-inline bool StationheadRequestLooksLikeImage(const std::wstring& uriLower) {
+inline bool StationheadRequestLooksLikeImage(std::wstring_view uriLower) {
   static constexpr const wchar_t* kImageNeedles[] = {
       L".png", L".jpg", L".jpeg", L".webp", L".gif", L".avif", L".svg", L".ico",
       L"/avatar", L"/avatars/", L"/artwork", L"/image", L"/images/", L"/thumbnail",
       L"/thumbnails/",
   };
   for (const wchar_t* needle : kImageNeedles) {
-    if (uriLower.find(needle) != std::wstring::npos) return true;
+    if (uriLower.find(needle) != std::wstring_view::npos) return true;
   }
   return false;
 }
 
-inline bool StationheadCorePlaybackRequest(const std::wstring& uriLower) {
+inline bool StationheadCorePlaybackRequest(std::wstring_view uriLower) {
   if (uriLower.empty()) return false;
   // The captured Pusher-compatible socket carries station/queue updates even
   // though it is hosted on a Stationhead domain rather than pusher.com.
   if (uriLower.find(L"://realtime-production.stationhead.com/app/") !=
-      std::wstring::npos) {
+      std::wstring_view::npos) {
     return true;
   }
-  const bool stationhead = uriLower.find(L"stationhead.com") != std::wstring::npos;
-  const bool spotify = uriLower.find(L"spotify") != std::wstring::npos ||
-                       uriLower.find(L"scdn.co") != std::wstring::npos;
+  const bool stationhead = uriLower.find(L"stationhead.com") != std::wstring_view::npos;
+  const bool spotify = uriLower.find(L"spotify") != std::wstring_view::npos ||
+                       uriLower.find(L"scdn.co") != std::wstring_view::npos;
   if (!stationhead && !spotify) return false;
   // Spotify preview/full-track media is commonly served as a signed URL from
   // p.scdn.co without an "audio" or "playback" path segment.
-  if (uriLower.find(L"scdn.co") != std::wstring::npos) return true;
-  if (uriLower.find(L"/timestamp") != std::wstring::npos ||
-      uriLower.find(L"/pusher/presenceauth") != std::wstring::npos ||
-      uriLower.find(L"/channels/alias/") != std::wstring::npos ||
-      uriLower.find(L"/me/country") != std::wstring::npos) {
+  if (uriLower.find(L"scdn.co") != std::wstring_view::npos) return true;
+  if (uriLower.find(L"/timestamp") != std::wstring_view::npos ||
+      uriLower.find(L"/pusher/presenceauth") != std::wstring_view::npos ||
+      uriLower.find(L"/channels/alias/") != std::wstring_view::npos ||
+      uriLower.find(L"/me/country") != std::wstring_view::npos) {
     return true;
   }
   return spotify &&
-      (uriLower.find(L"audio") != std::wstring::npos ||
-       uriLower.find(L"playback") != std::wstring::npos ||
-       uriLower.find(L"gew") != std::wstring::npos);
+      (uriLower.find(L"audio") != std::wstring_view::npos ||
+       uriLower.find(L"playback") != std::wstring_view::npos ||
+       uriLower.find(L"gew") != std::wstring_view::npos);
 }
 
 
@@ -499,24 +512,24 @@ inline void ApplyStationheadResourceBlocking(ICoreWebView2Environment* environme
               }
             }
             if (needsUri) {
-              std::wstring lower;
               ComPtr<ICoreWebView2WebResourceRequest> request;
               if (SUCCEEDED(args->get_Request(&request)) && request) {
                 LPWSTR uriRaw = nullptr;
                 if (SUCCEEDED(request->get_Uri(&uriRaw)) && uriRaw) {
-                  lower = StationheadLowerAscii(uriRaw);
+                  StationheadLowerAsciiInPlace(uriRaw);
+                  const std::wstring_view lower(uriRaw);
+                  block = StationheadRequestIsBlockable(lower);
+                  if (!block && blockImages && StationheadRequestLooksLikeImage(lower)) {
+                    block = true;
+                  }
+                  if (!block && hasContext &&
+                      context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA) {
+                    // Spotify audio is commonly served from scdn.co, so a
+                    // domain-only allow-list can interrupt the next track.
+                    block = !StationheadCorePlaybackRequest(lower);
+                  }
                   CoTaskMemFree(uriRaw);
                 }
-              }
-              block = StationheadRequestIsBlockable(lower);
-              if (!block && blockImages && StationheadRequestLooksLikeImage(lower)) {
-                block = true;
-              }
-              if (!block && hasContext &&
-                  context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA) {
-                // Spotify audio is commonly served from scdn.co, so a
-                // domain-only allow-list can interrupt the next track.
-                block = !lower.empty() && !StationheadCorePlaybackRequest(lower);
               }
             }
             if (block) {
