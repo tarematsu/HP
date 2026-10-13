@@ -38,7 +38,7 @@ test('mobile leaderboard uses the shared card contract rather than bespoke layou
   assert.match(table, /renderResponsiveTable/);
   assert.doesNotMatch(table, /createElement\\('article'\\)/);
   assert.match(base, /mobileCardsId/);
-  assert.match(styles, /\\.dashboard-responsive-card/);
+  assert.ok(styles.includes('.dashboard-responsive-card'));
   assert.match(shell, /mobileCardsId: 'leaderboardMobileList'/);
   assert.match(shell, /週間リーダーボード/);
 });
