@@ -37,7 +37,8 @@ test('ad skip stays player-local and variant tolerant', () => {
   assert.match(runtime, /\.ytp-skip-ad-button/);
   assert.match(runtime, /aria-label\*=\"Skip ad\" i/);
   assert.match(runtime, /aria-label\*=\"広告をスキップ\"/);
-  assert.match(runtime, /player\.querySelectorAll\(skipSelector\)/);
+  assert.match(runtime, /player\.querySelectorAll\(adControlSelector\)/);
+  assert.match(runtime, /element\.matches\(skipSelector\)/);
   assert.doesNotMatch(runtime, /document\.querySelectorAll\([^)]*skip/);
 });
 
