@@ -9,9 +9,10 @@ const readModel = readFileSync(new URL('../public/leaderboard-read-model.js', im
 const historyShell = readFileSync(new URL('../public/history-shell.js', import.meta.url), 'utf8');
 
 test('leaderboard uses QQ-style update metadata above chart and data', () => {
-  assert.match(shell, /id="leaderboardCompactMeta" class="regional-chart-meta"/);
-  assert.match(shell, /更新日時 <strong id="leaderboardUpdatedAt">-<\/strong>/);
-  assert.match(shell, /更新周期 <strong id="leaderboardCadence">-<\/strong>/);
+  assert.match(shell, /dashboardUpdateMeta/);
+  assert.match(shell, /id: 'leaderboardCompactMeta'/);
+  assert.match(shell, /valueId: 'leaderboardUpdatedAt'/);
+  assert.match(shell, /cadenceId: 'leaderboardCadence'/);
   assert.match(readModel, /updated_at: timestamp\(payload\?\.materialized_at\)/);
   assert.match(readModel, /cadence: '毎週月曜日夜'/);
   assert.match(runtime, /timeZone: 'Asia\/Tokyo'/);
