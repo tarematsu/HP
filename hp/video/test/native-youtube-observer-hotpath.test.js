@@ -109,6 +109,7 @@ test('YouTube ad observers avoid page-wide attribute monitoring', () => {
     {
       state, player, MutationObserver: FakeMutationObserver, wake,
       skipSelector: '.ytp-ad-skip-button', surveySelector: '.ytp-ad-survey',
+      adControlSelector: '.ytp-ad-survey,[role="dialog"],.ytp-ad-skip-button',
     },
   );
   syncAdObserver(true);
