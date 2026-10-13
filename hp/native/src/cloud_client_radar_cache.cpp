@@ -123,6 +123,12 @@ std::vector<uint8_t> CloudClient::LocalizeRadarTiles(
     return {text.begin(), text.end()};
   }
 
+  constexpr uint64_t kRadarCachePruneIntervalMs = 30ULL * 60ULL * 1'000ULL;
+  const uint64_t nowTick = GetTickCount64();
+  const bool pruneDue = lastRadarCachePruneTick_ == 0 ||
+      nowTick - lastRadarCachePruneTick_ >= kRadarCachePruneIntervalMs;
+  // Only collect the paths to retain when a recursive prune is actually due.
+  // Most frame updates need neither this set nor its per-tile allocations.
   std::set<std::wstring> retained;
   const std::wstring bundleUrl = root.GetNamedString(L"bundleUrl", L"").c_str();
   if (!bundleUrl.empty() && bundleUrl.front() == L'/') {
@@ -178,7 +184,7 @@ std::vector<uint8_t> CloudClient::LocalizeRadarTiles(
           throw std::runtime_error("radar bundle path invalid");
         }
         const fs::path target = localPathFor(pathname);
-        retained.insert(target.wstring());
+        if (pruneDue) retained.insert(target.wstring());
         std::error_code error;
         if (!fs::exists(target, error) || fs::file_size(target, error) == 0) {
           if (!AtomicWriteBytes(target, response.body.data() + offset, bodyLength)) {
@@ -200,7 +206,7 @@ std::vector<uint8_t> CloudClient::LocalizeRadarTiles(
     const std::wstring url = item.GetNamedString(L"url", L"").c_str();
     if (url.empty() || url.front() != L'/') return;
     const fs::path target = localPathFor(url);
-    retained.insert(target.wstring());
+    if (pruneDue) retained.insert(target.wstring());
     std::error_code error;
     if (!fs::exists(target, error) || fs::file_size(target, error) == 0) {
       const auto response = Request(L"GET", url, deviceToken_);
@@ -239,11 +245,7 @@ std::vector<uint8_t> CloudClient::LocalizeRadarTiles(
   // Scanning every cached tile and directory on each radar payload causes
   // unnecessary disk I/O. Keep stale cached frames temporarily and prune at
   // most once every 30 minutes; a fresh process always prunes on first update.
-  constexpr uint64_t kRadarCachePruneIntervalMs = 30ULL * 60ULL * 1'000ULL;
-  const uint64_t nowTick = GetTickCount64();
-  if (!retained.empty() &&
-      (lastRadarCachePruneTick_ == 0 ||
-       nowTick - lastRadarCachePruneTick_ >= kRadarCachePruneIntervalMs)) {
+  if (pruneDue && !retained.empty()) {
     std::vector<fs::path> staleFiles;
     std::vector<fs::path> directories;
     std::error_code walkError;
