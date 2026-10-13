@@ -101,6 +101,7 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
         if (!stationheadPeerStarted_[i] || !stationheadPeers_[i]) continue;
         const uint32_t changes = stationheadPeers_[i]->ConsumeChangeFlags();
+        if (changes == StationheadChangeNone) continue;
         if ((changes & StationheadChangeShowPlayer) != 0) {
           stationheadPeers_[i]->ShowAfterAudioStop();
         }
