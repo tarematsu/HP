@@ -94,6 +94,54 @@ function scenario({ duration = 1800, quality = '低', speed = '×1.75',
   };
 }
 
+test('TVer settings retry coalesces wakeups without delaying an earlier recovery', () => {
+  const begin = script.indexOf('  const schedule = (delay = 700) => {');
+  const end = script.indexOf('  const connected =', begin);
+  assert.ok(begin >= 0 && end > begin);
+  const snippet = script.slice(begin, end);
+  const state = {};
+  let now = 1000;
+  let nextId = 0;
+  let installed = 0;
+  const pending = new Map();
+  const messages = [];
+  const context = vm.createContext({
+    state, post: message => messages.push(message),
+    Date: class extends Date { static now() { return now; } },
+    setTimeout: (callback, delay) => {
+      installed++;
+      const id = ++nextId;
+      pending.set(id, { callback, delay });
+      return id;
+    },
+    clearTimeout: id => pending.delete(id),
+  });
+  const schedule = delay => vm.runInContext(
+    '(() => { const now = Date.now(); ' + snippet + ' return schedule; })()',
+    context,
+  )(delay);
+
+  schedule(900);
+  now += 100;
+  schedule(900);
+  assert.equal(installed, 1, 'a later retry must reuse the earliest timer');
+  now += 100;
+  schedule(280);
+  assert.equal(installed, 2, 'urgent recovery must preempt the old timer');
+  assert.equal(pending.size, 1);
+  now += 100;
+  schedule(900);
+  assert.equal(installed, 2, 'a follow-up cannot postpone the urgent wake');
+  const callback = [...pending.values()][0].callback;
+  pending.clear();
+  callback();
+  assert.deepEqual(messages, ['homepanel:tver-wake']);
+  assert.equal(state.currentSettingsWakeTimer, null);
+  assert.equal(state.currentSettingsWakeDueAt, 0);
+  schedule(900);
+  assert.equal(installed, 3, 'a fired timer must allow a new recovery request');
+});
+
 test('steady TVer playback scans settings once per probe and avoids redundant media writes', () => {
   const scene = scenario();
   scene.run();

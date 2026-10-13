@@ -6,6 +6,33 @@ const source = name => readFileSync(
   new URL('../../native/src/' + name, import.meta.url), 'utf8');
 const radar = source('cloud_client_radar_cache.cpp');
 const cloud = source('cloud_client.h');
+const sync = source('cloud_client_sync.cpp');
+
+test('cloud sync caches a validated representative PNG across unchanged polls', () => {
+  assert.match(cloud, /struct RadarRepresentativeValidatedStamp/);
+  assert.match(cloud, /radarRepresentativeValidatedStamp_;/);
+  const start = sync.indexOf('  const auto requestedRadarVersion = [&]() {');
+  const end = sync.indexOf('  std::wstring path = ', start);
+  assert.ok(start >= 0 && end > start);
+  const validation = sync.slice(start, end);
+  assert.match(validation, /fs::exists\(radarPath, error\)/);
+  assert.match(validation, /fs::file_size\(representativeRadarPath, error\)/);
+  assert.match(validation, /fs::last_write_time\(representativeRadarPath, error\)/);
+  const fast = validation.indexOf('radarRepresentativeValidatedStamp_.valid &&');
+  const verify = validation.indexOf('if (!HasPngSignature(representativeRadarPath))');
+  assert.ok(fast >= 0 && verify > fast,
+    'unchanged valid PNGs must bypass filesystem header reads');
+  assert.match(validation, /radarRepresentativeValidatedStamp_ = \{size, modifiedAt, true\}/);
+  assert.ok((validation.match(/radarRepresentativeValidatedStamp_\.valid = false/g) || []).length >= 3,
+    'missing radar JSON, missing PNG or invalid signature must invalidate the cached proof');
+  const valid = (cache, png) => png.present && png.size >= 8 &&
+    cache.valid && cache.size === png.size && cache.stamp === png.stamp;
+  const cache = { valid: true, size: 240, stamp: 77 };
+  assert.equal(valid(cache, { present: true, size: 240, stamp: 77 }), true);
+  assert.equal(valid(cache, { present: true, size: 240, stamp: 78 }), false);
+  assert.equal(valid(cache, { present: true, size: 0, stamp: 77 }), false);
+  assert.equal(valid(cache, { present: false, size: 240, stamp: 77 }), false);
+});
 
 test('cloud polling verifies the cached PNG header without allocating a vector', () => {
   assert.match(radar, /bool HasPngSignature\(const uint8_t\* bytes, size_t size\) noexcept/);

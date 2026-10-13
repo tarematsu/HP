@@ -11,9 +11,20 @@ LR"JS(
     catch (_) {}
   };
   const schedule = (delay = 700) => {
-    clearTimeout(state.currentSettingsWakeTimer);
-    state.currentSettingsWakeTimer = setTimeout(
-        () => post('homepanel:tver-wake'), delay);
+    // Media and UI wakes can run the settings bridge again before an existing
+    // retry fires. Preserve its earliest deadline instead of continually
+    // canceling/recreating the timer and potentially postponing recovery.
+    const dueAt = now + delay;
+    if (state.currentSettingsWakeTimer &&
+        state.currentSettingsWakeDueAt <= dueAt) return;
+    if (state.currentSettingsWakeTimer)
+      clearTimeout(state.currentSettingsWakeTimer);
+    state.currentSettingsWakeDueAt = dueAt;
+    state.currentSettingsWakeTimer = setTimeout(() => {
+      state.currentSettingsWakeTimer = null;
+      state.currentSettingsWakeDueAt = 0;
+      post('homepanel:tver-wake');
+    }, delay);
   };
   const connected = element => Boolean(
       element?.isConnected && !element.disabled &&

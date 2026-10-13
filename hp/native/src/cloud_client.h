@@ -107,6 +107,14 @@ class CloudClient {
     int version = -1;
     bool valid = false;
   } deviceConfigValidatedStamp_;
+  // The radar representative PNG is queried on every sync. Recheck its first
+  // eight bytes only when its filesystem stamp changes; missing/empty images
+  // are never cached as valid, so a completed download recovers immediately.
+  struct RadarRepresentativeValidatedStamp {
+    std::uintmax_t size = 0;
+    fs::file_time_type modifiedAt{};
+    bool valid = false;
+  } radarRepresentativeValidatedStamp_;
   // Radar payloads may update every few minutes. Full recursive cache
   // cleanup is periodic; tile reads and cache misses remain immediate.
   uint64_t lastRadarCachePruneTick_ = 0;
