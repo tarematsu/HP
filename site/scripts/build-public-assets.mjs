@@ -159,7 +159,7 @@ const report = {
 const routeModules = {
   current: ['current-shell.js', 'stationhead-channel.js'],
   hinata: ['hinata-shell.js', 'stationhead-channel.js'],
-  nogizaka: ['nogizaka-listening-party-shell.js', 'nogizaka-listening-party.js'],
+  nogizaka: ['nogizaka-listening-party-shell.js', 'stationhead-channel.js'],
   history: ['history-shell.js', 'history/history-main.js'],
   spotify: ['spotify-shell.js', 'spotify.js'],
   'apple-music': ['apple-music-shell.js', 'apple-music.js'],
