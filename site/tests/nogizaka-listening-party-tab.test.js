@@ -27,10 +27,10 @@ test('Nogizaka uses the same shared Stationhead routing lifecycle as Buddies', (
   assert.equal(navigation.source.id, 'nogizaka');
   assert.equal(navigation.source.label, 'Nogizaka');
   assert.equal(navigation.source.defaultMode, 'nogizaka');
-  assert.match(shellWrapper, /mountStationheadSourceShell\\('nogizaka'\\)/);
+  assert.ok(shellWrapper.includes("mountStationheadSourceShell('nogizaka')"));
   assert.match(sharedSourceMount, /viewId: 'nogizakaListeningPartyView'/);
   assert.match(sharedSourceMount, /model: 'nogizaka'/);
-  assert.match(tabs, /nogizakaListeningPartyView: \\(\\) => import/);
+  assert.ok(tabs.includes('nogizakaListeningPartyView: () => import'));
   assert.doesNotMatch(tabs, /'nogizaka-listening-party\\.js'/);
 });
 
