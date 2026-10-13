@@ -262,6 +262,10 @@ inline std::wstring StationheadAudioOnlyUiScript() {
     for (const element of matching(root, safeSelector)) hide(element, true);
     for (const element of matching(root, auxiliarySelector)) hide(element, false);
     for (const element of matching(root, labelSelector)) {
+      // Already suppressed ordinary controls cannot require a second label
+      // parse. Headings/tabs remain eligible to hide their enclosing panel.
+      if (element.getAttribute(hiddenAttribute) === 'true' &&
+          !element.matches('h1,h2,h3,[role="tab"]')) continue;
       const label = labelOf(element);
       if (!label || protectedPattern.test(label) || !nonPlaybackPattern.test(label)) continue;
       hide(element, element.matches('h1,h2,h3,[role="tab"]'));
