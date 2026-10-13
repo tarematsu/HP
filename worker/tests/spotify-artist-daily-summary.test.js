@@ -109,7 +109,9 @@ test('Spotify artist-day migrations backfill total and top-10 trend metrics', as
   `);
   const refresh = spotifyArtistDailyRefreshStatements(d1(sqlite), '2026-09-27', 4000);
   assert.equal(refresh.length, 2);
-  assert.match(refresh[0].sql, /DELETE FROM sh_spotify_artist_daily WHERE snapshot_date=\?/);
+  assert.match(refresh[0].sql, /DELETE FROM sh_spotify_artist_daily/);
+  assert.match(refresh[0].sql, /artist_key NOT IN/);
+  assert.match(refresh[1].sql, /ON CONFLICT\(snapshot_date,artist_key\) DO UPDATE/);
   assert.match(refresh[1].sql, /ROW_NUMBER\(\) OVER/);
   assert.match(refresh[1].sql, /top10_year_delta/);
   for (const item of refresh) await item.run();
@@ -177,4 +179,80 @@ test('top-10 migration computes grouped rankings once per replay and keeps ident
     assert.ok(plan.includes('MATERIALIZE top10_all'));
     assert.ok(plan.includes('MATERIALIZE top10_year'));
   } finally { sqlite.close(); }
+});
+
+test('unchanged Spotify artist-day refresh writes zero rows and preserves timestamps', async () => {
+  const sqlite = new DatabaseSync(':memory:');
+  try {
+    createSpotifySchema(sqlite);
+    sqlite.exec(`
+      INSERT INTO sh_spotify_releases VALUES
+        ('new','2026-01-01'),('old','2025-01-01');
+      INSERT INTO sh_spotify_tracks VALUES
+        ('ta','new','A'),('tb','old','B'),('tc','new','C');
+      INSERT INTO sh_spotify_track_targets VALUES
+        ('ta','artist-a'),('tb','artist-b'),('tc','artist-a');
+      INSERT INTO sh_spotify_playcount_daily VALUES
+        ('2026-09-28','ta',100,5,1000,0),
+        ('2026-09-28','tb',150,NULL,1001,0),
+        ('2026-09-28','tc',120,3,1002,0),
+        ('2026-09-29','ta',101,1,2000,0);
+    `);
+    sqlite.exec(migration);
+    sqlite.exec(top10Migration);
+
+    const refresh = async (now) => {
+      const changes = [];
+      for (const statement of spotifyArtistDailyRefreshStatements(d1(sqlite), '2026-09-28', now)) {
+        changes.push((await statement.run()).meta.changes);
+      }
+      return changes;
+    };
+    const timestamps = () => sqlite.prepare(`SELECT artist_key,updated_at
+      FROM sh_spotify_artist_daily WHERE snapshot_date='2026-09-28' ORDER BY artist_key`)
+      .all().map(row => ({ ...row }));
+
+    const originalRows = rows(sqlite);
+    const originalTimestamps = timestamps();
+    assert.deepEqual(await refresh(3000), [0, 0], 'exact replay must not rewrite rows');
+    assert.deepEqual(await refresh(4000), [0, 0], 'later execution timestamp alone is not a data change');
+    assert.deepEqual(rows(sqlite), originalRows);
+    assert.deepEqual(timestamps(), originalTimestamps);
+
+    sqlite.exec(`UPDATE sh_spotify_playcount_daily SET delta=7
+      WHERE snapshot_date='2026-09-28' AND track_id='ta'`);
+    assert.deepEqual(await refresh(5000), [0, 1], 'only the modified artist is updated');
+    assert.deepEqual(rows(sqlite).filter(row => row.snapshot_date === '2026-09-28'), [
+      { snapshot_date: '2026-09-28', artist_key: 'artist-a', total_delta: 10,
+        track_count: 2, top10_delta: 10, top10_year_delta: 10 },
+      { snapshot_date: '2026-09-28', artist_key: 'artist-b', total_delta: null,
+        track_count: 1, top10_delta: null, top10_year_delta: null },
+    ]);
+    assert.equal(timestamps().find(row => row.artist_key === 'artist-a').updated_at, 5000);
+    assert.equal(timestamps().find(row => row.artist_key === 'artist-b').updated_at,
+      originalTimestamps.find(row => row.artist_key === 'artist-b').updated_at);
+
+    sqlite.exec(`DELETE FROM sh_spotify_track_targets WHERE artist_key='artist-b'`);
+    assert.deepEqual(await refresh(6000), [1, 0], 'remove only the orphaned artist-day row');
+    assert.deepEqual(rows(sqlite).filter(row => row.snapshot_date === '2026-09-28').map(row => row.artist_key),
+      ['artist-a']);
+
+    sqlite.exec(`INSERT INTO sh_spotify_track_targets VALUES('tb','artist-c')`);
+    assert.deepEqual(await refresh(7000), [0, 1], 'new artist-day is inserted');
+    assert.equal(rows(sqlite).filter(row => row.snapshot_date === '2026-09-28').length, 2);
+
+    sqlite.exec(`UPDATE sh_spotify_playcount_daily SET delta=NULL
+      WHERE snapshot_date='2026-09-28'`);
+    assert.deepEqual(await refresh(8000), [0, 1], 'NULL transitions are compared without false rewrites');
+    const afterNull = rows(sqlite).find(row =>
+      row.snapshot_date === '2026-09-28' && row.artist_key === 'artist-a');
+    assert.equal(afterNull.total_delta, null);
+    assert.equal(afterNull.top10_delta, null);
+    assert.equal(afterNull.top10_year_delta, null);
+    assert.deepEqual(await refresh(9000), [0, 0]);
+    assert.equal(rows(sqlite).filter(row => row.snapshot_date === '2026-09-29').length, 1,
+      'other dates remain unchanged');
+  } finally {
+    sqlite.close();
+  }
 });
