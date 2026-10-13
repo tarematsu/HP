@@ -1,5 +1,5 @@
 import { countQueueRevisionItems } from './minute-queue-revision-progress.js';
-import { findReusableQueueRevision } from './minute-queue-revision-lookup.js';
+import { findReusableQueueRevision, findStoredQueueRevision } from './minute-queue-revision-lookup.js';
 import { insertPendingQueueRevision } from './minute-queue-revision-insert.js';
 import {
   bool,
@@ -54,15 +54,8 @@ async function findReusableRevision(db, input) {
   return findReusableQueueRevision(db, input, { extended: true });
 }
 async function findStoredRevision(db, input) {
-  return db.prepare(`SELECT id,status,effective_at,item_count,materialized_item_count,
-      coverage_complete,source_job_id,source_visible_count
-    FROM sh_queue_revisions
-    WHERE channel_id=? AND effective_at=? AND structural_hash=?
-    LIMIT 1`)
-    .bind(input.channelId, input.observedAt, input.structuralHash)
-    .first();
+  return findStoredQueueRevision(db, input);
 }
-
 async function revisionProgress(db, revisionId) {
   return countQueueRevisionItems(db, revisionId);
 }
