@@ -166,8 +166,11 @@ export async function runPagesResponseFetch(
         const cached = await cache.match(cacheKey).catch(() => null);
         if (cached) return cached;
       }
-      const loadTrackHistoryApi = dependencies.loadTrackHistoryApiResponse
-        || (await loadTrackHistoryApiModule()).loadTrackHistoryR2ApiResponse;
+      const loadTrackHistoryApi = async (...args) => {
+        const run = dependencies.loadTrackHistoryApiResponse
+          || (await loadTrackHistoryApiModule()).loadTrackHistoryR2ApiResponse;
+        return run(...args);
+      };
       response = await loadTrackHistoryCoalesced(
         env?.PAGES_RESPONSE_R2, dependencies, url,
         () => loadTrackHistoryThroughCoordinator(env, request, dependencies, () => loadTrackHistoryApi(
