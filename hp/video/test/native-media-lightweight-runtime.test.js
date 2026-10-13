@@ -65,7 +65,7 @@ test('TVer event wakeups use one debounced timer with no recovery ticker', () =>
 });
 
 test('YouTube runtime owns event wakeups and the only ad readiness observer', () => {
-  assert.match(mediaBase, /kNativeMediaYoutubeWatchdogHealthyMs = 30U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaYoutubeWatchdogHealthyMs = 60U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogRecoveryMs = 2U \* 1000U/);
   assert.match(youtubeRuntime, /homepanel:youtube-wake/);
   assert.match(youtubeRuntime, /new AbortController\(\)/);
