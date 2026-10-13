@@ -289,7 +289,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     const relatedAdNode = (node, deep = false) =>
       node?.nodeType === 1 && node !== player && !!(
         node.matches?.(adSelector) || node.closest?.(adSelector) ||
-        (deep && node.querySelector?.(adSelector)));
+        (deep && node.firstElementChild && node.querySelector?.(adSelector)));
     state.adControlObserver = new MutationObserver(() => wake(180));
     const observeAdAttributes = () => {
       const nodes = new Set();
@@ -366,9 +366,18 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     state.classObserver.observe(player, {
     attributes: true, attributeFilter: ['class']
     });
+    // YouTube can emit several SPA events in the same JS task. Refresh
+    // the media binding once per burst without deferring past this turn.
+    let pageStateQueued = false;
     const pageState = () => {
-    bindVideo(true);
-    wake(0);
+    if (pageStateQueued) return;
+    pageStateQueued = true;
+    queueMicrotask(() => {
+      pageStateQueued = false;
+      if (state.player !== player) return;
+      bindVideo(true);
+      wake(0);
+    });
     };
     for (const name of ['yt-navigate-finish', 'yt-page-data-updated',
                       'fullscreenchange']) {
@@ -384,7 +393,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       if (node?.nodeType !== 1 || node === state.popup) return false;
       return !!(node.matches?.(dialogSelector) ||
         node.closest?.(dialogSelector) ||
-        (deep && node.querySelector?.(dialogSelector)));
+        (deep && node.firstElementChild && node.querySelector?.(dialogSelector)));
     };
     const dialogMutations = records => {
       for (const record of records) {
