@@ -21,7 +21,7 @@ const historyEntry = readFileSync(new URL('../public/history/history-main.js', i
 const tabs = dashboardRouterSource();
 const dashboardEntry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const stationheadRuntime = browserSource('stationhead-channel.js');
-const currentShell = readFileSync(new URL('../public/current-shell.js', import.meta.url), 'utf8');
+const sourceShell = readFileSync(new URL('../public/stationhead-source-shell.js', import.meta.url), 'utf8');
 const assetBuild = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 
@@ -46,7 +46,7 @@ test('silent loading changes are cache busted through the bundled Pages entry', 
   assert.match(browserSource('stationhead-channel-read-model.js'), /import \{ fetchDashboard \}/);
   assert.doesNotMatch(dashboardEntry, /stationhead-channel-style-loader/);
   assert.match(tabs, /stationhead-channel\.js\?v=\d{8}\.\d+/);
-  assert.match(currentShell, /stationhead-channel-shell\.js\?v=\d{8}\.\d+/);
+  assert.match(sourceShell, /stationhead-channel-shell\.js\?v=\d{8}\.\d+/);
   assert.match(stationheadRuntime, /stationhead-channel-read-model\.js\?v=\d{8}\.\d+/);
   assert.match(assetBuild, /'dashboard-presentation\.css'/);
   assert.doesNotMatch(assetBuild, /dashboard-tabs-loader/);
