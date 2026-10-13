@@ -66,6 +66,13 @@ StationheadStatus StationheadPlayer::Status() const {
   return copy;
 }
 
+StationheadPlayer::SchedulerState StationheadPlayer::ReadSchedulerState() const {
+  std::lock_guard lock(mutex_);
+  return {
+      AudioPlaying(), status_.loginRequired, spotifyAuthorization_,
+      status_.processFailed, status_.visible};
+}
+
 void StationheadPlayer::ResetNavigationRouteState() {
   audioPlaying_ = false;
   audioPlayingSinceAt_.store(0, std::memory_order_relaxed);
