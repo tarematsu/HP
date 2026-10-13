@@ -171,7 +171,8 @@ LR"JS(
 
   // Browser fullscreen is independent of TVer's speed/quality UI. If a
   // setting menu is missing or renamed, video must still enter fullscreen.
-  // Retain a 3-second CDP budget per media source.
+  // Native WebView2 executes Runtime.evaluate(userGesture=true), with a
+  // trusted keyboard fallback. Retain a 3-second CDP budget per media source.
   const fullscreen = Boolean(
       document.fullscreenElement || document.webkitFullscreenElement ||
       document.msFullscreenElement);
