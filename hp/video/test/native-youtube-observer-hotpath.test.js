@@ -62,6 +62,7 @@ test('YouTube player class observer ignores cosmetic changes but detects recover
 test('YouTube ad observer batches bursts without delaying player-class ad entry', () => {
   const source = section('  const syncAdObserver = active => {', '  if (state.player !== player)');
   const state = {};
+  const player = {};
   let now = 1000;
   let dueAt = null;
   let scheduled = 0;
@@ -73,11 +74,11 @@ test('YouTube ad observer batches bursts without delaying player-class ad entry'
   };
   const syncAdObserver = vm.runInNewContext(
     `(() => { ${source}\nreturn syncAdObserver; })()`,
-    { state, MutationObserver: FakeMutationObserver, wake },
+    { state, player, MutationObserver: FakeMutationObserver, wake },
   );
   syncAdObserver(true);
   assert.ok(state.adObserver);
-  assert.equal(state.adObserver.target, undefined); // observe must be player-local
+  assert.equal(state.adObserver.target, player); // player-local, not document-wide
   // The runtime only asks for a native wake once per pending 180ms window.
   state.adObserver.callback();
   for (let i = 0; i < 100; i++) state.adObserver.callback();
