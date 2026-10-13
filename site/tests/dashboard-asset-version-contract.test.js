@@ -88,6 +88,13 @@ test('build minifies dashboard and official entry points with shared CSS groups'
   assert.doesNotMatch(buildScript, /optimizeBundled|shareCommonUiHelpers|canvasTransforms|onLoad\(/);
 });
 
+test('Pages asset sizes remain observable without fixed build-failure caps', () => {
+  assert.match(buildScript, /report\.gzip_estimate =/);
+  assert.match(buildScript, /report\.route_js_graph_bytes =/);
+  assert.match(buildScript, /writeFile\(resolve\(siteRoot, 'artifacts\/pages-assets\.json'\)/);
+  assert.doesNotMatch(buildScript, /Pages asset budget exceeded|const budgets\s*=|report\[metric\]\s*>\s*limit/);
+});
+
 test('feature stylesheet loading exists only in the central route client', () => {
   assert.match(styles, /createElement\('link'\)/);
   assert.doesNotMatch(header, /createElement\('link'\)|stylesheet|\.css\?v=/);
