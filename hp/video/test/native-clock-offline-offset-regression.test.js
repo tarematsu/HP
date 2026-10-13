@@ -40,9 +40,9 @@ test('cloud request restores fallback before networking and refreshes offset aft
     http,
     /SynchronizeNetworkClockFromServerUnixMillis\(serverUnixMs\);\s*PersistNetworkClockOffsetFromServerUnixMillis\(serverUnixMs\);/,
   );
-  assert.equal((http.match(/WINHTTP_QUERY_DATE\\s*\\|\\s*WINHTTP_QUERY_FLAG_SYSTEMTIME/g) || []).length, 1,
+  assert.equal((http.match(/WINHTTP_QUERY_DATE\s*\|\s*WINHTTP_QUERY_FLAG_SYSTEMTIME/g) || []).length, 1,
     'online and persisted clock must share a single HTTPS Date query');
-  assert.match(http, /UnixMillisFromUtcSystemTime\\(serverUtc, &serverUnixMs\\)/);
-  assert.match(fallback, /inline bool PersistNetworkClockOffsetFromHttpResponse\\(HINTERNET request\\)/);
-  assert.match(fallback, /PersistNetworkClockOffsetFromServerUnixMillis\\(serverUnixMs\\)/);
+  assert.match(http, /UnixMillisFromUtcSystemTime\(serverUtc, &serverUnixMs\)/);
+  assert.match(fallback, /inline bool PersistNetworkClockOffsetFromHttpResponse\(HINTERNET request\)/);
+  assert.match(fallback, /PersistNetworkClockOffsetFromServerUnixMillis\(serverUnixMs\)/);
 });
