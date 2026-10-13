@@ -213,7 +213,8 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   };
 )JS" LR"JS(
   const dismissMessageDialog = () => {
-    const popup = document.querySelector('ytd-popup-container');
+    const popup = state.popup?.isConnected ? state.popup :
+      document.querySelector('ytd-popup-container');
     if (!popup) return null;
     for (const root of popup.querySelectorAll(
       'tp-yt-paper-dialog[opened],[role="dialog"]:not([aria-hidden="true"]),'
@@ -246,9 +247,13 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     }
     return null;
   };
-  const bindVideo = () => {
+  const bindVideo = (refresh = false) => {
+    // Stable playback reuses its bound media node. SPA navigation explicitly
+    // refreshes the selection, and detach/move falls back to a DOM query.
+    const cached = state.video;
+    if (!refresh && cached?.isConnected && player.contains(cached)) return cached;
     const video = player.querySelector('video');
-    if (!video || state.video === video) return video;
+    if (!video || cached === video) return video;
     state.videoAbort?.abort();
     state.videoAbort = new AbortController();
     state.video = video;
@@ -335,7 +340,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     attributes: true, attributeFilter: ['class']
     });
     const pageState = () => {
-    bindVideo();
+    bindVideo(true);
     wake(0);
     };
     for (const name of ['yt-navigate-finish', 'yt-page-data-updated',
@@ -344,10 +349,29 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       capture: true, signal: state.pageAbort.signal
     });
     }
-    const popup = document.querySelector('ytd-popup-container');
-    if (popup) {
-    state.popupObserver = new MutationObserver(() => wake(0));
-    state.popupObserver.observe(popup, { childList: true, subtree: true });
+    state.popup = document.querySelector('ytd-popup-container');
+    if (state.popup) {
+    const dialogSelector = 'tp-yt-paper-dialog,[role="dialog"],' +
+      'yt-confirm-dialog-renderer,ytd-confirm-dialog-renderer';
+    const relatedDialog = (node, deep = false) => {
+      if (node?.nodeType !== 1 || node === state.popup) return false;
+      return !!(node.matches?.(dialogSelector) ||
+        node.closest?.(dialogSelector) ||
+        (deep && node.querySelector?.(dialogSelector)));
+    };
+    const dialogMutations = records => {
+      for (const record of records) {
+        if (relatedDialog(record.target)) { wake(80); return; }
+        for (const node of record.addedNodes) {
+          if (relatedDialog(node, true)) { wake(80); return; }
+        }
+        for (const node of record.removedNodes) {
+          if (relatedDialog(node, true)) { wake(80); return; }
+        }
+      }
+    };
+    state.popupObserver = new MutationObserver(dialogMutations);
+    state.popupObserver.observe(state.popup, { childList: true, subtree: true });
     }
   }
   const video = bindVideo();
