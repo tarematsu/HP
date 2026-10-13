@@ -106,11 +106,19 @@ function adScenario({ controls = [], skipButtons = [], selected = false } = {}) 
   const calls = [];
   const state = { surveySelected: selected };
   const survey = {
+    matches: selector => selector.includes('.survey'),
     querySelectorAll: () => controls,
   };
+  let queryCount = 0;
   const player = {
-    querySelectorAll: selector => selector.includes('[role="dialog"]') ?
-      [survey] : skipButtons,
+    querySelectorAll: selector => {
+      assert.equal(selector, '.survey,[role="dialog"],.skip');
+      queryCount++;
+      return [survey, ...skipButtons.map(button => ({
+        ...button,
+        matches: target => target.includes('.skip'),
+      }))];
+    },
   };
   const code = section('  if (adActive) {', '  state.adActive = false;');
   const outcome = runInNewContext(
@@ -118,6 +126,8 @@ function adScenario({ controls = [], skipButtons = [], selected = false } = {}) 
     {
       adActive: true, state, player,
       surveySelector: '.survey', skipSelector: '.skip',
+      adControlSelector: '.survey,[role="dialog"],.skip',
+      surveyDialogSelector: '.survey,[role="dialog"]',
       valid: element => element.connected !== false,
       text: element => {
         element.labelReads = (element.labelReads || 0) + 1;
@@ -129,7 +139,7 @@ function adScenario({ controls = [], skipButtons = [], selected = false } = {}) 
       recheck: () => {},
     },
   );
-  return { calls, outcome, state };
+  return { calls, outcome, state, queryCount };
 }
 
 test('YouTube ad survey retains option-first, then submit, with one label read per control', () => {
@@ -140,6 +150,7 @@ test('YouTube ad survey retains option-first, then submit, with one label read p
   const first = adScenario({ controls: inputs });
   assert.equal(first.outcome.action, 'survey-option');
   assert.equal(first.outcome.id, 2);
+  assert.equal(first.queryCount, 1, 'survey and skip share a single subtree query');
   assert.equal(option.labelReads, 1);
   assert.equal(submit.labelReads, 1);
   // Re-run with a fresh DOM label count; state.surveySelected is passed in.
@@ -157,6 +168,7 @@ test('skip-ad first-valid candidate and ad fallback remain intact without an arr
   assert.equal(skip.outcome.id, 2);
   assert.equal(skip.outcome.action, 'skip-ad');
   assert.deepEqual(skip.calls, ['skip-ad']);
+  assert.equal(skip.queryCount, 1, 'skip-only ads also scan the player only once');
 
   const missing = adScenario();
   assert.equal(missing.outcome, 'recovery');
