@@ -25,6 +25,39 @@ std::wstring Utf8BytesToWide(const std::vector<uint8_t>& bytes) {
   }
   return output;
 }
+
+enum class CacheWriteResult { Failed, Unchanged, Written };
+
+// The server can repeat a payload (e.g. after a forced cache refresh).
+// Comparing it before a write prevents unnecessary atomic replacements,
+// filesystem notifications and UI paints. Stream the existing file in small
+// blocks; do not allocate a second copy of large radar/dashboard payloads.
+CacheWriteResult WriteCacheIfChanged(
+    const fs::path& path, const std::vector<uint8_t>& bytes) {
+  std::error_code error;
+  const auto existingSize = fs::file_size(path, error);
+  if (!error && existingSize == bytes.size()) {
+    std::ifstream input(path, std::ios::binary);
+    if (input) {
+      std::array<char, 8192> chunk{};
+      size_t offset = 0;
+      bool equal = true;
+      while (offset < bytes.size()) {
+        const size_t count = std::min(chunk.size(), bytes.size() - offset);
+        input.read(chunk.data(), static_cast<std::streamsize>(count));
+        if (input.gcount() != static_cast<std::streamsize>(count) ||
+            std::memcmp(chunk.data(), bytes.data() + offset, count) != 0) {
+          equal = false;
+          break;
+        }
+        offset += count;
+      }
+      if (equal) return CacheWriteResult::Unchanged;
+    }
+  }
+  return AtomicWriteBytes(path, bytes)
+      ? CacheWriteResult::Written : CacheWriteResult::Failed;
+}
 }  // namespace
 
 void CloudClient::ApplyPresenceFallback() {
@@ -192,20 +225,26 @@ void CloudClient::Synchronize() {
   bool configApplied = false;
 
   if (auto payload = StringPayload(root, L"dashboard")) {
-    if (!AtomicWriteBytes(dashboardPath, *payload)) {
+    const auto written = WriteCacheIfChanged(dashboardPath, *payload);
+    if (written == CacheWriteResult::Failed) {
       throw std::runtime_error("dashboard data cache write failed");
     }
     dashboardApplied = true;
-    PostMessageW(window_, WM_HP_CLOUD_UPDATED, 0, 0);
+    if (written == CacheWriteResult::Written) {
+      PostMessageW(window_, WM_HP_CLOUD_UPDATED, 0, 0);
+    }
   }
   if (auto payload = StringPayload(root, L"radar")) {
     try {
       const auto localized = LocalizeRadarTiles(*payload);
-      if (!AtomicWriteBytes(radarPath, localized)) {
+      const auto written = WriteCacheIfChanged(radarPath, localized);
+      if (written == CacheWriteResult::Failed) {
         throw std::runtime_error("radar cache write failed");
       }
       radarApplied = true;
-      PostMessageW(window_, WM_HP_RADAR_UPDATED, 0, 0);
+      if (written == CacheWriteResult::Written) {
+        PostMessageW(window_, WM_HP_RADAR_UPDATED, 0, 0);
+      }
     } catch (const std::exception& error) {
       log_.Warn(
           L"Radar payload withheld until representative PNG is available: " +
@@ -215,19 +254,25 @@ void CloudClient::Synchronize() {
     }
   }
   if (auto payload = StringPayload(root, L"switchbot")) {
-    if (!AtomicWriteBytes(switchbotPath, *payload)) {
+    const auto written = WriteCacheIfChanged(switchbotPath, *payload);
+    if (written == CacheWriteResult::Failed) {
       throw std::runtime_error("SwitchBot cache write failed");
     }
     switchbotApplied = true;
     presenceFallbackActive_ = false;
-    PostMessageW(window_, WM_HP_SWITCHBOT_UPDATED, 0, 0);
+    if (written == CacheWriteResult::Written) {
+      PostMessageW(window_, WM_HP_SWITCHBOT_UPDATED, 0, 0);
+    }
   }
   if (auto payload = StringPayload(root, L"deviceConfig")) {
-    if (!AtomicWriteBytes(deviceConfigPath, *payload)) {
+    const auto written = WriteCacheIfChanged(deviceConfigPath, *payload);
+    if (written == CacheWriteResult::Failed) {
       throw std::runtime_error("device config cache write failed");
     }
     configApplied = true;
-    PostMessageW(window_, WM_HP_CONFIG_UPDATED, 0, 0);
+    if (written == CacheWriteResult::Written) {
+      PostMessageW(window_, WM_HP_CONFIG_UPDATED, 0, 0);
+    }
   }
 
   if (root.HasKey(L"commands") &&
