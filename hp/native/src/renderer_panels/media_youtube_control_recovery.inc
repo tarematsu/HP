@@ -594,7 +594,15 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     for (const element of scanAdCandidates()) {
       if (valid(element)) { target = element; break; }
     }
-    if (target) return arm(target, 'skip-ad', 600);
+    if (target) {
+      const action = arm(target, 'skip-ad', 600);
+      if (action) return action;
+      // An actionable button can temporarily be in its click cooldown or
+      // fail geometry validation. Do not accidentally treat that as 60s healthy
+      // playback; keep retrying until the button is clicked or disappears.
+      wake(1000);
+      return 'recovery';
+    }
     if (!fullscreen()) return requestFullscreen();
     // Skip/ad state observers wake promptly on actionable changes. Poll
     // unskippable ads less often when no event arrives.
