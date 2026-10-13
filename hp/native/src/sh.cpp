@@ -168,7 +168,12 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
           : (usingFallback_ ? L"fallback audio detected" : L"audio detected") +
                 (source.empty() ? L"" : L" (" + source + L")");
     }
-    if (!preserveLoginRequired && !startupPreviewActive_ && !spotifyAuthorization_) {
+    // Media clock confirmations can arrive repeatedly while six profiles
+    // remain healthy. Only enter the WebView2/Win32 visibility reconciliation
+    // when a foreground or startup surface actually needs to be retired.
+    // The App placement path still repairs external window/z-order changes.
+    if (!preserveLoginRequired && !startupPreviewActive_ && !spotifyAuthorization_ &&
+        (viewVisible_ || selectedTab_ != StationheadTabKind::None)) {
       SetVisible(false);
     }
     if (changed) log_.Info(L"Stationhead " + std::wstring(RoleTag()) + L" audio playing (" + source + L")");
