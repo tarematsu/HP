@@ -70,8 +70,7 @@ export async function loadWeeklyRankingSourceRevision(db) {
   const row = await db.prepare(`SELECT
       (SELECT MAX(ranking_date)
        FROM sh_channel_rankings
-       WHERE ranking_type=?
-         AND lower(trim(channel_name)) IN ('sakuramankai','sakurazaka46jp','nogizaka46smej')) AS max_ranking_date,
+       WHERE ranking_type=?) AS max_ranking_date,
       (SELECT revision
        FROM sh_read_model_revision
        WHERE model_key=?) AS compact_revision`).bind(RANKING_TYPE, REVISION_KEY).first();
