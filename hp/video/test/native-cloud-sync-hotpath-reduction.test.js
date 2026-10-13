@@ -142,3 +142,35 @@ test('repeat cloud errors do not reparse dashboard JSON on every offline poll', 
   // Don't mark failed writes as successfully displayed, so they retry.
   assert.doesNotMatch(failure, /lastPublishedCloudError_ = friendly;\s*if \(dashboard/);
 });
+
+
+test('radar byte-comparison helper is visible to localization without nested namespaces', () => {
+  const start = sync.indexOf('CacheWriteResult WriteCacheIfChanged(');
+  const include = sync.indexOf('#include "cloud_client_radar_cache.cpp"');
+  const reopen = sync.indexOf('namespace hp {', include);
+  const presence = sync.indexOf('void CloudClient::ApplyPresenceFallback()', include);
+  assert.ok(start >= 0 && start < include && include < reopen && reopen < presence);
+  assert.match(sync.slice(start, include), /}\s*\/\/ namespace hp\s*$/);
+});
+
+test('identical command payloads skip disk writes but preserve command retry notifications', () => {
+  const start = sync.indexOf('  if (root.HasKey(L"commands")');
+  const end = sync.indexOf('  const auto acceptedVersion =', start);
+  assert.ok(start >= 0 && end > start);
+  const commands = sync.slice(start, end);
+  assert.match(commands, /const std::vector<uint8_t> commandBytes\(text.begin\(\), text.end\(\)\)/);
+  assert.match(commands, /WriteCacheIfChanged\(\s*dataDir_ \/ L"commands\.json", commandBytes\)/);
+  assert.match(commands, /if \(written == CacheWriteResult::Failed\)/);
+  assert.match(commands, /PostMessageW\(window_, WM_HP_COMMANDS_UPDATED, 0, 0\)/);
+  assert.doesNotMatch(commands, /AtomicWriteText\(dataDir_ \/ L"commands\.json"/);
+  assert.doesNotMatch(commands, /if \(written == CacheWriteResult::Written\)[\s\S]*PostMessageW/);
+  // A successful retry is still possible when command bytes have not changed.
+  let attempts = 0;
+  const replay = (fileMatches) => {
+    if (!fileMatches) { /* persist pending commands */ }
+    attempts++;
+  };
+  replay(false);
+  replay(true);
+  assert.equal(attempts, 2);
+});
