@@ -128,6 +128,7 @@ function adScenario({ controls = [], skipButtons = [], selected = false } = {}) 
       surveySelector: '.survey', skipSelector: '.skip',
       adControlSelector: '.survey,[role="dialog"],.skip',
       surveyDialogSelector: '.survey,[role="dialog"]',
+      scanAdCandidates: () => player.querySelectorAll('.survey,[role="dialog"],.skip'),
       valid: element => element.connected !== false,
       text: element => {
         element.labelReads = (element.labelReads || 0) + 1;
