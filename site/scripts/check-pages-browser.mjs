@@ -226,15 +226,17 @@ try {
         assert.match(await page.locator('.dashboard-view:not([hidden]) [data-role="daily-tbody"] tr td').first().textContent(), /^\d{4}/, `${mode}: history data did not load`);
       }
       if (!live && mode === 'ranking' && width <= 390) {
-        const row = page.locator('#leaderboardTbody tr').first();
-        assert.equal(await row.locator('td').count(), 6, 'ranking fixture renders all six labelled fields');
-        assert.equal(await row.evaluate((node) => getComputedStyle(node).display), 'grid', 'narrow leaderboard uses full-width cards');
-        assert.equal(await row.locator('td').nth(2).getAttribute('data-label'), 'ホスト');
-        const hiddenCells = await row.locator('td').evaluateAll((cells) => cells
-          .map((cell) => ({ label: cell.dataset.label, bounds: cell.getBoundingClientRect() }))
+        const card = page.locator('#leaderboardMobileList > .leaderboard-mobile-card').first();
+        assert.equal(await card.locator('.leaderboard-mobile-field').count(), 6, 'each ranking card exposes all six fields');
+        assert.equal(await card.evaluate((node) => getComputedStyle(node).display), 'grid', 'phone uses leaderboard cards');
+        assert.equal(await card.locator('[data-key="host"]').count(), 1, 'host is visible in each card');
+        const hiddenFields = await card.locator('.leaderboard-mobile-field').evaluateAll((fields) => fields
+          .map((field) => ({ label: field.dataset.key, bounds: field.getBoundingClientRect() }))
           .filter(({ bounds }) => bounds.left < -2 || bounds.right > innerWidth + 2)
           .map(({ label }) => label));
-        assert.deepEqual(hiddenCells, [], 'every leaderboard field fits the phone viewport');
+        assert.deepEqual(hiddenFields, [], 'every leaderboard field fits the phone viewport');
+        assert.equal(await page.locator('.leaderboard-view .table-wrap.table-fit-mobile').isVisible(), false,
+          'desktop leaderboard table is hidden on phones');
       }
       await page.screenshot({ path: `${output}/${label}.png`, fullPage: true });
       if (!live && width === 320 && ['broadcasts', 'ranking', 'youtube-music', 'kkbox'].includes(mode)) await stressVisibleLayout(page, label);
