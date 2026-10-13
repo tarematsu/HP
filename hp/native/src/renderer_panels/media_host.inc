@@ -327,6 +327,10 @@ class NativeMediaPanelHost final {
 
       webview_->AddScriptToExecuteOnDocumentCreated(
           kNativeMediaYoutubeCleanPlayerScript, nullptr);
+      // Install the full YouTube runtime once per document. The native
+      // watchdog then uses only a compact cached-function invocation.
+      webview_->AddScriptToExecuteOnDocumentCreated(
+          kNativeMediaYoutubeControlRecoveryScript, nullptr);
       webview_->AddScriptToExecuteOnDocumentCreated(
           kNativeMediaCursorSuppressionScript, nullptr);
 
