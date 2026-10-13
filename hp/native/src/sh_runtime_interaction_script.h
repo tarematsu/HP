@@ -40,6 +40,9 @@ inline std::wstring_view StationheadRuntimeInteractionFragment() noexcept {
   let lastAudio = null;
   let lastBlocking = null;
   let playbackEstablished = false;
+  // Share the last full-room scan between authentication events and the
+  // media watchdog. Stable audio should not rescan the room per event.
+  let lastOnboardingScanAt = 0;
 
   const postText = suffix => {
     try { webview?.postMessage?.('{{PREFIX}}-' + suffix); } catch (_) {}
@@ -136,7 +139,14 @@ inline std::wstring_view StationheadRuntimeInteractionFragment() noexcept {
   };
   const publishAuth = (knownAudio = null) => {
     if (!pageActive || !document.body) return;
-    if (publishRecoverableOnboarding()) return;
+    // Uncertain/stopped audio still discovers recovery controls immediately.
+    // Confirmed playback shares a sixteen-second scanning budget with the
+    // watchdog; account/login guards below still run on every auth event.
+    const now = Date.now();
+    if (knownAudio !== true || !lastOnboardingScanAt ||
+        now < lastOnboardingScanAt || now - lastOnboardingScanAt >= 16000) {
+      if (publishRecoverableOnboarding()) return;
+    }
     // Reuse one fresh control snapshot for both auth checks. Recoverable
     // onboarding runs first and may update the page's playback-only CSS;
     // never cache controls across events or the delayed authorization check.

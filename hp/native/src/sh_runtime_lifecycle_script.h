@@ -23,7 +23,11 @@ LR"JS(
     }, delay);
   };
   const onStateEvent = () => schedule(0);
-  const onInteractiveEvent = () => schedule(150);
+  // A click or form submit can reveal a new prompt during healthy playback.
+  const onInteractiveEvent = () => {
+    lastOnboardingScanAt = 0;
+    schedule(150);
+  };
   let keyWaitingMedia = null;
   let progressTimer = 0;
   let progressMedia = null;
@@ -33,7 +37,6 @@ LR"JS(
   let progressRepairTried = false;
   let progressSyntheticKeyWait = false;
   let progressConfirmed = false;
-  let lastRecoverableProbeAt = 0;
   const progressProbeMs = 4000;
   const progressHealthyProbeMs = 8000;
   const recoverableHealthyProbeMs = 16000;
@@ -109,9 +112,9 @@ LR"JS(
     const fastRecoverableProbe =
       !progressConfirmed || progressStalledAt !== 0 || progressRepairTried ||
       progressSyntheticKeyWait || keyWaitingMedia !== null;
-    if (fastRecoverableProbe || lastRecoverableProbeAt === 0 ||
-        probeStartedAt - lastRecoverableProbeAt >= recoverableHealthyProbeMs) {
-      lastRecoverableProbeAt = probeStartedAt;
+    if (fastRecoverableProbe || lastOnboardingScanAt === 0 ||
+        probeStartedAt < lastOnboardingScanAt ||
+        probeStartedAt - lastOnboardingScanAt >= recoverableHealthyProbeMs) {
       publishRecoverableOnboarding();
     }
 

@@ -152,6 +152,7 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
 
   const publishRecoverableOnboarding = () => {
     if (!pageActive || !document.body) return false;
+    lastOnboardingScanAt = Date.now();
     // One DOM snapshot per probe, reused for hidden recovery detection,
     // Keep Streaming priority, and the generic action fallback. Avoid 3-4
     // separate full-room selector traversals on every healthy WebView tick.
