@@ -269,9 +269,35 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     return;
     }
     if (state.adObserver || typeof MutationObserver !== 'function') return;
-    // Batch ad DOM mutation bursts into 180ms windows; the player class
-    // observer still issues immediate wakes when an ad starts or ends.
-    state.adObserver = new MutationObserver(() => wake(180));
+    // Ignore unrelated player DOM churn during ads. The class observer
+    // handles ad entry/exit; this observer only tracks actionable controls.
+    const actionableAdSelector = skipSelector + ',' + surveySelector + ',[role="dialog"]';
+    const adControlNode = (node, deep = false) => {
+    if (node?.nodeType !== 1 || node === player) return false;
+    return !!(node.matches?.(actionableAdSelector) ||
+      node.closest?.(actionableAdSelector) ||
+      (deep && node.querySelector?.(actionableAdSelector)));
+    };
+    const adMutationWake = records => {
+    for (const record of records) {
+      if (record.type === 'attributes') {
+        if (adControlNode(record.target,
+            record.attributeName === 'aria-hidden')) {
+          wake(180);
+          return;
+        }
+      } else if (record.type === 'childList') {
+        if (adControlNode(record.target)) { wake(180); return; }
+        for (const node of record.addedNodes) {
+          if (adControlNode(node, true)) { wake(180); return; }
+        }
+        for (const node of record.removedNodes) {
+          if (adControlNode(node, true)) { wake(180); return; }
+        }
+      }
+    }
+    };
+    state.adObserver = new MutationObserver(adMutationWake);
     state.adObserver.observe(player, {
     childList: true,
     subtree: true,
