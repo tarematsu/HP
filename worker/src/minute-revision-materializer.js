@@ -1,3 +1,4 @@
+import { countQueueRevisionItems } from './minute-queue-revision-progress.js';
 import { findReusableQueueRevision } from './minute-queue-revision-lookup.js';
 import { insertPendingQueueRevision } from './minute-queue-revision-insert.js';
 import {
@@ -63,12 +64,8 @@ async function findStoredRevision(db, input) {
 }
 
 async function revisionProgress(db, revisionId) {
-  const row = await db.prepare(
-    'SELECT COUNT(*) AS item_count FROM sh_queue_revision_items WHERE revision_id=?',
-  ).bind(revisionId).first();
-  return Number(row?.item_count || 0);
+  return countQueueRevisionItems(db, revisionId);
 }
-
 function compactQueueIdentity(queue, totalCount) {
   return {
     station_id: integer(queue?.station_id),
