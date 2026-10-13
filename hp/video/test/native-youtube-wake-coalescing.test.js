@@ -86,7 +86,7 @@ test('urgent YouTube ad wake preempts a slower recovery check without being post
 });
 
 test('YouTube media selection is reused without a second video DOM query', () => {
-  const code = section('  const bindVideo = () => {', '  const syncAdObserver =');
+  const code = section('  const bindVideo = (refresh = false) => {', '  const syncAdObserver =');
   let queries = 0;
   let attached = 0;
   let wakes = 0;
