@@ -99,7 +99,7 @@ test('stable YouTube playback reuses its video node until SPA refresh or detach'
 
 test('popup observer ignores decorative nodes and wakes only for dialog changes', () => {
   const code = section("    state.popup = document.querySelector('ytd-popup-container');",
-    '  const video = bindVideo();');
+    '  const video = bindVideo();').replace(/\\n  }\\s*$/, '');
   const popup = makeNode('popup');
   const dialog = makeNode('dialog');
   const icon = makeNode('icon');
