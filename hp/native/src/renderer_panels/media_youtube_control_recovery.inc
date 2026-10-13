@@ -293,6 +293,19 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     wake(0);
     return video;
   };
+  // A short-lived snapshot avoids a full-player selector on every ad wake.
+  // Relevant mutations invalidate it; the 1.5s fallback discovers controls
+  // whose attributes changed without a subscribed observer.
+  const scanAdCandidates = () => {
+    const now = Date.now();
+    if (state.adCandidates && !state.adCandidatesDirty &&
+        now >= state.adCandidatesAt &&
+        now - state.adCandidatesAt < 1500) return state.adCandidates;
+    state.adCandidates = player.querySelectorAll(adControlSelector);
+    state.adCandidatesAt = now;
+    state.adCandidatesDirty = false;
+    return state.adCandidates;
+  };
   const syncAdObserver = active => {
     if (!active) {
       state.adObserver?.disconnect();
@@ -300,6 +313,9 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       state.adObserver = null;
       state.adControlObserver = null;
       state.adObservedNodes = null;
+      state.adCandidates = null;
+      state.adCandidatesDirty = true;
+      state.adCandidatesAt = 0;
       return;
     }
     if (state.adObserver || typeof MutationObserver !== 'function') return;
@@ -314,7 +330,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     state.adControlObserver = new MutationObserver(() => wake(180));
     const observeAdAttributes = () => {
       const nodes = new Set();
-      for (const control of player.querySelectorAll(adSelector)) {
+      for (const control of scanAdCandidates()) {
         for (let node = control; node && node !== player;
              node = node.parentElement) {
           nodes.add(node);
@@ -347,6 +363,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
           }
         }
         if (!relevant) continue;
+        state.adCandidatesDirty = true;
         observeAdAttributes();
         wake(180);
         return;
@@ -368,6 +385,9 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     state.adObserver = null;
     state.adControlObserver = null;
     state.adObservedNodes = null;
+    state.adCandidates = null;
+    state.adCandidatesDirty = true;
+    state.adCandidatesAt = 0;
     state.actionCleanup?.();
     for (const lane of Object.values(state.actionLanes || {})) lane.cleanup?.();
     state.actionLanes = {};
@@ -480,7 +500,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     const submitPattern = /^(送信|回答を送信|submit|send)$/i;
     // One subtree query replaces separate full-player surveys and skip
     // queries. DOM order and survey-before-skip priority are preserved.
-    const adCandidates = player.querySelectorAll(adControlSelector);
+    const adCandidates = scanAdCandidates();
     for (const root of adCandidates) {
     if (!root.matches(surveyDialogSelector) || !valid(root)) continue;
     let submit = null;
