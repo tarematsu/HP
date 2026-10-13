@@ -137,9 +137,13 @@ void StationheadHandleBase::RefreshVisibility() {
     return;
   }
   // App::ApplyStationheadWindowPlacement always calls SetBounds() before
-  // RefreshVisibility(). SetBounds already performs the geometry/z-order
-  // repair, and SelectTab handles any visibility transition. A second
-  // ApplyBounds here repeats a full six-window layout for no new state.
+  // RefreshVisibility(). A healthy hidden profile without an authorization
+  // host has just had its geometry and z-order repaired, so SelectTab(None)
+  // would immediately repeat a full layout through KeepPlaybackBehindDashboard.
+  // Any startup/interactive/auth/recovery state still follows the original
+  // SelectTab path, including pending host cleanup.
+  if (state.audioPlaying && !interactive &&
+      player_->HiddenPlaybackFullyReconciled()) return;
   player_->SelectTab(StationheadTabKind::None);
 }
 
