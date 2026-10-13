@@ -280,13 +280,17 @@ void StationheadHandleBase::RaiseActiveHost() const {
   HWND host = player_->ActiveHostWindowForAccountSetup();
   if (!host || !IsWindow(host)) return;
 
-  const StationheadStatus status = RawStatus();
-  const bool interactive = IsInteractive(status);
-  if (!interactive && !status.visible) return;
+  const auto state = player_->ReadSchedulerState();
+  const bool interactive = state.loginRequired || state.spotifyAuthorization;
+  if (!interactive && !state.visible) return;
 
-  SetWindowPos(host, HWND_TOP, 0, 0, 0, 0,
-               SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE |
-                   SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+  // Healthy foreground windows should not be re-raised every App tick.
+  // Still bring the root to the foreground during interactive auth.
+  if (!IsWindowVisible(host) || GetWindow(host, GW_HWNDPREV) != nullptr) {
+    SetWindowPos(host, HWND_TOP, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE |
+                     SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+  }
   if (interactive) BringMainWindowToFront(host);
 }
 
