@@ -120,7 +120,12 @@ std::vector<uint8_t> CloudClient::LocalizeRadarTiles(
           std::to_string(response.status));
     }
     const fs::path target = localPathFor(url);
-    if (!AtomicWriteBytes(target, response.body) || !HasPngSignature(target)) {
+    // Representative frames can repeat across server revisions. Keep the
+    // verified image and its filesystem stamp stable when its bytes match;
+    // this also avoids unnecessary bitmap decode on the native renderer.
+    const auto written = WriteCacheIfChanged(target, response.body);
+    if (written == CacheWriteResult::Failed ||
+        (written == CacheWriteResult::Written && !HasPngSignature(target))) {
       throw std::runtime_error("precomposed radar frame cache write failed");
     }
     tile.SetNamedValue(L"url", JsonValue::CreateStringValue(localUrlFor(url)));
