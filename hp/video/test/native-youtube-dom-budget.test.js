@@ -30,7 +30,7 @@ function dialogScenario({ label = 'Still watching?', controls = [] } = {}) {
   const document = { querySelector: () => popup };
   const code = section(
     '  const dismissMessageDialog = () => {',
-    '  const bindVideo = () => {',
+    '  const bindVideo = (refresh = false) => {',
   );
   const action = runInNewContext(
     '(() => { ' + code + '\nreturn dismissMessageDialog(); })()',
