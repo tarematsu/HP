@@ -130,7 +130,10 @@ test('script replacement lowercases the URI and short-circuits after a module st
     'inline void ApplyStationheadResourceBlockingScriptFixed(',
     '}  // namespace hp',
   );
-  assert.match(policy, /lower = StationheadLowerAscii\(uriRaw\)/);
+  assert.match(policy, /StationheadLowerAsciiInPlace\(uriRaw\)/);
+  assert.match(policy, /const std::wstring_view lower\(uriRaw\)/);
+  assert.match(policy, /CoTaskMemFree\(uriRaw\)/);
+  assert.doesNotMatch(policy, /lower = StationheadLowerAscii\(uriRaw\)/);
   assert.match(policy, /StationheadKnownOptionalModuleStubBoundaryFixed\(lower\)/);
   assert.match(
     policy,

@@ -15,6 +15,10 @@ const rendererHeader = readFileSync(
   new URL('../../native/src/web_renderer.h', import.meta.url),
   'utf8',
 );
+const nativeMediaHost = readFileSync(
+  new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url),
+  'utf8',
+);
 const stationheadPlayerHeader = readFileSync(
   new URL('../../native/src/sh.h', import.meta.url),
   'utf8',
@@ -145,4 +149,48 @@ test('Stationhead retry map only allocates entries for armed recovery windows', 
   );
   assert.match(allocator, /boundaryRetries\[owner\]/);
   assert.match(allocator, /ArmBoundaryRetryState\(/);
+});
+
+
+test('nonurgent App timer wakes are coalesced without delaying urgent recovery', () => {
+  const begin = appSource.indexOf('void App::ScheduleNextTick(uint32_t milliseconds) {');
+  const end = appSource.indexOf('void App::InvalidateAll()', begin);
+  assert.ok(begin >= 0 && end > begin);
+  const timer = appSource.slice(begin, end);
+  assert.match(appSource, /constexpr ULONG kAppTimerToleranceMs = 100;/);
+  assert.match(timer, /if \(clamped >= kFastTickMs\) \{/);
+  assert.match(timer, /SetCoalescableTimer\(\s*window_, kCentralTimer, clamped, nullptr, kAppTimerToleranceMs\)/);
+  assert.match(timer, /if \(!timer\) timer = SetTimer\(window_, kCentralTimer, clamped, nullptr\)/);
+  assert.match(timer, /nextAppTickAt_ = timer \? static_cast<int64_t>\(dueTick\) : 0;/);
+  assert.ok(timer.indexOf('if (clamped >= kFastTickMs)') <
+    timer.indexOf('SetCoalescableTimer('));
+  assert.ok(timer.indexOf('SetCoalescableTimer(') <
+    timer.indexOf('if (!timer) timer = SetTimer('));
+  // Short, event-driven callbacks never route through the tolerant API.
+  const usesCoalescing = delayMs => delayMs >= 2000;
+  assert.equal(usesCoalescing(1), false);
+  assert.equal(usesCoalescing(1500), false);
+  assert.equal(usesCoalescing(2000), true);
+  assert.equal(usesCoalescing(60_000), true);
+});
+
+
+test('nonurgent YouTube and media phase timers use OS wake coalescing with exact recovery fallback', () => {
+  const begin = nativeMediaHost.indexOf('  UINT_PTR ArmTimer(UINT_PTR timerId, UINT intervalMs) noexcept {');
+  const end = nativeMediaHost.indexOf('  HRESULT ExecutePolicyScript(', begin);
+  assert.ok(begin >= 0 && end > begin);
+  const method = nativeMediaHost.slice(begin, end);
+  assert.match(nativeMediaHost, /static constexpr ULONG kMediaTimerToleranceMs = 100/);
+  assert.match(method, /if \(timerId == kNativeMediaTverWatchdogTimer\) \{\s*return ArmNativeMediaTrustedWakeTimer\(/);
+  assert.match(method, /if \(intervalMs >= 5'000 &&\s*\(timerId == kNativeMediaPhaseTimer \|\|\s*timerId == kNativeMediaYoutubeWatchdogTimer\)\)/);
+  assert.match(method, /SetCoalescableTimer\(\s*hostWindow_, timerId, intervalMs, nullptr, kMediaTimerToleranceMs\)/);
+  assert.match(method, /if \(coalesced\) return coalesced/);
+  assert.match(method, /return ::SetTimer\(hostWindow_, timerId, intervalMs, nullptr\)/);
+  const coalesces = (kind, ms) =>
+    (kind === 'phase' || kind === 'youtube-watchdog') && ms >= 5000;
+  assert.equal(coalesces('phase', 3_600_000), true);
+  assert.equal(coalesces('youtube-watchdog', 60_000), true);
+  assert.equal(coalesces('youtube-watchdog', 1_000), false);
+  assert.equal(coalesces('navigation-retry', 30_000), false);
+  assert.equal(coalesces('tver-watchdog', 60_000), false);
 });

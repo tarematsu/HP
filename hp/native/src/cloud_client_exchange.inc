@@ -2,12 +2,39 @@
 #include "stationhead_leaderboard_diagnostics.h"
 
 namespace hp {
+namespace {
+// Decode the already-sliced binary exchange JSON directly. Constructing a
+// temporary std::string from translated.body copies the full JSON response on
+// every normal cloud poll before WinRT parses it.
+std::wstring ExchangeJsonUtf8ToWide(
+    const uint8_t* data, size_t length) {
+  if (!data || length == 0 ||
+      length > static_cast<size_t>(std::numeric_limits<int>::max())) {
+    throw std::runtime_error("device exchange JSON length invalid");
+  }
+  const int bytes = static_cast<int>(length);
+  const char* utf8 = reinterpret_cast<const char*>(data);
+  const int wideLength = MultiByteToWideChar(
+      CP_UTF8, MB_ERR_INVALID_CHARS, utf8, bytes, nullptr, 0);
+  if (wideLength <= 0) {
+    throw std::runtime_error("device exchange JSON invalid UTF-8");
+  }
+  std::wstring output(static_cast<size_t>(wideLength), L'\0');
+  if (MultiByteToWideChar(
+          CP_UTF8, MB_ERR_INVALID_CHARS, utf8, bytes,
+          output.data(), wideLength) != wideLength) {
+    throw std::runtime_error("device exchange JSON transcoding failed");
+  }
+  return output;
+}
+}  // namespace
 
 void CloudClient::QueueTelemetry(std::string json, TelemetryCallback callback) {
   if (json.empty()) return;
   std::lock_guard lock(pendingTelemetryMutex_);
-  pendingTelemetry_ = PendingTelemetry{
-      ++pendingTelemetryGeneration_, std::move(json), std::move(callback)};
+  pendingTelemetry_ = std::make_shared<PendingTelemetry>(
+      PendingTelemetry{
+          ++pendingTelemetryGeneration_, std::move(json), std::move(callback)});
 }
 
 std::optional<HttpResponse> CloudClient::TryCompressedExchange(
@@ -36,22 +63,38 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
   };
   const std::wstring deviceId = ExchangeQueryValue(path, L"deviceId");
   std::string body = "{\"versions\":{";
-  body += "\"dashboard\":" + number(L"dashboardVersion");
-  body += ",\"radar\":" + number(L"radarVersion");
-  body += ",\"switchbot\":" + number(L"switchbotVersion");
-  body += ",\"config\":" + number(L"configVersion") + "}";
+  // The exchange runs at every cloud sync. Reserve for the fixed envelope and
+  // append directly; repeatedly concatenating literals and JSON values
+  // allocates temporary strings before appending to the request buffer.
+  body.reserve(512);
+  body += "\"dashboard\":";
+  body += number(L"dashboardVersion");
+  body += ",\"radar\":";
+  body += number(L"radarVersion");
+  body += ",\"switchbot\":";
+  body += number(L"switchbotVersion");
+  body += ",\"config\":";
+  body += number(L"configVersion");
+  body.push_back('}');
 
-  std::optional<PendingTelemetry> telemetry;
+  std::shared_ptr<PendingTelemetry> telemetry;
   {
     std::lock_guard lock(pendingTelemetryMutex_);
+    // Hold one stable generation while HTTP is in flight; copying the shared
+    // pointer is constant-time even for a 60-sample telemetry JSON payload.
     telemetry = pendingTelemetry_;
   }
-  if (telemetry && !telemetry->json.empty()) body += ",\"telemetry\":" + telemetry->json;
+  if (telemetry && !telemetry->json.empty()) {
+    body.reserve(body.size() + telemetry->json.size() + 512);
+    body += ",\"telemetry\":";
+    body += telemetry->json;
+  }
 
   // Keep the established Cloud field names for wire compatibility, but source
   // them exclusively from the rebuilt dedicated-WebView capture spool.
-  const std::vector<std::string> leaderboardCapture =
-      stationhead_leaderboard_capture_spool::ReadBatch();
+  const auto leaderboardSnapshot =
+      stationhead_leaderboard_capture_spool::ReadBatchWithCount();
+  const auto& leaderboardCapture = leaderboardSnapshot.batch;
   if (!leaderboardCapture.empty()) {
     body += ",\"leaderboardProbe\":[";
     for (size_t index = 0; index < leaderboardCapture.size(); ++index) {
@@ -61,8 +104,7 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
     body.push_back(']');
   }
 
-  const size_t leaderboardSpoolRecords =
-      stationhead_leaderboard_capture_spool::Count();
+  const size_t leaderboardSpoolRecords = leaderboardSnapshot.totalRecords;
   const auto leaderboardDiagnostics = stationhead_leaderboard_diagnostics::Read();
   body += ",\"leaderboardProbeStatus\":{\"spoolRecords\":";
   body += std::to_string(leaderboardSpoolRecords);
@@ -70,8 +112,12 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
   body += std::to_string(leaderboardCapture.size());
   body += ",\"diagnosticSchema\":";
   body += std::to_string(leaderboardDiagnostics.schema);
-  body += ",\"collectorStage\":\"" + leaderboardDiagnostics.stage + "\"";
-  body += ",\"lastSuccessStage\":\"" + leaderboardDiagnostics.lastSuccessStage + "\"";
+  body += ",\"collectorStage\":\"";
+  body += leaderboardDiagnostics.stage;
+  body.push_back('"');
+  body += ",\"lastSuccessStage\":\"";
+  body += leaderboardDiagnostics.lastSuccessStage;
+  body.push_back('"');
   body += ",\"collectorStarted\":";
   body += leaderboardDiagnostics.started ? "true" : "false";
   body += ",\"collectorTicked\":";
@@ -80,8 +126,11 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
   body += std::to_string(leaderboardDiagnostics.lastTransitionAt);
   body += ",\"lastFailureAt\":";
   body += std::to_string(leaderboardDiagnostics.lastFailureAt);
-  body += ",\"lastError\":\"" + leaderboardDiagnostics.lastError + "\"";
-  body += ",\"exchangeAt\":" + std::to_string(UnixMillis());
+  body += ",\"lastError\":\"";
+  body += leaderboardDiagnostics.lastError;
+  body.push_back('"');
+  body += ",\"exchangeAt\":";
+  body += std::to_string(UnixMillis());
   body += "}";
   body.push_back('}');
 
@@ -102,8 +151,8 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
   HttpResponse translated;
   translated.status = 200;
   translated.body.assign(exchange.body.begin() + 12, exchange.body.begin() + jsonEnd);
-  const JsonObject root = JsonObject::Parse(Utf8ToWide(std::string(
-      reinterpret_cast<const char*>(translated.body.data()), translated.body.size())));
+  const JsonObject root = JsonObject::Parse(
+      ExchangeJsonUtf8ToWide(translated.body.data(), translated.body.size()));
 
   std::wstring bundlePath;
   if (root.HasKey(L"radar") && root.GetNamedValue(L"radar").ValueType() == JsonValueType::String) {
@@ -119,8 +168,14 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
   {
     std::lock_guard lock(pendingExchangeMutex_);
     pendingExchangeBundlePath_ = std::move(bundlePath);
-    pendingExchangeRadar_.assign(exchange.body.begin() + jsonEnd, exchange.body.end());
-    if (pendingExchangeBundlePath_.empty()) pendingExchangeRadar_.clear();
+    // The normal exchange often has no radar bundle URL. Do not allocate
+    // and copy trailing response bytes merely to clear them immediately.
+    // A valid bundle URL still retains its binary tail for the later GET.
+    if (pendingExchangeBundlePath_.empty() || jsonEnd == exchange.body.size()) {
+      pendingExchangeRadar_.clear();
+    } else {
+      pendingExchangeRadar_.assign(exchange.body.begin() + jsonEnd, exchange.body.end());
+    }
   }
 
   if (telemetry && root.HasKey(L"telemetry") &&

@@ -9,7 +9,10 @@ constexpr uint64_t kMaxTelemetrySequence = 9'007'199'254'740'990ULL;
 
 bool SensorHub::AppendOutbox(const Sample& sample) {
   std::lock_guard lock(mutex_);
-  const std::string line = SampleJson(sample) + "\n";
+  std::string line;
+  line.reserve(192);
+  AppendSampleJson(line, sample);
+  line.push_back('\n');
   HANDLE file = CreateFileW(outboxPath_.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ, nullptr,
                             OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
   if (file == INVALID_HANDLE_VALUE) return false;
@@ -60,26 +63,44 @@ void SensorHub::LoadOutbox() {
 }
 
 bool SensorHub::RewriteOutboxLocked(const std::deque<Sample>& samples) {
-  std::ostringstream text;
-  for (const auto& sample : samples) text << SampleJson(sample) << '\n';
-  return AtomicWriteText(outboxPath_, text.str());
+  // Acknowledgement/rebase may rebuild an entire offline backlog. Append
+  // directly so no transient sample string or ostringstream buffer is needed.
+  std::string text;
+  if (samples.size() <= text.max_size() / 192) {
+    text.reserve(samples.size() * 192);
+  }
+  for (const auto& sample : samples) {
+    AppendSampleJson(text, sample);
+    text.push_back('\n');
+  }
+  return AtomicWriteText(outboxPath_, text);
 }
 
 std::string SensorHub::BuildTelemetryPayload(const std::wstring& deviceId,
                                              const std::string& appVersion) {
   std::lock_guard lock(mutex_);
-  std::ostringstream out;
-  out << "{\"deviceId\":\"" << EscapeJson(WideToUtf8(deviceId)) << "\",\"appVersion\":\""
-      << EscapeJson(appVersion)
-      << "\",\"stationheadOk\":false,\"outboxCount\":" << outbox_.size()
-      << ",\"samples\":[";
   const size_t count = std::min<size_t>(60, outbox_.size());
+  const std::string escapedId = EscapeJson(WideToUtf8(deviceId));
+  const std::string escapedVersion = EscapeJson(appVersion);
+  // Building up to 60 queued samples through ostringstream performs repeated
+  // stream formatting and buffer growth while holding the sensor mutex.
+  // Preallocate the bounded JSON payload and reuse the shared to_chars
+  // integer formatter; no wire-format or telemetry cadence changes.
+  std::string body;
+  body.reserve(160 + escapedId.size() + escapedVersion.size() + count * 208);
+  body += "{\"deviceId\":\"";
+  body += escapedId;
+  body += "\",\"appVersion\":\"";
+  body += escapedVersion;
+  body += "\",\"stationheadOk\":false,\"outboxCount\":";
+  AppendInteger(body, outbox_.size());
+  body += ",\"samples\":[";
   for (size_t i = 0; i < count; ++i) {
-    if (i) out << ',';
-    out << SampleJson(outbox_[i]);
+    if (i) body.push_back(',');
+    AppendSampleJson(body, outbox_[i]);
   }
-  out << "]}";
-  return out.str();
+  body += "]}";
+  return body;
 }
 
 void SensorHub::ApplyTelemetryReceipt(const std::vector<uint64_t>& acknowledgedSequences,

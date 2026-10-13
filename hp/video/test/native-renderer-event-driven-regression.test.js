@@ -108,3 +108,19 @@ test('dormant Stationhead renderer compatibility path is completely removed', ()
   assert.match(appSource, /Stationhead #6 launch issued at \+180 seconds/);
   assert.doesNotMatch(appSource, /renderer_->StartSpotify\(\)/);
 });
+
+
+test('unchanged visibility requests do not reprocess dashboard native window state', () => {
+  const setVisible = functionBody(rendererLifecycle, 'void Renderer::SetVisible(bool visible)');
+  assert.match(setVisible, /if \(requestedDashboardVisible_ == visible\) return;/);
+  assert.ok(setVisible.indexOf('if (requestedDashboardVisible_ == visible) return;') <
+    setVisible.indexOf('ApplyDashboardVisibility();'));
+  const powerSaving = functionBody(rendererLifecycle, 'void Renderer::SetPowerSavingMode(bool enabled)');
+  assert.match(powerSaving, /if \(powerSavingMode_ == enabled\) return;/);
+  assert.match(powerSaving, /ApplyDashboardVisibility\(\);/);
+  // A hidden-to-visible transition still starts the radar composer/timer.
+  const apply = functionBody(rendererLifecycle, 'void Renderer::ApplyDashboardVisibility()');
+  assert.match(apply, /if \(visibilityChanged\) ApplyNativeStaticBounds\(\);/);
+  assert.match(apply, /StartRadarCompose\(\)/);
+  assert.match(apply, /StopRadarCompose\(\)/);
+});

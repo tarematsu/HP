@@ -78,3 +78,47 @@ int main() {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+
+test('production leaderboard snapshot reads once and keeps bounded batch plus complete count', () => {
+  const source = readFileSync(new URL('../../native/src/stationhead_leaderboard_capture_spool.h', import.meta.url), 'utf8');
+  const begin = source.indexOf('struct UploadSnapshot {');
+  const end = source.indexOf('inline size_t Count() {', begin);
+  assert.ok(begin >= 0 && end > begin);
+  const fragment = source.slice(begin, end);
+  const directory = mkdtempSync(join(tmpdir(), 'hp-spool-snapshot-'));
+  try {
+    const input = join(directory, 'test.cpp');
+    const binary = join(directory, process.platform === 'win32' ? 'test.exe' : 'test');
+    writeFileSync(input, "#include <cassert>\n#include <cstddef>\n#include <mutex>\n#include <string>\n#include <utility>\n#include <vector>\nconstexpr size_t kCaptureUploadBatchSize = 8;\nstd::vector<std::string> disk;\nint reads = 0;\nstd::mutex& SpoolMutex() { static std::mutex mutex; return mutex; }\nstd::vector<std::string> ReadLinesLocked() { ++reads; return disk; }\n" + fragment + "\nint main() {\n  for (int i = 0; i < 12; ++i) disk.push_back(\"record\" + std::to_string(i));\n  auto snapshot = ReadBatchWithCount();\n  assert(reads == 1);\n  assert(snapshot.totalRecords == 12);\n  assert(snapshot.batch.size() == 8);\n  assert(snapshot.batch.front() == \"record0\");\n  assert(snapshot.batch.back() == \"record7\");\n  disk.push_back(\"new\");\n  assert(snapshot.totalRecords == 12 && snapshot.batch.size() == 8);\n  auto small = ReadBatchWithCount(3);\n  assert(reads == 2);\n  assert(small.totalRecords == 13 && small.batch.size() == 3);\n  auto empty = ReadBatchWithCount(0);\n  assert(reads == 3);\n  assert(empty.totalRecords == 13 && empty.batch.empty());\n  disk.clear();\n  auto none = ReadBatchWithCount();\n  assert(reads == 4);\n  assert(none.totalRecords == 0 && none.batch.empty());\n}\n");
+    execFileSync('g++', ['-std=c++17', '-Wall', '-Wextra', '-Werror', input, '-o', binary]);
+    execFileSync(binary);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('leaderboard data path is resolved once for the native process', () => {
+  const spool = readFileSync(new URL('../../native/src/stationhead_leaderboard_capture_spool.h', import.meta.url), 'utf8');
+  assert.match(spool, /static const fs::path directory = \[\]\(\) -> fs::path \{/);
+  assert.match(spool, /static const fs::path path = \[\]\(\) -> fs::path \{/);
+  assert.match(spool, /const fs::path& path = SpoolPath\(\)/);
+  assert.match(spool, /const fs::path& path = LegacyProbePath\(\)/);
+  const pathSection = spool.slice(spool.indexOf('inline const fs::path& DataDirectory()'),
+    spool.indexOf('inline void RemoveLegacyProbeSpool()'));
+  assert.equal((pathSection.match(/GetModuleFileNameW\(/g) || []).length, 1);
+});
+
+
+test('bounded Stationhead leaderboard reads reserve exactly the maximum retained records', () => {
+  const spool = readFileSync(new URL('../../native/src/stationhead_leaderboard_capture_spool.h', import.meta.url), 'utf8');
+  const begin = spool.indexOf('inline std::vector<std::string> ReadLinesLocked() {');
+  const end = spool.indexOf('inline bool WriteLinesLocked(', begin);
+  assert.ok(begin >= 0 && end > begin);
+  const body = spool.slice(begin, end);
+  assert.match(body, /if \(!input\) return lines;\s*\/\/[\s\S]*?lines\.reserve\(kMaxCaptureRecords\)/);
+  assert.match(body, /if \(lines\.size\(\) > kMaxCaptureRecords\)/);
+  assert.match(body, /lines\.erase\(lines\.begin\(\), lines\.begin\(\) \+/);
+  assert.ok(body.indexOf('lines.reserve(kMaxCaptureRecords)') <
+            body.indexOf('while (std::getline(input, line))'));
+});

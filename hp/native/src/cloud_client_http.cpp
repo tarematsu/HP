@@ -74,10 +74,28 @@ HttpResponse CloudClient::Request(const std::wstring& method, const std::wstring
     WinHttpSetTimeouts(request, timeout, timeout, timeout, timeout);
     DWORD decompression = WINHTTP_DECOMPRESSION_FLAG_GZIP | WINHTTP_DECOMPRESSION_FLAG_DEFLATE;
     WinHttpSetOption(request, WINHTTP_OPTION_DECOMPRESSION, &decompression, sizeof(decompression));
-    std::wstring headers = L"Accept-Encoding: gzip\r\n";
-    if (!token.empty()) headers += L"Authorization: Bearer " + token + L"\r\n";
-    if (!etag.empty()) headers += L"If-None-Match: " + etag + L"\r\n";
-    if (!body.empty()) headers += std::wstring(L"Content-Type: ") + contentType + L"\r\n";
+    // A sync exchange may send long bearer tokens and conditional ETags.
+    // Append directly into one pre-reserved header buffer instead of making
+    // transient concatenated strings for every outgoing HTTP request.
+    std::wstring headers;
+    headers.reserve(96 + token.size() + etag.size() +
+                    (body.empty() ? 0 : std::char_traits<wchar_t>::length(contentType)));
+    headers += L"Accept-Encoding: gzip\r\n";
+    if (!token.empty()) {
+      headers += L"Authorization: Bearer ";
+      headers += token;
+      headers += L"\r\n";
+    }
+    if (!etag.empty()) {
+      headers += L"If-None-Match: ";
+      headers += etag;
+      headers += L"\r\n";
+    }
+    if (!body.empty()) {
+      headers += L"Content-Type: ";
+      headers += contentType;
+      headers += L"\r\n";
+    }
 
     const BOOL sent = WinHttpSendRequest(
         request, headers.c_str(), static_cast<DWORD>(headers.size()),
@@ -95,11 +113,22 @@ HttpResponse CloudClient::Request(const std::wstring& method, const std::wstring
       throw std::runtime_error("WinHTTP request failed (" + std::to_string(requestError) + ")");
     }
 
-    // Online operation is anchored directly to the HTTPS Date header. Windows
-    // wall time is sampled only to persist network-minus-Windows offset for a
-    // later offline startup; it never drives the live online clock.
-    SynchronizeNetworkClockFromHttpResponse(request);
-    PersistNetworkClockOffsetFromHttpResponse(request);
+    // Read HTTPS Date once for both the live monotonic clock and the optional
+    // persisted offline offset. These previously queried and converted the
+    // same header separately on every successful HTTP response.
+    // Windows wall time still never drives the live online clock.
+    SYSTEMTIME serverUtc{};
+    DWORD serverUtcSize = sizeof(serverUtc);
+    if (WinHttpQueryHeaders(
+            request, WINHTTP_QUERY_DATE | WINHTTP_QUERY_FLAG_SYSTEMTIME,
+            WINHTTP_HEADER_NAME_BY_INDEX, &serverUtc, &serverUtcSize,
+            WINHTTP_NO_HEADER_INDEX)) {
+      int64_t serverUnixMs = 0;
+      if (UnixMillisFromUtcSystemTime(serverUtc, &serverUnixMs)) {
+        SynchronizeNetworkClockFromServerUnixMillis(serverUnixMs);
+        PersistNetworkClockOffsetFromServerUnixMillis(serverUnixMs);
+      }
+    }
 
     HttpResponse output;
     DWORD statusSize = sizeof(output.status);

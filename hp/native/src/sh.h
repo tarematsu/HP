@@ -117,6 +117,16 @@ class StationheadPlayer {
   [[nodiscard]] bool SurfaceVisible() const noexcept {
     return startupPreviewActive_ || viewVisible_;
   }
+  // App already ran SetBounds before RefreshVisibility. In this exact steady
+  // state there is no interactive/auth host to retire, and the bounds pass
+  // already verified the hidden playback surface's geometry and z-order.
+  [[nodiscard]] bool HiddenPlaybackFullyReconciled() const noexcept {
+    return selectedTab_ == StationheadTabKind::None &&
+           !viewVisible_ && !startupPreviewActive_ &&
+           !authHostWindow_ && !authController_ && !authWebview_ &&
+           !authControllerStartedAt_.Active() && authPendingUrl_.empty() &&
+           !spotifyAuthorization_ && !loginRequired_;
+  }
   void KeepPlaybackBehindDashboard();
 
  private:
@@ -243,6 +253,9 @@ class StationheadPlayer {
   bool loginRequired_ = false;
   bool nativeAudioTracking_ = false;
   bool viewVisible_ = false;
+  // Keep a low-frequency Win32/WebView2 surface repair during steady audio,
+  // without checking geometry on every positive media-clock callback.
+  uint64_t lastHealthySurfaceRepairTick_ = 0;
   bool startupPreviewActive_ = false;
   bool foregroundAllowed_ = true;
   bool usingFallback_ = false;

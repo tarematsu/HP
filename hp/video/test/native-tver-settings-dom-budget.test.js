@@ -155,7 +155,8 @@ test('steady TVer playback scans settings once per probe and avoids redundant me
 
   scene.advance(1000);
   scene.run();
-  assert.equal(scene.counters.controlQueries, 2);
+  assert.equal(scene.counters.controlQueries, 1,
+    'confirmed playback should reuse the previous settings scan');
   assert.equal(scene.counters.videoRects, 0);
   assert.equal(scene.counters.mediaRateWrites, 0);
   assert.equal(scene.counters.defaultRateWrites, 0);
@@ -268,4 +269,105 @@ test('disconnected single TVer video is not treated as playable', () => {
   assert.equal(scene.counters.videoRects, 0);
   assert.equal(scene.counters.controlQueries, 0);
   assert.equal(scene.messages.includes('homepanel:tver-fullscreen-key'), false);
+});
+
+
+test('healthy TVer settings rescan after five seconds and whenever the media rate changes', () => {
+  const scene = scenario();
+  scene.run();
+  assert.equal(scene.counters.controlQueries, 1);
+  for (let index = 0; index < 4; index++) {
+    scene.advance(1000);
+    scene.run();
+  }
+  assert.equal(scene.counters.controlQueries, 1,
+    'short healthy progress wakes must not rescan the player');
+  scene.advance(1000);
+  scene.run();
+  assert.equal(scene.counters.controlQueries, 2,
+    'a five-second fallback must still validate the site UI');
+
+  scene.videoElements[0].setActualRate(1);
+  scene.advance(100);
+  scene.run();
+  assert.equal(scene.counters.controlQueries, 3,
+    'unexpected media rate changes must be handled without a wait');
+  assert.equal(scene.videoElements[0].playbackRate, 1.75);
+  assert.equal(scene.counters.mediaRateWrites, 1);
+});
+
+test('new media source and paused playback bypass the healthy settings cache', () => {
+  const scene = scenario();
+  scene.run();
+  scene.videoElements[0].currentSrc = 'new-program';
+  scene.advance(100);
+  scene.run();
+  assert.equal(scene.counters.controlQueries, 2,
+    'a new source must revalidate settings even inside the five-second window');
+
+  scene.videoElements[0].paused = true;
+  scene.advance(100);
+  scene.run();
+  assert.equal(scene.counters.controlQueries, 3,
+    'paused playback must retain the immediate recovery path');
+});
+
+test('healthy TVer settings do not postpone fullscreen recovery', () => {
+  const scene = scenario();
+  scene.run();
+  assert.deepEqual(scene.messages, ['homepanel:tver-fullscreen-key']);
+  scene.advance(1000);
+  scene.run();
+  assert.equal(scene.counters.controlQueries, 1);
+  scene.advance(2100);
+  scene.run();
+  assert.equal(scene.messages.filter(
+    message => message === 'homepanel:tver-fullscreen-key').length, 2,
+    'fullscreen retries must remain independent of the settings scan budget');
+});
+
+
+test('confirmed TVer playback limits duplicate questionnaire queries to one per three seconds', () => {
+  const scene = scenario();
+  scene.run();
+  assert.equal(scene.counters.dialogQueries, 1);
+  scene.advance(1000);
+  scene.run();
+  assert.equal(scene.counters.dialogQueries, 1,
+    'unchanged confirmed settings should not scan global dialogs on each wake');
+  scene.advance(2100);
+  scene.run();
+  assert.equal(scene.counters.dialogQueries, 2,
+    'the periodic fallback must still detect newly opened questionnaires');
+  scene.window.__homePanelTverRuntime.questionnaireActive = true;
+  scene.advance(100);
+  scene.run();
+  assert.equal(scene.counters.dialogQueries, 3,
+    'an active questionnaire reported by the playback controller must bypass the cache');
+});
+
+test('unconfirmed TVer settings always scan blocking questionnaires', () => {
+  const scene = scenario({ speed: '×1.0', quality: '自動' });
+  scene.run();
+  assert.equal(scene.counters.dialogQueries, 1);
+  scene.advance(100);
+  scene.run();
+  assert.equal(scene.counters.dialogQueries, 2,
+    'setup and recovery screens must not inherit the healthy playback throttle');
+});
+
+
+test('paused playback bypasses TVer questionnaire throttle when controller reports its video', () => {
+  const scene = scenario();
+  scene.run();
+  const state = scene.window.__homePanelTverRuntime;
+  state.video = scene.videoElements[0];
+  scene.advance(100);
+  scene.run();
+  assert.equal(scene.counters.dialogQueries, 1);
+  scene.videoElements[0].paused = true;
+  scene.advance(100);
+  scene.run();
+  assert.equal(scene.counters.dialogQueries, 2,
+    'a paused video must not defer a newly blocking dialog until the fallback');
 });

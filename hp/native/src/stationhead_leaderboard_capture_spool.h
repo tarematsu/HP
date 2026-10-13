@@ -18,29 +18,41 @@ inline std::mutex& SpoolMutex() {
   return mutex;
 }
 
-inline fs::path DataDirectory() {
-  constexpr DWORD kExecutablePathChars = 32768;
-  std::vector<wchar_t> executable(kExecutablePathChars, L'\0');
-  const DWORD length = GetModuleFileNameW(
-      nullptr, executable.data(), static_cast<DWORD>(executable.size()));
-  if (length == 0 || length >= executable.size()) return {};
-  return fs::path(std::wstring(executable.data(), length)).parent_path() / L"data";
+inline const fs::path& DataDirectory() {
+  // The executable cannot move while this process is running. Resolve its
+  // data directory once, rather than allocating 32K wchar_t and invoking
+  // GetModuleFileNameW for every upload, count, append and receipt.
+  static const fs::path directory = []() -> fs::path {
+    constexpr DWORD kExecutablePathChars = 32768;
+    std::vector<wchar_t> executable(kExecutablePathChars, L'\0');
+    const DWORD length = GetModuleFileNameW(
+        nullptr, executable.data(), static_cast<DWORD>(executable.size()));
+    if (length == 0 || length >= executable.size()) return {};
+    return fs::path(std::wstring(executable.data(), length)).parent_path() / L"data";
+  }();
+  return directory;
 }
 
-inline fs::path SpoolPath() {
-  const fs::path directory = DataDirectory();
-  return directory.empty() ? fs::path{} :
-      directory / L"stationhead-leaderboard-capture.ndjson";
+inline const fs::path& SpoolPath() {
+  static const fs::path path = []() -> fs::path {
+    const fs::path& directory = DataDirectory();
+    return directory.empty() ? fs::path{} :
+        directory / L"stationhead-leaderboard-capture.ndjson";
+  }();
+  return path;
 }
 
-inline fs::path LegacyProbePath() {
-  const fs::path directory = DataDirectory();
-  return directory.empty() ? fs::path{} :
-      directory / L"stationhead-leaderboard-probe.ndjson";
+inline const fs::path& LegacyProbePath() {
+  static const fs::path path = []() -> fs::path {
+    const fs::path& directory = DataDirectory();
+    return directory.empty() ? fs::path{} :
+        directory / L"stationhead-leaderboard-probe.ndjson";
+  }();
+  return path;
 }
 
 inline void RemoveLegacyProbeSpool() noexcept {
-  const fs::path path = LegacyProbePath();
+  const fs::path& path = LegacyProbePath();
   if (path.empty()) return;
   std::error_code ignored;
   fs::remove(path, ignored);
@@ -48,10 +60,13 @@ inline void RemoveLegacyProbeSpool() noexcept {
 
 inline std::vector<std::string> ReadLinesLocked() {
   std::vector<std::string> lines;
-  const fs::path path = SpoolPath();
+  const fs::path& path = SpoolPath();
   if (path.empty()) return lines;
   std::ifstream input(path, std::ios::binary);
   if (!input) return lines;
+  // The spool retains at most 20 records. Reserve once rather than growing
+  // and relocating the batch vector during every periodic cloud upload.
+  lines.reserve(kMaxCaptureRecords);
   std::string line;
   while (std::getline(input, line)) {
     if (line.empty() || line.size() > kMaxCaptureRecordBytes) continue;
@@ -69,7 +84,7 @@ inline std::vector<std::string> ReadLinesLocked() {
 }
 
 inline bool WriteLinesLocked(const std::vector<std::string>& lines) {
-  const fs::path path = SpoolPath();
+  const fs::path& path = SpoolPath();
   if (path.empty()) return false;
   std::error_code error;
   fs::create_directories(path.parent_path(), error);
@@ -99,9 +114,28 @@ inline bool WriteLinesLocked(const std::vector<std::string>& lines) {
   return true;
 }
 
+inline std::string CapturePayloadUtf8(std::wstring_view payload) {
+  // The capture is already a bounded view; constructing std::wstring(payload)
+  // duplicates as much as 72 KiB of UTF-16 before each conversion.
+  if (payload.empty() || payload.size() > kMaxCaptureRecordBytes) return {};
+  const int inputLength = static_cast<int>(payload.size());
+  const int outputLength = WideCharToMultiByte(
+      CP_UTF8, WC_ERR_INVALID_CHARS, payload.data(), inputLength,
+      nullptr, 0, nullptr, nullptr);
+  if (outputLength <= 0 ||
+      static_cast<size_t>(outputLength) > kMaxCaptureRecordBytes) return {};
+  std::string output(static_cast<size_t>(outputLength), '\0');
+  if (WideCharToMultiByte(
+          CP_UTF8, WC_ERR_INVALID_CHARS, payload.data(), inputLength,
+          output.data(), outputLength, nullptr, nullptr) != outputLength) {
+    return {};
+  }
+  return output;
+}
+
 inline bool Append(std::wstring_view payload) {
   if (payload.empty() || payload.size() > kMaxCaptureRecordBytes) return false;
-  const std::string utf8 = WideToUtf8(std::wstring(payload));
+  const std::string utf8 = CapturePayloadUtf8(payload);
   if (utf8.empty() || utf8.size() > kMaxCaptureRecordBytes ||
       utf8.find('\r') != std::string::npos ||
       utf8.find('\n') != std::string::npos) {
@@ -122,6 +156,24 @@ inline bool Append(std::wstring_view payload) {
     PostMessageW(window, kStationheadLeaderboardCaptureWakeMessage, 0, 0);
   }
   return true;
+}
+
+struct UploadSnapshot {
+  std::vector<std::string> batch;
+  size_t totalRecords = 0;
+};
+
+// Exchange needs both the bounded upload batch and the full spool count.
+// Read the same NDJSON once under one lock instead of reopening and parsing
+// it for Count() after ReadBatch(). Concurrent Append/Acknowledge cannot make
+// the reported total inconsistent with the batch being uploaded.
+inline UploadSnapshot ReadBatchWithCount(
+    size_t maximum = kCaptureUploadBatchSize) {
+  std::lock_guard lock(SpoolMutex());
+  auto lines = ReadLinesLocked();
+  const size_t total = lines.size();
+  if (lines.size() > maximum) lines.resize(maximum);
+  return {std::move(lines), total};
 }
 
 inline size_t Count() {

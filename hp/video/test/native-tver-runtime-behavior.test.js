@@ -15,6 +15,7 @@ function playerScenario(duration, controls = [], portalOptions = [], dialogs = [
   const stored = new Map();
   let handlers = new Map();
   let playerQueries = 0;
+  let dialogQueries = 0;
   const player = { querySelectorAll: () => { playerQueries++; return controls; } };
   let video = {
     isConnected: true, disabled: false, currentSrc: 'program-or-ad',
@@ -30,7 +31,7 @@ function playerScenario(duration, controls = [], portalOptions = [], dialogs = [
   const document = {
     getElementById: id => id === 'episode-play' ? poster : null,
     querySelectorAll: selector => selector === 'video' ? [video]
-      : selector === '[role="dialog"]' ? dialogs
+      : selector === '[role="dialog"]' ? (dialogQueries++, dialogs)
       : selector === 'button[type="submit"][form]' ? submitButtons
       : selector.includes('[role="menu"]') ? portalOptions : [],
     addEventListener: () => {}, elementFromPoint: () => portalOptions[0] || controls[0] || null,
@@ -63,6 +64,7 @@ function playerScenario(duration, controls = [], portalOptions = [], dialogs = [
   return {
     get video() { return video; }, messages, window, stored, submitButtons,
     get playerQueries() { return playerQueries; },
+    get dialogQueries() { return dialogQueries; },
     removeDialog: dialog => {
       const index = dialogs.indexOf(dialog);
       if (index !== -1) dialogs.splice(index, 1);
@@ -428,4 +430,44 @@ test('TVer recovery ad button scan avoids visibility checks for unrelated contro
     arm: () => null,
   });
   assert.equal(visibilityChecks, 1);
+});
+
+
+test('normal TVer playback amortizes global questionnaire scans without delaying an active dialog', () => {
+  const scene = playerScenario(1800);
+  scene.run();
+  assert.equal(scene.dialogQueries, 1);
+  scene.advance(1000);
+  scene.run();
+  assert.equal(scene.dialogQueries, 1,
+    'healthy playback must avoid a global dialog scan at every progress wake');
+
+  scene.advance(4000);
+  scene.run();
+  assert.equal(scene.dialogQueries, 2,
+    'a periodic fallback still discovers newly opened questionnaires');
+
+  scene.video.paused = true;
+  scene.advance(100);
+  scene.run();
+  assert.equal(scene.dialogQueries, 3,
+    'a paused player must check for blocking questionnaires immediately');
+});
+
+test('active TVer questionnaire is never throttled while collecting answers', () => {
+  const form = { id: 'questionnaire-test', addEventListener() {}, querySelector: () => null };
+  const dialog = {
+    querySelector: selector => selector.includes('questionnaire-') ? form : null,
+    getAttribute: () => null,
+    textContent: 'アンケート',
+  };
+  const scene = playerScenario(1800, [], [], [dialog]);
+  assert.equal(scene.run(), 'recovery');
+  assert.equal(scene.dialogQueries, 1);
+  scene.advance(100);
+  scene.run();
+  assert.equal(scene.dialogQueries, 2);
+  scene.removeDialog(dialog);
+  scene.run();
+  assert.equal(scene.dialogQueries, 3);
 });

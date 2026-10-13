@@ -62,6 +62,21 @@ inline bool UtcSystemTimeFromUnixMillis(int64_t unixMs, SYSTEMTIME* output) noex
   return FileTimeToSystemTime(&fileTime, output) != FALSE;
 }
 
+inline bool SynchronizeNetworkClockFromServerUnixMillis(
+    int64_t serverUnixMs) noexcept {
+  if (serverUnixMs < 0 ||
+      serverUnixMs > std::numeric_limits<int64_t>::max() - 500) return false;
+  // HTTP Date has one-second resolution. Anchor at the middle of that second,
+  // then advance only with the monotonic uptime counter. Windows wall-clock and
+  // timezone changes therefore cannot move the dashboard clock.
+  NetworkClockState& state = GlobalNetworkClockState();
+  std::lock_guard lock(state.mutex);
+  state.anchorUnixMs = serverUnixMs + 500;
+  state.anchorTickMs = GetTickCount64();
+  state.synchronized = true;
+  return true;
+}
+
 inline bool SynchronizeNetworkClockFromHttpResponse(HINTERNET request) noexcept {
   if (!request) return false;
   SYSTEMTIME serverUtc{};
@@ -73,17 +88,8 @@ inline bool SynchronizeNetworkClockFromHttpResponse(HINTERNET request) noexcept 
     return false;
   }
   int64_t serverUnixMs = 0;
-  if (!UnixMillisFromUtcSystemTime(serverUtc, &serverUnixMs)) return false;
-
-  // HTTP Date has one-second resolution. Anchor at the middle of that second,
-  // then advance only with the monotonic uptime counter. Windows wall-clock and
-  // timezone changes therefore cannot move the dashboard clock.
-  NetworkClockState& state = GlobalNetworkClockState();
-  std::lock_guard lock(state.mutex);
-  state.anchorUnixMs = serverUnixMs + 500;
-  state.anchorTickMs = GetTickCount64();
-  state.synchronized = true;
-  return true;
+  return UnixMillisFromUtcSystemTime(serverUtc, &serverUnixMs) &&
+         SynchronizeNetworkClockFromServerUnixMillis(serverUnixMs);
 }
 
 inline bool NetworkClockUnixMillis(int64_t* output) noexcept {

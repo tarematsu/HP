@@ -87,3 +87,122 @@ test('only the first pending cloud refresh wakes the polling thread', () => {
   assert.match(client, /wake_\.wait_for\(lock, std::chrono::seconds\(seconds\), \[this\] \{ return stopping_\.load\(\) \|\| immediate_\.exchange\(false\); \}\)/);
   assert.match(client, /void CloudClient::Stop\(\)[\s\S]*wake_\.notify_all\(\)/);
 });
+
+
+test('replayed cloud payloads keep versions without unnecessary file writes or UI paints', () => {
+  const helperStart = sync.indexOf('CacheWriteResult WriteCacheIfChanged(');
+  const helperEnd = sync.indexOf('void CloudClient::ApplyPresenceFallback()', helperStart);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart);
+  const helper = sync.slice(helperStart, helperEnd);
+  assert.match(helper, /fs::file_size\(path, error\)/);
+  assert.match(helper, /existingSize == bytes\.size\(\)/);
+  assert.match(helper, /std::array<char, 8192> chunk/);
+  assert.match(helper, /std::memcmp\(chunk\.data\(\), bytes\.data\(\) \+ offset, count\) != 0/);
+  assert.match(helper, /if \(equal\) return CacheWriteResult::Unchanged/);
+  assert.match(helper, /AtomicWriteBytes\(path, bytes\)/);
+
+  for (const [source, label, applied, message] of [
+    ['dashboardPath', 'dashboard', 'dashboardApplied', 'WM_HP_CLOUD_UPDATED'],
+    ['radarPath', 'radar', 'radarApplied', 'WM_HP_RADAR_UPDATED'],
+    ['switchbotPath', 'SwitchBot', 'switchbotApplied', 'WM_HP_SWITCHBOT_UPDATED'],
+    ['deviceConfigPath', 'device config', 'configApplied', 'WM_HP_CONFIG_UPDATED'],
+  ]) {
+    const start = sync.indexOf('WriteCacheIfChanged(' + source);
+    assert.ok(start >= 0, label + ' must use the shared dedupe writer');
+    const piece = sync.slice(start, start + 460);
+    assert.match(piece, /CacheWriteResult::Failed/);
+    assert.match(piece, new RegExp(applied + ' = true;'));
+    assert.match(piece, new RegExp('if \\(written == CacheWriteResult::Written\\) \\{\\s*PostMessageW\\(window_, ' + message));
+  }
+
+  // Equal data does not require a write, but a missing/changed target does.
+  const shouldWrite = (existing, next) => existing === null ||
+    !Buffer.from(existing).equals(Buffer.from(next));
+  assert.equal(shouldWrite('abc', 'abc'), false);
+  assert.equal(shouldWrite('abc', 'abd'), true);
+  assert.equal(shouldWrite(null, 'abc'), true);
+  assert.equal(shouldWrite('abc', 'abcd'), true);
+});
+
+
+test('repeat cloud errors do not reparse dashboard JSON on every offline poll', () => {
+  assert.match(header, /std::wstring lastPublishedCloudError_/);
+  const failure = client.slice(
+    client.indexOf('void CloudClient::Loop()'),
+    client.indexOf('bool CloudClient::RequestRemoteRefresh()'),
+  );
+  assert.match(failure, /if \(friendly != lastPublishedCloudError_\)/);
+  assert.match(failure, /const auto dashboard = DashboardWithCloudError/);
+  assert.match(failure, /if \(!dashboard\) \{\s*lastPublishedCloudError_ = friendly;/);
+  assert.match(failure, /else if \(AtomicWriteBytes\(dataDir_ \/ L"dashboard\.json", \*dashboard\)\)/);
+  assert.match(failure, /PostMessageW\(window_, WM_HP_CLOUD_UPDATED, 0, 0\)/);
+  assert.ok(failure.indexOf('if (friendly != lastPublishedCloudError_)') <
+    failure.indexOf('DashboardWithCloudError'));
+  assert.match(sync, /lastPublishedCloudError_\.clear\(\);\s*failures_ = 0;/);
+  // Don't mark failed writes as successfully displayed, so they retry.
+  assert.doesNotMatch(failure, /lastPublishedCloudError_ = friendly;\s*if \(dashboard/);
+});
+
+
+test('radar byte-comparison helper is visible to localization without nested namespaces', () => {
+  const start = sync.indexOf('CacheWriteResult WriteCacheIfChanged(');
+  const include = sync.indexOf('#include "cloud_client_radar_cache.cpp"');
+  const reopen = sync.indexOf('namespace hp {', include);
+  const presence = sync.indexOf('void CloudClient::ApplyPresenceFallback()', include);
+  assert.ok(start >= 0 && start < include && include < reopen && reopen < presence);
+  assert.match(sync.slice(start, include), /}\s*\/\/ namespace hp[\s\S]*$/);
+});
+
+test('identical command payloads skip disk writes but preserve command retry notifications', () => {
+  const start = sync.indexOf('  if (root.HasKey(L"commands")');
+  const end = sync.indexOf('  const auto acceptedVersion =', start);
+  assert.ok(start >= 0 && end > start);
+  const commands = sync.slice(start, end);
+  assert.match(commands, /const std::vector<uint8_t> commandBytes\(text.begin\(\), text.end\(\)\)/);
+  assert.match(commands, /WriteCacheIfChanged\(\s*dataDir_ \/ L"commands\.json", commandBytes\)/);
+  assert.match(commands, /if \(written == CacheWriteResult::Failed\)/);
+  assert.match(commands, /PostMessageW\(window_, WM_HP_COMMANDS_UPDATED, 0, 0\)/);
+  assert.doesNotMatch(commands, /AtomicWriteText\(dataDir_ \/ L"commands\.json"/);
+  assert.doesNotMatch(commands, /if \(written == CacheWriteResult::Written\)[\s\S]*PostMessageW/);
+  // A successful retry is still possible when command bytes have not changed.
+  let attempts = 0;
+  const replay = (fileMatches) => {
+    if (!fileMatches) { /* persist pending commands */ }
+    attempts++;
+  };
+  replay(false);
+  replay(true);
+  assert.equal(attempts, 2);
+});
+
+
+test('periodic cloud sync builds version query without temporary concatenated wide strings', () => {
+  const begin = sync.indexOf('  std::wstring path = L"/v1/device/sync?deviceId=";');
+  const end = sync.indexOf('  const auto response = Request(', begin);
+  assert.ok(begin >= 0 && end > begin);
+  const query = sync.slice(begin, end);
+  assert.match(query, /path\.reserve\(256\)/);
+  assert.match(query, /path \+= config_\.deviceId/);
+  for (const key of ['dashboardVersion', 'radarVersion', 'switchbotVersion', 'configVersion']) {
+    assert.match(query, new RegExp('path \\+= L"&' + key + '=";\\s*path \\+= std::to_wstring\\('));
+    assert.doesNotMatch(query, new RegExp('L"&' + key + '=" \\+ std::to_wstring'));
+  }
+  assert.match(query, /std::to_wstring\(requestedRadarVersion\(\)\)/);
+  assert.match(query, /std::to_wstring\(requestedDeviceConfigVersion\(\)\)/);
+  assert.match(query, /presenceFallbackActive_\s*\? -1\s*: requestedVersion\(switchbotPath, switchbotVersion_\)/);
+  assert.ok(query.indexOf('"&dashboardVersion="') < query.indexOf('"&radarVersion="'));
+  assert.ok(query.indexOf('"&radarVersion="') < query.indexOf('"&switchbotVersion="'));
+  assert.ok(query.indexOf('"&switchbotVersion="') < query.indexOf('"&configVersion="'));
+  const makeQuery = (deviceId, versions, fallback) => {
+    const p = new URLSearchParams({
+      deviceId,
+      dashboardVersion: String(versions.dashboard),
+      radarVersion: String(versions.radar),
+      switchbotVersion: String(fallback ? -1 : versions.switchbot),
+      configVersion: String(versions.config),
+    });
+    return p;
+  };
+  assert.equal(makeQuery('homepanel', {dashboard:3,radar:7,switchbot:9,config:2}, false).get('switchbotVersion'), '9');
+  assert.equal(makeQuery('homepanel', {dashboard:3,radar:7,switchbot:9,config:2}, true).get('switchbotVersion'), '-1');
+});

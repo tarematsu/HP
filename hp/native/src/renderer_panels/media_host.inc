@@ -171,12 +171,24 @@ class NativeMediaPanelHost final {
   static constexpr UINT kNavigationRetryMaxMs = 30U * 1000U;
   static constexpr UINT kTverWatchdogHealthyMs = 60U * 1000U;
   static constexpr UINT kTverWatchdogRecoveryMs = 5U * 1000U;
+  static constexpr ULONG kMediaTimerToleranceMs = 100;
 
   UINT_PTR ArmTimer(UINT_PTR timerId, UINT intervalMs) noexcept {
     if (!hostWindow_ || !IsWindow(hostWindow_)) return 0;
     if (timerId == kNativeMediaTverWatchdogTimer) {
       return ArmNativeMediaTrustedWakeTimer(
           hostWindow_, webview_.Get(), controller_.Get(), timerId, intervalMs);
+    }
+    // Phase switches and healthy YouTube watchdogs do not require sub-100ms
+    // precision. Allow the OS to merge their wakes with existing timers.
+    // Leave startup/recovery retry timers exact, and retain the SetTimer
+    // fallback on systems where coalescing is unavailable.
+    if (intervalMs >= 5'000 &&
+        (timerId == kNativeMediaPhaseTimer ||
+         timerId == kNativeMediaYoutubeWatchdogTimer)) {
+      const UINT_PTR coalesced = SetCoalescableTimer(
+          hostWindow_, timerId, intervalMs, nullptr, kMediaTimerToleranceMs);
+      if (coalesced) return coalesced;
     }
     return ::SetTimer(hostWindow_, timerId, intervalMs, nullptr);
   }

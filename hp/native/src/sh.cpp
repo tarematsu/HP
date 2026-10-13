@@ -9,6 +9,35 @@ constexpr int64_t kStationheadTrackBoundaryRefreshDelayMs = 52 * 60'000;
 constexpr int64_t kStationheadTrackBoundaryNavigationTimeoutMs = 30'000;
 constexpr int64_t kStationheadTrackBoundaryPlaybackRecoveryTimeoutMs = 30'000;
 constexpr size_t kStationheadDiagnosticsMaxCharacters = 2'048;
+constexpr uint64_t kStationheadHealthySurfaceRepairIntervalMs = 60'000;
+
+// Six Stationhead media clocks repeatedly report the same healthy source.
+// Compare the expected status without constructing temporary wide strings;
+// still overwrite a detail changed by login, navigation or recovery events.
+void UpdateHealthyAudioDetail(
+    std::wstring& detail, bool loginRequired, bool fallback,
+    std::wstring_view source) {
+  const std::wstring_view base = loginRequired
+      ? L"Stationhead login required; audio continues"
+      : (fallback ? L"fallback audio detected" : L"audio detected");
+  const bool hasSource = !loginRequired && !source.empty();
+  const std::wstring_view current(detail);
+  const size_t expectedSize =
+      base.size() + (hasSource ? source.size() + 3 : 0);
+  if (current.size() == expectedSize && current.starts_with(base) &&
+      (!hasSource ||
+       (current.substr(base.size(), 2) == L" (" &&
+        current.substr(base.size() + 2, source.size()) == source &&
+        current.back() == L')'))) {
+    return;
+  }
+  detail.assign(base.data(), base.size());
+  if (hasSource) {
+    detail += L" (";
+    detail.append(source.data(), source.size());
+    detail.push_back(L')');
+  }
+}
 
 bool CallbackAlive(const std::shared_ptr<std::atomic<bool>>& alive) {
   return alive && alive->load(std::memory_order_acquire);
@@ -37,6 +66,7 @@ void StationheadPlayer::Start() {
   trackBoundaryPlaybackRecoveryPending_ = false;
   trackBoundaryPlaybackRecoveryAwaitingNavigation_ = false;
   trackBoundaryPlaybackRecoveryDeadline_ = 0;
+  lastHealthySurfaceRepairTick_ = 0;
   ResetMediaRecoveryEpisode(mediaRecoveryEpisode_, 1);
   ResetNavigationRouteState();
   Create();
@@ -163,13 +193,21 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
       status_.playing = true;
       status_.loginRequired = preserveLoginRequired;
       status_.navigating = false;
-      status_.detail = preserveLoginRequired
-          ? L"Stationhead login required; audio continues"
-          : (usingFallback_ ? L"fallback audio detected" : L"audio detected") +
-                (source.empty() ? L"" : L" (" + source + L")");
+      UpdateHealthyAudioDetail(
+          status_.detail, preserveLoginRequired, usingFallback_, source);
     }
+    // Healthy media clocks arrive far more often than window geometry can
+    // change. Repair immediately when an interactive surface needs retiring;
+    // retain a periodic Win32/WebView2 check for external z-order/layout drift.
     if (!preserveLoginRequired && !startupPreviewActive_ && !spotifyAuthorization_) {
-      SetVisible(false);
+      const uint64_t nowTick = GetTickCount64();
+      if (viewVisible_ || selectedTab_ != StationheadTabKind::None ||
+          lastHealthySurfaceRepairTick_ == 0 ||
+          nowTick - lastHealthySurfaceRepairTick_ >=
+              kStationheadHealthySurfaceRepairIntervalMs) {
+        lastHealthySurfaceRepairTick_ = nowTick;
+        SetVisible(false);
+      }
     }
     if (changed) log_.Info(L"Stationhead " + std::wstring(RoleTag()) + L" audio playing (" + source + L")");
     // Keep exceptional recovery/authorization notifications, but do not post

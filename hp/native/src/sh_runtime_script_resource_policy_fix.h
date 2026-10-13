@@ -252,35 +252,38 @@ inline void ApplyStationheadResourceBlockingScriptFixed(
               }
             }
             if (needsUri) {
-              std::wstring lower;
               ComPtr<ICoreWebView2WebResourceRequest> request;
               if (SUCCEEDED(args->get_Request(&request)) && request) {
                 LPWSTR uriRaw = nullptr;
                 if (SUCCEEDED(request->get_Uri(&uriRaw)) && uriRaw) {
-                  lower = StationheadLowerAscii(uriRaw);
+                  // This callback is the final active Stationhead resource
+                  // policy. Classify directly in WebView2's caller-owned URI
+                  // buffer rather than allocating a second wide string on
+                  // every script/XHR/media request across six profiles.
+                  StationheadLowerAsciiInPlace(uriRaw);
+                  const std::wstring_view lower(uriRaw);
+                  if (hasContext &&
+                      context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT) {
+                    moduleStub =
+                        StationheadKnownOptionalModuleStubBoundaryFixed(lower);
+                    if (!moduleStub.empty()) {
+                      block = true;
+                    } else {
+                      emptyScript =
+                          StationheadRequestIsBlockableBoundaryFixed(lower) ||
+                          StationheadExpandedNonPlaybackScriptBoundaryFixed(lower);
+                      block = emptyScript;
+                    }
+                  } else {
+                    block = StationheadRequestIsBlockableBoundaryFixed(lower);
+                  }
+                  if (!block && hasContext &&
+                      context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA) {
+                    block = !StationheadCorePlaybackRequestBoundaryFixed(lower);
+                    emptyResource = block;
+                  }
                   CoTaskMemFree(uriRaw);
                 }
-              }
-              if (hasContext &&
-                  context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT) {
-                moduleStub =
-                    StationheadKnownOptionalModuleStubBoundaryFixed(lower);
-                if (!moduleStub.empty()) {
-                  block = true;
-                } else {
-                  emptyScript =
-                      StationheadRequestIsBlockableBoundaryFixed(lower) ||
-                      StationheadExpandedNonPlaybackScriptBoundaryFixed(lower);
-                  block = emptyScript;
-                }
-              } else {
-                block = StationheadRequestIsBlockableBoundaryFixed(lower);
-              }
-              if (!block && hasContext &&
-                  context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA) {
-                block = !lower.empty() &&
-                        !StationheadCorePlaybackRequestBoundaryFixed(lower);
-                emptyResource = block;
               }
             }
             if (block) {

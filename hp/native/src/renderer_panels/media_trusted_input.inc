@@ -32,9 +32,14 @@ void NativeMediaReleaseTrustedClick(ULONGLONG token) noexcept {
 std::wstring NativeMediaTrustedMouseParams(
     const wchar_t* type, double x, double y, bool pressed) {
   std::wstring params = L"{\"type\":\"";
+  params.reserve(128);
   params += type;
-  params += L"\",\"x\":" + std::to_wstring(x) +
-            L",\"y\":" + std::to_wstring(y);
+  // Direct appends reuse one allocated CDP payload instead of allocating
+  // several temporary wide strings for each trusted YouTube/TVer click.
+  params += L"\",\"x\":";
+  params += std::to_wstring(x);
+  params += L",\"y\":";
+  params += std::to_wstring(y);
   if (pressed) {
     params += L",\"button\":\"left\",\"buttons\":1,\"clickCount\":1";
   } else if (std::wstring_view(type) == L"mouseReleased") {

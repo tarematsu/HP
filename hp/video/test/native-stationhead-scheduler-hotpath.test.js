@@ -119,3 +119,81 @@ test('unchanged WM_SIZE avoids rebuilding dashboard and six WebView layouts', ()
   // A genuine resize and the initial/deferred layout still reach the normal path.
   assert.match(app, /void App::LayoutWorkspace\(\) \{/);
 });
+
+
+test('audio-loss recovery reuses the same validated playback flag as monitor selection', () => {
+  const recovery = section(audioLoss,
+    'void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {',
+    '}  // namespace hp');
+  assert.match(recovery, /const SchedulerState snapshot = ReadSchedulerState\(\)/);
+  assert.match(recovery, /const bool audioPlaying = snapshot\.audioPlaying;/);
+  assert.doesNotMatch(recovery, /const bool audioPlaying = AudioPlaying\(\)/);
+  assert.match(playerHeader, /playingSince > 0 &&\s*audioPlaying_\.load/);
+});
+
+
+test('Stationhead placement reconciles bounds once before refreshing visibility', () => {
+  const placement = section(app,
+    'void App::ApplyStationheadWindowPlacement() {',
+    'void App::ScheduleNextTick(');
+  assert.match(placement,
+    /stationheadPeers_\[i\]->SetBounds\(bounds\);\s*stationheadPeers_\[i\]->RefreshVisibility\(\)/);
+  assert.match(placement,
+    /stationhead_->SetBounds\(bounds\);\s*stationhead_->RefreshVisibility\(\)/);
+
+  const refresh = section(handles,
+    'void StationheadHandleBase::RefreshVisibility() {',
+    'void StationheadHandleBase::Start() {');
+  assert.match(refresh, /player_->SelectTab\(StationheadTabKind::None\)/);
+  assert.doesNotMatch(refresh, /\bApplyBounds\(\)/,
+    'the preceding SetBounds already restores geometry and z-order');
+
+  const bounds = section(handles,
+    'void StationheadHandleBase::SetBounds(const RECT& bounds) {',
+    'StationheadStatus StationheadHandleBase::RawStatus() const {');
+  assert.match(bounds, /ApplyBounds\(\)/,
+    'genuine bounds changes and unchanged-bounds repair must still work');
+  assert.match(refresh, /player_->KeepPlaybackBehindDashboard\(\)/,
+    'track transition suppression must still restore the hidden surface');
+});
+
+
+test('healthy hidden Stationhead skips a second full WebView2 layout after App bounds repair', () => {
+  const refresh = section(handles,
+    'void StationheadHandleBase::RefreshVisibility() {',
+    'void StationheadHandleBase::Start() {');
+  assert.match(refresh, /if \(state\.audioPlaying && !interactive &&\s*player_->HiddenPlaybackFullyReconciled\(\)\) return;/);
+  assert.ok(refresh.indexOf('HiddenPlaybackFullyReconciled()') <
+    refresh.indexOf('player_->SelectTab(StationheadTabKind::None)'),
+    'same-state hidden profiles must bypass the redundant second layout');
+  assert.match(refresh, /if \(SuppressTrackTransitionGap\(state\.audioPlaying, interactive\)\)/);
+  assert.match(refresh, /if \(state\.visible\) player_->KeepPlaybackBehindDashboard\(\)/);
+
+  const guard = section(playerHeader,
+    '  [[nodiscard]] bool HiddenPlaybackFullyReconciled() const noexcept {',
+    '  void KeepPlaybackBehindDashboard();');
+  assert.match(guard, /selectedTab_ == StationheadTabKind::None/);
+  assert.match(guard, /!viewVisible_ && !startupPreviewActive_/);
+  assert.match(guard, /!authHostWindow_ && !authController_ && !authWebview_/);
+  assert.match(guard, /!authControllerStartedAt_\.Active\(\) && authPendingUrl_\.empty\(\)/);
+  assert.match(guard, /!spotifyAuthorization_ && !loginRequired_/);
+
+  const skip = ({ playing = true, interactive = false, tab = 'none',
+    visible = false, preview = false, authHost = false, authController = false,
+    authWebview = false, authStarting = false, authUrl = '',
+    spotifyAuth = false, loginRequired = false } = {}) =>
+    playing && !interactive && tab === 'none' && !visible && !preview &&
+    !authHost && !authController && !authWebview && !authStarting &&
+    authUrl === '' && !spotifyAuth && !loginRequired;
+  assert.equal(skip(), true);
+  assert.equal(skip({ playing: false }), false, 'missing audio must retain recovery path');
+  assert.equal(skip({ interactive: true }), false, 'failure/login requires refresh');
+  assert.equal(skip({ tab: 'stationhead' }), false);
+  assert.equal(skip({ preview: true }), false);
+  assert.equal(skip({ visible: true }), false);
+  assert.equal(skip({ authHost: true }), false, 'stale auth HWND must be cleaned');
+  assert.equal(skip({ authStarting: true }), false);
+  assert.equal(skip({ authUrl: 'https://auth' }), false);
+  assert.equal(skip({ loginRequired: true }), false);
+  assert.equal(skip({ spotifyAuth: true }), false);
+});

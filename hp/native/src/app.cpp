@@ -8,6 +8,9 @@ namespace hp {
 namespace {
 constexpr wchar_t kWindowClass[] = L"HomePanelNativeWindow";
 constexpr uint32_t kFastTickMs = 2000;
+// Windows can combine non-urgent App deadline wakeups with existing system
+// timer activity. Urgent/sub-second callbacks stay exact.
+constexpr ULONG kAppTimerToleranceMs = 100;
 constexpr uint32_t kMaxAppTimerMs = 24U * 60U * 60U * 1000U;
 struct RestartWindow {
   int startHour;
@@ -647,11 +650,16 @@ void App::ScheduleNextTick(uint32_t milliseconds) {
     return;
   }
   KillTimer(window_, kCentralTimer);
-  if (SetTimer(window_, kCentralTimer, clamped, nullptr) != 0) {
-    nextAppTickAt_ = static_cast<int64_t>(dueTick);
-  } else {
-    nextAppTickAt_ = 0;
+  // Keep immediate and sub-second recovery deadlines uncoalesced. The
+  // two-second Stationhead recovery and longer idle deadlines can tolerate
+  // a small OS-level wake delay without changing their polling intervals.
+  UINT_PTR timer = 0;
+  if (clamped >= kFastTickMs) {
+    timer = SetCoalescableTimer(
+        window_, kCentralTimer, clamped, nullptr, kAppTimerToleranceMs);
   }
+  if (!timer) timer = SetTimer(window_, kCentralTimer, clamped, nullptr);
+  nextAppTickAt_ = timer ? static_cast<int64_t>(dueTick) : 0;
 }
 
 void App::InvalidateAll() {

@@ -1,6 +1,5 @@
 // Device-state synchronization only. Radar localization and dormant
 // Stationhead health projection live in dedicated implementation files.
-#include "cloud_client_radar_cache.cpp"
 #include "cloud_client.h"
 #include <limits>
 #include <winrt/Windows.Data.Json.h>
@@ -25,8 +24,47 @@ std::wstring Utf8BytesToWide(const std::vector<uint8_t>& bytes) {
   }
   return output;
 }
-}  // namespace
 
+enum class CacheWriteResult { Failed, Unchanged, Written };
+
+// The server can repeat a payload (e.g. after a forced cache refresh).
+// Comparing it before a write prevents unnecessary atomic replacements,
+// filesystem notifications and UI paints. Stream the existing file in small
+// blocks; do not allocate a second copy of large radar/dashboard payloads.
+CacheWriteResult WriteCacheIfChanged(
+    const fs::path& path, const std::vector<uint8_t>& bytes) {
+  std::error_code error;
+  const auto existingSize = fs::file_size(path, error);
+  if (!error && existingSize == bytes.size()) {
+    std::ifstream input(path, std::ios::binary);
+    if (input) {
+      std::array<char, 8192> chunk{};
+      size_t offset = 0;
+      bool equal = true;
+      while (offset < bytes.size()) {
+        const size_t count = std::min(chunk.size(), bytes.size() - offset);
+        input.read(chunk.data(), static_cast<std::streamsize>(count));
+        if (input.gcount() != static_cast<std::streamsize>(count) ||
+            std::memcmp(chunk.data(), bytes.data() + offset, count) != 0) {
+          equal = false;
+          break;
+        }
+        offset += count;
+      }
+      if (equal) return CacheWriteResult::Unchanged;
+    }
+  }
+  return AtomicWriteBytes(path, bytes)
+      ? CacheWriteResult::Written : CacheWriteResult::Failed;
+}
+}  // namespace
+}  // namespace hp
+
+// Radar localization shares the same byte-comparison writer as other cloud
+// payloads; include it after the helper without nesting the hp namespace.
+#include "cloud_client_radar_cache.cpp"
+
+namespace hp {
 void CloudClient::ApplyPresenceFallback() {
   if (presenceFallbackActive_) return;
   JsonObject fallback;
@@ -161,15 +199,19 @@ void CloudClient::Synchronize() {
   std::wstring path = L"/v1/device/sync?deviceId=";
   path.reserve(256);
   path += config_.deviceId;
-  path += L"&dashboardVersion=" +
-      std::to_wstring(requestedVersion(dashboardPath, dashboardVersion_));
-  path += L"&radarVersion=" + std::to_wstring(requestedRadarVersion());
-  path += L"&switchbotVersion=" + std::to_wstring(
+  // Build directly into the reserved request buffer. "literal" + to_wstring
+  // creates four temporary wide strings on each periodic cloud poll.
+  path += L"&dashboardVersion=";
+  path += std::to_wstring(requestedVersion(dashboardPath, dashboardVersion_));
+  path += L"&radarVersion=";
+  path += std::to_wstring(requestedRadarVersion());
+  path += L"&switchbotVersion=";
+  path += std::to_wstring(
       presenceFallbackActive_
           ? -1
           : requestedVersion(switchbotPath, switchbotVersion_));
-  path += L"&configVersion=" +
-      std::to_wstring(requestedDeviceConfigVersion());
+  path += L"&configVersion=";
+  path += std::to_wstring(requestedDeviceConfigVersion());
 
   const auto response = Request(L"GET", path, deviceToken_);
   if (response.status != 200) {
@@ -192,20 +234,26 @@ void CloudClient::Synchronize() {
   bool configApplied = false;
 
   if (auto payload = StringPayload(root, L"dashboard")) {
-    if (!AtomicWriteBytes(dashboardPath, *payload)) {
+    const auto written = WriteCacheIfChanged(dashboardPath, *payload);
+    if (written == CacheWriteResult::Failed) {
       throw std::runtime_error("dashboard data cache write failed");
     }
     dashboardApplied = true;
-    PostMessageW(window_, WM_HP_CLOUD_UPDATED, 0, 0);
+    if (written == CacheWriteResult::Written) {
+      PostMessageW(window_, WM_HP_CLOUD_UPDATED, 0, 0);
+    }
   }
   if (auto payload = StringPayload(root, L"radar")) {
     try {
       const auto localized = LocalizeRadarTiles(*payload);
-      if (!AtomicWriteBytes(radarPath, localized)) {
+      const auto written = WriteCacheIfChanged(radarPath, localized);
+      if (written == CacheWriteResult::Failed) {
         throw std::runtime_error("radar cache write failed");
       }
       radarApplied = true;
-      PostMessageW(window_, WM_HP_RADAR_UPDATED, 0, 0);
+      if (written == CacheWriteResult::Written) {
+        PostMessageW(window_, WM_HP_RADAR_UPDATED, 0, 0);
+      }
     } catch (const std::exception& error) {
       log_.Warn(
           L"Radar payload withheld until representative PNG is available: " +
@@ -215,19 +263,25 @@ void CloudClient::Synchronize() {
     }
   }
   if (auto payload = StringPayload(root, L"switchbot")) {
-    if (!AtomicWriteBytes(switchbotPath, *payload)) {
+    const auto written = WriteCacheIfChanged(switchbotPath, *payload);
+    if (written == CacheWriteResult::Failed) {
       throw std::runtime_error("SwitchBot cache write failed");
     }
     switchbotApplied = true;
     presenceFallbackActive_ = false;
-    PostMessageW(window_, WM_HP_SWITCHBOT_UPDATED, 0, 0);
+    if (written == CacheWriteResult::Written) {
+      PostMessageW(window_, WM_HP_SWITCHBOT_UPDATED, 0, 0);
+    }
   }
   if (auto payload = StringPayload(root, L"deviceConfig")) {
-    if (!AtomicWriteBytes(deviceConfigPath, *payload)) {
+    const auto written = WriteCacheIfChanged(deviceConfigPath, *payload);
+    if (written == CacheWriteResult::Failed) {
       throw std::runtime_error("device config cache write failed");
     }
     configApplied = true;
-    PostMessageW(window_, WM_HP_CONFIG_UPDATED, 0, 0);
+    if (written == CacheWriteResult::Written) {
+      PostMessageW(window_, WM_HP_CONFIG_UPDATED, 0, 0);
+    }
   }
 
   if (root.HasKey(L"commands") &&
@@ -239,7 +293,13 @@ void CloudClient::Synchronize() {
           L"deviceId", JsonValue::CreateStringValue(config_.deviceId));
       envelope.SetNamedValue(L"commands", commands);
       const std::string text = WideToUtf8(envelope.Stringify().c_str());
-      if (!AtomicWriteText(dataDir_ / L"commands.json", text)) {
+      // Commands may be replayed when the previous acknowledgement failed.
+      // Avoid replacing identical cache bytes, but always notify the UI:
+      // ProcessRemoteCommands must still retry any pending acknowledgements.
+      const std::vector<uint8_t> commandBytes(text.begin(), text.end());
+      const auto written = WriteCacheIfChanged(
+          dataDir_ / L"commands.json", commandBytes);
+      if (written == CacheWriteResult::Failed) {
         throw std::runtime_error("device command cache write failed");
       }
       PostMessageW(window_, WM_HP_COMMANDS_UPDATED, 0, 0);
@@ -280,6 +340,9 @@ void CloudClient::Synchronize() {
     lastSuccess_ = IsoLocalNow();
     workerVersion_ = root.GetNamedString(L"workerVersion", L"").c_str();
   }
+  // A successful exchange ends the previous outage. The next failure must
+  // re-read the cache because a fresh dashboard payload may have replaced it.
+  lastPublishedCloudError_.clear();
   failures_ = 0;
 }
 

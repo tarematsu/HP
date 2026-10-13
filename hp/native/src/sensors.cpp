@@ -53,9 +53,9 @@ void AppendFixed(std::string& output, double value) {
   output.append(buffer, result.ptr);
 }
 
-std::string SampleJson(const SensorHub::Sample& sample) {
-  std::string output;
-  output.reserve(192);
+// Append directly into the caller's JSON buffer. Telemetry batches and
+// outbox rewrites previously allocated one temporary string for every sample.
+void AppendSampleJson(std::string& output, const SensorHub::Sample& sample) {
   output += "{\"sequence\":";
   AppendInteger(output, sample.sequence);
   output += ",\"observedAt\":";
@@ -71,7 +71,6 @@ std::string SampleJson(const SensorHub::Sample& sample) {
   output += ",\"humidityCorrected\":";
   AppendFixed(output, sample.humidityCorrected);
   output.push_back('}');
-  return output;
 }
 
 bool ConfigurePort(HANDLE serial) {

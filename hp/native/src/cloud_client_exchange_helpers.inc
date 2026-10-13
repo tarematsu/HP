@@ -1,14 +1,19 @@
 namespace hp {
 namespace {
 std::wstring ExchangeQueryValue(const std::wstring& path, const wchar_t* name) {
-  const std::wstring token = std::wstring(name) + L"=";
+  // One exchange looks up all four cache versions plus deviceId. Compare the
+  // key in-place instead of allocating name + "=" for every lookup.
+  const size_t keyLength = std::char_traits<wchar_t>::length(name);
   size_t start = path.find(L'?');
   start = start == std::wstring::npos ? start : start + 1;
   while (start != std::wstring::npos && start < path.size()) {
     const size_t end = path.find(L'&', start);
     const size_t limit = end == std::wstring::npos ? path.size() : end;
-    if (path.compare(start, token.size(), token) == 0) {
-      return path.substr(start + token.size(), limit - start - token.size());
+    if (limit - start > keyLength &&
+        path.compare(start, keyLength, name, keyLength) == 0 &&
+        path[start + keyLength] == L'=') {
+      return path.substr(
+          start + keyLength + 1, limit - start - keyLength - 1);
     }
     start = end == std::wstring::npos ? end : end + 1;
   }

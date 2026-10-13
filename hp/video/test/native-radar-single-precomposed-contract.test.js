@@ -80,7 +80,7 @@ test('radar cache localization is isolated from device version negotiation', () 
 test('precomposed radar version is accepted only after a local PNG exists', () => {
   assert.match(cloudClientSync, /requestedRadarVersion/);
   assert.match(cloudClientSync, /HasPngSignature\(representativeRadarPath\)/);
-  assert.match(cloudClientSync, /radarVersion=" \+ std::to_wstring\(requestedRadarVersion\(\)\)/);
+  assert.match(cloudClientSync, /path \+= L"&radarVersion=";\s*path \+= std::to_wstring\(requestedRadarVersion\(\)\)/);
   assert.match(cloudClientSync, /Radar payload withheld until representative PNG is available/);
 });
 
@@ -170,4 +170,25 @@ test('all three radar panels render only an enlarged timestamp chip in logical c
   assert.doesNotMatch(cloud, /現在|1時間後|取得可能な最後/);
   assert.match(browserFrame, /context\.fillStyle = "rgba\(0,0,0,0\.92\)"/);
   assert.match(browserFrame, /context\.fillRect\(divider \* panelWidth - 1, 0, 3, logicalOutputHeight\)/);
+});
+
+test('repeated representative PNG bytes avoid atomic replacement and bitmap redecoding', () => {
+  const begin = radarCache.indexOf('  if (precomposed) {');
+  const end = radarCache.indexOf('  constexpr uint64_t kRadarCachePruneIntervalMs', begin);
+  assert.ok(begin >= 0 && end > begin);
+  const precomposed = radarCache.slice(begin, end);
+  assert.match(precomposed, /HasPngSignature\(response\.body\)/);
+  assert.match(precomposed, /const auto written = WriteCacheIfChanged\(target, response\.body\);/);
+  assert.match(precomposed, /written == CacheWriteResult::Failed/);
+  assert.match(precomposed, /written == CacheWriteResult::Written && !HasPngSignature\(target\)/);
+  assert.doesNotMatch(precomposed, /AtomicWriteBytes\(target, response\.body\)/);
+  assert.match(precomposed, /tile\.SetNamedValue\(L"url", JsonValue::CreateStringValue\(localUrlFor\(url\)\)\)/);
+  // Identical body -> keep the existing file timestamp; new and missing body
+  // still take the atomic write path.
+  const shouldReplace = (saved, received) => !saved ||
+    !Buffer.from(saved).equals(Buffer.from(received));
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x12]);
+  assert.equal(shouldReplace(png, png), false);
+  assert.equal(shouldReplace(null, png), true);
+  assert.equal(shouldReplace(png, Buffer.concat([png, Buffer.from([0x13])])), true);
 });
