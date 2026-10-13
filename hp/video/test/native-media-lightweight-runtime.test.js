@@ -86,7 +86,7 @@ test('native YouTube wake bridge borrows COM string buffers without duplicate he
   assert.match(callback, /NativeMediaTverAdvanceEpisode\(source\)/);
   const navigation = mediaWrapper.slice(
     mediaWrapper.indexOf('const HRESULT navigationRegistered = webview->add_NavigationStarting('),
-    mediaWrapper.indexOf('const HRESULT processFailedRegistered ='),
+    mediaWrapper.indexOf('const HRESULT processRegistered ='),
   );
   assert.match(navigation, /const std::wstring_view requested\(rawUri\)/);
   assert.match(navigation, /uriOwner\(\s*rawUri, &CoTaskMemFree\)/);
