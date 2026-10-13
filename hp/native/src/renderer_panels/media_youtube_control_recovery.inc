@@ -56,6 +56,9 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     return lanes[key] || (lanes[key] = {});
   };
   const probe = () => {
+  // Consume the pending mutation wake even if the dialog/error path returns
+  // before the ad observer is reached. Never suppress future Skip Ad changes.
+  if (state.adMutationWakePending) state.adMutationWakePending = false;
   // Reuse the stable player root even during dense ad wake bursts.
   // SPA navigation explicitly invalidates the root; a detached player
   // is always rediscovered before installing new observers.
@@ -330,9 +333,6 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       return;
     }
     if (state.adObserver) {
-      // A single probe observes the newest DOM state after all pending changes.
-      // Ignore further mutation callbacks until that probe has begun.
-      state.adMutationWakePending = false;
       // Reconcile mutated controls once on the next native probe rather than
       // scanning/rebinding observers inside a burst of MutationObserver events.
       if (state.adCandidatesDirty) state.refreshAdAttributes?.();
