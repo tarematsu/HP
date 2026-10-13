@@ -92,6 +92,7 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
   // prompt, even when a reconnect button occurs earlier in document order.
   // Decode both labels in one pass over each element's text and pseudo labels;
   // only matched candidates need a layout/visibility check.
+)JS" LR"JS(
   const onboardingActionKind = element => {
     let recoverable = false;
     const consider = value => {
