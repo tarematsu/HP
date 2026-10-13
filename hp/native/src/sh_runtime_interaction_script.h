@@ -140,7 +140,11 @@ inline std::wstring_view StationheadRuntimeInteractionFragment() noexcept {
     // onboarding runs first and may update the page's playback-only CSS;
     // never cache controls across events or the delayed authorization check.
     const controls = document.querySelectorAll(controlSelector);
-    const authenticated = accountVisible(controls) || playing();
+    // Lifecycle just checked the audio state for this same event. Avoid a
+    // second audio/video query (and repeated mediaSession access) in the
+    // common account-absent path; standalone auth probes still query live.
+    const authenticated = accountVisible(controls) ||
+      (knownAudio === null ? playing() : knownAudio);
     const blocking = blockingLogin(authenticated, false, controls);
     if (blocking) {
       cancelAuthReady();
