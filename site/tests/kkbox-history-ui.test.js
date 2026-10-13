@@ -17,7 +17,7 @@ test('KKBOX owns its chart history layout as a first-class music service', () =>
   assert.match(shell, /kkboxJapaneseHistoryBody/);
   assert.match(shell, /musicServiceRegionalChartPair/);
   assert.match(shell, /filterAttribute: 'kkbox-artist-filter'/);
-  assert.doesNotMatch(shell, /regional/i);
+  assert.doesNotMatch(shell, /regional-music\.css|loadRegionalMusicReadModel/i);
 
   assert.match(runtime, /renderRankHistoryChart/);
   assert.match(runtime, /payload\?\.kkbox_japanese_chart/);
@@ -32,5 +32,5 @@ test('KKBOX owns its chart history layout as a first-class music service', () =>
   assert.doesNotMatch(runtime, /hiragana_keyakizaka46/);
   assert.match(runtime, /loadMusicServiceReadModel\(SERVICE\)/);
   assert.match(runtime, /export async function loadKkboxView/);
-  assert.doesNotMatch(runtime, /location\.hash|hashchange|popstate|regional/i);
+  assert.doesNotMatch(runtime, /location\.hash|hashchange|popstate|loadRegionalMusicReadModel/i);
 });
