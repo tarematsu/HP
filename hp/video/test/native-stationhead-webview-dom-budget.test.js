@@ -5,7 +5,10 @@ import test from 'node:test';
 
 const source = name => readFileSync(
   new URL('../../native/src/' + name, import.meta.url), 'utf8');
-const fragment = name => source(name).match(/LR"JS\(([\s\S]*?)\)JS"/)?.[1];
+// Fragments can contain multiple adjacent C++ raw literals to stay within
+// the MSVC C2026 limit. Join them before evaluating the page runtime.
+const fragment = name => [...source(name).matchAll(/LR"JS\(([\s\S]*?)\)JS"/g)]
+  .map(match => match[1]).join('');
 
 function onboardingRuntime({ text = 'Some unrelated room content', pseudo = 'none', visible = true,
                              playbackOnly = false } = {}) {
