@@ -73,13 +73,6 @@ void AppendSampleJson(std::string& output, const SensorHub::Sample& sample) {
   output.push_back('}');
 }
 
-std::string SampleJson(const SensorHub::Sample& sample) {
-  std::string output;
-  output.reserve(192);
-  AppendSampleJson(output, sample);
-  return output;
-}
-
 bool ConfigurePort(HANDLE serial) {
   DCB dcb{};
   dcb.DCBlength = sizeof(dcb);
