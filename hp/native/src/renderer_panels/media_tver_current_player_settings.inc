@@ -167,6 +167,8 @@ LR"JS(
     state.currentSettingsSpeedConfirmed = false;
     state.currentSettingsQualityConfirmed = false;
     state.currentSettingsFullscreenRequestAt = 0;
+    state.currentSettingsFullScanAt = 0;
+    state.currentSettingsScannedVideo = null;
   }
 
   // Browser fullscreen is independent of TVer's speed/quality UI. If a
@@ -187,6 +189,24 @@ LR"JS(
 
   const duration = Number.isFinite(video.duration) && video.duration > 0
       ? video.duration : 0;
+  // When both UI settings have been confirmed on this exact video, a
+  // healthy playback wake does not need to remeasure every button, menu,
+  // ad marker and option. Revalidate after five seconds; if the site resets
+  // the media rate, pause state, source, or media element, scan immediately.
+  // Fullscreen dispatch and the questionnaire guard above are never skipped.
+  const lastScan = Number(state.currentSettingsFullScanAt || 0);
+  if (state.currentSettingsScannedVideo === video &&
+      state.currentSettingsSpeedConfirmed &&
+      state.currentSettingsQualityConfirmed &&
+      duration > 65 && !video.paused && !video.ended &&
+      video.playbackRate === 1.75 &&
+      video.defaultPlaybackRate === 1.75 &&
+      lastScan > 0 && now >= lastScan && now - lastScan < 5 * 1000) {
+    if (!fullscreen) schedule(900);
+    return;
+  }
+  state.currentSettingsScannedVideo = video;
+  state.currentSettingsFullScanAt = now;
   const parseSpeed = value => {
     const compact = clean(value)
         .replace(/\s+/g, '')
