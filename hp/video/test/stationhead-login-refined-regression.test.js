@@ -48,7 +48,7 @@ test('same-token reuse is gated by the cleared blocking-login state', () => {
 test('auth-ready requires a three-second stable non-blocking surface', () => {
   const ready = section(
     interaction,
-    'const publishAuth = () => {',
+    'const publishAuth = (knownAudio = null) => {',
     '}  // namespace hp',
   );
   assert.match(ready, /authReadyTimer = nativeTimeout/);
