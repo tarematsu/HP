@@ -404,8 +404,9 @@ void NativeMediaEnsureEventWakeBridge(
                 !hostWindow || !IsWindow(hostWindow)) return S_OK;
             LPWSTR rawUri = nullptr;
             if (FAILED(args->get_Uri(&rawUri)) || !rawUri) return S_OK;
-            const std::wstring requested(rawUri);
-            CoTaskMemFree(rawUri);
+            const std::unique_ptr<wchar_t, decltype(&CoTaskMemFree)> uriOwner(
+                rawUri, &CoTaskMemFree);
+            const std::wstring_view requested(rawUri);
             const std::wstring_view requestedId =
                 NativeMediaTverEpisodeIdFromUrl(requested);
             if (requestedId.empty()) return S_OK;
