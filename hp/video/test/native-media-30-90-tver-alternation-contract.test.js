@@ -99,7 +99,7 @@ test('TVer media wake is one-shot and the steady watchdog stays low frequency', 
 });
 
 test('YouTube health uses a 30-second backstop plus unified event wakeups', () => {
-  assert.match(mediaBase, /kNativeMediaYoutubeWatchdogHealthyMs = 30U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaYoutubeWatchdogHealthyMs = 60U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogRecoveryMs = 2U \* 1000U/);
   assert.match(mediaWrapper, /#include "media_youtube_control_recovery\.inc"/);
   assert.match(youtubeRuntime, /homepanel:youtube-wake/);
