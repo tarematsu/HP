@@ -308,6 +308,10 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   };
   const syncAdObserver = active => {
     if (!active) {
+      // Most watchdog probes run with no ad. Avoid repeatedly tearing down
+      // already-empty observer state and rewriting cache fields.
+      if (!state.adObserver && !state.adControlObserver &&
+          !state.adCandidates) return;
       state.adObserver?.disconnect();
       state.adControlObserver?.disconnect();
       state.adObserver = null;
