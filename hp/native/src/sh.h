@@ -252,6 +252,9 @@ class StationheadPlayer {
   bool audioLossProbeInFlight_ = false;
   bool audioLossProbeComplete_ = false;
   bool audioLossAuthUiDetected_ = false;
+  // UI-thread-owned generation. Monitor A only scans every few minutes, so
+  // healthy 2s App ticks need not lock the global per-profile probe map.
+  uint64_t monitorDomHandledGeneration_ = 0;
   bool managedPlaybackFallbackActive_ = false;
   bool managedPlaybackReturnRequested_ = false;
   bool managedPrimaryReturnPending_ = false;

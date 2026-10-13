@@ -52,8 +52,15 @@ test('six-profile audio-loss watchdog uses compact flags without cloning status 
   const state = section(audioLoss,
     'void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {',
     '}  // namespace hp');
-  assert.match(state, /const SchedulerState candidate = ReadSchedulerState\(\)/);
   assert.match(state, /const SchedulerState snapshot = ReadSchedulerState\(\)/);
+  assert.equal((state.match(/ReadSchedulerState\(\)/g) || []).length, 1,
+    'monitor selection and six-profile audio-loss recovery reuse one snapshot');
+  assert.match(playerHeader, /uint64_t monitorDomHandledGeneration_ = 0;/);
+  assert.match(state, /requestedGeneration != monitorDomHandledGeneration_/);
+  assert.match(state, /if \(state\.seenGeneration == requestedGeneration\)/);
+  assert.match(state, /else if \(!state\.inFlight\)/);
+  assert.match(state, /monitorDomHandledGeneration_ = requestedGeneration;/);
+  assert.match(state, /state\.seenGeneration = requestedGeneration;/);
   assert.doesNotMatch(state, /StationheadStatus|\bStatus\(\)/,
     'audio recovery only needs authentication and navigation flags');
   assert.match(state, /snapshot\.created/);
