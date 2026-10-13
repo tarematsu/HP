@@ -1,10 +1,9 @@
 name: Native Runtime Smoke
 
+# Avoid rebuilding the entire native app twice for each PR commit.
+# Pull requests use the Native Windows Build plus targeted Node regression tests.
+# Full UI/updater smoke runs on main releases or manual dispatch.
 on:
-  pull_request:
-    paths:
-      - "hp/native/**"
-      - ".github/workflows/native-runtime-smoke.yml"
   push:
     branches:
       - main
