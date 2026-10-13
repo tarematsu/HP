@@ -323,12 +323,16 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       state.adControlObserver = null;
       state.adObservedNodes = null;
       state.refreshAdAttributes = null;
+      state.adMutationWakePending = false;
       state.adCandidates = null;
       state.adCandidatesDirty = true;
       state.adCandidatesAt = 0;
       return;
     }
     if (state.adObserver) {
+      // A single probe observes the newest DOM state after all pending changes.
+      // Ignore further mutation callbacks until that probe has begun.
+      state.adMutationWakePending = false;
       // Reconcile mutated controls once on the next native probe rather than
       // scanning/rebinding observers inside a burst of MutationObserver events.
       if (state.adCandidatesDirty) state.refreshAdAttributes?.();
@@ -343,7 +347,12 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       node?.nodeType === 1 && node !== player && !!(
         node.matches?.(adSelector) || node.closest?.(adSelector) ||
         (deep && node.firstElementChild && node.querySelector?.(adSelector)));
-    state.adControlObserver = new MutationObserver(() => wake(180));
+    const wakeForAdMutation = () => {
+      if (state.adMutationWakePending) return;
+      state.adMutationWakePending = true;
+      wake(180);
+    };
+    state.adControlObserver = new MutationObserver(wakeForAdMutation);
     const observeAdAttributes = () => {
       const nodes = new Set();
       for (const control of scanAdCandidates()) {
@@ -366,6 +375,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     };
     state.refreshAdAttributes = observeAdAttributes;
     state.adObserver = new MutationObserver(records => {
+      if (state.adMutationWakePending) return;
       for (const record of records) {
         if (record.type !== 'childList') continue;
         let relevant = relatedAdNode(record.target);
@@ -381,8 +391,8 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
         }
         if (!relevant) continue;
         state.adCandidatesDirty = true;
-        // A wake coalesces the expensive query + attribute subscription update.
-        wake(180);
+        // Once scheduled, later child/attribute notifications need no DOM walk.
+        wakeForAdMutation();
         return;
       }
     });
@@ -406,6 +416,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     state.adControlObserver = null;
     state.adObservedNodes = null;
     state.refreshAdAttributes = null;
+    state.adMutationWakePending = false;
     state.adCandidates = null;
     state.adCandidatesDirty = true;
     state.adCandidatesAt = 0;
