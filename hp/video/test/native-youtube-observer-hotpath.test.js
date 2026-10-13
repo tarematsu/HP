@@ -79,7 +79,7 @@ test('YouTube ad observers avoid page-wide attribute monitoring', () => {
     scheduled++;
   };
   const node = (kind, children = [], parent = null) => {
-    const n = { nodeType: 1, kind, children, parentElement: parent };
+    const n = { nodeType: 1, kind, children, parentElement: parent, firstElementChild: children[0] || null };
     n.matches = selector =>
       (kind === 'skip' && selector.includes('.ytp-ad-skip-button')) ||
       (kind === 'survey' && selector.includes('.ytp-ad-survey')) ||
