@@ -107,3 +107,36 @@ test('six persistent Stationhead WebViews avoid redundant steady audio scripts a
   assert.match(apply, /status_\.loginRequired = preserveLoginRequired/);
   assert.match(apply, /audioPlayingSinceAt_\.store\(0, std::memory_order_relaxed\)/);
 });
+
+
+test('steady Stationhead media-clock confirmations do not re-enter Win32/WebView2 visibility checks', () => {
+  const from = player.indexOf('void StationheadPlayer::ApplyAudioPlaybackState(');
+  const to = player.indexOf('void StationheadPlayer::NavigateCurrentUrl(', from);
+  const apply = player.slice(from, to);
+  const condition = apply.indexOf('if (!preserveLoginRequired && !startupPreviewActive_ && !spotifyAuthorization_ &&');
+  const viewCheck = apply.indexOf('(viewVisible_ || selectedTab_ != StationheadTabKind::None)', condition);
+  const reconcile = apply.indexOf('SetVisible(false);', viewCheck);
+  assert.ok(condition >= 0 && viewCheck > condition && reconcile > viewCheck,
+    'healthy hidden profiles must avoid expensive surface and COM geometry inspection');
+  assert.match(apply, /if \(changed \|\| awaitingTrackBoundaryNavigation \|\|[\s\S]*preserveLoginRequired\) \{\s*PostChange\(/);
+  assert.match(apply, /ResetAudioLossEscalation\(\)/);
+  assert.match(apply, /status_\.loginRequired = preserveLoginRequired/);
+  // A confirmed foreground/recovery surface still returns behind dashboard.
+  const needsVisibilityRepair = ({ login, startup, auth, visible, tab }) =>
+    !login && !startup && !auth && (visible || tab !== 'none');
+  assert.equal(needsVisibilityRepair({
+    login: false, startup: false, auth: false, visible: false, tab: 'none',
+  }), false);
+  assert.equal(needsVisibilityRepair({
+    login: false, startup: false, auth: false, visible: true, tab: 'none',
+  }), true);
+  assert.equal(needsVisibilityRepair({
+    login: false, startup: false, auth: false, visible: false, tab: 'stationhead',
+  }), true);
+  assert.equal(needsVisibilityRepair({
+    login: true, startup: false, auth: false, visible: true, tab: 'stationhead',
+  }), false);
+  assert.equal(needsVisibilityRepair({
+    login: false, startup: true, auth: false, visible: true, tab: 'none',
+  }), false);
+});
