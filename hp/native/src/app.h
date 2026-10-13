@@ -103,6 +103,9 @@ class App {
   int64_t postRestartClickAt_ = 0;
   bool airHistoryDirty_ = false;
   bool stationheadPlacementDirty_ = true;
+  // All six players start with foreground permission off. Reconcile only
+  // when the selected interactive owner changes, rather than every App tick.
+  int lastStationheadForegroundOwner_ = -1;
   RECT placedBounds_{};
   // Fail closed until the audio-routing controller explicitly selects SH.
   bool stationheadAudioMuted_ = true;
