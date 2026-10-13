@@ -325,6 +325,9 @@ void CloudClient::Synchronize() {
     lastSuccess_ = IsoLocalNow();
     workerVersion_ = root.GetNamedString(L"workerVersion", L"").c_str();
   }
+  // A successful exchange ends the previous outage. The next failure must
+  // re-read the cache because a fresh dashboard payload may have replaced it.
+  lastPublishedCloudError_.clear();
   failures_ = 0;
 }
 
