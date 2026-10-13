@@ -57,14 +57,14 @@ test('identical concurrent cold track-history reads share one R2 assembly', asyn
     },
   };
   const request = () => new Request('https://pages-read-model.internal/_internal/pages-response?key=track-history&api=1&source=buddies');
-  const first = runPagesResponseFetch(request(), env, {}, dependencies);
-  const second = runPagesResponseFetch(request(), env, {}, dependencies);
+  const first = runPagesResponseFetch(request(), env, dependencies);
+  const second = runPagesResponseFetch(request(), env, dependencies);
   await Promise.resolve();
   assert.equal(calls, 1);
   release();
   const responses = await Promise.all([first, second]);
   assert.deepEqual(await Promise.all(responses.map((response) => response.json())), [{ calls: 1 }, { calls: 1 }]);
-  await (await runPagesResponseFetch(request(), env, {}, dependencies)).json();
+  await (await runPagesResponseFetch(request(), env, dependencies)).json();
   assert.equal(calls, 2, 'coalescing must not cache completed results');
 });
 
@@ -79,7 +79,7 @@ test('coalescing keeps distinct history query parameters independent', async () 
   };
   const read = (source) => runPagesResponseFetch(
     new Request(`https://pages-read-model.internal/_internal/pages-response?key=track-history&api=1&source=${source}`),
-    env, {}, dependencies,
+    env, dependencies,
   );
   const responses = await Promise.all([read('buddies'), read('ohisama')]);
   const bodies = await Promise.all(responses.map((response) => response.json()));
@@ -99,7 +99,7 @@ test('failed cold history loads do not poison retries', async () => {
   };
   const read = () => runPagesResponseFetch(
     new Request('https://pages-read-model.internal/_internal/pages-response?key=track-history&api=1&source=buddies'),
-    env, {}, dependencies,
+    env, dependencies,
   );
   assert.equal((await read()).status, 503);
   assert.equal((await read()).status, 200);
