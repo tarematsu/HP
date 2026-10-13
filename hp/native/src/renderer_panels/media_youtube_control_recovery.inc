@@ -386,12 +386,15 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       wake(0);
     });
     };
-    for (const name of ['yt-navigate-finish', 'yt-page-data-updated',
-                      'fullscreenchange']) {
+    for (const name of ['yt-navigate-finish', 'yt-page-data-updated']) {
     document.addEventListener(name, pageState, {
       capture: true, signal: state.pageAbort.signal
     });
     }
+    // Fullscreen changes require a status wake, not a video DOM rebind.
+    document.addEventListener('fullscreenchange', () => {
+      if (state.player === player) wake(0);
+    }, { capture: true, signal: state.pageAbort.signal });
     state.popup = document.querySelector('ytd-popup-container');
     if (state.popup) {
     const dialogSelector = 'tp-yt-paper-dialog,[role="dialog"],' +
