@@ -43,6 +43,16 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       return 1;
     case WM_SIZE:
       if (renderer_ && wParam != SIZE_MINIMIZED) {
+        const LONG width = static_cast<LONG>(LOWORD(lParam));
+        const LONG height = static_cast<LONG>(HIWORD(lParam));
+        // Repeated identical WM_SIZE messages must not relayout six WebView2
+        // hosts, refresh dashboard visibility and invalidate the entire UI.
+        // Initial/deferred startup still runs the full layout unconditionally.
+        if (rendererStarted_ && selectedTab_ == WorkspaceTab::Main &&
+            workspaceBounds_.right - workspaceBounds_.left == width &&
+            workspaceBounds_.bottom - workspaceBounds_.top == height) {
+          return 0;
+        }
         renderer_->Resize(LOWORD(lParam), HIWORD(lParam));
         LayoutWorkspace();
       }
