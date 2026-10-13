@@ -1,3 +1,18 @@
+// Keep the normalized WHERE expression identical to the migration index.
+// INDEXED BY locks this hot-path to the expected seek strategy; a provisioning
+// error that omits the index fails visibly rather than silently scanning all rows.
+export const WEEKLY_RANKING_FEATURED_HOST_SQL = `SELECT ranking_date,observed_at,ranking_type,rank,
+      channel_name AS host_name,channel_alias AS host_alias,
+      source_sheet,quality_score,quality_flags
+      FROM sh_channel_rankings INDEXED BY idx_other_channel_rankings_trimmed_host_date_rank
+      WHERE lower(trim(channel_name)) IN ('sakuramankai','sakurazaka46jp','nogizaka46smej')
+      ORDER BY ranking_date ASC,rank ASC,channel_name ASC`;
+
+export const WEEKLY_RANKING_FANDOM_HOST_SQL = `SELECT host_name,artist_name,relation_type FROM sh_channel_fandoms
+      INDEXED BY idx_sh_channel_fandoms_host_normalized
+      WHERE lower(trim(host_name)) IN ('sakuramankai','sakurazaka46jp','nogizaka46smej')
+      ORDER BY host_name`;
+
 import {
   stationheadChannelNameForHost,
   stationheadRankingHostKey as hostKey,
@@ -223,15 +238,8 @@ async function runWriteScript(db, statements) {
 export async function materializeWeeklyRankingReadModel(db, now = Date.now(), { force = false, initialize = true, includeModel = false } = {}) {
   if (initialize) await ensureReadModelTable(db);
   const [rankingResult, fandomResult, weeklyResult, latestResult, existing] = await Promise.all([
-    db.prepare(`SELECT ranking_date,observed_at,ranking_type,rank,
-      channel_name AS host_name,channel_alias AS host_alias,
-      source_sheet,quality_score,quality_flags
-      FROM sh_channel_rankings
-      WHERE lower(trim(channel_name)) IN ('sakuramankai','sakurazaka46jp','nogizaka46smej')
-      ORDER BY ranking_date ASC,rank ASC,channel_name ASC`).all(),
-    db.prepare(`SELECT host_name,artist_name,relation_type FROM sh_channel_fandoms
-      WHERE lower(trim(host_name)) IN ('sakuramankai','sakurazaka46jp','nogizaka46smej')
-      ORDER BY host_name`).all(),
+    db.prepare(WEEKLY_RANKING_FEATURED_HOST_SQL).all(),
+    db.prepare(WEEKLY_RANKING_FANDOM_HOST_SQL).all(),
     db.prepare(`SELECT period_key,period_start,period_end,sample_count,reliable_sample_count,
       listener_avg,listener_min,listener_max,stream_start,stream_end,stream_growth,
       member_start,member_end,member_growth,likes_max,distinct_tracks,primary_host,
