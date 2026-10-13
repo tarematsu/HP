@@ -18,6 +18,13 @@ import {
   replaceMusicTableBody,
 } from './music-service-runtime-common.js?v=20261004.2';
 
+import {
+  createRegionalFilters,
+  regionalProviderDate as providerDate,
+  regionalRankChartOptions,
+  renderRegionalServiceStatus,
+} from './music-service-regional-ui.js';
+
 const SERVICE = 'kugou_music';
 const OUT_OF_CHART_RANK = 101;
 const CHART_START_DATE = '2020-10-01';
@@ -27,8 +34,10 @@ let artistFilter = 'all';
 let activeRange = '1y';
 let lastPayload = null;
 
-function providerDate(value) { const text = String(value || '').trim(); return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : ''; }
-function providerDateText(value) { const date = providerDate(value); return date ? date.replaceAll('-', '/') : String(value || '-'); }
+function providerDateText(value) {
+  const date = providerDate(value);
+  return date ? date.replaceAll('-', '/') : String(value || '-');
+}
 function providerWeekdays(startValue, endValue) {
   const start = providerDate(startValue); const end = providerDate(endValue); if (!start || !end || start > end) return [];
   const cursor = new Date(`${start}T00:00:00Z`); const last = new Date(`${end}T00:00:00Z`); const dates = [];
@@ -36,13 +45,13 @@ function providerWeekdays(startValue, endValue) {
   return dates;
 }
 function artistVisible(canonicalArtist) { return ARTIST_ORDER.includes(canonicalArtist) && (artistFilter === 'all' || canonicalArtist === artistFilter); }
-function syncFilterButtons() { for (const button of document.querySelectorAll('[data-kugou-artist-filter]')) { const active = button.dataset.kugouArtistFilter === artistFilter; button.classList.toggle('active', active); button.setAttribute('aria-pressed', active ? 'true' : 'false'); } }
-function bindFilters() {
-  for (const button of document.querySelectorAll('[data-kugou-artist-filter]')) {
-    if (button.dataset.kugouFilterBound === '1') continue; button.dataset.kugouFilterBound = '1';
-    button.addEventListener('click', () => { const next = button.dataset.kugouArtistFilter || 'all'; if (next === artistFilter) return; artistFilter = next; if (lastPayload) render(lastPayload); else syncFilterButtons(); });
-  }
-}
+const regionalFilters = createRegionalFilters([
+  { attribute: 'kugou-artist-filter', get: () => artistFilter,
+    set: (value) => { artistFilter = value; } },
+], () => { if (lastPayload) render(lastPayload); });
+function syncFilterButtons() { regionalFilters.sync(); }
+function bindFilters() { regionalFilters.bind(); }
+
 function rankSeries(history, coveredDates = []) {
   const visibleDates = new Set(coveredDates);
   return ARTIST_ORDER.filter(artistVisible).map((canonicalArtist) => {
@@ -54,7 +63,10 @@ function rankSeries(history, coveredDates = []) {
 function renderRankChart({ containerId, legendId, history, coveredDates, ariaLabel, emptyText }) {
   const container = byId(containerId); const baseDates = (coveredDates.length ? coveredDates : [...new Set(history.map((item) => providerDate(item?.published_at)).filter(Boolean))]).filter((date) => date >= CHART_START_DATE).sort(); const dates = filterDatesByRange(baseDates, activeRange); const chartHistory = history.filter((item) => dates.includes(providerDate(item?.published_at))); const series = rankSeries(chartHistory, dates);
   ensureChartRangeControls(container, { owner: containerId, value: activeRange, onChange: (value) => { if (value === activeRange) return; activeRange = value; if (lastPayload) render(lastPayload); } });
-  renderRankHistoryChart({ container, series, dates, height: 320, margin: { left: 58, right: 18, top: 12, bottom: 34 }, yMax: OUT_OF_CHART_RANK, rankTicks: [1, 25, 50, 75, OUT_OF_CHART_RANK], dateTickCount: 5, ariaLabel, lineClass: 'kugou-rank-line', emptyClass: 'music-service-rank-empty', emptyText, rankLabel: (rank) => rank === OUT_OF_CHART_RANK ? '圏外' : `${rank}位`, dateLabel: providerDateText, latestPoint: { radius: () => 2.5 }, legendContainer: byId(legendId) });
+  renderRankHistoryChart({ ...regionalRankChartOptions({
+    containerId, legendId, series, dates, ariaLabel, emptyText,
+    dateLabel: providerDateText,
+  }) });
 }
 function renderHistoryTable({ bodyId, history, emptyText }) {
   const body = replaceMusicTableBody(bodyId); if (!body) return;
@@ -63,10 +75,7 @@ function renderHistoryTable({ bodyId, history, emptyText }) {
   for (const item of ordered) { const rank = Number(item.rank); appendTableRow(body, [providerDateText(item.published_at), MUSIC_ARTIST_LABELS[item.canonical_artist] || item.canonical_artist || '-', Number.isFinite(rank) ? (rank >= OUT_OF_CHART_RANK ? '圏外' : `${integerFormat.format(rank)}位`) : '-', item.title || '-']); }
 }
 function renderStatus(payload) {
-  const state = (payload.services || []).find((item) => item.service === SERVICE) || null;
-  if (state?.status === 'error') setNotice('kugouMusicNotice', '酷狗音乐の収集でエラーが発生しています。直前までの正常データを表示しています。', true);
-  else if (state?.status === 'degraded') setNotice('kugouMusicNotice', '酷狗音乐の一部項目の取得に失敗しています。取得できたデータのみ表示しています。');
-  else setNotice('kugouMusicNotice');
+  renderRegionalServiceStatus(payload, { service: SERVICE, noticeId: 'kugouMusicNotice', label: '酷狗音乐' });
 }
 function render(payload) {
   lastPayload = payload; bindFilters(); syncFilterButtons(); setText('kugouMusicUpdatedAt', musicDateTimeText(payload.updated_at)); setText('kugouMusicCadence', MUSIC_SERVICE_CADENCE[SERVICE] || '-'); renderStatus(payload);
