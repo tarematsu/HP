@@ -1,10 +1,34 @@
 import {
   mountMusicServiceView,
-  musicServiceSakamichiFilter,
-  musicServiceRankingHistoryTable,
-  musicServiceRankChart,
-  musicServiceSection,
+  musicServiceRegionalChartPair,
 } from './music-service-shell.js?v=20261004.2';
+
+const rankingSections = [
+  {
+    chartSectionId: 'kugouJapanChartSection',
+    historySectionId: 'kugouJapanHistorySection',
+    chartTitle: '酷狗音乐 日本榜 グループ別最高順位推移',
+    historyTitle: '酷狗音乐 日本榜 ランクイン履歴',
+    chartId: 'kugouJapanRankChart',
+    legendId: 'kugouJapanRankLegend',
+    historyBodyId: 'kugouJapanHistoryBody',
+    filterAriaLabel: '酷狗音乐 日本榜 表示グループ',
+    dateLabel: '年月日',
+  },
+  {
+    chartSectionId: 'kugouAcgChartSection',
+    historySectionId: 'kugouAcgHistorySection',
+    chartTitle: '酷狗音乐 ACG新歌榜 グループ別最高順位推移',
+    historyTitle: '酷狗音乐 ACG新歌榜 ランクイン履歴',
+    chartId: 'kugouAcgRankChart',
+    legendId: 'kugouAcgRankLegend',
+    historyBodyId: 'kugouAcgHistoryBody',
+    filterAriaLabel: '酷狗音乐 ACG新歌榜 表示グループ',
+  },
+].flatMap((config) => musicServiceRegionalChartPair({
+  ...config,
+  filterAttribute: 'kugou-artist-filter',
+}));
 
 mountMusicServiceView({
   viewId: 'kugouMusicView',
@@ -14,28 +38,5 @@ mountMusicServiceView({
     valueId: 'kugouMusicUpdatedAt',
     cadenceId: 'kugouMusicCadence',
   },
-  sections: [
-    musicServiceSection({
-      id: 'kugouJapanChartSection',
-      title: '酷狗音乐 日本榜 グループ別最高順位推移',
-      bodyHtml: musicServiceRankChart({ legendId: 'kugouJapanRankLegend', chartId: 'kugouJapanRankChart' }),
-    }),
-    musicServiceSection({
-      id: 'kugouJapanHistorySection', group: 'list',
-      title: '酷狗音乐 日本榜 ランクイン履歴',
-      trailingHtml: musicServiceSakamichiFilter({ dataAttribute: 'kugou-artist-filter', ariaLabel: '酷狗音乐 日本榜 表示グループ' }),
-      bodyHtml: musicServiceRankingHistoryTable('kugouJapanHistoryBody', '年月日'),
-    }),
-    musicServiceSection({
-      id: 'kugouAcgChartSection',
-      title: '酷狗音乐 ACG新歌榜 グループ別最高順位推移',
-      bodyHtml: musicServiceRankChart({ legendId: 'kugouAcgRankLegend', chartId: 'kugouAcgRankChart' }),
-    }),
-    musicServiceSection({
-      id: 'kugouAcgHistorySection', group: 'list',
-      title: '酷狗音乐 ACG新歌榜 ランクイン履歴',
-      trailingHtml: musicServiceSakamichiFilter({ dataAttribute: 'kugou-artist-filter', ariaLabel: '酷狗音乐 ACG新歌榜 表示グループ' }),
-      bodyHtml: musicServiceRankingHistoryTable('kugouAcgHistoryBody'),
-    }),
-  ],
+  sections: rankingSections,
 });
