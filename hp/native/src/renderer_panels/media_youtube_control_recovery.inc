@@ -419,6 +419,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       pageStateQueued = false;
       if (state.player !== player) return;
       state.playerNeedsRefresh = true;
+      state.adCandidatesDirty = true;
       state.dialogCheckedAt = 0;
       bindVideo(true);
       wake(0);
