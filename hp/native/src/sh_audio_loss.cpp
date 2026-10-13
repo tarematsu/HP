@@ -432,7 +432,9 @@ void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
       !snapshot.created || snapshot.navigating || snapshot.processFailed ||
       recreating_.load(std::memory_order_acquire) ||
       navigationInFlight_.load(std::memory_order_acquire);
-  const bool audioPlaying = AudioPlaying();
+  // ReadSchedulerState() already captures the current audio signal. Avoid a
+  // second cross-component audio query on every fast tick for each profile.
+  const bool audioPlaying = snapshot.audioPlaying;
   const int64_t playingSince = AudioPlayingSince();
   const int64_t playingForMs = playingSince > 0 && nowMs >= playingSince
       ? nowMs - playingSince
