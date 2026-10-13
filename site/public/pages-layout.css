@@ -588,6 +588,12 @@ body {
 .music-service-group { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:16px; align-items:start; }
 .music-service-group[hidden] { display:none!important; }
 .music-service-group > .music-service-section { min-width:0; }
+.music-service-group .table-wrap > table { width:100%; min-width:0; table-layout:fixed; }
+.music-service-group .table-wrap :is(th,td) { white-space:normal; overflow-wrap:anywhere; }
+.music-service-group .spotify-table col.col-compact { width:9%; }
+.music-service-group .spotify-table col.col-number { width:25%; }
+.music-service-group .spotify-table col.col-delta { width:22%; }
+
 .music-service-section:only-child { grid-column:1/-1; }
 .dashboard-view :is(th,td) { color:var(--text); }
 .dashboard-view th { background:var(--panel-2); font-weight:650; }
