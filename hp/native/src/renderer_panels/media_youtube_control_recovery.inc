@@ -424,6 +424,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   }
   state.adActive = false;
   state.surveySelected = false;
+)JS" LR"JS(
   const currentTime = Number(video?.currentTime);
   if (Number.isFinite(currentTime)) {
     if (state.lastCurrentTime < 0 || currentTime > state.lastCurrentTime + 0.25 ||
