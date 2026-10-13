@@ -31,10 +31,14 @@ export function renderTable(payload) {
   body.replaceChildren();
   const rows = Array.isArray(payload?.rows) ? payload.rows : [];
   for (const row of rows) {
-    appendTableRow(body, columns.map((column) => ({
+    const tr = appendTableRow(body, columns.map((column) => ({
       text: cellText(column, row),
       className: column.numeric ? 'leaderboard-number' : '',
     })));
+    // Expose table headers for the stacked mobile layout without duplicating content.
+    tr?.querySelectorAll('td').forEach((cell, index) => {
+      cell.dataset.label = columns[index]?.label || '';
+    });
   }
   if (!rows.length) appendEmptyTableRow(body, 'リーダーボードデータはありません。', Math.max(1, columns.length));
 }
