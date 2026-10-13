@@ -102,7 +102,7 @@ test('hidden Keep Watching does not displace visible Close', () => {
   assert.deepEqual(result.actions, ['dialog-close']);
 });
 
-function adScenario({ controls = [], skipButtons = [], selected = false } = {}) {
+function adScenario({ controls = [], skipButtons = [], selected = false, skipFirst = false } = {}) {
   const calls = [];
   const state = { surveySelected: selected };
   const survey = {
@@ -110,14 +110,24 @@ function adScenario({ controls = [], skipButtons = [], selected = false } = {}) 
     querySelectorAll: () => controls,
   };
   let queryCount = 0;
+  let iterated = 0;
   const player = {
     querySelectorAll: selector => {
       assert.equal(selector, '.survey,[role="dialog"],.skip');
       queryCount++;
-      return [survey, ...skipButtons.map(button => ({
+      const skips = skipButtons.map(button => ({
         ...button,
         matches: target => target.includes('.skip'),
-      }))];
+      }));
+      const candidates = skipFirst ? [...skips, survey] : [survey, ...skips];
+      return {
+        *[Symbol.iterator]() {
+          for (const candidate of candidates) {
+            iterated++;
+            yield candidate;
+          }
+        },
+      };
     },
   };
   const code = section('  if (adActive) {', '  state.adActive = false;');
@@ -141,7 +151,7 @@ function adScenario({ controls = [], skipButtons = [], selected = false } = {}) 
       wake: delay => calls.push('wake:' + delay),
     },
   );
-  return { calls, outcome, state, queryCount };
+  return { calls, outcome, state, queryCount, iterated };
 }
 
 test('YouTube ad survey retains option-first, then submit, with one label read per control', () => {
@@ -171,6 +181,8 @@ test('skip-ad first-valid candidate and ad fallback remain intact without an arr
   assert.equal(skip.outcome.action, 'skip-ad');
   assert.deepEqual(skip.calls, ['skip-ad']);
   assert.equal(skip.queryCount, 1, 'skip-only ads also scan the player only once');
+  assert.equal(skip.iterated, 3,
+    'skip fallback uses one candidate traversal including its survey root');
 
   const missing = adScenario();
   assert.equal(missing.outcome, 'recovery');
@@ -179,6 +191,20 @@ test('skip-ad first-valid candidate and ad fallback remain intact without an arr
   assert.doesNotMatch(runtime.slice(runtime.indexOf('if (adActive) {'),
     runtime.indexOf('  state.adActive = false;')), /recheck\(\)/,
     'ordinary ad fallback should not emit 2s recovery wakeups');
+});
+
+test('surveys take priority even when a valid Skip Ad appears earlier in DOM order', () => {
+  const submit = { id: 11, label: '送信' };
+  const option = { id: 12, label: '回答1' };
+  const first = adScenario({
+    skipButtons: [{ id: 1, label: 'skip' }],
+    controls: [submit, option],
+    skipFirst: true,
+  });
+  assert.equal(first.outcome.action, 'survey-option');
+  assert.equal(first.outcome.id, 12);
+  assert.equal(first.queryCount, 1);
+  assert.equal(first.iterated, 2, 'prior Skip Ad and survey are checked in one pass');
 });
 
 test('YouTube hot paths avoid Array.from and preserve exact trusted action names', () => {
