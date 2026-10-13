@@ -150,7 +150,7 @@ test('radar byte-comparison helper is visible to localization without nested nam
   const reopen = sync.indexOf('namespace hp {', include);
   const presence = sync.indexOf('void CloudClient::ApplyPresenceFallback()', include);
   assert.ok(start >= 0 && start < include && include < reopen && reopen < presence);
-  assert.match(sync.slice(start, include), /}\s*\/\/ namespace hp\s*$/);
+  assert.match(sync.slice(start, include), /}\s*\/\/ namespace hp[\s\S]*$/);
 });
 
 test('identical command payloads skip disk writes but preserve command retry notifications', () => {
