@@ -60,6 +60,7 @@ test('YouTube and TVer watchdog decisions retain page classification and recover
                        '  void Fail() noexcept {');
   assert.match(youtube, /phase_ != Phase::YouTube \|\| !webview_ \|\| !IsYoutubeWatchPage\(\)/);
   assert.match(youtube, /phase_ != Phase::YouTube \|\| !IsYoutubeWatchPage\(\)/);
-  assert.match(tver, /phase_ != Phase::Tver \|\| !webview_ \|\| !IsTverPage\(\)/);
+  assert.match(tver, /phase_ != Phase::Tver \|\| !webview_\) return;/);
+  assert.match(tver, /if \(!IsTverPage\(\)\) \{\s*SetRecoveryState\(RecoveryState::Reloading\);\s*NavigateCurrentPhase\(\)/);
   assert.match(tver, /phase_ != Phase::Tver \|\| !IsTverPage\(\)/);
 });
