@@ -30,16 +30,32 @@ export function renderTable(payload) {
   head.replaceChildren(tr);
   body.replaceChildren();
   const rows = Array.isArray(payload?.rows) ? payload.rows : [];
+  const mobileList = byId('leaderboardMobileList');
+  mobileList?.replaceChildren();
   for (const row of rows) {
-    const tr = appendTableRow(body, columns.map((column) => ({
+    appendTableRow(body, columns.map((column) => ({
       text: cellText(column, row),
       className: column.numeric ? 'leaderboard-number' : '',
     })));
-    // Expose table headers for the stacked mobile layout without duplicating content.
-    tr?.querySelectorAll('td').forEach((cell, index) => {
-      cell.dataset.label = columns[index]?.label || '';
-    });
+    if (!mobileList) continue;
+    const card = document.createElement('article');
+    card.className = 'leaderboard-mobile-card';
+    for (const column of columns) {
+      const field = document.createElement('div');
+      field.className = 'leaderboard-mobile-field';
+      field.dataset.key = column.key || '';
+      const label = document.createElement('span');
+      label.className = 'leaderboard-mobile-label';
+      label.textContent = column.label || column.key || '';
+      const value = document.createElement('span');
+      value.className = 'leaderboard-mobile-value';
+      value.textContent = cellText(column, row);
+      field.append(label, value);
+      card.append(field);
+    }
+    mobileList.append(card);
   }
+  if (mobileList && !rows.length) mobileList.textContent = 'リーダーボードデータはありません。';
   if (!rows.length) appendEmptyTableRow(body, 'リーダーボードデータはありません。', Math.max(1, columns.length));
 }
 
