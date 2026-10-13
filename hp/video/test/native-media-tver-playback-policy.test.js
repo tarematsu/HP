@@ -88,7 +88,7 @@ test('TVer program speed is applied only to long-form non-ad media and volume st
 });
 
 test('TVer observation is player-scoped and event-driven', () => {
-  assert.match(runtime, /state\.playerObserver = new MutationObserver\(\(\) => wake\(0\)\)/);
+  assert.match(runtime, /state\.playerObserver = new MutationObserver\(wakeForPlayerMutation\)/);
   assert.match(runtime, /state\.playerObserver\.observe\(player/);
   assert.match(runtime, /state\.videoAbort = new AbortController/);
   assert.match(runtime, /document\.addEventListener\('fullscreenchange'/);

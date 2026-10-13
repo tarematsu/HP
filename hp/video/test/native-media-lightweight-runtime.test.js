@@ -26,7 +26,7 @@ const youtubePlaylistFallback = readFileSync(
 const mediaPanel = [mediaBase, mediaHost, mediaWindow].join('\n');
 
 test('TVer uses one player-local observer plus media events', () => {
-  assert.match(tverEpisode, /state\.playerObserver = new MutationObserver\(\(\) => wake\(0\)\)/);
+  assert.match(tverEpisode, /state\.playerObserver = new MutationObserver\(wakeForPlayerMutation\)/);
   assert.match(tverEpisode, /state\.playerObserver\.observe\(player/);
   assert.match(tverEpisode, /state\.videoAbort = new AbortController/);
   assert.match(tverEpisode, /'playing','pause','waiting','stalled','ended','error'/);

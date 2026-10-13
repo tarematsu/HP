@@ -31,7 +31,7 @@ test('TVer ad skip is event-driven and uses the shared trusted-click target path
   assert.match(runtime, /const adActive = ad\(\)/);
   assert.match(runtime, /skipPattern/);
   assert.match(runtime, /arm\(skip, 'skip-ad', 600\)/);
-  assert.match(runtime, /new MutationObserver\(\(\) => wake\(0\)\)/);
+  assert.match(runtime, /new MutationObserver\(wakeForPlayerMutation\)/);
   assert.match(runtime, /attributeFilter: \['class','disabled','aria-disabled','aria-hidden'\]/);
   assert.doesNotMatch(runtime, /setInterval\(/);
   assert.doesNotMatch(runtime, /\.click\(\)/);
