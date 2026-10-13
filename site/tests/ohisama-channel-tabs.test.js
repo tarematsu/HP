@@ -18,9 +18,9 @@ test('all three Stationhead sources mount the exact same shared subtree', () => 
     assert.match(wrapper, /mountStationheadSourceShell/);
     assert.doesNotMatch(wrapper, /dashboardMetric|dashboardChartCard|dashboardTable|stationheadPlaybackCards/);
   }
-  assert.match(buddies, /mountStationheadSourceShell\\('buddies'\\)/);
-  assert.match(ohisama, /mountStationheadSourceShell\\('ohisama'\\)/);
-  assert.match(nogizaka, /mountStationheadSourceShell\\('nogizaka'\\)/);
+  assert.ok(buddies.includes("mountStationheadSourceShell('buddies')"));
+  assert.ok(ohisama.includes("mountStationheadSourceShell('ohisama')"));
+  assert.ok(nogizaka.includes("mountStationheadSourceShell('nogizaka')"));
   const sourceFactory = readFileSync(new URL('../public/stationhead-source-shell.js', import.meta.url), 'utf8');
   assert.match(sourceFactory, /export function mountStationheadSourceShell/);
   assert.match(sourceFactory, /mountStationheadChannelShell/);
