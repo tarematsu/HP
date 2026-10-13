@@ -29,3 +29,13 @@ test('shared leaderboard owns only metadata, chart, and data surfaces', () => {
   assert.doesNotMatch(shell, /history-ranking-compact-layout\.js/);
   assert.doesNotMatch(historyShell, /rankingCompactMeta|rankingUpdatedAt|history-ranking-compact-layout\.js/);
 });
+
+test('mobile leaderboard uses labelled card rows without truncating host and channel fields', () => {
+  const table = readFileSync(new URL('../public/leaderboard/table.js', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../public/leaderboard.css', import.meta.url), 'utf8');
+  assert.match(table, /cell\.dataset\.label = columns\[index\]\?\.label/);
+  assert.match(css, /@media \(max-width: 600px\)/);
+  assert.match(css, /\.leaderboard-table tbody tr\s*\{\s*display: grid/);
+  assert.match(css, /content: attr\(data-label\)/);
+  assert.match(shell, /週間リーダーボード/);
+});
