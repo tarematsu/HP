@@ -32,6 +32,33 @@ const PUBLIC_R2_MODEL_KEYS = new Set([
   TRACK_HISTORY_MODEL_KEY,
 ]);
 
+// Concurrent identical cold cache misses otherwise deserialize and assemble the
+// same track-history R2 shards more than once. Keep this strictly in-flight:
+// published models can change, and the edge cache owns completed responses.
+const trackHistoryPendingByR2 = new WeakMap();
+const MAX_INFLIGHT_HISTORY_QUERIES = 64;
+
+async function loadTrackHistoryCoalesced(r2, dependencies, url, load) {
+  // A binding is stable within a production isolate. Injected dependencies keep
+  // independent test callers isolated when no R2 binding is supplied.
+  const identity = r2 && typeof r2 === 'object' ? r2 : dependencies;
+  let pending = trackHistoryPendingByR2.get(identity);
+  if (!pending) {
+    pending = new Map();
+    trackHistoryPendingByR2.set(identity, pending);
+  }
+  const key = url.href;
+  const existing = pending.get(key);
+  if (existing) return (await existing).clone();
+  const current = Promise.resolve().then(load);
+  if (pending.size < MAX_INFLIGHT_HISTORY_QUERIES) pending.set(key, current);
+  try {
+    return await current;
+  } finally {
+    if (pending.get(key) === current) pending.delete(key);
+  }
+}
+
 let trackHistoryApiModulePromise;
 function loadTrackHistoryApiModule() {
   trackHistoryApiModulePromise ||= import('./pages-track-history-r2-api.js');
@@ -114,12 +141,15 @@ export async function runPagesResponseFetch(
       }
       const loadTrackHistoryApi = dependencies.loadTrackHistoryApiResponse
         || (await loadTrackHistoryApiModule()).loadTrackHistoryR2ApiResponse;
-      response = await loadTrackHistoryApi(
-        env?.PAGES_RESPONSE_R2,
-        request,
-        now,
-        materializedStaleMaximumAge(env, maximumAge),
-        dependencies.trackHistory || EMPTY_DEPENDENCIES,
+      response = await loadTrackHistoryCoalesced(
+        env?.PAGES_RESPONSE_R2, dependencies, url,
+        () => loadTrackHistoryApi(
+          env?.PAGES_RESPONSE_R2,
+          request,
+          now,
+          materializedStaleMaximumAge(env, maximumAge),
+          dependencies.trackHistory || EMPTY_DEPENDENCIES,
+        ),
       );
       if (cache && context && response?.ok) {
         context.waitUntil(cache.put(cacheKey, response.clone()).catch(() => {}));
@@ -140,10 +170,16 @@ export async function runPagesResponseFetch(
       }
     }
     const elapsedMs = Date.now() - startedAt;
-    if (elapsedMs >= 100 && PUBLIC_R2_MODEL_KEYS.has(modelKey)) {
+    // The telemetry audit redacts query parameters. Emit only the validated
+    // model key for slow internal reads so a later CPU breach can be correlated
+    // with the offending read path without logging arbitrary query values.
+    if (elapsedMs >= 10 && PUBLIC_R2_MODEL_KEYS.has(modelKey)) {
       console.info(JSON.stringify({
         event: 'pages_response_slow_read', model_key: modelKey,
-        api: url.searchParams.get('api') === '1', elapsed_ms: elapsedMs,
+        api: url.searchParams.get('api') === '1',
+        read_path: modelKey === TRACK_HISTORY_MODEL_KEY && url.searchParams.get('api') === '1'
+          ? 'track-history-r2-api' : 'canonical-r2',
+        elapsed_ms: elapsedMs,
       }));
     }
     return response || new Response(null, {
