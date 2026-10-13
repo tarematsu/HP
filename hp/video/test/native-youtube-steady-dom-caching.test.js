@@ -111,7 +111,10 @@ test('YouTube SPA event burst refreshes video selection once per microtask', () 
   let binds = 0;
   let wakes = 0;
   const player = {};
-  const state = { player, pageAbort: { signal: {} } };
+  const state = {
+    player, pageAbort: { signal: {} },
+    dialogCheckedAt: 1000, dialogActive: false,
+  };
   vm.runInNewContext(
     '(() => { ' + source + '\nreturn null; })()',
     {
@@ -144,12 +147,16 @@ test('YouTube SPA event burst refreshes video selection once per microtask', () 
   pending.shift()();
   assert.equal(binds, 1);
   assert.equal(wakes, 1);
+  assert.equal(state.dialogCheckedAt, 1000,
+    'SPA data notifications must not restart the five-minute dialog timer');
 
   for (let i = 0; i < 50; i++) notify();
   assert.equal(pending.length, 1);
   pending.shift()();
   assert.equal(binds, 2, 'a later navigation burst must still be handled');
   assert.equal(wakes, 2);
+  assert.equal(state.dialogCheckedAt, 1000,
+    'later navigation bursts preserve the same dialog scan budget');
 
   notify();
   state.player = {};
@@ -168,6 +175,48 @@ test('YouTube SPA event burst refreshes video selection once per microtask', () 
     'fullscreen does not invalidate the cached player');
 });
 
+
+test('returning from a long ad resets content stall grace before fullscreen recovery', () => {
+  const code = section('  const adActive = ad();', '  if (adActive) {');
+  const run = ({ wasAd, adNow, fullscreenNow, now = 120000 }) => {
+    const state = {
+      adActive: wasAd,
+      lastProgressAt: 1000,
+      lastCurrentTime: 75,
+      nextRequestedAt: 5000,
+    };
+    const result = vm.runInNewContext(
+      '(() => { ' + code + "\nreturn 'normal'; })()",
+      {
+        state, now,
+        ad: () => adNow,
+        syncAdObserver: () => {},
+        fullscreen: () => fullscreenNow,
+        video: { paused: false },
+        requestFullscreen: () => 'request-fullscreen',
+      },
+    );
+    return { state, result };
+  };
+
+  const adEnding = run({ wasAd: true, adNow: false, fullscreenNow: false });
+  assert.equal(adEnding.result, 'request-fullscreen',
+    'missing fullscreen still takes the existing recovery path');
+  assert.equal(adEnding.state.lastProgressAt, 120000,
+    'stall grace resets before fullscreen recovery can return early');
+  assert.equal(adEnding.state.lastCurrentTime, -1);
+  assert.equal(adEnding.state.nextRequestedAt, 0);
+
+  const steady = run({ wasAd: false, adNow: false, fullscreenNow: true });
+  assert.equal(steady.result, 'normal');
+  assert.equal(steady.state.lastProgressAt, 1000,
+    'healthy non-ad probes must not reset the stall detector');
+  assert.equal(steady.state.lastCurrentTime, 75);
+
+  const stillAd = run({ wasAd: true, adNow: true, fullscreenNow: true });
+  assert.equal(stillAd.state.lastProgressAt, 1000,
+    'ad playback itself is not misinterpreted as content progress');
+});
 
 test('rare YouTube dialogs scan every five minutes and retry visible prompts in 30 seconds', () => {
   const code = section('  const dismissMessageDialog = () => {', '  const bindVideo =');
