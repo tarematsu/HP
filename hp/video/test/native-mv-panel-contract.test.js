@@ -88,7 +88,7 @@ test('phase clock is removed while cursor hiding remains', () => {
 
 test('YouTube preserves playlist playback, one-shot 360p, captions off, skip and robust fullscreen', () => {
   assert.match(mediaBase, /homepanel-cloud\.tarematsu\.workers\.dev\/v1\/native\/youtube-start/);
-  assert.match(mediaBase, /kNativeMediaYoutubeWatchdogHealthyMs = 30U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaYoutubeWatchdogHealthyMs = 60U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogRecoveryMs = 2U \* 1000U/);
   assert.match(youtubeRuntime, /const preferredQuality = 'medium'/);
   assert.match(youtubeRuntime, /setPlaybackQualityRange\(preferredQuality, preferredQuality\)/);
