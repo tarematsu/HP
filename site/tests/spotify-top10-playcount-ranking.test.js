@@ -38,3 +38,15 @@ test('Spotify daily artist rank graph keeps only the three Sakamichi groups in S
   assert.deepEqual(ranked.map((item) => item.artistKey), ['sakurazaka46', 'nogizaka46', 'hinatazaka46']);
   assert.deepEqual(ranked.map((item) => item.colorIndex), [0, 1, 2]);
 });
+
+
+test('artist rankings render without any playcount history and retain name matching', () => {
+  const ranked = normalizeArtistRankSeries({ days: [{ chart_date: '2026-10-13', entries: [
+    { artist_key: 'nogizaka46', artist_name: '乃木坂46', rank: 18 },
+    { artist_name: '櫻坂46', rank: 25 },
+    { artist_key: 'other', artist_name: 'Other', rank: 1 },
+  ] }] });
+  assert.deepEqual(ranked.map(series => [series.artistKey, series.points[0].rank]), [
+    ['sakurazaka46', 25], ['nogizaka46', 18],
+  ]);
+});

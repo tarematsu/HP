@@ -250,6 +250,16 @@ try {
       if (mode === 'spotify') {
         assert.deepEqual(await page.locator('#spotifyView .music-service-view-tabs button').allTextContents(),
           ['総再生数', '今年リリース曲再生数', '月間リスナー', '順位']);
+        const tableBounds = await page.locator('#spotifyTrackSection table').evaluate(table => {
+          const wrap = table.closest('.table-wrap');
+          const bounds = wrap.getBoundingClientRect();
+          return [...table.querySelectorAll('thead th')].map(cell => {
+            const cellBounds = cell.getBoundingClientRect();
+            return { label: cell.textContent, fits: cellBounds.left >= bounds.left - 2 && cellBounds.right <= bounds.right + 2 };
+          });
+        });
+        assert.equal(tableBounds.length, 4);
+        assert.ok(tableBounds.every(cell => cell.fits), `${label}: all playcount columns fit without horizontal scrolling`);
         for (const group of ['plays', 'year', 'listeners', 'ranks']) {
           const panel = page.locator(`#spotifyView .music-service-group[data-group="${group}"]`);
           assert.equal(await panel.locator('[data-service-group]').count(), 2, `${group}: graph and list share one panel`);

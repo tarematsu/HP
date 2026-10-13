@@ -260,8 +260,10 @@ function renderTrendChart(trend = {}, {
 }
 
 export function normalizeArtistRankSeries(chart = {}, trend = {}) {
-  const tracked = graphTrendSeries(normalizeTrendSeries(trend));
-  const byKey = new Map(tracked.map((series) => [series.artistKey, { artistKey: series.artistKey, artistName: series.artistName, points: [] }]));
+  const names = { sakurazaka46: '櫻坂46', nogizaka46: '乃木坂46', hinatazaka46: '日向坂46' };
+  const trendNames = new Map(normalizeTrendSeries(trend).map(series => [series.artistKey, series.artistName]));
+  const tracked = GRAPH_ARTIST_KEYS.filter(key => selectedArtistKey === 'all' || selectedArtistKey === key);
+  const byKey = new Map(tracked.map(key => [key, { artistKey: key, artistName: trendNames.get(key) || names[key], points: [] }]));
   const byName = new Map([...byKey.values()].map((series) => [series.artistName, series]));
   const days = (Array.isArray(chart?.days) ? [...chart.days] : [])
     .filter((day) => /^\d{4}-\d{2}-\d{2}$/.test(String(day?.chart_date || '')))
