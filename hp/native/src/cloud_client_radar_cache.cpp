@@ -195,8 +195,12 @@ std::vector<uint8_t> CloudClient::LocalizeRadarTiles(
         }
         const fs::path target = localPathFor(pathname);
         if (pruneDue) retained.insert(target.wstring());
+        // One metadata query covers both missing and zero-byte cached tiles.
+        // A bundle may contain hundreds of tiles; exists()+file_size() did
+        // two filesystem round trips for every already-cached image.
         std::error_code error;
-        if (!fs::exists(target, error) || fs::file_size(target, error) == 0) {
+        const auto cachedSize = fs::file_size(target, error);
+        if (error || cachedSize == 0) {
           if (!AtomicWriteBytes(target, response.body.data() + offset, bodyLength)) {
             throw std::runtime_error("radar bundle cache write failed");
           }
@@ -217,8 +221,10 @@ std::vector<uint8_t> CloudClient::LocalizeRadarTiles(
     if (url.empty() || url.front() != L'/') return;
     const fs::path target = localPathFor(url);
     if (pruneDue) retained.insert(target.wstring());
+    // Likewise avoid a second metadata query for standalone tile fallback.
     std::error_code error;
-    if (!fs::exists(target, error) || fs::file_size(target, error) == 0) {
+    const auto cachedSize = fs::file_size(target, error);
+    if (error || cachedSize == 0) {
       const auto response = Request(L"GET", url, deviceToken_);
       if (response.status != 200 || response.body.empty()) {
         log_.Warn(L"Radar tile cache fetch failed; using remote tile URL: HTTP " +
