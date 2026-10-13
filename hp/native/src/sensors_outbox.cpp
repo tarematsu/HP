@@ -60,9 +60,17 @@ void SensorHub::LoadOutbox() {
 }
 
 bool SensorHub::RewriteOutboxLocked(const std::deque<Sample>& samples) {
-  std::ostringstream text;
-  for (const auto& sample : samples) text << SampleJson(sample) << '\n';
-  return AtomicWriteText(outboxPath_, text.str());
+  // Acknowledgement/rebase may rebuild an entire offline backlog. Append
+  // directly so no transient sample string or ostringstream buffer is needed.
+  std::string text;
+  if (samples.size() <= text.max_size() / 192) {
+    text.reserve(samples.size() * 192);
+  }
+  for (const auto& sample : samples) {
+    AppendSampleJson(text, sample);
+    text.push_back('\n');
+  }
+  return AtomicWriteText(outboxPath_, text);
 }
 
 std::string SensorHub::BuildTelemetryPayload(const std::wstring& deviceId,
@@ -86,7 +94,7 @@ std::string SensorHub::BuildTelemetryPayload(const std::wstring& deviceId,
   body += ",\"samples\":[";
   for (size_t i = 0; i < count; ++i) {
     if (i) body.push_back(',');
-    body += SampleJson(outbox_[i]);
+    AppendSampleJson(body, outbox_[i]);
   }
   body += "]}";
   return body;
