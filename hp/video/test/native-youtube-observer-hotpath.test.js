@@ -73,7 +73,9 @@ test('YouTube ad observers avoid page-wide attribute monitoring', () => {
   let now = 1000;
   let dueAt = null;
   let scheduled = 0;
+  let wakeCalls = 0;
   const wake = delay => {
+    wakeCalls++;
     const next = now + delay;
     if (dueAt !== null && dueAt <= next) return;
     dueAt = next;
@@ -140,8 +142,15 @@ test('YouTube ad observers avoid page-wide attribute monitoring', () => {
   observer.callback([event(player, [wrapper])]);
   assert.equal(scheduled, 1);
   assert.equal(dueAt, 1180);
+  assert.equal(wakeCalls, 1);
   assert.equal(controlScans, 1, 'mutation callback defers costly observer rebinding');
-  for (let i = 0; i < 100; i++) observer.callback([event(player, [wrapper])]);
+  const noisy = node('unrelated');
+  noisy.matches = () => { throw new Error('queued wake must bypass DOM classification'); };
+  for (let i = 0; i < 100; i++) {
+    observer.callback([event(player, [noisy])]);
+    observer.callback([event(player, [wrapper])]);
+  }
+  assert.equal(wakeCalls, 1, 'dense child-list bursts have just one wake attempt');
   assert.equal(controlScans, 1, 'dense Skip Ad DOM bursts also defer the scan');
   syncAdObserver(true);
   assert.equal(controlScans, 2, 'the next coalesced probe rebuilds subscriptions once');
@@ -151,15 +160,18 @@ test('YouTube ad observers avoid page-wide attribute monitoring', () => {
   assert.ok(!attrObserver.observations.some(x => x.target === player || x.target === unrelated));
   for (let i = 0; i < 100; i++) attrObserver.callback([attr(skip)]);
   assert.equal(scheduled, 1, 'control class/ARIA bursts must share one pending wake');
+  assert.equal(wakeCalls, 2, '100 attribute notifications make one new wake attempt');
 
   now = 1180;
   dueAt = null;
+  syncAdObserver(true);
   attrObserver.callback([attr(wrapper)]);
   assert.equal(scheduled, 2, 'ancestor class changes still trigger detection');
   assert.equal(dueAt, 1360);
 
   now = 1360;
   dueAt = null;
+  syncAdObserver(true);
   controls = [skip, survey];
   survey.parentElement = player;
   observer.callback([event(player, [survey])]);
@@ -190,6 +202,7 @@ test('YouTube ad observers avoid page-wide attribute monitoring', () => {
   assert.equal(state.adControlObserver, null);
   assert.equal(state.adObservedNodes, null);
   assert.equal(state.refreshAdAttributes, null);
+  assert.equal(state.adMutationWakePending, false);
   assert.match(runtime, /wake\(\(flags & 5\) \? 0 : 80\)/);
 });
 
