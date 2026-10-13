@@ -18,29 +18,41 @@ inline std::mutex& SpoolMutex() {
   return mutex;
 }
 
-inline fs::path DataDirectory() {
-  constexpr DWORD kExecutablePathChars = 32768;
-  std::vector<wchar_t> executable(kExecutablePathChars, L'\0');
-  const DWORD length = GetModuleFileNameW(
-      nullptr, executable.data(), static_cast<DWORD>(executable.size()));
-  if (length == 0 || length >= executable.size()) return {};
-  return fs::path(std::wstring(executable.data(), length)).parent_path() / L"data";
+inline const fs::path& DataDirectory() {
+  // The executable cannot move while this process is running. Resolve its
+  // data directory once, rather than allocating 32K wchar_t and invoking
+  // GetModuleFileNameW for every upload, count, append and receipt.
+  static const fs::path directory = []() -> fs::path {
+    constexpr DWORD kExecutablePathChars = 32768;
+    std::vector<wchar_t> executable(kExecutablePathChars, L'\0');
+    const DWORD length = GetModuleFileNameW(
+        nullptr, executable.data(), static_cast<DWORD>(executable.size()));
+    if (length == 0 || length >= executable.size()) return {};
+    return fs::path(std::wstring(executable.data(), length)).parent_path() / L"data";
+  }();
+  return directory;
 }
 
-inline fs::path SpoolPath() {
-  const fs::path directory = DataDirectory();
-  return directory.empty() ? fs::path{} :
-      directory / L"stationhead-leaderboard-capture.ndjson";
+inline const fs::path& SpoolPath() {
+  static const fs::path path = []() -> fs::path {
+    const fs::path& directory = DataDirectory();
+    return directory.empty() ? fs::path{} :
+        directory / L"stationhead-leaderboard-capture.ndjson";
+  }();
+  return path;
 }
 
-inline fs::path LegacyProbePath() {
-  const fs::path directory = DataDirectory();
-  return directory.empty() ? fs::path{} :
-      directory / L"stationhead-leaderboard-probe.ndjson";
+inline const fs::path& LegacyProbePath() {
+  static const fs::path path = []() -> fs::path {
+    const fs::path& directory = DataDirectory();
+    return directory.empty() ? fs::path{} :
+        directory / L"stationhead-leaderboard-probe.ndjson";
+  }();
+  return path;
 }
 
 inline void RemoveLegacyProbeSpool() noexcept {
-  const fs::path path = LegacyProbePath();
+  const fs::path& path = LegacyProbePath();
   if (path.empty()) return;
   std::error_code ignored;
   fs::remove(path, ignored);
@@ -48,7 +60,7 @@ inline void RemoveLegacyProbeSpool() noexcept {
 
 inline std::vector<std::string> ReadLinesLocked() {
   std::vector<std::string> lines;
-  const fs::path path = SpoolPath();
+  const fs::path& path = SpoolPath();
   if (path.empty()) return lines;
   std::ifstream input(path, std::ios::binary);
   if (!input) return lines;
@@ -69,7 +81,7 @@ inline std::vector<std::string> ReadLinesLocked() {
 }
 
 inline bool WriteLinesLocked(const std::vector<std::string>& lines) {
-  const fs::path path = SpoolPath();
+  const fs::path& path = SpoolPath();
   if (path.empty()) return false;
   std::error_code error;
   fs::create_directories(path.parent_path(), error);
