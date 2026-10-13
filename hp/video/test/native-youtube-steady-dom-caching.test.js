@@ -105,7 +105,7 @@ test('rare YouTube dialogs do not subscribe to popup MutationObserver', () => {
 
 test('YouTube SPA event burst refreshes video selection once per microtask', () => {
   const source = section('    let pageStateQueued = false;',
-    "    state.popup = document.querySelector('ytd-popup-container');");
+    '  }\n  const video = bindVideo();');
   const listeners = new Map();
   const pending = [];
   let binds = 0;
