@@ -85,6 +85,28 @@ test('normal auth event shares one control query between account and login detec
   assert.equal(counts().credentialQueries, 1);
 });
 
+test('auth checks reuse the just-published audio state within one event', () => {
+  const { runtime, window } = authRuntime({ label: 'Settings', audioPlaying: true });
+  let audioFlagReads = 0;
+  Object.defineProperty(window, '__homepanelAudioPlaying', {
+    get() { audioFlagReads++; return true; },
+    configurable: true,
+  });
+  runtime.publishAuth(true);
+  assert.equal(audioFlagReads, 0,
+    'the event already sampled audio; auth must not query it again');
+  runtime.publishAuth();
+  assert.equal(audioFlagReads, 1,
+    'standalone authentication checks still query the live audio flag');
+  const lifecycle = source('sh_runtime_lifecycle_script.h');
+  assert.match(lifecycle, /const audio = publishAudio\(\);\s*publishAuth\(audio\);/);
+  const interaction = source('sh_runtime_interaction_script.h');
+  assert.match(interaction, /const publishAuth = \(knownAudio = null\) =>/);
+  assert.match(interaction, /knownAudio === null \? playing\(\) : knownAudio/);
+  assert.match(interaction, /const stillAuthenticated = accountVisible\(controls\) \|\| playing\(\)/,
+    'delayed auth validation must use fresh audio state');
+});
+
 test('login-required detection still works for a silent account', () => {
   const { runtime, messages, counts } = authRuntime({
     label: null, text: 'Log in', audioPlaying: false,
