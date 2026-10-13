@@ -1,5 +1,4 @@
 import {
-  appendEmptyTableRow,
   byId,
   cssColor,
   fullDate as fullDateLabel,
@@ -21,7 +20,7 @@ import {
   nearestPositionIndex,
   observeDashboardChartResize,
 } from './dashboard-chart-runtime.js?v=20261001.1';
-import { appendTableRow } from './dashboard-table-dom.js?v=20261001.1';
+import { renderResponsiveTable } from './dashboard-table-dom.js?v=20261001.1';
 import { followersReadModel } from './followers-read-model.js?v=20261005.1';
 
 const jstDateTime = new Intl.DateTimeFormat('ja-JP', {
@@ -223,39 +222,31 @@ function renderChart(payload) {
 }
 
 function renderTable(payload) {
-  const head = byId('followersThead');
-  const body = byId('followersTbody');
-  if (!head || !body) return;
   const labels = Array.isArray(payload?.columns) && payload.columns.length === 5
     ? payload.columns
     : ['対象', '所属', 'フォロワー数', '前日比', '1週間前比'];
-  const tr = document.createElement('tr');
-  labels.forEach((label, index) => {
-    const th = document.createElement('th');
-    th.scope = 'col';
-    th.textContent = label;
-    if (index >= 2) th.className = 'followers-number';
-    tr.append(th);
-  });
-  head.replaceChildren(tr);
-  body.replaceChildren();
-  const accounts = Array.isArray(payload?.accounts) ? payload.accounts : [];
-  for (const account of accounts) {
-    appendTableRow(body, [
-      account.label || account.id || '-',
+  const columns = labels.map((label, index) => ({
+    label,
+    key: ['account', 'affiliation', 'value', 'day_delta', 'week_delta'][index],
+    numeric: index >= 2,
+  }));
+  renderResponsiveTable({
+    head: byId('followersThead'),
+    body: byId('followersTbody'),
+    cards: byId('followersMobileList'),
+    columns,
+    rows: Array.isArray(payload?.accounts) ? payload.accounts : [],
+    valuesForRow: (account) => [
+      { text: account.label || account.id || '-' },
       { text: account.affiliation || '-', className: 'followers-affiliation' },
-      formatFollower(account.value),
-      {
-        text: signedInteger(account.day_delta),
-        className: integer(account.day_delta) > 0 ? 'followers-delta-positive' : '',
-      },
-      {
-        text: signedInteger(account.week_delta),
-        className: integer(account.week_delta) > 0 ? 'followers-delta-positive' : '',
-      },
-    ]);
-  }
-  if (!accounts.length) appendEmptyTableRow(body, 'フォロワーデータはありません。', 5);
+      { text: formatFollower(account.value), className: 'dashboard-number' },
+      { text: signedInteger(account.day_delta),
+        className: integer(account.day_delta) > 0 ? 'followers-delta-positive dashboard-number' : 'dashboard-number' },
+      { text: signedInteger(account.week_delta),
+        className: integer(account.week_delta) > 0 ? 'followers-delta-positive dashboard-number' : 'dashboard-number' },
+    ],
+    emptyMessage: 'フォロワーデータはありません。',
+  });
 }
 
 function render(payload) {
