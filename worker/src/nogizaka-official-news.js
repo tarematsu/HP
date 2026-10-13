@@ -169,11 +169,20 @@ async function saveAnnouncement(env, article, scheduledAt, detectedAt) {
     return 1;
   }
 
-  const existing = await env.OTHER_DB.prepare(`SELECT id FROM ${ANNOUNCEMENTS}
+  const existing = await env.OTHER_DB.prepare(`SELECT
+      id,news_url,published_date,title,event_name,raw_text
+      FROM ${ANNOUNCEMENTS}
       WHERE news_id=? AND scheduled_at IS NULL ORDER BY id DESC LIMIT 1`)
     .bind(article.newsId)
     .first();
   if (existing?.id) {
+    // Hourly checks frequently rediscover the same time-unknown article.
+    // Its last modification time must not advance without a content change.
+    if (existing.news_url === article.href
+        && existing.published_date === (article.publishedDate ?? null)
+        && existing.title === article.title
+        && existing.event_name === article.eventName
+        && existing.raw_text === rawText) return 1;
     await env.OTHER_DB.prepare(`UPDATE ${ANNOUNCEMENTS} SET
         news_url=?,published_date=?,title=?,event_name=?,updated_at=?,raw_text=?
         WHERE id=?`)
@@ -241,11 +250,14 @@ export async function nogizakaStationProbeDue(env, now = Date.now()) {
   if (!env?.OTHER_DB?.prepare) return false;
   const cfg = nogizakaOfficialNewsConfig(env);
   try {
-    const row = await env.OTHER_DB.prepare(`SELECT 1 AS due FROM ${ANNOUNCEMENTS}
-        WHERE scheduled_at IS NOT NULL AND (
-          (status='scheduled' AND scheduled_at>=? AND scheduled_at<=?) OR status='active'
-        )
-        LIMIT 1`)
+    // Independent indexed existence probes avoid scanning old announcements
+    // through the OR predicate on every minute tick.
+    const row = await env.OTHER_DB.prepare(`SELECT (
+        EXISTS(SELECT 1 FROM ${ANNOUNCEMENTS}
+          WHERE status='scheduled' AND scheduled_at>=? AND scheduled_at<=?)
+        OR EXISTS(SELECT 1 FROM ${ANNOUNCEMENTS}
+          WHERE status='active' AND scheduled_at IS NOT NULL)
+      ) AS due`)
       .bind(now - cfg.lateWindowMs, now + cfg.earlyWindowMs)
       .first();
     return Boolean(row?.due);
