@@ -241,6 +241,9 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       + 'yt-confirm-dialog-renderer,ytd-confirm-dialog-renderer')) {
     if (!root.getClientRects().length || root.matches(surveySelector) ||
         root.querySelector(surveySelector)) continue;
+    // Keep actively checking visible dialogs until they are dismissed.
+    // Only empty/inert popup scans should be cached.
+    state.dialogDirty = true;
     const dialogText = text(root);
     const continueDialog =
         /(視聴を続けていますか|動画がまもなく一時停止されます|動画が一時停止されました[。.!！]?\s*続きを視聴しますか|still watching|continue watching)/i
