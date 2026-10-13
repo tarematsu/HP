@@ -11,8 +11,8 @@ test('Spotify graphs restrict rendered series to the three Sakamichi groups in S
   assert.match(runtime, /graphTrendSeries\(normalizeTrendSeries\(trend\)\)/);
   assert.match(runtime, /monthlyListenerTrend\(monthlyListenerRows\)/);
   assert.match(runtime, /nogizaka46: '#8264b0'/);
-  assert.match(runtime, /sakurazaka46: '#f3a6c8'/);
-  assert.match(runtime, /hinatazaka46: '#9ecff3'/);
+  assert.match(runtime, /sakurazaka46: '#b43a75'/);
+  assert.match(runtime, /hinatazaka46: '#287ca6'/);
   assert.doesNotMatch(shell, /sortLegendByLatestValue|legendNumericValue|MutationObserver/);
 });
 

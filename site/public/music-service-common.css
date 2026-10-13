@@ -278,3 +278,8 @@
     color: var(--muted);
   }
 }
+
+.music-service-bar-chart { display:block; width:100%; max-width:100%; height:auto; }
+.music-service-bar-chart text { fill:var(--text); font:13px system-ui; }
+.music-service-view .section-head h2 { color:#101827; font-size:17px; }
+.history-granularity-toggle.music-service-filter { align-self:start; width:max-content; }

@@ -247,10 +247,33 @@ try {
           .map((node) => node.dataset.key));
         assert.deepEqual(clipped, [], 'follower cards stay within the viewport');
       }
+      if (mode === 'spotify') {
+        assert.deepEqual(await page.locator('#spotifyView .music-service-view-tabs button').allTextContents(),
+          ['総再生数', '今年リリース曲再生数', '月間リスナー', '順位']);
+        for (const group of ['plays', 'year', 'listeners', 'ranks']) {
+          const panel = page.locator(`#spotifyView .music-service-group[data-group="${group}"]`);
+          assert.equal(await panel.locator('[data-service-group]').count(), 2, `${group}: graph and list share one panel`);
+        }
+      }
+      if (mode === 'kkbox') {
+        const categories = page.locator('#kkboxView [data-kkbox-series-filter]');
+        assert.deepEqual(await categories.allTextContents(), ['台湾新曲', '香港新曲', '台湾楽曲', '香港楽曲']);
+        for (const category of await categories.all()) {
+          await category.click();
+          assert.equal(await category.getAttribute('aria-pressed'), 'true');
+          for (const period of await page.locator('#kkboxView [data-kkbox-period-filter]').all()) {
+            await period.click();
+            assert.equal(await period.getAttribute('aria-pressed'), 'true');
+            assert.equal(await page.locator('#kkboxJapaneseRankChart').isVisible(), true);
+            assert.equal(await page.locator('#kkboxJapaneseHistoryBody').isVisible(), true);
+            await assertNoDocumentOverflow(page, `${label}-kkbox-switch`);
+          }
+        }
+      }
       await page.screenshot({ path: `${output}/${label}.png`, fullPage: true });
       if (!live && width === 320 && ['broadcasts', 'ranking', 'youtube-music', 'kkbox'].includes(mode)) await stressVisibleLayout(page, label);
       const downloads = await checkCsv(page, label);
-      for (const button of await page.locator('.dashboard-view:not([hidden]) .music-service-view-tabs button').all()) {
+      for (const button of await page.locator('.dashboard-view:not([hidden]) .music-service-view-tabs button[data-service-group]').all()) {
         await button.click(); await page.waitForTimeout(400); await page.waitForLoadState('networkidle', { timeout: 45000 });
         const group = await button.getAttribute('data-service-group'); assert.equal(await button.getAttribute('aria-pressed'), 'true'); const visible = page.locator('.dashboard-view:not([hidden]) .music-service-group:not([hidden])'); assert.equal(await visible.count(), 1); assert.equal(await visible.getAttribute('data-group'), group);
         if (!live && mode === 'youtube-music' && group === 'playlists') {

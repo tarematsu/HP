@@ -29,11 +29,13 @@ mountMusicServiceView({
   viewId: 'youtubeMusicView',
   className: 'youtube-music-view',
   noticeId: 'youtubeMusicNotice',
+  groupLabels: { plays: '再生数', audience: '月間視聴者', subscribers: '登録者', releases: '作品', playlists: 'プレイリスト' },
   meta: { valueId: 'youtubeMusicUpdated', cadence: '毎日0:00' },
   sections: [
-    musicServiceSection({ id: 'youtubeMusicArtistSection', title: 'YouTube Music アーティスト', bodyHtml: artistTable }),
-    musicServiceSection({ id: 'youtubeMusicReleaseSection', group: 'list', title: 'YouTube Music アルバム・シングル', bodyHtml: releaseTable }),
-    musicServiceSection({ id: 'youtubeMusicTrackSection', group: 'list', title: 'YouTube Music 楽曲', bodyHtml: trackTable }),
-    musicServiceSection({ id: 'youtubeMusicPlaylistSection', group: 'playlists', title: 'YouTube Music 公開プレイリスト', bodyHtml: playlistTable }),
+    musicServiceSection({ id: 'youtubeMusicArtistSection', group: 'audience', title: 'YouTube Music アーティスト', bodyHtml: '<div id="youtubeAudienceChart"></div>' + artistTable }),
+    musicServiceSection({ id: 'youtubeMusicReleaseSection', group: 'releases', title: 'YouTube Music アルバム・シングル', bodyHtml: '<div id="youtubeReleaseChart"></div>' + releaseTable }),
+    musicServiceSection({ id: 'youtubeMusicTrackSection', group: 'plays', title: 'YouTube Music 楽曲', bodyHtml: '<div id="youtubePlaysChart"></div>' + trackTable }),
+    musicServiceSection({ id: 'youtubeSubscribersSection', group: 'subscribers', title: 'YouTube Music 登録者', bodyHtml: '<div id="youtubeSubscribersChart"></div>' + musicServiceTable({ headers: ['アーティスト', '登録者'], bodyId: 'youtubeSubscribersBody' }) }),
+    musicServiceSection({ id: 'youtubeMusicPlaylistSection', group: 'playlists', title: 'YouTube Music 公開プレイリスト', bodyHtml: '<div id="youtubePlaylistChart"></div>' + playlistTable }),
   ],
 });

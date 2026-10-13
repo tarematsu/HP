@@ -4,12 +4,11 @@ import {
   musicServiceSection,
   musicServiceTable,
 } from './music-service-shell.js?v=20261004.2';
-import { installSpotifyAllTracksFilter } from './spotify-all-tracks.js?v=20261004.1';
 import { installSpotifyUpdatedAt } from './spotify-updated-at.js?v=20261004.1';
 
 const artistTabs = musicServiceFilterTabs([
-  { value: 'all', label: 'すべて' },
-  { value: 'sakurazaka46', label: '櫻坂46', active: true },
+  { value: 'all', label: 'すべて', active: true },
+  { value: 'sakurazaka46', label: '櫻坂46' },
   { value: 'nogizaka46', label: '乃木坂46' },
   { value: 'hinatazaka46', label: '日向坂46' },
 ], {
@@ -26,28 +25,35 @@ const tracksTable = musicServiceTable({
 });
 
 const trendPanels = [
-  musicServiceSection({ id: 'spotifyOverviewTrendSection', title: 'Spotify 全曲合計再生数前日比推移（坂道3グループ）', titleId: 'spotifyTrendTitle', className: 'spotify-trend-panel', bodyHtml: '<div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="全曲合計再生数前日比"></div>' }),
-  musicServiceSection({ id: 'spotifyMonthlyListenerTrendSection', title: 'Spotify 月間リスナー推移（坂道3グループ）', titleId: 'spotifyMonthlyListenerTrendTitle', className: 'spotify-trend-panel', bodyHtml: '<div id="spotifyMonthlyListenerTrendCharts" class="spotify-trend-charts" aria-label="月間リスナー"></div>' }),
-  musicServiceSection({ id: 'spotifyTop10YearTrendSection', title: 'Spotify 今年リリース上位10曲合計の再生数前日比推移（坂道3グループ）', titleId: 'spotifyTop10YearTrendTitle', className: 'spotify-trend-panel', bodyHtml: '<div id="spotifyTop10YearTrendCharts" class="spotify-trend-charts" aria-label="今年リリース曲前日比"></div>' }),
-  musicServiceSection({ id: 'spotifyArtistRankTrendSection', title: 'Spotify Daily Top Artist（日本）の順位推移（坂道3グループ）', titleId: 'spotifyArtistRankTrendTitle', className: 'spotify-trend-panel', bodyHtml: '<div id="spotifyArtistRankTrendCharts" class="spotify-trend-charts" aria-label="日本アーティスト順位"></div>' }),
+  musicServiceSection({ id: 'spotifyOverviewTrendSection', group: 'plays', title: 'Spotify 全曲合計再生数前日比推移（坂道3グループ）', titleId: 'spotifyTrendTitle', className: 'spotify-trend-panel', bodyHtml: '<div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="全曲合計再生数前日比"></div>' }),
+  musicServiceSection({ id: 'spotifyMonthlyListenerTrendSection', group: 'listeners', title: 'Spotify 月間リスナー推移（坂道3グループ）', titleId: 'spotifyMonthlyListenerTrendTitle', className: 'spotify-trend-panel', bodyHtml: '<div id="spotifyMonthlyListenerTrendCharts" class="spotify-trend-charts" aria-label="月間リスナー"></div>' }),
+  musicServiceSection({ id: 'spotifyTop10YearTrendSection', group: 'year', title: 'Spotify 今年リリース上位10曲合計の再生数前日比推移（坂道3グループ）', titleId: 'spotifyTop10YearTrendTitle', className: 'spotify-trend-panel', bodyHtml: '<div id="spotifyTop10YearTrendCharts" class="spotify-trend-charts" aria-label="今年リリース曲前日比"></div>' }),
+  musicServiceSection({ id: 'spotifyArtistRankTrendSection', group: 'ranks', title: 'Spotify Daily Top Artist（日本）の順位推移（坂道3グループ）', titleId: 'spotifyArtistRankTrendTitle', className: 'spotify-trend-panel', bodyHtml: '<div id="spotifyArtistRankTrendCharts" class="spotify-trend-charts" aria-label="日本アーティスト順位"></div>' }),
 ];
 
 const tracksPanel = musicServiceSection({
-  id: 'spotifyTrackSection', group: 'list',
+  id: 'spotifyTrackSection', group: 'plays',
   title: '櫻坂46の再生数一覧',
   titleId: 'spotifyTableTitle',
-  trailingHtml: artistTabs,
+  
   className: 'spotify-data-panel',
   bodyHtml: tracksTable,
 });
 
+const dataTables = [
+  musicServiceSection({ id: 'spotifyYearDataSection', group: 'year', title: '今年リリース曲の日次集計', bodyHtml: musicServiceTable({ headers: ['日付', 'グループ', '上位10曲合計前日比'], bodyId: 'spotifyYearTbody' }) }),
+  musicServiceSection({ id: 'spotifyListenerDataSection', group: 'listeners', title: '月間リスナーの日次履歴', bodyHtml: musicServiceTable({ headers: ['日付', 'グループ', '月間リスナー'], bodyId: 'spotifyListenerTbody' }) }),
+  musicServiceSection({ id: 'spotifyRankDataSection', group: 'ranks', title: '日本アーティスト順位一覧', bodyHtml: musicServiceTable({ headers: ['日付', 'アーティスト', '順位'], bodyId: 'spotifyRankTbody' }) }),
+];
+
 mountMusicServiceView({
   viewId: 'spotifyView',
   className: 'spotify-view',
+  groupLabels: { plays: '総再生数', year: '今年リリース曲再生数', listeners: '月間リスナー', ranks: '順位' },
   noticeId: 'spotifyNotice',
   meta: { valueId: 'spotifyUpdatedAt', cadence: '毎日朝ごろ' },
-  sections: [trendPanels, tracksPanel],
+  beforeSectionsHtml: artistTabs,
+  sections: [trendPanels, tracksPanel, dataTables],
 });
 
 installSpotifyUpdatedAt();
-installSpotifyAllTracksFilter();
