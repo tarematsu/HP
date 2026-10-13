@@ -69,6 +69,7 @@ test('YouTube ad observers avoid page-wide attribute monitoring', () => {
   let controls = [];
   const player = { nodeType: 1, querySelectorAll: () => controls };
   const state = {};
+  let controlScans = 0;
   let now = 1000;
   let dueAt = null;
   let scheduled = 0;
@@ -110,7 +111,11 @@ test('YouTube ad observers avoid page-wide attribute monitoring', () => {
       state, player, MutationObserver: FakeMutationObserver, wake,
       skipSelector: '.ytp-ad-skip-button', surveySelector: '.ytp-ad-survey',
       adControlSelector: '.ytp-ad-skip-button',
-      scanAdCandidates: () => controls.filter(control => control.kind === 'skip'),
+      scanAdCandidates: () => {
+        controlScans++;
+        state.adCandidatesDirty = false;
+        return controls.filter(control => control.kind === 'skip');
+      },
     },
   );
   syncAdObserver(true);
@@ -122,17 +127,24 @@ test('YouTube ad observers avoid page-wide attribute monitoring', () => {
   assert.equal(observer.options.attributes, undefined,
     'whole player subtree must NOT observe class or ARIA changes');
   assert.equal(attrObserver.observations?.length || 0, 0);
+  assert.equal(controlScans, 1, 'initial ad subscriptions require one scan');
   for (let i = 0; i < 100; i++) {
     observer.callback([event(player, [node('progress')])]);
     observer.callback([attr(unrelated)]);
     observer.callback([attr(player)]);
   }
   assert.equal(scheduled, 0, 'unrelated DOM churn must not wake WebView2');
+  assert.equal(controlScans, 1, 'unrelated DOM churn must not rescan ad controls');
 
   controls = [skip];
   observer.callback([event(player, [wrapper])]);
   assert.equal(scheduled, 1);
   assert.equal(dueAt, 1180);
+  assert.equal(controlScans, 1, 'mutation callback defers costly observer rebinding');
+  for (let i = 0; i < 100; i++) observer.callback([event(player, [wrapper])]);
+  assert.equal(controlScans, 1, 'dense Skip Ad DOM bursts also defer the scan');
+  syncAdObserver(true);
+  assert.equal(controlScans, 2, 'the next coalesced probe rebuilds subscriptions once');
   assert.deepEqual(attrObserver.observations.map(x => x.target), [skip, wrapper]);
   assert.deepEqual(Array.from(attrObserver.observations[0].options.attributeFilter),
     ['disabled', 'aria-disabled', 'aria-hidden', 'class']);
@@ -158,6 +170,10 @@ test('YouTube ad observers avoid page-wide attribute monitoring', () => {
   controls = [survey];
   observer.callback([event(player, [], [wrapper])]);
   assert.equal(scheduled, 3, 'removed Skip Ad controls remain actionable');
+  assert.ok(attrObserver.observations.some(x => x.target === skip),
+    'subscriptions remain until the next probe rather than rebuilding in the callback');
+  syncAdObserver(true);
+  assert.equal(controlScans, 3);
   assert.ok(!attrObserver.observations.some(x => x.target === skip));
 
   now = 1720;
@@ -173,6 +189,7 @@ test('YouTube ad observers avoid page-wide attribute monitoring', () => {
   assert.equal(state.adObserver, null);
   assert.equal(state.adControlObserver, null);
   assert.equal(state.adObservedNodes, null);
+  assert.equal(state.refreshAdAttributes, null);
   assert.match(runtime, /wake\(\(flags & 5\) \? 0 : 80\)/);
 });
 
