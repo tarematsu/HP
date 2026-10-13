@@ -266,10 +266,23 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     if (!active) {
     state.adObserver?.disconnect();
     state.adObserver = null;
+    state.lastAdMutationWakeAt = 0;
     return;
     }
     if (state.adObserver || typeof MutationObserver !== 'function') return;
-    state.adObserver = new MutationObserver(() => wake(0));
+    // Cap noisy ad DOM changes to one immediate native wake per 200ms.
+    // The existing wake timer coalesces any deferred follow-up.
+    const adMutationWake = () => {
+    const now = Date.now();
+    const elapsed = now - Number(state.lastAdMutationWakeAt || 0);
+    if (elapsed >= 0 && elapsed < 200) {
+      wake(200 - elapsed);
+    } else {
+      state.lastAdMutationWakeAt = now;
+      wake(0);
+    }
+    };
+    state.adObserver = new MutationObserver(adMutationWake);
     state.adObserver.observe(player, {
     childList: true,
     subtree: true,
@@ -291,7 +304,18 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     state.player = player;
     state.video = null;
     state.pageAbort = new AbortController();
-    state.classObserver = new MutationObserver(() => wake());
+    // Ignore cosmetic player class churn; only these flags affect recovery.
+    const watchedClassFlags = () =>
+      (ad() ? 1 : 0) |
+      (fullscreen() ? 2 : 0) |
+      (player.classList.contains('ytp-error') ? 4 : 0);
+    state.watchedClassFlags = watchedClassFlags();
+    state.classObserver = new MutationObserver(() => {
+      const flags = watchedClassFlags();
+      if (flags === state.watchedClassFlags) return;
+      state.watchedClassFlags = flags;
+      wake((flags & 5) ? 0 : 80);
+    });
     state.classObserver.observe(player, {
     attributes: true, attributeFilter: ['class']
     });
