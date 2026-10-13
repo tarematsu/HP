@@ -20,7 +20,10 @@ test('unchanged offline dashboard errors do not rewrite the same cache or post U
   assert.match(build, /return std::nullopt;/);
   assert.match(build, /root\.SetNamedValue\(L"__cloudError", JsonValue::CreateStringValue\(message\)\)/);
   const loop = section('void CloudClient::Loop() {', 'bool CloudClient::RequestRemoteRefresh() {');
-  assert.match(loop, /if \(dashboard && AtomicWriteBytes\(dataDir_ \/ L"dashboard\.json", \*dashboard\)\)/);
+  assert.match(loop, /if \(friendly != lastPublishedCloudError_\)/);
+  assert.match(loop, /if \(!dashboard\) \{\s*lastPublishedCloudError_ = friendly;/);
+  assert.match(loop, /else if \(AtomicWriteBytes\(dataDir_ \/ L"dashboard\.json", \*dashboard\)\)/);
+  assert.match(loop, /lastPublishedCloudError_ = friendly;\s*PostMessageW\(window_, WM_HP_CLOUD_UPDATED/);
   assert.match(loop, /PostMessageW\(window_, WM_HP_CLOUD_UPDATED, 0, 0\)/);
   assert.match(loop, /const int count = \+\+failures_/);
   assert.match(loop, /ApplyPresenceFallback\(\)/);
