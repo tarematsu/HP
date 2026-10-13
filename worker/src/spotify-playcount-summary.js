@@ -1,7 +1,16 @@
 export function spotifyArtistDailyRefreshStatements(db, snapshotDate, updatedAt = Date.now()) {
   return [
-    db.prepare(`DELETE FROM sh_spotify_artist_daily WHERE snapshot_date=?`)
-      .bind(snapshotDate),
+    // Only remove artists that no longer have any tracks for this day.
+    // A full date-wide DELETE followed by INSERT rewrites every unchanged row.
+    db.prepare(`DELETE FROM sh_spotify_artist_daily
+      WHERE snapshot_date=?
+        AND artist_key NOT IN (
+          SELECT DISTINCT target.artist_key
+          FROM sh_spotify_playcount_daily daily
+          INNER JOIN sh_spotify_track_targets target ON target.track_id=daily.track_id
+          WHERE daily.snapshot_date=?
+        )`)
+      .bind(snapshotDate, snapshotDate),
     db.prepare(`WITH daily_base AS (
         SELECT
           d.snapshot_date,
@@ -115,7 +124,18 @@ export function spotifyArtistDailyRefreshStatements(db, snapshotDate, updatedAt 
        AND top10_all.artist_key=totals.artist_key
       LEFT JOIN top10_year
         ON top10_year.snapshot_date=totals.snapshot_date
-       AND top10_year.artist_key=totals.artist_key`)
+       AND top10_year.artist_key=totals.artist_key
+      WHERE 1
+      ON CONFLICT(snapshot_date,artist_key) DO UPDATE SET
+        total_delta=excluded.total_delta,
+        track_count=excluded.track_count,
+        top10_delta=excluded.top10_delta,
+        top10_year_delta=excluded.top10_year_delta,
+        updated_at=excluded.updated_at
+      WHERE sh_spotify_artist_daily.total_delta IS NOT excluded.total_delta
+        OR sh_spotify_artist_daily.track_count IS NOT excluded.track_count
+        OR sh_spotify_artist_daily.top10_delta IS NOT excluded.top10_delta
+        OR sh_spotify_artist_daily.top10_year_delta IS NOT excluded.top10_year_delta`)
       .bind(snapshotDate, updatedAt),
   ];
 }
