@@ -78,7 +78,7 @@ function playerScenario(duration, controls = [], portalOptions = [], dialogs = [
   };
 }
 
-const fullscreenPoint = [628, 348];
+// Fullscreen now requires a named control or the native browser gesture.
 
 test('the episode poster receives a trusted click before fullscreen recovery', () => {
   const poster = {
@@ -111,10 +111,10 @@ test('required questionnaire stays visible and playback waits for an answer', ()
   assert.equal(scene.video.playbackRate, 1);
   assert.deepEqual(scene.messages, ['homepanel:tver-media-init']);
   scene.removeDialog(dialog);
-  assert.deepEqual(Array.from(scene.run()), fullscreenPoint);
+  assert.equal(scene.run(), 'recovery');
   assert.equal(scene.video.playbackRate, 1.75);
   assert.equal(scene.messages.filter(value => value === 'homepanel:tver-media-init').length, 1);
-  assert.equal(scene.messages.includes('homepanel:tver-fullscreen-key'), false);
+  assert.equal(scene.messages.includes('homepanel:tver-fullscreen-key'), true);
 });
 
 test('saved questionnaire answers are filled and submitted before player controls', () => {
@@ -163,8 +163,8 @@ test('saved questionnaire answers are filled and submitted before player control
   assert.equal(selectedGender, '9');
   assert.deepEqual(Array.from(scene.run()), [150, 220]);
   scene.removeDialog(dialog);
-  assert.deepEqual(Array.from(scene.run()), fullscreenPoint);
-  assert.equal(scene.messages.includes('homepanel:tver-fullscreen-key'), false);
+  assert.equal(scene.run(), 'recovery');
+  assert.equal(scene.messages.includes('homepanel:tver-fullscreen-key'), true);
 });
 
 test('a manually submitted questionnaire supplies future automatic answers', () => {
@@ -209,8 +209,8 @@ test('a hidden ad skip control cannot suppress program setup or receive a click'
   scene.video.playbackRate = 1;
   const action = scene.run();
   assert.equal(scene.video.playbackRate, 1.75);
-  assert.deepEqual(Array.from(action), fullscreenPoint);
-  assert.equal(scene.messages.includes('homepanel:tver-fullscreen-key'), false);
+  assert.equal(action, 'recovery');
+  assert.equal(scene.messages.includes('homepanel:tver-fullscreen-key'), true);
 });
 
 test('an ad skip control inside a transparent parent is not an active ad', () => {
@@ -226,16 +226,17 @@ test('an ad skip control inside a transparent parent is not an active ad', () =>
   assert.equal(scene.video.playbackRate, 1.75);
 });
 
-test('program speed applies and fullscreen retries even when fullscreen is refused', () => {
+test('program speed applies while unavailable fullscreen controls trigger native retries', () => {
   const scene = playerScenario(1800);
   scene.video.playbackRate = 1;
-  assert.deepEqual(Array.from(scene.run()), fullscreenPoint);
+  assert.equal(scene.run(), 'recovery');
   assert.equal(scene.video.playbackRate, 1.75);
-  const firstTapAt = scene.window.__homePanelTverRuntime.fullscreenCornerTapAt;
+  const requests = () => scene.messages.filter(
+    value => value === 'homepanel:tver-fullscreen-key').length;
+  assert.equal(requests(), 1);
   scene.advance(5000);
-  assert.deepEqual(Array.from(scene.run()), fullscreenPoint);
-  assert.ok(scene.window.__homePanelTverRuntime.fullscreenCornerTapAt > firstTapAt);
-  assert.equal(scene.messages.includes('homepanel:tver-fullscreen-key'), false);
+  assert.equal(scene.run(), 'recovery');
+  assert.equal(requests(), 2);
   assert.equal(scene.window.__homePanelTverRuntime.qualityApplied, false);
 });
 
