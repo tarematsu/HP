@@ -344,9 +344,18 @@ void CloudClient::Loop() {
       dashboardVersion_ = -1;
       cacheMetadataDirty_ = true;
       const std::wstring friendly = FriendlyCloudError(error.what());
-      const auto dashboard = DashboardWithCloudError(dataDir_ / L"dashboard.json", friendly);
-      if (dashboard && AtomicWriteBytes(dataDir_ / L"dashboard.json", *dashboard)) {
-        PostMessageW(window_, WM_HP_CLOUD_UPDATED, 0, 0);
+      // Even if the worker remains offline for hours, an already-displayed
+      // error needs no repeat disk read, JSON parse or atomic file replacement.
+      // Only remember a value after the cache already contained it or the
+      // replacement succeeded; failed writes must be retried.
+      if (friendly != lastPublishedCloudError_) {
+        const auto dashboard = DashboardWithCloudError(dataDir_ / L"dashboard.json", friendly);
+        if (!dashboard) {
+          lastPublishedCloudError_ = friendly;
+        } else if (AtomicWriteBytes(dataDir_ / L"dashboard.json", *dashboard)) {
+          lastPublishedCloudError_ = friendly;
+          PostMessageW(window_, WM_HP_CLOUD_UPDATED, 0, 0);
+        }
       }
       const int count = ++failures_;
       log_.Warn(L"Cloudflare sync failed (" + std::to_wstring(count) + L"): " + Utf8ToWide(error.what()));
