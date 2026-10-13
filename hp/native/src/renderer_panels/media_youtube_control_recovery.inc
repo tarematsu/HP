@@ -208,10 +208,14 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     if (lane.cleanup === cleanup) lane.cleanup = null;
     };
     function onClick(event) {
-    const video = player.querySelector('video');
+    // Only Play needs media state; ad, dialog and fullscreen clicks do not.
+    const playVideo = action === 'play'
+      ? (state.video?.isConnected && player.contains(state.video)
+          ? state.video : player.querySelector('video'))
+      : null;
     const accepted = valid(element) && hitOwnControl(point) &&
         (action !== 'skip-ad' || ad()) &&
-        (action !== 'play' || (!ad() && video?.paused && !video.ended)) &&
+        (action !== 'play' || (!ad() && playVideo?.paused && !playVideo.ended)) &&
         (action !== 'fullscreen' || !fullscreen());
     if (!accepted) {
       event.preventDefault();
@@ -509,8 +513,15 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     // One subtree query replaces separate full-player surveys and skip
     // queries. DOM order and survey-before-skip priority are preserved.
     const adCandidates = scanAdCandidates();
+    let target = null;
     for (const root of adCandidates) {
-    if (!root.matches(surveyDialogSelector) || !valid(root)) continue;
+    // Keep the first enabled skip candidate, but finish inspecting surveys
+    // before acting so an active survey always takes precedence.
+    if (!root.matches(surveyDialogSelector)) {
+      if (!target && root.matches(skipSelector) && valid(root)) target = root;
+      continue;
+    }
+    if (!valid(root)) continue;
     let submit = null;
     let firstOption = null;
     let secondOption = null;
@@ -533,13 +544,6 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       }
       state.surveySelected = false;
       return arm(submit, 'survey-submit', 500);
-    }
-    }
-    let target = null;
-    for (const element of adCandidates) {
-    if (element.matches(skipSelector) && valid(element)) {
-      target = element;
-      break;
     }
     }
     if (target) return arm(target, 'skip-ad', 600);
