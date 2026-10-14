@@ -200,6 +200,11 @@ inline void ApplyStationheadResourceBlockingScriptFixed(
   (void)armed;
   if (!environment || !webview) return;
 
+  // One authoritative setup path now owns the resource budget; the retired
+  // filter-layer callback previously contained this call but was never
+  // invoked once a later PCH macro redirected the caller.
+  ApplyStationheadPermanentWebViewResourceMode(environment, webview);
+
   ComPtr<ICoreWebView2> base = webview;
   ComPtr<ICoreWebView2_22> sourceAwareWebView;
   base.As(&sourceAwareWebView);
