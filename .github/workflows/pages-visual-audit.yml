@@ -48,13 +48,54 @@ jobs:
           --url=https://skrzk.pages.dev
           --out=.pages-visual-audit
 
-      - name: Upload visual audit screenshots
+      # Keep the report at the canonical artifact name, and split full-page
+      # screenshots by viewport so each artifact remains practical to download
+      # and inspect even when service tables become very tall.
+      - name: Upload visual audit report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: pages-visual-audit-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .pages-visual-audit/
+          path: .pages-visual-audit/report.json
           include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload desktop screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pages-visual-audit-${{ github.run_id }}-${{ github.run_attempt }}-desktop
+          path: .pages-visual-audit/desktop-*.png
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload tablet screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pages-visual-audit-${{ github.run_id }}-${{ github.run_attempt }}-tablet
+          path: .pages-visual-audit/tablet-*.png
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload mobile screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pages-visual-audit-${{ github.run_id }}-${{ github.run_attempt }}-mobile
+          path: |
+            .pages-visual-audit/mobile-*.png
+            !.pages-visual-audit/mobile-compact-*.png
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload compact-mobile screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pages-visual-audit-${{ github.run_id }}-${{ github.run_attempt }}-mobile-compact
+          path: .pages-visual-audit/mobile-compact-*.png
           if-no-files-found: warn
           retention-days: 14
 
