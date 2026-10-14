@@ -114,3 +114,23 @@ test('directly called final resource callback consolidates strict, script, and p
   assert.doesNotMatch(active, /&armed|BlockStationheadTelemetrySockets\(webview,/);
   assert.doesNotMatch(boundarySource, /add_WebResourceRequested\(/);
 });
+
+test('one parsed URI is reused for telemetry and social classification on the hot path', () => {
+  const from = boundarySource.indexOf(
+    'inline constexpr bool StationheadRequestIsBlockableBoundaryFixed(');
+  const to = boundarySource.indexOf(
+    'inline constexpr bool StationheadCorePlaybackRequestBoundaryFixed(', from);
+  assert.ok(from >= 0 && to > from);
+  const blockable = boundarySource.slice(from, to);
+  assert.equal((blockable.match(/StationheadParseRuntimeUri\(/g) || []).length, 1);
+  assert.match(blockable, /StationheadTelemetryRequestBoundaryFixed\(uri\)/);
+  assert.match(blockable, /StationheadSocialApiRequestBoundaryFixed\(uri\)/);
+  assert.match(boundarySource,
+    /inline constexpr bool StationheadTelemetryRequestBoundaryFixed\(\s*const StationheadRuntimeUriParts& uri\)/);
+  assert.match(boundarySource,
+    /inline constexpr bool StationheadTelemetryRequestBoundaryFixed\(\s*std::wstring_view uriLower\)/);
+  assert.match(boundarySource,
+    /inline constexpr bool StationheadSocialApiRequestBoundaryFixed\(\s*const StationheadRuntimeUriParts& uri\)/);
+  assert.match(boundarySource,
+    /inline constexpr bool StationheadSocialApiRequestBoundaryFixed\(\s*std::wstring_view uriLower\)/);
+});
