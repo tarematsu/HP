@@ -291,8 +291,5 @@ WrapStationheadWebResourceRequestedHandler(
           WrapStationheadAudioChangedHandler((handler)).Get(),                \
       (token))
 
-#define add_WebResourceRequested(handler, token)                              \
-  add_WebResourceRequested(                                                   \
-      ::hp::stationhead_webview_policy::                                      \
-          WrapStationheadWebResourceRequestedHandler((handler)).Get(),        \
-      (token))
+// WebResourceRequested is wrapped explicitly at its single native call site.
+// Do not mutate COM method calls through preprocessor aliases.
