@@ -117,8 +117,8 @@ test('every Stationhead WebView callback is contained at the COM boundary', () =
 
   for (const [method, wrapper, expectedCount] of [
     ['add_NavigationStarting', 'WrapStationheadNavigationStartingHandler', 1],
-    ['add_NavigationCompleted', 'WrapStationheadNavigationCompletedHandler', 2],
-    ['add_ProcessFailed', 'WrapStationheadProcessFailedHandler', 2],
+    ['add_NavigationCompleted', 'WrapStationheadAuthStableNavigationCompletedHandler', 2],
+    ['add_ProcessFailed', 'WrapStationheadAuthStableProcessFailedHandler', 2],
     ['add_WindowCloseRequested', 'WrapStationheadWindowCloseHandler', 1],
     ['add_IsDocumentPlayingAudioChanged', 'WrapStationheadAudioChangedHandler', 1],
   ]) {
