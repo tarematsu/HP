@@ -1,12 +1,12 @@
 /* Shared layout for every music streaming service view. */
 .music-service-view.is-chart-compact {
-  gap: 10px;
+  gap: 6px;
 }
 
 .music-service-section {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 7px;
+  gap: 5px;
   min-width: 0;
 }
 
@@ -59,8 +59,8 @@
 }
 
 .music-service-table :is(th, td) {
-  padding-top: 7px;
-  padding-bottom: 7px;
+  padding-top: 5px;
+  padding-bottom: 5px;
   font-size: .76rem;
   white-space: nowrap;
 }
@@ -150,7 +150,7 @@
 
 @media (max-width: 760px) {
   .music-service-view.is-chart-compact {
-    gap: 8px;
+    gap: 6px;
   }
 
 
@@ -210,8 +210,8 @@
   .music-service-playlist-table tbody tr {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 6px 10px;
-    padding: 12px 0;
+    gap: 4px 8px;
+    padding: 8px 0;
     border-bottom: 1px solid var(--line);
   }
 
