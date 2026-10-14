@@ -60,19 +60,19 @@ async function loadTrackHistoryCoalesced(r2, dependencies, url, load) {
   }
 }
 
-let trackHistoryApiModulePromise;
-// The track-history API can assemble up to 20,000 rows and multiple R2 day
-// objects. Keep that CPU work out of the 10ms HTTP invocation by handing it
-// to a 30s-budget Durable Object. An absent binding retains the legacy path
-// for local tests and rollback, while a configured binding fails closed on
-// transport errors rather than redoing expensive JSON work on HTTP.
+// Only explicitly injected test loaders can assemble history in HTTP. Production
+// requires the 30s Durable Object even when its binding is absent or invalid.
 async function loadTrackHistoryThroughCoordinator(env, request, dependencies, fallback) {
   if (typeof dependencies.loadTrackHistoryApiResponse === 'function') return fallback();
   const namespace = env?.PAGES_HISTORY_API_COORDINATOR;
   if (!namespace || typeof namespace.idFromName !== 'function'
-      || typeof namespace.get !== 'function') return fallback();
+      || typeof namespace.get !== 'function') {
+    return new Response(null, { status: 503, headers: { 'cache-control': 'no-store', 'retry-after': '30' } });
+  }
   const source = new URL(request.url).searchParams.get('source') || 'buddies';
-  if (source !== 'buddies' && source !== 'ohisama') return fallback();
+  if (source !== 'buddies' && source !== 'ohisama') {
+    return Response.json({ ok: false, error: 'invalid track-history source' }, { status: 400, headers: { 'cache-control': 'no-store' } });
+  }
   try {
     const stub = namespace.get(namespace.idFromName(`history:${source}`));
     const response = await stub.fetch(request);
@@ -86,11 +86,6 @@ async function loadTrackHistoryThroughCoordinator(env, request, dependencies, fa
   return new Response(null, {
     status: 503, headers: { 'cache-control': 'no-store', 'retry-after': '30' },
   });
-}
-
-function loadTrackHistoryApiModule() {
-  trackHistoryApiModulePromise ||= import('./pages-track-history-r2-api.js');
-  return trackHistoryApiModulePromise;
 }
 
 function materializedStaleMaximumAge(env, freshMaximumAge) {
@@ -188,8 +183,7 @@ export async function runPagesResponseFetch(
         }
       }
       const loadTrackHistoryApi = async (...args) => {
-        const run = dependencies.loadTrackHistoryApiResponse
-          || (await loadTrackHistoryApiModule()).loadTrackHistoryR2ApiResponse;
+        const run = dependencies.loadTrackHistoryApiResponse;
         return run(...args);
       };
       response = await loadTrackHistoryCoalesced(
@@ -217,9 +211,10 @@ export async function runPagesResponseFetch(
           return cached;
         }
       }
-      if (isHistoryRange && env?.PAGES_HISTORY_API_COORDINATOR?.get) {
+      if (isHistoryRange && typeof env?.PAGES_HISTORY_API_COORDINATOR?.get === 'function'
+          && typeof env.PAGES_HISTORY_API_COORDINATOR.idFromName === 'function') {
         const namespace = env.PAGES_HISTORY_API_COORDINATOR;
-        response = await namespace.get(namespace.idFromName('history:range')).fetch(request);
+        response = await namespace.get(namespace.idFromName(modelKey)).fetch(request);
       } else if (isHistoryRange) {
         return new Response(null, { status: 503, headers: { 'cache-control': 'no-store' } });
       } else {
@@ -236,8 +231,9 @@ export async function runPagesResponseFetch(
     logSlowPagesRead(
       modelKey,
       isTrackHistoryApi
-        ? (env?.PAGES_HISTORY_API_COORDINATOR ? 'track-history-do' : 'track-history-fallback')
-        : 'canonical-r2',
+        ? (env?.PAGES_HISTORY_API_COORDINATOR ? 'track-history-do' : 'track-history-unavailable')
+        : (modelKey.startsWith('history:') && (params.has('from') || params.has('to'))
+          ? 'history-range-do' : 'canonical-r2'),
       startedAt,
       Date.now(),
       isTrackHistoryApi,

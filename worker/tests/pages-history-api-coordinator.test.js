@@ -77,3 +77,102 @@ test('DO returns the existing track-history API response and rejects unrelated p
   assert.equal((await coordinator.fetch(new Request(url('source=unknown')))).status, 400);
   assert.equal(calls.length, 1);
 });
+
+const rangeUrl = (mode, query) => `https://pages-read-model.internal/_internal/pages-response?key=history:${mode}&${query}`;
+
+function rangeCoordinator(rows) {
+  let reads = 0;
+  return {
+    coordinator: new PagesHistoryApiCoordinator(null, {}, {
+      async loadMaterializedResponse() {
+        reads++;
+        return Response.json({ ok: true, rows }, { headers: {
+          'cache-control': 'public, max-age=30', 'x-materialized-at': String(Date.now()),
+          'content-length': '999',
+        } });
+      },
+    }),
+    get reads() { return reads; },
+  };
+}
+
+test('invalid history dates and reversed ranges reject before any storage read', async () => {
+  const fixture = rangeCoordinator([]);
+  for (const query of ['from=2026-02-30', 'from=2026-6-01', 'from=abc',
+    'from=2026-07-01&to=2026-06-30']) {
+    const response = await fixture.coordinator.fetch(new Request(rangeUrl('weekly', query)));
+    assert.equal(response.status, 400, query);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+  }
+  assert.equal(fixture.reads, 0);
+  assert.equal((await fixture.coordinator.fetch(new Request(rangeUrl('unknown', 'from=2026-06-01')))).status, 404);
+  assert.equal(fixture.reads, 0);
+});
+
+test('daily and weekly ranges include both period boundaries and allow one-sided ranges', async () => {
+  for (const mode of ['daily', 'weekly']) {
+    const fixture = rangeCoordinator(['2026-05-31', '2026-06-01', '2026-06-30', '2026-07-01']
+      .map(period_key => ({ period_key })));
+    for (const [query, expected] of [
+      ['from=2026-06-01&to=2026-06-30', ['2026-06-01', '2026-06-30']],
+      ['from=2026-06-30', ['2026-06-30', '2026-07-01']],
+      ['to=2026-06-01', ['2026-05-31', '2026-06-01']],
+    ]) {
+      const response = await fixture.coordinator.fetch(new Request(rangeUrl(mode, query)));
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('x-history-range-filter'), 'worker');
+      assert.equal(response.headers.get('content-length'), null);
+      assert.deepEqual((await response.json()).rows.map(row => row.period_key), expected);
+    }
+  }
+});
+
+test('broadcast range ends at exclusive UTC midnight following to date', async () => {
+  const timestamps = ['2026-05-31T23:59:59.999Z', '2026-06-01T00:00:00Z',
+    '2026-06-30T23:59:59.999Z', '2026-07-01T00:00:00Z'].map(Date.parse);
+  const fixture = rangeCoordinator([...timestamps.map(started_at => ({ started_at })), { started_at: 'invalid' }]);
+  const response = await fixture.coordinator.fetch(new Request(rangeUrl('broadcasts', 'from=2026-06-01&to=2026-06-30')));
+  assert.deepEqual((await response.json()).rows.map(row => row.started_at), timestamps.slice(1, 3));
+});
+
+test('ranged response cache isolates date windows and cache hits skip coordinator', async () => {
+  const fixture = rangeCoordinator(['2026-06-01', '2026-06-30'].map(period_key => ({ period_key })));
+  const names = [];
+  const cached = new Map();
+  const pending = [];
+  const env = { PAGES_HISTORY_API_COORDINATOR: {
+    idFromName(name) { names.push(name); return name; },
+    get() { return fixture.coordinator; },
+  } };
+  const deps = { responseCache: {
+    async match(key) { return cached.get(key.url)?.clone(); },
+    async put(key, response) { cached.set(key.url, response); },
+  } };
+  const ctx = { waitUntil(promise) { pending.push(promise); } };
+  for (const date of ['2026-06-01', '2026-06-30', '2026-06-01']) {
+    const response = await runPagesResponseFetch(new Request(rangeUrl('daily', `from=${date}&to=${date}`)), env, ctx, deps);
+    assert.deepEqual((await response.json()).rows.map(row => row.period_key), [date]);
+    await Promise.all(pending);
+  }
+  assert.equal(fixture.reads, 2);
+  assert.deepEqual(names, ['history:daily', 'history:daily']);
+});
+
+test('missing history DO fails closed without accessing R2 or assembling JSON', async () => {
+  const env = { PAGES_RESPONSE_R2: { get() { throw new Error('HTTP must not read history shards'); } } };
+  for (const requestUrl of [url(), rangeUrl('daily', 'from=2026-06-01')]) {
+    const response = await runPagesResponseFetch(new Request(requestUrl), env);
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+  }
+});
+
+test('unavailable or malformed materialized history never returns an unfiltered success', async () => {
+  for (const load of [async () => null, async () => Response.json({ ok: true }),
+    async () => new Response('invalid JSON'), async () => { throw new Error('R2 unavailable'); }]) {
+    const coordinator = new PagesHistoryApiCoordinator(null, {}, { loadMaterializedResponse: load });
+    const response = await coordinator.fetch(new Request(rangeUrl('daily', 'from=2026-06-01')));
+    assert.ok([404, 503].includes(response.status));
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+  }
+});
