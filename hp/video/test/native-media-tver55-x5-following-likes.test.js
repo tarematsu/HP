@@ -29,12 +29,12 @@ test('X runs only for the first two minutes after each native app startup', () =
 });
 
 test('YouTube and TVer use fixed 60/58-minute durations without X interruptions', () => {
-  assert.match(mediaBase, /kNativeMediaYoutubeContentPhaseMs = 60U \\* 60U \\* 1000U/);
-  assert.match(mediaBase, /kNativeMediaTverContentDurationMs = 58U \\* 60U \\* 1000U/);
-  assert.match(mediaBase, /NativeMediaPhaseIntervalMs\\(bool tver\\) noexcept/);
+  assert.match(mediaBase, /kNativeMediaYoutubeContentPhaseMs = 60U \* 60U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaTverContentDurationMs = 58U \* 60U \* 1000U/);
+  assert.match(mediaBase, /NativeMediaPhaseIntervalMs\(bool tver\) noexcept/);
   assert.doesNotMatch(mediaBase, /NativeMediaDrawContentPlan|NativeMediaCurrentYoutubeContentDurationMs|NativeMediaCurrentTverContentDurationMs/);
-  assert.match(host, /phase_ == Phase::YouTube \\? SwitchToTver\\(\\) : SwitchToYouTube\\(\\)/);
-  assert.doesNotMatch(host, /Navigate\\(L"https:\\/\\/x\\.com\\/home"\\)/);
+  assert.match(host, /phase_ == Phase::YouTube \? SwitchToTver\(\) : SwitchToYouTube\(\)/);
+  assert.doesNotMatch(host, /Navigate\(L"https:\/\/x\.com\/home"\)/);
   assert.doesNotMatch(tverRuntime, /homepanel:tver-x-phase-start/);
 });
 
