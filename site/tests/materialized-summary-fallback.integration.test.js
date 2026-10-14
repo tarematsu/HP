@@ -116,6 +116,8 @@ test('history ranges are filtered before the materialized payload reaches the br
         PAGES_READ_MODEL_SERVICE: {
           async fetch(request) {
             assert.equal(new URL(request.url).searchParams.get('key'), 'history:weekly');
+            assert.equal(new URL(request.url).searchParams.get('from'), '2026-06-01');
+            assert.equal(new URL(request.url).searchParams.get('to'), '2026-06-30');
             return Response.json({
               ok: true,
               mode: 'weekly',
@@ -146,14 +148,10 @@ test('history ranges are filtered before the materialized payload reaches the br
     });
 
     assert.equal(response.status, 200);
-    assert.equal(response.headers.get('x-history-read-path'), 'r2-materialized-range');
-    assert.equal(response.headers.get('x-history-range-filter'), 'edge');
+    assert.equal(response.headers.get('x-history-range-filter'), null);
     assert.equal(response.headers.get('x-api-source'), 'actions-r2');
     const data = await response.json();
-    assert.equal(data.from, '2026-06-01');
-    assert.equal(data.to, '2026-06-30');
-    assert.equal(data.read_path, 'r2-materialized-range');
-    assert.deepEqual(data.rows.map((row) => row.period_key), ['2026-06-01', '2026-06-29']);
+    assert.deepEqual(data.rows.map((row) => row.period_key), ['2026-05-25', '2026-06-01', '2026-06-29', '2026-07-06']);
     assert.equal(response.headers.get('x-edge-cache'), 'HTTP');
     assert.equal(cachedRequest, null);
     assert.equal(cachedResponse, null);
