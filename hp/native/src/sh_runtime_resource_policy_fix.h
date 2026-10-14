@@ -190,5 +190,3 @@ inline void ApplyStationheadResourceBlockingFinalFixed(
 
 }  // namespace hp
 
-#undef ApplyStationheadResourceBlocking
-#define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingFinalFixed
