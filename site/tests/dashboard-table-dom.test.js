@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   appendTableRow,
+  renderResponsiveTable,
   replaceTableHeader,
 } from '../public/dashboard-table-dom.js';
 
@@ -15,6 +16,13 @@ class FakeNode {
     this.scope = '';
     this.className = '';
     this.colSpan = 1;
+    this.dataset = {};
+    this.classList = {
+      add: (...tokens) => {
+        assert.ok(tokens.every((token) => token && !/\s/.test(token)));
+        this.className = [this.className, ...tokens].filter(Boolean).join(' ');
+      },
+    };
   }
 
   append(...nodes) {
@@ -24,11 +32,22 @@ class FakeNode {
   replaceChildren(...nodes) {
     this.children = [...nodes];
   }
+
+  cloneNode() {
+    return this;
+  }
+
+  querySelectorAll(selector) {
+    return selector === 'th' ? this.children.filter((node) => node.tagName === 'TH') : [];
+  }
 }
 
 globalThis.document = {
   createElement(tagName) {
     return new FakeNode(tagName);
+  },
+  createDocumentFragment() {
+    return new FakeNode('fragment');
   },
 };
 
@@ -62,4 +81,20 @@ test('shared table DOM helper replaces scoped table headers', () => {
   assert.deepEqual(row.children.map((cell) => cell.tagName), ['TH', 'TH']);
   assert.deepEqual(row.children.map((cell) => cell.scope), ['col', 'col']);
   assert.deepEqual(row.children.map((cell) => cell.textContent), ['順位', '名前']);
+});
+
+test('responsive cards split multi-class cell presentation into valid DOM tokens', () => {
+  const head = new FakeNode('thead');
+  const body = new FakeNode('tbody');
+  const cards = new FakeNode('div');
+  renderResponsiveTable({
+    head,
+    body,
+    cards,
+    columns: [{ key: 'delta', label: '増減', numeric: true }],
+    rows: [{ day_delta: 12 }],
+    valuesForRow: () => [{ text: '+12', className: 'followers-delta-positive dashboard-number' }],
+  });
+  const card = cards.children[0].children[0];
+  assert.equal(card.children[0].className, 'dashboard-responsive-field followers-delta-positive dashboard-number');
 });

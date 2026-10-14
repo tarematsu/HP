@@ -51,7 +51,7 @@ export function renderResponsiveTable({ head, body, cards, columns = [], rows = 
       const field = document.createElement('div');
       field.className = 'dashboard-responsive-field';
       field.dataset.key = String(column.key || index);
-      if (raw?.className) field.classList.add(...String(raw.className).split(/\\s+/).filter(Boolean));
+      if (raw?.className) field.classList.add(...String(raw.className).split(/\s+/).filter(Boolean));
       const label = document.createElement('span');
       label.className = 'dashboard-responsive-label';
       label.textContent = String(column.label || column.key || '');
