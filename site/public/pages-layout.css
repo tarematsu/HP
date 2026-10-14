@@ -106,6 +106,10 @@
   white-space: nowrap;
 }
 .summary-cards .summary-date {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  overflow: visible;
+  text-overflow: clip;
   font-size: clamp(.9rem, 3vw, 1.3rem);
   line-height: 1.25;
 }
