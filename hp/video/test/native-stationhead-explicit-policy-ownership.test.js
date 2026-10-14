@@ -61,3 +61,37 @@ test('profiled audio monitoring is not rewritten by PCH preprocessor aliases', (
   assert.match(native('sh_shared.h'), /StationheadAutoplayScriptBase\(/);
   assert.match(native('sh_shared.h'), /StationheadVolumeScriptWithMutationObserver\(/);
 });
+
+
+test('ten Stationhead COM event handlers are registered explicitly with preserved auth gates', () => {
+  const eventPolicy = native('sh_webview_event_policy.h');
+  for (const file of [
+    'sh_webview_event_policy.h', 'sh_onboarding_click_policy.h',
+    'sh_auth_navigation_policy_fix.h', 'sh_process_failure_policy_fix.h',
+    'sh_auth_process_failure_policy_fix.h',
+    'sh_auth_completion_message_policy_fix.h',
+    'sh_stats_webview_message_policy_fix.h',
+  ]) {
+    assert.doesNotMatch(native(file),
+      /#(?:define|undef)\s+add_(?:WebMessageReceived|NewWindowRequested|NavigationStarting|NavigationCompleted|ProcessFailed|WindowCloseRequested|IsDocumentPlayingAudioChanged)\b/,
+      file + ' must not replace COM registration calls via the preprocessor');
+  }
+  const registered = [
+    ['WrapStationheadAudioChangedHandler', 1],
+    ['WrapStationheadNavigationStartingHandler', 1],
+    ['WrapStationheadNewWindowHandler', 1],
+    ['WrapStationheadWebMessageHandler', 2],
+    ['WrapStationheadAuthCompletionMessageHandler', 2],
+    ['WrapStationheadAuthStableNavigationCompletedHandler', 2],
+    ['WrapStationheadAuthStableProcessFailedHandler', 2],
+    ['WrapStationheadWindowCloseHandler', 1],
+  ];
+  for (const [wrapper, count] of registered) {
+    assert.equal((source.match(new RegExp(wrapper + '\\(', 'g')) || []).length,
+      count, wrapper + ' must be called directly on every applicable event');
+  }
+  assert.match(source,
+    /WrapStationheadWebMessageHandler\(\s*stationhead_auth_completion_message_policy::WrapStationheadAuthCompletionMessageHandler\(/);
+  assert.match(source, /#include "sh_webview_event_policy\.h"/);
+  assert.match(eventPolicy, /InvokeEventNoexcept\(inner, sender, args\)/);
+});
