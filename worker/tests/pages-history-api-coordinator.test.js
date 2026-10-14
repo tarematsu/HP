@@ -228,3 +228,21 @@ test('canonical model DO failure never falls back to HTTP R2 parsing', async () 
   delete env.PAGES_HISTORY_API_COORDINATOR;
   assert.equal((await runPagesResponseFetch(request, env)).status, 503);
 });
+
+test('canonical DO preserves stale fallback semantics and normalizes legacy followers', async () => {
+  const now = 1_000_000_000;
+  const coordinator = new PagesHistoryApiCoordinator(null, {}, {
+    now: () => now,
+    async loadMaterializedResponse(_r2, key, _now, maxAge) {
+      assert.ok(maxAge >= 7 * 24 * 60 * 60_000);
+      return key === 'followers'
+        ? Response.json({ ok: true, handles: ['sakuramankai', 'buddy46'] })
+        : Response.json({ ok: true }, { headers: { 'x-materialized-at': String(now - 2 * 60 * 60_000) } });
+    },
+  });
+  const stale = await coordinator.fetch(new Request('https://internal/_internal/pages-response?key=dashboard'));
+  assert.equal(stale.status, 200);
+  assert.equal(stale.headers.get('x-materialized-stale'), '1');
+  const followers = await coordinator.fetch(new Request('https://internal/_internal/pages-response?key=followers'));
+  assert.deepEqual((await followers.json()).handles, ['sakuramankai']);
+});
