@@ -10,6 +10,7 @@ const finalPolicySource = readFileSync(
   new URL('../../native/src/sh_runtime_resource_policy_fix.h', import.meta.url),
   'utf8',
 );
+const webviewSource = readFileSync(new URL('../../native/src/sh_webview.cpp', import.meta.url), 'utf8');
 const activePolicySource = readFileSync(
   new URL('../../native/src/sh_runtime_script_resource_policy_fix.h', import.meta.url),
   'utf8',
@@ -23,38 +24,22 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('final resource policy is compiled after focused Stationhead interaction/auth policies', () => {
-  assert.match(
-    cmakeSource,
-    /set\(HOMEPANEL_STATIONHEAD_SOURCES[\s\S]*src\/sh_polling_policy\.h[\s\S]*src\/sh_start_button_locator_policy\.h[\s\S]*src\/sh_auth_capture_reuse_policy\.h[\s\S]*src\/sh_auth_capture_origin_policy\.h[\s\S]*src\/sh_runtime_resource_policy_fix\.h/,
-  );
-  const pch = section(
-    cmakeSource,
-    'target_precompile_headers(HomePanel PRIVATE',
-    'add_dependencies(HomePanel',
-  );
-  const basePchAt = pch.indexOf('src/sh_polling_policy.h');
-  const finalPchAt = pch.indexOf('src/sh_runtime_resource_policy_fix.h');
-  assert.ok(basePchAt >= 0 && basePchAt < finalPchAt);
-  assert.doesNotMatch(cmakeSource, /sh_runtime_policy_fix\.h/);
-  assert.match(
-    finalPolicySource,
-    /#undef ApplyStationheadResourceBlocking[\s\S]*#define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingFinalFixed/,
-  );
+test('Stationhead policy selection is an explicit direct call, not a PCH macro overlay', () => {
+  assert.match(cmakeSource, /src\/sh_runtime_script_resource_policy_fix\.h/);
+  assert.match(webviewSource, /#include "sh_runtime_script_resource_policy_fix\.h"/);
+  assert.match(webviewSource,
+    /ApplyStationheadResourceBlockingScriptFixed\(environment_\.Get\(\), webview_\.Get\(\), config_,/);
+  assert.doesNotMatch(finalPolicySource, /#(?:define|undef) ApplyStationheadResourceBlocking/);
+  assert.doesNotMatch(activePolicySource, /#(?:define|undef) ApplyStationheadResourceBlocking/);
+  assert.doesNotMatch(finalPolicySource, /inline void ApplyStationheadResourceBlockingFinalFixed\(/);
 });
 
-test('final resource setup does not register blank-page recovery', () => {
-  const finalPolicy = section(
-    finalPolicySource,
-    'inline void ApplyStationheadResourceBlockingFinalFixed(',
-    '}  // namespace hp',
-  );
-  assert.doesNotMatch(finalPolicy, /StationheadBlankPageRecoveryScript/);
-  assert.doesNotMatch(finalPolicy, /AddScriptToExecuteOnDocumentCreated/);
-  assert.match(
-    finalPolicy,
-    /StationheadAdditionalNonPlaybackScriptUrl\(lower\)/,
-  );
+test('active resource setup does not register blank-page recovery', () => {
+  const active = section(activePolicySource,
+    'inline void ApplyStationheadResourceBlockingScriptFixed(', '}  // namespace hp');
+  assert.doesNotMatch(active, /StationheadBlankPageRecoveryScript/);
+  assert.doesNotMatch(active, /AddScriptToExecuteOnDocumentCreated/);
+  assert.match(active, /StationheadExpandedNonPlaybackScriptBoundaryFixed\(lower\)/);
 });
 
 test('non-playback scripts are matched only on HTTPS Stationhead paths', () => {
@@ -86,28 +71,16 @@ test('non-playback scripts are matched only on HTTPS Stationhead paths', () => {
   );
 });
 
-test('script blocking is consolidated into the single final callback', () => {
-  const finalPolicy = section(
-    finalPolicySource,
-    'inline void ApplyStationheadResourceBlockingFinalFixed(',
-    '}  // namespace hp',
-  );
-  assert.equal(
-    (finalPolicy.match(/add_WebResourceRequested\(/g) || []).length,
-    1,
-  );
-  assert.match(
-    finalPolicy,
-    /context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT[\s\S]*StationheadNonPlaybackScriptUrlRuntimeFixed\(lower\)[\s\S]*StationheadAdditionalNonPlaybackScriptUrl\(lower\)/,
-  );
-  assert.doesNotMatch(
-    finalPolicySource,
-    /ApplyStationheadNonPlaybackScriptBlockingRuntimeFixed/,
-  );
-  assert.doesNotMatch(
-    finalPolicySource,
-    /ApplyStationheadAdditionalScriptBlockingRuntimeFixed/,
-  );
+test('obsolete resource callback implementations are retired while active interception stays single', () => {
+  const active = section(activePolicySource,
+    'inline void ApplyStationheadResourceBlockingScriptFixed(', '}  // namespace hp');
+  assert.equal((active.match(/add_WebResourceRequested\(/g) || []).length, 1);
+  assert.match(active,
+    /context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT[\s\S]*StationheadKnownOptionalModuleStubBoundaryFixed\(lower\)/);
+  assert.match(active, /StationheadExpandedNonPlaybackScriptBoundaryFixed\(lower\)/);
+  assert.match(active, /StationheadRequestIsBlockableBoundaryFixed\(lower\)/);
+  assert.match(active, /StationheadCorePlaybackRequestBoundaryFixed\(lower\)/);
+  assert.doesNotMatch(finalPolicySource, /inline void ApplyStationheadResourceBlockingFinalFixed\(/);
 });
 
 test('active Stationhead resource layer leaves UDF-owned image/font suppression alone', () => {
