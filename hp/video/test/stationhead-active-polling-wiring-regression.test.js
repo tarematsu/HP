@@ -12,6 +12,7 @@ test('retired Stationhead play-count API is absent while runtime auth and audio 
   assert.doesNotMatch(player, /PollDailyPlayStats|StationheadApiPlayStatsScript/);
   assert.doesNotMatch(webview, /stationhead-play-stats|statsDocumentGeneration_/);
   assert.doesNotMatch(audio, /streakStats|StationheadPrimaryPlayStatsScript/);
-  assert.match(audio, /TryClaimAudioHealthScanSlot/);
+  assert.match(audio, /StationheadPeriodicProfileSlot/);
+  assert.match(native('sh_track_boundary_message_policy.h'), /TryClaimAudioHealthScanSlot/);
   assert.match(auth, /StationheadJuly19AuthAndLoginSettlementScript/);
 });
