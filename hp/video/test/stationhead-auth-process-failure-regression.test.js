@@ -116,11 +116,8 @@ test('transient GPU non-audio utility frame and helper failures do not recreate 
 });
 
 test('final registration wrapper uses the unified process classifier', () => {
-  assert.match(processPolicy, /#undef add_ProcessFailed/);
-  assert.match(
-    processPolicy,
-    /#define add_ProcessFailed\(handler, token\)[\s\S]*WrapStationheadAuthStableProcessFailedHandler\(\(handler\)\)\.Get\(\)/,
-  );
+  assert.doesNotMatch(processPolicy, /#(?:undef|define) add_ProcessFailed/);
+  assert.equal((webviewSource.match(/WrapStationheadAuthStableProcessFailedHandler\(/g) || []).length, 2);
   assert.match(
     processPolicy,
     /stationhead_process_failure_policy::[\s\S]*ShouldForwardStationheadProcessFailure/,
