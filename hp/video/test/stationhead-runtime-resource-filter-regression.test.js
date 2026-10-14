@@ -40,6 +40,18 @@ test('shared media environment keeps background timers active only', () => {
   assert.match(environmentSource, /std::wstring webView2Arguments = kSharedWebView2LifecycleArguments/);
 });
 
+
+test('WebView2 retains crash dumps without blocking the unattended process recovery path', () => {
+  const lifecycle = environmentSource.match(
+    /constexpr wchar_t kSharedWebView2LifecycleArguments\[\] =([\s\S]*?);/,
+  )?.[1];
+  assert.ok(lifecycle, 'shared WebView2 lifecycle arguments must exist');
+  assert.match(lifecycle, /--noerrdialogs/);
+  assert.doesNotMatch(lifecycle, /--disable-breakpad/);
+  assert.match(environmentSource, /CreateCoreWebView2EnvironmentWithOptions\(/);
+  assert.match(environmentSource, /options->put_AdditionalBrowserArguments\(webView2Arguments\.c_str\(\)\)/);
+});
+
 test('shared UDF keeps global image/font reduction for media profiles', () => {
   assert.match(environmentHeader, /Acquire\(userDataFolder, true, true, std::move\(completion\)\)/);
   assert.match(environmentSource, /imagesEnabled=false,loadsImagesAutomatically=false/);
