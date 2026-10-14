@@ -144,5 +144,3 @@ inline void ApplyStationheadResourceBlockingFilterFixed(
 
 }  // namespace hp
 
-#undef ApplyStationheadResourceBlocking
-#define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingFilterFixed
