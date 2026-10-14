@@ -57,8 +57,7 @@ inline constexpr bool StationheadRuntimeHostMatches(
 }
 
 inline constexpr bool StationheadTelemetryRequestBoundaryFixed(
-    std::wstring_view uriLower) {
-  const StationheadRuntimeUriParts uri = StationheadParseRuntimeUri(uriLower);
+    const StationheadRuntimeUriParts& uri) {
   if (!uri.valid) return false;
 
   constexpr std::wstring_view kTelemetryDomains[] = {
@@ -120,9 +119,14 @@ inline constexpr bool StationheadTelemetryRequestBoundaryFixed(
   return false;
 }
 
-inline constexpr bool StationheadSocialApiRequestBoundaryFixed(
+inline constexpr bool StationheadTelemetryRequestBoundaryFixed(
     std::wstring_view uriLower) {
-  const StationheadRuntimeUriParts uri = StationheadParseRuntimeUri(uriLower);
+  return StationheadTelemetryRequestBoundaryFixed(
+      StationheadParseRuntimeUri(uriLower));
+}
+
+inline constexpr bool StationheadSocialApiRequestBoundaryFixed(
+    const StationheadRuntimeUriParts& uri) {
   if (!uri.valid || uri.scheme != L"https" ||
       uri.host != L"production1.stationhead.com") {
     return false;
@@ -154,10 +158,20 @@ inline constexpr bool StationheadSocialApiRequestBoundaryFixed(
   return false;
 }
 
+inline constexpr bool StationheadSocialApiRequestBoundaryFixed(
+    std::wstring_view uriLower) {
+  return StationheadSocialApiRequestBoundaryFixed(
+      StationheadParseRuntimeUri(uriLower));
+}
+
 inline constexpr bool StationheadRequestIsBlockableBoundaryFixed(
     std::wstring_view uriLower) {
-  return StationheadTelemetryRequestBoundaryFixed(uriLower) ||
-         StationheadSocialApiRequestBoundaryFixed(uriLower);
+  // When telemetry does not block a URL, the social classifier previously
+  // repeated the exact same authority/path parse. Reuse one strict, bounded
+  // URI decomposition per request without relaxing either policy.
+  const StationheadRuntimeUriParts uri = StationheadParseRuntimeUri(uriLower);
+  return StationheadTelemetryRequestBoundaryFixed(uri) ||
+         StationheadSocialApiRequestBoundaryFixed(uri);
 }
 
 inline constexpr bool StationheadCorePlaybackRequestBoundaryFixed(
