@@ -3,11 +3,7 @@
 
 // Keep the shared helpers available, but replace the policy-sensitive helpers
 // with native-application implementations.
-#define StationheadAutoplayScript StationheadAutoplayScriptBase
-#define StationheadVolumeScript StationheadVolumeScriptWithMutationObserver
 #include "sh_shared.h"
-#undef StationheadVolumeScript
-#undef StationheadAutoplayScript
 #include "sh_script_blocking_extension.h"
 
 namespace hp {
