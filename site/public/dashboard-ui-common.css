@@ -102,7 +102,7 @@
   border-left: 1px solid var(--line, #d9e1eb);
 }
 
-.history-granularity-toggle > button.is-selected {
+.history-granularity-toggle > button[aria-pressed="true"] {
   background: var(--panel, #fff);
   color: var(--text, #172033);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text, #172033) 10%, transparent);
