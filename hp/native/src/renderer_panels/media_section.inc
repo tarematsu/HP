@@ -156,35 +156,61 @@ bool NativeMediaProcessNeedsRecreate(
          kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE;
 }
 
+// This is a toggle shortcut, not an "enter fullscreen" command. Guard it
+// immediately before the CDP input so late/redundant requests cannot exit
+// fullscreen or send keystrokes to a different media phase.
 void NativeMediaDispatchFullscreenKeyEvents(
     ICoreWebView2* webview, bool tver) noexcept {
   if (!webview) return;
   ComPtr<ICoreWebView2> view = webview;
-  static constexpr wchar_t kKeyDown[] =
-      L"{\"type\":\"keyDown\",\"key\":\"f\",\"code\":\"KeyF\","
-      L"\"windowsVirtualKeyCode\":70,\"nativeVirtualKeyCode\":70}";
-  static constexpr wchar_t kKeyUp[] =
-      L"{\"type\":\"keyUp\",\"key\":\"f\",\"code\":\"KeyF\","
-      L"\"windowsVirtualKeyCode\":70,\"nativeVirtualKeyCode\":70}";
-  view->CallDevToolsProtocolMethod(
-      L"Input.dispatchKeyEvent", kKeyDown,
-      Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-          [view, tver](HRESULT downResult, LPCWSTR) -> HRESULT {
-            if (FAILED(downResult) || !view) return S_OK;
-            const HRESULT upStarted = view->CallDevToolsProtocolMethod(
-                L"Input.dispatchKeyEvent", kKeyUp,
+  static constexpr wchar_t kYoutubeNeedsFullscreen[] = LR"JS(
+(() => /^(www\.)?youtube\.com$/.test(location.hostname) &&
+    location.pathname.startsWith('/watch') &&
+    !document.fullscreenElement && !document.webkitFullscreenElement &&
+    !document.msFullscreenElement)()
+)JS";
+  static constexpr wchar_t kTverNeedsFullscreen[] = LR"JS(
+(() => location.hostname === 'tver.jp' &&
+    location.pathname.startsWith('/episodes/') &&
+    !document.fullscreenElement && !document.webkitFullscreenElement &&
+    !document.msFullscreenElement)()
+)JS";
+  const wchar_t* check = tver
+      ? kTverNeedsFullscreen : kYoutubeNeedsFullscreen;
+  view->ExecuteScript(
+      check,
+      Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+          [view, tver](HRESULT checkResult, LPCWSTR json) -> HRESULT {
+            if (FAILED(checkResult) || !json ||
+                std::wstring_view(json) != L"true") return S_OK;
+            static constexpr wchar_t kKeyDown[] =
+                L"{\"type\":\"keyDown\",\"key\":\"f\",\"code\":\"KeyF\","
+                L"\"windowsVirtualKeyCode\":70,\"nativeVirtualKeyCode\":70}";
+            static constexpr wchar_t kKeyUp[] =
+                L"{\"type\":\"keyUp\",\"key\":\"f\",\"code\":\"KeyF\","
+                L"\"windowsVirtualKeyCode\":70,\"nativeVirtualKeyCode\":70}";
+            view->CallDevToolsProtocolMethod(
+                L"Input.dispatchKeyEvent", kKeyDown,
                 Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-                    [view, tver](HRESULT upResult, LPCWSTR) -> HRESULT {
-                      if (tver && SUCCEEDED(upResult) && view) {
+                    [view, tver](HRESULT downResult, LPCWSTR) -> HRESULT {
+                      if (FAILED(downResult) || !view) return S_OK;
+                      const HRESULT upStarted = view->CallDevToolsProtocolMethod(
+                          L"Input.dispatchKeyEvent", kKeyUp,
+                          Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
+                              [view, tver](HRESULT upResult, LPCWSTR) -> HRESULT {
+                                if (tver && SUCCEEDED(upResult) && view) {
+                                  view->ExecuteScript(
+                                      kNativeMediaTverForceFullscreenAdSafeScript,
+                                      nullptr);
+                                }
+                                return S_OK;
+                              }).Get());
+                      if (FAILED(upStarted) && tver && view) {
                         view->ExecuteScript(
                             kNativeMediaTverForceFullscreenAdSafeScript, nullptr);
                       }
                       return S_OK;
                     }).Get());
-            if (FAILED(upStarted) && tver && view) {
-              view->ExecuteScript(
-                  kNativeMediaTverForceFullscreenAdSafeScript, nullptr);
-            }
             return S_OK;
           }).Get());
 }
