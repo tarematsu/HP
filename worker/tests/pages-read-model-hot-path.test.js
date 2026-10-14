@@ -59,7 +59,8 @@ test('missing materialized response returns a closed 404 without generating data
 });
 
 test('serving module stays independent from render and publication graphs', () => {
-  assert.match(responseSource, /loadMaterializedResponse/);
+  assert.match(responseSource, /PAGES_HISTORY_API_COORDINATOR/);
+  assert.doesNotMatch(responseSource, /loadMaterializedResponse|pages-response-store/);
   assert.doesNotMatch(responseSource, /dashboard\.js|history\.js|host-history\.js/);
   assert.doesNotMatch(responseSource, /PAGES_READ_MODEL_QUEUE|track-history-publication|runSplitTrackHistoryCycleStep/);
 });

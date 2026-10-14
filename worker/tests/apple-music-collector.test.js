@@ -25,7 +25,9 @@ class FakeR2 {
     this.getCount = 0;
   }
 
-  async put(key, value) {
+  async put(key, value, options = {}) {
+    this.options ??= new Map();
+    this.options.set(key, options);
     this.putCount += 1;
     this.values.set(key, String(value));
   }
@@ -364,8 +366,9 @@ test('hourly collector writes only on changes and reuses R2 track mapping withou
   assert.equal(third.d1_writes, 0);
 
   const publicKey = pagesR2ResponseKey(APPLE_MUSIC_PAGES_MODEL_KEY);
-  const envelope = JSON.parse(r2.values.get(publicKey));
-  const payload = JSON.parse(envelope.body);
+  const payload = JSON.parse(r2.values.get(publicKey));
+  assert.equal(payload.body, undefined);
+  assert.equal(r2.options.get(publicKey).customMetadata.format, 'raw-response-v1');
   assert.equal(payload.ok, true);
   assert.equal(payload.measurement.change_events.length, 1);
   assert.equal(payload.regions[0].tracks[0].track_id, payload.track_ids_by_isrc[payload.regions[0].tracks[0].isrc]);

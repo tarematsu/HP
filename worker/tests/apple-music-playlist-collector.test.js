@@ -68,7 +68,9 @@ class FakeR2 {
     };
   }
 
-  async put(key, value) {
+  async put(key, value, options = {}) {
+    this.options ??= new Map();
+    this.options.set(key, options);
     this.values.set(key, String(value));
   }
 }
@@ -197,8 +199,9 @@ test('daily playlist collection crawls only public Apple Music pages and publish
   assert.ok(requests.every((url) => !url.includes('api.music.apple.com')));
 
   const publicKey = pagesR2ResponseKey(APPLE_MUSIC_PLAYLIST_PAGES_MODEL_KEY);
-  const envelope = JSON.parse(r2.values.get(publicKey));
-  const payload = JSON.parse(envelope.body);
+  const payload = JSON.parse(r2.values.get(publicKey));
+  assert.equal(payload.body, undefined);
+  assert.equal(r2.options.get(publicKey).customMetadata.format, 'raw-response-v1');
   assert.equal(payload.source, 'music.apple.com-public-pages');
   assert.equal(payload.coverage.matched_playlists, 1);
   assert.equal(payload.tracks[0].track_id, 42);

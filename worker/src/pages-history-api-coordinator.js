@@ -1,5 +1,12 @@
 import { loadMaterializedResponse } from './pages-response-store.js';
-import { materializedResponseMaximumAge } from '../../packages/sh-shared/api-contract.mjs';
+import {
+  PUBLIC_R2_MODEL_KEYS,
+  modelMaximumAge,
+  materializedStaleMaximumAge,
+  responseIsStale,
+  staleMaterializedResponse,
+} from './pages-response-models.js';
+import { normalizeFollowersResponse } from './stationhead-followers-response.js';
 
 const HISTORY_MODEL_KEYS = new Set(['history:daily', 'history:weekly', 'history:broadcasts']);
 
@@ -61,11 +68,10 @@ function historyApiModule() {
   return historyApiModulePromise;
 }
 
-const DEFAULT_STALE_MAX_AGE_MS = 7 * 24 * 60 * 60_000;
-
 // Pages HTTP (10ms CPU) is a thin cache/transport layer. Dynamic, potentially
 // thousands-row R2 shard JSON assembly belongs to this Durable Object (30s CPU).
-// No state is stored; stable names isolate sources and summary modes.
+// Historical class/binding name is retained to avoid a migration. Canonical
+// model compatibility decoding and follower normalization also run here.
 export class PagesHistoryApiCoordinator {
   constructor(_state, env, dependencies = {}) {
     this.env = env;
@@ -75,26 +81,26 @@ export class PagesHistoryApiCoordinator {
   async fetch(request) {
     if (request.method !== 'GET') return new Response(null, { status: 405 });
     const url = new URL(request.url);
-    const modelKey = url.searchParams.get('key') || '';
+    const modelKey = String(url.searchParams.get('key') || '').trim();
     const isHistoryRange = HISTORY_MODEL_KEYS.has(modelKey)
       && (url.searchParams.has('from') || url.searchParams.has('to'));
-    if (url.pathname !== '/_internal/pages-response'
-      || (!isHistoryRange && (modelKey !== 'track-history' || url.searchParams.get('api') !== '1'))) {
+    const isTrackHistoryApi = modelKey === 'track-history' && url.searchParams.get('api') === '1';
+    if (url.pathname !== '/_internal/pages-response' || !PUBLIC_R2_MODEL_KEYS.has(modelKey)) {
       return new Response(null, { status: 404 });
     }
-    if (isHistoryRange) {
-      const invalid = historyRangeError(url.searchParams);
+    if (!isTrackHistoryApi) {
+      const invalid = isHistoryRange ? historyRangeError(url.searchParams) : null;
       if (invalid) return invalid;
       const now = this.dependencies.now?.() ?? Date.now();
-      const maxAge = materializedResponseMaximumAge(modelKey, this.env);
-      const configured = Number(this.env?.PAGES_RESPONSE_STALE_MAX_AGE_MS);
-      const staleAge = Number.isFinite(configured) && configured >= 0
-        ? Math.max(maxAge, configured) : Math.max(maxAge, DEFAULT_STALE_MAX_AGE_MS);
+      const maxAge = modelMaximumAge(modelKey, this.env);
+      const staleAge = materializedStaleMaximumAge(this.env, maxAge);
       const load = this.dependencies.loadMaterializedResponse || loadMaterializedResponse;
       try {
-        const response = await load(this.env?.PAGES_RESPONSE_R2, modelKey, now, staleAge);
-        return await filterHistoryResponse(response, modelKey, url.searchParams)
-          || new Response(null, { status: 404, headers: { 'cache-control': 'no-store' } });
+        let response = await load(this.env?.PAGES_RESPONSE_R2, modelKey, now, staleAge);
+        if (responseIsStale(response, now, maxAge)) response = staleMaterializedResponse(response);
+        if (modelKey === 'followers') response = await normalizeFollowersResponse(response, now);
+        if (isHistoryRange) response = await filterHistoryResponse(response, modelKey, url.searchParams);
+        return response || new Response(null, { status: 404, headers: { 'cache-control': 'no-store' } });
       } catch {
         return new Response(null, { status: 503, headers: { 'cache-control': 'no-store' } });
       }
@@ -104,11 +110,8 @@ export class PagesHistoryApiCoordinator {
       return Response.json({ ok: false, error: 'invalid track-history source' }, { status: 400, headers: { 'cache-control': 'no-store' } });
     }
     const now = this.dependencies.now?.() ?? Date.now();
-    const maxAge = materializedResponseMaximumAge('track-history', this.env);
-    const configuredStale = Number(this.env?.PAGES_RESPONSE_STALE_MAX_AGE_MS);
-    const staleAge = Number.isFinite(configuredStale) && configuredStale >= 0
-      ? Math.max(maxAge, configuredStale)
-      : Math.max(maxAge, DEFAULT_STALE_MAX_AGE_MS);
+    const maxAge = modelMaximumAge('track-history', this.env);
+    const staleAge = materializedStaleMaximumAge(this.env, maxAge);
     try {
       const load = this.dependencies.loadTrackHistoryR2ApiResponse
         || (await historyApiModule()).loadTrackHistoryR2ApiResponse;

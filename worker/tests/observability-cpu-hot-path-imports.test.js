@@ -115,8 +115,8 @@ test('runtime health read avoids the full runtime-state failure graph', () => {
 
 test('serving-only Pages module is R2-only and excludes track-history assembly', () => {
   assert.match(pagesResponseFetch, /runPagesResponseFetch/);
-  assert.match(pagesResponseFetch, /loadMaterializedResponse/);
-  assert.match(pagesResponseFetch, /from '\.\/pages-response-store\.js'/);
+  assert.doesNotMatch(pagesResponseFetch, /loadMaterializedResponse|normalizeFollowersResponse/);
+  assert.doesNotMatch(pagesResponseFetch, /pages-response-store|pages-response-r2/);
   assert.doesNotMatch(pagesResponseFetch, /PAGES_RESPONSE_KV|loadMaterializedR2Response|from '\.\/pages-response-r2\.js'/);
   assert.doesNotMatch(pagesResponseFetch, /pages-track-history-r2-api/);
   assert.match(pagesResponseFetch, /PAGES_HISTORY_API_COORDINATOR/);

@@ -22,7 +22,9 @@ class FakeR2 {
     };
   }
 
-  async put(key, value) {
+  async put(key, value, options = {}) {
+    this.options ??= new Map();
+    this.options.set(key, options);
     this.putCount += 1;
     this.values.set(key, String(value));
   }
@@ -182,10 +184,11 @@ test('Apple Music playlist presentation canonicalizes provider titles and resolv
   assert.equal(stored.canonical_presentation_version, 2);
 
   const publicKey = pagesR2ResponseKey(APPLE_MUSIC_PLAYLIST_PAGES_MODEL_KEY);
-  const envelope = JSON.parse(r2.values.get(publicKey));
-  const publicModel = JSON.parse(envelope.body);
+  const publicModel = JSON.parse(r2.values.get(publicKey));
+  assert.equal(publicModel.body, undefined);
+  assert.equal(r2.options.get(publicKey).customMetadata.format, 'raw-response-v1');
   assert.equal(publicModel.playlists[0].tracks[0].title, '五月雨よ');
-  assert.equal(envelope.renderer_revision, 'apple-music-playlists-v3');
+
 
   const writesAfterFirst = r2.putCount;
   const second = await canonicalizeAppleMusicPlaylistPresentation({

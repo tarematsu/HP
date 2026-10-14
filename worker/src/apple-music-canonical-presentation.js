@@ -3,7 +3,7 @@ import {
   APPLE_MUSIC_ARTIST_ID,
   APPLE_MUSIC_PAGES_MODEL_KEY,
 } from './apple-music-collector.js';
-import { pagesR2ResponseKey } from './pages-response-r2.js';
+import { pagesR2ResponseKey, saveMaterializedR2Response } from './pages-response-r2.js';
 
 const READ_MODEL_KEY = 'apple-music/read-model/latest.json';
 const ARTIST_PREFIX = `apple-music/artist/${APPLE_MUSIC_ARTIST_ID}/`;
@@ -79,27 +79,8 @@ async function publishModel(r2, model, observedAt) {
   const body = JSON.stringify({ ok: true, ...model });
   const key = pagesR2ResponseKey(APPLE_MUSIC_PAGES_MODEL_KEY);
   if (!key) throw new Error('Apple Music public read-model key is unavailable');
-  const previousEnvelope = await getJson(r2, key);
-  const envelope = previousEnvelope && Number(previousEnvelope.version) === 1
-    ? {
-        ...previousEnvelope,
-        updated_at: observedAt,
-        source_revision: `apple-music:${model.snapshot_date}:${observedAt}:canonical-${PRESENTATION_VERSION}`,
-        body,
-      }
-    : {
-        version: 1,
-        status: 200,
-        headers: PUBLIC_HEADERS,
-        updated_at: observedAt,
-        cadence_seconds: 0,
-        source_revision: `apple-music:${model.snapshot_date}:${observedAt}:canonical-${PRESENTATION_VERSION}`,
-        renderer_revision: 'apple-music-v2',
-        body,
-      };
-  await r2.put(key, JSON.stringify(envelope), {
-    httpMetadata: { contentType: 'application/json; charset=utf-8' },
-  });
+  await saveMaterializedR2Response(r2, APPLE_MUSIC_PAGES_MODEL_KEY, body, 200, PUBLIC_HEADERS,
+    observedAt, 0, { source_revision: `apple-music:${model.snapshot_date}:${observedAt}:canonical-${PRESENTATION_VERSION}`, renderer_revision: 'apple-music-v2' });
   return key;
 }
 
