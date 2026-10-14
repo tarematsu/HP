@@ -3,7 +3,10 @@ import { STATIONHEAD_CHANNEL_TABS } from './stationhead-channel-model.js?v=20261
 
 function role(name) { return `data-role="${name}"`; }
 function metric(label, name, featured = false) { return `<article class="metric${featured ? ' featured' : ''}"><span>${label}</span><div class="metric-value"><strong ${role(name)}>—</strong></div></article>`; }
-function summaryItem(label, name) { return `<article><span>${label}</span><strong ${role(name)}>—</strong></article>`; }
+function summaryItem(label, name) {
+  const dateClass = ['history-periods', 'likes-latest'].includes(name) ? ' class="summary-date"' : '';
+  return `<article><span>${label}</span><strong${dateClass} ${role(name)}>—</strong></article>`;
+}
 
 function playbackCards() {
   return `<section class="primary-grid">
