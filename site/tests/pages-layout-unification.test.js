@@ -23,8 +23,8 @@ test('one canonical cross-view stylesheet owns dashboard layout and is bundled a
 test('every dashboard view uses one grid rhythm without per-tab margins', () => {
   assert.match(css, /\.dashboard-view\s*\{[\s\S]*display:\s*grid;[\s\S]*gap:\s*var\(--pages-view-gap\)/);
   assert.match(css, /\.dashboard-view > \*\s*\{[\s\S]*margin-top:\s*0/);
-  assert.match(css, /--pages-view-gap:\s*12px/);
-  assert.match(css, /--pages-view-gap-mobile:\s*8px/);
+  assert.match(css, /--pages-view-gap:\s*8px/);
+  assert.match(css, /--pages-view-gap-mobile:\s*6px/);
   assert.doesNotMatch(css, /#(?:current|history|likes|spotify|firstWeek|playedTracks)View/);
 });
 
