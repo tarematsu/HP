@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { saveMaterializedR2Response } from '../src/pages-response-r2.js';
+import { PagesHistoryApiCoordinator } from '../src/pages-history-api-coordinator.js';
 import { runPagesResponseFetch } from '../src/pages-response-fetch-entry.js';
 import { publishStationheadLikesReadModel } from '../src/stationhead-likes-read-model.js';
 import { publishStationheadPlaybackDay } from '../src/stationhead-playback-publication.js';
@@ -20,9 +21,18 @@ function bucket() {
     },
   };
 }
+function workerEnv(r2, now) {
+  const env = { PAGES_RESPONSE_R2: r2 };
+  const coordinator = new PagesHistoryApiCoordinator(null, env, { now: () => now });
+  env.PAGES_HISTORY_API_COORDINATOR = {
+    idFromName: (name) => name,
+    get: () => coordinator,
+  };
+  return env;
+}
 function serviceEnv(r2, now) {
   return { PAGES_READ_MODEL_SERVICE: { fetch: (request) => runPagesResponseFetch(request,
-    { PAGES_RESPONSE_R2: r2 }, { now: () => now }) } };
+    workerEnv(r2, now), { now: () => now }) } };
 }
 
 test('Ohisama current is accessible through the real producer-to-Pages R2 contract', async () => {
@@ -47,7 +57,7 @@ for (const source of ['buddies', 'ohisama']) {
     await publishStationheadLikesReadModel(r2, source, [{ track_id: 46, title: 'Song', like_count: 123, observed_at: 1000 }], 1000);
     await publishStationheadPlaybackDay(r2, source, { period_key: '2026-10-08', total_plays: 3,
       tracks: [{ track_id: 46, title: 'Song', count: 3 }] }, 1000);
-    const env = { PAGES_RESPONSE_R2: r2 };
+    const env = workerEnv(r2, 1000);
     const read = (params) => runPagesResponseFetch(new Request(`https://internal/_internal/pages-response?key=track-history&api=1&source=${source}&${params}`), env, { now: () => 1000 });
     const likes = await read('ranking_only=1');
     assert.equal(likes.status, 200);
@@ -88,10 +98,10 @@ test('Buddies collector capture publishes current likes and playback without a h
       thumbnail_url: 'https://example.test/art.jpg', duration_ms: 240000, bite_count: 123 }],
   }, now);
   assert.equal(result.state_saved, true);
-  const likes = await runPagesResponseFetch(new Request('https://internal/_internal/pages-response?key=track-history&api=1&ranking_only=1'), { PAGES_RESPONSE_R2: r2 }, { now: () => now });
+  const likes = await runPagesResponseFetch(new Request('https://internal/_internal/pages-response?key=track-history&api=1&ranking_only=1'), workerEnv(r2, now), { now: () => now });
   assert.equal(likes.status, 200);
   assert.equal((await likes.json()).ranking[0].like_count, 123);
-  const played = await runPagesResponseFetch(new Request('https://internal/_internal/pages-response?key=track-history&api=1&ranking=0&from=2026-10-08&to=2026-10-08'), { PAGES_RESPONSE_R2: r2 }, { now: () => now });
+  const played = await runPagesResponseFetch(new Request('https://internal/_internal/pages-response?key=track-history&api=1&ranking=0&from=2026-10-08&to=2026-10-08'), workerEnv(r2, now), { now: () => now });
   assert.equal(played.status, 200);
   assert.equal((await played.json()).rows[0].play_count, 1);
   assert.ok(statements.some((sql) => sql.includes('INSERT OR IGNORE INTO sh_track_plays')));
