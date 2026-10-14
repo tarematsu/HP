@@ -212,20 +212,25 @@ void NativeMediaRequestTverBrowserFullscreen(
   if (FAILED(started)) NativeMediaDispatchFullscreenKeyEvents(view.Get(), true);
 }
 
-void NativeMediaDispatchFullscreenKey(
-    ICoreWebView2* webview, bool tver) noexcept {
+// The browser Fullscreen API is the primary path for YouTube. Chromium's
+// trusted F key is only a fallback: YouTube can ignore it when WebView2 is
+// hidden, focus moved, or the player shortcuts are disabled.
+void NativeMediaDispatchYoutubeFullscreenFallbackKey(
+    ICoreWebView2* webview) noexcept {
   if (!webview) return;
   ComPtr<ICoreWebView2> view = webview;
-  if (tver) {
-    NativeMediaRequestTverBrowserFullscreen(view.Get());
-    return;
-  }
   static constexpr wchar_t kYoutubeFocus[] = LR"JS(
 (() => {
+  // An asynchronous fullscreen request or a trusted player click may have
+  // succeeded while CDP was finishing. Never toggle a fullscreen video off.
+  if (document.fullscreenElement || document.webkitFullscreenElement ||
+      document.msFullscreenElement) return false;
+  if (!/^(www\.)?youtube\.com$/.test(location.hostname) ||
+      !location.pathname.startsWith('/watch')) return false;
   const target = document.querySelector('#movie_player') ||
-      document.querySelector('video') || document.body;
+      document.querySelector('video');
   if (!(target instanceof HTMLElement)) return false;
-  if (target !== document.body && !target.hasAttribute('tabindex'))
+  if (!target.hasAttribute('tabindex'))
     target.setAttribute('tabindex', '-1');
   try { target.focus({ preventScroll: true }); }
   catch (_) { try { target.focus(); } catch (_) {} }
@@ -235,12 +240,45 @@ void NativeMediaDispatchFullscreenKey(
   const HRESULT focusStarted = view->ExecuteScript(
       kYoutubeFocus,
       Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-          [view](HRESULT, LPCWSTR) -> HRESULT {
-            NativeMediaDispatchFullscreenKeyEvents(view.Get(), false);
+          [view](HRESULT result, LPCWSTR json) -> HRESULT {
+            if (SUCCEEDED(result) && json &&
+                std::wstring_view(json) == L"true") {
+              NativeMediaDispatchFullscreenKeyEvents(view.Get(), false);
+            }
             return S_OK;
           }).Get());
-  if (FAILED(focusStarted)) {
-    NativeMediaDispatchFullscreenKeyEvents(view.Get(), false);
+  // A failed focus script cannot guarantee the current fullscreen state.
+  // Let the next watchdog retry the browser API instead of blindly toggling.
+  static_cast<void>(focusStarted);
+}
+
+void NativeMediaRequestYoutubeBrowserFullscreen(
+    ICoreWebView2* webview) noexcept {
+  if (!webview) return;
+  ComPtr<ICoreWebView2> view = webview;
+  static constexpr wchar_t kRequest[] = LR"JSON({"expression":"(async()=>{if(!/^(www\\.)?youtube\\.com$/.test(location.hostname)||!location.pathname.startsWith('/watch'))return false;const player=document.querySelector('#movie_player');if(!player)return false;if(document.fullscreenElement||document.webkitFullscreenElement||document.msFullscreenElement)return true;const request=player.requestFullscreen||player.webkitRequestFullscreen||player.msRequestFullscreen;if(typeof request!=='function')return false;try{const pending=request.call(player);if(pending&&typeof pending.then==='function')await pending;return !!(document.fullscreenElement||document.webkitFullscreenElement||document.msFullscreenElement);}catch(_){return false;}})()","userGesture":true,"awaitPromise":true,"returnByValue":true})JSON";
+  const HRESULT started = view->CallDevToolsProtocolMethod(
+      L"Runtime.evaluate", kRequest,
+      Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
+          [view](HRESULT result, LPCWSTR json) -> HRESULT {
+            const bool entered = SUCCEEDED(result) && json &&
+                std::wstring_view(json).find(L"\"value\":true") !=
+                    std::wstring_view::npos;
+            if (!entered)
+              NativeMediaDispatchYoutubeFullscreenFallbackKey(view.Get());
+            return S_OK;
+          }).Get());
+  if (FAILED(started))
+    NativeMediaDispatchYoutubeFullscreenFallbackKey(view.Get());
+}
+
+void NativeMediaDispatchFullscreenKey(
+    ICoreWebView2* webview, bool tver) noexcept {
+  if (!webview) return;
+  if (tver) {
+    NativeMediaRequestTverBrowserFullscreen(webview);
+  } else {
+    NativeMediaRequestYoutubeBrowserFullscreen(webview);
   }
 }
 
