@@ -6,11 +6,15 @@ namespace {
 
 // Keep autoplay enabled and keep background timers running. Renderer/window
 // backgrounding still follows Chromium's default policy.
+// Preserve WebView2's Crashpad reporting: disabling the crash handler leaves
+// child-process failures harder to diagnose. Prevent a Windows/Chromium error
+// dialog from blocking unattended recovery; ProcessFailed and
+// BrowserProcessExited still drive the existing recovery paths.
 constexpr wchar_t kSharedWebView2LifecycleArguments[] =
     L"--autoplay-policy=no-user-gesture-required "
     L"--disable-background-timer-throttling "
     L"--disable-domain-reliability "
-    L"--disable-breakpad "
+    L"--noerrdialogs "
     L"--disable-extensions "
     L"--disable-sync "
     L"--metrics-recording-only";
