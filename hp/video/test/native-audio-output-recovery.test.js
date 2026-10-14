@@ -40,8 +40,9 @@ test('shared audio-health coordinator spaces six Stationhead profiles one minute
   assert.match(coordinator, /gAudioHealthScanInProgress/);
   assert.match(coordinator, /kAudioHealthScanMinimumGapMs = 4ULL \* 1000ULL/);
   assert.match(coordinator, /ReleaseAudioHealthScan/);
-  assert.match(profilePolicy, /TryClaimAudioHealthScan\(now\)[\s\S]*TryClaimAudioHealthScanSlot/);
-  assert.match(profilePolicy, /kAudioHealthScanRetryMs[\s\S]*StationheadProfileAudioHealthRetryMs/);
+  assert.match(profilePolicy, /StationheadProfileAudioHealthScanDelayMs\(/);
+  assert.match(profilePolicy, /StationheadProfileAudioHealthRetryMs\(/);
+  assert.doesNotMatch(profilePolicy, /#define (?:AudioHealthScanDelayMs|TryClaimAudioHealthScan|kAudioHealthScanRetryMs)/);
   assert.match(stationheadRecovery,
     /StationheadAudioHealthCheckIntervalMs\(\) noexcept[\s\S]*return 1 \* 60'000;/);
 });
@@ -49,8 +50,8 @@ test('shared audio-health coordinator spaces six Stationhead profiles one minute
 test('Stationhead one-minute scheduler observes audio only in the profile slot', () => {
   assert.match(stationheadRecovery, /StationheadAudioHealthCheckIntervalMs\(\) noexcept[\s\S]*return 1 \* 60'000;/);
   assert.match(stationheadRecovery, /PollPeriodicAudioHealth/);
-  assert.match(stationheadRecovery, /AudioHealthScanDelayMs\(GetTickCount64\(\), 0\)/);
-  assert.match(stationheadRecovery, /TryClaimAudioHealthScan\(scanTick\)/);
+  assert.match(stationheadRecovery, /StationheadProfileAudioHealthScanDelayMs\(GetTickCount64\(\), profileName_\)/);
+  assert.match(stationheadRecovery, /TryClaimAudioHealthScanSlot\(/);
   assert.match(stationheadRecovery, /ReleaseAudioHealthScan\(\)/);
   assert.match(stationheadRecovery, /get_IsDocumentPlayingAudio\(&nativePlaying\)/);
 
