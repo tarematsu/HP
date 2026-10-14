@@ -65,13 +65,5 @@ WrapStationheadAuthCompletionMessageHandler(
 }  // namespace stationhead_auth_completion_message_policy
 }  // namespace hp
 
-// Preserve the existing exact-current-origin gate as the outer boundary, then
-// apply the stricter Stationhead-only rule to the two terminal auth messages.
-#undef add_WebMessageReceived
-#define add_WebMessageReceived(handler, token)                                  \
-  add_WebMessageReceived(                                                       \
-      ::hp::stationhead_webview_policy::WrapStationheadWebMessageHandler(       \
-          ::hp::stationhead_auth_completion_message_policy::                    \
-              WrapStationheadAuthCompletionMessageHandler((handler)).Get())     \
-          .Get(),                                                               \
-      (token))
+// Callers explicitly wrap WebView2 handlers with this policy; never rename
+// COM registration methods through the preprocessor.
