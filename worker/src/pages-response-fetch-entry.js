@@ -13,46 +13,6 @@ const INTERNAL_RESPONSE_PATH = '/_internal/pages-response';
 const TRACK_HISTORY_MODEL_KEY = 'track-history';
 const FOLLOWERS_MODEL_KEY = 'followers';
 
-// History range filtering belongs to the Worker read-model boundary, never Pages.
-function validHistoryDate(value) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const timestamp = Date.parse(value + 'T00:00:00Z');
-  return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === value;
-}
-
-async function filterHistoryResponse(response, modelKey, params) {
-  if (!modelKey.startsWith('history:')) return response;
-  const from = params.get('from');
-  const to = params.get('to');
-  if (!from && !to) return response;
-  if ((from && !validHistoryDate(from)) || (to && !validHistoryDate(to))) {
-    return Response.json({ ok: false, error: 'from and to must be valid YYYY-MM-DD dates' }, { status: 400 });
-  }
-  if (from && to && from > to) {
-    return Response.json({ ok: false, error: 'from must not be after to' }, { status: 400 });
-  }
-  if (!response?.ok) return response;
-  const payload = await response.clone().json().catch(() => null);
-  if (!payload || !Array.isArray(payload.rows)) return response;
-  const broadcasts = modelKey === 'history:broadcasts';
-  const fromTs = from ? Date.parse(from + 'T00:00:00Z') : -Infinity;
-  const toTs = to ? Date.parse(to + 'T00:00:00Z') + 86400000 : Infinity;
-  const rows = payload.rows.filter(row => {
-    if (broadcasts) {
-      const timestamp = Number(row?.started_at);
-      return Number.isFinite(timestamp) && timestamp >= fromTs && timestamp < toTs;
-    }
-    const key = String(row?.period_key || '');
-    return (!from || key >= from) && (!to || key <= to);
-  });
-  const headers = new Headers(response.headers);
-  headers.delete('content-length');
-  headers.set('x-history-read-path', 'r2-materialized-range');
-  headers.set('x-history-range-filter', 'worker');
-  return new Response(JSON.stringify({ ...payload, from: from || payload.from, to: to || payload.to,
-    rows, read_path: 'r2-materialized-range' }), { status: response.status, headers });
-}
-
 const DEFAULT_STALE_FALLBACK_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS = new Set([
   'apple-music',
@@ -248,6 +208,7 @@ export async function runPagesResponseFetch(
     } else if (PUBLIC_R2_MODEL_KEYS.has(modelKey)) {
       const cache = dependencies.responseCache
         ?? (context && typeof caches !== 'undefined' ? caches.default : null);
+      const isHistoryRange = modelKey.startsWith('history:') && (params.has('from') || params.has('to'));
       const key = pagesResponseCacheKey(url);
       if (cache) {
         const cached = await cache.match(key).catch(() => null);
@@ -256,8 +217,14 @@ export async function runPagesResponseFetch(
           return cached;
         }
       }
-      response = await loadCanonicalR2(env, modelKey, now, maximumAge, dependencies);
-      if (modelKey.startsWith('history:')) response = await filterHistoryResponse(response, modelKey, params);
+      if (isHistoryRange && env?.PAGES_HISTORY_API_COORDINATOR?.get) {
+        const namespace = env.PAGES_HISTORY_API_COORDINATOR;
+        response = await namespace.get(namespace.idFromName('history:range')).fetch(request);
+      } else {
+        response = await loadCanonicalR2(env, modelKey, now, maximumAge, dependencies);
+        // Local/test fallback only. Production history range assembly uses the DO.
+        if (isHistoryRange) response = await filterHistoryResponse(response, modelKey, params);
+      }
       if (modelKey === FOLLOWERS_MODEL_KEY) response = await normalizeFollowersResponse(response, now);
       if (cache && context) {
         const cacheResponse = cacheablePagesResponse(response, now, maximumAge);
