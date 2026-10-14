@@ -58,14 +58,12 @@ test('native WebMessage dispatch requires a matching trusted current origin', ()
     wrapper.indexOf('if (!trusted) return S_OK;') <
       wrapper.indexOf('InvokeEventNoexcept(inner, sender, args)'),
   );
-  assert.match(
-    policySource,
-    /#define add_WebMessageReceived\(handler, token\)[\s\S]*WrapStationheadWebMessageHandler/,
-  );
+  assert.doesNotMatch(policySource, /#define add_WebMessageReceived\(/);
+  assert.equal((webviewSource.match(/WrapStationheadWebMessageHandler\(/g) || []).length, 2);
   assert.equal(
     webviewSource.split('add_WebMessageReceived(').length - 1,
     2,
-    'both playback and auth WebMessage handlers must remain behind the policy macro',
+    'both playback and auth WebMessage handlers use the same trust wrapper',
   );
 });
 
@@ -103,10 +101,8 @@ test('unrelated and unhandled trusted popups are contained before browser escape
     wrapper,
     /handled == FALSE[\s\S]*args->put_Handled\(TRUE\);/,
   );
-  assert.match(
-    policySource,
-    /#define add_NewWindowRequested\(handler, token\)[\s\S]*WrapStationheadNewWindowHandler/,
-  );
+  assert.doesNotMatch(policySource, /#define add_NewWindowRequested\(/);
+  assert.match(webviewSource, /WrapStationheadNewWindowHandler\(/);
   assert.equal(webviewSource.split('add_NewWindowRequested(').length - 1, 1);
 });
 
@@ -126,10 +122,9 @@ test('every Stationhead WebView callback is contained at the COM boundary', () =
     ['add_WindowCloseRequested', 'WrapStationheadWindowCloseHandler', 1],
     ['add_IsDocumentPlayingAudioChanged', 'WrapStationheadAudioChangedHandler', 1],
   ]) {
-    assert.match(
-      policySource,
-      new RegExp(`#define ${method}\\(handler, token\\)[\\s\\S]*${wrapper}`),
-    );
+    assert.doesNotMatch(policySource, new RegExp(`#define ${method}\\(`));
+    const observedWrappers = (webviewSource.match(new RegExp(`${wrapper}\\(`, 'g')) || []).length;
+    assert.equal(observedWrappers, expectedCount, `${wrapper} must wrap every registration`);
     assert.equal(
       webviewSource.split(`${method}(`).length - 1,
       expectedCount,
