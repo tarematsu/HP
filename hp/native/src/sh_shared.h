@@ -465,7 +465,7 @@ inline void BlockStationheadTelemetrySockets(ICoreWebView2* webview, bool blockI
 
 
 
-inline void ApplyStationheadResourceBlocking(ICoreWebView2Environment* environment,
+inline void ApplyStationheadResourceBlockingBase(ICoreWebView2Environment* environment,
                                               ICoreWebView2* webview,
                                               const StationheadConfig& config,
                                               std::atomic<bool>& armed,
