@@ -18,7 +18,7 @@ inline constexpr int64_t kStationheadPostPlaybackStopClickDelayMs = 12'000;
 
 // Shared "click Start Listening" automation injected into the Stationhead
 // WebView at document creation.
-inline std::wstring StationheadAutoplayScript(const wchar_t* globalName,
+inline std::wstring StationheadAutoplayScriptBase(const wchar_t* globalName,
                                               const wchar_t* messagePrefix) {
   static constexpr wchar_t kTemplate[] = LR"JS(
 (() => {
@@ -168,7 +168,7 @@ inline std::wstring StationheadAutoplayScript(const wchar_t* globalName,
   return replaceAll(replaceAll(kTemplate, L"{{GLOBAL}}", globalName), L"{{PREFIX}}", messagePrefix);
 }
 
-inline std::wstring StationheadVolumeScript(int percent) {
+inline std::wstring StationheadVolumeScriptWithMutationObserver(int percent) {
   std::wostringstream script;
   script << L"(() => { const v=" << percent << L"/100;"
          << L"window.__homepanelStationheadVolume=v;"
