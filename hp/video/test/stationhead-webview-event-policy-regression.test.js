@@ -148,20 +148,19 @@ test('every Stationhead WebView callback is contained at the COM boundary', () =
   );
 });
 
-test('final WebResourceRequested callback is also exception-contained', () => {
-  assert.match(
-    policySource,
-    /WrapStationheadWebResourceRequestedHandler\([\s\S]*ICoreWebView2WebResourceRequestedEventHandler/,
-  );
-  assert.match(
-    policySource,
-    /#define add_WebResourceRequested\(handler, token\)[\s\S]*WrapStationheadWebResourceRequestedHandler/,
-  );
-  assert.equal(
-    resourceBoundarySource.split('add_WebResourceRequested(').length - 1,
-    1,
-  );
-  const eventsAt = cmakeSource.indexOf('src/sh_webview_event_policy.h');
-  const boundaryAt = cmakeSource.indexOf('src/sh_runtime_resource_boundary_policy_fix.h');
-  assert.ok(eventsAt >= 0 && eventsAt < boundaryAt);
+test('the one active WebResourceRequested callback is wrapped explicitly, without a PCH macro', () => {
+  const active = readFileSync(
+    new URL('../../native/src/sh_runtime_script_resource_policy_fix.h', import.meta.url), 'utf8');
+  const callback = section(active,
+    'inline void ApplyStationheadResourceBlockingScriptFixed(', '}  // namespace hp');
+  assert.match(policySource,
+    /WrapStationheadWebResourceRequestedHandler\([\s\S]*InvokeEventNoexcept\(inner, sender, args\)/);
+  assert.doesNotMatch(policySource, /#define add_WebResourceRequested\(/);
+  assert.equal((callback.match(/add_WebResourceRequested\(/g) || []).length, 1);
+  assert.match(callback,
+    /stationhead_webview_policy::WrapStationheadWebResourceRequestedHandler\(/);
+  assert.match(callback,
+    /Callback<ICoreWebView2WebResourceRequestedEventHandler>\(/);
+  assert.match(callback, /\}\)\.Get\(\)\)\.Get\(\),\s*&token\)/);
+  assert.doesNotMatch(resourceBoundarySource, /add_WebResourceRequested\(/);
 });
