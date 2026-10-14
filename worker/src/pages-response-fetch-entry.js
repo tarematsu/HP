@@ -160,7 +160,9 @@ export async function runPagesResponseFetch(
   if (request.method !== 'GET' || url.pathname !== INTERNAL_RESPONSE_PATH) {
     return new Response(null, { status: 404 });
   }
-  const modelKey = String(url.searchParams.get('key') || '').trim();
+  const params = url.searchParams;
+  const modelKey = String(params.get('key') || '').trim();
+  const isTrackHistoryApi = modelKey === TRACK_HISTORY_MODEL_KEY && params.get('api') === '1';
   if (!modelKey) return new Response(null, { status: 400 });
   const startedAt = Date.now();
   const now = dependencies.now?.() ?? startedAt;
@@ -169,12 +171,14 @@ export async function runPagesResponseFetch(
     : materializedResponseMaximumAge(modelKey, env);
   try {
     let response = null;
-    if (modelKey === TRACK_HISTORY_MODEL_KEY && url.searchParams.get('api') === '1') {
+    if (isTrackHistoryApi) {
       const cache = dependencies.responseCache
         ?? (context && typeof caches !== 'undefined' ? caches.default : null);
       // This API already declares a five-minute public cache lifetime. Retain
       // the full query so source, range, limits and invalid parameters stay isolated.
-      const cacheKey = new Request(`https://track-history-cache.internal/v1${url.pathname}${url.search}`);
+      const cacheKey = cache
+        ? new Request(`https://track-history-cache.internal/v1${url.pathname}${url.search}`)
+        : null;
       if (cache) {
         const cached = await cache.match(cacheKey).catch(() => null);
         if (cached) {
@@ -222,12 +226,12 @@ export async function runPagesResponseFetch(
     // Distinguish those paths without logging content or arbitrary URLs.
     logSlowPagesRead(
       modelKey,
-      modelKey === TRACK_HISTORY_MODEL_KEY && url.searchParams.get('api') === '1'
+      isTrackHistoryApi
         ? (env?.PAGES_HISTORY_API_COORDINATOR ? 'track-history-do' : 'track-history-fallback')
         : 'canonical-r2',
       startedAt,
       Date.now(),
-      url.searchParams.get('api') === '1',
+      isTrackHistoryApi,
     );
     return response || new Response(null, {
       status: 404,
