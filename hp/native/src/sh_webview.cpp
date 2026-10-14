@@ -1,6 +1,7 @@
 #include "sh.h"
 #include "json_helpers.h"
 #include "sh_shared.h"
+#include "sh_runtime_script_resource_policy_fix.h"
 #include "sh_track_boundary_script.h"
 #include "media_pipeline_health.h"
 #include "webview_feature_policy.h"
@@ -41,7 +42,7 @@ void StationheadPlayer::ConfigureWebView() {
     controller2->put_DefaultBackgroundColor(background);
   }
   ApplyMediaWebViewFeaturePolicy(controller_.Get(), webview_.Get(), true);
-  ApplyStationheadResourceBlocking(environment_.Get(), webview_.Get(), config_,
+  ApplyStationheadResourceBlockingScriptFixed(environment_.Get(), webview_.Get(), config_,
                                    resourceBlockingArmed_, resourceRequestedToken_);
 
   ComPtr<ICoreWebView2_8> audioView;
