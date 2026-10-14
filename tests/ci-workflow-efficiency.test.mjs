@@ -81,6 +81,11 @@ test('Pages production screenshots run after deployment or repair while PRs only
   for (const viewport of ['desktop', 'tablet', 'mobile', 'mobile-compact']) {
     assert.match(visualAudit, new RegExp(`name: pages-visual-audit-.*-${viewport}`));
   }
+  assert.equal(
+    [...visualAudit.matchAll(/^\s+include-hidden-files: true$/gm)].length,
+    5,
+    'the report and every hidden-directory screenshot artifact stay uploadable',
+  );
   assert.doesNotMatch(visualAudit, /wrangler pages deploy|audit-pages-live\.mjs|audit-pages-materialized-production\.mjs/);
   assert.equal(
     existsSync(new URL('../.github/workflows/pages-live-browser-audit.yml', import.meta.url)),
