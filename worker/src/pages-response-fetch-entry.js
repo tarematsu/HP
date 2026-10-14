@@ -60,6 +60,33 @@ async function loadTrackHistoryCoalesced(r2, dependencies, url, load) {
 }
 
 let trackHistoryApiModulePromise;
+// The track-history API can assemble up to 20,000 rows and multiple R2 day
+// objects. Keep that CPU work out of the 10ms HTTP invocation by handing it
+// to a 30s-budget Durable Object. An absent binding retains the legacy path
+// for local tests and rollback, while a configured binding fails closed on
+// transport errors rather than redoing expensive JSON work on HTTP.
+async function loadTrackHistoryThroughCoordinator(env, request, dependencies, fallback) {
+  if (typeof dependencies.loadTrackHistoryApiResponse === 'function') return fallback();
+  const namespace = env?.PAGES_HISTORY_API_COORDINATOR;
+  if (!namespace || typeof namespace.idFromName !== 'function'
+      || typeof namespace.get !== 'function') return fallback();
+  const source = new URL(request.url).searchParams.get('source') || 'buddies';
+  if (source !== 'buddies' && source !== 'ohisama') return fallback();
+  try {
+    const stub = namespace.get(namespace.idFromName(`history:${source}`));
+    const response = await stub.fetch(request);
+    if (response) return response;
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'track_history_do_unavailable', source,
+      error: String(error?.message || error).slice(0, 200),
+    }));
+  }
+  return new Response(null, {
+    status: 503, headers: { 'cache-control': 'no-store', 'retry-after': '30' },
+  });
+}
+
 function loadTrackHistoryApiModule() {
   trackHistoryApiModulePromise ||= import('./pages-track-history-r2-api.js');
   return trackHistoryApiModulePromise;
@@ -139,17 +166,20 @@ export async function runPagesResponseFetch(
         const cached = await cache.match(cacheKey).catch(() => null);
         if (cached) return cached;
       }
-      const loadTrackHistoryApi = dependencies.loadTrackHistoryApiResponse
-        || (await loadTrackHistoryApiModule()).loadTrackHistoryR2ApiResponse;
+      const loadTrackHistoryApi = async (...args) => {
+        const run = dependencies.loadTrackHistoryApiResponse
+          || (await loadTrackHistoryApiModule()).loadTrackHistoryR2ApiResponse;
+        return run(...args);
+      };
       response = await loadTrackHistoryCoalesced(
         env?.PAGES_RESPONSE_R2, dependencies, url,
-        () => loadTrackHistoryApi(
+        () => loadTrackHistoryThroughCoordinator(env, request, dependencies, () => loadTrackHistoryApi(
           env?.PAGES_RESPONSE_R2,
           request,
           now,
           materializedStaleMaximumAge(env, maximumAge),
           dependencies.trackHistory || EMPTY_DEPENDENCIES,
-        ),
+        )),
       );
       if (cache && context && response?.ok) {
         context.waitUntil(cache.put(cacheKey, response.clone()).catch(() => {}));

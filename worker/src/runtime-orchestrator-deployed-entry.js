@@ -1,6 +1,7 @@
 import baseWorker from './runtime-orchestrator-entry.js';
 
 export { MinuteLiveJobCoordinator } from './minute-live-job-coordinator.js';
+export { PagesHistoryApiCoordinator } from './pages-history-api-coordinator.js';
 
 let queueAttributionModulePromise;
 

@@ -31,7 +31,10 @@ test('offline runtime coordinators are absent while live-job coordination remain
   const config = JSON.parse(source('../wrangler.runtime.jsonc'));
   assert.equal(config.triggers, undefined);
   assert.deepEqual(config.durable_objects, {
-    bindings: [{ name: 'MINUTE_LIVE_JOB_COORDINATOR', class_name: 'MinuteLiveJobCoordinator' }],
+    bindings: [
+      { name: 'MINUTE_LIVE_JOB_COORDINATOR', class_name: 'MinuteLiveJobCoordinator' },
+      { name: 'PAGES_HISTORY_API_COORDINATOR', class_name: 'PagesHistoryApiCoordinator' },
+    ],
   });
   assert.equal(config.queues.consumers.some(({ queue }) => queue === 'stationhead-host-monitor'), false);
   assert.equal(config.queues.consumers.some(({ queue }) => queue.includes('read-model')), false);

@@ -110,7 +110,10 @@ test('collector coordination and runtime live-job DO fit daily budgets without r
   assert.deepEqual(collector.triggers.crons, ['*/5 * * * *']);
   assert.equal(runtime.triggers, undefined);
   assert.deepEqual(runtime.durable_objects, {
-    bindings: [{ name: 'MINUTE_LIVE_JOB_COORDINATOR', class_name: 'MinuteLiveJobCoordinator' }],
+    bindings: [
+      { name: 'MINUTE_LIVE_JOB_COORDINATOR', class_name: 'MinuteLiveJobCoordinator' },
+      { name: 'PAGES_HISTORY_API_COORDINATOR', class_name: 'PagesHistoryApiCoordinator' },
+    ],
   });
   assert.equal(runtime.main, 'src/runtime-orchestrator-deployed-entry.js');
   assert.deepEqual(Object.keys(runtime).includes('triggers'), false);

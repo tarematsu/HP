@@ -32,24 +32,30 @@ const LIVE_COORDINATOR = {
   name: 'MINUTE_LIVE_JOB_COORDINATOR',
   class_name: 'MinuteLiveJobCoordinator',
 };
+const HISTORY_COORDINATOR = {
+  name: 'PAGES_HISTORY_API_COORDINATOR',
+  class_name: 'PagesHistoryApiCoordinator',
+};
 
-test('temporary runtime deploy config retires cron and preserves only the live job Durable Object', () => {
+test('temporary runtime deploy config retains both authorized Durable Objects', () => {
   const source = {
     name: 'sh-runtime-orchestrator',
     durable_objects: { bindings: [
       { name: 'SCHEDULER_COORDINATOR', class_name: 'RuntimeCoordinator' },
       LIVE_COORDINATOR,
+      HISTORY_COORDINATOR,
     ] },
     migrations: [{ tag: 'v1' }],
     vars: { KEEP: true },
   };
   const deployed = queueOnlyRuntimeDeployConfig(source);
   assert.deepEqual(deployed.triggers, { crons: [] });
-  assert.deepEqual(deployed.durable_objects, { bindings: [LIVE_COORDINATOR] });
+  assert.deepEqual(deployed.durable_objects, { bindings: [LIVE_COORDINATOR, HISTORY_COORDINATOR] });
   assert.deepEqual(deployed.migrations, [
     { tag: 'runtime-coordinator-v1', new_sqlite_classes: ['RuntimeCoordinator'] },
     { tag: 'runtime-coordinator-v2-retired', deleted_classes: ['RuntimeCoordinator'] },
     { tag: 'minute-live-job-coordinator-v1', new_sqlite_classes: ['MinuteLiveJobCoordinator'] },
+    { tag: 'pages-history-api-coordinator-v1', new_sqlite_classes: ['PagesHistoryApiCoordinator'] },
   ]);
   assert.deepEqual(deployed.vars, { KEEP: true });
   assert.notEqual(deployed, source);
@@ -74,7 +80,7 @@ test('runtime deployment payload keeps only traffic-bearing versions', () => {
   }).length, 1);
 });
 
-test('runtime deployment verification waits for a new version and enforces queue plus live-job DO architecture', async () => {
+test('runtime deployment verification waits for a new version and enforces both active DO bindings', async () => {
   let deploymentReads = 0;
   const result = await verifyRuntimeDeployment({
     accountId: 'account',
@@ -95,6 +101,7 @@ test('runtime deployment verification waits for a new version and enforces queue
           result: { bindings: [
             { name: 'MINUTE_DB', type: 'd1' },
             { name: 'MINUTE_LIVE_JOB_COORDINATOR', type: 'durable_object_namespace' },
+            { name: 'PAGES_HISTORY_API_COORDINATOR', type: 'durable_object_namespace' },
           ] },
         });
       }
@@ -106,7 +113,7 @@ test('runtime deployment verification waits for a new version and enforces queue
   assert.deepEqual(result.active_version_ids, ['v2']);
   assert.equal(result.version_changed, true);
   assert.equal(result.cron_triggers, 0);
-  assert.equal(result.durable_object_bindings, 1);
+  assert.equal(result.durable_object_bindings, 2);
 });
 
 test('runtime deployment verification rejects an unchanged active version', async () => {

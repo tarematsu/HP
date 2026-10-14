@@ -44,11 +44,15 @@
     "REQUEST_TIMEOUT_MS": 8000
   },
   "r2_buckets": [{ "binding": "PAGES_RESPONSE_R2", "bucket_name": "sh-pages-responses" }],
-  "durable_objects": { "bindings": [{ "name": "MINUTE_LIVE_JOB_COORDINATOR", "class_name": "MinuteLiveJobCoordinator" }] },
+  "durable_objects": { "bindings": [
+    { "name": "MINUTE_LIVE_JOB_COORDINATOR", "class_name": "MinuteLiveJobCoordinator" },
+    { "name": "PAGES_HISTORY_API_COORDINATOR", "class_name": "PagesHistoryApiCoordinator" }
+  ] },
   "migrations": [
     { "tag": "runtime-coordinator-v1", "new_sqlite_classes": ["RuntimeCoordinator"] },
     { "tag": "runtime-coordinator-v2-retired", "deleted_classes": ["RuntimeCoordinator"] },
-    { "tag": "minute-live-job-coordinator-v1", "new_sqlite_classes": ["MinuteLiveJobCoordinator"] }
+    { "tag": "minute-live-job-coordinator-v1", "new_sqlite_classes": ["MinuteLiveJobCoordinator"] },
+    { "tag": "pages-history-api-coordinator-v1", "new_sqlite_classes": ["PagesHistoryApiCoordinator"] }
   ],
   "d1_databases": [
     { "binding": "BUDDIES_DB", "database_name": "stationhead-buddies", "database_id": "f361aae0-05f0-42bc-8784-77100e80133d" },
