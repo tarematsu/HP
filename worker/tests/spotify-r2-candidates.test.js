@@ -85,6 +85,9 @@ test('candidate finalization fails closed if any completed album receipt is miss
   await assert.rejects(loadSpotifyR2RunCandidates(env, message, [
     { album_id: 'A', track_count: 1 }, { album_id: 'B', track_count: 1 },
   ]), /album missing/);
+  await assert.rejects(loadSpotifyR2RunCandidates(env, message, [
+    { album_id: 'A', track_count: 2 },
+  ]), /count mismatch/, 'a partly published album cannot count as complete');
   const key = bucket.writes[0];
   const raw = JSON.parse(bucket.objects.get(key));
   raw.run_token = 'wrong-run';
