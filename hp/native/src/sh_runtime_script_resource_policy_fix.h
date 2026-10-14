@@ -321,5 +321,3 @@ inline void ApplyStationheadResourceBlockingScriptFixed(
 
 }  // namespace hp
 
-#undef ApplyStationheadResourceBlocking
-#define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingScriptFixed
