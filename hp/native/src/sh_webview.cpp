@@ -359,8 +359,8 @@ void StationheadPlayer::ConfigureWebView() {
   }
 
   const HRESULT webMessageResult = webview_->add_WebMessageReceived(
-      stationhead_auth_completion_message_policy::WrapStationheadAuthCompletionMessageHandler(
-          stationhead_webview_policy::WrapStationheadWebMessageHandler(
+      stationhead_webview_policy::WrapStationheadWebMessageHandler(
+          stationhead_auth_completion_message_policy::WrapStationheadAuthCompletionMessageHandler(
           Callback<ICoreWebView2WebMessageReceivedEventHandler>(
           [this, alive](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
             if (!CallbackAlive(alive) || !args) return S_OK;
@@ -482,7 +482,6 @@ void StationheadPlayer::ConfigureWebView() {
 
   const HRESULT navigationCompletedResult = webview_->add_NavigationCompleted(
       stationhead_auth_navigation_policy::WrapStationheadAuthStableNavigationCompletedHandler(
-          stationhead_webview_policy::WrapStationheadNavigationCompletedHandler(
           Callback<ICoreWebView2NavigationCompletedEventHandler>(
           [this, alive](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT {
             if (!CallbackAlive(alive) || !args) return S_OK;
@@ -527,7 +526,7 @@ void StationheadPlayer::ConfigureWebView() {
             }
             PostChange();
             return S_OK;
-          }).Get()).Get()).Get(), &navigationToken_);
+          }).Get()).Get(), &navigationToken_);
   if (FAILED(navigationCompletedResult)) {
     navigationToken_ = {};
     ScheduleRecreate(
@@ -539,7 +538,6 @@ void StationheadPlayer::ConfigureWebView() {
 
   const HRESULT processFailedResult = webview_->add_ProcessFailed(
       stationhead_auth_process_failure_policy::WrapStationheadAuthStableProcessFailedHandler(
-          stationhead_webview_policy::WrapStationheadProcessFailedHandler(
           Callback<ICoreWebView2ProcessFailedEventHandler>(
           [this, alive](ICoreWebView2*, ICoreWebView2ProcessFailedEventArgs* args) -> HRESULT {
             if (!CallbackAlive(alive)) return S_OK;
@@ -552,7 +550,7 @@ void StationheadPlayer::ConfigureWebView() {
             }
             ScheduleRecreate(L"ProcessFailed", 5'000);
             return S_OK;
-          }).Get()).Get()).Get(), &processFailedToken_);
+          }).Get()).Get(), &processFailedToken_);
   if (FAILED(processFailedResult)) {
     processFailedToken_ = {};
     ScheduleRecreate(
@@ -594,7 +592,6 @@ void StationheadPlayer::ConfigureAuthWebView() {
 
   const HRESULT authNavigationResult = authWebview_->add_NavigationCompleted(
       stationhead_auth_navigation_policy::WrapStationheadAuthStableNavigationCompletedHandler(
-          stationhead_webview_policy::WrapStationheadNavigationCompletedHandler(
           Callback<ICoreWebView2NavigationCompletedEventHandler>(
           [this, alive](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT {
             if (!CallbackAlive(alive) || !spotifyAuthorization_) return S_OK;
@@ -621,7 +618,7 @@ void StationheadPlayer::ConfigureAuthWebView() {
             if (authWebview_) authWebview_->PostWebMessageAsJson(L"{\"type\":\"auth-tab-ready\"}");
             PostChange();
             return S_OK;
-          }).Get()).Get()).Get(), &authNavigationToken_);
+          }).Get()).Get(), &authNavigationToken_);
   if (FAILED(authNavigationResult)) {
     authNavigationToken_ = {};
     FinishSpotifyAuthorization(
@@ -647,8 +644,8 @@ void StationheadPlayer::ConfigureAuthWebView() {
   }
 
   const HRESULT authMessageResult = authWebview_->add_WebMessageReceived(
-      stationhead_auth_completion_message_policy::WrapStationheadAuthCompletionMessageHandler(
-          stationhead_webview_policy::WrapStationheadWebMessageHandler(
+      stationhead_webview_policy::WrapStationheadWebMessageHandler(
+          stationhead_auth_completion_message_policy::WrapStationheadAuthCompletionMessageHandler(
           Callback<ICoreWebView2WebMessageReceivedEventHandler>(
           [this, alive](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
             if (!CallbackAlive(alive) || !spotifyAuthorization_) return S_OK;
@@ -684,13 +681,12 @@ void StationheadPlayer::ConfigureAuthWebView() {
 
   const HRESULT authProcessFailedResult = authWebview_->add_ProcessFailed(
       stationhead_auth_process_failure_policy::WrapStationheadAuthStableProcessFailedHandler(
-          stationhead_webview_policy::WrapStationheadProcessFailedHandler(
           Callback<ICoreWebView2ProcessFailedEventHandler>(
           [this, alive](ICoreWebView2*, ICoreWebView2ProcessFailedEventArgs*) -> HRESULT {
             if (!CallbackAlive(alive) || !spotifyAuthorization_) return S_OK;
             FinishSpotifyAuthorization(L"Spotify login WebView failed");
             return S_OK;
-          }).Get()).Get()).Get(), &authProcessFailedToken_);
+          }).Get()).Get(), &authProcessFailedToken_);
   if (FAILED(authProcessFailedResult)) {
     authProcessFailedToken_ = {};
     FinishSpotifyAuthorization(
