@@ -1,4 +1,5 @@
 import { loadMaterializedResponse } from './pages-response-store.js';
+import { materializedResponseMaximumAge } from '../../packages/sh-shared/api-contract.mjs';
 // History range filtering belongs to the Worker read-model boundary, never Pages.
 function validHistoryDate(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -40,7 +41,6 @@ async function filterHistoryResponse(response, modelKey, params) {
 }
 
 
-import { materializedResponseMaximumAge } from '../../packages/sh-shared/api-contract.mjs';
 // The DO class is exported by the shared Worker entrypoint. Never pull the
 // multi-day track-history parser into the 10ms HTTP isolate on cold start.
 let historyApiModulePromise;
