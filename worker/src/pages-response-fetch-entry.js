@@ -12,6 +12,7 @@ const EMPTY_DEPENDENCIES = Object.freeze({});
 const INTERNAL_RESPONSE_PATH = '/_internal/pages-response';
 const TRACK_HISTORY_MODEL_KEY = 'track-history';
 const FOLLOWERS_MODEL_KEY = 'followers';
+
 const DEFAULT_STALE_FALLBACK_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS = new Set([
   'apple-music',
@@ -59,19 +60,19 @@ async function loadTrackHistoryCoalesced(r2, dependencies, url, load) {
   }
 }
 
-let trackHistoryApiModulePromise;
-// The track-history API can assemble up to 20,000 rows and multiple R2 day
-// objects. Keep that CPU work out of the 10ms HTTP invocation by handing it
-// to a 30s-budget Durable Object. An absent binding retains the legacy path
-// for local tests and rollback, while a configured binding fails closed on
-// transport errors rather than redoing expensive JSON work on HTTP.
+// Only explicitly injected test loaders can assemble history in HTTP. Production
+// requires the 30s Durable Object even when its binding is absent or invalid.
 async function loadTrackHistoryThroughCoordinator(env, request, dependencies, fallback) {
   if (typeof dependencies.loadTrackHistoryApiResponse === 'function') return fallback();
   const namespace = env?.PAGES_HISTORY_API_COORDINATOR;
   if (!namespace || typeof namespace.idFromName !== 'function'
-      || typeof namespace.get !== 'function') return fallback();
+      || typeof namespace.get !== 'function') {
+    return new Response(null, { status: 503, headers: { 'cache-control': 'no-store', 'retry-after': '30' } });
+  }
   const source = new URL(request.url).searchParams.get('source') || 'buddies';
-  if (source !== 'buddies' && source !== 'ohisama') return fallback();
+  if (source !== 'buddies' && source !== 'ohisama') {
+    return Response.json({ ok: false, error: 'invalid track-history source' }, { status: 400, headers: { 'cache-control': 'no-store' } });
+  }
   try {
     const stub = namespace.get(namespace.idFromName(`history:${source}`));
     const response = await stub.fetch(request);
@@ -85,11 +86,6 @@ async function loadTrackHistoryThroughCoordinator(env, request, dependencies, fa
   return new Response(null, {
     status: 503, headers: { 'cache-control': 'no-store', 'retry-after': '30' },
   });
-}
-
-function loadTrackHistoryApiModule() {
-  trackHistoryApiModulePromise ||= import('./pages-track-history-r2-api.js');
-  return trackHistoryApiModulePromise;
 }
 
 function materializedStaleMaximumAge(env, freshMaximumAge) {
@@ -160,7 +156,9 @@ export async function runPagesResponseFetch(
   if (request.method !== 'GET' || url.pathname !== INTERNAL_RESPONSE_PATH) {
     return new Response(null, { status: 404 });
   }
-  const modelKey = String(url.searchParams.get('key') || '').trim();
+  const params = url.searchParams;
+  const modelKey = String(params.get('key') || '').trim();
+  const isTrackHistoryApi = modelKey === TRACK_HISTORY_MODEL_KEY && params.get('api') === '1';
   if (!modelKey) return new Response(null, { status: 400 });
   const startedAt = Date.now();
   const now = dependencies.now?.() ?? startedAt;
@@ -169,12 +167,14 @@ export async function runPagesResponseFetch(
     : materializedResponseMaximumAge(modelKey, env);
   try {
     let response = null;
-    if (modelKey === TRACK_HISTORY_MODEL_KEY && url.searchParams.get('api') === '1') {
+    if (isTrackHistoryApi) {
       const cache = dependencies.responseCache
         ?? (context && typeof caches !== 'undefined' ? caches.default : null);
       // This API already declares a five-minute public cache lifetime. Retain
       // the full query so source, range, limits and invalid parameters stay isolated.
-      const cacheKey = new Request(`https://track-history-cache.internal/v1${url.pathname}${url.search}`);
+      const cacheKey = cache
+        ? new Request(`https://track-history-cache.internal/v1${url.pathname}${url.search}`)
+        : null;
       if (cache) {
         const cached = await cache.match(cacheKey).catch(() => null);
         if (cached) {
@@ -183,8 +183,7 @@ export async function runPagesResponseFetch(
         }
       }
       const loadTrackHistoryApi = async (...args) => {
-        const run = dependencies.loadTrackHistoryApiResponse
-          || (await loadTrackHistoryApiModule()).loadTrackHistoryR2ApiResponse;
+        const run = dependencies.loadTrackHistoryApiResponse;
         return run(...args);
       };
       response = await loadTrackHistoryCoalesced(
@@ -203,7 +202,8 @@ export async function runPagesResponseFetch(
     } else if (PUBLIC_R2_MODEL_KEYS.has(modelKey)) {
       const cache = dependencies.responseCache
         ?? (context && typeof caches !== 'undefined' ? caches.default : null);
-      const key = pagesResponseCacheKey(url);
+      const isHistoryRange = modelKey.startsWith('history:') && (params.has('from') || params.has('to'));
+      const key = cache ? pagesResponseCacheKey(url) : null;
       if (cache) {
         const cached = await cache.match(key).catch(() => null);
         if (cached && !responseIsStale(cached, now, maximumAge)) {
@@ -211,7 +211,15 @@ export async function runPagesResponseFetch(
           return cached;
         }
       }
-      response = await loadCanonicalR2(env, modelKey, now, maximumAge, dependencies);
+      if (isHistoryRange && typeof env?.PAGES_HISTORY_API_COORDINATOR?.get === 'function'
+          && typeof env.PAGES_HISTORY_API_COORDINATOR.idFromName === 'function') {
+        const namespace = env.PAGES_HISTORY_API_COORDINATOR;
+        response = await namespace.get(namespace.idFromName(modelKey)).fetch(request);
+      } else if (isHistoryRange) {
+        return new Response(null, { status: 503, headers: { 'cache-control': 'no-store' } });
+      } else {
+        response = await loadCanonicalR2(env, modelKey, now, maximumAge, dependencies);
+      }
       if (modelKey === FOLLOWERS_MODEL_KEY) response = await normalizeFollowersResponse(response, now);
       if (cache && context) {
         const cacheResponse = cacheablePagesResponse(response, now, maximumAge);
@@ -222,12 +230,13 @@ export async function runPagesResponseFetch(
     // Distinguish those paths without logging content or arbitrary URLs.
     logSlowPagesRead(
       modelKey,
-      modelKey === TRACK_HISTORY_MODEL_KEY && url.searchParams.get('api') === '1'
-        ? (env?.PAGES_HISTORY_API_COORDINATOR ? 'track-history-do' : 'track-history-fallback')
-        : 'canonical-r2',
+      isTrackHistoryApi
+        ? (env?.PAGES_HISTORY_API_COORDINATOR ? 'track-history-do' : 'track-history-unavailable')
+        : (modelKey.startsWith('history:') && (params.has('from') || params.has('to'))
+          ? 'history-range-do' : 'canonical-r2'),
       startedAt,
       Date.now(),
-      url.searchParams.get('api') === '1',
+      isTrackHistoryApi,
     );
     return response || new Response(null, {
       status: 404,

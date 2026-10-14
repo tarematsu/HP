@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { PagesHistoryApiCoordinator } from '../../worker/src/pages-history-api-coordinator.js';
+import { runPagesResponseFetch } from '../../worker/src/pages-response-fetch-entry.js';
+
 import { onRequest } from '../functions/_middleware.js';
 
 const CASES = [
@@ -116,7 +119,10 @@ test('history ranges are filtered before the materialized payload reaches the br
         PAGES_READ_MODEL_SERVICE: {
           async fetch(request) {
             assert.equal(new URL(request.url).searchParams.get('key'), 'history:weekly');
-            return Response.json({
+            assert.equal(new URL(request.url).searchParams.get('from'), '2026-06-01');
+            assert.equal(new URL(request.url).searchParams.get('to'), '2026-06-30');
+            const coordinator = new PagesHistoryApiCoordinator(null, {}, {
+              loadMaterializedResponse: async () => Response.json({
               ok: true,
               mode: 'weekly',
               timezone: 'UTC',
@@ -133,6 +139,13 @@ test('history ranges are filtered before the materialized payload reaches the br
                 'x-materialized-cadence-seconds': '21600',
                 'x-api-source': 'actions-r2',
               },
+              }),
+            });
+            return runPagesResponseFetch(request, {
+              PAGES_HISTORY_API_COORDINATOR: {
+                idFromName: (name) => name,
+                get: () => coordinator,
+              },
             });
           },
         },
@@ -146,13 +159,9 @@ test('history ranges are filtered before the materialized payload reaches the br
     });
 
     assert.equal(response.status, 200);
-    assert.equal(response.headers.get('x-history-read-path'), 'r2-materialized-range');
-    assert.equal(response.headers.get('x-history-range-filter'), 'edge');
+    assert.equal(response.headers.get('x-history-range-filter'), 'worker');
     assert.equal(response.headers.get('x-api-source'), 'actions-r2');
     const data = await response.json();
-    assert.equal(data.from, '2026-06-01');
-    assert.equal(data.to, '2026-06-30');
-    assert.equal(data.read_path, 'r2-materialized-range');
     assert.deepEqual(data.rows.map((row) => row.period_key), ['2026-06-01', '2026-06-29']);
     assert.equal(response.headers.get('x-edge-cache'), 'HTTP');
     assert.equal(cachedRequest, null);
