@@ -132,6 +132,19 @@ async function loadCanonicalR2(env, modelKey, now, maximumAge, dependencies) {
     : response;
 }
 
+// The account-level CPU metric records one invocation, not a model route.
+// Emit a bounded, route-only diagnostic on slow HTTP reads (wall time is a
+// correlate, not itself CPU time). Never emit raw query parameters or URLs.
+export function logSlowPagesRead(modelKey, path, startedAt, now = Date.now(), api = false) {
+  const elapsedMs = Math.max(0, Number(now) - Number(startedAt));
+  if (elapsedMs < 10 || !PUBLIC_R2_MODEL_KEYS.has(modelKey)) return false;
+  console.info(JSON.stringify({
+    event: 'pages_response_slow_read', model_key: modelKey,
+    api, read_path: path, elapsed_ms: elapsedMs,
+  }));
+  return true;
+}
+
 export async function runPagesResponseFetch(
   request,
   env,
@@ -164,7 +177,10 @@ export async function runPagesResponseFetch(
       const cacheKey = new Request(`https://track-history-cache.internal/v1${url.pathname}${url.search}`);
       if (cache) {
         const cached = await cache.match(cacheKey).catch(() => null);
-        if (cached) return cached;
+        if (cached) {
+          logSlowPagesRead(modelKey, 'track-history-edge-cache', startedAt, Date.now(), true);
+          return cached;
+        }
       }
       const loadTrackHistoryApi = async (...args) => {
         const run = dependencies.loadTrackHistoryApiResponse
@@ -190,7 +206,10 @@ export async function runPagesResponseFetch(
       const key = pagesResponseCacheKey(url);
       if (cache) {
         const cached = await cache.match(key).catch(() => null);
-        if (cached && !responseIsStale(cached, now, maximumAge)) return cached;
+        if (cached && !responseIsStale(cached, now, maximumAge)) {
+          logSlowPagesRead(modelKey, 'canonical-edge-cache', startedAt);
+          return cached;
+        }
       }
       response = await loadCanonicalR2(env, modelKey, now, maximumAge, dependencies);
       if (modelKey === FOLLOWERS_MODEL_KEY) response = await normalizeFollowersResponse(response, now);
@@ -199,19 +218,17 @@ export async function runPagesResponseFetch(
         if (cacheResponse) context.waitUntil(cache.put(key, cacheResponse).catch(() => {}));
       }
     }
-    const elapsedMs = Date.now() - startedAt;
-    // The telemetry audit redacts query parameters. Emit only the validated
-    // model key for slow internal reads so a later CPU breach can be correlated
-    // with the offending read path without logging arbitrary query values.
-    if (elapsedMs >= 10 && PUBLIC_R2_MODEL_KEYS.has(modelKey)) {
-      console.info(JSON.stringify({
-        event: 'pages_response_slow_read', model_key: modelKey,
-        api: url.searchParams.get('api') === '1',
-        read_path: modelKey === TRACK_HISTORY_MODEL_KEY && url.searchParams.get('api') === '1'
-          ? 'track-history-r2-api' : 'canonical-r2',
-        elapsed_ms: elapsedMs,
-      }));
-    }
+    // An HTTP 10 ms CPU breach can occur on a cache hit as well as a miss.
+    // Distinguish those paths without logging content or arbitrary URLs.
+    logSlowPagesRead(
+      modelKey,
+      modelKey === TRACK_HISTORY_MODEL_KEY && url.searchParams.get('api') === '1'
+        ? (env?.PAGES_HISTORY_API_COORDINATOR ? 'track-history-do' : 'track-history-fallback')
+        : 'canonical-r2',
+      startedAt,
+      Date.now(),
+      url.searchParams.get('api') === '1',
+    );
     return response || new Response(null, {
       status: 404,
       headers: { 'cache-control': 'no-store' },
