@@ -90,7 +90,7 @@ const due = {
   kugou: ({ day, hour, minute }) => day >= 1 && day <= 5 && hour === 2 && minute === 30,
   kugouAcg: ({ day, hour, minute }) => day === 3 && hour === 2 && minute === 40,
   qqToplists: ({ day, hour, minute }) => day === 4 && hour >= 9 && hour <= 21 && minute === 30,
-  dailySummary: ({ hour, minute }) => hour === 0 && minute === 46,
+  dailySummary: ({ hour, minute }) => hour === 0 && minute === 6,
   leaderboard: ({ day, hour, minute }) => day === 1 && hour === 12 && minute === 17,
 };
 

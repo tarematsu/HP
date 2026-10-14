@@ -77,6 +77,10 @@ test('Pages production screenshots run after deployment or repair while PRs only
   assert.match(visualAudit, /workflows: \[Deploy production, Refresh Amazon Music read model, Rebuild Ohisama Track History, Recollect regional music manually\]/);
   assert.match(visualAudit, /Check responsive navigation with isolated API fixtures/);
   assert.match(visualAudit, /capture-pages-visual-audit\.mjs/);
+  assert.match(visualAudit, /path: \.pages-visual-audit\/report\.json/);
+  for (const viewport of ['desktop', 'tablet', 'mobile', 'mobile-compact']) {
+    assert.match(visualAudit, new RegExp(`name: pages-visual-audit-.*-${viewport}`));
+  }
   assert.doesNotMatch(visualAudit, /wrangler pages deploy|audit-pages-live\.mjs|audit-pages-materialized-production\.mjs/);
   assert.equal(
     existsSync(new URL('../.github/workflows/pages-live-browser-audit.yml', import.meta.url)),
