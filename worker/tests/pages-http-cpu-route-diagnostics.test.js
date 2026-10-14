@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { logSlowPagesRead, runPagesResponseFetch } from '../src/pages-response-fetch-entry.js';
 
@@ -40,4 +41,10 @@ test('a slow cache hit emits route attribution without invoking a costly history
     assert.equal(doCalls,0);
     assert.ok(logs.some(entry => entry.read_path==='track-history-edge-cache' && entry.elapsed_ms>=10));
   } finally { console.info=original; }
+});
+
+test('history parser is imported only during a DO request, never the 10ms stateless startup path', () => {
+  const source = readFileSync(new URL('../src/pages-history-api-coordinator.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /import\\s+\\{\\s*loadTrackHistoryR2ApiResponse/);
+  assert.match(source, /import\\('\.\/pages-track-history-r2-api\.js'\)/);
 });
