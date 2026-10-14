@@ -2,6 +2,14 @@ name: Pages visual audit
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/capture-pages-visual-audit.mjs'
+      - 'scripts/pages-data-audit.mjs'
+      - 'tests/pages-data-audit.test.mjs'
+      - 'tests/pages-visual-audit-navigation.test.mjs'
+      - '.github/workflows/pages-visual-audit.yml'
   pull_request:
     paths:
       - 'scripts/capture-pages-visual-audit.mjs'

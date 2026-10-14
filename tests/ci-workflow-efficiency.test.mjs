@@ -71,6 +71,8 @@ test('CI trigger paths stay inside the Stationhead boundary', () => {
 
 test('Pages production screenshots run after deployment or repair while PRs only check isolated fixtures', () => {
   assert.match(visualAudit, /^  workflow_dispatch:\n/m);
+  assert.match(visualAudit, /^  push:\n/m);
+  assert.match(visualAudit, /branches: \[main\]/);
   assert.match(visualAudit, /^  schedule:\n/m);
   assert.match(visualAudit, /cron: '17 \*\/6 \* \* \*'/);
   assert.match(visualAudit, /github.event_name != 'pull_request'/);
