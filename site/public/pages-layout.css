@@ -1,7 +1,7 @@
 :root {
-  --pages-view-gap:12px;
-  --pages-view-gap-mobile:8px;
-  --pages-panel-padding:14px 16px;
+  --pages-view-gap:8px;
+  --pages-view-gap-mobile:6px;
+  --pages-panel-padding:10px 12px;
   --pages-panel-radius:0;
   --pages-control-height:44px;
 }
@@ -13,7 +13,7 @@
   display: grid;
   gap: var(--pages-view-gap);
   min-width: 0;
-  margin-top: 12px;
+  margin-top: 8px;
 }
 .dashboard-view > * {
   min-width: 0;
@@ -66,7 +66,7 @@
 .metric,
 .summary-cards article {
   min-width: 0;
-  padding: 13px 14px;
+  padding: 9px 10px;
   border: 0;
   border-right: 1px solid var(--line);
   border-radius: 0;
@@ -81,7 +81,7 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  min-height: 68px;
+  min-height: 56px;
   grid-column: auto;
 }
 .metric > span,
@@ -137,7 +137,7 @@
 }
 .now-playing {
   grid-template-columns: 76px minmax(0, 1fr);
-  gap: 12px;
+  gap: 8px;
   min-height: 76px;
 }
 .track-visual {
@@ -180,10 +180,10 @@
   font-size: var(--dashboard-small-size);
 }
 .section-head {
-  min-height: 34px;
+  min-height: 28px;
   align-items: center;
   gap: 10px;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 .section-head > div:first-child {
   min-width: 0;
@@ -210,7 +210,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
   gap: 8px;
-  padding: 12px 14px;
+  padding: 8px 10px;
 }
 .control-group,
 .standard-controls {
@@ -267,7 +267,7 @@
 .chart-detail {
   min-height: 0;
   margin-top: 7px;
-  padding: 8px 0;
+  padding: 5px 0;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -343,13 +343,13 @@
   margin: 10px 0 7px;
 }
 .like-ranking {
-  gap: 6px;
+  gap: 2px;
 }
 .like-rank-item {
   grid-template-columns: 34px 46px minmax(0, 1fr) auto;
   gap: 8px;
   min-height: 56px;
-  padding: 8px 0;
+  padding: 5px 0;
   border: 0;
   border-bottom: 1px solid var(--line);
   border-radius: 0;
@@ -405,7 +405,7 @@
 @media (max-width: 760px) {
   :root {
     --pages-view-gap:var(--pages-view-gap-mobile);
-    --pages-panel-padding:10px 8px;
+    --pages-panel-padding:8px 6px;
   }
   .shell {
     padding-inline: max(8px, env(safe-area-inset-left));
@@ -428,15 +428,15 @@
   .metric.featured {
     display: block;
     grid-column: auto;
-    padding: 9px 7px;
+    padding: 6px;
   }
   .metric strong,
   .metric.featured strong {
     font-size: clamp(1rem, 5vw, 1.4rem);
   }
   .summary-cards article {
-    min-height: 56px;
-    padding: 8px 6px;
+    min-height: 48px;
+    padding: 6px;
   }
   .summary-cards strong {
     margin-top: 4px;
@@ -449,15 +449,15 @@
     border-right: 0;
   }
   .section-head {
-    min-height: 30px;
-    margin-bottom: 8px;
+    min-height: 28px;
+    margin-bottom: 6px;
   }
   .section-head h2 {
     font-size: 15px;
   }
   .controls {
     grid-template-columns: minmax(0, 1fr);
-    padding: 9px 8px;
+    padding: 8px 6px;
   }
   .controls > .button {
     width: 100%;
@@ -578,7 +578,7 @@ body {
 .metrics, .summary-cards {
   background:var(--accent);
   color:#fff;
-  padding:12px;
+  padding:8px;
   border-radius:8px;
   border:0;
 }
@@ -589,7 +589,7 @@ body {
 .music-service-view-tabs { display:flex; gap:4px; flex-wrap:wrap; }
 .music-service-view-tabs button { min-height:46px; flex:1 1 100px; white-space:normal; text-wrap:balance; }
 .music-service-view-tabs button.active { background:var(--panel-2); border-bottom:3px solid var(--accent); color:var(--text); font-weight:700; }
-.music-service-group { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:16px; align-items:start; }
+.music-service-group { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:10px; align-items:start; }
 .music-service-group[hidden] { display:none!important; }
 .music-service-group > .music-service-section { min-width:0; }
 .music-service-group .table-wrap > table { width:100%; min-width:0; table-layout:fixed; }
