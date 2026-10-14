@@ -233,7 +233,8 @@ inline void ApplyStationheadResourceBlockingScriptFixed(
 
   ComPtr<ICoreWebView2Environment> env = environment;
   webview->add_WebResourceRequested(
-      Callback<ICoreWebView2WebResourceRequestedEventHandler>(
+      stationhead_webview_policy::WrapStationheadWebResourceRequestedHandler(
+          Callback<ICoreWebView2WebResourceRequestedEventHandler>(
           [env](ICoreWebView2*,
                 ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
             if (!args) return S_OK;
@@ -318,7 +319,7 @@ inline void ApplyStationheadResourceBlockingScriptFixed(
               }
             }
             return S_OK;
-          }).Get(),
+          }).Get()).Get(),
       &token);
 
   BlockStationheadTelemetrySocketsBoundaryFixed(webview);
