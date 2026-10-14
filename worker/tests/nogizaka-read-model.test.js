@@ -36,7 +36,9 @@ test('Nogizaka publishes a producer-owned Pages read model to the shared R2 buck
   assert.match(sourceProfile, /modelKey: 'nogizaka-listening-party'/);
   assert.match(pagesModel, /saveMaterializedR2Response/);
   assert.match(pagesModel, /PAGES_RESPONSE_R2 binding is missing/);
-  assert.match(pagesFetch, /'nogizaka-listening-party'/);
+  assert.match(pagesFetch, /PUBLIC_R2_MODEL_KEYS/);
+  const models = readFileSync(new URL('../src/pages-response-models.js', import.meta.url), 'utf8');
+  assert.match(models, /'nogizaka-listening-party'/);
   const servingConfig = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
   assert.deepEqual(config.r2_buckets, servingConfig.r2_buckets);
 });
