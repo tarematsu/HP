@@ -1,4 +1,10 @@
-import { spotifyDailyFinalizeStatement } from './spotify-playcount-daily-write.js';
+import { spotifyDailyFinalizeR2Statement, spotifyDailyFinalizeStatement } from './spotify-playcount-daily-write.js';
+import {
+  cleanupSpotifyR2RunCandidates,
+  loadSpotifyR2RunCandidates,
+  saveSpotifyR2AlbumCandidates,
+  spotifyR2CandidatesEnabled,
+} from './spotify-r2-candidates.js';
 import {
   activeRunMatches,
   batchStatements,
@@ -98,7 +104,9 @@ export function spotifyTargetBatchStatement(db, tracks) {
     .bind(JSON.stringify(pairs));
 }
 
-async function persistCandidateTracks(db, message, tracks, collectedAt) {
+async function persistCandidateTracks(env, message, tracks, collectedAt) {
+  const db = env.OTHER_DB;
+  const r2Mode = spotifyR2CandidatesEnabled(env);
   const resolvedTracks = await resolveCanonicalSpotifyTracks(db, tracks, collectedAt);
   const writes = [];
   for (let index = 0; index < resolvedTracks.length; index += SPOTIFY_CANDIDATE_CHUNK_SIZE) {
@@ -115,11 +123,14 @@ async function persistCandidateTracks(db, message, tracks, collectedAt) {
         );
       }
     }
-    writes.push(spotifyCandidateBatchStatement(db, message, group, collectedAt));
+    if (!r2Mode) writes.push(spotifyCandidateBatchStatement(db, message, group, collectedAt));
     const targetInsert = spotifyTargetBatchStatement(db, group);
     if (targetInsert) writes.push(targetInsert);
   }
   await batchStatements(db, writes);
+  // A receipt is durable before the album completion counter is advanced.
+  // Concurrent retries never overwrite another receipt (unlike mutable R2 keys).
+  if (r2Mode) await saveSpotifyR2AlbumCandidates(env, message, resolvedTracks, collectedAt);
 }
 
 function rawArtistIds(rawArtists) {
@@ -188,7 +199,7 @@ async function collectAlbum(env, message, session, dependencies) {
     }
     throw new Error(`Spotify album ${message.album_id} returned no target playcount tracks`);
   }
-  await persistCandidateTracks(env.OTHER_DB, message, tracks, Date.now());
+  await persistCandidateTracks(env, message, tracks, Date.now());
   return { trackCount: tracks.length, stale: false, unrelated: false };
 }
 
@@ -266,7 +277,9 @@ export function spotifyPreviousTargetPlaycountsStatement(db, previousDate, targe
     .bind(previousDate, ...keys);
 }
 
-async function finalizeAttempt(db, message) {
+async function finalizeAttempt(env, message) {
+  const db = env.OTHER_DB;
+  const r2Mode = spotifyR2CandidatesEnabled(env);
   const run = await readRun(db, message.snapshot_date);
   if (!run || run.run_token !== message.run_token || run.status === 'complete') return { staleMessage: true };
   if (run.status === 'finalizing') return { finalizing: true };
@@ -284,10 +297,24 @@ async function finalizeAttempt(db, message) {
     .bind(claimTime, message.snapshot_date, message.run_token).run();
   if (Number(claim?.meta?.changes || 0) !== 1) return { finalizing: true };
 
-  const candidateResult = await db.prepare(`SELECT track_id,playcount,collected_at
-    FROM sh_spotify_playcount_candidates WHERE snapshot_date=? AND run_token=? ORDER BY track_id`)
-    .bind(message.snapshot_date, message.run_token).all();
-  const candidates = resultsOf(candidateResult);
+  let candidates;
+  try {
+    if (r2Mode) {
+      const albumResult = await db.prepare(`SELECT album_id,track_count
+        FROM sh_spotify_collection_album_runs
+        WHERE snapshot_date=? AND run_token=? AND status='complete'
+        ORDER BY album_id`).bind(message.snapshot_date, message.run_token).all();
+      candidates = await loadSpotifyR2RunCandidates(env, message, resultsOf(albumResult));
+    } else {
+      const candidateResult = await db.prepare(`SELECT track_id,playcount,collected_at
+        FROM sh_spotify_playcount_candidates WHERE snapshot_date=? AND run_token=? ORDER BY track_id`)
+        .bind(message.snapshot_date, message.run_token).all();
+      candidates = resultsOf(candidateResult);
+    }
+  } catch (error) {
+    await failRun(db, message, error);
+    return { error: true, reason: 'candidate-store-unavailable' };
+  }
   if (!candidates.length) {
     await failRun(db, message, new Error('Spotify attempt collected no tracks'));
     return { error: true };
@@ -331,7 +358,9 @@ async function finalizeAttempt(db, message) {
 
   const now = Date.now();
   await db.batch([
-    spotifyDailyFinalizeStatement(db, message, previousDate),
+    r2Mode
+      ? spotifyDailyFinalizeR2Statement(db, message, previousDate, candidates)
+      : spotifyDailyFinalizeStatement(db, message, previousDate),
     db.prepare(`DELETE FROM sh_spotify_playcount_daily
       WHERE snapshot_date=? AND track_id IN (
         SELECT source_track_id FROM sh_spotify_track_aliases
@@ -346,13 +375,22 @@ async function finalizeAttempt(db, message) {
       SET status='complete',tracks_collected=?,errors=0,completed_at=?,updated_at=?,last_error=NULL
       WHERE snapshot_date=? AND run_token=? AND status='finalizing'`)
       .bind(candidates.length, now, now, message.snapshot_date, message.run_token),
-    db.prepare(`DELETE FROM sh_spotify_playcount_candidates
+    ...(r2Mode ? [] : [db.prepare(`DELETE FROM sh_spotify_playcount_candidates
       WHERE snapshot_date=? AND run_token=?`)
-      .bind(message.snapshot_date, message.run_token),
+      .bind(message.snapshot_date, message.run_token)]),
     db.prepare(`DELETE FROM sh_spotify_collection_album_runs
       WHERE snapshot_date=? AND run_token=?`)
       .bind(message.snapshot_date, message.run_token),
   ]);
+  // The canonical D1 commit is complete; R2 cleanup is best effort. If
+  // deletion fails, the run-token prefix isolates leftovers from future days.
+  if (r2Mode) {
+    await cleanupSpotifyR2RunCandidates(env, message).catch(error => {
+      logEvent('spotify_candidate_r2_cleanup_failed', {
+        snapshot_date: message.snapshot_date, error: truncateError(error, 200),
+      });
+    });
+  }
   logEvent('spotify_playcount_complete', { snapshot_date: message.snapshot_date, tracks: candidates.length });
   return { complete: true, tracks: candidates.length };
 }
@@ -430,9 +468,9 @@ export async function updateAlbumProgress(db, message, outcome, now = Date.now()
   ]);
 }
 
-async function completeAlbum(db, message, trackCount) {
-  await updateAlbumProgress(db, message, { status: 'complete', trackCount });
-  return finalizeAttempt(db, message);
+async function completeAlbum(env, message, trackCount) {
+  await updateAlbumProgress(env.OTHER_DB, message, { status: 'complete', trackCount });
+  return finalizeAttempt(env, message);
 }
 
 async function recordAlbumError(db, message, error) {
@@ -492,7 +530,7 @@ export async function processSpotifyPlaycountBatch(batch, env, dependencies = {}
         continue;
       }
       if (result.unrelated) await deactivateUnrelatedRelease(db, message);
-      await completeAlbum(db, message, result.trackCount);
+      await completeAlbum(env, message, result.trackCount);
       entry.ack?.();
       processed += 1;
     } catch (error) {
