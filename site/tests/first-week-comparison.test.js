@@ -10,8 +10,8 @@ import {
   normalizeFirstWeekRows,
   releaseOverlapsKnownGap,
   releaseStartMs,
-} from '../functions/lib/first-week-comparison.js';
-import { onRequestGet } from '../functions/api/first-week-comparison.js';
+} from '../../worker/src/pages-query-first-week-comparison.js';
+import { onRequestGet } from '../../worker/src/pages-query-api-first-week-comparison.js';
 
 import { ROUTES } from '../public/dashboard-navigation-config.js';
 

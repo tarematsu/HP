@@ -7,7 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import {
   SAKURAZAKA_MINUTE_SERIES_SQL,
   mergeSakurazakaSeriesRows,
-} from '../functions/api/sakurazaka46jp.js';
+} from '../../worker/src/pages-query-api-sakurazaka46jp.js';
 import { onRequestGet as trackHistory } from '../functions/api/track-history.js';
 import { normalizeStationheadQueueTrack } from '../../worker/src/stationhead-queue-normalize.js';
 

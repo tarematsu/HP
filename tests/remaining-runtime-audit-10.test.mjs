@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 
-import { HOST_SUMMARY_SQL, loadHostSummary } from '../site/functions/api/host-history.js';
+import { HOST_SUMMARY_SQL, loadHostSummary } from '../worker/src/pages-query-api-host-history.js';
 import { ROUTES } from '../site/public/dashboard-navigation-config.js';
 
 function hostDatabase() {

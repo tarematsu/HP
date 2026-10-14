@@ -1,3 +1,4 @@
+import { PAGES_QUERY_MODEL_KEYS } from './pages-query-contract.js';
 import { loadMaterializedResponse } from './pages-response-store.js';
 import {
   PUBLIC_R2_MODEL_KEYS,
@@ -87,6 +88,14 @@ export class PagesHistoryApiCoordinator {
     const isTrackHistoryApi = modelKey === 'track-history' && url.searchParams.get('api') === '1';
     if (url.pathname !== '/_internal/pages-response' || !PUBLIC_R2_MODEL_KEYS.has(modelKey)) {
       return new Response(null, { status: 404 });
+    }
+    if (PAGES_QUERY_MODEL_KEYS.has(modelKey)) {
+      try {
+        const { runPagesQuery } = await import('./pages-query-entry.js');
+        return await runPagesQuery(request, this.env);
+      } catch {
+        return new Response(null, { status: 503, headers: { 'cache-control': 'no-store' } });
+      }
     }
     if (!isTrackHistoryApi) {
       const invalid = isHistoryRange ? historyRangeError(url.searchParams) : null;

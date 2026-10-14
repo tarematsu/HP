@@ -89,9 +89,9 @@ test('each streaming service has a direct public API contract', () => {
   assert.match(commonRuntime, /kugou_music: '\/api\/kugou-music'/);
   assert.match(commonRuntime, /export function loadMusicServiceReadModel/);
   assert.doesNotMatch(commonRuntime, /loadRegionalMusicReadModel|\/api\/regional-music/);
-  assert.match(kkboxApi, /musicServiceReadModelResponse\(env, 'kkbox'\)/);
-  assert.match(qqApi, /musicServiceReadModelResponse\(env, 'qq_music'\)/);
-  assert.match(kugouApi, /musicServiceReadModelResponse\(env, 'kugou_music'\)/);
+  assert.match(kkboxApi, /proxyPagesQuery\(context, 'kkbox'\)/);
+  assert.match(qqApi, /proxyPagesQuery\(context, 'qq-music'\)/);
+  assert.match(kugouApi, /proxyPagesQuery\(context, 'kugou-music'\)/);
   assert.match(youtubeApi, /musicServiceReadModelResponse\(env, 'youtube_music'\)/);
   assert.match(readModelProxy, /music-service:\$\{serviceId\}/);
   assert.match(readModelProxy, /status: 503/);

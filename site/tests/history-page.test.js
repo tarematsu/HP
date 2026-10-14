@@ -23,7 +23,7 @@ const broadcastClient = readFileSync(new URL('../public/history/history-broadcas
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
 const trackHistoryApi = readFileSync(new URL('../functions/api/track-history.js', import.meta.url), 'utf8');
 const rankingLibrary = readFileSync(new URL('../functions/lib/track-ranking.js', import.meta.url), 'utf8');
-const sakurazakaApi = readFileSync(new URL('../functions/api/sakurazaka46jp.js', import.meta.url), 'utf8');
+const sakurazakaApi = readFileSync(new URL('../../worker/src/pages-query-api-sakurazaka46jp.js', import.meta.url), 'utf8');
 const middleware = readFileSync(new URL('../functions/_middleware.js', import.meta.url), 'utf8');
 
 const INTERNAL_ARCHIVE_MODES = ['daily', 'weekly', 'monthly', 'broadcasts'];

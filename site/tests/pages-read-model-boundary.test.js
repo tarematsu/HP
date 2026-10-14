@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const dashboard = readFileSync(new URL('../functions/api/dashboard.js', import.meta.url), 'utf8');
-const dashboardDetails = readFileSync(new URL('../functions/api/dashboard-details.js', import.meta.url), 'utf8');
+const dashboardDetails = readFileSync(new URL('../../worker/src/pages-query-api-dashboard-details.js', import.meta.url), 'utf8');
 const stationheadProxy = readFileSync(new URL('../functions/lib/stationhead-materialized-proxy.js', import.meta.url), 'utf8');
 const readModelService = readFileSync(new URL('../functions/lib/pages-read-model-service.js', import.meta.url), 'utf8');
 const publisher = readFileSync(new URL('../../worker/src/pages-dashboard-live-publisher.js', import.meta.url), 'utf8');

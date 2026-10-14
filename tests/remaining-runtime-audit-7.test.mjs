@@ -8,7 +8,7 @@ import { loadQueueComparisonState } from '../site/functions/lib/ingest.js';
 import {
   BROADCAST_SUMMARY_SQL,
   parseBroadcastSummaryRows,
-} from '../site/functions/api/history.js';
+} from '../worker/src/pages-query-api-history.js';
 
 test('queue items and latest likes share one D1 read batch', async () => {
   let batchCalls = 0;

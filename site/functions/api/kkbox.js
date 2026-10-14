@@ -1,5 +1,5 @@
-import { musicServiceReadModelResponse } from '../lib/music-service-read-model.js';
+import { proxyPagesQuery } from '../lib/pages-query-proxy.js';
 
-export function onRequestGet({ env }) {
-  return musicServiceReadModelResponse(env, 'kkbox');
+export function onRequestGet(context) {
+  return proxyPagesQuery(context, 'kkbox');
 }

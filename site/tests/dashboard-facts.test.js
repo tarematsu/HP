@@ -1,8 +1,9 @@
+import { modelBucket } from './helpers/model-bucket.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { onRequestGet as dashboardGet } from '../functions/api/dashboard.js';
-import { onRequestGet as dashboardDetailsGet } from '../functions/api/dashboard-details.js';
+import { onRequestGet as dashboardDetailsGet } from '../../worker/src/pages-query-api-dashboard-details.js';
 import { responseJson } from './helpers/fake-d1.js';
 
 function dashboardPayload() {
@@ -69,7 +70,7 @@ test('dashboard-details reuses the same materialized model and returns only deta
   const response = await dashboardDetailsGet({
     request: new Request('https://skrzk.test/api/dashboard-details?channel_id=318'),
     env: {
-      PAGES_READ_MODEL_SERVICE: readModelService(payload, reads),
+      PAGES_RESPONSE_R2: modelBucket(readModelService(payload, reads)),
       MINUTE_DB: { prepare() { throw new Error('dashboard details must not read MINUTE_DB'); } },
       OTHER_DB: { prepare() { throw new Error('dashboard details must not read OTHER_DB'); } },
     },
@@ -89,7 +90,7 @@ test('dashboard-details rejects a different channel without touching D1', async 
   const payload = dashboardPayload();
   const response = await dashboardDetailsGet({
     request: new Request('https://skrzk.test/api/dashboard-details?channel_id=999'),
-    env: { PAGES_READ_MODEL_SERVICE: readModelService(payload, []) },
+    env: { PAGES_RESPONSE_R2: modelBucket(readModelService(payload, []))},
   });
   assert.equal(response.status, 404);
 });

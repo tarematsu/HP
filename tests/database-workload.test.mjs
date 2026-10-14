@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 
-import { BROADCAST_SUMMARY_SQL } from '../site/functions/api/history.js';
+import { BROADCAST_SUMMARY_SQL } from '../worker/src/pages-query-api-history.js';
 
 import { planLikeObservations, latestLikesSql } from '../site/functions/lib/ingest.js';
 import { listenerAggregateDelta } from '../site/functions/lib/host-ingest.js';

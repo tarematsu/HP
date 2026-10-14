@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const dashboard = readFileSync(new URL('../functions/api/dashboard.js', import.meta.url), 'utf8');
-const dashboardDetails = readFileSync(new URL('../functions/api/dashboard-details.js', import.meta.url), 'utf8');
+const dashboardDetails = readFileSync(new URL('../../worker/src/pages-query-api-dashboard-details.js', import.meta.url), 'utf8');
 const dashboardPublisher = readFileSync(new URL('../../worker/src/pages-dashboard-live-publisher.js', import.meta.url), 'utf8');
 const dailySummaries = readFileSync(new URL('../../packages/sh-shared/dashboard-daily-summaries.mjs', import.meta.url), 'utf8');
 const tracks = readFileSync(new URL('../functions/api/track-history.js', import.meta.url), 'utf8');

@@ -5,11 +5,11 @@ import { existsSync, readFileSync } from 'node:fs';
 
 
 test('active history endpoint owns ranking without a legacy implementation', () => {
-  const history = readFileSync(new URL('../site/functions/api/history.js', import.meta.url), 'utf8');
-  const ranking = readFileSync(new URL('../site/functions/lib/history-ranking.js', import.meta.url), 'utf8');
+  const history = readFileSync(new URL('../worker/src/pages-query-api-history.js', import.meta.url), 'utf8');
+  const ranking = readFileSync(new URL('../worker/src/pages-query-history-ranking.js', import.meta.url), 'utf8');
   const legacyUrl = new URL('../site/functions/lib/history-legacy.mjs', import.meta.url);
 
-  assert.match(history, /\.\.\/lib\/history-ranking\.js/);
+  assert.match(history, /pages-query-history-ranking\.js/);
   assert.match(ranking, /export async function loadRanking/);
   assert.match(ranking, /ranking_summary/);
   assert.match(ranking, /chart_hosts/);

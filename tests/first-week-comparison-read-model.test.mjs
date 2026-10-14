@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 
-import { FIRST_WEEK_READ_MODEL_SQL } from '../site/functions/lib/first-week-comparison.js';
+import { FIRST_WEEK_READ_MODEL_SQL } from '../worker/src/pages-query-first-week-comparison.js';
 
 const descriptor = JSON.parse(readFileSync(
   new URL('../database/facts-db.json', import.meta.url),

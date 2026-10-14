@@ -1,9 +1,10 @@
+import { modelBucket } from './helpers/model-bucket.js';
 import { browserSource } from './helpers/dashboard-source.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { loadRanking } from '../functions/lib/history-ranking.js';
+import { loadRanking } from '../../worker/src/pages-query-history-ranking.js';
 
 const rankingHosts = readFileSync(new URL('../../packages/sh-shared/stationhead-ranking-hosts.mjs', import.meta.url), 'utf8');
 
@@ -94,7 +95,7 @@ function request() {
 }
 
 test('ranking API keeps artist relation and Stationhead channel metadata across gap rows and host summaries', async () => {
-  const response = await loadRanking(request(), { PAGES_READ_MODEL_SERVICE: serviceFor() });
+  const response = await loadRanking(request(), { PAGES_RESPONSE_R2: modelBucket(serviceFor())});
   const data = await response.json();
 
   assert.equal(data.rows.length, 3);
@@ -107,7 +108,7 @@ test('ranking API keeps artist relation and Stationhead channel metadata across 
 });
 
 test('ranking data remains available when the materialized model has no fandom metadata', async () => {
-  const response = await loadRanking(request(), { PAGES_READ_MODEL_SERVICE: serviceFor({ withFandom: false }) });
+  const response = await loadRanking(request(), { PAGES_RESPONSE_R2: modelBucket(serviceFor({ withFandom: false }))});
   const data = await response.json();
 
   assert.equal(data.ok, true);
@@ -144,7 +145,7 @@ test('Stationhead display names are keyed once in the shared ranking host metada
     'utf8',
   );
   const api = readFileSync(
-    new URL('../functions/lib/history-ranking.js', import.meta.url),
+    new URL('../../worker/src/pages-query-history-ranking.js', import.meta.url),
     'utf8',
   );
   assert.match(rankingHosts, /\['sakuramankai', 'Buddies'\]/);
@@ -167,7 +168,7 @@ test('nogifan1ch is classified as Nogizaka in leaderboard metadata', () => {
 });
 
 test('ranking API does not cache recent leaderboard data for fifteen minutes', async () => {
-  const response = await loadRanking(request(), { PAGES_READ_MODEL_SERVICE: serviceFor() });
+  const response = await loadRanking(request(), { PAGES_RESPONSE_R2: modelBucket(serviceFor())});
   assert.match(response.headers.get('cache-control') || '', /s-maxage=60/);
 });
 

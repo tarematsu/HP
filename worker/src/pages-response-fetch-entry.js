@@ -1,3 +1,4 @@
+import { PAGES_QUERY_MODEL_KEYS } from './pages-query-contract.js';
 import { pagesResponseCacheKey, cacheablePagesResponse } from './pages-response-cache.js';
 import {
   PUBLIC_R2_MODEL_KEYS,
@@ -136,8 +137,11 @@ export async function runPagesResponseFetch(
         context.waitUntil(cache.put(cacheKey, response.clone()).catch(() => {}));
       }
     } else if (PUBLIC_R2_MODEL_KEYS.has(modelKey)) {
-      const cache = dependencies.responseCache
-        ?? (context && typeof caches !== 'undefined' ? caches.default : null);
+      // Dynamic queries already have the public Pages cache and their own
+      // bounded DO caches. Another HTTP body cache would extend data age and
+      // make the 10ms isolate copy the generated response a second time.
+      const cache = PAGES_QUERY_MODEL_KEYS.has(modelKey) ? null : (dependencies.responseCache
+        ?? (context && typeof caches !== 'undefined' ? caches.default : null));
       const isHistoryRange = modelKey.startsWith('history:') && (params.has('from') || params.has('to'));
       const key = cache ? pagesResponseCacheKey(url) : null;
       if (cache) {
@@ -171,7 +175,7 @@ export async function runPagesResponseFetch(
       isTrackHistoryApi
         ? (env?.PAGES_HISTORY_API_COORDINATOR ? 'track-history-do' : 'track-history-unavailable')
         : (modelKey.startsWith('history:') && (params.has('from') || params.has('to'))
-          ? 'history-range-do' : 'canonical-do'),
+          ? 'history-range-do' : (PAGES_QUERY_MODEL_KEYS.has(modelKey) ? 'query-do' : 'canonical-do')),
       startedAt,
       Date.now(),
       isTrackHistoryApi,

@@ -1,3 +1,4 @@
+import { modelBucket } from './helpers/model-bucket.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -6,7 +7,7 @@ import {
   onRequestGet,
   spotifyMonthlyListenersSql,
   spotifyMonthlyListenersTrend,
-} from '../functions/api/spotify-monthly-listeners.js';
+} from '../../worker/src/pages-query-api-spotify-monthly-listeners.js';
 
 test('monthly listener materializer reads the dedicated daily table', () => {
   const sql = spotifyMonthlyListenersSql();
@@ -16,7 +17,7 @@ test('monthly listener materializer reads the dedicated daily table', () => {
 });
 
 test('public monthly listener API is storage-only and does not query D1', () => {
-  const source = readFileSync(new URL('../functions/api/spotify-monthly-listeners.js', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../../worker/src/pages-query-api-spotify-monthly-listeners.js', import.meta.url), 'utf8');
   const readModelService = readFileSync(new URL('../functions/lib/pages-read-model-service.js', import.meta.url), 'utf8');
   assert.match(source, /fetchPagesReadModel\(env, 'spotify-playcounts'\)/);
   assert.match(readModelService, /PAGES_READ_MODEL_SERVICE/);
@@ -55,13 +56,13 @@ test('monthly listener endpoint returns JSON even when a legacy format query is 
   ];
   const response = await onRequestGet({
     env: {
-      PAGES_READ_MODEL_SERVICE: {
+      PAGES_RESPONSE_R2: modelBucket({
         async fetch() {
           return new Response(JSON.stringify({ monthly_listener_rows: rows }), {
             headers: { 'content-type': 'application/json' },
           });
         },
-      },
+      }),
     },
     request: new Request('https://skrzk.test/api/spotify-monthly-listeners?format=svg'),
   });

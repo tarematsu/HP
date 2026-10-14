@@ -23,7 +23,7 @@ test('active history and like SQL use Spotify and ISRC without Apple Music colum
 });
 
 test('host history contains only Sakurazaka session summary and detail modes', () => {
-  const source = readFileSync(new URL('../functions/api/host-history.js', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../../worker/src/pages-query-api-host-history.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /sh_host_profile_snapshots/);
   assert.doesNotMatch(source, /sh_host_comments/);
   assert.doesNotMatch(source, /sh_host_raw_events/);

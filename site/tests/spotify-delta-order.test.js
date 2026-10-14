@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { spotifyPayload } from '../functions/api/spotify-playcounts.js';
+import { spotifyPayload } from '../../worker/src/pages-query-api-spotify-playcounts.js';
 
 const artist = Object.freeze({ key: 'sakurazaka46', name: '櫻坂46' });
 

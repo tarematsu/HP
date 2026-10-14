@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { loadTrackHistoryData } from '../site/functions/lib/track-history-handler.js';
-import { loadSakurazakaSeriesRows } from '../site/functions/api/sakurazaka46jp.js';
+import { loadSakurazakaSeriesRows } from '../worker/src/pages-query-api-sakurazaka46jp.js';
 
 test('track history and compact realtime likes share one D1 batch', async () => {
   let batchCalls = 0;

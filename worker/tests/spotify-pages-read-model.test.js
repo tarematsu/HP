@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { spotifyMonthlyListenersSql } from '../../site/functions/api/spotify-monthly-listeners.js';
+import { spotifyMonthlyListenersSql } from '../src/pages-query-api-spotify-monthly-listeners.js';
 import {
   spotifyArtistChartSql,
   spotifyTrendSql,
-} from '../../site/functions/api/spotify-playcounts.js';
+} from '../src/pages-query-api-spotify-playcounts.js';
 import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 import {
   processSpotifyReadModelRefreshBatch,

@@ -6,7 +6,7 @@ import {
   BROADCAST_READ_MODEL_SQL,
   BROADCAST_SUMMARY_SQL,
   parseBroadcastSummaryRows,
-} from '../functions/api/history.js';
+} from '../../worker/src/pages-query-api-history.js';
 
 function createSummaryTable(db) {
   db.exec(`CREATE TABLE sh_official_broadcast_summary (

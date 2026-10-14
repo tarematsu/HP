@@ -8,7 +8,7 @@ const source = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
 test('Spotify collection completes from canonical daily values without a current-value D1 rewrite', () => {
   const consumer = source('../src/spotify-playcount-consumer.js');
-  const api = source('../../site/functions/api/spotify-playcounts.js');
+  const api = source('../src/pages-query-api-spotify-playcounts.js');
   const detail = source('../src/spotify-read-model-detail.js');
   assert.doesNotMatch(consumer, /(?:INSERT INTO|UPDATE|DELETE FROM) sh_spotify_playcount_current/);
   assert.match(consumer, /spotifyDailyFinalizeStatement\(db, message, previousDate\)/);

@@ -11,7 +11,7 @@ import {
   SAKURAZAKA_EVENT_SQL,
   cachedSakurazakaSeries,
   resetSakurazakaSeriesCache,
-} from '../site/functions/api/sakurazaka46jp.js';
+} from '../worker/src/pages-query-api-sakurazaka46jp.js';
 import { cachedSnapshotCount, resetSnapshotCountCache } from '../site/functions/api/health.js';
 import { DECODE_STATION_MAIN_SQL } from '../worker/src/official-news-index.js';
 
