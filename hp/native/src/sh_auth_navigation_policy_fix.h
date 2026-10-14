@@ -75,16 +75,8 @@ static_assert(kAuthControllerStableTimeoutMs <=
 }  // namespace stationhead_auth_navigation_policy
 }  // namespace hp
 
-// This is the final NavigationCompleted registration policy. It preserves the
-// existing exception boundary while adding auth-only redirect cancellation
-// tolerance.
-#undef add_NavigationCompleted
-#define add_NavigationCompleted(handler, token)                                  \
-  add_NavigationCompleted(                                                       \
-      ::hp::stationhead_auth_navigation_policy::                                 \
-          WrapStationheadAuthStableNavigationCompletedHandler((handler)).Get(),  \
-      (token))
-
+// Callers explicitly wrap WebView2 handlers with this policy; never rename
+// COM registration methods through the preprocessor.
 // Keep the original shared constant for source compatibility and redirect only
 // native timeout uses compiled after this final PCH layer.
 #define kStationheadAuthControllerTimeoutMs                                      \
