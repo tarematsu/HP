@@ -19,7 +19,8 @@
     "crons": []
   },
   "vars": {
-    "SPOTIFY_PLAYCOUNT_ENABLED": true
+    "SPOTIFY_PLAYCOUNT_ENABLED": true,
+    "SPOTIFY_R2_CANDIDATES_ENABLED": true
   },
   "d1_databases": [
     {

@@ -33,7 +33,7 @@ test('Spotify collector is isolated behind the shared scheduler and owns its eve
   assert.equal(value.queues.consumers[0].max_batch_size, 1);
   assert.equal(value.queues.consumers[0].max_concurrency, 2);
   assert.equal(value.queues.consumers[0].max_retries <= 4, true);
-  assert.deepEqual(value.vars, { SPOTIFY_PLAYCOUNT_ENABLED: true });
+  assert.deepEqual(value.vars, { SPOTIFY_PLAYCOUNT_ENABLED: true, SPOTIFY_R2_CANDIDATES_ENABLED: true });
 
   const serviceEntry = readFileSync(new URL('../src/spotify-playcount-service-entry.js', import.meta.url), 'utf8');
   const scheduledQueue = readFileSync(new URL('../src/spotify-scheduled-queue.js', import.meta.url), 'utf8');
