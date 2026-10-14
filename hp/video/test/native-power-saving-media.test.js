@@ -11,7 +11,7 @@ const base = read('renderer_panels/media_section_base.inc');
 const schedule = read('power_saving_schedule.inc');
 const section = (source, start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
 
-test('startup-only X runs for two minutes even in power saving, then TVer stays uninterrupted', () => {
+test('startup-only X runs two minutes, then YouTube 60 and TVer 58 even in power saving', () => {
   const dir = mkdtempSync(join(tmpdir(), 'native-media-power-'));
   try {
     const code = `
@@ -31,9 +31,7 @@ void KillTimer(HWND, UINT_PTR id) { timers.erase(id); }
 UINT_PTR SetTimer(HWND, UINT_PTR id, UINT delay, void*) { timers[id] = delay; return id; }
 bool gNativeMediaPowerSaving = false;
 ${section(base, 'constexpr wchar_t kNativeMediaYoutubeContentUrl', 'constexpr UINT kNativeMediaNavigationRetryMs')}
-${section(base, 'struct NativeMediaContentPlan', 'constexpr const wchar_t* kNativeMediaPlayAllScript')}
-#define kNativeMediaYoutubeContentPhaseMs NativeMediaYoutubeContentIntervalMs()
-#define kNativeMediaTverContentDurationMs NativeMediaTverContentIntervalMs()
+${section(base, 'constexpr UINT NativeMediaPhaseIntervalMs(', 'constexpr const wchar_t* kNativeMediaPlayAllScript')}
 #define kNativeMediaPhaseMs NativeMediaPhaseIntervalMs(phase_ == Phase::Tver)
 ${section(schedule, 'constexpr int kPowerSavingStartMinute', 'static_assert(kMonitorAuthProbeIntervalMs')}
 class Host {
@@ -76,19 +74,18 @@ int main() {
   tick += 60 * minute;
   h.OnTimer(kNativeMediaPhaseTimer);
   assert(h.phase_ == Host::Phase::Tver && h.switches == 1);
-  assert(timers[kNativeMediaPhaseTimer] == 60 * minute);
+  assert(timers[kNativeMediaPhaseTimer] == 58 * minute);
 
   tick += 20 * minute;
   gNativeMediaPowerSaving = false;
   h.ApplyPowerSavingMode();
   const UINT remainingTver = timers[kNativeMediaPhaseTimer];
-  assert(remainingTver >= 25 * minute && remainingTver <= 35 * minute);
+  assert(remainingTver == 38 * minute);
 
   tick += remainingTver;
   h.OnTimer(kNativeMediaPhaseTimer);
   assert(h.phase_ == Host::Phase::YouTube && h.switches == 2);
-  assert(timers[kNativeMediaPhaseTimer] >= 50 * minute);
-  assert(timers[kNativeMediaPhaseTimer] <= 60 * minute);
+  assert(timers[kNativeMediaPhaseTimer] == 60 * minute);
   assert(!h.startupXActive_ && h.navigations == 1);
 }
 
@@ -103,6 +100,6 @@ test('actual power-saving state controls media; monitor-only hiding does not', (
   assert.match(schedule, /SetNativeMediaPowerSavingMode\(powerSaving_\)/);
   assert.match(schedule, /boundary\.tm_hour = kPowerSavingStartMinute \/ 60/);
   assert.match(schedule, /boundary\.tm_hour = kPowerSavingEndMinute \/ 60/);
-  assert.match(base, /return NativeMediaCurrentTverContentDurationMs\(\)/);
+  assert.match(base, /return tver \? kNativeMediaTverContentDurationMs[\s\S]*: kNativeMediaYoutubeContentPhaseMs;/);
   assert.doesNotMatch(read('renderer_panels/media_tver_cloud_queue_refresh.inc'), /NativeMediaTverXPhaseActive|NativeMediaXSlotEnabled/);
 });
