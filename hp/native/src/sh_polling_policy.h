@@ -3,13 +3,11 @@
 
 // Keep the shared helpers available, but replace the policy-sensitive helpers
 // with native-application implementations.
-#define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingBase
 #define StationheadAutoplayScript StationheadAutoplayScriptBase
 #define StationheadVolumeScript StationheadVolumeScriptWithMutationObserver
 #include "sh_shared.h"
 #undef StationheadVolumeScript
 #undef StationheadAutoplayScript
-#undef ApplyStationheadResourceBlocking
 #include "sh_script_blocking_extension.h"
 
 namespace hp {
@@ -162,7 +160,7 @@ inline void ApplyStationheadNonPlaybackScriptBlocking(
       &ignoredToken);
 }
 
-inline void ApplyStationheadResourceBlocking(
+inline void ApplyStationheadResourceBlockingNativeLegacy(
     ICoreWebView2Environment* environment,
     ICoreWebView2* webview,
     const StationheadConfig& config,
