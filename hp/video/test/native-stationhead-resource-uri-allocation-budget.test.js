@@ -9,25 +9,12 @@ const shared = readFileSync(new URL('../../native/src/sh_shared.h', import.meta.
 const scriptPolicy = readFileSync(new URL('../../native/src/sh_polling_policy.h', import.meta.url), 'utf8');
 const scriptExtra = readFileSync(new URL('../../native/src/sh_script_blocking_extension.h', import.meta.url), 'utf8');
 const activePolicy = readFileSync(new URL('../../native/src/sh_runtime_script_resource_policy_fix.h', import.meta.url), 'utf8');
+const webview = readFileSync(new URL('../../native/src/sh_webview.cpp', import.meta.url), 'utf8');
 const cmake = readFileSync(new URL('../../native/CMakeLists.txt', import.meta.url), 'utf8');
 
-test('all three Stationhead WebResourceRequested callbacks avoid allocating URI copies', () => {
-  const nativeResource = shared.slice(shared.indexOf('inline void ApplyStationheadResourceBlocking('));
-  assert.match(nativeResource, /StationheadLowerAsciiInPlace\(uriRaw\)/);
-  assert.match(nativeResource, /const std::wstring_view lower\(uriRaw\)/);
-  assert.match(nativeResource, /StationheadRequestIsBlockable\(lower\)/);
-  assert.match(nativeResource, /StationheadCorePlaybackRequest\(lower\)/);
-  assert.match(nativeResource, /CoTaskMemFree\(uriRaw\)/);
-  assert.doesNotMatch(nativeResource, /lower = StationheadLowerAscii\(uriRaw\)/);
-  // PCH macro overlays mean this is the callback actually used by
-  // StationheadPlayer::ConfigureWebView in the Windows build. Guard it
-  // separately so optimizations to superseded handlers cannot give false
-  // confidence about runtime allocations.
-  const pch = cmake.slice(cmake.indexOf('target_precompile_headers(HomePanel PRIVATE'));
-  assert.ok(pch.indexOf('src/sh_runtime_script_resource_policy_fix.h') >
-    pch.indexOf('src/sh_runtime_resource_boundary_policy_fix.h'));
-  assert.match(activePolicy,
-    /#define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingScriptFixed/);
+test('the single active Stationhead resource callback is allocation-free and explicitly selected', () => {
+  assert.match(webview, /#include "sh_runtime_script_resource_policy_fix\.h"/);
+  assert.match(webview, /ApplyStationheadResourceBlockingScriptFixed\(/);
   const active = activePolicy.slice(activePolicy.indexOf('inline void ApplyStationheadResourceBlockingScriptFixed('));
   assert.equal((active.match(/add_WebResourceRequested\(/g) || []).length, 1);
   assert.match(active, /StationheadLowerAsciiInPlace\(uriRaw\)/);
@@ -37,13 +24,13 @@ test('all three Stationhead WebResourceRequested callbacks avoid allocating URI 
   assert.match(active, /StationheadCorePlaybackRequestBoundaryFixed\(lower\)/);
   assert.match(active, /CoTaskMemFree\(uriRaw\)/);
   assert.doesNotMatch(active, /lower = StationheadLowerAscii\(uriRaw\)/);
-  for (const policy of [scriptPolicy, scriptExtra]) {
-    const callback = policy.slice(policy.indexOf('inline void ApplyStationhead'));
-    assert.match(callback, /StationheadLowerAsciiInPlace\(uriRaw\)/);
-    assert.match(callback, /std::wstring_view\(uriRaw\)/);
-    assert.match(callback, /CoTaskMemFree\(uriRaw\)/);
-    assert.doesNotMatch(callback, /const std::wstring uriLower = StationheadLowerAscii\(uriRaw\)/);
+  for (const source of [shared, scriptPolicy, scriptExtra, activePolicy]) {
+    assert.doesNotMatch(source, /#(?:define|undef) ApplyStationheadResourceBlocking/);
   }
+  assert.doesNotMatch(shared, /add_WebResourceRequested\(/);
+  assert.doesNotMatch(scriptPolicy, /add_WebResourceRequested\(/);
+  assert.doesNotMatch(scriptExtra, /add_WebResourceRequested\(/);
+  assert.match(cmake, /src\/sh_runtime_script_resource_policy_fix\.h/);
 });
 
 test('compiled resource policy matches previous ASCII case-folding, telemetry blocking and Spotify audio allowlist', () => {
