@@ -222,8 +222,8 @@ export async function runPagesResponseFetch(
         response = await namespace.get(namespace.idFromName('history:range')).fetch(request);
       } else {
         response = await loadCanonicalR2(env, modelKey, now, maximumAge, dependencies);
-        // Local/test fallback only. Production history range assembly uses the DO.
-        if (isHistoryRange) response = await filterHistoryResponse(response, modelKey, params);
+        // Never deserialize and filter a large history model on the 10ms HTTP path.
+        if (isHistoryRange) return new Response(null, { status: 503, headers: { 'cache-control': 'no-store' } });
       }
       if (modelKey === FOLLOWERS_MODEL_KEY) response = await normalizeFollowersResponse(response, now);
       if (cache && context) {
