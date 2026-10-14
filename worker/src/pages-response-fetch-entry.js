@@ -209,7 +209,7 @@ export async function runPagesResponseFetch(
       const cache = dependencies.responseCache
         ?? (context && typeof caches !== 'undefined' ? caches.default : null);
       const isHistoryRange = modelKey.startsWith('history:') && (params.has('from') || params.has('to'));
-      const key = pagesResponseCacheKey(url);
+      const key = cache ? pagesResponseCacheKey(url) : null;
       if (cache) {
         const cached = await cache.match(key).catch(() => null);
         if (cached && !responseIsStale(cached, now, maximumAge)) {
@@ -220,10 +220,10 @@ export async function runPagesResponseFetch(
       if (isHistoryRange && env?.PAGES_HISTORY_API_COORDINATOR?.get) {
         const namespace = env.PAGES_HISTORY_API_COORDINATOR;
         response = await namespace.get(namespace.idFromName('history:range')).fetch(request);
+      } else if (isHistoryRange) {
+        return new Response(null, { status: 503, headers: { 'cache-control': 'no-store' } });
       } else {
         response = await loadCanonicalR2(env, modelKey, now, maximumAge, dependencies);
-        // Never deserialize and filter a large history model on the 10ms HTTP path.
-        if (isHistoryRange) return new Response(null, { status: 503, headers: { 'cache-control': 'no-store' } });
       }
       if (modelKey === FOLLOWERS_MODEL_KEY) response = await normalizeFollowersResponse(response, now);
       if (cache && context) {
