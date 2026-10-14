@@ -97,12 +97,14 @@ function candidateRows(payload, key, message, allowedAlbums) {
 
 export async function loadSpotifyR2RunCandidates(env, message, completeAlbums) {
   const r2 = bucket(env);
-  const allowed = new Set((completeAlbums || []).filter(row => Number(row.track_count) > 0)
-    .map(row => String(row.album_id)));
+  const counts = new Map((completeAlbums || []).filter(row => Number(row.track_count) > 0)
+    .map(row => [String(row.album_id), Number(row.track_count)]));
+  const allowed = new Set(counts.keys());
   if (!allowed.size) throw new Error('Spotify R2 candidate run has no completed albums');
   const prefix = spotifyR2CandidateRunPrefix(message);
   const keys = await listKeys(r2, prefix);
   const seenAlbums = new Set();
+  const matchedCounts = new Set();
   const values = new Map();
   // Bounded R2 concurrency; the Queue invocation has 30 seconds CPU budget.
   let nextIndex = 0;
@@ -121,6 +123,10 @@ export async function loadSpotifyR2RunCandidates(env, message, completeAlbums) {
       if (!key.startsWith(albumPrefix)) throw new Error('Spotify R2 candidate album/key mismatch');
       const rows = candidateRows(payload, key, message, allowed);
       seenAlbums.add(payload.album_id);
+      // D1's committed album count is a completion receipt, not merely
+      // presence. An intact immutable object must match that observation's
+      // track count before the run can be published.
+      if (rows.length === counts.get(payload.album_id)) matchedCounts.add(payload.album_id);
       for (const row of rows) {
         const old = values.get(row.track_id);
         if (!old || row.playcount > old.playcount
@@ -133,6 +139,7 @@ export async function loadSpotifyR2RunCandidates(env, message, completeAlbums) {
   await Promise.all(Array.from({ length: Math.min(MAX_PARALLEL_READS, keys.length) }, () => read()));
   for (const albumId of allowed) {
     if (!seenAlbums.has(albumId)) throw new Error(`Spotify R2 candidate album missing: ${albumId}`);
+    if (!matchedCounts.has(albumId)) throw new Error(`Spotify R2 candidate album count mismatch: ${albumId}`);
   }
   return [...values.values()].sort((a, b) => a.track_id.localeCompare(b.track_id));
 }
