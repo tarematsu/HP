@@ -21,15 +21,15 @@ const youtubeRuntime = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url);
 
 test('media cadence keeps startup-only X and fixed 60/58-minute playback phases', () => {
-  assert.match(mediaBase, /kNativeMediaStartupXPhaseMs = 2U \\* 60U \\* 1000U/);
-  assert.match(mediaBase, /kNativeMediaYoutubeContentPhaseMs = 60U \\* 60U \\* 1000U/);
-  assert.match(mediaBase, /kNativeMediaTverContentDurationMs = 58U \\* 60U \\* 1000U/);
-  assert.match(mediaBase, /return tver \\? kNativeMediaTverContentDurationMs[\\s\\S]*: kNativeMediaYoutubeContentPhaseMs;/);
-  assert.match(mediaBase, /NativeMediaPhaseIntervalMs\\(phase_ == Phase::Tver\\)/);
-  assert.match(mediaBase, /https:\\/\\/x\\.com\\/home\\?homepanel=startup/);
+  assert.match(mediaBase, /kNativeMediaStartupXPhaseMs = 2U \* 60U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaYoutubeContentPhaseMs = 60U \* 60U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaTverContentDurationMs = 58U \* 60U \* 1000U/);
+  assert.match(mediaBase, /return tver \? kNativeMediaTverContentDurationMs[\s\S]*: kNativeMediaYoutubeContentPhaseMs;/);
+  assert.match(mediaBase, /NativeMediaPhaseIntervalMs\(phase_ == Phase::Tver\)/);
+  assert.match(mediaBase, /https:\/\/x\.com\/home\?homepanel=startup/);
   assert.match(mediaHost, /startupXActive_ = false/);
   assert.doesNotMatch(mediaBase, /NativeMediaRandomWord|NativeMediaRandomBelow|NativeMediaDrawContentPlan|NativeMediaCurrentContentPlan/);
-  assert.doesNotMatch(mediaBase, /if \\(gNativeMediaPowerSaving\\)/);
+  assert.doesNotMatch(mediaBase, /if \(gNativeMediaPowerSaving\)/);
   assert.doesNotMatch(mediaBase, /NativeMediaXSlotEnabled|NativeMediaDrawXCyclePlan/);
   assert.doesNotMatch(mediaBase, /kNativeMediaTverWeekdayPhaseMs|NativeMediaTverPhaseIntervalMs|NetworkClockJstNow/);
   assert.doesNotMatch(mediaHost, /SetSpotifyMediaPhase|kNativeMediaXStartTimer/);
