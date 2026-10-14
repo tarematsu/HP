@@ -9,6 +9,7 @@ const source = name => readFileSync(
 
 const profilePolicy = source('sh_playback_resource_policy_fix.h');
 const coordinator = source('audio_health_scan_coordinator.h');
+const recovery = source('sh_track_boundary_message_policy.h');
 const app = source('app.cpp');
 const startupCache = source('webview_startup_cache_reset.h');
 
@@ -17,22 +18,13 @@ test('Stationhead periodic native work uses stable one-minute profile phases', (
   for (let ordinal = 1; ordinal <= 6; ordinal += 1) {
     assert.match(profilePolicy, new RegExp(`spotify-v2-${ordinal}`));
   }
-  assert.match(
-    profilePolicy,
-    /StationheadProfileAudioHealthScanDelayMs\(\s*\(now\), profileName_\)/,
-  );
-  assert.match(
-    profilePolicy,
-    /AudioHealthScanDelayMs\(now, ignoredSlot\)[\s\S]*StationheadProfileAudioHealthScanDelayMs/,
-  );
-  assert.match(
-    profilePolicy,
-    /TryClaimAudioHealthScan\(now\)[\s\S]*TryClaimAudioHealthScanSlot/,
-  );
-  assert.match(
-    profilePolicy,
-    /kAudioHealthScanRetryMs[\s\S]*StationheadProfileAudioHealthRetryMs/,
-  );
+  assert.match(profilePolicy, /StationheadProfileAudioHealthScanDelayMs\(/);
+  assert.match(profilePolicy, /StationheadProfileAudioHealthRetryMs\(/);
+  assert.match(recovery, /StationheadProfileAudioHealthScanDelayMs\(GetTickCount64\(\), profileName_\)/);
+  assert.match(recovery, /TryClaimAudioHealthScanSlot\(/);
+  assert.match(recovery, /StationheadPeriodicProfileSlot\(profileName_\)/);
+  assert.match(recovery, /StationheadProfileAudioHealthRetryMs\(profileName_\)/);
+  assert.doesNotMatch(profilePolicy, /#define (?:AudioHealthScanDelayMs|TryClaimAudioHealthScan|kAudioHealthScanRetryMs)/);
   assert.match(coordinator, /kAudioHealthScanCycleMs = 6ULL \* 60ULL \* 1000ULL/);
   assert.match(coordinator, /kAudioHealthScanSlotSpacingMs = 60ULL \* 1000ULL/);
   assert.match(coordinator, /kAudioHealthScanSlotCount = 6/);
