@@ -153,6 +153,27 @@ try {
       const url = new URL(route.request().url()); const path = url.pathname + url.search;
       if (!live) {
         const fixture = emptyFixture();
+        if (url.pathname === '/api/kkbox') {
+          // Test a real, renderable KKBOX read model rather than the generic
+          // fixture (which lacks "service" and exercises only error fallback).
+          const period = new Date().toISOString().slice(0, 10);
+          const history = ['tw', 'hk'].flatMap((territory) => ['newrelease', 'song'].flatMap((chart_type) =>
+            ['daily', 'weekly'].map((period_type) => ({
+              territory, chart_type, period_type, period, rank: 5,
+              canonical_artists: ['sakurazaka46'], title: 'Fixture Track',
+            }))));
+          Object.assign(fixture, {
+            service: 'kkbox',
+            updated_at: Date.now(),
+            kkbox_japanese_chart: {
+              periods: history.map(({ territory, chart_type, period_type, period }) =>
+                ({ territory, chart_type, period_type, period, status: 'ok' })),
+              history,
+            },
+          });
+          // Exercise the asynchronous route/read-model transition in CI.
+          await new Promise((resolveDelay) => setTimeout(resolveDelay, 900));
+        }
         if (url.pathname === '/api/history' && url.searchParams.get('mode') === 'ranking') {
           Object.assign(fixture, {
             source_max_ranking_date: '2026-10-12',
@@ -266,6 +287,27 @@ try {
         }
       }
       if (mode === 'kkbox') {
+        // A visible lazy shell does not mean its asynchronous data render has
+        // finished. Network-idle can also precede a newly scheduled API read.
+        try {
+          await page.waitForFunction(() => {
+            const view = document.getElementById('kkboxView');
+            const chart = document.getElementById('kkboxJapaneseRankChart');
+            return location.hash === '#kkbox' && view && !view.hidden
+              && Boolean(chart?.querySelector('canvas, .music-service-rank-empty'));
+          }, null, { timeout: 30000 });
+        } catch (error) {
+          await page.screenshot({ path: `${output}/kkbox-not-ready-${label}.png`, fullPage: true });
+          const ui = await page.evaluate(() => ({
+            notice: document.getElementById('kkboxNotice')?.textContent,
+            routeError: document.getElementById('routeError')?.textContent,
+            chartText: document.getElementById('kkboxJapaneseRankChart')?.textContent,
+          }));
+          throw new Error(`${label}: KKBOX render did not complete: ${JSON.stringify({
+            ui, api: apiResults.filter((entry) => entry.path.startsWith('/api/kkbox')),
+            runtimeErrors,
+          })}`, { cause: error });
+        }
         const categories = page.locator('#kkboxView [data-kkbox-series-filter]');
         assert.deepEqual(await categories.allTextContents(), ['台湾新曲', '香港新曲', '台湾楽曲', '香港楽曲']);
         for (const category of await categories.all()) {
@@ -276,6 +318,8 @@ try {
             assert.equal(await period.getAttribute('aria-pressed'), 'true');
             assert.equal(await page.locator('#kkboxJapaneseRankChart').isVisible(), true);
             assert.equal(await page.locator('#kkboxJapaneseHistoryBody').isVisible(), true);
+            if (!live) assert.equal(await page.locator('#kkboxJapaneseRankChart canvas').count(), 1,
+              `${label}: fixture must draw a real KKBOX chart for every category and period`);
             await assertNoDocumentOverflow(page, `${label}-kkbox-switch`);
           }
         }
