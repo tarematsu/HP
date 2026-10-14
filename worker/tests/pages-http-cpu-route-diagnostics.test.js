@@ -46,5 +46,5 @@ test('a slow cache hit emits route attribution without invoking a costly history
 test('history parser is imported only during a DO request, never the 10ms stateless startup path', () => {
   const source = readFileSync(new URL('../src/pages-history-api-coordinator.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /import\\s+\\{\\s*loadTrackHistoryR2ApiResponse/);
-  assert.match(source, /import\\('\.\/pages-track-history-r2-api\.js'\)/);
+  assert.ok(source.includes("import('./pages-track-history-r2-api.js')"));
 });
