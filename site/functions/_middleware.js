@@ -22,8 +22,8 @@ async function serviceMaterializedResponse(context, modelKey, publicRequest) {
   if (typeof service?.fetch !== 'function') throw new Error('PAGES_READ_MODEL_SERVICE binding is missing');
   const url = new URL('https://pages-read-model.internal/_internal/pages-response');
   url.searchParams.set('key', modelKey);
-  if (modelKey === TRACK_HISTORY_MODEL_KEY) {
-    url.searchParams.set('api', '1');
+  if (modelKey === TRACK_HISTORY_MODEL_KEY || modelKey.startsWith('history:')) {
+    if (modelKey === TRACK_HISTORY_MODEL_KEY) url.searchParams.set('api', '1');
     const publicUrl = new URL(publicRequest.url);
     for (const [name, value] of publicUrl.searchParams.entries()) {
       if (name === 'v' || name === 'key' || name === 'api') continue;
@@ -79,57 +79,6 @@ function materializedUnavailable(modelKey) {
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-materialized-required': '1' },
   });
 }
-function realIsoDate(value) {
-  const text = String(value || '');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
-  const time = Date.parse(`${text}T00:00:00Z`);
-  return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === text;
-}
-function historyRangeError(message) {
-  return new Response(JSON.stringify({ ok: false, error: message }), {
-    status: 400,
-    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
-  });
-}
-function historyRange(request, modelKey) {
-  if (!String(modelKey || '').startsWith('history:')) return { requested: false };
-  const url = new URL(request.url);
-  const from = url.searchParams.get('from');
-  const to = url.searchParams.get('to');
-  if (!from && !to) return { requested: false };
-  if ((from && !realIsoDate(from)) || (to && !realIsoDate(to))) return { requested: true, error: 'from and to must be valid YYYY-MM-DD dates' };
-  if (from && to && from > to) return { requested: true, error: 'from must not be after to' };
-  return { requested: true, from, to };
-}
-function rowWithinHistoryRange(row, mode, range) {
-  if (mode === 'broadcasts') {
-    const timestamp = Number(row?.started_at);
-    if (!Number.isFinite(timestamp)) return false;
-    const fromTs = range.from ? Date.parse(`${range.from}T00:00:00Z`) : -Infinity;
-    const toTs = range.to ? Date.parse(`${range.to}T00:00:00Z`) + 86400000 : Infinity;
-    return timestamp >= fromTs && timestamp < toTs;
-  }
-  const key = String(row?.period_key || '');
-  return (!range.from || key >= range.from) && (!range.to || key <= range.to);
-}
-async function applyHistoryRange(origin, modelKey, range) {
-  if (!range.requested) return origin;
-  if (range.error) return historyRangeError(range.error);
-  const payload = await origin.clone().json().catch(() => null);
-  if (!payload || !Array.isArray(payload.rows)) return origin;
-  const mode = String(modelKey).slice('history:'.length);
-  const headers = new Headers(origin.headers);
-  headers.delete('content-length');
-  headers.set('x-history-read-path', 'r2-materialized-range');
-  headers.set('x-history-range-filter', 'edge');
-  return new Response(JSON.stringify({
-    ...payload,
-    from: range.from || payload.from,
-    to: range.to || payload.to,
-    rows: payload.rows.filter((row) => rowWithinHistoryRange(row, mode, range)),
-    read_path: 'r2-materialized-range',
-  }), { status: origin.status, statusText: origin.statusText, headers });
-}
 function materializedModelKeyForRequest(request) {
   const url = new URL(request.url);
   const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
@@ -141,8 +90,6 @@ export async function onRequest(context) {
   if (!edgeCacheableApiRequest(request)) return context.next();
   const now = Date.now();
   const modelKey = materializedModelKeyForRequest(request);
-  const range = historyRange(request, modelKey);
-  if (range.error) return historyRangeError(range.error);
 
   let origin;
   let usedMaterialized = false;
@@ -161,7 +108,6 @@ export async function onRequest(context) {
   } else {
     origin = await context.next();
   }
-  if (usedMaterialized) origin = await applyHistoryRange(origin, modelKey, range);
   const ttlSeconds = responseCacheTtl(origin, apiCacheTtlSeconds(request), modelKey, usedMaterialized, now);
   return sharedResponse(origin, ttlSeconds);
 }
