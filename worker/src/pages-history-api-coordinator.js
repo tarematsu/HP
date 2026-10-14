@@ -1,5 +1,11 @@
 import { materializedResponseMaximumAge } from '../../packages/sh-shared/api-contract.mjs';
-import { loadTrackHistoryR2ApiResponse } from './pages-track-history-r2-api.js';
+// The DO class is exported by the shared Worker entrypoint. Never pull the
+// multi-day track-history parser into the 10ms HTTP isolate on cold start.
+let historyApiModulePromise;
+function historyApiModule() {
+  historyApiModulePromise ||= import('./pages-track-history-r2-api.js');
+  return historyApiModulePromise;
+}
 
 const DEFAULT_STALE_MAX_AGE_MS = 7 * 24 * 60 * 60_000;
 
@@ -30,8 +36,9 @@ export class PagesHistoryApiCoordinator {
     const staleAge = Number.isFinite(configuredStale) && configuredStale >= 0
       ? Math.max(maxAge, configuredStale)
       : Math.max(maxAge, DEFAULT_STALE_MAX_AGE_MS);
-    const load = this.dependencies.loadTrackHistoryR2ApiResponse || loadTrackHistoryR2ApiResponse;
     try {
+      const load = this.dependencies.loadTrackHistoryR2ApiResponse
+        || (await historyApiModule()).loadTrackHistoryR2ApiResponse;
       return await load(this.env?.PAGES_RESPONSE_R2, request, now, staleAge);
     } catch (error) {
       console.error(JSON.stringify({
