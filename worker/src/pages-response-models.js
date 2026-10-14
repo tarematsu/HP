@@ -1,3 +1,4 @@
+import { PAGES_QUERY_MODEL_KEYS } from './pages-query-contract.js';
 import {
   MATERIALIZED_API_VARIANTS,
   MUSIC_SERVICE_API_MODELS,
@@ -20,6 +21,7 @@ const PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS = new Set([
   'leaderboard',
 ]);
 export const PUBLIC_R2_MODEL_KEYS = new Set([
+  ...PAGES_QUERY_MODEL_KEYS,
   ...MATERIALIZED_API_VARIANTS.map(({ key }) => key),
   ...PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS,
   ...Object.values(MUSIC_SERVICE_API_MODELS),

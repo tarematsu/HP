@@ -7,7 +7,7 @@ import test from 'node:test';
 import {
   countSakurazakaMissingSummaries,
   mergeSakurazakaSeriesRows,
-} from '../functions/api/sakurazaka46jp.js';
+} from '../../worker/src/pages-query-api-sakurazaka46jp.js';
 import { trackDisplayTitleParts } from '../../worker/src/track-metadata-quality.js';
 import { aggregatePlayed } from '../public/stationhead/played-tracks.js';
 import { normalizePlayedRows } from '../public/stationhead/normalize.js';

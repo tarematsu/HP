@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 
 import { loadCurrentMinuteSummary } from '../site/functions/api/history-current.js';
-import { SAKURAZAKA_MINUTE_SERIES_SQL } from '../site/functions/api/sakurazaka46jp.js';
+import { SAKURAZAKA_MINUTE_SERIES_SQL } from '../worker/src/pages-query-api-sakurazaka46jp.js';
 import { CURRENT_DAILY_MINUTE_SUMMARY_SQL } from '../site/functions/lib/current-minute-summary.js';
 
 const currentSource = readFileSync(

@@ -1,44 +1,5 @@
-import {
-  spotifyMonthlyListenersSql,
-  spotifyMonthlyListenersTrend,
-} from '../../../packages/sh-shared/spotify-read-model.mjs';
-import { fetchPagesReadModel } from '../lib/pages-read-model-service.js';
+import { proxyPagesQuery } from '../lib/pages-query-proxy.js';
 
-export { spotifyMonthlyListenersSql, spotifyMonthlyListenersTrend };
-
-const JSON_HEADERS = Object.freeze({
-  'content-type': 'application/json; charset=utf-8',
-  'cache-control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600',
-  'x-content-type-options': 'nosniff',
-  vary: 'accept-encoding',
-});
-function json(data, status = 200, headers = {}) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { ...JSON_HEADERS, ...headers },
-  });
-}
-
-async function materializedMonthlyListenerRows(env) {
-  const response = await fetchPagesReadModel(env, 'spotify-playcounts');
-  if (!response?.ok) {
-    throw new Error(`Spotify read model returned HTTP ${response?.status || 503}`);
-  }
-  const payload = await response.json().catch(() => null);
-  if (!payload || !Array.isArray(payload.monthly_listener_rows)) {
-    throw new Error('Spotify read model does not contain monthly listener history');
-  }
-  return payload.monthly_listener_rows;
-}
-
-export async function onRequestGet({ env }) {
-  try {
-    const rows = await materializedMonthlyListenerRows(env);
-    return json({ ok: true, ...spotifyMonthlyListenersTrend(rows) });
-  } catch (error) {
-    console.error('spotify monthly listeners failed', error);
-    return json({ ok: false, error: error?.message || 'spotify monthly listeners error' }, 503, {
-      'cache-control': 'no-store',
-    });
-  }
+export function onRequestGet(context) {
+  return proxyPagesQuery(context, 'spotify-monthly-listeners');
 }

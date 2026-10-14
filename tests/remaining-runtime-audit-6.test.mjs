@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   cachedHostSummary,
   resetHostSummaryCache,
-} from '../site/functions/api/host-history.js';
+} from '../worker/src/pages-query-api-host-history.js';
 
 test('host summary cache coalesces concurrent D1 reads per binding', async () => {
   resetHostSummaryCache();

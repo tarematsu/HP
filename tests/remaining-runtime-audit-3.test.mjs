@@ -5,7 +5,7 @@ import { parseAuthState } from '../worker/src/auth-state.js';
 import { collectorStateFromAuthState } from '../worker/src/index.js';
 import { authHealth, withAuthState } from '../worker/src/optimized-index.js';
 import { loadTrackLikeRows } from '../site/functions/lib/track-likes.js';
-import { HOST_SUMMARY_SQL, loadHostSummary } from '../site/functions/api/host-history.js';
+import { HOST_SUMMARY_SQL, loadHostSummary } from '../worker/src/pages-query-api-host-history.js';
 
 test('auth state carries collector fields for same-invocation reuse', () => {
   const state = parseAuthState({

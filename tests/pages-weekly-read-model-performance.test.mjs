@@ -48,7 +48,7 @@ test('weekly leaderboard read model materializes missing weeks and fandom metada
 
 test('Pages leaderboard reads only the R2 materialized model', () => {
   const source = readFileSync(
-    new URL('../site/functions/lib/history-ranking.js', import.meta.url),
+    new URL('../worker/src/pages-query-history-ranking.js', import.meta.url),
     'utf8',
   );
   assert.match(source, /fetchPagesReadModel/);
@@ -134,7 +134,7 @@ test('weekly leaderboard freshness gate skips current compact revision and rebui
 
 test('official listening-party Pages read path never reconstructs minute series or probes at request time', () => {
   const source = readFileSync(
-    new URL('../site/functions/api/sakurazaka46jp.js', import.meta.url),
+    new URL('../worker/src/pages-query-api-sakurazaka46jp.js', import.meta.url),
     'utf8',
   );
   const start = source.indexOf('export async function loadSakurazakaSeriesRows');

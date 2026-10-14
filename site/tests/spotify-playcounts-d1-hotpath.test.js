@@ -6,7 +6,7 @@ import {
   spotifyLatestSnapshotDatesSql,
   spotifyPlaycountAllSql,
   spotifyPlaycountSql,
-} from '../functions/api/spotify-playcounts.js';
+} from '../../worker/src/pages-query-api-spotify-playcounts.js';
 
 test('Spotify latest snapshot lookup uses the materialized artist daily summary', () => {
   const single = spotifyPlaycountSql();

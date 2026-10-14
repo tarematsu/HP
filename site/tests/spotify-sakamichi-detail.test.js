@@ -8,7 +8,7 @@ import {
   spotifyLatestSnapshotDatesSql,
   spotifyPlaycountAllSql,
   spotifyReadModelAll,
-} from '../functions/api/spotify-playcounts.js';
+} from '../../worker/src/pages-query-api-spotify-playcounts.js';
 
 function row(artistKey, trackId, name, playcount, delta, snapshotDate) {
   return {

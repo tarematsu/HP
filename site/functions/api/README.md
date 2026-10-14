@@ -32,4 +32,23 @@ The canonical groups are defined in `site/functions/lib/api-contract.js`. Tests 
 
 Collection and official-account raw-derived session persistence are private modules under `site/functions/lib` and `worker/src`. Workers call those modules directly; there are no Pages ingestion routes.
 
-Do not add public HTTP routes to Worker entrypoints. Add new public read endpoints to `site/functions/api`, register them in the shared API contract, and bind their data sources in `site/wrangler.jsonc`.
+Do not add public HTTP routes to Worker entrypoints. Add new public read endpoints to `site/functions/api`, register them in the shared API contract, and use the existing Worker service binding for data-heavy routes.
+
+## CPU boundary
+
+Pages owns public routing and HTTP headers. Heavy read-only queries are declared in
+`worker/src/pages-query-contract.js` and use the common `pages-query-proxy.js`.
+They run through `PAGES_READ_MODEL_SERVICE` and the existing
+`PagesHistoryApiCoordinator` Durable Object; only that DO imports the query
+processor modules. Canonical R2 responses keep their existing path.
+
+Dashboard details, monthly-listener trends, historical ranking/series/detail
+queries, first-week comparisons, and regional payload compaction must never
+parse model bodies or access D1 in Pages. DO handlers load R2 models directly
+without calling back through their own HTTP service binding. Cache lifetimes
+are capped at the previous public API lifetime, and errors are never cached.
+
+The bounded health/status reads and current-day projection remain lightweight
+Pages reads. New data-heavy operations belong in Worker publication or the DO
+query processor, not a Pages fallback. Unit tests import the Worker processors;
+Pages exports only its HTTP handler so heavy modules stay out of its bundle.

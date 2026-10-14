@@ -9,7 +9,7 @@ import {
   SAKURAZAKA_MINUTE_SERIES_SQL,
   trimSakurazakaSeries,
   validateSakurazakaHistoricalSeries,
-} from '../site/functions/api/sakurazaka46jp.js';
+} from '../worker/src/pages-query-api-sakurazaka46jp.js';
 
 const ROCK_IN_EVENT = '2026.09.21 『ROCK IN JAPAN FESTIVAL 2026 SETLIST LISTENING PARTY』';
 const ROCK_IN_START = 1789958700000;

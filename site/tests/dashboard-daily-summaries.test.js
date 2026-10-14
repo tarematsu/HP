@@ -85,7 +85,7 @@ test('dashboard daily summary loader uses one cached OTHER_DB read', async () =>
 
 test('Worker embeds daily summaries while dashboard compatibility routes stay read-model-only', () => {
   const route = readFileSync(new URL('../functions/api/dashboard.js', import.meta.url), 'utf8');
-  const details = readFileSync(new URL('../functions/api/dashboard-details.js', import.meta.url), 'utf8');
+  const details = readFileSync(new URL('../../worker/src/pages-query-api-dashboard-details.js', import.meta.url), 'utf8');
   const publisher = readFileSync(new URL('../../worker/src/pages-dashboard-live-publisher.js', import.meta.url), 'utf8');
   assert.match(route, /proxyStationheadMaterializedReadModel/);
   assert.match(route, /'buddies'/);

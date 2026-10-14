@@ -5,7 +5,7 @@ import test from 'node:test';
 import { currentSummaryPeriodStart } from '../../packages/sh-shared/history-summary-contract.mjs';
 
 const NOW = Date.UTC(2026, 6, 19, 12, 34, 56);
-const history = readFileSync(new URL('../functions/api/history.js', import.meta.url), 'utf8');
+const history = readFileSync(new URL('../../worker/src/pages-query-api-history.js', import.meta.url), 'utf8');
 const materialized = readFileSync(
   new URL('../../packages/sh-shared/materialized-history-summary.mjs', import.meta.url),
   'utf8',

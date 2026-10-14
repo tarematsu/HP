@@ -7,7 +7,7 @@ const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.me
 const currentRuntime = browserSource('stationhead-channel.js');
 const history = browserSource('history/history-lite.js');
 const officialLive = readFileSync(new URL('../public/official-account-live.js', import.meta.url), 'utf8');
-const historyApi = readFileSync(new URL('../functions/api/history.js', import.meta.url), 'utf8');
+const historyApi = readFileSync(new URL('../../worker/src/pages-query-api-history.js', import.meta.url), 'utf8');
 
 test('ranking session cache survives ordinary page startup', () => {
   assert.doesNotMatch(history, /sessionStorage\.removeItem\([^)]*ranking/);

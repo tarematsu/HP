@@ -1,3 +1,4 @@
+import { modelBucket } from './helpers/model-bucket.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -5,8 +6,8 @@ import {
   cachedHistoryLoad,
   onRequestGet as historyGet,
   resetHistoryLoadCache,
-} from '../functions/api/history.js';
-import { onRequestGet as sakurazakaGet } from '../functions/api/sakurazaka46jp.js';
+} from '../../worker/src/pages-query-api-history.js';
+import { onRequestGet as sakurazakaGet } from '../../worker/src/pages-query-api-sakurazaka46jp.js';
 import { FakeD1Database, responseJson } from './helpers/fake-d1.js';
 
 test('history endpoint rejects unknown modes and never caches errors', async () => {
@@ -83,7 +84,7 @@ test('history endpoint restores the ranking leaderboard from the R2 read model',
   const response = await historyGet({
     request: new Request('https://skrzk.test/api/history?mode=ranking&from=2026-07-01&to=2026-07-31'),
     env: {
-      PAGES_READ_MODEL_SERVICE: {
+      PAGES_RESPONSE_R2: modelBucket({
         async fetch(request) {
           const url = new URL(request.url);
           requests.push(url);
@@ -91,7 +92,7 @@ test('history endpoint restores the ranking leaderboard from the R2 read model',
             headers: { 'x-materialized-at': String(model.refreshed_at) },
           });
         },
-      },
+      }),
     },
   });
   const body = await responseJson(response);

@@ -5,7 +5,7 @@ import {
   cachedHistoryLoad,
   cachedHistoryResponse,
   resetHistoryLoadCache,
-} from '../site/functions/api/history.js';
+} from '../worker/src/pages-query-api-history.js';
 
 test('history cache shares concurrent and repeated D1 work', async () => {
   resetHistoryLoadCache();

@@ -6,12 +6,12 @@ import { readFileSync } from 'node:fs';
 import { canonicalTrackKey } from '../functions/lib/canonical-track-rows.js';
 import { mergeTrackRows } from '../functions/lib/track-history-merge.js';
 import { attachCompactTrackLikes } from '../functions/lib/track-likes.js';
-import { FIRST_WEEK_READ_MODEL_SQL } from '../functions/lib/first-week-comparison.js';
+import { FIRST_WEEK_READ_MODEL_SQL } from '../../worker/src/pages-query-first-week-comparison.js';
 
 const playedTracks = browserSource('stationhead/played-tracks.js');
 const appleMusic = readFileSync(new URL('../public/apple-music.js', import.meta.url), 'utf8');
 const amazonMusic = readFileSync(new URL('../public/amazon-music.js', import.meta.url), 'utf8');
-const spotifyApi = readFileSync(new URL('../functions/api/spotify-playcounts.js', import.meta.url), 'utf8');
+const spotifyApi = readFileSync(new URL('../../worker/src/pages-query-api-spotify-playcounts.js', import.meta.url), 'utf8');
 const migration = readFileSync(
   new URL('../../database/facts-migrations/066_pages_canonical_track_identity.sql', import.meta.url),
   'utf8',

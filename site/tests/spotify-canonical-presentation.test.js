@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { canonicalizeSpotifyPlaycountRows } from '../functions/api/spotify-playcounts.js';
+import { canonicalizeSpotifyPlaycountRows } from '../../worker/src/pages-query-api-spotify-playcounts.js';
 
 class FakeCanonicalDb {
   constructor(rows) {
