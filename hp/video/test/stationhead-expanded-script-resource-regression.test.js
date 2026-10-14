@@ -37,10 +37,8 @@ test('expanded script policy is the final Stationhead resource layer', () => {
   const scriptAt = pch.indexOf('src/sh_runtime_script_resource_policy_fix.h');
   const boundaryMessageAt = pch.indexOf('src/sh_track_boundary_message_policy.h');
   assert.ok(filterAt >= 0 && filterAt < scriptAt && scriptAt < boundaryMessageAt);
-  assert.match(
-    policySource,
-    /#undef ApplyStationheadResourceBlocking[\s\S]*#define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingScriptFixed/,
-  );
+  assert.match(policySource, /inline void ApplyStationheadResourceBlockingScriptFixed\(/);
+  assert.doesNotMatch(policySource, /#(?:define|undef) ApplyStationheadResourceBlocking/);
 });
 
 test('generic empty-script replacement is restricted to exact third-party hosts', () => {
