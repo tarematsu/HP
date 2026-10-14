@@ -67,6 +67,7 @@ jobs:
         with:
           name: pages-visual-audit-${{ github.run_id }}-${{ github.run_attempt }}-desktop
           path: .pages-visual-audit/desktop-*.png
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 14
 
@@ -76,6 +77,7 @@ jobs:
         with:
           name: pages-visual-audit-${{ github.run_id }}-${{ github.run_attempt }}-tablet
           path: .pages-visual-audit/tablet-*.png
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 14
 
@@ -87,6 +89,7 @@ jobs:
           path: |
             .pages-visual-audit/mobile-*.png
             !.pages-visual-audit/mobile-compact-*.png
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 14
 
@@ -96,6 +99,7 @@ jobs:
         with:
           name: pages-visual-audit-${{ github.run_id }}-${{ github.run_attempt }}-mobile-compact
           path: .pages-visual-audit/mobile-compact-*.png
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 14
 
