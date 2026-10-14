@@ -73,8 +73,11 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
 
   const ad = () => player.classList.contains('ad-showing') ||
     player.classList.contains('ad-interrupting');
+  // Player CSS flags can remain stale across SPA transitions; only the
+  // browser fullscreen element proves that the video is actually fullscreen.
   const fullscreen = () => Boolean(
-    document.fullscreenElement || player.classList.contains('ytp-fullscreen'));
+    document.fullscreenElement || document.webkitFullscreenElement ||
+    document.msFullscreenElement);
   const arm = (element, action, cooldownMs) => {
     const now = Date.now();
     const lane = actionState(action);
@@ -510,11 +513,21 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     state.fullscreenKeyRequestedAt = 0;
     return null;
     }
-    if (!Number(state.fullscreenKeyRequestedAt || 0)) {
+    const lastRequest = Number(state.fullscreenKeyRequestedAt || 0);
+    const age = now - lastRequest;
+    // A failed WebView2 fullscreen request must remain retryable. The old
+    // single-shot request left all later attempts to the often-hidden UI.
+    if (!lastRequest || age < 0 || age >= 6000) {
     state.fullscreenKeyRequestedAt = now;
     wake(1200);
     try { window.chrome?.webview?.postMessage('homepanel:youtube-fullscreen-key'); }
     catch (_) {}
+    return 'recovery';
+    }
+    // Give Runtime.evaluate and the keyboard fallback time to complete.
+    // An immediate button click can toggle fullscreen back off.
+    if (age < 1200) {
+    wake(1200 - age);
     return 'recovery';
     }
     const fallback = armFullscreen();
