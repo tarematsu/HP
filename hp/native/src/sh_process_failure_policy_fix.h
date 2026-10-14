@@ -113,11 +113,5 @@ static_assert(kRendererUnresponsiveConfirmWindowMs == 15ULL * 1000ULL);
 }  // namespace stationhead_process_failure_policy
 }  // namespace hp
 
-#ifdef add_ProcessFailed
-#undef add_ProcessFailed
-#endif
-#define add_ProcessFailed(handler, token)                                     \
-  add_ProcessFailed(                                                          \
-      ::hp::stationhead_process_failure_policy::                              \
-          WrapStationheadClassifiedProcessFailedHandler((handler)).Get(),     \
-      (token))
+// Callers explicitly wrap WebView2 handlers with this policy; never rename
+// COM registration methods through the preprocessor.

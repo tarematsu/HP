@@ -14,10 +14,10 @@ test('resource filter reduction remains the final Stationhead resource layer', (
   assert.match(cmakeSource, /sh_runtime_resource_boundary_policy_fix\.h/);
   assert.match(cmakeSource, /sh_runtime_resource_filter_policy_fix\.h/);
   assert.match(cmakeSource, /sh_track_boundary_message_policy\.h/);
-  assert.match(
-    policySource,
-    /#undef ApplyStationheadResourceBlocking[\s\S]*#define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingFilterFixed/,
-  );
+  assert.match(policySource, /inline bool StationheadOwnsWorkerRequestFilters\(/);
+  assert.match(policySource, /inline void AddStationheadResourceFilter\(/);
+  assert.doesNotMatch(policySource, /inline void ApplyStationheadResourceBlockingFilterFixed\(/);
+  assert.doesNotMatch(policySource, /#(?:define|undef) ApplyStationheadResourceBlocking/);
 });
 
 test('Stationhead worker filters are scoped to the restored ozeki profile', () => {

@@ -20,11 +20,9 @@ const webviewSource = readFileSync(
 );
 
 test('auth completion source policy is loaded after process-failure stabilization', () => {
-  const macroAt = processPolicy.indexOf('#define add_ProcessFailed');
-  const includeAt = processPolicy.indexOf(
-    '#include "sh_auth_completion_message_policy_fix.h"',
-  );
-  assert.ok(macroAt >= 0 && includeAt > macroAt);
+  assert.match(processPolicy, /#include "sh_auth_completion_message_policy_fix\.h"/);
+  assert.doesNotMatch(processPolicy, /#(?:define|undef) add_ProcessFailed/);
+  assert.match(webviewSource, /#include "sh_auth_completion_message_policy_fix\.h"/);
 });
 
 test('only terminal Spotify auth messages receive the Stationhead-only gate', () => {
@@ -51,10 +49,10 @@ test('terminal auth messages require an HTTPS Stationhead sender', () => {
 });
 
 test('final message registration retains the exact-current-origin boundary', () => {
-  assert.match(
-    completionPolicy,
-    /WrapStationheadWebMessageHandler\([\s\S]*WrapStationheadAuthCompletionMessageHandler/,
-  );
+  assert.doesNotMatch(completionPolicy, /#(?:define|undef) add_WebMessageReceived/);
+  assert.match(webviewSource,
+    /WrapStationheadWebMessageHandler\([\s\S]*WrapStationheadAuthCompletionMessageHandler\(/);
+  assert.equal((webviewSource.match(/WrapStationheadAuthCompletionMessageHandler\(/g) || []).length, 2);
   assert.match(
     eventPolicy,
     /SameTrustedMessageOrigin\(messageSource, currentSource\)/,

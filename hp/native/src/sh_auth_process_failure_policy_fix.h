@@ -79,14 +79,6 @@ WrapStationheadAuthStableProcessFailedHandler(
 }  // namespace stationhead_auth_process_failure_policy
 }  // namespace hp
 
-// Final ProcessFailed registration policy. Playback and Spotify-auth surfaces
-// share one classifier, so transient child failures cannot bypass the base
-// exception-containment policy or independently recreate the WebView.
-#undef add_ProcessFailed
-#define add_ProcessFailed(handler, token)                                        \
-  add_ProcessFailed(                                                            \
-      ::hp::stationhead_auth_process_failure_policy::                            \
-          WrapStationheadAuthStableProcessFailedHandler((handler)).Get(),        \
-      (token))
-
+// Callers explicitly wrap WebView2 handlers with this policy; never rename
+// COM registration methods through the preprocessor.
 #include "sh_auth_completion_message_policy_fix.h"

@@ -224,9 +224,5 @@ WrapStationheadOnboardingWebMessageHandler(
 
 }  // namespace hp::stationhead_onboarding_click_policy
 
-#undef add_WebMessageReceived
-#define add_WebMessageReceived(handler, token)                                \
-  add_WebMessageReceived(                                                     \
-      ::hp::stationhead_onboarding_click_policy::                             \
-          WrapStationheadOnboardingWebMessageHandler((handler)).Get(),        \
-      (token))
+// Callers explicitly wrap WebView2 handlers with this policy; never rename
+// COM registration methods through the preprocessor.

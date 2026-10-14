@@ -310,54 +310,5 @@ inline std::wstring StationheadBlankPageRecoveryScript() {
   return kScript;
 }
 
-inline void ApplyStationheadAdditionalScriptBlocking(
-    ICoreWebView2Environment* environment,
-    ICoreWebView2* webview) {
-  if (!environment || !webview) return;
-
-  static const std::wstring blankPageRecoveryScript =
-      StationheadBlankPageRecoveryScript();
-  (void)webview->AddScriptToExecuteOnDocumentCreated(
-      blankPageRecoveryScript.c_str(), nullptr);
-
-  webview->AddWebResourceRequestedFilter(
-      L"https://stationhead.com/*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT);
-  webview->AddWebResourceRequestedFilter(
-      L"https://*.stationhead.com/*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT);
-
-  ComPtr<ICoreWebView2Environment> env = environment;
-  EventRegistrationToken ignoredToken{};
-  webview->add_WebResourceRequested(
-      Callback<ICoreWebView2WebResourceRequestedEventHandler>(
-          [env](ICoreWebView2*,
-                ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
-            if (!args) return S_OK;
-            COREWEBVIEW2_WEB_RESOURCE_CONTEXT context =
-                COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL;
-            if (FAILED(args->get_ResourceContext(&context)) ||
-                context != COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT) {
-              return S_OK;
-            }
-            ComPtr<ICoreWebView2WebResourceRequest> request;
-            if (FAILED(args->get_Request(&request)) || !request) return S_OK;
-            LPWSTR uriRaw = nullptr;
-            if (FAILED(request->get_Uri(&uriRaw)) || !uriRaw) return S_OK;
-            StationheadLowerAsciiInPlace(uriRaw);
-            const bool blockScript =
-                StationheadAdditionalNonPlaybackScriptUrl(std::wstring_view(uriRaw));
-            CoTaskMemFree(uriRaw);
-            if (!blockScript) return S_OK;
-
-            ComPtr<ICoreWebView2WebResourceResponse> response;
-            if (SUCCEEDED(env->CreateWebResourceResponse(
-                    nullptr, 403, L"Blocked non-playback script",
-                    L"Content-Type: application/javascript; charset=utf-8",
-                    &response))) {
-              args->put_Response(response.Get());
-            }
-            return S_OK;
-          }).Get(),
-      &ignoredToken);
-}
 
 }  // namespace hp

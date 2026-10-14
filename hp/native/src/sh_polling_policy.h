@@ -3,13 +3,7 @@
 
 // Keep the shared helpers available, but replace the policy-sensitive helpers
 // with native-application implementations.
-#define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingBase
-#define StationheadAutoplayScript StationheadAutoplayScriptBase
-#define StationheadVolumeScript StationheadVolumeScriptWithMutationObserver
 #include "sh_shared.h"
-#undef StationheadVolumeScript
-#undef StationheadAutoplayScript
-#undef ApplyStationheadResourceBlocking
 #include "sh_script_blocking_extension.h"
 
 namespace hp {
@@ -118,61 +112,6 @@ static_assert(!StationheadNonPlaybackScriptUrl(
     L"https://www.stationhead.com/assets/player-runtime-a1b2.js"));
 static_assert(!StationheadNonPlaybackScriptUrl(
     L"https://production1.stationhead.com/chathistory"));
-
-inline void ApplyStationheadNonPlaybackScriptBlocking(
-    ICoreWebView2Environment* environment,
-    ICoreWebView2* webview) {
-  if (!environment || !webview) return;
-  webview->AddWebResourceRequestedFilter(
-      L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT);
-
-  ComPtr<ICoreWebView2Environment> env = environment;
-  EventRegistrationToken ignoredToken{};
-  webview->add_WebResourceRequested(
-      Callback<ICoreWebView2WebResourceRequestedEventHandler>(
-          [env](ICoreWebView2*,
-                ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
-            if (!args) return S_OK;
-            COREWEBVIEW2_WEB_RESOURCE_CONTEXT context =
-                COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL;
-            if (FAILED(args->get_ResourceContext(&context)) ||
-                context != COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT) {
-              return S_OK;
-            }
-
-            ComPtr<ICoreWebView2WebResourceRequest> request;
-            if (FAILED(args->get_Request(&request)) || !request) return S_OK;
-            LPWSTR uriRaw = nullptr;
-            if (FAILED(request->get_Uri(&uriRaw)) || !uriRaw) return S_OK;
-            StationheadLowerAsciiInPlace(uriRaw);
-            const bool blockScript =
-                StationheadNonPlaybackScriptUrl(std::wstring_view(uriRaw));
-            CoTaskMemFree(uriRaw);
-            if (!blockScript) return S_OK;
-
-            ComPtr<ICoreWebView2WebResourceResponse> response;
-            if (SUCCEEDED(env->CreateWebResourceResponse(
-                    nullptr, 403, L"Blocked non-playback script",
-                    L"Content-Type: application/javascript; charset=utf-8",
-                    &response))) {
-              args->put_Response(response.Get());
-            }
-            return S_OK;
-          }).Get(),
-      &ignoredToken);
-}
-
-inline void ApplyStationheadResourceBlocking(
-    ICoreWebView2Environment* environment,
-    ICoreWebView2* webview,
-    const StationheadConfig& config,
-    std::atomic<bool>& armed,
-    EventRegistrationToken& token) {
-  ApplyStationheadResourceBlockingBase(
-      environment, webview, config, armed, token);
-  ApplyStationheadNonPlaybackScriptBlocking(environment, webview);
-  ApplyStationheadAdditionalScriptBlocking(environment, webview);
-}
 
 // Pusher carries both track transitions and live social traffic. The socket
 // must remain connected for immediate next-track playback. Standalone social

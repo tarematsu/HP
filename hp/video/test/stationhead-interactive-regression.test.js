@@ -42,8 +42,8 @@ test('login-required state survives audio callbacks', () => {
 });
 
 test('login detection rejects stale auth and re-arms after authentication', () => {
-  const autoplay = section(shared, 'inline std::wstring StationheadAutoplayScript(',
-    'inline std::wstring StationheadVolumeScript(');
+  const autoplay = section(shared, 'inline std::wstring StationheadAutoplayScriptBase(',
+    'inline std::wstring StationheadVolumeScriptWithMutationObserver(');
   assert.match(autoplay, /__homepanelStationheadRejectedAuthorization = authorization/);
   assert.match(autoplay, /homepanel-stationhead-auth-ready/);
 

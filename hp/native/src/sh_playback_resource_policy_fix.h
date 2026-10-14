@@ -45,14 +45,5 @@ static_assert(StationheadPeriodicProfileSlot(L"Default") == 0);
 
 }  // namespace hp
 
-// sh_track_boundary_message_policy.h is parsed later in the native PCH. Route
-// its native audio-health scheduling and claim through the profile-derived slot.
-// Slots are one minute apart in a six-minute cycle, while the lightweight
-// scheduler may still wake once per minute to approach a profile's next slot.
-#define AudioHealthScanDelayMs(now, ignoredSlot) \
-  StationheadProfileAudioHealthScanDelayMs((now), profileName_)
-#define TryClaimAudioHealthScan(now) \
-  TryClaimAudioHealthScanSlot( \
-      (now), StationheadPeriodicProfileSlot(profileName_))
-#define kAudioHealthScanRetryMs \
-  StationheadProfileAudioHealthRetryMs(profileName_)
+// The profile-aware audio scan functions above are invoked explicitly by
+// sh_track_boundary_message_policy.h. No preprocessor substitution is needed.

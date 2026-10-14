@@ -254,14 +254,15 @@ static_assert(StationheadAudioRecoverySettleMs() == 15'000);
       audioHealthCheckStartedAt_ = nowMs - (intervalMs - boundedDelay);       \
     };                                                                        \
     if (!audioHealthCheckStartedAt_.Active()) {                               \
-      scheduleAfter(::hp::AudioHealthScanDelayMs(GetTickCount64(), 0));       \
+      scheduleAfter(::hp::StationheadProfileAudioHealthScanDelayMs(GetTickCount64(), profileName_));       \
       return;                                                                 \
     }                                                                         \
     if (nowMs - audioHealthCheckStartedAt_ < intervalMs) return;              \
                                                                                 \
     const ULONGLONG scanTick = GetTickCount64();                              \
-    if (!::hp::TryClaimAudioHealthScan(scanTick)) {                           \
-      scheduleAfter(::hp::kAudioHealthScanRetryMs);                           \
+    if (!::hp::TryClaimAudioHealthScanSlot(\
+        scanTick, ::hp::StationheadPeriodicProfileSlot(profileName_))) {                           \
+      scheduleAfter(::hp::StationheadProfileAudioHealthRetryMs(profileName_));                           \
       return;                                                                 \
     }                                                                         \
                                                                                 \
@@ -275,11 +276,11 @@ static_assert(StationheadAudioRecoverySettleMs() == 15'000);
     ::hp::ReleaseAudioHealthScan();                                           \
     if (FAILED(audioInterfaceResult) || !audioView ||                         \
         FAILED(audioStateResult)) {                                           \
-      scheduleAfter(::hp::kAudioHealthScanRetryMs);                           \
+      scheduleAfter(::hp::StationheadProfileAudioHealthRetryMs(profileName_));                           \
       return;                                                                 \
     }                                                                         \
                                                                                 \
-    scheduleAfter(::hp::AudioHealthScanDelayMs(scanTick, 0));                 \
+    scheduleAfter(::hp::StationheadProfileAudioHealthScanDelayMs(scanTick, profileName_));                 \
     ApplyAudioPlaybackState(                                                  \
         nativePlaying != FALSE, L"1-minute native audio health check");      \
   }                                                                           \

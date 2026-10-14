@@ -41,18 +41,13 @@ test('auth navigation stability policy is compiled after the base event policy',
     finalResourcePolicySource,
     /#include "sh_auth_navigation_policy_fix\.h"/,
   );
-  assert.match(
-    eventPolicySource,
-    /#define add_NavigationCompleted\(handler, token\)[\s\S]*WrapStationheadNavigationCompletedHandler/,
-  );
-  assert.match(
-    authPolicySource,
-    /#undef add_NavigationCompleted[\s\S]*#define add_NavigationCompleted\(handler, token\)[\s\S]*WrapStationheadAuthStableNavigationCompletedHandler/,
-  );
+  assert.doesNotMatch(eventPolicySource, /#define add_NavigationCompleted\(/);
+  assert.doesNotMatch(authPolicySource, /#(?:undef|define) add_NavigationCompleted/);
+  assert.equal((webviewSource.match(/WrapStationheadAuthStableNavigationCompletedHandler\(/g) || []).length, 2);
   assert.equal(
     webviewSource.split('add_NavigationCompleted(').length - 1,
     2,
-    'playback and auth completion handlers must both remain behind the final policy',
+    'playback and auth completion handlers retain explicit auth-stability protection',
   );
 });
 

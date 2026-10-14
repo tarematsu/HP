@@ -11,10 +11,9 @@ const environment = readNative('shared_webview_environment.cpp');
 
 test('Stationhead playback always applies LOW memory and Windows Efficiency mode', () => {
   assert.match(stationheadPolicy, /#include "stationhead_permanent_resource_mode\.h"/);
-  assert.match(
-    stationheadPolicy,
-    /ApplyStationheadPermanentWebViewResourceMode\(environment, webview\)/,
-  );
+  assert.doesNotMatch(stationheadPolicy, /ApplyStationheadResourceBlockingFilterFixed/);
+  assert.match(readNative('sh_runtime_script_resource_policy_fix.h'),
+    /ApplyStationheadPermanentWebViewResourceMode\(environment, webview\)/);
   assert.match(
     permanentMode,
     /put_MemoryUsageTargetLevel\([\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/,

@@ -46,8 +46,8 @@ test('one-minute native audio health and loss recovery remain active', () => {
   assert.match(wake, /StationheadAudioHealthCheckIntervalMs\(\)/);
   assert.match(wake, /audioLossRecoveryStartedAt_/);
   assert.match(wake, /StationheadAudioRecoverySettleMs\(\)/);
-  assert.match(policy, /AudioHealthScanDelayMs\(GetTickCount64\(\), 0\)/);
-  assert.match(policy, /TryClaimAudioHealthScan\(scanTick\)/);
+  assert.match(policy, /StationheadProfileAudioHealthScanDelayMs\(GetTickCount64\(\), profileName_\)/);
+  assert.match(policy, /TryClaimAudioHealthScanSlot\(/);
   assert.match(policy, /const int64_t nowMs = UnixMillis\(\)/);
   assert.match(policy, /PollPeriodicAudioHealth\(nowMs\)/);
   assert.match(policy, /NavigateCurrentUrl\(nowMs, L"audio-loss recovery reload"\)/);

@@ -200,6 +200,11 @@ inline void ApplyStationheadResourceBlockingScriptFixed(
   (void)armed;
   if (!environment || !webview) return;
 
+  // One authoritative setup path now owns the resource budget; the retired
+  // filter-layer callback previously contained this call but was never
+  // invoked once a later PCH macro redirected the caller.
+  ApplyStationheadPermanentWebViewResourceMode(environment, webview);
+
   ComPtr<ICoreWebView2> base = webview;
   ComPtr<ICoreWebView2_22> sourceAwareWebView;
   base.As(&sourceAwareWebView);
@@ -228,7 +233,8 @@ inline void ApplyStationheadResourceBlockingScriptFixed(
 
   ComPtr<ICoreWebView2Environment> env = environment;
   webview->add_WebResourceRequested(
-      Callback<ICoreWebView2WebResourceRequestedEventHandler>(
+      stationhead_webview_policy::WrapStationheadWebResourceRequestedHandler(
+          Callback<ICoreWebView2WebResourceRequestedEventHandler>(
           [env](ICoreWebView2*,
                 ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
             if (!args) return S_OK;
@@ -313,7 +319,7 @@ inline void ApplyStationheadResourceBlockingScriptFixed(
               }
             }
             return S_OK;
-          }).Get(),
+          }).Get()).Get(),
       &token);
 
   BlockStationheadTelemetrySocketsBoundaryFixed(webview);
@@ -321,5 +327,3 @@ inline void ApplyStationheadResourceBlockingScriptFixed(
 
 }  // namespace hp
 
-#undef ApplyStationheadResourceBlocking
-#define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingScriptFixed

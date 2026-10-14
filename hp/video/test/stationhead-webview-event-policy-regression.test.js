@@ -58,14 +58,12 @@ test('native WebMessage dispatch requires a matching trusted current origin', ()
     wrapper.indexOf('if (!trusted) return S_OK;') <
       wrapper.indexOf('InvokeEventNoexcept(inner, sender, args)'),
   );
-  assert.match(
-    policySource,
-    /#define add_WebMessageReceived\(handler, token\)[\s\S]*WrapStationheadWebMessageHandler/,
-  );
+  assert.doesNotMatch(policySource, /#define add_WebMessageReceived\(/);
+  assert.equal((webviewSource.match(/WrapStationheadWebMessageHandler\(/g) || []).length, 2);
   assert.equal(
     webviewSource.split('add_WebMessageReceived(').length - 1,
     2,
-    'both playback and auth WebMessage handlers must remain behind the policy macro',
+    'both playback and auth WebMessage handlers use the same trust wrapper',
   );
 });
 
@@ -103,10 +101,8 @@ test('unrelated and unhandled trusted popups are contained before browser escape
     wrapper,
     /handled == FALSE[\s\S]*args->put_Handled\(TRUE\);/,
   );
-  assert.match(
-    policySource,
-    /#define add_NewWindowRequested\(handler, token\)[\s\S]*WrapStationheadNewWindowHandler/,
-  );
+  assert.doesNotMatch(policySource, /#define add_NewWindowRequested\(/);
+  assert.match(webviewSource, /WrapStationheadNewWindowHandler\(/);
   assert.equal(webviewSource.split('add_NewWindowRequested(').length - 1, 1);
 });
 
@@ -121,15 +117,14 @@ test('every Stationhead WebView callback is contained at the COM boundary', () =
 
   for (const [method, wrapper, expectedCount] of [
     ['add_NavigationStarting', 'WrapStationheadNavigationStartingHandler', 1],
-    ['add_NavigationCompleted', 'WrapStationheadNavigationCompletedHandler', 2],
-    ['add_ProcessFailed', 'WrapStationheadProcessFailedHandler', 2],
+    ['add_NavigationCompleted', 'WrapStationheadAuthStableNavigationCompletedHandler', 2],
+    ['add_ProcessFailed', 'WrapStationheadAuthStableProcessFailedHandler', 2],
     ['add_WindowCloseRequested', 'WrapStationheadWindowCloseHandler', 1],
     ['add_IsDocumentPlayingAudioChanged', 'WrapStationheadAudioChangedHandler', 1],
   ]) {
-    assert.match(
-      policySource,
-      new RegExp(`#define ${method}\\(handler, token\\)[\\s\\S]*${wrapper}`),
-    );
+    assert.doesNotMatch(policySource, new RegExp(`#define ${method}\\(`));
+    const observedWrappers = (webviewSource.match(new RegExp(`${wrapper}\\(`, 'g')) || []).length;
+    assert.equal(observedWrappers, expectedCount, `${wrapper} must wrap every registration`);
     assert.equal(
       webviewSource.split(`${method}(`).length - 1,
       expectedCount,
@@ -148,20 +143,19 @@ test('every Stationhead WebView callback is contained at the COM boundary', () =
   );
 });
 
-test('final WebResourceRequested callback is also exception-contained', () => {
-  assert.match(
-    policySource,
-    /WrapStationheadWebResourceRequestedHandler\([\s\S]*ICoreWebView2WebResourceRequestedEventHandler/,
-  );
-  assert.match(
-    policySource,
-    /#define add_WebResourceRequested\(handler, token\)[\s\S]*WrapStationheadWebResourceRequestedHandler/,
-  );
-  assert.equal(
-    resourceBoundarySource.split('add_WebResourceRequested(').length - 1,
-    1,
-  );
-  const eventsAt = cmakeSource.indexOf('src/sh_webview_event_policy.h');
-  const boundaryAt = cmakeSource.indexOf('src/sh_runtime_resource_boundary_policy_fix.h');
-  assert.ok(eventsAt >= 0 && eventsAt < boundaryAt);
+test('the one active WebResourceRequested callback is wrapped explicitly, without a PCH macro', () => {
+  const active = readFileSync(
+    new URL('../../native/src/sh_runtime_script_resource_policy_fix.h', import.meta.url), 'utf8');
+  const callback = section(active,
+    'inline void ApplyStationheadResourceBlockingScriptFixed(', '}  // namespace hp');
+  assert.match(policySource,
+    /WrapStationheadWebResourceRequestedHandler\([\s\S]*InvokeEventNoexcept\(inner, sender, args\)/);
+  assert.doesNotMatch(policySource, /#define add_WebResourceRequested\(/);
+  assert.equal((callback.match(/add_WebResourceRequested\(/g) || []).length, 1);
+  assert.match(callback,
+    /stationhead_webview_policy::WrapStationheadWebResourceRequestedHandler\(/);
+  assert.match(callback,
+    /Callback<ICoreWebView2WebResourceRequestedEventHandler>\(/);
+  assert.match(callback, /\}\)\.Get\(\)\)\.Get\(\),\s*&token\)/);
+  assert.doesNotMatch(resourceBoundarySource, /add_WebResourceRequested\(/);
 });

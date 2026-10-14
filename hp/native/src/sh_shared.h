@@ -18,7 +18,7 @@ inline constexpr int64_t kStationheadPostPlaybackStopClickDelayMs = 12'000;
 
 // Shared "click Start Listening" automation injected into the Stationhead
 // WebView at document creation.
-inline std::wstring StationheadAutoplayScript(const wchar_t* globalName,
+inline std::wstring StationheadAutoplayScriptBase(const wchar_t* globalName,
                                               const wchar_t* messagePrefix) {
   static constexpr wchar_t kTemplate[] = LR"JS(
 (() => {
@@ -168,7 +168,7 @@ inline std::wstring StationheadAutoplayScript(const wchar_t* globalName,
   return replaceAll(replaceAll(kTemplate, L"{{GLOBAL}}", globalName), L"{{PREFIX}}", messagePrefix);
 }
 
-inline std::wstring StationheadVolumeScript(int percent) {
+inline std::wstring StationheadVolumeScriptWithMutationObserver(int percent) {
   std::wostringstream script;
   script << L"(() => { const v=" << percent << L"/100;"
          << L"window.__homepanelStationheadVolume=v;"
@@ -465,82 +465,4 @@ inline void BlockStationheadTelemetrySockets(ICoreWebView2* webview, bool blockI
 
 
 
-inline void ApplyStationheadResourceBlocking(ICoreWebView2Environment* environment,
-                                              ICoreWebView2* webview,
-                                              const StationheadConfig& config,
-                                              std::atomic<bool>& armed,
-                                              EventRegistrationToken& token) {
-  if (!environment || !webview) return;
-  webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE);
-  webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT);
-  webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_STYLESHEET);
-  webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA);
-  webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT);
-  webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_XML_HTTP_REQUEST);
-  webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FETCH);
-  webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_TEXT_TRACK);
-  webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_EVENT_SOURCE);
-  webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_WEBSOCKET);
-  webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MANIFEST);
-  webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_PING);
-  webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_CSP_VIOLATION_REPORT);
-  const bool blockImages = config.blockImages;
-  const bool blockFonts = config.blockFonts;
-  ComPtr<ICoreWebView2Environment> env = environment;
-  webview->add_WebResourceRequested(
-      Callback<ICoreWebView2WebResourceRequestedEventHandler>(
-          [env, &armed, blockImages, blockFonts](ICoreWebView2*, ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
-            if (!args) return S_OK;
-            COREWEBVIEW2_WEB_RESOURCE_CONTEXT context = COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL;
-            const bool hasContext = SUCCEEDED(args->get_ResourceContext(&context));
-            bool block = false;
-            bool needsUri = true;
-            if (hasContext) {
-              // Stationhead loads route and player styles lazily. Blocking every
-              // stylesheet after audio starts can leave only the already-rendered
-              // header visible while the station body stays black.
-              (void)armed;
-              if ((blockImages && context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE) ||
-                  (blockFonts && context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT) ||
-                  context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_TEXT_TRACK ||
-                  context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MANIFEST ||
-                  context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_CSP_VIOLATION_REPORT) {
-                // These resource types are safe to reject without allocating
-                // and normalizing a URI first.
-                block = true;
-                needsUri = false;
-              }
-            }
-            if (needsUri) {
-              ComPtr<ICoreWebView2WebResourceRequest> request;
-              if (SUCCEEDED(args->get_Request(&request)) && request) {
-                LPWSTR uriRaw = nullptr;
-                if (SUCCEEDED(request->get_Uri(&uriRaw)) && uriRaw) {
-                  StationheadLowerAsciiInPlace(uriRaw);
-                  const std::wstring_view lower(uriRaw);
-                  block = StationheadRequestIsBlockable(lower);
-                  if (!block && blockImages && StationheadRequestLooksLikeImage(lower)) {
-                    block = true;
-                  }
-                  if (!block && hasContext &&
-                      context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA) {
-                    // Spotify audio is commonly served from scdn.co, so a
-                    // domain-only allow-list can interrupt the next track.
-                    block = !StationheadCorePlaybackRequest(lower);
-                  }
-                  CoTaskMemFree(uriRaw);
-                }
-              }
-            }
-            if (block) {
-              ComPtr<ICoreWebView2WebResourceResponse> response;
-              if (SUCCEEDED(env->CreateWebResourceResponse(nullptr, 403, L"Blocked", L"", &response))) {
-                args->put_Response(response.Get());
-              }
-            }
-            return S_OK;
-          }).Get(),
-      &token);
-  BlockStationheadTelemetrySockets(webview, config.blockImages);
-}
 }

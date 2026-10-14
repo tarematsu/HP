@@ -36,7 +36,7 @@ test('Stationhead playback keeps its resource blocker but Spotify auth does not'
     'void StationheadPlayer::CloseWebView()',
   );
 
-  assert.match(playback, /ApplyStationheadResourceBlocking\(/);
+  assert.match(playback, /ApplyStationheadResourceBlockingScriptFixed\(/);
   assert.doesNotMatch(auth, /ApplyStationheadResourceBlocking\(/);
   assert.match(auth, /ApplyMediaWebViewFeaturePolicy\(/);
 });

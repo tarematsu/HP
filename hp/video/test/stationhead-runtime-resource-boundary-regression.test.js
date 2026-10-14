@@ -6,6 +6,8 @@ const cmakeSource = readFileSync(
   new URL('../../native/CMakeLists.txt', import.meta.url),
   'utf8',
 );
+const activePolicySource = readFileSync(new URL('../../native/src/sh_runtime_script_resource_policy_fix.h', import.meta.url), 'utf8');
+const webviewSource = readFileSync(new URL('../../native/src/sh_webview.cpp', import.meta.url), 'utf8');
 const boundarySource = readFileSync(
   new URL('../../native/src/sh_runtime_resource_boundary_policy_fix.h', import.meta.url),
   'utf8',
@@ -19,19 +21,13 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('strict resource boundary policy is the final Stationhead PCH layer', () => {
-  const pch = section(
-    cmakeSource,
-    'target_precompile_headers(HomePanel PRIVATE',
-    'add_dependencies(HomePanel',
-  );
-  const oldPolicyAt = pch.indexOf('src/sh_runtime_resource_policy_fix.h');
-  const boundaryAt = pch.indexOf('src/sh_runtime_resource_boundary_policy_fix.h');
-  assert.ok(oldPolicyAt >= 0 && oldPolicyAt < boundaryAt);
-  assert.match(
-    boundarySource,
-    /#undef ApplyStationheadResourceBlocking[\s\S]*#define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingBoundaryFixed/,
-  );
+test('strict resource boundary classifiers remain active without an overriding callback', () => {
+  assert.match(cmakeSource, /src\/sh_runtime_resource_boundary_policy_fix\.h/);
+  assert.match(boundarySource, /inline constexpr bool StationheadRequestIsBlockableBoundaryFixed\(/);
+  assert.match(activePolicySource, /StationheadRequestIsBlockableBoundaryFixed\(lower\)/);
+  assert.match(webviewSource, /ApplyStationheadResourceBlockingScriptFixed\(/);
+  assert.doesNotMatch(boundarySource, /ApplyStationheadResourceBlockingBoundaryFixed\(/);
+  assert.doesNotMatch(boundarySource, /#(?:define|undef) ApplyStationheadResourceBlocking/);
 });
 
 test('resource classification separates authority, path, query, and fragment', () => {
@@ -106,26 +102,35 @@ test('CDP blocking is destination-host-only and never applies image suffixes glo
   assert.doesNotMatch(sockets, /blockImages/);
 });
 
-test('final resource callback consolidates strict, script, and playback predicates', () => {
-  const finalPolicy = section(
-    boundarySource,
-    'inline void ApplyStationheadResourceBlockingBoundaryFixed(',
-    '}  // namespace hp',
-  );
-  assert.equal(
-    (finalPolicy.match(/add_WebResourceRequested\(/g) || []).length,
-    1,
-  );
-  assert.match(finalPolicy, /StationheadRequestIsBlockableBoundaryFixed\(lower\)/);
-  assert.match(finalPolicy, /StationheadNonPlaybackScriptUrlRuntimeFixed\(lower\)/);
-  assert.match(finalPolicy, /StationheadAdditionalNonPlaybackScriptUrl\(lower\)/);
-  assert.match(finalPolicy, /StationheadCorePlaybackRequestBoundaryFixed\(lower\)/);
-  assert.doesNotMatch(finalPolicy, /ApplyStationheadNonPlaybackScriptBlockingRuntimeFixed/);
-  assert.doesNotMatch(finalPolicy, /ApplyStationheadAdditionalScriptBlockingRuntimeFixed/);
-  assert.doesNotMatch(finalPolicy, /StationheadRequestIsBlockable\(lower\)/);
-  assert.doesNotMatch(finalPolicy, /StationheadCorePlaybackRequest\(lower\)/);
-  assert.match(finalPolicy, /\[env, blockImages, blockFonts\]/);
-  assert.doesNotMatch(finalPolicy, /&armed/);
-  assert.match(finalPolicy, /BlockStationheadTelemetrySocketsBoundaryFixed\(webview\)/);
-  assert.doesNotMatch(finalPolicy, /BlockStationheadTelemetrySockets\(webview,/);
+test('directly called final resource callback consolidates strict, script, and playback predicates', () => {
+  const active = section(activePolicySource,
+    'inline void ApplyStationheadResourceBlockingScriptFixed(', '}  // namespace hp');
+  assert.equal((active.match(/add_WebResourceRequested\(/g) || []).length, 1);
+  assert.match(active, /StationheadRequestIsBlockableBoundaryFixed\(lower\)/);
+  assert.match(active, /StationheadKnownOptionalModuleStubBoundaryFixed\(lower\)/);
+  assert.match(active, /StationheadExpandedNonPlaybackScriptBoundaryFixed\(lower\)/);
+  assert.match(active, /StationheadCorePlaybackRequestBoundaryFixed\(lower\)/);
+  assert.match(active, /BlockStationheadTelemetrySocketsBoundaryFixed\(webview\)/);
+  assert.doesNotMatch(active, /&armed|BlockStationheadTelemetrySockets\(webview,/);
+  assert.doesNotMatch(boundarySource, /add_WebResourceRequested\(/);
+});
+
+test('one parsed URI is reused for telemetry and social classification on the hot path', () => {
+  const from = boundarySource.indexOf(
+    'inline constexpr bool StationheadRequestIsBlockableBoundaryFixed(');
+  const to = boundarySource.indexOf(
+    'inline constexpr bool StationheadCorePlaybackRequestBoundaryFixed(', from);
+  assert.ok(from >= 0 && to > from);
+  const blockable = boundarySource.slice(from, to);
+  assert.equal((blockable.match(/StationheadParseRuntimeUri\(/g) || []).length, 1);
+  assert.match(blockable, /StationheadTelemetryRequestBoundaryFixed\(uri\)/);
+  assert.match(blockable, /StationheadSocialApiRequestBoundaryFixed\(uri\)/);
+  assert.match(boundarySource,
+    /inline constexpr bool StationheadTelemetryRequestBoundaryFixed\(\s*const StationheadRuntimeUriParts& uri\)/);
+  assert.match(boundarySource,
+    /inline constexpr bool StationheadTelemetryRequestBoundaryFixed\(\s*std::wstring_view uriLower\)/);
+  assert.match(boundarySource,
+    /inline constexpr bool StationheadSocialApiRequestBoundaryFixed\(\s*const StationheadRuntimeUriParts& uri\)/);
+  assert.match(boundarySource,
+    /inline constexpr bool StationheadSocialApiRequestBoundaryFixed\(\s*std::wstring_view uriLower\)/);
 });

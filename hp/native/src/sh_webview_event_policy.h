@@ -249,50 +249,8 @@ WrapStationheadWebResourceRequestedHandler(
 }  // namespace stationhead_webview_policy
 }  // namespace hp
 
-#define add_WebMessageReceived(handler, token)                                \
-  add_WebMessageReceived(                                                     \
-      ::hp::stationhead_webview_policy::                                      \
-          WrapStationheadWebMessageHandler((handler)).Get(),                  \
-      (token))
+// All Stationhead event registrations explicitly wrap their COM handlers
+// at the call sites in sh_webview.cpp; no PCH method-substitution macros.
 
-#define add_NewWindowRequested(handler, token)                                \
-  add_NewWindowRequested(                                                     \
-      ::hp::stationhead_webview_policy::                                      \
-          WrapStationheadNewWindowHandler((handler)).Get(),                   \
-      (token))
-
-#define add_NavigationStarting(handler, token)                                \
-  add_NavigationStarting(                                                     \
-      ::hp::stationhead_webview_policy::                                      \
-          WrapStationheadNavigationStartingHandler((handler)).Get(),          \
-      (token))
-
-#define add_NavigationCompleted(handler, token)                               \
-  add_NavigationCompleted(                                                    \
-      ::hp::stationhead_webview_policy::                                      \
-          WrapStationheadNavigationCompletedHandler((handler)).Get(),         \
-      (token))
-
-#define add_ProcessFailed(handler, token)                                     \
-  add_ProcessFailed(                                                          \
-      ::hp::stationhead_webview_policy::                                      \
-          WrapStationheadProcessFailedHandler((handler)).Get(),               \
-      (token))
-
-#define add_WindowCloseRequested(handler, token)                              \
-  add_WindowCloseRequested(                                                   \
-      ::hp::stationhead_webview_policy::                                      \
-          WrapStationheadWindowCloseHandler((handler)).Get(),                 \
-      (token))
-
-#define add_IsDocumentPlayingAudioChanged(handler, token)                     \
-  add_IsDocumentPlayingAudioChanged(                                          \
-      ::hp::stationhead_webview_policy::                                      \
-          WrapStationheadAudioChangedHandler((handler)).Get(),                \
-      (token))
-
-#define add_WebResourceRequested(handler, token)                              \
-  add_WebResourceRequested(                                                   \
-      ::hp::stationhead_webview_policy::                                      \
-          WrapStationheadWebResourceRequestedHandler((handler)).Get(),        \
-      (token))
+// WebResourceRequested is wrapped explicitly at its single native call site.
+// Do not mutate COM method calls through preprocessor aliases.
