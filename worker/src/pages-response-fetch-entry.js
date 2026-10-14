@@ -1,37 +1,15 @@
 import { pagesResponseCacheKey, cacheablePagesResponse } from './pages-response-cache.js';
 import {
-  MATERIALIZED_API_VARIANTS,
-  MUSIC_SERVICE_API_MODELS,
-  materializedResponseMaximumAge,
-} from '../../packages/sh-shared/api-contract.mjs';
-import { STATIONHEAD_READ_MODEL_KEYS } from '../../packages/sh-shared/stationhead-read-models.mjs';
-import { loadMaterializedResponse } from './pages-response-store.js';
-import { normalizeFollowersResponse } from './stationhead-followers-response.js';
+  PUBLIC_R2_MODEL_KEYS,
+  TRACK_HISTORY_MODEL_KEY,
+  modelMaximumAge,
+  materializedStaleMaximumAge,
+  responseIsStale,
+  staleMaterializedResponse,
+} from './pages-response-models.js';
 
 const EMPTY_DEPENDENCIES = Object.freeze({});
 const INTERNAL_RESPONSE_PATH = '/_internal/pages-response';
-const TRACK_HISTORY_MODEL_KEY = 'track-history';
-const FOLLOWERS_MODEL_KEY = 'followers';
-
-const DEFAULT_STALE_FALLBACK_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-const PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS = new Set([
-  'apple-music',
-  'apple-music-playlists',
-  'amazon-music',
-  'amazon-music-playlists',
-  'spotify-playlists',
-  'nogizaka-listening-party',
-  'regional-music',
-  FOLLOWERS_MODEL_KEY,
-  'leaderboard',
-]);
-const PUBLIC_R2_MODEL_KEYS = new Set([
-  ...MATERIALIZED_API_VARIANTS.map(({ key }) => key),
-  ...PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS,
-  ...Object.values(MUSIC_SERVICE_API_MODELS),
-  ...Object.values(STATIONHEAD_READ_MODEL_KEYS),
-  TRACK_HISTORY_MODEL_KEY,
-]);
 
 // Concurrent identical cold cache misses otherwise deserialize and assemble the
 // same track-history R2 shards more than once. Keep this strictly in-flight:
@@ -88,46 +66,6 @@ async function loadTrackHistoryThroughCoordinator(env, request, dependencies, fa
   });
 }
 
-function materializedStaleMaximumAge(env, freshMaximumAge) {
-  const configured = Number(env?.PAGES_RESPONSE_STALE_MAX_AGE_MS);
-  const staleMaximumAge = Number.isFinite(configured) && configured >= 0
-    ? configured
-    : DEFAULT_STALE_FALLBACK_MAX_AGE_MS;
-  return Math.max(Number(freshMaximumAge) || 0, staleMaximumAge);
-}
-
-function responseIsStale(response, now, maximumAge) {
-  const rawUpdatedAt = response?.headers?.get('x-materialized-at');
-  if (rawUpdatedAt == null || rawUpdatedAt === '') return false;
-  const updatedAt = Number(rawUpdatedAt);
-  const age = Number(maximumAge);
-  return Number.isFinite(updatedAt)
-    && updatedAt >= 0
-    && Number.isFinite(age)
-    && age >= 0
-    && now - updatedAt > age;
-}
-
-function staleMaterializedResponse(response) {
-  if (!response) return null;
-  const headers = new Headers(response.headers);
-  headers.set('x-materialized-stale', '1');
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
-}
-
-async function loadCanonicalR2(env, modelKey, now, maximumAge, dependencies) {
-  const loadR2 = dependencies.loadR2Response || loadMaterializedResponse;
-  const staleMaximumAge = materializedStaleMaximumAge(env, maximumAge);
-  const response = await loadR2(env?.PAGES_RESPONSE_R2, modelKey, now, staleMaximumAge);
-  return responseIsStale(response, now, maximumAge)
-    ? staleMaterializedResponse(response)
-    : response;
-}
-
 // The account-level CPU metric records one invocation, not a model route.
 // Emit a bounded, route-only diagnostic on slow HTTP reads (wall time is a
 // correlate, not itself CPU time). Never emit raw query parameters or URLs.
@@ -162,9 +100,7 @@ export async function runPagesResponseFetch(
   if (!modelKey) return new Response(null, { status: 400 });
   const startedAt = Date.now();
   const now = dependencies.now?.() ?? startedAt;
-  const maximumAge = PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS.has(modelKey)
-    ? Number.MAX_SAFE_INTEGER
-    : materializedResponseMaximumAge(modelKey, env);
+  const maximumAge = modelMaximumAge(modelKey, env);
   try {
     let response = null;
     if (isTrackHistoryApi) {
@@ -211,16 +147,18 @@ export async function runPagesResponseFetch(
           return cached;
         }
       }
-      if (isHistoryRange && typeof env?.PAGES_HISTORY_API_COORDINATOR?.get === 'function'
+      if (typeof dependencies.loadR2Response === 'function' && !isHistoryRange) {
+        // Explicit test injection; production never imports the envelope parser.
+        response = await dependencies.loadR2Response(env?.PAGES_RESPONSE_R2, modelKey, now,
+          materializedStaleMaximumAge(env, maximumAge));
+        if (responseIsStale(response, now, maximumAge)) response = staleMaterializedResponse(response);
+      } else if (typeof env?.PAGES_HISTORY_API_COORDINATOR?.get === 'function'
           && typeof env.PAGES_HISTORY_API_COORDINATOR.idFromName === 'function') {
         const namespace = env.PAGES_HISTORY_API_COORDINATOR;
         response = await namespace.get(namespace.idFromName(modelKey)).fetch(request);
-      } else if (isHistoryRange) {
-        return new Response(null, { status: 503, headers: { 'cache-control': 'no-store' } });
       } else {
-        response = await loadCanonicalR2(env, modelKey, now, maximumAge, dependencies);
+        return new Response(null, { status: 503, headers: { 'cache-control': 'no-store', 'retry-after': '30' } });
       }
-      if (modelKey === FOLLOWERS_MODEL_KEY) response = await normalizeFollowersResponse(response, now);
       if (cache && context) {
         const cacheResponse = cacheablePagesResponse(response, now, maximumAge);
         if (cacheResponse) context.waitUntil(cache.put(key, cacheResponse).catch(() => {}));
@@ -233,7 +171,7 @@ export async function runPagesResponseFetch(
       isTrackHistoryApi
         ? (env?.PAGES_HISTORY_API_COORDINATOR ? 'track-history-do' : 'track-history-unavailable')
         : (modelKey.startsWith('history:') && (params.has('from') || params.has('to'))
-          ? 'history-range-do' : 'canonical-r2'),
+          ? 'history-range-do' : 'canonical-do'),
       startedAt,
       Date.now(),
       isTrackHistoryApi,

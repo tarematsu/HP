@@ -1,4 +1,4 @@
-import { pagesR2ResponseKey } from './pages-response-r2.js';
+import { pagesR2ResponseKey, saveMaterializedR2Response } from './pages-response-r2.js';
 
 export const APPLE_MUSIC_PLAYLIST_PAGES_MODEL_KEY = 'apple-music-playlists';
 
@@ -623,19 +623,8 @@ async function publishReadModel(r2, model, observedAt) {
   const body = JSON.stringify({ ok: true, ...model });
   const objectKey = pagesR2ResponseKey(APPLE_MUSIC_PLAYLIST_PAGES_MODEL_KEY);
   if (!objectKey) throw new Error('Apple Music playlist public read-model key is unavailable');
-  const envelope = {
-    version: 1,
-    status: 200,
-    headers: PUBLIC_HEADERS,
-    updated_at: observedAt,
-    cadence_seconds: 86_400,
-    source_revision: `apple-music-playlists:${model.scan_date}:${observedAt}`,
-    renderer_revision: 'apple-music-playlists-v3',
-    body,
-  };
-  await r2.put(objectKey, JSON.stringify(envelope), {
-    httpMetadata: { contentType: 'application/json; charset=utf-8' },
-  });
+  await saveMaterializedR2Response(r2, APPLE_MUSIC_PLAYLIST_PAGES_MODEL_KEY, body, 200, PUBLIC_HEADERS,
+    observedAt, 86400, { source_revision: `apple-music-playlists:${model.scan_date}:${observedAt}`, renderer_revision: 'apple-music-playlists-v3' });
   return { objectKey, bytes: body.length };
 }
 

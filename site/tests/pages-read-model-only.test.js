@@ -52,8 +52,11 @@ test('track-history builders persist only R2 day models while D1 keeps compact c
   assert.match(entry, /pages-response-fetch-entry\.js/);
   assert.match(entry, /runPagesResponseFetch/);
   assert.doesNotMatch(entry, /pages-read-model-entry|runPagesReadModelCron|scheduled\s*:/);
-  assert.match(responseFetch, /loadMaterializedResponse/);
-  assert.match(responseFetch, /pages-response-store\.js/);
+  assert.match(responseFetch, /PAGES_HISTORY_API_COORDINATOR/);
+  assert.doesNotMatch(responseFetch, /loadMaterializedResponse|pages-response-store\.js/);
+  const coordinator = readFileSync(new URL('../../worker/src/pages-history-api-coordinator.js', import.meta.url), 'utf8');
+  assert.match(coordinator, /loadMaterializedResponse/);
+  assert.match(coordinator, /pages-response-store\.js/);
   assert.doesNotMatch(responseFetch, /loadMaterializedR2Response|PAGES_RESPONSE_KV/);
   assert.doesNotMatch(responseFetch, /pages-read-model-dispatch|track-history-publication|PAGES_READ_MODEL_QUEUE/);
   assert.equal(runtime.triggers, undefined);

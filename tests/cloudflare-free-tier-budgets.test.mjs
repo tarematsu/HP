@@ -132,7 +132,10 @@ test('collector coordination and runtime live-job DO fit daily budgets without r
 
 test('Pages serving uses R2 without materialized-response D1 or KV fallback', () => {
   expectNone(pagesMiddleware, ['sh_pages_response_manifest', 'sh_pages_response_chunks']);
-  expectAll(responseFetch, ['loadMaterializedResponse', 'pages-response-store.js']);
+  expectAll(responseFetch, ['PAGES_HISTORY_API_COORDINATOR']);
+  expectNone(responseFetch, ['loadMaterializedResponse', 'pages-response-store.js']);
+  const coordinator = readSource('worker/src/pages-history-api-coordinator.js');
+  expectAll(coordinator, ['loadMaterializedResponse', 'pages-response-store.js']);
   expectNone(responseFetch, [
     'loadMaterializedR2Response',
     'PAGES_RESPONSE_KV',

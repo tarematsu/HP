@@ -8,7 +8,7 @@ import {
   normalizeAppleMusicTopSongs,
   resolveAppleMusicTrackIds,
 } from './apple-music-collector.js';
-import { pagesR2ResponseKey } from './pages-response-r2.js';
+import { pagesR2ResponseKey, saveMaterializedR2Response } from './pages-response-r2.js';
 
 export const APPLE_MUSIC_ARTISTS = Object.freeze([
   Object.freeze({ key: 'sakurazaka46', id: APPLE_MUSIC_ARTIST_ID, name: '櫻坂46' }),
@@ -287,28 +287,10 @@ async function publishCombinedModel(r2, primaryModel, secondaryModels, observedA
 
   const publicKey = pagesR2ResponseKey(APPLE_MUSIC_PAGES_MODEL_KEY);
   if (!publicKey) throw new Error('Apple Music public read-model key is unavailable');
-  const previousEnvelope = await getJson(r2, publicKey);
   const body = JSON.stringify({ ok: true, ...combined });
-  const envelope = previousEnvelope && Number(previousEnvelope.version) === 1
-    ? {
-        ...previousEnvelope,
-        updated_at: observedAt,
-        source_revision: `apple-music:sakamichi:${combined.snapshot_date || 'none'}:${observedAt}`,
-        body,
-      }
-    : {
-        version: 1,
-        status: 200,
-        headers: PUBLIC_HEADERS,
-        updated_at: observedAt,
-        cadence_seconds: 0,
-        source_revision: `apple-music:sakamichi:${combined.snapshot_date || 'none'}:${observedAt}`,
-        renderer_revision: 'apple-music-v3',
-        body,
-      };
-  await r2.put(publicKey, JSON.stringify(envelope), {
-    httpMetadata: { contentType: 'application/json; charset=utf-8' },
-  });
+  await saveMaterializedR2Response(r2, APPLE_MUSIC_PAGES_MODEL_KEY, body, 200, PUBLIC_HEADERS,
+    observedAt, 0, { source_revision: `apple-music:sakamichi:${combined.snapshot_date || 'none'}:${observedAt}`,
+      renderer_revision: 'apple-music-v3' });
   return { combined, publicKey, bytes: body.length };
 }
 
