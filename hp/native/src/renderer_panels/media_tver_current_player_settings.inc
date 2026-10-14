@@ -135,7 +135,6 @@ LR"JS(
   }
   const posterPlay = document.getElementById?.('episode-play');
   if (questionnaire || visible(posterPlay)) {
-    state.fullscreenCornerTapAt = now;
     schedule(900);
     return;
   }
@@ -171,7 +170,6 @@ LR"JS(
     }
   }
   if (!video) {
-    state.fullscreenCornerTapAt = now;
     schedule(900);
     return;
   }
@@ -331,7 +329,6 @@ LR"JS(
         (speed175Option && selected(speed175Option)));
     state.currentSettingsSpeedConfirmed = speedConfirmed;
     if (!speedConfirmed) {
-      state.fullscreenCornerTapAt = now;
       if (speed175Option && clickOnce(speed175Option, 'speed-175', 700)) return;
       if (speedIndicator && clickOnce(speedIndicator, 'speed-menu', 900)) return;
       schedule(700);
@@ -344,7 +341,6 @@ LR"JS(
     state.currentSettingsQualityConfirmed = qualityConfirmed;
     if (qualityConfirmed) state.qualityApplied = true;
     if (!qualityConfirmed) {
-      state.fullscreenCornerTapAt = now;
       if (lowOption && clickOnce(lowOption, 'quality-low-v2', 700)) return;
       if (qualityIndicator &&
           clickOnce(qualityIndicator, 'quality-menu-v2', 900)) return;
@@ -353,7 +349,6 @@ LR"JS(
 
     // Keep setting menus reachable until TVer's own UI confirms both values.
     if (!speedConfirmed || !qualityConfirmed) {
-      state.fullscreenCornerTapAt = now;
       schedule(700);
       return;
     }
@@ -362,7 +357,6 @@ LR"JS(
     // replaces the ad video.
     state.currentSettingsSpeedConfirmed = false;
     state.currentSettingsQualityConfirmed = false;
-    state.fullscreenCornerTapAt = now;
     schedule(900);
   }
 
