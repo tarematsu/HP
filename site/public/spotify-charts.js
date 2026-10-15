@@ -143,4 +143,4 @@ root?.addEventListener('music-service:group-change', event => { group = event.de
 if (root) observeDashboardChartResize(root, () => {
   if (group === 'listeners') renderListeners();
   else { const cached = loaded.get(`${group}-jp-${periods[group]}`); if (cached) renderChart(group, cached.data, cached.state); }
-}, { delay: 220 });
+}, { delay: 220, watchHeight: false });
