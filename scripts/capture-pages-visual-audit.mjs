@@ -94,6 +94,10 @@ async function inspectView(page, tab, viewport, outDir) {
   }
   let listeningPartyWaitTimedOut = false;
   if (listeningPartyMode) {
+    // The comparison panels are rendered lazily. On narrow viewports they sit
+    // well below the fold, so reveal them before waiting for their paint state.
+    await revealPage(page);
+    await settle(page);
     try {
       await page.waitForFunction(() => {
         const visible = (element) => {
