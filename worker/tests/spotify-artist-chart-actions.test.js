@@ -6,6 +6,7 @@ import test from 'node:test';
 import {
   normalizeSpotifyArtistChart,
   refreshSpotifyChartsAccessToken,
+  shouldPersistSpotifyArtistChart,
   updateSpotifyRefreshWorkerSecret,
 } from '../src/spotify-artist-chart-collector.js';
 import { shouldDispatchSpotifyArtistChart } from '../src/spotify-playcount-timing.js';
@@ -19,6 +20,14 @@ function atJst(hour, minute) {
   return Date.UTC(2026, 9, 3, (hour + 15) % 24, minute, 0);
 }
 
+test('chart date advances whenever a newer official source is published, even with multi-day lag', () => {
+  assert.equal(shouldPersistSpotifyArtistChart('2026-10-13', ''), true);
+  assert.equal(shouldPersistSpotifyArtistChart('2026-10-14', '2026-10-13'), true);
+  assert.equal(shouldPersistSpotifyArtistChart('2026-10-13', '2026-10-13'), false);
+  assert.equal(shouldPersistSpotifyArtistChart('2026-10-12', '2026-10-13'), false);
+  assert.equal(shouldPersistSpotifyArtistChart('', '2026-10-13'), false);
+});
+
 test('one-time Spotify bootstrap is valid Python and uses PKCE without browser automation', () => {
   execFileSync('python3', ['-m', 'py_compile', bootstrapPath.pathname]);
   const source = readFileSync(bootstrapPath, 'utf8');
@@ -29,12 +38,15 @@ test('one-time Spotify bootstrap is valid Python and uses PKCE without browser a
   assert.doesNotMatch(source, /WebView2|selenium|playwright|puppeteer/i);
 });
 
-test('Daily Top Artist is retried hourly from 07:20 through 11:20 JST', () => {
+test('Daily Top Artist retries hourly from 07:20 through 16:20 JST', () => {
   assert.equal(shouldDispatchSpotifyArtistChart(atJst(7, 20)), true);
   assert.equal(shouldDispatchSpotifyArtistChart(atJst(9, 20)), true);
   assert.equal(shouldDispatchSpotifyArtistChart(atJst(11, 20)), true);
+  assert.equal(shouldDispatchSpotifyArtistChart(atJst(16, 20)), true);
+  assert.equal(shouldDispatchSpotifyArtistChart(atJst(17, 20)), false);
   assert.equal(shouldDispatchSpotifyArtistChart(atJst(7, 10)), false);
-  assert.equal(shouldDispatchSpotifyArtistChart(atJst(12, 20)), false);
+  assert.equal(shouldDispatchSpotifyArtistChart(atJst(12, 20)), true);
+  assert.equal(shouldDispatchSpotifyArtistChart(atJst(6, 20)), false);
 });
 
 test('Spotify PKCE refresh rotates the Cloudflare Worker secret only when Spotify returns a new token', async () => {
@@ -103,7 +115,7 @@ test('GitHub Action is bootstrap-only and Cloudflare Worker owns recurring colle
   assert.match(workflow, /bootstrap-spotify-charts-refresh\.py/);
   assert.match(workflow, /store-spotify-charts-worker-secrets\.mjs/);
   assert.match(collector, /SPOTIFY_CHARTS_REFRESH_TOKEN/);
-  assert.match(collector, /bootstrap_older_chart/);
+  assert.match(collector, /source_lags_expected_date/);
   assert.match(collector, /spotify_artist_chart_persisted/);
   assert.match(collector, /CLOUDFLARE_WORKER_SECRET_TOKEN/);
   assert.match(collector, /publishSpotifyPagesReadModel/);

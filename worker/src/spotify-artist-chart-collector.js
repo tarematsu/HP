@@ -256,6 +256,11 @@ async function persistSpotifyArtistChart(db, capture) {
   return matched.size;
 }
 
+export function shouldPersistSpotifyArtistChart(chartDate, latestStoredDate = '') {
+  return DATE_KEY.test(String(chartDate || ''))
+    && (!latestStoredDate || chartDate > latestStoredDate);
+}
+
 export async function runSpotifyArtistChartScheduled(env, scheduledTime = Date.now(), dependencies = {}) {
   const db = env?.OTHER_DB;
   if (!db?.prepare) throw new Error('OTHER_DB binding is required for Spotify artist chart');
@@ -278,18 +283,18 @@ export async function runSpotifyArtistChartScheduled(env, scheduledTime = Date.n
   }
 
   const capture = await fetchSpotifyArtistChart(refreshed.access_token, fetchImpl);
-  // Preserve an older, valid first snapshot instead of discarding all history
-  // until Spotify publishes yesterday's chart. Existing snapshots still wait
-  // for a strictly newer chart.
-  const bootstrap = !latestDate;
-  if (capture.chart_date < expectedDate && !bootstrap) {
+  // The official chart can lag by more than one day. The upstream chart
+  // date, not yesterday's JST date, is the source of truth for new snapshots.
+  if (!shouldPersistSpotifyArtistChart(capture.chart_date, latestDate)) {
+    const readModel = await publishSpotifyPagesReadModel(env);
     const result = {
       skipped: true,
-      reason: 'source-not-published',
+      reason: 'no-newer-chart',
       chart_date: capture.chart_date,
       expected_date: expectedDate,
+      read_model_published: Boolean(readModel?.published),
     };
-    console.info(JSON.stringify({ event: 'spotify_artist_chart_source_not_published', ...result }));
+    console.info(JSON.stringify({ event: 'spotify_artist_chart_no_newer_chart', ...result }));
     return result;
   }
 
@@ -301,14 +306,14 @@ export async function runSpotifyArtistChartScheduled(env, scheduledTime = Date.n
     matched_artists: matched,
     refresh_token_rotated: refreshed.rotated,
     read_model_published: Boolean(readModel?.published),
-    bootstrap_older_chart: bootstrap && capture.chart_date < expectedDate,
+    source_lags_expected_date: capture.chart_date < expectedDate,
   };
   console.info(JSON.stringify({
     event: 'spotify_artist_chart_persisted',
     chart_date: result.chart_date,
     expected_date: expectedDate,
     matched_artists: matched,
-    bootstrap_older_chart: result.bootstrap_older_chart,
+    source_lags_expected_date: result.source_lags_expected_date,
     read_model_published: result.read_model_published,
   }));
   return result;
