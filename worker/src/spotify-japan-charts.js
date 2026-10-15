@@ -23,6 +23,10 @@ async function save(r2, key, data) {
   return saveMaterializedR2Response(r2, key, JSON.stringify(data), 200, HEADERS, Date.now(), 0);
 }
 const stateKey = id => `spotify/charts/state/${id}.json`;
+function sourceStatus(state) {
+  if (state.latest_status === 'error' || state.history_status === 'error') return 'error';
+  return state.latest_status || (state.source_archived ? 'archived' : 'ok');
+}
 async function loadState(r2, spec) {
   const object = await r2.get(stateKey(spec.id));
   return object ? object.json() : { chart_id: spec.id, years: [], cursor: null, latest_chart_date: null, history_complete: false };
@@ -129,7 +133,7 @@ export async function runJapanChartWork(env, body, dependencies = {}) {
         state.archive_probed = true;
       }
       if (!capture && state.latest_chart_date) {
-        state.source_archived = true; state.status = 'archived'; state.checked_at = Date.now();
+        state.source_archived = true; state.latest_status = 'archived'; state.status = sourceStatus(state); state.checked_at = Date.now();
         await saveState(r2, spec, state); await requestIndexPublication(env, spec);
         if (!state.history_complete) await enqueue(env, { chart_id: spec.id, mode: 'history', cursor: state.cursor });
         return;
@@ -138,7 +142,7 @@ export async function runJapanChartWork(env, body, dependencies = {}) {
     }
     if (!capture) {
       // Unsupported latest series is visible as unavailable, never fabricated as an empty Top 50/200.
-      state.status = 'unavailable'; state.checked_at = Date.now();
+      state.latest_status = 'unavailable'; state.status = sourceStatus(state); state.checked_at = Date.now();
       await saveState(r2, spec, state); await requestIndexPublication(env, spec); return;
     }
     if (state.latest_chart_date && capture.chart_date < state.latest_chart_date) return;
@@ -147,7 +151,9 @@ export async function runJapanChartWork(env, body, dependencies = {}) {
     state.latest_chart_date = capture.chart_date;
     state.observed_at = capture.observed_at;
     state.source_archived = sourceArchived;
-    state.status = sourceArchived ? 'archived' : 'ok';
+    state.latest_status = sourceArchived ? 'archived' : 'ok';
+    state.status = sourceStatus(state);
+    state.checked_at = now;
     delete state.error_code;
     state.years = [...new Set([...state.years, capture.chart_date.slice(0, 4)])].sort();
     state.cursor ||= previous(capture.chart_date, spec.period);
@@ -176,7 +182,8 @@ export async function runJapanChartWork(env, body, dependencies = {}) {
       }
     }
     state.history_complete = state.cursor < (state.source_start || spec.start);
-    state.status = state.source_archived ? 'archived' : 'ok';
+    state.history_status = 'ok';
+    state.status = sourceStatus(state);
     delete state.error_code;
   }
   await saveState(r2, spec, state);
@@ -196,7 +203,9 @@ export async function processJapanChartMessage(entry, env, dependencies = {}) {
         const committed = entry.body.mode === 'history' && state.cursor !== entry.body.cursor;
         // A continuation failure must not rewrite a just-committed checkpoint.
         if (!committed && (!state.updated_at || Date.now() - state.updated_at >= 1000)) {
-          state.status = 'error'; state.checked_at = Date.now();
+          if (entry.body.mode === 'latest') state.latest_status = 'error';
+          else state.history_status = 'error';
+          state.status = sourceStatus(state); state.checked_at = Date.now();
           state.error_code = /HTTP (\d{3})/.exec(String(error.message))?.[1]
             || /\((\d{5,6})\)/.exec(String(error.message))?.[1] || 'collection-failed';
           await saveState(env.PAGES_RESPONSE_R2, spec, state);
