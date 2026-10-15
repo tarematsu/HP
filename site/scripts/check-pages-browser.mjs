@@ -216,7 +216,14 @@ try {
       await page.evaluate((nextMode) => { location.hash = nextMode; }, mode);
       await page.waitForFunction(() => [...document.querySelectorAll('.dashboard-view')].some((node) => !node.hidden), { timeout: 10000 });
       await page.waitForTimeout(500);
-      await page.waitForLoadState('networkidle', { timeout: 45000 });
+      // Live dashboards deliberately poll. Network-idle is not a valid readiness
+      // signal there; assert the selected view and its route-specific data below.
+      if (live) {
+        await page.waitForFunction((viewId) => {
+          const view = document.getElementById(viewId);
+          return Boolean(view && !view.hidden);
+        }, navigationForMode(mode).route.viewId, { timeout: 15000 });
+      } else await page.waitForLoadState('networkidle', { timeout: 45000 });
       const label = `${mode}-${viewportLabel}`;
       const overflow = await assertNoDocumentOverflow(page, label);
       assert.equal(await page.locator('main').count(), 1);
@@ -353,7 +360,7 @@ try {
       if (!live && width === 320 && ['broadcasts', 'ranking', 'youtube-music', 'kkbox'].includes(mode)) await stressVisibleLayout(page, label);
       const downloads = await checkCsv(page, label);
       for (const button of await page.locator('.dashboard-view:not([hidden]) .music-service-view-tabs button[data-service-group]').all()) {
-        await button.click(); await page.waitForTimeout(400); await page.waitForLoadState('networkidle', { timeout: 45000 });
+        await button.click(); await page.waitForTimeout(live ? 700 : 400); if (!live) await page.waitForLoadState('networkidle', { timeout: 45000 });
         const group = await button.getAttribute('data-service-group'); assert.equal(await button.getAttribute('aria-pressed'), 'true'); const visible = page.locator('.dashboard-view:not([hidden]) .music-service-group:not([hidden])'); assert.equal(await visible.count(), 1); assert.equal(await visible.getAttribute('data-group'), group);
         if (!live && mode === 'youtube-music' && group === 'playlists') {
           const overflow = await page.locator('#youtubeMusicPlaylistBody').evaluate((body) => {
@@ -377,7 +384,7 @@ try {
       results.push({ mode, viewport: viewportLabel, overflow, downloads });
     }
     for (const account of ['sakurazaka46jp', 'nogizaka46smej']) {
-      await page.goto(`${origin}/${account}/`); await page.waitForLoadState('networkidle', { timeout: 45000 }); await assertNoDocumentOverflow(page, `${account}-${viewportLabel}`); await page.screenshot({ path: `${output}/${account}-${viewportLabel}.png`, fullPage: true }); results.push({ account, viewport: viewportLabel });
+      await page.goto(`${origin}/${account}/`); if (!live) await page.waitForLoadState('networkidle', { timeout: 45000 }); await assertNoDocumentOverflow(page, `${account}-${viewportLabel}`); await page.screenshot({ path: `${output}/${account}-${viewportLabel}.png`, fullPage: true }); results.push({ account, viewport: viewportLabel });
     }
     await page.close();
   }
