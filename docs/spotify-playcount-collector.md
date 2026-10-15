@@ -155,11 +155,26 @@ including 坂道選抜. Collaborations match every credited tracked artist by Sp
 normal artist-chart schedule enqueues the seven series. Latest captures start or
 resume backward collection, one period per invocation with a 30-second delayed
 continuation. Spotify's `displayChart.chartMetadata.dimensions.earliestDate`
-bounds backfill; 2017-01-01 is a conservative fallback when it is absent. If a Viral latest endpoint returns 404, a bounded, one-time set of historical
-dates is probed before declaring it unavailable. An accessible archive seeds the
-same backfill; failed probes are recorded without inventing ranking data. An
-unavailable latest series is reported separately, and a historical HTTP 404 is
-never recorded as an empty/absent ranking. 429/5xx do not advance the failed cursor.
+bounds backfill; 2017-01-01 is a conservative fallback when it is absent.
+
+Viral 50 latest endpoints may return 404 after their retirement. Rather than
+giving up after three hard-coded dates, the Queue first samples dated archive
+landmarks spanning 2026–2017 and then progressively probes previously unchecked
+dates four weeks apart, checkpointed separately for daily and weekly. Each
+`archive` message makes at most one Spotify request and continues after a
+30-second delay, avoiding large fetch bursts or duplicate date requests.
+The prior `archive_probed` flag is ignored, so older installations resume
+with the new plan. A valid archived chart (even with zero tracked artists)
+is persisted into the usual R2 year shard and starts regular one-date/one-week
+historical backfill. 404 never fabricates absent entries; 429, 401 and 5xx
+do not advance an archive/history cursor. Queue handoff failures after saving
+a checkpoint enqueue the new cursor rather than re-querying a committed period.
+
+`/api/spotify-charts` exposes `status: searching`,
+`archive_probes_attempted` and `archive_last_probe_date`. Pages shows this
+progress while the search is running. `archive_search_complete` only means
+the *sampled* dated archive probes were exhausted or one was found; exhausting
+samples does not prove that no other historic copies exist.
 A private, short-lived access-token cache avoids refreshing OAuth or rewriting
 Worker secrets for every backfill delivery. It stores no refresh token, is excluded
 from public model keys, and is invalidated on HTTP 401.

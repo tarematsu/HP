@@ -108,6 +108,8 @@ function renderChart(type, data, state) {
   });
   renderChartTable(type, rows, dates);
   const status = state?.latest_status === 'error' || state?.history_status === 'error' || state?.status === 'error' ? '収集に失敗しています。取得済みの履歴を表示しています。'
+    : state?.status === 'searching' ? `配信終了前のバイラル履歴を探索中（${integerFormat.format(state.archive_probes_attempted || 0)}日付を確認${state.archive_last_probe_date ? `、直近の確認：${regionalProviderDateText(state.archive_last_probe_date)}` : ''}）`
+    : state?.status === 'unavailable' && type === 'viral' && state.archive_search_complete ? 'バイラルの過去アーカイブを調査しましたが、探索した日付ではデータを取得できませんでした。'
     : state?.status === 'unavailable' ? 'このチャートは現在取得できません。'
     : !state?.latest_chart_date ? 'まだ取得されていません。'
     : `${regionalProviderDateText(state.latest_chart_date)}付 / ${state.history_complete ? '提供期間の確認完了' : '過去データを取得中'}${state.earliest_chart_date ? `（${regionalProviderDateText(state.earliest_chart_date)}まで確認）` : ''}${state.unavailable_periods ? ` / 未提供 ${state.unavailable_periods}期間` : ''}`;
