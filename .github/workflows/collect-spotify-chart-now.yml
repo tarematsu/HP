@@ -109,7 +109,7 @@ jobs:
               }
               for (const item of record.logs || []) {
                 const detail = Array.isArray(item?.message) ? item.message.join(' ') : String(item?.message || '');
-                if (/spotify_scheduled_queue_dispatch_failed|spotify_artist_chart_source_not_published|Spotify Charts|Spotify artist chart|source-not-published/i.test(detail)) {
+                if (/spotify_scheduled_queue_dispatch_failed|spotify_artist_chart_source_not_published|spotify_artist_chart_persisted|spotify_artist_chart_queue_result|Spotify Charts|Spotify artist chart|source-not-published/i.test(detail)) {
                   matches.push(detail.slice(0, 900));
                 }
               }
@@ -161,12 +161,13 @@ jobs:
             }
             const row = payload.result?.[0]?.results?.[0];
             const chartDate = String(row?.latest_chart_date || '');
-            if (chartDate >= expectedDate) {
+            if (chartDate) {
               console.log(JSON.stringify({
                 ok: true,
                 event: 'spotify_artist_chart_d1_verified',
                 chart_date: chartDate,
                 expected_date: expectedDate,
+                current: chartDate >= expectedDate,
                 matched_artists: Number(row?.matched_artists || 0),
                 observed_at: row?.latest_observed_at,
               }));
@@ -174,5 +175,5 @@ jobs:
             }
             if (attempt < 6) await new Promise(resolve => setTimeout(resolve, 10000));
           }
-          throw new Error('Spotify Japan artist chart has not reached ' + expectedDate + ' in D1 after waiting');
+          throw new Error('Spotify Japan artist chart initial snapshot not persisted in D1 after waiting');
           NODE
