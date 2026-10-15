@@ -28,12 +28,25 @@ async function loadState(r2, spec) {
   return object ? object.json() : { chart_id: spec.id, years: [], cursor: null, latest_chart_date: null, history_complete: false };
 }
 async function saveState(r2, spec, state) {
+  state.updated_at = Date.now();
   await r2.put(stateKey(spec.id), JSON.stringify(state), { httpMetadata: { contentType: 'application/json' } });
 }
-async function publishIndex(r2) {
+async function requestIndexPublication(env, spec) {
+  await enqueue(env, { chart_id: spec.id, mode: 'publish', requested_at: Date.now() });
+}
+async function publishIndex(env, body, dependencies = {}) {
+  const r2 = env.PAGES_RESPONSE_R2;
+  const now = dependencies.now?.() ?? Date.now();
+  const previous = await read(r2, 'spotify-charts', null);
+  const publishedAt = Number(previous?.updated_at) || 0;
+  if (publishedAt && publishedAt >= Number(body.requested_at || 0)) return;
+  if (publishedAt && now - publishedAt < 30000) {
+    await enqueue(env, body);
+    return;
+  }
   const charts = [];
   for (const spec of SPOTIFY_JP_CHARTS) charts.push(await loadState(r2, spec));
-  await save(r2, 'spotify-charts', { ok: true, charts });
+  await save(r2, 'spotify-charts', { ok: true, updated_at: now, charts });
 }
 async function tokenFingerprint(value) {
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(value || '')));
@@ -93,10 +106,15 @@ export async function enqueueJapanCharts(env, scheduledTime = Date.now()) {
 }
 export async function runJapanChartWork(env, body, dependencies = {}) {
   const spec = SPOTIFY_JP_CHARTS.find(item => item.id === body.chart_id);
-  if (!spec || body.message_version !== 1 || !['latest', 'history'].includes(body.mode)) throw new Error('Invalid chart work');
+  if (!spec || body.message_version !== 1 || !['latest', 'history', 'publish'].includes(body.mode)) throw new Error('Invalid chart work');
+  if (body.mode === 'publish') return publishIndex(env, body, dependencies);
   const r2 = env.PAGES_RESPONSE_R2;
   const state = await loadState(r2, spec);
   if (body.mode === 'history' && (state.history_complete || !state.cursor || body.cursor !== state.cursor)) return;
+  const now = dependencies.now?.() ?? Date.now();
+  if (state.updated_at && now - state.updated_at < 1000) {
+    await enqueue(env, body); return;
+  }
   const fetchImpl = dependencies.fetchImpl || fetch;
   const accessToken = await chartAccessToken(env, fetchImpl);
   if (body.mode === 'latest') {
@@ -112,7 +130,7 @@ export async function runJapanChartWork(env, body, dependencies = {}) {
       }
       if (!capture && state.latest_chart_date) {
         state.source_archived = true; state.status = 'archived'; state.checked_at = Date.now();
-        await saveState(r2, spec, state); await publishIndex(r2);
+        await saveState(r2, spec, state); await requestIndexPublication(env, spec);
         if (!state.history_complete) await enqueue(env, { chart_id: spec.id, mode: 'history', cursor: state.cursor });
         return;
       }
@@ -121,7 +139,7 @@ export async function runJapanChartWork(env, body, dependencies = {}) {
     if (!capture) {
       // Unsupported latest series is visible as unavailable, never fabricated as an empty Top 50/200.
       state.status = 'unavailable'; state.checked_at = Date.now();
-      await saveState(r2, spec, state); await publishIndex(r2); return;
+      await saveState(r2, spec, state); await requestIndexPublication(env, spec); return;
     }
     if (state.latest_chart_date && capture.chart_date < state.latest_chart_date) return;
     await persist(r2, spec, capture);
@@ -130,6 +148,7 @@ export async function runJapanChartWork(env, body, dependencies = {}) {
     state.observed_at = capture.observed_at;
     state.source_archived = sourceArchived;
     state.status = sourceArchived ? 'archived' : 'ok';
+    delete state.error_code;
     state.years = [...new Set([...state.years, capture.chart_date.slice(0, 4)])].sort();
     state.cursor ||= previous(capture.chart_date, spec.period);
     // Repair gaps after an outage by walking back from the new latest to the old latest.
@@ -141,8 +160,8 @@ export async function runJapanChartWork(env, body, dependencies = {}) {
     }
     state.last_latest = capture.chart_date;
   } else {
-    // Three periods per invocation bound JSON CPU and subrequests; progress is durable after each period.
-    for (let count = 0; count < 3 && state.cursor >= (state.source_start || spec.start); count++) {
+    // One period per invocation avoids consecutive writes to the same R2 year/state key.
+    for (let count = 0; count < 1 && state.cursor >= (state.source_start || spec.start); count++) {
       const cursor = state.cursor;
       const capture = await fetchChart(accessToken, spec, cursor, fetchImpl, r2);
       if (capture) {
@@ -155,31 +174,35 @@ export async function runJapanChartWork(env, body, dependencies = {}) {
         state.cursor = state.resume_cursor;
         delete state.resume_cursor; delete state.catchup_until;
       }
-      await saveState(r2, spec, state);
     }
     state.history_complete = state.cursor < (state.source_start || spec.start);
     state.status = state.source_archived ? 'archived' : 'ok';
+    delete state.error_code;
   }
   await saveState(r2, spec, state);
-  await publishIndex(r2);
+  await requestIndexPublication(env, spec);
   if (!state.history_complete) await enqueue(env, { chart_id: spec.id, mode: 'history', cursor: state.cursor });
 }
-export async function processJapanChartMessage(entry, env) {
+export async function processJapanChartMessage(entry, env, dependencies = {}) {
   try {
-    await runJapanChartWork(env, entry.body);
+    await runJapanChartWork(env, entry.body, dependencies);
     entry.ack?.();
   } catch (error) {
     console.error(JSON.stringify({ event: 'spotify_japan_chart_failed', chart_id: entry.body?.chart_id, mode: entry.body?.mode, error: String(error.message).slice(0, 240) }));
     const spec = SPOTIFY_JP_CHARTS.find(item => item.id === entry.body?.chart_id);
-    if (spec) {
+    if (spec && entry.body.mode !== 'publish') {
       try {
         const state = await loadState(env.PAGES_RESPONSE_R2, spec);
-        state.status = 'error'; state.checked_at = Date.now();
-        await saveState(env.PAGES_RESPONSE_R2, spec, state);
-        await publishIndex(env.PAGES_RESPONSE_R2);
-        // If a later period failed after earlier periods committed, replace the
-        // stale original cursor with the durable continuation before acknowledging.
-        if (entry.body.mode === 'history' && state.cursor !== entry.body.cursor) {
+        const committed = entry.body.mode === 'history' && state.cursor !== entry.body.cursor;
+        // A continuation failure must not rewrite a just-committed checkpoint.
+        if (!committed && (!state.updated_at || Date.now() - state.updated_at >= 1000)) {
+          state.status = 'error'; state.checked_at = Date.now();
+          state.error_code = /HTTP (\d{3})/.exec(String(error.message))?.[1]
+            || /\((\d{5,6})\)/.exec(String(error.message))?.[1] || 'collection-failed';
+          await saveState(env.PAGES_RESPONSE_R2, spec, state);
+        }
+        await requestIndexPublication(env, spec);
+        if (committed) {
           await enqueue(env, { chart_id: spec.id, mode: 'history', cursor: state.cursor }, error.retryAfter || 60);
           entry.ack?.(); return;
         }
