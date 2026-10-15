@@ -153,7 +153,7 @@ including 坂道選抜. Collaborations match every credited tracked artist by Sp
 
 `spotify-japan-charts.js` handles collection in the existing Spotify Queue. The
 normal artist-chart schedule enqueues the seven series. Latest captures start or
-resume backward collection, three periods per invocation with a 30-second delayed
+resume backward collection, one period per invocation with a 30-second delayed
 continuation. Spotify's `displayChart.chartMetadata.dimensions.earliestDate`
 bounds backfill; 2017-01-01 is a conservative fallback when it is absent. If a Viral latest endpoint returns 404, a bounded, one-time set of historical
 dates is probed before declaring it unavailable. An accessible archive seeds the
@@ -163,6 +163,9 @@ never recorded as an empty/absent ranking. 429/5xx do not advance the failed cur
 A private, short-lived access-token cache avoids refreshing OAuth or rewriting
 Worker secrets for every backfill delivery. It stores no refresh token, is excluded
 from public model keys, and is invalidated on HTTP 401.
+Index publication is a separate, durable Queue message coalesced at 30-second
+intervals. Each source invocation writes its year shard and checkpoint at most
+once to respect R2 same-key write limits.
 Every successful period is checkpointed and retried idempotently. Later latest
 captures repair gaps since the previous successful latest. The Queue uses one
 consumer at a time to serialize state, year-shard and refresh-token updates.
