@@ -6,6 +6,8 @@ import { runJapanChartWork, processJapanChartMessage, enqueueJapanCharts, SPOTIF
 import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 import { PUBLIC_R2_MODEL_KEYS, modelMaximumAge } from '../src/pages-response-models.js';
 import { materializedApiKey } from '../../packages/sh-shared/api-contract.mjs';
+import { enqueueSpotifyScheduledDispatch, processSpotifyScheduledDispatchEntry } from '../src/spotify-scheduled-queue.js';
+import { SPOTIFY_ARTIST_CHART_CRON } from '../src/scheduled-crons.js';
 
 const spec = SPOTIFY_JP_CHARTS.find(item => item.id === 'regional-jp-daily');
 function payload(date = '2026-10-14', type = 'regional') {
@@ -215,4 +217,38 @@ test('failed publication handoff resumes committed history without rewriting its
   assert.equal(historyMessage(h).body.cursor, '2026-10-12');
   assert.equal(acked, 1);
   assert.equal(retried, 0);
+});
+
+test('new Japan Chart jobs enqueue before an independent legacy collector fails', async () => {
+  const messages = [];
+  const env = { SPOTIFY_PLAYCOUNT_QUEUE: { async send(body) { messages.push(body); } } };
+  const scheduled = new Request('https://worker.example/__internal/scheduled', {
+    method: 'POST', body: JSON.stringify({ cron: SPOTIFY_ARTIST_CHART_CRON, scheduled_time: Date.now() }),
+  });
+  const response = await enqueueSpotifyScheduledDispatch(scheduled, env);
+  assert.equal(response.status, 200);
+  assert.equal(messages.filter(message => message.message_type === SPOTIFY_CHART_WORK).length, 7);
+  const legacy = messages.find(message => message.message_type === 'spotify-scheduled-dispatch');
+  assert.ok(legacy);
+  let retries = 0;
+  await processSpotifyScheduledDispatchEntry({ body: legacy, retry() { retries++; } }, env, {
+    runSpotifyArtistChartScheduled: async () => { throw new Error('Legacy chart source unavailable'); },
+  });
+  assert.equal(retries, 1);
+  assert.equal(messages.filter(message => message.message_type === SPOTIFY_CHART_WORK).length, 7);
+});
+
+test('a successful history step cannot hide a failure in latest collection', async () => {
+  const h = harness(async url => Response.json(payload(url.endsWith('/latest') ? '2026-10-14' : url.split('/').at(-1))));
+  await runJapanChartWork(h.env, work('latest'), h);
+  const key = `spotify/charts/state/${spec.id}.json`;
+  const state = JSON.parse(h.r2.values.get(key));
+  state.latest_status = 'error';
+  state.status = 'error';
+  h.r2.values.set(key, JSON.stringify(state));
+  await runJapanChartWork(h.env, historyMessage(h).body, h);
+  const updated = JSON.parse(h.r2.values.get(key));
+  assert.equal(updated.status, 'error');
+  assert.equal(updated.latest_status, 'error');
+  assert.equal(updated.history_status, 'ok');
 });
