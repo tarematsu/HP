@@ -55,7 +55,7 @@ jobs:
           if (!queue?.queue_id) throw new Error('Spotify Queue does not exist');
           const detail = await api('/queues/' + queue.queue_id);
           const consumers = (detail.consumers || []).map(row => ({
-            script_name: row.script_name || null,
+            script_name: row.script || row.script_name || null,
             type: row.type || 'worker',
           }));
           const d1 = await api('/d1/database/' + dbId + '/query', {
@@ -74,7 +74,7 @@ jobs:
           if (detail.settings?.delivery_paused === true) {
             throw new Error('Spotify Queue delivery is paused');
           }
-          if (!consumers.some(row => row.type === 'worker')) {
+          if (!consumers.some(row => row.type === 'worker' && row.script_name === 'sh-spotify-playcount-collector')) {
             throw new Error('Spotify Queue has no Worker consumer');
           }
           NODE
@@ -95,12 +95,21 @@ jobs:
           const path = process.env.RUNNER_TEMP + '/spotify-artist-chart-tail.jsonl';
           const lines = readFileSync(path, 'utf8').split(/\r?\n/);
           const matches = [];
+          const invocations = [];
           for (const line of lines) {
             try {
               const record = JSON.parse(line);
+              invocations.push({
+                outcome: record.outcome || null,
+                event_type: record.event?.type || null,
+                exception_count: (record.exceptions || []).length,
+              });
+              for (const exception of record.exceptions || []) {
+                matches.push(String(exception?.message || exception?.name || 'Worker exception').slice(0, 900));
+              }
               for (const item of record.logs || []) {
                 const detail = Array.isArray(item?.message) ? item.message.join(' ') : String(item?.message || '');
-                if (/spotify_scheduled_queue_dispatch_failed|Spotify Charts|Spotify artist chart|source-not-published/i.test(detail)) {
+                if (/spotify_scheduled_queue_dispatch_failed|spotify_artist_chart_source_not_published|Spotify Charts|Spotify artist chart|source-not-published/i.test(detail)) {
                   matches.push(detail.slice(0, 900));
                 }
               }
@@ -109,7 +118,8 @@ jobs:
           const diagnosticStderr = readFileSync(process.env.RUNNER_TEMP + '/spotify-artist-chart-tail.err', 'utf8').trim();
           console.log(JSON.stringify({
             event: 'spotify_chart_worker_tail_diagnostic',
-            observed_tail_events: lines.filter(line => line.trim().startsWith('{')).length,
+            observed_tail_events: invocations.length,
+            invocations: invocations.slice(-5),
             matching_error_count: matches.length,
             errors: matches.slice(-5),
             tail_status: diagnosticStderr ? diagnosticStderr.slice(-350) : 'no diagnostic errors',
