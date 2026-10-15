@@ -48,7 +48,7 @@ test('normalizes official Charts metadata, artist Spotify URIs and stream rankin
 });
 
 test('supports album credits, Sakamichi Selection, name fallback and explicit-ID precedence', () => {
-  for (const type of ['artist', 'album', 'viral']) {
+  for (const type of ['artist', 'album']) {
     const s = SPOTIFY_JP_CHARTS.find(item => item.type === type);
     const capture = normalizeJapanChart(payload('2026-10-14', type), s);
     assert.deepEqual(capture.entries[0].artists, [type === 'artist' ? 'sakamichi-selection' : 'sakurazaka46']);
@@ -102,12 +102,16 @@ test('404 historical dates stay missing and HTTP 429 does not advance their curs
   assert.equal(model.periods.length, 1);
 });
 
-test('all seven series enqueue without reading Spotify or D1; public keys are bounded', async () => {
+test('only five supported series enqueue without reading Spotify or D1; retired keys are rejected', async () => {
   const h = harness(() => { throw new Error('No network in dispatcher'); });
   await enqueueJapanCharts(h.env);
-  assert.equal(h.messages.length, 7);
+  assert.deepEqual(h.messages.map(item => item.body.chart_id), SPOTIFY_JP_CHARTS.map(item => item.id));
+  assert.equal(h.messages.length, 5);
   assert.equal(materializedApiKey('https://example.test/api/spotify-charts?chart=regional-jp-daily&year=2026'), 'spotify-charts:regional-jp-daily:2026');
   assert.equal(materializedApiKey('https://example.test/api/spotify-charts?chart=bad&year=2026'), null);
+  assert.equal(materializedApiKey('https://example.test/api/spotify-charts?chart=viral-jp-daily&year=2026'), null);
+  assert.equal(spotifyChartModelKey('viral-jp-weekly', '2026'), null);
+  assert.equal(PUBLIC_R2_MODEL_KEYS.has('spotify-charts:viral-jp-daily:2026'), false);
   for (const key of ['spotify-charts', 'spotify-charts:album-jp-weekly:2021']) {
     assert.equal(PUBLIC_R2_MODEL_KEYS.has(key), true);
     assert.equal(modelMaximumAge(key, {}), Number.MAX_SAFE_INTEGER);
@@ -128,88 +132,38 @@ test('history reuses a short-lived private access session without storing a refr
   assert.equal(PUBLIC_R2_MODEL_KEYS.has('spotify/charts/private/access-session.json'), false);
 });
 
-test('Viral latest 404 enqueues bounded archive discovery instead of prematurely declaring unavailability', async () => {
-  const calls = [];
-  const h = harness(async url => { calls.push(url); return new Response(null, { status: 404 }); });
-  const latest = { ...work('latest'), chart_id: 'viral-jp-daily' };
-  await runJapanChartWork(h.env, latest, h);
-  assert.equal(calls.length, 1, 'latest 404 must not make dozens of archive requests synchronously');
-  assert.equal(calls[0].endsWith('/latest'), true);
-  let state = JSON.parse(h.r2.values.get('spotify/charts/state/viral-jp-daily.json'));
-  assert.equal(state.status, 'searching');
-  assert.equal(state.latest_chart_date, null);
-  assert.equal(h.messages.find(item => item.body.mode === 'archive').body.cursor, '2026-05-14');
-  // Old deployments stored archive_probed=true after only three failed dates;
-  // that legacy flag must not disable the new checkpointed search.
-  state.archive_probed = true;
-  h.r2.values.set('spotify/charts/state/viral-jp-daily.json', JSON.stringify(state));
-  for (let i = 0; i < 8; i++) await runJapanChartWork(h.env, h.messages.findLast(item => item.body.mode === 'archive').body, h);
-  state = JSON.parse(h.r2.values.get('spotify/charts/state/viral-jp-daily.json'));
-  assert.equal(state.archive_probes_attempted, 8);
-  assert.equal(state.status, 'searching');
-  assert.equal(state.archive_search_complete, false);
-  assert.equal(calls.length, 9);
-  assert.equal(h.messages.filter(item => item.body.mode === 'history').length, 0);
-  assert.equal(h.messages.findLast(item => item.body.mode === 'archive').body.cursor, '2020-05-14');
+test('queued jobs for retired Viral series are acknowledged without network, R2 or new Queue work', async () => {
+  const h = harness(() => { throw new Error('No Spotify network allowed for retired series'); });
+  h.r2.get = () => { throw new Error('No R2 read allowed for retired series'); };
+  h.r2.put = () => { throw new Error('No R2 write allowed for retired series'); };
+  for (const chart_id of ['viral-jp-daily', 'viral-jp-weekly']) {
+    for (const mode of ['latest', 'history', 'archive', 'publish']) {
+      const body = { ...work(mode), chart_id, cursor: '2026-05-14' };
+      let acked = 0;
+      let retried = 0;
+      await processJapanChartMessage({
+        body,
+        ack: () => { acked++; },
+        retry: () => { retried++; },
+      }, h.env, h);
+      assert.equal(acked, 1, `${chart_id} ${mode}: old queued work must be discarded`);
+      assert.equal(retried, 0);
+      assert.equal(h.messages.length, 0);
+    }
+  }
 });
 
-test('accessible old Viral dates seed an ordinary history backfill even after archived latest 404', async () => {
-  const h = harness(async url => {
-    if (!url.endsWith('/2020-05-14')) return new Response(null, { status: 404 });
-    const data = payload('2020-05-14', 'viral');
-    data.displayChart.chartMetadata.dimensions.earliestDate = '2017-01-01';
-    return Response.json(data);
-  });
-  const latest = { ...work('latest'), chart_id: 'viral-jp-daily' };
-  await runJapanChartWork(h.env, latest, h);
-  for (let i = 0; i < 9; i++) await runJapanChartWork(h.env, h.messages.findLast(item => item.body.mode === 'archive').body, h);
-  const state = JSON.parse(h.r2.values.get('spotify/charts/state/viral-jp-daily.json'));
-  assert.equal(state.status, 'archived');
-  assert.equal(state.latest_chart_date, '2020-05-14');
-  assert.deepEqual(state.years, ['2020']);
-  assert.equal(state.archive_found, true);
-  assert.equal(state.archive_search_complete, true);
-  assert.equal(historyMessage(h).body.cursor, '2020-05-13');
-  const shard = JSON.parse(h.r2.values.get(pagesR2ResponseKey(spotifyChartModelKey('viral-jp-daily', '2020'))));
-  assert.equal(shard.periods[0].entries[0].artists[0], 'sakurazaka46');
-  await runJapanChartWork(h.env, latest, h);
-  assert.equal(h.messages.findLast(item => item.body.mode === 'archive').body.cursor, '2020-05-14', 'old archive work must not restart');
-});
-
-test('Viral archive 429 preserves the checkpoint for a later retry', async () => {
-  const h = harness(async url => url.endsWith('/latest')
-    ? new Response(null, { status: 404 })
-    : new Response(null, { status: 429, headers: { 'retry-after': '180' } }));
-  await runJapanChartWork(h.env, { ...work('latest'), chart_id: 'viral-jp-weekly' }, h);
-  const archive = h.messages.findLast(item => item.body.mode === 'archive').body;
-  assert.equal(archive.cursor, '2026-05-07');
-  await assert.rejects(runJapanChartWork(h.env, archive, h), /HTTP 429/);
-  const state = JSON.parse(h.r2.values.get('spotify/charts/state/viral-jp-weekly.json'));
-  assert.equal(state.archive_probes_attempted, undefined);
-  assert.equal(state.archive_probe_index, undefined);
-  assert.equal(state.archive_search_complete, false);
-});
-
-test('Viral archive handoff errors resume the committed next date without fetching a stale date twice', async () => {
-  const h = harness(async () => new Response(null, { status: 404 }));
-  await runJapanChartWork(h.env, { ...work('latest'), chart_id: 'viral-jp-weekly' }, h);
-  const first = h.messages.findLast(item => item.body.mode === 'archive').body;
-  const send = h.env.SPOTIFY_PLAYCOUNT_QUEUE.send.bind(h.env.SPOTIFY_PLAYCOUNT_QUEUE);
-  let fail = true;
-  h.env.SPOTIFY_PLAYCOUNT_QUEUE.send = async (message, opts) => {
-    if (message.mode === 'archive' && fail) { fail = false; throw new Error('Queue handoff interrupted'); }
-    return send(message, opts);
-  };
-  let acked = 0, retried = 0;
-  await processJapanChartMessage({ body: first, ack: () => acked++, retry: () => retried++ }, h.env, h);
-  assert.equal(acked, 1);
-  assert.equal(retried, 0);
-  const state = JSON.parse(h.r2.values.get('spotify/charts/state/viral-jp-weekly.json'));
-  assert.equal(state.archive_probes_attempted, 1);
-  assert.equal(h.messages.findLast(item => item.body.mode === 'archive').body.cursor, '2026-02-12');
-  // A duplicate old Queue message is harmless.
-  await runJapanChartWork(h.env, first, h);
-  assert.equal(JSON.parse(h.r2.values.get('spotify/charts/state/viral-jp-weekly.json')).archive_probes_attempted, 1);
+test('published chart index excludes retired Viral series even if old state remains stored', async () => {
+  const h = harness(() => { throw new Error('Publication must not call Spotify'); });
+  for (const chart_id of ['viral-jp-daily', 'viral-jp-weekly']) {
+    h.r2.values.set(`spotify/charts/state/${chart_id}.json`, JSON.stringify({
+      chart_id, status: 'unavailable', archive_probes_attempted: 136,
+    }));
+  }
+  await runJapanChartWork(h.env, { ...work('publish'), requested_at: 1 }, h);
+  const index = JSON.parse(h.r2.values.get(pagesR2ResponseKey('spotify-charts')));
+  assert.deepEqual(index.charts.map(item => item.chart_id), SPOTIFY_JP_CHARTS.map(item => item.id));
+  assert.equal(index.charts.length, 5);
 });
 
 test('each source invocation writes each R2 key at most once', async () => {
@@ -283,7 +237,7 @@ test('new Japan Chart jobs enqueue before an independent legacy collector fails'
   });
   const response = await enqueueSpotifyScheduledDispatch(scheduled, env);
   assert.equal(response.status, 200);
-  assert.equal(messages.filter(message => message.message_type === SPOTIFY_CHART_WORK).length, 7);
+  assert.equal(messages.filter(message => message.message_type === SPOTIFY_CHART_WORK).length, 5);
   const legacy = messages.find(message => message.message_type === 'spotify-scheduled-dispatch');
   assert.ok(legacy);
   let retries = 0;
