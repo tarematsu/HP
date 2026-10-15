@@ -158,6 +158,9 @@ continuation. Spotify's `displayChart.chartMetadata.dimensions.earliestDate`
 bounds backfill; 2017-01-01 is a conservative fallback when it is absent. An
 unavailable latest series is reported separately, and a historical HTTP 404 is
 never recorded as an empty/absent ranking. 429/5xx do not advance the failed cursor.
+A private, short-lived access-token cache avoids refreshing OAuth or rewriting
+Worker secrets for every backfill delivery. It stores no refresh token, is excluded
+from public model keys, and is invalidated on HTTP 401.
 Every successful period is checkpointed and retried idempotently. Later latest
 captures repair gaps since the previous successful latest. The Queue uses one
 consumer at a time to serialize state, year-shard and refresh-token updates.

@@ -135,6 +135,7 @@ export async function refreshSpotifyChartsAccessToken(refreshToken, fetchImpl = 
   if (!accessToken) throw new Error('Spotify token response did not contain access_token');
   return {
     access_token: accessToken,
+    expires_in: Math.max(0, Number(body?.expires_in) || 3600),
     refresh_token: String(body?.refresh_token || token).trim(),
     rotated: Boolean(body?.refresh_token) && String(body.refresh_token).trim() !== token,
   };

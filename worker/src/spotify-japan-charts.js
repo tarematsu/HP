@@ -6,6 +6,7 @@ import { pagesR2ResponseKey, saveMaterializedR2Response } from './pages-response
 export const SPOTIFY_CHART_WORK = 'spotify-japan-chart-work';
 const API = 'https://charts-spotify-com-service.spotify.com/auth/v0/charts/';
 const HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=30, s-maxage=300', vary: 'accept-encoding' };
+const AUTH_CACHE_KEY = 'spotify/charts/private/access-session.json';
 const dayMs = 86400000;
 const previous = (date, period) => new Date(Date.parse(`${date}T00:00:00Z`) - dayMs * (period === 'weekly' ? 7 : 1)).toISOString().slice(0, 10);
 async function read(r2, key, fallback) {
@@ -28,11 +29,35 @@ async function publishIndex(r2) {
   for (const spec of SPOTIFY_JP_CHARTS) charts.push(await loadState(r2, spec));
   await save(r2, 'spotify-charts', { ok: true, charts });
 }
-async function fetchChart(token, spec, date, fetchImpl) {
+async function tokenFingerprint(value) {
+  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(value || '')));
+  return [...new Uint8Array(bytes)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+}
+async function chartAccessToken(env, fetchImpl) {
+  const r2 = env.PAGES_RESPONSE_R2;
+  const fingerprint = await tokenFingerprint(env.SPOTIFY_CHARTS_REFRESH_TOKEN);
+  try {
+    const object = await r2.get(AUTH_CACHE_KEY);
+    const cache = object ? await object.json() : null;
+    if (cache?.expires_at > Date.now() && cache?.refresh_fingerprints?.includes(fingerprint)
+        && typeof cache.access_token === 'string') return cache.access_token;
+  } catch { /* A corrupt or expired private cache is rebuilt from the Worker secret. */ }
+  const auth = await refreshSpotifyChartsAccessToken(env.SPOTIFY_CHARTS_REFRESH_TOKEN, fetchImpl);
+  if (auth.rotated) await updateSpotifyRefreshWorkerSecret(env, auth.refresh_token, fetchImpl);
+  // Keep only the short-lived bearer in the private bucket, never the refresh token.
+  // Accept both fingerprints during propagation of a rotated Worker secret.
+  await r2.put(AUTH_CACHE_KEY, JSON.stringify({ access_token: auth.access_token,
+    expires_at: Date.now() + Math.max(0, Math.min(3000, auth.expires_in - 120)) * 1000,
+    refresh_fingerprints: [...new Set([fingerprint, await tokenFingerprint(auth.refresh_token)])],
+  }), { httpMetadata: { contentType: 'application/json' } });
+  return auth.access_token;
+}
+async function fetchChart(token, spec, date, fetchImpl, r2) {
   const response = await fetchImpl(`${API}${spec.id}/${date}`, { headers: {
     authorization: `Bearer ${token}`, accept: 'application/json', origin: 'https://charts.spotify.com', referer: 'https://charts.spotify.com/',
   }, signal: AbortSignal.timeout(20000) });
   if (response.status === 404) return null;
+  if (response.status === 401) await r2.delete(AUTH_CACHE_KEY);
   if (!response.ok) {
     const error = new Error(`Spotify ${spec.id}: HTTP ${response.status}`);
     error.retryAfter = Math.max(30, Math.min(3600, Number(response.headers.get('retry-after')) || 60));
@@ -67,10 +92,9 @@ export async function runJapanChartWork(env, body, dependencies = {}) {
   const state = await loadState(r2, spec);
   if (body.mode === 'history' && (state.history_complete || !state.cursor || body.cursor !== state.cursor)) return;
   const fetchImpl = dependencies.fetchImpl || fetch;
-  const auth = await refreshSpotifyChartsAccessToken(env.SPOTIFY_CHARTS_REFRESH_TOKEN, fetchImpl);
-  if (auth.rotated) await updateSpotifyRefreshWorkerSecret(env, auth.refresh_token, fetchImpl);
+  const accessToken = await chartAccessToken(env, fetchImpl);
   if (body.mode === 'latest') {
-    const capture = await fetchChart(auth.access_token, spec, 'latest', fetchImpl);
+    const capture = await fetchChart(accessToken, spec, 'latest', fetchImpl, r2);
     if (!capture) {
       // Unsupported latest series is visible as unavailable, never fabricated as an empty Top 50/200.
       state.status = 'unavailable'; state.checked_at = Date.now();
@@ -96,7 +120,7 @@ export async function runJapanChartWork(env, body, dependencies = {}) {
     // Three periods per invocation bound JSON CPU and subrequests; progress is durable after each period.
     for (let count = 0; count < 3 && state.cursor >= (state.source_start || spec.start); count++) {
       const cursor = state.cursor;
-      const capture = await fetchChart(auth.access_token, spec, cursor, fetchImpl);
+      const capture = await fetchChart(accessToken, spec, cursor, fetchImpl, r2);
       if (capture) {
         await persist(r2, spec, capture);
         state.years = [...new Set([...state.years, cursor.slice(0, 4)])].sort();

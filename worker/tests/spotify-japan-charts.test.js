@@ -22,7 +22,7 @@ function payload(date = '2026-10-14', type = 'regional') {
 function bucket() {
   const values = new Map();
   return { values, async get(key) { const value = values.get(key); return value ? { json: async () => JSON.parse(value), text: async () => value } : null; },
-    async put(key, value) { values.set(key, value); } };
+    async delete(key) { values.delete(key); }, async put(key, value) { values.set(key, value); } };
 }
 function harness(fetchChart) {
   const r2 = bucket(); const messages = [];
@@ -107,4 +107,18 @@ test('all seven series enqueue without reading Spotify or D1; public keys are bo
     assert.equal(PUBLIC_R2_MODEL_KEYS.has(key), true);
     assert.equal(modelMaximumAge(key, {}), Number.MAX_SAFE_INTEGER);
   }
+});
+
+ test('history reuses a short-lived private access session without storing a refresh token', async () => {
+  let refreshes = 0;
+  const h = harness(async url => Response.json(payload(url.endsWith('/latest') ? '2026-10-14' : url.split('/').at(-1))));
+  const base = h.fetchImpl;
+  h.fetchImpl = async (...args) => { if (String(args[0]).includes('accounts.spotify.com')) refreshes++; return base(...args); };
+  await runJapanChartWork(h.env, work('latest'), h);
+  await runJapanChartWork(h.env, h.messages[0].body, h);
+  assert.equal(refreshes, 1);
+  const cache = JSON.parse(h.r2.values.get('spotify/charts/private/access-session.json'));
+  assert.equal(cache.access_token, 'private-access');
+  assert.equal(JSON.stringify(cache).includes('private-test'), false);
+  assert.equal(PUBLIC_R2_MODEL_KEYS.has('spotify/charts/private/access-session.json'), false);
 });
