@@ -278,23 +278,39 @@ export async function runSpotifyArtistChartScheduled(env, scheduledTime = Date.n
   }
 
   const capture = await fetchSpotifyArtistChart(refreshed.access_token, fetchImpl);
-  if (capture.chart_date < expectedDate) {
-    return {
+  // Preserve an older, valid first snapshot instead of discarding all history
+  // until Spotify publishes yesterday's chart. Existing snapshots still wait
+  // for a strictly newer chart.
+  const bootstrap = !latestDate;
+  if (capture.chart_date < expectedDate && !bootstrap) {
+    const result = {
       skipped: true,
       reason: 'source-not-published',
       chart_date: capture.chart_date,
       expected_date: expectedDate,
     };
+    console.info(JSON.stringify({ event: 'spotify_artist_chart_source_not_published', ...result }));
+    return result;
   }
 
   const matched = await persistSpotifyArtistChart(db, capture);
   const readModel = await publishSpotifyPagesReadModel(env);
-  return {
+  const result = {
     skipped: false,
     chart_date: capture.chart_date,
     matched_artists: matched,
     refresh_token_rotated: refreshed.rotated,
     read_model_published: Boolean(readModel?.published),
+    bootstrap_older_chart: bootstrap && capture.chart_date < expectedDate,
   };
+  console.info(JSON.stringify({
+    event: 'spotify_artist_chart_persisted',
+    chart_date: result.chart_date,
+    expected_date: expectedDate,
+    matched_artists: matched,
+    bootstrap_older_chart: result.bootstrap_older_chart,
+    read_model_published: result.read_model_published,
+  }));
+  return result;
 }
 

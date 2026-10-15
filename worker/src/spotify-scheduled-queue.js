@@ -58,8 +58,17 @@ export async function processSpotifyScheduledDispatchEntry(entry, env, dependenc
   const runPlaycount = dependencies.runSpotifyScheduledWork || runSpotifyScheduledWork;
   const runArtistChart = dependencies.runSpotifyArtistChartScheduled || runSpotifyArtistChartScheduled;
   try {
-    if (cron === SPOTIFY_ARTIST_CHART_CRON) await runArtistChart(env, scheduledTime);
-    else await runPlaycount({ cron, scheduledTime }, env, dependencies);
+    if (cron === SPOTIFY_ARTIST_CHART_CRON) {
+      const result = await runArtistChart(env, scheduledTime);
+      console.info(JSON.stringify({
+        event: 'spotify_artist_chart_queue_result',
+        status: result?.skipped ? 'skipped' : 'collected',
+        reason: result?.reason || null,
+        chart_date: result?.chart_date || null,
+        expected_date: result?.expected_date || null,
+        matched_artists: result?.matched_artists ?? null,
+      }));
+    } else await runPlaycount({ cron, scheduledTime }, env, dependencies);
     entry.ack?.();
     return { processed: 1, failed: 0, ignored: 0 };
   } catch (error) {
