@@ -1,6 +1,6 @@
 import { mountMusicServiceView, musicServiceFilterTabs, musicServiceSection, musicServiceTable, musicServiceRankChart } from './music-service-shell.js?v=20261004.2';
 
-const labels = { listeners: '月間リスナー', artist: 'トップアーティスト', regional: 'トップソング', album: 'トップアルバム', viral: 'バイラル' };
+const labels = { listeners: '月間リスナー', artist: 'トップアーティスト', regional: 'トップソング', album: 'トップアルバム' };
 const artists = musicServiceFilterTabs([
   { value: 'all', label: 'すべて', active: true },
   { value: 'sakurazaka46', label: '櫻坂' }, { value: 'nogizaka46', label: '乃木坂' },

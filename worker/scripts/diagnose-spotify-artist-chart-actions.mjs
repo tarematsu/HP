@@ -22,7 +22,7 @@ async function api(path, body) {
 const queues = await api('/queues');
 const queue = queues.find(row => row.queue_name === queueName);
 if (!queue?.queue_id) throw new Error('Spotify Queue unavailable');
-// Manual recovery also queues the seven independent chart series.
+// Manual recovery also queues the five supported chart series.
 for (const spec of SPOTIFY_JP_CHARTS) {
   await api(`/queues/${queue.queue_id}/messages`, {
     body: { message_type: 'spotify-japan-chart-work', message_version: 1,
@@ -35,4 +35,4 @@ await api(`/queues/${queue.queue_id}/messages`, {
     cron: SPOTIFY_ARTIST_CHART_CRON, scheduled_time: Date.now() },
   content_type: 'json',
 });
-console.log('Queued all seven Japan Charts and an independent legacy artist-chart retry.');
+console.log('Queued all five supported Japan Charts and an independent legacy artist-chart retry.');
