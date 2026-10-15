@@ -176,7 +176,7 @@ test('empty artist filter stays empty after a resize and never resurrects the pr
     }
     await new Promise(resolve => setTimeout(resolve, 160));
     assert.equal(container.children[0].textContent, '坂道選抜のチャート履歴なし');
-    assert.equal(container.children[0].tagName, 'DIV');
+    assert.equal(container.children[0].tagName, 'P');
   } finally {
     if (previousObserver === undefined) delete globalThis.ResizeObserver;
     else globalThis.ResizeObserver = previousObserver;
