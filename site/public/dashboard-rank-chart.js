@@ -155,7 +155,10 @@ function paint(options) {
 
   series.forEach((item, seriesIndex) => {
     const byDate = new Map((item.points || []).map((point) => [point.date, point]));
-    const rows = dates.map((date) => ({ date, rank: Number(byDate.get(date)?.rank) }));
+    const rows = dates.map((date) => {
+      const rank = byDate.get(date)?.rank;
+      return { date, rank: rank == null ? null : Number(rank) };
+    });
     const color = item?.color || seriesColor(lineClass, seriesIndex, hueStep, String(lineClass).includes('amazon') ? .48 : .92);
     drawDashboardLine(context, rows, {
       x: (row) => xFor(row.date),
