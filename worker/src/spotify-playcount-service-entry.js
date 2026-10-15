@@ -12,8 +12,9 @@ export { SPOTIFY_ARTIST_CHART_CRON, SPOTIFY_PLAYCOUNT_CRON };
 async function runScheduled(controller, env, ctx) {
   if (controller?.cron === SPOTIFY_ARTIST_CHART_CRON) {
     const rawTime = Number(controller?.scheduledTime);
-    await runSpotifyArtistChartScheduled(env, Number.isFinite(rawTime) ? rawTime : Date.now());
-    return enqueueJapanCharts(env, Number.isFinite(rawTime) ? rawTime : Date.now());
+    const timestamp = Number.isFinite(rawTime) ? rawTime : Date.now();
+    await enqueueJapanCharts(env, timestamp);
+    return runSpotifyArtistChartScheduled(env, timestamp);
   }
   return app.scheduled(controller, env, ctx);
 }
