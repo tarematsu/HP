@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { onRequestGet } from '../functions/api/spotify-charts.js';
 import { ROUTES, NAVIGATION } from '../public/dashboard-navigation-config.js';
+import { spotifyChartYearsForRange } from '../public/spotify-charts-range.js';
 
 test('chart API streams prebuilt index and year models without touching D1', async () => {
   for (const [query, key] of [['', 'spotify-charts'], ['?chart=regional-jp-daily&year=2026', 'spotify-charts:regional-jp-daily:2026']]) {
@@ -25,4 +26,13 @@ test('playcounts and charts are independent lazy navigation destinations', () =>
   assert.equal(sources.find(source => source.id === 'spotify-charts').label, 'Spotify チャート');
   assert.equal(ROUTES['spotify-charts'].viewId, 'spotifyChartsView');
   assert.notEqual(ROUTES.spotify.viewId, ROUTES['spotify-charts'].viewId);
+});
+
+test('year-shard loading respects the selected range and chart source date', () => {
+  const state = { latest_chart_date: '2026-02-01', years: ['2019', '2024', '2025', '2026'] };
+  assert.deepEqual(spotifyChartYearsForRange(state, '1m'), ['2026']);
+  assert.deepEqual(spotifyChartYearsForRange(state, '6m'), ['2025', '2026']);
+  assert.deepEqual(spotifyChartYearsForRange(state, '1y'), ['2025', '2026']);
+  assert.deepEqual(spotifyChartYearsForRange(state, 'all'), state.years);
+  assert.deepEqual(spotifyChartYearsForRange({ ...state, latest_chart_date: null }, '1m'), state.years);
 });
