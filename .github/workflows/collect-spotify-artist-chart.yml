@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: read
-  actions: read
 
 concurrency:
   group: spotify-charts-auth-bootstrap
@@ -40,12 +39,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-
-      - name: Wait for the official production deployment
-        working-directory: worker
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: node scripts/wait-for-production-deploy.mjs
 
       - uses: actions/setup-python@v5
         with:

@@ -96,6 +96,9 @@ test('GitHub Action is bootstrap-only and Cloudflare Worker owns recurring colle
   const collector = readFileSync(collectorPath, 'utf8');
   const store = readFileSync(storePath, 'utf8');
   assert.match(workflow, /workflow_dispatch:/);
+  assert.doesNotMatch(workflow, /wait-for-production-deploy|Wait for the official production deployment|GH_TOKEN/);
+  assert.ok(workflow.indexOf('Verify bootstrap secrets') < workflow.indexOf('bootstrap-spotify-charts-refresh.py'));
+  assert.ok(workflow.indexOf('bootstrap-spotify-charts-refresh.py') < workflow.indexOf('store-spotify-charts-worker-secrets.mjs'));
   assert.doesNotMatch(workflow, /^\s+schedule:/m);
   assert.match(workflow, /bootstrap-spotify-charts-refresh\.py/);
   assert.match(workflow, /store-spotify-charts-worker-secrets\.mjs/);
