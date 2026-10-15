@@ -45,7 +45,8 @@ test('Daily Top Artist retries hourly from 07:20 through 16:20 JST', () => {
   assert.equal(shouldDispatchSpotifyArtistChart(atJst(16, 20)), true);
   assert.equal(shouldDispatchSpotifyArtistChart(atJst(17, 20)), false);
   assert.equal(shouldDispatchSpotifyArtistChart(atJst(7, 10)), false);
-  assert.equal(shouldDispatchSpotifyArtistChart(atJst(12, 20)), false);
+  assert.equal(shouldDispatchSpotifyArtistChart(atJst(12, 20)), true);
+  assert.equal(shouldDispatchSpotifyArtistChart(atJst(6, 20)), false);
 });
 
 test('Spotify PKCE refresh rotates the Cloudflare Worker secret only when Spotify returns a new token', async () => {
