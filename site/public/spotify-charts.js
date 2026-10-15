@@ -3,7 +3,7 @@ import { spotifyChartYearsForRange } from './spotify-charts-range.js';
 import { renderMusicServicePager } from './music-service-pager.js';
 import { loadDashboardJson, loadSpotifyReadModel } from './dashboard-data-client.js?v=20261005.2';
 import { byId, appendEmptyTableRow, integerFormat, setNotice, setText } from './dashboard-ui-common.js?v=20261001.1';
-import { appendTableRow } from './dashboard-table-dom.js';
+import { appendTableRow, renderResponsiveTable } from './dashboard-table-dom.js';
 import { renderRankHistoryChart } from './dashboard-rank-chart.js?v=20261003.1';
 import { ensureChartRangeControls, filterDatesByRange } from './dashboard-chart-range.js';
 import { createRegionalFilters, regionalProviderDateText } from './music-service-regional-ui.js';
@@ -53,7 +53,6 @@ function renderListeners() {
 function renderChartTable(type, rows, dates) {
   const body = byId(`spotifyChartBody-${type}`);
   if (!body) return;
-  body.replaceChildren();
   const visible = new Set(dates);
   const matches = [];
   for (const period of [...rows].reverse()) {
@@ -69,12 +68,23 @@ function renderChartTable(type, rows, dates) {
     onChange: next => { tablePages.set(chart, next); renderChartTable(type, rows, dates); },
   });
   tablePages.set(chart, page);
-  for (const { date, entry } of matches.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)) {
-    const values = [regionalProviderDateText(date), entry.artists.map(key => labels[key] || key).join(' / '), `${entry.rank}位`, entry.title];
-    if (type === 'regional') values.push(entry.streams == null ? '-' : integerFormat.format(entry.streams));
-    appendTableRow(body, values);
-  }
-  if (!matches.length) appendEmptyTableRow(body, '取得済み期間にランクイン履歴はありません。', type === 'regional' ? 5 : 4);
+  const columns = [
+    { key: 'date', label: '日付' }, { key: 'artist', label: 'グループ' },
+    { key: 'rank', label: '順位', numeric: true },
+    { key: 'title', label: type === 'artist' ? 'アーティスト' : type === 'album' ? 'アルバム' : '曲名' },
+    ...(type === 'regional' ? [{ key: 'streams', label: '再生数', numeric: true }] : []),
+  ];
+  renderResponsiveTable({
+    head: body.closest('table')?.querySelector('thead'), body,
+    cards: byId(`spotifyChartCards-${type}`), columns,
+    rows: matches.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    valuesForRow: ({ date, entry }) => [
+      regionalProviderDateText(date), entry.artists.map(key => labels[key] || key).join(' / '),
+      `${entry.rank}位`, entry.title,
+      ...(type === 'regional' ? [entry.streams == null ? '-' : integerFormat.format(entry.streams)] : []),
+    ],
+    emptyMessage: '取得済み期間にランクイン履歴はありません。',
+  });
 }
 function renderChart(type, data, state) {
   const plot = byId(`spotifyChartPlot-${type}`);
