@@ -161,7 +161,7 @@ try {
               { id: 'chart-fixture', title: 'Fixture Track', rank: 12, artists: ['sakurazaka46'], streams: 12345 },
             ] }] });
           } else {
-            Object.assign(fixture, { charts: ['artist', 'regional', 'album', 'viral'].flatMap(type =>
+            Object.assign(fixture, { charts: ['artist', 'regional', 'album'].flatMap(type =>
               (type === 'album' ? ['weekly'] : ['daily', 'weekly']).map(period => ({
                 chart_id: `${type}-jp-${period}`, status: 'ok', years: [year], latest_chart_date: date,
                 observed_at: Date.now(), history_complete: true,
@@ -310,8 +310,8 @@ try {
       }
       if (mode === 'spotify-charts') {
         assert.deepEqual(await page.locator('#spotifyChartsView .music-service-view-tabs button').allTextContents(),
-          ['月間リスナー', 'トップアーティスト', 'トップソング', 'トップアルバム', 'バイラル']);
-        for (const group of ['listeners', 'artist', 'regional', 'album', 'viral']) {
+          ['月間リスナー', 'トップアーティスト', 'トップソング', 'トップアルバム']);
+        for (const group of ['listeners', 'artist', 'regional', 'album']) {
           const panel = page.locator(`#spotifyChartsView .music-service-group[data-group="${group}"]`);
           assert.equal(await panel.locator('[data-service-group]').count(), 2, `${group}: graph and list share one panel`);
         }
