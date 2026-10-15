@@ -8,7 +8,7 @@ const artists = musicServiceFilterTabs([
 ], { dataAttribute: 'spotify-chart-artist', ariaLabel: 'Spotifyチャート 表示グループ' });
 const sections = [
   musicServiceSection({ group: 'listeners', title: '月間リスナー推移', bodyHtml: '<div id="spotifyChartsListeners" class="spotify-trend-charts"></div>' }),
-  musicServiceSection({ group: 'listeners', title: '月間リスナー一覧', bodyHtml: musicServiceTable({ headers: ['日付', 'グループ', '月間リスナー'], bodyId: 'spotifyChartsListenersBody' }) }),
+  musicServiceSection({ group: 'listeners', title: '月間リスナー一覧', bodyHtml: musicServiceTable({ headers: ['日付', 'グループ', '月間リスナー'], bodyId: 'spotifyChartsListenersBody' }) + '<div id="spotifyChartsListenersPager" class="music-service-pager" aria-label="月間リスナー一覧のページ切替"></div>' }),
 ];
 for (const [type, label] of Object.entries(labels)) {
   if (type === 'listeners') continue;
@@ -21,8 +21,8 @@ for (const [type, label] of Object.entries(labels)) {
       bodyHtml: `<p id="spotifyChartStatus-${type}" class="shared-note"></p>` + musicServiceRankChart({ legendId: `spotifyChartLegend-${type}`, chartId: `spotifyChartPlot-${type}` }) }),
     musicServiceSection({ group: type, title: `${label} 一覧`, bodyHtml: musicServiceTable({
       headers: type === 'regional' ? ['日付', 'グループ', '順位', '曲名', '再生数'] : ['日付', 'グループ', '順位', type === 'artist' ? 'アーティスト' : type === 'album' ? 'アルバム' : '曲名'],
-      bodyId: `spotifyChartBody-${type}`,
-    }) }),
+      bodyId: `spotifyChartBody-${type}`, className: 'spotify-chart-history-table',
+    }) + `<div id="spotifyChartPager-${type}" class="music-service-pager" aria-label="${label}一覧のページ切替"></div>` }),
   );
 }
 mountMusicServiceView({ viewId: 'spotifyChartsView', className: 'spotify-view', noticeId: 'spotifyChartsNotice',
