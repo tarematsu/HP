@@ -2,9 +2,9 @@
 export const SPOTIFY_JP_CHARTS = Object.freeze([
   ['artist', 'daily'], ['artist', 'weekly'],
   ['regional', 'daily'], ['regional', 'weekly'],
-  ['album', 'weekly'], ['viral', 'daily'], ['viral', 'weekly'],
+  ['album', 'weekly'],
 ].map(([type, period]) => Object.freeze({ id: `${type}-jp-${period}`, type, period,
-  limit: type === 'viral' ? 50 : 200,
+  limit: 200,
   start: '2017-01-01',
 })));
 export function spotifyChartModelKey(chart = '', year = '') {
