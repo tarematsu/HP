@@ -32,3 +32,54 @@ jobs:
           api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
       - name: Enqueue one Spotify Japan Daily Top Artist collection
         run: node worker/scripts/diagnose-spotify-artist-chart-actions.mjs
+      - name: Confirm chart persisted in Cloudflare D1
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const config = JSON.parse(readFileSync('worker/wrangler.spotify-playcount.jsonc', 'utf8'));
+          const dbId = config.d1_databases.find(row => row.binding === 'OTHER_DB')?.database_id;
+          const account = process.env.CLOUDFLARE_ACCOUNT_ID;
+          const token = process.env.CLOUDFLARE_API_TOKEN;
+          if (!dbId || !account || !token) throw new Error('Cloudflare D1 verification configuration missing');
+
+          const expectedDate = new Date(Date.now() + 9 * 3600_000 - 86400_000).toISOString().slice(0, 10);
+          const endpoint = 'https://api.cloudflare.com/client/v4/accounts/'
+            + encodeURIComponent(account) + '/d1/database/' + encodeURIComponent(dbId) + '/query';
+          const sql = 'SELECT latest_chart_date, latest_observed_at, '
+            + '(SELECT COUNT(*) FROM sh_spotify_artist_chart_daily '
+            + 'WHERE chart_date = s.latest_chart_date) AS matched_artists '
+            + 'FROM sh_spotify_artist_chart_sync_state AS s WHERE id = 1';
+
+          for (let attempt = 1; attempt <= 15; attempt++) {
+            const response = await fetch(endpoint, {
+              method: 'POST',
+              headers: {
+                authorization: 'Bearer ' + token,
+                'content-type': 'application/json',
+              },
+              body: JSON.stringify({ sql }),
+              signal: AbortSignal.timeout(15000),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || payload.success === false) {
+              throw new Error('Cloudflare D1 verification request failed: HTTP ' + response.status);
+            }
+            const row = payload.result?.[0]?.results?.[0];
+            const chartDate = String(row?.latest_chart_date || '');
+            if (chartDate >= expectedDate) {
+              console.log(JSON.stringify({
+                ok: true,
+                event: 'spotify_artist_chart_d1_verified',
+                chart_date: chartDate,
+                expected_date: expectedDate,
+                matched_artists: Number(row?.matched_artists || 0),
+                observed_at: row?.latest_observed_at,
+              }));
+              process.exit(0);
+            }
+            if (attempt < 15) await new Promise(resolve => setTimeout(resolve, 10000));
+          }
+          throw new Error('Spotify Japan artist chart has not reached ' + expectedDate + ' in D1 after waiting');
+          NODE
