@@ -147,3 +147,38 @@ test('shared rank chart breaks a line at a missing observation instead of drawin
   assert.equal(paths.filter(([op]) => op === 'moveTo').length, 2);
   assert.equal(paths.filter(([op]) => op === 'lineTo').length, 0);
 });
+
+test('empty artist filter stays empty after a resize and never resurrects the previous rank plot', async () => {
+  const previousObserver = globalThis.ResizeObserver;
+  const observers = [];
+  globalThis.ResizeObserver = class {
+    constructor(callback) { this.callback = callback; observers.push(this); }
+    observe() {}
+    disconnect() {}
+  };
+  try {
+    const container = new FakeNode('div');
+    container.getClientRects = () => [{}];
+    const valid = {
+      container,
+      series: [{ title: '櫻坂', points: [{ date: '2026-10-14', rank: 12 }] }],
+      dates: ['2026-10-14'],
+      yMax: 201,
+    };
+    renderRankHistoryChart(valid);
+    assert.equal(container.children[0].tagName, 'CANVAS');
+    renderRankHistoryChart({ ...valid, series: [], emptyText: '坂道選抜のチャート履歴なし' });
+    assert.equal(container.children[0].textContent, '坂道選抜のチャート履歴なし');
+    // A later real width change used to repaint the stale pre-filter options.
+    container.clientWidth = 480;
+    for (const observer of observers) {
+      observer.callback([{ contentRect: { width: 480, height: 80 } }]);
+    }
+    await new Promise(resolve => setTimeout(resolve, 160));
+    assert.equal(container.children[0].textContent, '坂道選抜のチャート履歴なし');
+    assert.equal(container.children[0].tagName, 'DIV');
+  } finally {
+    if (previousObserver === undefined) delete globalThis.ResizeObserver;
+    else globalThis.ResizeObserver = previousObserver;
+  }
+});
