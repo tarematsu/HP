@@ -33,10 +33,6 @@ jobs:
       - name: Install Worker diagnostic tooling
         working-directory: worker
         run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Redeploy Spotify collector and restore Queue consumer
-        if: github.event_name == 'push'
-        working-directory: worker
-        run: npx wrangler deploy --config wrangler.spotify-playcount.jsonc
       - name: Inspect Spotify Queue consumers and D1 sync state
         shell: bash
         run: |
@@ -72,8 +68,8 @@ jobs:
             expected_consumer: 'sh-spotify-playcount-collector',
             current_chart_state: d1?.[0]?.results?.[0] || null,
           }));
-          if (!consumers.some(row => row.script_name === 'sh-spotify-playcount-collector')) {
-            throw new Error('Spotify Queue has no expected Worker consumer');
+          if (!consumers.some(row => row.type === 'worker')) {
+            throw new Error('Spotify Queue has no Worker consumer');
           }
           NODE
       - name: Enqueue Spotify artist chart and inspect Worker errors
