@@ -242,7 +242,9 @@ export async function processJapanChartMessage(entry, env, dependencies = {}) {
     if (spec && entry.body.mode !== 'publish') {
       try {
         const state = await loadState(env.PAGES_RESPONSE_R2, spec);
-        const committed = entry.body.mode === 'history' && state.cursor !== entry.body.cursor;
+        const committed = (entry.body.mode === 'history' && state.cursor !== entry.body.cursor)
+          || (entry.body.mode === 'archive'
+            && nextViralArchiveProbe(state, spec.period, spec.start) !== entry.body.cursor);
         // A continuation failure must not rewrite a just-committed checkpoint.
         if (!committed && (!state.updated_at || Date.now() - state.updated_at >= 1000)) {
           if (entry.body.mode === 'latest') state.latest_status = 'error';
@@ -254,7 +256,15 @@ export async function processJapanChartMessage(entry, env, dependencies = {}) {
         }
         await requestIndexPublication(env, spec);
         if (committed) {
-          await enqueue(env, { chart_id: spec.id, mode: 'history', cursor: state.cursor }, error.retryAfter || 60);
+          if (entry.body.mode === 'archive') {
+            const next = nextViralArchiveProbe(state, spec.period, spec.start);
+            if (next) await enqueue(env, { chart_id: spec.id, mode: 'archive', cursor: next }, error.retryAfter || 60);
+            else if (state.latest_chart_date && !state.history_complete) {
+              await enqueue(env, { chart_id: spec.id, mode: 'history', cursor: state.cursor }, error.retryAfter || 60);
+            }
+          } else {
+            await enqueue(env, { chart_id: spec.id, mode: 'history', cursor: state.cursor }, error.retryAfter || 60);
+          }
           entry.ack?.(); return;
         }
       } catch { /* Preserve the original failure; the Queue will retry. */ }
