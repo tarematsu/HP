@@ -4,6 +4,8 @@ import { observeDashboardChartResize } from '../public/dashboard-chart-runtime.j
 
 test('width-only chart observation does not redraw on content height changes', async () => {
   const original = globalThis.ResizeObserver;
+  const originalDocument = globalThis.document;
+  globalThis.document = { hidden: false };
   let observer;
   globalThis.ResizeObserver = class {
     constructor(callback) { this.callback = callback; observer = this; }
@@ -31,5 +33,7 @@ test('width-only chart observation does not redraw on content height changes', a
   } finally {
     if (original === undefined) delete globalThis.ResizeObserver;
     else globalThis.ResizeObserver = original;
+    if (originalDocument === undefined) delete globalThis.document;
+    else globalThis.document = originalDocument;
   }
 });
