@@ -376,6 +376,19 @@ try {
             && field.bounds.left >= -2 && field.bounds.right <= width + 2
             && field.text.trim()), `Spotify chart card has missing/clipped fields: ${JSON.stringify(fields)}`);
         }
+        if (!live && mode === 'spotify-charts' && group === 'regional' && width <= 390) {
+          const plot = page.locator('#spotifyChartPlot-regional');
+          await page.locator('[data-spotify-chart-artist="sakamichi-selection"]').click();
+          await plot.locator('.shared-empty').waitFor({ timeout: 10000 });
+          // The global root/plot ResizeObservers run at 120–220 ms.
+          // A missing artist must not alternate between an old canvas and empty state.
+          await page.waitForTimeout(850);
+          assert.equal(await plot.locator('canvas').count(), 0, 'missing 坂道選抜 series must not resurrect the previous plot');
+          assert.equal(await plot.locator('.shared-empty').count(), 1, 'missing 坂道選抜 series stays empty');
+          await page.locator('[data-spotify-chart-artist="all"]').click();
+          await plot.locator('canvas').waitFor({ timeout: 10000 });
+          assert.equal(await page.locator('[data-spotify-chart-artist="all"]').getAttribute('aria-pressed'), 'true');
+        }
         if (!live && mode === 'youtube-music' && group === 'playlists') {
           const overflow = await page.locator('#youtubeMusicPlaylistBody').evaluate((body) => {
             const row = document.createElement('tr');

@@ -149,6 +149,7 @@ export function dashboardMissingGapBands(rows, positions, area, {
 export function observeDashboardChartResize(target, redraw, {
   delay = 220,
   enabled = () => true,
+  watchHeight = true,
 } = {}) {
   if (!target || typeof redraw !== 'function') return () => {};
   let timer = 0;
@@ -166,7 +167,7 @@ export function observeDashboardChartResize(target, redraw, {
       const box = entries[0]?.contentRect;
       const width = Math.round(box?.width || 0);
       const height = Math.round(box?.height || 0);
-      if (!width || (width === lastWidth && height === lastHeight)) return;
+      if (!width || (width === lastWidth && (!watchHeight || height === lastHeight))) return;
       lastWidth = width;
       lastHeight = height;
       schedule();
