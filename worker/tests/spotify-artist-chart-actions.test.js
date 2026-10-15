@@ -103,6 +103,8 @@ test('GitHub Action is bootstrap-only and Cloudflare Worker owns recurring colle
   assert.match(workflow, /bootstrap-spotify-charts-refresh\.py/);
   assert.match(workflow, /store-spotify-charts-worker-secrets\.mjs/);
   assert.match(collector, /SPOTIFY_CHARTS_REFRESH_TOKEN/);
+  assert.match(collector, /bootstrap_older_chart/);
+  assert.match(collector, /spotify_artist_chart_persisted/);
   assert.match(collector, /CLOUDFLARE_WORKER_SECRET_TOKEN/);
   assert.match(collector, /publishSpotifyPagesReadModel/);
   assert.match(store, /CLOUDFLARE_API_TOKEN/);
