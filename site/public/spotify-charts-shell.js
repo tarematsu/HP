@@ -21,8 +21,9 @@ for (const [type, label] of Object.entries(labels)) {
       bodyHtml: `<p id="spotifyChartStatus-${type}" class="shared-note"></p>` + musicServiceRankChart({ legendId: `spotifyChartLegend-${type}`, chartId: `spotifyChartPlot-${type}` }) }),
     musicServiceSection({ group: type, title: `${label} 一覧`, bodyHtml: musicServiceTable({
       headers: type === 'regional' ? ['日付', 'グループ', '順位', '曲名', '再生数'] : ['日付', 'グループ', '順位', type === 'artist' ? 'アーティスト' : type === 'album' ? 'アルバム' : '曲名'],
-      bodyId: `spotifyChartBody-${type}`, className: 'spotify-chart-history-table',
-    }) + `<div id="spotifyChartPager-${type}" class="music-service-pager" aria-label="${label}一覧のページ切替"></div>` }),
+      bodyId: `spotifyChartBody-${type}`, className: 'dashboard-responsive-table spotify-chart-history-table',
+    }) + `<div id="spotifyChartCards-${type}" class="dashboard-responsive-cards spotify-chart-responsive-cards" aria-label="${label}一覧"></div>`
+      + `<div id="spotifyChartPager-${type}" class="music-service-pager" aria-label="${label}一覧のページ切替"></div>` }),
   );
 }
 mountMusicServiceView({ viewId: 'spotifyChartsView', className: 'spotify-view', noticeId: 'spotifyChartsNotice',
