@@ -122,3 +122,31 @@ test('all seven series enqueue without reading Spotify or D1; public keys are bo
   assert.equal(JSON.stringify(cache).includes('private-test'), false);
   assert.equal(PUBLIC_R2_MODEL_KEYS.has('spotify/charts/private/access-session.json'), false);
 });
+
+test('Viral latest 404 probes dated archives once before declaring the source unavailable', async () => {
+  const calls = [];
+  const h = harness(async url => { calls.push(url); return new Response(null, { status: 404 }); });
+  const body = { ...work('latest'), chart_id: 'viral-jp-daily' };
+  await runJapanChartWork(h.env, body, h);
+  assert.equal(calls.length, 4);
+  const state = JSON.parse(h.r2.values.get('spotify/charts/state/viral-jp-daily.json'));
+  assert.equal(state.archive_probed, true);
+  assert.equal(state.status, 'unavailable');
+  assert.equal(state.latest_chart_date, null);
+  await runJapanChartWork(h.env, body, h);
+  assert.equal(calls.length, 5);
+});
+
+test('accessible Viral archives seed normal historical collection despite latest 404', async () => {
+  const h = harness(async url => {
+    if (!url.endsWith('/2026-05-13')) return new Response(null, { status: 404 });
+    const data = payload('2026-05-13', 'viral');
+    data.displayChart.chartMetadata.dimensions.earliestDate = '2017-01-01';
+    return Response.json(data);
+  });
+  await runJapanChartWork(h.env, { ...work('latest'), chart_id: 'viral-jp-daily' }, h);
+  const state = JSON.parse(h.r2.values.get('spotify/charts/state/viral-jp-daily.json'));
+  assert.equal(state.status, 'archived');
+  assert.equal(state.latest_chart_date, '2026-05-13');
+  assert.equal(h.messages[0].body.cursor, '2026-05-12');
+});
