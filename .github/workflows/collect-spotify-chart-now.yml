@@ -33,6 +33,10 @@ jobs:
       - name: Install Worker diagnostic tooling
         working-directory: worker
         run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Ensure latest Spotify Worker is deployed for initial collection
+        if: github.event_name == 'push'
+        working-directory: worker
+        run: npx wrangler deploy --config wrangler.spotify-playcount.jsonc
       - name: Inspect Spotify Queue consumers and D1 sync state
         shell: bash
         run: |
