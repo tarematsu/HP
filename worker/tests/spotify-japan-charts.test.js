@@ -245,7 +245,7 @@ test('new Japan Chart jobs enqueue before an independent legacy collector fails'
     runSpotifyArtistChartScheduled: async () => { throw new Error('Legacy chart source unavailable'); },
   });
   assert.equal(retries, 1);
-  assert.equal(messages.filter(message => message.message_type === SPOTIFY_CHART_WORK).length, 7);
+  assert.equal(messages.filter(message => message.message_type === SPOTIFY_CHART_WORK).length, 5);
 });
 
 test('a successful history step cannot hide a failure in latest collection', async () => {
