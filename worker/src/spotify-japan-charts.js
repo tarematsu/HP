@@ -1,10 +1,12 @@
 import { SPOTIFY_JP_CHARTS, spotifyChartModelKey } from '../../packages/sh-shared/spotify-charts.mjs';
 import { refreshSpotifyChartsAccessToken, updateSpotifyRefreshWorkerSecret } from './spotify-artist-chart-collector.js';
 import { normalizeJapanChart } from './spotify-japan-chart-data.js';
-import { nextViralArchiveProbe, advanceViralArchiveProbe } from './spotify-japan-viral-archive.js';
 import { pagesR2ResponseKey, saveMaterializedR2Response } from './pages-response-r2.js';
 
 export const SPOTIFY_CHART_WORK = 'spotify-japan-chart-work';
+// Acknowledge jobs already queued before Viral charts were removed. Their retry
+// chains must stop without making Spotify, R2 or Queue requests.
+const RETIRED_CHART_IDS = new Set(['viral-jp-daily', 'viral-jp-weekly']);
 const API = 'https://charts-spotify-com-service.spotify.com/auth/v0/charts/';
 const HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=30, s-maxage=300', vary: 'accept-encoding' };
 const AUTH_CACHE_KEY = 'spotify/charts/private/access-session.json';
@@ -20,7 +22,7 @@ async function save(r2, key, data) {
 const stateKey = id => `spotify/charts/state/${id}.json`;
 function sourceStatus(state) {
   if (state.latest_status === 'error' || state.history_status === 'error') return 'error';
-  return state.latest_status || (state.source_archived ? 'archived' : 'ok');
+  return state.latest_status || 'ok';
 }
 async function loadState(r2, spec) {
   const object = await r2.get(stateKey(spec.id));
@@ -104,86 +106,23 @@ export async function enqueueJapanCharts(env, scheduledTime = Date.now()) {
   for (const spec of SPOTIFY_JP_CHARTS) await enqueue(env, { chart_id: spec.id, mode: 'latest', day });
 }
 export async function runJapanChartWork(env, body, dependencies = {}) {
-  const spec = SPOTIFY_JP_CHARTS.find(item => item.id === body.chart_id);
-  if (!spec || body.message_version !== 1 || !['latest', 'history', 'archive', 'publish'].includes(body.mode)) throw new Error('Invalid chart work');
+  if (RETIRED_CHART_IDS.has(body?.chart_id)) return;
+  const spec = SPOTIFY_JP_CHARTS.find(item => item.id === body?.chart_id);
+  if (!spec || body.message_version !== 1 || !['latest', 'history', 'publish'].includes(body.mode)) throw new Error('Invalid chart work');
   if (body.mode === 'publish') return publishIndex(env, body, dependencies);
-  if (body.mode === 'archive' && spec.type !== 'viral') throw new Error('Archive discovery is Viral-only');
   const r2 = env.PAGES_RESPONSE_R2;
   const state = await loadState(r2, spec);
   if (body.mode === 'history' && (state.history_complete || !state.cursor || body.cursor !== state.cursor)) return;
-  // Cursor-gated jobs allow recovery re-enqueues without duplicate Spotify requests.
-  if (body.mode === 'archive' && body.cursor !== nextViralArchiveProbe(state, spec.period, spec.start)) return;
   const now = dependencies.now?.() ?? Date.now();
   if (state.updated_at && now - state.updated_at < 1000) {
     await enqueue(env, body); return;
   }
   const fetchImpl = dependencies.fetchImpl || fetch;
   const accessToken = await chartAccessToken(env, fetchImpl);
-  if (body.mode === 'archive') {
-    const capture = await fetchChart(accessToken, spec, body.cursor, fetchImpl, r2);
-    state.archive_probes_attempted = (state.archive_probes_attempted || 0) + 1;
-    state.archive_last_probe_date = body.cursor;
-    state.checked_at = now;
-    // Successful probe responses (including 404) clear transient collection errors.
-    if (state.history_status === 'error') state.history_status = 'ok';
-    delete state.error_code;
-    if (capture) {
-      await persist(r2, spec, capture);
-      state.archive_found = true;
-      state.archive_search_complete = true;
-      state.source_archived = true;
-      state.latest_status = 'archived';
-      state.latest_chart_date = capture.chart_date;
-      state.earliest_chart_date = capture.chart_date;
-      state.last_latest = capture.chart_date;
-      state.observed_at = capture.observed_at;
-      state.source_start = capture.source_start && capture.source_start <= capture.chart_date
-        ? capture.source_start : spec.start;
-      state.years = [...new Set([...state.years, capture.chart_date.slice(0, 4)])].sort();
-      state.cursor = previous(capture.chart_date, spec.period);
-      state.history_complete = state.cursor < state.source_start;
-    } else {
-      const next = advanceViralArchiveProbe(state, spec.period, spec.start);
-      state.archive_search_complete = !next;
-      state.latest_status = next ? 'searching' : 'unavailable';
-    }
-    state.status = sourceStatus(state);
-    await saveState(r2, spec, state);
-    // Publish occasional progress without rebuilding seven states on every 404.
-    if (capture || state.archive_search_complete || state.archive_probes_attempted % 8 === 0) {
-      await requestIndexPublication(env, spec);
-    }
-    if (capture && !state.history_complete) {
-      await enqueue(env, { chart_id: spec.id, mode: 'history', cursor: state.cursor });
-    } else if (!capture && !state.archive_search_complete) {
-      await enqueue(env, { chart_id: spec.id, mode: 'archive',
-        cursor: nextViralArchiveProbe(state, spec.period, spec.start) });
-    }
-    return;
-  }
   if (body.mode === 'latest') {
-    let capture = await fetchChart(accessToken, spec, 'latest', fetchImpl, r2);
-    let sourceArchived = false;
-    if (!capture && spec.type === 'viral') {
-      if (state.latest_chart_date) {
-        state.source_archived = true; state.latest_status = 'archived'; state.status = sourceStatus(state); state.checked_at = now;
-        await saveState(r2, spec, state); await requestIndexPublication(env, spec);
-        if (!state.history_complete) await enqueue(env, { chart_id: spec.id, mode: 'history', cursor: state.cursor });
-        return;
-      }
-      // Retired latest endpoints cannot bootstrap a history cursor. Probe dates
-      // from older years asynchronously, one request per Queue invocation.
-      const probe = nextViralArchiveProbe(state, spec.period, spec.start);
-      state.latest_status = probe ? 'searching' : 'unavailable';
-      state.archive_search_complete = !probe;
-      state.status = sourceStatus(state); state.checked_at = now;
-      await saveState(r2, spec, state);
-      await requestIndexPublication(env, spec);
-      if (probe) await enqueue(env, { chart_id: spec.id, mode: 'archive', cursor: probe });
-      return;
-    }
+    const capture = await fetchChart(accessToken, spec, 'latest', fetchImpl, r2);
     if (!capture) {
-      // Unsupported latest series is visible as unavailable, never fabricated as an empty Top 50/200.
+      // Unsupported latest series is unavailable, never fabricated as an empty Top 200.
       state.latest_status = 'unavailable'; state.status = sourceStatus(state); state.checked_at = Date.now();
       await saveState(r2, spec, state); await requestIndexPublication(env, spec); return;
     }
@@ -192,8 +131,7 @@ export async function runJapanChartWork(env, body, dependencies = {}) {
     state.source_start = capture.source_start || state.source_start || spec.start;
     state.latest_chart_date = capture.chart_date;
     state.observed_at = capture.observed_at;
-    state.source_archived = sourceArchived;
-    state.latest_status = sourceArchived ? 'archived' : 'ok';
+    state.latest_status = 'ok';
     state.status = sourceStatus(state);
     state.checked_at = now;
     delete state.error_code;
@@ -242,9 +180,7 @@ export async function processJapanChartMessage(entry, env, dependencies = {}) {
     if (spec && entry.body.mode !== 'publish') {
       try {
         const state = await loadState(env.PAGES_RESPONSE_R2, spec);
-        const committed = (entry.body.mode === 'history' && state.cursor !== entry.body.cursor)
-          || (entry.body.mode === 'archive'
-            && nextViralArchiveProbe(state, spec.period, spec.start) !== entry.body.cursor);
+        const committed = entry.body.mode === 'history' && state.cursor !== entry.body.cursor;
         // A continuation failure must not rewrite a just-committed checkpoint.
         if (!committed && (!state.updated_at || Date.now() - state.updated_at >= 1000)) {
           if (entry.body.mode === 'latest') state.latest_status = 'error';
@@ -256,15 +192,7 @@ export async function processJapanChartMessage(entry, env, dependencies = {}) {
         }
         await requestIndexPublication(env, spec);
         if (committed) {
-          if (entry.body.mode === 'archive') {
-            const next = nextViralArchiveProbe(state, spec.period, spec.start);
-            if (next) await enqueue(env, { chart_id: spec.id, mode: 'archive', cursor: next }, error.retryAfter || 60);
-            else if (state.latest_chart_date && !state.history_complete) {
-              await enqueue(env, { chart_id: spec.id, mode: 'history', cursor: state.cursor }, error.retryAfter || 60);
-            }
-          } else {
-            await enqueue(env, { chart_id: spec.id, mode: 'history', cursor: state.cursor }, error.retryAfter || 60);
-          }
+          await enqueue(env, { chart_id: spec.id, mode: 'history', cursor: state.cursor }, error.retryAfter || 60);
           entry.ack?.(); return;
         }
       } catch { /* Preserve the original failure; the Queue will retry. */ }
