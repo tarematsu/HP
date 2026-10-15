@@ -283,3 +283,26 @@
 .music-service-bar-chart text { fill:var(--text); font:13px system-ui; }
 .music-service-view .section-head h2 { color:#101827; font-size:17px; }
 .history-granularity-toggle.music-service-filter { align-self:start; width:max-content; }
+
+/* Reusable, bounded music-history pagination. */
+.music-service-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: var(--dashboard-small-size);
+  margin: 6px 0 0;
+}
+.music-service-pager[hidden] { display: none; }
+.music-service-pager button {
+  min-height: 40px;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel);
+  font: inherit;
+  cursor: pointer;
+}
+.music-service-pager button:disabled { opacity: .45; cursor: default; }

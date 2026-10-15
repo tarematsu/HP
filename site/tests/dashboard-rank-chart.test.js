@@ -129,3 +129,21 @@ test('shared rank chart renders the configured empty state', () => {
   assert.equal(container.children[0].className, 'rank-empty');
   assert.equal(container.children[0].textContent, '履歴なし');
 });
+
+test('shared rank chart breaks a line at a missing observation instead of drawing first place', () => {
+  const container = new FakeNode('div');
+  const canvas = renderRankHistoryChart({
+    container,
+    series: [{ title: '曲B', points: [
+      { date: '2026-10-11', rank: 25 },
+      { date: '2026-10-12', rank: null },
+      { date: '2026-10-13', rank: 20 },
+    ] }],
+    dates: ['2026-10-11', '2026-10-12', '2026-10-13'],
+    yMax: 201,
+    rankTicks: [],
+  });
+  const paths = canvas.context.calls.filter(([op]) => op === 'moveTo' || op === 'lineTo');
+  assert.equal(paths.filter(([op]) => op === 'moveTo').length, 2);
+  assert.equal(paths.filter(([op]) => op === 'lineTo').length, 0);
+});

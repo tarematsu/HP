@@ -35,6 +35,8 @@ export async function enqueueSpotifyScheduledDispatch(request, env) {
       headers: { 'cache-control': 'no-store' },
     });
   }
+  // New Japan Charts are independent of the legacy artist-chart D1 collector.
+  if (cron === SPOTIFY_ARTIST_CHART_CRON) await enqueueJapanCharts(env, normalizedScheduledTime(payload?.scheduled_time));
   await queue.send({
     message_type: SPOTIFY_SCHEDULED_DISPATCH_TYPE,
     message_version: 1,
@@ -61,7 +63,6 @@ export async function processSpotifyScheduledDispatchEntry(entry, env, dependenc
   try {
     if (cron === SPOTIFY_ARTIST_CHART_CRON) {
       const result = await runArtistChart(env, scheduledTime);
-      if (env?.SPOTIFY_PLAYCOUNT_QUEUE?.send) await enqueueJapanCharts(env, scheduledTime);
       console.info(JSON.stringify({
         event: 'spotify_artist_chart_queue_result',
         status: result?.skipped ? 'skipped' : 'collected',

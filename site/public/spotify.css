@@ -123,3 +123,15 @@
     white-space: normal;
   }
 }
+
+/* The shared responsive-table contract switches to cards below 600px. */
+@media (max-width: 600px) {
+  #spotifyChartsView .spotify-chart-responsive-cards .dashboard-responsive-field[data-key="title"] {
+    grid-column: 1 / -1;
+    font-weight: 700;
+  }
+  #spotifyChartsView .spotify-chart-responsive-cards .dashboard-responsive-field[data-key="streams"] {
+    grid-column: 1 / -1;
+    text-align: right;
+  }
+}
