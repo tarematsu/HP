@@ -1,6 +1,6 @@
 export const SPOTIFY_FAST_RETRY_END_HOUR_JST = 5;
 export const SPOTIFY_ARTIST_CHART_START_HOUR_JST = 7;
-export const SPOTIFY_ARTIST_CHART_END_HOUR_JST = 11;
+export const SPOTIFY_ARTIST_CHART_END_HOUR_JST = 16;
 
 export function spotifyJstHour(timestamp = Date.now()) {
   const date = new Date(timestamp);
