@@ -30,8 +30,43 @@ jobs:
         uses: ./.github/actions/cloudflare-context
         with:
           api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
-      - name: Enqueue one Spotify Japan Daily Top Artist collection
-        run: node worker/scripts/diagnose-spotify-artist-chart-actions.mjs
+      - name: Install Worker diagnostic tooling
+        working-directory: worker
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Enqueue Spotify artist chart and inspect Worker errors
+        working-directory: worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          (timeout 60s npx wrangler tail sh-spotify-playcount-collector --format json \
+            > "$RUNNER_TEMP/spotify-artist-chart-tail.jsonl" \
+            2> "$RUNNER_TEMP/spotify-artist-chart-tail.err" || true) &
+          tail_pid=$!
+          sleep 6
+          node scripts/diagnose-spotify-artist-chart-actions.mjs
+          wait "$tail_pid"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const path = process.env.RUNNER_TEMP + '/spotify-artist-chart-tail.jsonl';
+          const lines = readFileSync(path, 'utf8').split(/\r?\n/);
+          const matches = [];
+          for (const line of lines) {
+            try {
+              const record = JSON.parse(line);
+              for (const item of record.logs || []) {
+                const detail = String((item?.message || []).join(' '));
+                if (/spotify_scheduled_queue_dispatch_failed|Spotify Charts|Spotify artist chart|source-not-published/i.test(detail)) {
+                  matches.push(detail.slice(0, 900));
+                }
+              }
+            } catch {}
+          }
+          console.log(JSON.stringify({
+            event: 'spotify_chart_worker_tail_diagnostic',
+            matching_error_count: matches.length,
+            errors: matches.slice(-5),
+          }));
+          NODE
       - name: Confirm chart persisted in Cloudflare D1
         shell: bash
         run: |
