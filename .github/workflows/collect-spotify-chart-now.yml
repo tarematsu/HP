@@ -64,10 +64,16 @@ jobs:
           console.log(JSON.stringify({
             event: 'spotify_artist_chart_queue_preflight',
             queue: queueName,
+            delivery_paused: detail.settings?.delivery_paused ?? null,
+            delivery_delay: detail.settings?.delivery_delay ?? null,
+            consumer_keys: (detail.consumers || []).map(row => Object.keys(row)),
             consumers,
             expected_consumer: 'sh-spotify-playcount-collector',
             current_chart_state: d1?.[0]?.results?.[0] || null,
           }));
+          if (detail.settings?.delivery_paused === true) {
+            throw new Error('Spotify Queue delivery is paused');
+          }
           if (!consumers.some(row => row.type === 'worker')) {
             throw new Error('Spotify Queue has no Worker consumer');
           }
@@ -103,6 +109,7 @@ jobs:
           const diagnosticStderr = readFileSync(process.env.RUNNER_TEMP + '/spotify-artist-chart-tail.err', 'utf8').trim();
           console.log(JSON.stringify({
             event: 'spotify_chart_worker_tail_diagnostic',
+            observed_tail_events: lines.filter(line => line.trim().startsWith('{')).length,
             matching_error_count: matches.length,
             errors: matches.slice(-5),
             tail_status: diagnosticStderr ? diagnosticStderr.slice(-350) : 'no diagnostic errors',
@@ -128,7 +135,7 @@ jobs:
             + 'WHERE chart_date = s.latest_chart_date) AS matched_artists '
             + 'FROM sh_spotify_artist_chart_sync_state AS s WHERE id = 1';
 
-          for (let attempt = 1; attempt <= 15; attempt++) {
+          for (let attempt = 1; attempt <= 6; attempt++) {
             const response = await fetch(endpoint, {
               method: 'POST',
               headers: {
@@ -155,7 +162,7 @@ jobs:
               }));
               process.exit(0);
             }
-            if (attempt < 15) await new Promise(resolve => setTimeout(resolve, 10000));
+            if (attempt < 6) await new Promise(resolve => setTimeout(resolve, 10000));
           }
           throw new Error('Spotify Japan artist chart has not reached ' + expectedDate + ' in D1 after waiting');
           NODE
