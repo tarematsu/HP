@@ -7,6 +7,12 @@ export const SPOTIFY_CHART_WORK = 'spotify-japan-chart-work';
 const API = 'https://charts-spotify-com-service.spotify.com/auth/v0/charts/';
 const HEADERS = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=30, s-maxage=300', vary: 'accept-encoding' };
 const AUTH_CACHE_KEY = 'spotify/charts/private/access-session.json';
+// Bounded archive probes for discontinued Viral endpoints; latest 404 alone
+// does not prove that date-addressed historical charts are unavailable.
+const VIRAL_ARCHIVE_PROBES = {
+  daily: ['2026-05-14', '2026-05-13', '2026-02-15'],
+  weekly: ['2026-05-07', '2026-02-12', '2020-08-12'],
+};
 const dayMs = 86400000;
 const previous = (date, period) => new Date(Date.parse(`${date}T00:00:00Z`) - dayMs * (period === 'weekly' ? 7 : 1)).toISOString().slice(0, 10);
 async function read(r2, key, fallback) {
@@ -94,7 +100,24 @@ export async function runJapanChartWork(env, body, dependencies = {}) {
   const fetchImpl = dependencies.fetchImpl || fetch;
   const accessToken = await chartAccessToken(env, fetchImpl);
   if (body.mode === 'latest') {
-    const capture = await fetchChart(accessToken, spec, 'latest', fetchImpl, r2);
+    let capture = await fetchChart(accessToken, spec, 'latest', fetchImpl, r2);
+    let sourceArchived = false;
+    if (!capture && spec.type === 'viral') {
+      if (!state.archive_probed) {
+        for (const date of VIRAL_ARCHIVE_PROBES[spec.period]) {
+          capture = await fetchChart(accessToken, spec, date, fetchImpl, r2);
+          if (capture) break;
+        }
+        state.archive_probed = true;
+      }
+      if (!capture && state.latest_chart_date) {
+        state.source_archived = true; state.status = 'archived'; state.checked_at = Date.now();
+        await saveState(r2, spec, state); await publishIndex(r2);
+        if (!state.history_complete) await enqueue(env, { chart_id: spec.id, mode: 'history', cursor: state.cursor });
+        return;
+      }
+      sourceArchived = Boolean(capture);
+    }
     if (!capture) {
       // Unsupported latest series is visible as unavailable, never fabricated as an empty Top 50/200.
       state.status = 'unavailable'; state.checked_at = Date.now();
@@ -105,7 +128,8 @@ export async function runJapanChartWork(env, body, dependencies = {}) {
     state.source_start = capture.source_start || state.source_start || spec.start;
     state.latest_chart_date = capture.chart_date;
     state.observed_at = capture.observed_at;
-    state.status = 'ok';
+    state.source_archived = sourceArchived;
+    state.status = sourceArchived ? 'archived' : 'ok';
     state.years = [...new Set([...state.years, capture.chart_date.slice(0, 4)])].sort();
     state.cursor ||= previous(capture.chart_date, spec.period);
     // Repair gaps after an outage by walking back from the new latest to the old latest.
@@ -134,7 +158,7 @@ export async function runJapanChartWork(env, body, dependencies = {}) {
       await saveState(r2, spec, state);
     }
     state.history_complete = state.cursor < (state.source_start || spec.start);
-    state.status = 'ok';
+    state.status = state.source_archived ? 'archived' : 'ok';
   }
   await saveState(r2, spec, state);
   await publishIndex(r2);

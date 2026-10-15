@@ -155,7 +155,9 @@ including 坂道選抜. Collaborations match every credited tracked artist by Sp
 normal artist-chart schedule enqueues the seven series. Latest captures start or
 resume backward collection, three periods per invocation with a 30-second delayed
 continuation. Spotify's `displayChart.chartMetadata.dimensions.earliestDate`
-bounds backfill; 2017-01-01 is a conservative fallback when it is absent. An
+bounds backfill; 2017-01-01 is a conservative fallback when it is absent. If a Viral latest endpoint returns 404, a bounded, one-time set of historical
+dates is probed before declaring it unavailable. An accessible archive seeds the
+same backfill; failed probes are recorded without inventing ranking data. An
 unavailable latest series is reported separately, and a historical HTTP 404 is
 never recorded as an empty/absent ranking. 429/5xx do not advance the failed cursor.
 A private, short-lived access-token cache avoids refreshing OAuth or rewriting
