@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { SPOTIFY_JP_CHARTS, spotifyChartModelKey } from '../../packages/sh-shared/spotify-charts.mjs';
 import { normalizeJapanChart } from '../src/spotify-japan-chart-data.js';
-import { runJapanChartWork, enqueueJapanCharts, SPOTIFY_CHART_WORK } from '../src/spotify-japan-charts.js';
+import { runJapanChartWork, processJapanChartMessage, enqueueJapanCharts, SPOTIFY_CHART_WORK } from '../src/spotify-japan-charts.js';
 import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 import { PUBLIC_R2_MODEL_KEYS, modelMaximumAge } from '../src/pages-response-models.js';
 import { materializedApiKey } from '../../packages/sh-shared/api-contract.mjs';
@@ -188,4 +188,31 @@ test('index publication coalesces updates for 30 seconds and acknowledges covere
   assert.equal(JSON.parse(h.r2.values.get(key)).updated_at, 40000);
   await runJapanChartWork(h.env, message, h);
   assert.equal(h.messages.length, 1);
+});
+
+test('failed publication handoff resumes committed history without rewriting its checkpoint', async () => {
+  const h = harness(async url => Response.json(payload(url.endsWith('/latest') ? '2026-10-14' : url.split('/').at(-1))));
+  await runJapanChartWork(h.env, work('latest'), h);
+  const body = historyMessage(h).body;
+  const send = h.env.SPOTIFY_PLAYCOUNT_QUEUE.send.bind(h.env.SPOTIFY_PLAYCOUNT_QUEUE);
+  let fail = true;
+  h.env.SPOTIFY_PLAYCOUNT_QUEUE.send = async (message, options) => {
+    if (message.mode === 'publish' && fail) { fail = false; throw new Error('Queue handoff failed'); }
+    return send(message, options);
+  };
+  const put = h.r2.put.bind(h.r2);
+  const counts = new Map();
+  h.r2.put = async (key, ...args) => {
+    counts.set(key, (counts.get(key) || 0) + 1);
+    assert.equal(counts.get(key) <= 1, true, 'a committed checkpoint cannot be rewritten immediately');
+    return put(key, ...args);
+  };
+  let acked = 0, retried = 0;
+  await processJapanChartMessage({ body, ack: () => acked++, retry: () => retried++ }, h.env, h);
+  const state = JSON.parse(h.r2.values.get(`spotify/charts/state/${spec.id}.json`));
+  assert.equal(state.status, 'ok');
+  assert.equal(state.cursor, '2026-10-12');
+  assert.equal(historyMessage(h).body.cursor, '2026-10-12');
+  assert.equal(acked, 1);
+  assert.equal(retried, 0);
 });
