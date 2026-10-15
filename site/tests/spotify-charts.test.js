@@ -36,3 +36,25 @@ test('year-shard loading respects the selected range and chart source date', () 
   assert.deepEqual(spotifyChartYearsForRange(state, 'all'), state.years);
   assert.deepEqual(spotifyChartYearsForRange({ ...state, latest_chart_date: null }, '1m'), state.years);
 });
+
+test('retired Viral URLs are rejected instead of exposing leftover R2 shards', () => {
+  for (const chart of ['viral-jp-daily', 'viral-jp-weekly']) {
+    let reads = 0;
+    const response = onRequestGet({
+      request: new Request(`https://example.test/api/spotify-charts?chart=${chart}&year=2026`),
+      env: {
+        PAGES_READ_MODEL_SERVICE: { fetch() { reads++; throw new Error('Retired chart must not be fetched'); } },
+      },
+    });
+    assert.equal(response.status, 400);
+    assert.equal(reads, 0);
+  }
+});
+
+test('Spotify Charts shell excludes discontinued Viral panels', async () => {
+  const { readFileSync } = await import('node:fs');
+  const shell = readFileSync(new URL('../public/spotify-charts-shell.js', import.meta.url), 'utf8');
+  const runtime = readFileSync(new URL('../public/spotify-charts.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(shell, /バイラル|viral:/);
+  assert.doesNotMatch(runtime, /'viral'/);
+});
