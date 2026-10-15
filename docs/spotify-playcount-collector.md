@@ -145,36 +145,27 @@ hourly Cron invocations.
 
 The streaming navigation separates **Spotify 再生数** (global cumulative playcounts)
 from **Spotify チャート** (monthly listeners and Japan chart ranks). The latter has
-monthly listeners, Top Artists, Top Songs, Top Albums, and Viral panels. Each panel
-uses the common music-service shell, graph, filters and history table. Artists,
-songs and viral charts have daily/weekly periods; albums have weekly periods.
+monthly listeners, Top Artists, Top Songs, and Top Albums panels. Each panel
+uses the common music-service shell, graph, filters and history table. Artists
+and songs have daily/weekly periods; albums have weekly periods.
 The four tracked artist identities reuse `SPOTIFY_MONTHLY_LISTENER_ARTISTS`,
 including 坂道選抜. Collaborations match every credited tracked artist by Spotify ID.
 
 `spotify-japan-charts.js` handles collection in the existing Spotify Queue. The
-normal artist-chart schedule enqueues the seven series. Latest captures start or
+normal artist-chart schedule enqueues the five supported series. Latest captures start or
 resume backward collection, one period per invocation with a 30-second delayed
 continuation. Spotify's `displayChart.chartMetadata.dimensions.earliestDate`
 bounds backfill; 2017-01-01 is a conservative fallback when it is absent.
 
-Viral 50 latest endpoints may return 404 after their retirement. Rather than
-giving up after three hard-coded dates, the Queue first samples dated archive
-landmarks spanning 2026–2017 and then progressively probes previously unchecked
-dates four weeks apart, checkpointed separately for daily and weekly. Each
-`archive` message makes at most one Spotify request and continues after a
-30-second delay, avoiding large fetch bursts or duplicate date requests.
-The prior `archive_probed` flag is ignored, so older installations resume
-with the new plan. A valid archived chart (even with zero tracked artists)
-is persisted into the usual R2 year shard and starts regular one-date/one-week
-historical backfill. 404 never fabricates absent entries; 429, 401 and 5xx
-do not advance an archive/history cursor. Queue handoff failures after saving
-a checkpoint enqueue the new cursor rather than re-querying a committed period.
+Viral 50 daily and weekly charts were removed after the source was discontinued
+and historical archive probes could not retrieve data. The canonical series list
+and publicly accessible model-key allowlist no longer include Viral; existing
+queued `latest`, `history`, `archive`, and `publish` messages for these
+retired IDs are acknowledged without API, storage or further Queue work.
+Any historical R2 objects already present are not deleted by deployment; they
+are no longer published in the index or reachable through the public chart API.
+The other five chart series and their checkpoints are unaffected.
 
-`/api/spotify-charts` exposes `status: searching`,
-`archive_probes_attempted` and `archive_last_probe_date`. Pages shows this
-progress while the search is running. `archive_search_complete` only means
-the *sampled* dated archive probes were exhausted or one was found; exhausting
-samples does not prove that no other historic copies exist.
 A private, short-lived access-token cache avoids refreshing OAuth or rewriting
 Worker secrets for every backfill delivery. It stores no refresh token, is excluded
 from public model keys, and is invalidated on HTTP 401.
