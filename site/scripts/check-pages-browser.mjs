@@ -227,7 +227,7 @@ try {
       if (navigationForMode(mode).section.id === 'stationhead') {
         assert.deepEqual(sourceLabels, ['Buddies', 'Ohisama', 'Nogizaka', 'リーダーボード', 'フォロワー'], `${mode}: Stationhead targets only`);
       } else {
-        assert.deepEqual(sourceLabels, ['Spotify', 'Apple Music', 'Amazon Music', 'YouTube Music', '🇹🇼KKBOX', '🇨🇳QQ音乐', '🇨🇳酷狗音乐'], `${mode}: streaming services only`);
+        assert.deepEqual(sourceLabels, ['Spotify 再生数', 'Spotify チャート', 'Apple Music', 'Amazon Music', 'YouTube Music', '🇹🇼KKBOX', '🇨🇳QQ音乐', '🇨🇳酷狗音乐'], `${mode}: streaming services only`);
       }
       if (navigationForMode(mode).source.id === 'buddies') {
         assert.deepEqual(await page.locator('#functionTabs button').allTextContents(), stationheadFunctions, `${mode}: Buddies functions`);
