@@ -1,0 +1,44 @@
+name: Deploy isolated Spotify mobile OAuth probe
+on:
+  workflow_dispatch:
+    inputs:
+      redirect_uri:
+        description: Exact HTTPS /callback URI registered in your Spotify Developer app
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: spotify-oauth-probe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate prerequisites
+        env:
+          REDIRECT_URI: ${{ inputs.redirect_uri }}
+          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN }}
+        run: |
+          test -n "$SPOTIFY_CLIENT_ID" || { echo "::error::SPOTIFY_CLIENT_ID missing"; exit 1; }
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Cloudflare API token missing"; exit 1; }
+          node -e 'const u=new URL(process.env.REDIRECT_URI); if(u.protocol!=="https:"||u.pathname!=="/callback"||!u.hostname.endsWith(".workers.dev"))process.exit(1)'
+      - name: Deploy standalone probe
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || secrets.CF_ACCOUNT_ID }}
+        run: |
+          npx --yes wrangler@4 deploy experiments/spotify-mobile-oauth/worker.mjs --name spotify-mobile-oauth-probe --compatibility-date 2026-10-01 --workers-dev
+      - name: Configure OAuth client ID
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || secrets.CF_ACCOUNT_ID }}
+          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+          REDIRECT_URI: ${{ inputs.redirect_uri }}
+        run: |
+          printf '%s' "$SPOTIFY_CLIENT_ID" | npx --yes wrangler@4 secret put SPOTIFY_CLIENT_ID --name spotify-mobile-oauth-probe
+          printf '%s' "$REDIRECT_URI" | npx --yes wrangler@4 secret put REDIRECT_URI --name spotify-mobile-oauth-probe
