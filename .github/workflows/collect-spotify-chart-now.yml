@@ -30,6 +30,13 @@ jobs:
         uses: ./.github/actions/cloudflare-context
         with:
           api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      - name: Install Worker diagnostic tooling
+        working-directory: worker
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Redeploy Spotify collector and restore Queue consumer
+        if: github.event_name == 'push'
+        working-directory: worker
+        run: npx wrangler deploy --config wrangler.spotify-playcount.jsonc
       - name: Inspect Spotify Queue consumers and D1 sync state
         shell: bash
         run: |
@@ -69,9 +76,6 @@ jobs:
             throw new Error('Spotify Queue has no expected Worker consumer');
           }
           NODE
-      - name: Install Worker diagnostic tooling
-        working-directory: worker
-        run: npm ci --prefer-offline --no-audit --no-fund
       - name: Enqueue Spotify artist chart and inspect Worker errors
         working-directory: worker
         shell: bash
