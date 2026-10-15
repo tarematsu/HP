@@ -89,6 +89,9 @@ function paint(options) {
   container.replaceChildren();
   const ceiling = Number(yMax);
   if (!series.length || !dates.length || !Number.isFinite(ceiling) || ceiling <= 1) {
+    // Replace previously cached paint options too. An empty filtered series must
+    // never be resurrected by a later resize callback.
+    states.set(container, { options, lastWidth: 0 });
     appendEmptyState(container, emptyText, { className: emptyClass });
     return null;
   }
@@ -195,7 +198,7 @@ function ensureResizeObserver(container) {
   observeDashboardChartResize(container, () => {
     const state = states.get(container);
     if (state) paint(state.options);
-  }, { delay: 120, enabled: () => Boolean(states.get(container)) });
+  }, { delay: 120, watchHeight: false, enabled: () => Boolean(states.get(container)) });
   observedContainers.add(container);
 }
 
