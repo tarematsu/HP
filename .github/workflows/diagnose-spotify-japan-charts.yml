@@ -42,14 +42,34 @@ jobs:
           wait "$spotify_tail_pid"
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
-          const lines = readFileSync(process.env.RUNNER_TEMP + '/spotify-charts-tail.jsonl', 'utf8').split(/\r?\n/);
+          const raw = readFileSync(process.env.RUNNER_TEMP + '/spotify-charts-tail.jsonl', 'utf8');
+          const records = [];
+          let start = -1, depth = 0, quoted = false, escaped = false;
+          for (let i = 0; i < raw.length; i++) {
+            const ch = raw[i];
+            if (start < 0) { if (ch !== '{') continue; start = i; depth = 0; }
+            if (quoted) {
+              if (escaped) escaped = false;
+              else if (ch === '\\') escaped = true;
+              else if (ch === '"') quoted = false;
+              continue;
+            }
+            if (ch === '"') quoted = true;
+            else if (ch === '{') depth++;
+            else if (ch === '}' && --depth === 0) {
+              try { records.push(JSON.parse(raw.slice(start, i + 1))); } catch {}
+              start = -1;
+            }
+          }
           const allowed = new Set(['spotify_japan_chart_failed', 'spotify_scheduled_queue_dispatch_failed', 'spotify_artist_chart_queue_result']);
           const events = [];
           let invocations = 0;
-          for (const line of lines) {
-            let record;
-            try { record = JSON.parse(line); } catch { continue; }
+          const outcomes = [];
+          for (const record of records) {
+            if (!record.event && !record.outcome && !Array.isArray(record.logs)) continue;
             invocations++;
+            outcomes.push({ outcome: record.outcome, type: record.event?.type,
+              exceptions: (record.exceptions || []).map(item => String(item.message || item.name || '').slice(0, 240)) });
             for (const item of record.logs || []) {
               const message = Array.isArray(item.message) ? item.message.join(' ') : String(item.message || '');
               let event;
@@ -59,6 +79,6 @@ jobs:
                 status: event.status, reason: event.reason, error: event.error });
             }
           }
-          console.log(JSON.stringify({ event: 'spotify_japan_chart_diagnostic', invocations, events: events.slice(-30) }));
+          console.log(JSON.stringify({ event: 'spotify_japan_chart_diagnostic', invocations, outcomes: outcomes.slice(-20), events: events.slice(-30) }));
           if (!invocations) throw new Error('No Worker tail invocations captured');
           NODE
