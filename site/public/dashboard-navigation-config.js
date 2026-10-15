@@ -36,7 +36,8 @@ export const NAVIGATION = Object.freeze([
   },
   {
     id: 'subscriptions', label: '音楽ストリーミングサービス', sources: Object.freeze([
-      { id: 'spotify', label: 'Spotify', defaultMode: 'spotify', functions: Object.freeze([{ mode: 'spotify', label: 'Spotify' }]) },
+      { id: 'spotify', label: 'Spotify 再生数', defaultMode: 'spotify', functions: Object.freeze([{ mode: 'spotify', label: 'Spotify 再生数' }]) },
+      { id: 'spotify-charts', label: 'Spotify チャート', defaultMode: 'spotify-charts', functions: Object.freeze([{ mode: 'spotify-charts', label: 'Spotify チャート' }]) },
       { id: 'apple-music', label: 'Apple Music', defaultMode: 'apple-music', functions: Object.freeze([{ mode: 'apple-music', label: 'Apple Music' }]) },
       { id: 'amazon-music', label: 'Amazon Music', defaultMode: 'amazon-music', functions: Object.freeze([{ mode: 'amazon-music', label: 'Amazon Music' }]) },
       { id: 'youtube-music', label: 'YouTube Music', defaultMode: 'youtube-music', functions: Object.freeze([{ mode: 'youtube-music', label: 'YouTube Music' }]) },
@@ -65,6 +66,7 @@ export const ROUTES = Object.freeze({
   'hinata-likes': Object.freeze({ kind: 'stationhead', panel: 'likes', viewId: 'hinataView' }),
   ranking: lazy('leaderboardView', 'ranking', 'loadLeaderboardView', 'leaderboardNotice', 'stationhead leaderboard', 'リーダーボードデータの初期化に失敗しました。再読み込みしてください。', { source: 'stationhead' }),
   followers: lazy('followersView', 'followers', 'loadFollowersView', 'followersNotice', 'followers', 'フォロワーデータの初期化に失敗しました。再読み込みしてください。', { source: 'stationhead' }),
+  'spotify-charts': lazy('spotifyChartsView', 'spotify-charts', 'loadSpotifyChartsView', 'spotifyChartsNotice', 'spotify charts', 'Spotifyチャートの初期化に失敗しました。再読み込みしてください。'),
   spotify: lazy('spotifyView', 'spotify', 'loadSpotifyView', 'spotifyNotice', 'spotify', 'Spotify再生数の初期化に失敗しました。再読み込みしてください。'),
   'amazon-music': lazy('amazonMusicView', 'amazon-music', 'loadAmazonMusicView', 'amazonMusicNotice', 'amazon music', 'Amazon Musicデータの初期化に失敗しました。再読み込みしてください。'),
   'apple-music': lazy('appleMusicView', 'apple-music', 'loadAppleMusicView', 'appleMusicNotice', 'apple music', 'Apple Musicデータの初期化に失敗しました。再読み込みしてください。'),

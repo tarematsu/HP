@@ -1,0 +1,39 @@
+name: Start Spotify Japan chart history
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'worker/src/spotify-japan-charts.js'
+      - 'worker/src/spotify-japan-chart-data.js'
+      - 'packages/sh-shared/spotify-charts.mjs'
+      - '.github/workflows/backfill-spotify-japan-charts.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: spotify-japan-charts-backfill-start
+  cancel-in-progress: false
+jobs:
+  start:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Wait for production deployment
+        working-directory: worker
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/wait-for-production-deploy.mjs
+      - uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      - name: Start or resume current charts and checkpointed history in the Worker Queue
+        working-directory: worker
+        run: node scripts/diagnose-spotify-artist-chart-actions.mjs

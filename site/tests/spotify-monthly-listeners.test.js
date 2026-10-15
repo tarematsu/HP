@@ -73,18 +73,13 @@ test('monthly listener endpoint returns JSON even when a legacy format query is 
   assert.equal(payload.trend.sakurazaka46[0].monthly_listeners, 450738);
 });
 
-test('Spotify monthly listeners render on a separate canvas from total playcount delta', () => {
-  const shell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
-  const runtime = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
-  assert.match(shell, /Spotify 全曲合計再生数前日比推移（坂道3グループ）/);
-  assert.match(shell, /Spotify 月間リスナー推移（坂道3グループ）/);
-  assert.match(shell, /id="spotifyTrendCharts"/);
-  assert.match(shell, /id="spotifyMonthlyListenerTrendCharts"/);
-  assert.doesNotMatch(shell, /全曲合計再生数前日比・月間リスナー推移/);
-  assert.doesNotMatch(shell, /spotify-monthly-listeners\?format=svg|<img[^>]+Spotify月間リスナー/);
-  assert.match(runtime, /containerId: 'spotifyTrendCharts', metricKey: 'total_delta'/);
-  assert.match(runtime, /containerId: 'spotifyMonthlyListenerTrendCharts', metricKey: 'monthly_listeners'/);
-  assert.match(runtime, /renderTrendChart\(monthlyListenerTrend\(monthlyListenerRows\)/);
-  assert.match(runtime, /latestFormatter: formatInteger/);
-  assert.match(runtime, /drawDashboardLine/);
+test('Spotify monthly listeners move to the chart view and share the metric renderer', () => {
+  const shell = readFileSync(new URL('../public/spotify-charts-shell.js', import.meta.url), 'utf8');
+  const plays = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
+  const runtime = readFileSync(new URL('../public/spotify-charts.js', import.meta.url), 'utf8');
+  assert.match(shell, /月間リスナー推移/);
+  assert.match(shell, /spotifyChartsListenersBody/);
+  assert.doesNotMatch(plays, /月間リスナー/);
+  assert.match(runtime, /spotify-trend-chart/);
+  assert.match(runtime, /renderTrendChart\(monthlyListenerTrend\(monthlyRows\)/);
 });

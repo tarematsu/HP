@@ -1,4 +1,5 @@
-export const API_CONTRACT_VERSION = 22;
+import { spotifyChartModelKey } from './spotify-charts.mjs';
+export const API_CONTRACT_VERSION = 23;
 
 export const MUSIC_SERVICE_API_MODELS = Object.freeze({
   '/api/youtube-music': 'music-service:youtube_music',
@@ -26,6 +27,7 @@ export const API_GROUPS = Object.freeze({
     { path: '/api/nogizaka-listening-party', methods: ['GET'], description: 'Today Nogizaka official listening-party listener series and summary' },
     { path: '/api/host-history', methods: ['GET'], description: 'Sakurazaka broadcast sessions and session details' },
     { path: '/api/first-week-comparison', methods: ['GET'], description: 'Title-track first-week comparison aligned to JST prerelease midnight' },
+    { path: '/api/spotify-charts', methods: ['GET'], description: 'Japan Spotify chart availability and year-partitioned rank history' },
     { path: '/api/spotify-playcounts', methods: ['GET'], description: 'Latest finalized Spotify cumulative playcounts by Sakamichi group' },
     { path: '/api/spotify-monthly-listeners', methods: ['GET'], description: 'Daily Spotify monthly-listener snapshots and SVG trend chart for tracked idols' },
     { path: '/api/spotify-playlists', methods: ['GET'], description: 'Public Spotify playlist memberships discovered from open.spotify.com pages' },
@@ -101,6 +103,9 @@ export function materializedApiKey(input) {
     const artists = String(url.searchParams.get('artists') || '').trim().toLowerCase();
     if (artists && artists !== 'sakamichi') return null;
     return 'spotify-playcounts';
+  }
+  if (pathname === '/api/spotify-charts' && onlyParameters(url, ['chart', 'year'])) {
+    return spotifyChartModelKey(url.searchParams.get('chart') || '', url.searchParams.get('year') || '');
   }
   if (pathname === '/api/followers' && onlyParameters(url)) return 'followers';
   if (MUSIC_SERVICE_API_MODELS[pathname]) return musicServiceMaterializedKey(pathname, url);

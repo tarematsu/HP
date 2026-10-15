@@ -1,3 +1,4 @@
+import { enqueueJapanCharts } from './spotify-japan-charts.js';
 import { runSpotifyArtistChartScheduled } from './spotify-artist-chart-collector.js';
 import { runSpotifyScheduledWork } from './spotify-playcount-scheduled-run.js';
 import {
@@ -60,6 +61,7 @@ export async function processSpotifyScheduledDispatchEntry(entry, env, dependenc
   try {
     if (cron === SPOTIFY_ARTIST_CHART_CRON) {
       const result = await runArtistChart(env, scheduledTime);
+      if (env?.SPOTIFY_PLAYCOUNT_QUEUE?.send) await enqueueJapanCharts(env, scheduledTime);
       console.info(JSON.stringify({
         event: 'spotify_artist_chart_queue_result',
         status: result?.skipped ? 'skipped' : 'collected',

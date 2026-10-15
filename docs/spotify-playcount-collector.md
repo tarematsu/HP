@@ -140,3 +140,44 @@ Only the first successful post-update snapshot is finalized for a date. Earlier
 05:00/06:00/etc. stale candidates are discarded when the next hourly attempt
 starts. Once finalized or carried forward, that date is not recollected by later
 hourly Cron invocations.
+
+## Spotify Japan Charts
+
+The streaming navigation separates **Spotify 再生数** (global cumulative playcounts)
+from **Spotify チャート** (monthly listeners and Japan chart ranks). The latter has
+monthly listeners, Top Artists, Top Songs, Top Albums, and Viral panels. Each panel
+uses the common music-service shell, graph, filters and history table. Artists,
+songs and viral charts have daily/weekly periods; albums have weekly periods.
+The four tracked artist identities reuse `SPOTIFY_MONTHLY_LISTENER_ARTISTS`,
+including 坂道選抜. Collaborations match every credited tracked artist by Spotify ID.
+
+`spotify-japan-charts.js` handles collection in the existing Spotify Queue. The
+normal artist-chart schedule enqueues the seven series. Latest captures start or
+resume backward collection, three periods per invocation with a 30-second delayed
+continuation. Spotify's `displayChart.chartMetadata.dimensions.earliestDate`
+bounds backfill; 2017-01-01 is a conservative fallback when it is absent. An
+unavailable latest series is reported separately, and a historical HTTP 404 is
+never recorded as an empty/absent ranking. 429/5xx do not advance the failed cursor.
+A private, short-lived access-token cache avoids refreshing OAuth or rewriting
+Worker secrets for every backfill delivery. It stores no refresh token, is excluded
+from public model keys, and is invalidated on HTTP 401.
+Every successful period is checkpointed and retried idempotently. Later latest
+captures repair gaps since the previous successful latest. The Queue uses one
+consumer at a time to serialize state, year-shard and refresh-token updates.
+
+Matched entities, ranking metadata and Top Songs stream counts are stored as
+prebuilt year-partitioned responses (`spotify-charts:<chart-id>:<year>`) in the
+existing Pages response bucket. `spotify-charts` lists per-series availability,
+years and backfill progress; private checkpoints live outside public model keys.
+No new D1 tables or full-history D1 scans are needed. Pages streams the existing
+Worker read models; it performs no upstream chart collection or history assembly.
+The browser loads only the selected chart's year shards and uses the same selected
+range and artist filter for graph and table. Captured absence is out of chart;
+uncollected dates break lines. Monthly listeners keep their existing retained
+snapshots: Spotify Charts does not provide historic monthly-listener counts.
+
+`Start Spotify Japan chart history` runs after the normal production deployment
+on relevant main changes, or manually, to enqueue the initial work using the
+existing Cloudflare Actions credential. It does not require another cookie or
+expose Spotify tokens in Actions. A successful start means work was enqueued;
+completion and source availability are visible in `/api/spotify-charts` and the UI.

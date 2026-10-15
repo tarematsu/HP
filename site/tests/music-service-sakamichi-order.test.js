@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const spotifyShell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
-const spotifyRuntime = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
+const spotifyRuntime = readFileSync(new URL('../public/spotify-trend-chart.js', import.meta.url), 'utf8');
 const amazonShell = readFileSync(new URL('../public/amazon-music-shell.js', import.meta.url), 'utf8');
 const commonRuntime = readFileSync(new URL('../public/music-service-runtime-common.js', import.meta.url), 'utf8');
 

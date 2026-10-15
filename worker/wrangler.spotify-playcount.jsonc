@@ -48,7 +48,7 @@
         "max_batch_timeout": 1,
         "max_retries": 4,
         "dead_letter_queue": "stationhead-spotify-playcount-dlq",
-        "max_concurrency": 2
+        "max_concurrency": 1
       }
     ],
     "producers": [

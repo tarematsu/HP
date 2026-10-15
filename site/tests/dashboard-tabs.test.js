@@ -39,7 +39,7 @@ test('dashboard starts on the shared Buddies Stationhead view without duplicate 
   }
   assert.match(tabsClient, /id: 'buddies', label: 'Buddies', defaultMode: 'current'/);
   assert.match(tabsClient, /mode: 'ranking', label: 'リーダーボード'/);
-  assert.match(tabsClient, /id: 'spotify', label: 'Spotify'/);
+  assert.match(tabsClient, /id: 'spotify', label: 'Spotify 再生数'/);
   assert.match(page, /<nav class="dashboard-navigation" aria-label="統計メニュー">/);
   for (const id of ['sectionTabs', 'sourceTabs', 'functionTabs']) assert.match(page, new RegExp(`id="${id}"`));
   assert.doesNotMatch(page, /id="currentView"|id="historyView"|id="likesView"/);

@@ -153,6 +153,21 @@ try {
       const url = new URL(route.request().url()); const path = url.pathname + url.search;
       if (!live) {
         const fixture = emptyFixture();
+        if (url.pathname === '/api/spotify-charts') {
+          const date = new Date().toISOString().slice(0, 10);
+          const year = date.slice(0, 4);
+          if (url.searchParams.has('chart')) {
+            Object.assign(fixture, { periods: [{ chart_date: date, status: 'ok', entries: [
+              { id: 'chart-fixture', title: 'Fixture Track', rank: 12, artists: ['sakurazaka46'], streams: 12345 },
+            ] }] });
+          } else {
+            Object.assign(fixture, { charts: ['artist', 'regional', 'album', 'viral'].flatMap(type =>
+              (type === 'album' ? ['weekly'] : ['daily', 'weekly']).map(period => ({
+                chart_id: `${type}-jp-${period}`, status: 'ok', years: [year], latest_chart_date: date,
+                observed_at: Date.now(), history_complete: true,
+              }))) });
+          }
+        }
         if (url.pathname === '/api/kkbox') {
           // Test a real, renderable KKBOX read model rather than the generic
           // fixture (which lacks "service" and exercises only error fallback).
@@ -212,7 +227,7 @@ try {
       if (navigationForMode(mode).section.id === 'stationhead') {
         assert.deepEqual(sourceLabels, ['Buddies', 'Ohisama', 'Nogizaka', 'リーダーボード', 'フォロワー'], `${mode}: Stationhead targets only`);
       } else {
-        assert.deepEqual(sourceLabels, ['Spotify', 'Apple Music', 'Amazon Music', 'YouTube Music', '🇹🇼KKBOX', '🇨🇳QQ音乐', '🇨🇳酷狗音乐'], `${mode}: streaming services only`);
+        assert.deepEqual(sourceLabels, ['Spotify 再生数', 'Spotify チャート', 'Apple Music', 'Amazon Music', 'YouTube Music', '🇹🇼KKBOX', '🇨🇳QQ音乐', '🇨🇳酷狗音乐'], `${mode}: streaming services only`);
       }
       if (navigationForMode(mode).source.id === 'buddies') {
         assert.deepEqual(await page.locator('#functionTabs button').allTextContents(), stationheadFunctions, `${mode}: Buddies functions`);
@@ -270,7 +285,7 @@ try {
       }
       if (mode === 'spotify') {
         assert.deepEqual(await page.locator('#spotifyView .music-service-view-tabs button').allTextContents(),
-          ['総再生数', '今年リリース曲再生数', '月間リスナー', '順位']);
+          ['総再生数', '今年リリース曲再生数']);
         const tableBounds = await page.locator('#spotifyTrackSection table').evaluate(table => {
           const wrap = table.closest('.table-wrap');
           const bounds = wrap.getBoundingClientRect();
@@ -281,10 +296,20 @@ try {
         });
         assert.equal(tableBounds.length, 4);
         assert.ok(tableBounds.every(cell => cell.fits), `${label}: all playcount columns fit without horizontal scrolling`);
-        for (const group of ['plays', 'year', 'listeners', 'ranks']) {
+        for (const group of ['plays', 'year']) {
           const panel = page.locator(`#spotifyView .music-service-group[data-group="${group}"]`);
           assert.equal(await panel.locator('[data-service-group]').count(), 2, `${group}: graph and list share one panel`);
         }
+      }
+      if (mode === 'spotify-charts') {
+        assert.deepEqual(await page.locator('#spotifyChartsView .music-service-view-tabs button').allTextContents(),
+          ['月間リスナー', 'トップアーティスト', 'トップソング', 'トップアルバム', 'バイラル']);
+        for (const group of ['listeners', 'artist', 'regional', 'album', 'viral']) {
+          const panel = page.locator(`#spotifyChartsView .music-service-group[data-group="${group}"]`);
+          assert.equal(await panel.locator('[data-service-group]').count(), 2, `${group}: graph and list share one panel`);
+        }
+        assert.deepEqual(await page.locator('[data-spotify-chart-artist]').allTextContents(),
+          ['すべて', '櫻坂', '乃木坂', '日向坂', '坂道選抜']);
       }
       if (mode === 'kkbox') {
         // A visible lazy shell does not mean its asynchronous data render has
