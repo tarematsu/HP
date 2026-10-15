@@ -162,7 +162,7 @@ test('accessible old Viral dates seed an ordinary history backfill even after ar
   });
   const latest = { ...work('latest'), chart_id: 'viral-jp-daily' };
   await runJapanChartWork(h.env, latest, h);
-  for (let i = 0; i < 8; i++) await runJapanChartWork(h.env, h.messages.findLast(item => item.body.mode === 'archive').body, h);
+  for (let i = 0; i < 9; i++) await runJapanChartWork(h.env, h.messages.findLast(item => item.body.mode === 'archive').body, h);
   const state = JSON.parse(h.r2.values.get('spotify/charts/state/viral-jp-daily.json'));
   assert.equal(state.status, 'archived');
   assert.equal(state.latest_chart_date, '2020-05-14');
