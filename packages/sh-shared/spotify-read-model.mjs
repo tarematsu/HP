@@ -133,7 +133,12 @@ function compareTrackRows(a, b) {
 }
 
 export function spotifyPayload(artist, rows = []) {
-  const uniqueRows = dedupeTrackRows(rows).sort(compareTrackRows);
+  // A missing daily baseline is treated as zero for the first reported count.
+  // Resolve after edition deduplication so a measured delta always wins.
+  const uniqueRows = dedupeTrackRows(rows).map((row) => ({
+    ...row,
+    delta: integer(row.delta) ?? Math.max(0, integer(row.playcount) ?? 0),
+  })).sort(compareTrackRows);
   const tracks = uniqueRows.map((row, index) => ({
     rank: index + 1,
     track_id: integer(row.track_id),
