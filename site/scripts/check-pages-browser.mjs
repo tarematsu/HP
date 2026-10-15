@@ -362,6 +362,20 @@ try {
       for (const button of await page.locator('.dashboard-view:not([hidden]) .music-service-view-tabs button[data-service-group]').all()) {
         await button.click(); await page.waitForTimeout(live ? 700 : 400); if (!live) await page.waitForLoadState('networkidle', { timeout: 45000 });
         const group = await button.getAttribute('data-service-group'); assert.equal(await button.getAttribute('aria-pressed'), 'true'); const visible = page.locator('.dashboard-view:not([hidden]) .music-service-group:not([hidden])'); assert.equal(await visible.count(), 1); assert.equal(await visible.getAttribute('data-group'), group);
+        if (!live && mode === 'spotify-charts' && group === 'regional' && width <= 390) {
+          const card = page.locator('#spotifyChartCards-regional .dashboard-responsive-card').first();
+          assert.equal(await card.locator('.dashboard-responsive-field').count(), 5,
+            'Spotify Top Songs exposes date, group, rank, title and streams');
+          assert.equal(await page.locator('#spotifyChartsView .spotify-chart-history-table').isVisible(), false,
+            'mobile ranks use shared cards instead of a clipped table');
+          const fields = await card.locator('.dashboard-responsive-field').evaluateAll(nodes =>
+            nodes.map(node => ({ key: node.dataset.key, text: node.textContent,
+              bounds: node.getBoundingClientRect().toJSON() })));
+          assert.deepEqual(fields.map(field => field.key), ['date', 'artist', 'rank', 'title', 'streams']);
+          assert.ok(fields.every(field => field.bounds.width > 0
+            && field.bounds.left >= -2 && field.bounds.right <= width + 2
+            && field.text.trim()), `Spotify chart card has missing/clipped fields: ${JSON.stringify(fields)}`);
+        }
         if (!live && mode === 'youtube-music' && group === 'playlists') {
           const overflow = await page.locator('#youtubeMusicPlaylistBody').evaluate((body) => {
             const row = document.createElement('tr');
