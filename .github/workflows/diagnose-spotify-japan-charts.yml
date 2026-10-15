@@ -1,0 +1,64 @@
+name: Diagnose Spotify Japan chart collection
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/diagnose-spotify-japan-charts.yml']
+permissions:
+  contents: read
+concurrency:
+  group: spotify-japan-charts-diagnostic
+  cancel-in-progress: false
+jobs:
+  diagnose:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      - name: Install Worker diagnostic tooling
+        working-directory: worker
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Observe current chart failures while queuing one retry
+        working-directory: worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          spotify_worker_name=$(node -p "JSON.parse(require('fs').readFileSync('wrangler.spotify-playcount.jsonc','utf8')).name")
+          (timeout 75s npx wrangler tail "$spotify_worker_name" --format json \
+            > "$RUNNER_TEMP/spotify-charts-tail.jsonl" \
+            2> "$RUNNER_TEMP/spotify-charts-tail.err" || true) &
+          spotify_tail_pid=$!
+          sleep 6
+          node scripts/diagnose-spotify-artist-chart-actions.mjs
+          wait "$spotify_tail_pid"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const lines = readFileSync(process.env.RUNNER_TEMP + '/spotify-charts-tail.jsonl', 'utf8').split(/\r?\n/);
+          const allowed = new Set(['spotify_japan_chart_failed', 'spotify_scheduled_queue_dispatch_failed', 'spotify_artist_chart_queue_result']);
+          const events = [];
+          let invocations = 0;
+          for (const line of lines) {
+            let record;
+            try { record = JSON.parse(line); } catch { continue; }
+            invocations++;
+            for (const item of record.logs || []) {
+              const message = Array.isArray(item.message) ? item.message.join(' ') : String(item.message || '');
+              let event;
+              try { event = JSON.parse(message); } catch { continue; }
+              if (!allowed.has(event.event)) continue;
+              events.push({ event: event.event, chart_id: event.chart_id, mode: event.mode,
+                status: event.status, reason: event.reason, error: event.error });
+            }
+          }
+          console.log(JSON.stringify({ event: 'spotify_japan_chart_diagnostic', invocations, events: events.slice(-30) }));
+          if (!invocations) throw new Error('No Worker tail invocations captured');
+          NODE
