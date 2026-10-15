@@ -366,7 +366,7 @@ try {
           const card = page.locator('#spotifyChartCards-regional .dashboard-responsive-card').first();
           assert.equal(await card.locator('.dashboard-responsive-field').count(), 5,
             'Spotify Top Songs exposes date, group, rank, title and streams');
-          assert.equal(await page.locator('#spotifyChartsView .spotify-chart-history-table').isVisible(), false,
+          assert.equal(await page.locator('#spotifyChartBody-regional').locator('xpath=ancestor::table').isVisible(), false,
             'mobile ranks use shared cards instead of a clipped table');
           const fields = await card.locator('.dashboard-responsive-field').evaluateAll(nodes =>
             nodes.map(node => ({ key: node.dataset.key, text: node.textContent,
