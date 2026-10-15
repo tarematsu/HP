@@ -54,17 +54,19 @@ jobs:
             try {
               const record = JSON.parse(line);
               for (const item of record.logs || []) {
-                const detail = String((item?.message || []).join(' '));
+                const detail = Array.isArray(item?.message) ? item.message.join(' ') : String(item?.message || '');
                 if (/spotify_scheduled_queue_dispatch_failed|Spotify Charts|Spotify artist chart|source-not-published/i.test(detail)) {
                   matches.push(detail.slice(0, 900));
                 }
               }
             } catch {}
           }
+          const diagnosticStderr = readFileSync(process.env.RUNNER_TEMP + '/spotify-artist-chart-tail.err', 'utf8').trim();
           console.log(JSON.stringify({
             event: 'spotify_chart_worker_tail_diagnostic',
             matching_error_count: matches.length,
             errors: matches.slice(-5),
+            tail_status: diagnosticStderr ? diagnosticStderr.slice(-350) : 'no diagnostic errors',
           }));
           NODE
       - name: Confirm chart persisted in Cloudflare D1
