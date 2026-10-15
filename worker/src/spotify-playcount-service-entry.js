@@ -1,5 +1,6 @@
-import app from './spotify-playcount-entry.js';
 import { runSpotifyArtistChartScheduled } from './spotify-artist-chart-collector.js';
+import { SPOTIFY_CHART_WORK, processJapanChartMessage, enqueueJapanCharts } from './spotify-japan-charts.js';
+import app from './spotify-playcount-entry.js';
 import {
   enqueueSpotifyScheduledDispatch,
   SPOTIFY_ARTIST_CHART_CRON,
@@ -11,14 +12,22 @@ export { SPOTIFY_ARTIST_CHART_CRON, SPOTIFY_PLAYCOUNT_CRON };
 async function runScheduled(controller, env, ctx) {
   if (controller?.cron === SPOTIFY_ARTIST_CHART_CRON) {
     const rawTime = Number(controller?.scheduledTime);
-    return runSpotifyArtistChartScheduled(env, Number.isFinite(rawTime) ? rawTime : Date.now());
+    await runSpotifyArtistChartScheduled(env, Number.isFinite(rawTime) ? rawTime : Date.now());
+    return enqueueJapanCharts(env, Number.isFinite(rawTime) ? rawTime : Date.now());
   }
   return app.scheduled(controller, env, ctx);
 }
 
 export default {
   scheduled: runScheduled,
-  queue: app.queue,
+  async queue(batch, env, ctx) {
+    const regular = [];
+    for (const entry of batch.messages || []) {
+      if (entry.body?.message_type === SPOTIFY_CHART_WORK) await processJapanChartMessage(entry, env);
+      else regular.push(entry);
+    }
+    if (regular.length) return app.queue({ ...batch, messages: regular }, env, ctx);
+  },
   async fetch(request, env) {
     const internal = await enqueueSpotifyScheduledDispatch(request, env);
     if (internal) return internal;

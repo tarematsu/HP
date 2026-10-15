@@ -1,52 +1,20 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { japanChartSeries } from '../public/spotify-chart-series.js';
 
-import { normalizeArtistRankSeries } from '../public/spotify.js';
-
-test('Spotify daily artist rank graph keeps only the three Sakamichi groups in Sakurazaka-first order', () => {
-  const trend = {
-    rosterFirst: [{
-      snapshot_date: '2026-09-29', artist_name: 'Roster First', current_rank: 1,
-      total_delta: 1, top10_year_delta: 1,
-    }],
-    sakurazaka46: [{
-      snapshot_date: '2026-09-29', artist_name: '櫻坂46', current_rank: 16,
-      total_delta: 1, top10_year_delta: 1,
-    }],
-    nogizaka46: [{
-      snapshot_date: '2026-09-29', artist_name: '乃木坂46', current_rank: 10,
-      total_delta: 1, top10_year_delta: 1,
-    }],
-    hinatazaka46: [{
-      snapshot_date: '2026-09-29', artist_name: '日向坂46', current_rank: 20,
-      total_delta: 1, top10_year_delta: 1,
-    }],
-  };
-  const chart = {
-    days: [{
-      chart_date: '2026-09-29',
-      entries: [
-        { artist_key: 'rosterFirst', artist_name: 'Roster First', rank: 1 },
-        { artist_key: 'sakurazaka46', artist_name: '櫻坂46', rank: 12 },
-        { artist_key: 'nogizaka46', artist_name: '乃木坂46', rank: 8 },
-        { artist_key: 'hinatazaka46', artist_name: '日向坂46', rank: 18 },
-      ],
-    }],
-  };
-
-  const ranked = normalizeArtistRankSeries(chart, trend);
-  assert.deepEqual(ranked.map((item) => item.artistKey), ['sakurazaka46', 'nogizaka46', 'hinatazaka46']);
-  assert.deepEqual(ranked.map((item) => item.colorIndex), [0, 1, 2]);
+test('Japan charts retain individual songs and all four tracked groups without playcount history', () => {
+  const rows = [{ chart_date: '2026-10-13', status: 'ok', entries: [
+    { id: 'a', title: '曲A', artists: ['sakurazaka46'], rank: 3 },
+    { id: 'b', title: '曲B', artists: ['sakurazaka46'], rank: 25 },
+    { id: 'c', title: '選抜', artists: ['sakamichi-selection'], rank: 10 },
+  ] }];
+  assert.equal(japanChartSeries(rows, ['2026-10-13']).length, 3);
+  assert.deepEqual(japanChartSeries(rows, ['2026-10-13'], 'sakamichi-selection').map(s => s.title), ['選抜']);
 });
 
-
-test('artist rankings render without any playcount history and retain name matching', () => {
-  const ranked = normalizeArtistRankSeries({ days: [{ chart_date: '2026-10-13', entries: [
-    { artist_key: 'nogizaka46', artist_name: '乃木坂46', rank: 18 },
-    { artist_name: '櫻坂46', rank: 25 },
-    { artist_key: 'other', artist_name: 'Other', rank: 1 },
-  ] }] });
-  assert.deepEqual(ranked.map(series => [series.artistKey, series.points[0].rank]), [
-    ['sakurazaka46', 25], ['nogizaka46', 18],
-  ]);
+test('captured absence is out-of-chart while uncollected dates break chart lines', () => {
+  const rows = [{ chart_date: '2026-10-11', status: 'ok', entries: [{ id: 'a', title: '曲A', artists: ['sakurazaka46'], rank: 3 }] },
+    { chart_date: '2026-10-13', status: 'ok', entries: [] }];
+  const [series] = japanChartSeries(rows, ['2026-10-11', '2026-10-12', '2026-10-13']);
+  assert.deepEqual(series.points.map(p => p.rank), [3, null, 201]);
 });

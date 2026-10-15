@@ -132,5 +132,5 @@ test('first-week comparison no longer adds any initial-entry module', () => {
   assert.doesNotMatch(entry, /first-week|dashboard-tab-order/);
   assert.match(stationheadModel, /value: 'broadcasts', label: 'リスパ'/);
   assert.doesNotMatch(stationheadModel, /view: 'spotify'/);
-  assert.match(tabs, /id: 'spotify', label: 'Spotify', defaultMode: 'spotify'/);
+  assert.match(tabs, /id: 'spotify', label: 'Spotify 再生数', defaultMode: 'spotify'/);
 });

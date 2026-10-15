@@ -52,7 +52,7 @@ test('all active client Canvas charts reuse the shared Canvas foundation', () =>
     historyPeriod: periodChart,
     historyRanking: leaderboardRuntime,
     historyBroadcasts: broadcastsChart,
-    spotify: runtimes['spotify.js'],
+    spotify: readFileSync(new URL('../public/spotify-trend-chart.js', import.meta.url), 'utf8'),
     subscriptionRank: rankChart,
     followers: runtimes['followers.js'],
     firstWeek: runtimes['first-week-comparison.js'],

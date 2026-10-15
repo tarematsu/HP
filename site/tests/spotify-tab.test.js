@@ -19,8 +19,9 @@ test('Spotify uses the shared music-service layout and Canvas runtime', () => {
   assert.match(shell, /mountMusicServiceView/);
   assert.match(shell, /musicServiceSection/);
   assert.match(shell, /musicServiceTable/);
-  assert.match(runtime, /dashboard-chart-canvas\.js\?v=/);
-  assert.match(runtime, /drawDashboardLine/);
-  assert.match(runtime, /prepareDashboardCanvas/);
+  const canvas = readFileSync(new URL('../public/spotify-trend-chart.js', import.meta.url), 'utf8');
+  assert.match(canvas, /dashboard-chart-canvas\.js\?v=/);
+  assert.match(canvas, /drawDashboardLine/);
+  assert.match(canvas, /prepareDashboardCanvas/);
   assert.match(runtime, /loadSpotifyReadModel/);
 });

@@ -1,3 +1,4 @@
+import { SPOTIFY_CHART_MODEL_KEYS } from '../../packages/sh-shared/spotify-charts.mjs';
 import { PAGES_QUERY_MODEL_KEYS } from './pages-query-contract.js';
 import {
   MATERIALIZED_API_VARIANTS,
@@ -10,6 +11,7 @@ export const TRACK_HISTORY_MODEL_KEY = 'track-history';
 export const FOLLOWERS_MODEL_KEY = 'followers';
 const DEFAULT_STALE_FALLBACK_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const PRODUCER_EVENT_DRIVEN_R2_MODEL_KEYS = new Set([
+  ...SPOTIFY_CHART_MODEL_KEYS,
   'apple-music',
   'apple-music-playlists',
   'amazon-music',

@@ -3,13 +3,14 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const shell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
-const runtime = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
+const runtime = readFileSync(new URL('../public/spotify-trend-chart.js', import.meta.url), 'utf8');
+const charts = readFileSync(new URL('../public/spotify-charts.js', import.meta.url), 'utf8');
+const plays = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
 
 test('Spotify graphs restrict rendered series to the three Sakamichi groups in Sakurazaka-first order', () => {
   assert.match(runtime, /GRAPH_ARTIST_KEYS = Object\.freeze\(\['sakurazaka46', 'nogizaka46', 'hinatazaka46'\]\)/);
   assert.match(runtime, /GRAPH_ARTIST_KEYS\.indexOf\(a\.artistKey\) - GRAPH_ARTIST_KEYS\.indexOf\(b\.artistKey\)/);
-  assert.match(runtime, /graphTrendSeries\(normalizeTrendSeries\(trend\)\)/);
-  assert.match(runtime, /monthlyListenerTrend\(monthlyListenerRows\)/);
+  assert.match(runtime, /graphTrendSeries\(normalizeTrendSeries\(trend\), artistFilter\)/);
   assert.match(runtime, /nogizaka46: '#8264b0'/);
   assert.match(runtime, /sakurazaka46: '#b43a75'/);
   assert.match(runtime, /hinatazaka46: '#287ca6'/);
@@ -24,14 +25,9 @@ test('Spotify renderer emits single-point markers directly on the shared canvas'
   assert.doesNotMatch(shell, /showSinglePointSeries|artistNameFromPoint|MutationObserver/);
 });
 
-test('Spotify accessibility labels describe the separated Sakamichi trends directly', () => {
-  assert.match(runtime, /櫻坂46・乃木坂46・日向坂46の全曲合計再生数前日比推移/);
-  assert.match(runtime, /櫻坂46・乃木坂46・日向坂46のSpotify月間リスナー推移/);
-  assert.match(runtime, /Spotify日本 Daily Top Artist を取得できていません。/);
-  assert.match(runtime, /対象アーティストは200位圏外です。/);
-  assert.match(runtime, /Spotify日本 Daily Top Artist の順位推移。1位が上。/);
-  assert.match(shell, /Spotify 全曲合計再生数前日比推移（坂道3グループ）/);
-  assert.match(shell, /Spotify 月間リスナー推移（坂道3グループ）/);
-  assert.doesNotMatch(shell, /全曲合計再生数前日比・月間リスナー推移/);
-  assert.doesNotMatch(shell, /alignPlaycountAccessibilityLabels|alignArtistRankTerminology|installGraphPostProcessing/);
+test('separated Spotify views describe their own metrics', () => {
+  assert.match(plays, /櫻坂46・乃木坂46・日向坂46の全曲合計再生数前日比推移/);
+  assert.match(charts, /坂道グループの月間リスナー推移/);
+  assert.match(charts, /取得済みの圏外と未取得の欠測を区別/);
+  assert.doesNotMatch(shell, /group: 'listeners'|group: 'ranks'/);
 });
