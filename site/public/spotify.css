@@ -124,32 +124,14 @@
   }
 }
 
-/* Japan chart rows become readable full-width cards on small screens. */
-@media (max-width: 760px) {
-  #spotifyChartsView .spotify-chart-history-table { display: block; width: 100%; min-width: 0; }
-  #spotifyChartsView .spotify-chart-history-table thead {
-    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
-    overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+/* The shared responsive-table contract switches to cards below 600px. */
+@media (max-width: 600px) {
+  #spotifyChartsView .spotify-chart-responsive-cards .dashboard-responsive-field[data-key="title"] {
+    grid-column: 1 / -1;
+    font-weight: 700;
   }
-  #spotifyChartsView .spotify-chart-history-table tbody { display: block; }
-  #spotifyChartsView .spotify-chart-history-table tbody tr {
-    display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
-    gap: 2px 8px; padding: 7px 0; border-bottom: 1px solid var(--line);
+  #spotifyChartsView .spotify-chart-responsive-cards .dashboard-responsive-field[data-key="streams"] {
+    grid-column: 1 / -1;
+    text-align: right;
   }
-  #spotifyChartsView .spotify-chart-history-table tbody td {
-    display: block; min-width: 0; width: auto; padding: 0; border: 0;
-    white-space: normal; overflow-wrap: anywhere;
-  }
-  #spotifyChartsView .spotify-chart-history-table tbody td:nth-child(2) { color: var(--muted); }
-  #spotifyChartsView .spotify-chart-history-table tbody td:nth-child(3) { text-align: right; font-weight: 700; }
-  #spotifyChartsView .spotify-chart-history-table tbody td:nth-child(4) {
-    grid-column: 1 / -1; font-weight: 700;
-  }
-  #spotifyChartsView .spotify-chart-history-table tbody td:nth-child(5) {
-    grid-column: 1 / -1; text-align: right; font-variant-numeric: tabular-nums;
-  }
-  #spotifyChartsView .spotify-chart-history-table tbody td:nth-child(5)::before {
-    content: '再生数 '; font-weight: 400; color: var(--muted);
-  }
-  #spotifyChartsView .spotify-chart-history-table tbody td[colspan] { grid-column: 1 / -1; }
 }
