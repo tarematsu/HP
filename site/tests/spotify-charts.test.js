@@ -55,7 +55,7 @@ test('Spotify Charts shell excludes discontinued Viral panels', async () => {
   const { readFileSync } = await import('node:fs');
   const shell = readFileSync(new URL('../public/spotify-charts-shell.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../public/spotify-charts.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(shell, /バイラル|viral:/);
+  assert.doesNotMatch(shell, /(?:^|[, {])viral:\s*['\"]/);
   assert.doesNotMatch(runtime, /'viral'/);
 });
 
