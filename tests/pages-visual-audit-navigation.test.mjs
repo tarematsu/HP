@@ -30,7 +30,7 @@ test('visual audit waits for history data and fresh chart paint before recording
 test('visual audit requires every listening-party subview to be visibly rendered', () => {
   assert.match(source, /listeningPartyMode/);
   assert.match(source, /if \(listeningPartyMode\) \{[\s\S]*?await revealPage\(page\);[\s\S]*?await settle\(page\);[\s\S]*?try \{/);
-  assert.match(source, /#unofficialListeningTbody tr'[\\s\\S]*?timeout: 45_000/);
+  assert.match(source, /#unofficialListeningTbody tr'[\s\S]*?timeout: 45_000/);
   assert.match(source, /official listening party chart was not painted/);
   assert.match(source, /official listening party table was not rendered/);
   assert.match(source, /first-week comparison panel is hidden/);
