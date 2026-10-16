@@ -310,8 +310,8 @@ try {
       }
       if (mode === 'spotify-charts') {
         assert.deepEqual(await page.locator('#spotifyChartsView .music-service-view-tabs button').allTextContents(),
-          ['月間リスナー', 'トップアーティスト', 'トップソング', 'トップアルバム']);
-        for (const group of ['listeners', 'artist', 'regional', 'album']) {
+          ['月間リスナー', 'トップアーティスト', 'トップソング', 'トップアルバム', 'Viral Hits Japan']);
+        for (const group of ['listeners', 'artist', 'regional', 'album', 'viral-hits']) {
           const panel = page.locator(`#spotifyChartsView .music-service-group[data-group="${group}"]`);
           assert.equal(await panel.locator('[data-service-group]').count(), 2, `${group}: graph and list share one panel`);
         }
