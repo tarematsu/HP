@@ -262,3 +262,12 @@ test('a successful history step cannot hide a failure in latest collection', asy
   assert.equal(updated.latest_status, 'error');
   assert.equal(updated.history_status, 'ok');
 });
+
+test('manual Spotify Queue recovery uses the same twenty-one series registry as the scheduled collector', async () => {
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('../scripts/diagnose-spotify-artist-chart-actions.mjs', import.meta.url), 'utf8');
+  assert.match(source, /import \{ SPOTIFY_CHART_SOURCES \}/);
+  assert.match(source, /for \(const spec of SPOTIFY_CHART_SOURCES\)/);
+  assert.doesNotMatch(source, /\bSPOTIFY_JP_CHARTS\b/);
+  assert.equal(SPOTIFY_CHART_SOURCES.length, 21);
+});
