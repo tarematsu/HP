@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseSpotifyPlaylistPositions } from '../src/spotify-playlist-collector.js';
-import { runJapanChartWork, SPOTIFY_VIRAL_HITS_JAPAN_URL } from '../src/spotify-japan-charts.js';
-import { spotifyChartModelKey, SPOTIFY_JP_CHARTS } from '../../packages/sh-shared/spotify-charts.mjs';
+import { runJapanChartWork, enqueueJapanCharts, SPOTIFY_VIRAL_HITS_JAPAN_URL } from '../src/spotify-japan-charts.js';
+import { spotifyChartModelKey, SPOTIFY_EDITORIAL_PLAYLISTS } from '../../packages/sh-shared/spotify-charts.mjs';
 import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 
 const PLAYLIST_ID = '37i9dQZF1DWZZbpkxU5t9L';
@@ -71,7 +71,7 @@ test('malformed and missing public embeds fail rather than recording false absen
 
 test('playlist publisher saves daily snapshots in existing year shards and publishes no backfill jobs', async () => {
   const h = harness();
-  assert.equal(SPOTIFY_JP_CHARTS.at(-1).source, 'spotify-playlist-position');
+  assert.equal(SPOTIFY_EDITORIAL_PLAYLISTS.find(item => item.id === 'viral-hits-jp-daily').source, 'spotify-playlist-position');
   await runJapanChartWork(h.env, work(), h.deps);
   assert.equal(h.requests.length, 1);
   assert.equal(h.requests[0], 'https://open.spotify.com/embed/playlist/' + PLAYLIST_ID);
@@ -102,4 +102,40 @@ test('fetch or parser failure preserves the last good playlist ranking snapshot'
   assert.equal(state.latest_chart_date, '2026-10-16');
   const model = JSON.parse(h.r2.values.get(pagesR2ResponseKey(spotifyChartModelKey('viral-hits-jp-daily', '2026'))));
   assert.equal(model.periods.length, 1);
+});
+
+test('all sixteen editorial playlists are scheduled and their positions stay separate by playlist ID', async () => {
+  const h = harness();
+  await enqueueJapanCharts(h.env);
+  assert.equal(SPOTIFY_EDITORIAL_PLAYLISTS.length, 16);
+  assert.deepEqual(
+    h.messages.filter(item => SPOTIFY_EDITORIAL_PLAYLISTS.some(source => source.id === item.body.chart_id))
+      .map(item => item.body.chart_id),
+    SPOTIFY_EDITORIAL_PLAYLISTS.map(source => source.id),
+  );
+  const first = SPOTIFY_EDITORIAL_PLAYLISTS[0];
+  const last = SPOTIFY_EDITORIAL_PLAYLISTS.at(-1);
+  await runJapanChartWork(h.env, { ...work(), chart_id: first.id }, h.deps);
+  await runJapanChartWork(h.env, { ...work(), chart_id: last.id }, h.deps);
+  assert.equal(h.requests[0], 'https://open.spotify.com/embed/playlist/' + first.playlistId);
+  assert.equal(h.requests[1], 'https://open.spotify.com/embed/playlist/' + last.playlistId);
+  for (const item of [first, last]) {
+    const state = JSON.parse(h.r2.values.get('spotify/charts/state/' + item.id + '.json'));
+    assert.equal(state.playlist_url, item.url);
+    assert.equal(state.playlist_total, 60);
+    const shard = JSON.parse(h.r2.values.get(pagesR2ResponseKey(spotifyChartModelKey(item.id, '2026'))));
+    assert.equal(shard.periods[0].entries[0].rank, 2);
+  }
+  assert.notEqual(first.id, last.id);
+});
+
+test('podcast episodes retain their row offset but do not prevent new-release playlist captures', () => {
+  const id = SPOTIFY_EDITORIAL_PLAYLISTS.find(item => item.slug === 'new-music-wednesday');
+  const html = embed().replace(
+    '"uri":"spotify:track:0000000000000000000001"',
+    '"uri":"spotify:episode:0000000000000000000001"',
+  );
+  const playlist = parseSpotifyPlaylistPositions(html, id.url);
+  assert.equal(playlist.total, 60);
+  assert.deepEqual(playlist.tracks.map(row => row.rank), [2, 23, 30, 60]);
 });

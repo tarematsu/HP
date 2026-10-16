@@ -1,4 +1,4 @@
-import { SPOTIFY_JP_CHARTS, spotifyChartModelKey } from '../../packages/sh-shared/spotify-charts.mjs';
+import { SPOTIFY_CHART_SOURCES, spotifyChartModelKey } from '../../packages/sh-shared/spotify-charts.mjs';
 import { refreshSpotifyChartsAccessToken, updateSpotifyRefreshWorkerSecret } from './spotify-artist-chart-collector.js';
 import { normalizeJapanChart } from './spotify-japan-chart-data.js';
 import { parseSpotifyPlaylistPositions } from './spotify-playlist-collector.js';
@@ -48,7 +48,7 @@ async function publishIndex(env, body, dependencies = {}) {
     return;
   }
   const charts = [];
-  for (const spec of SPOTIFY_JP_CHARTS) charts.push(await loadState(r2, spec));
+  for (const spec of SPOTIFY_CHART_SOURCES) charts.push(await loadState(r2, spec));
   await save(r2, 'spotify-charts', { ok: true, updated_at: now, charts });
 }
 async function tokenFingerprint(value) {
@@ -87,8 +87,8 @@ async function fetchChart(token, spec, date, fetchImpl, r2) {
   }
   return normalizeJapanChart(await response.json(), spec, date === 'latest' ? '' : date);
 }
-async function fetchViralHitsJapan(fetchImpl, now) {
-  const response = await fetchImpl('https://open.spotify.com/embed/playlist/37i9dQZF1DWZZbpkxU5t9L', {
+async function fetchEditorialPlaylist(fetchImpl, spec, now) {
+  const response = await fetchImpl(`https://open.spotify.com/embed/playlist/${spec.playlistId}`, {
     headers: {
       accept: 'text/html,application/xhtml+xml',
       'accept-language': 'ja-JP,ja;q=0.9,en;q=0.5',
@@ -97,17 +97,19 @@ async function fetchViralHitsJapan(fetchImpl, now) {
     signal: AbortSignal.timeout(20000),
   });
   if (!response.ok) {
-    const error = new Error(`Spotify Viral Hits Japan embed HTTP ${response.status}`);
+    const error = new Error(`Spotify playlist ${spec.id} HTTP ${response.status}`);
     error.retryAfter = Math.max(60, Math.min(3600, Number(response.headers?.get?.('retry-after')) || 600));
     throw error;
   }
-  const playlist = parseSpotifyPlaylistPositions(await response.text(), SPOTIFY_VIRAL_HITS_JAPAN_URL);
-  if (!/viral hits japan/i.test(playlist.name) || playlist.total < 40 || playlist.total > 100) {
-    throw new Error('Spotify Viral Hits Japan returned an unexpected or incomplete playlist');
+  const playlist = parseSpotifyPlaylistPositions(await response.text(), spec.url);
+  // Valid playlist ownership/identity is established by the requested Spotify ID,
+  // not a mutable editorial title (or a false assumption of exactly 50 songs).
+  if (playlist.id !== spec.playlistId || playlist.total < 10 || playlist.total > spec.limit) {
+    throw new Error(`Invalid or incomplete Spotify playlist ${spec.id}`);
   }
   const date = new Date(now + 9 * 60 * 60_000).toISOString().slice(0, 10);
   return { capture: { chart_date: date, observed_at: now, status: 'ok', entries: playlist.tracks },
-    total: playlist.total };
+    total: playlist.total, name: playlist.name };
 }
 async function persist(r2, spec, capture) {
   const year = capture.chart_date.slice(0, 4);
@@ -127,11 +129,11 @@ async function enqueue(env, body, delaySeconds = 30) {
 // Cron only enqueues bounded jobs. Spotify fetch/normalization/backfill never runs in Pages HTTP.
 export async function enqueueJapanCharts(env, scheduledTime = Date.now()) {
   const day = new Date(scheduledTime).toISOString().slice(0, 10);
-  for (const spec of SPOTIFY_JP_CHARTS) await enqueue(env, { chart_id: spec.id, mode: 'latest', day });
+  for (const spec of SPOTIFY_CHART_SOURCES) await enqueue(env, { chart_id: spec.id, mode: 'latest', day });
 }
 export async function runJapanChartWork(env, body, dependencies = {}) {
   if (RETIRED_CHART_IDS.has(body?.chart_id)) return;
-  const spec = SPOTIFY_JP_CHARTS.find(item => item.id === body?.chart_id);
+  const spec = SPOTIFY_CHART_SOURCES.find(item => item.id === body?.chart_id);
   if (!spec || body.message_version !== 1 || !['latest', 'history', 'publish'].includes(body.mode)) throw new Error('Invalid chart work');
   if (body.mode === 'publish') return publishIndex(env, body, dependencies);
   const r2 = env.PAGES_RESPONSE_R2;
@@ -144,16 +146,17 @@ export async function runJapanChartWork(env, body, dependencies = {}) {
   const fetchImpl = dependencies.fetchImpl || fetch;
   if (spec.type === 'playlist') {
     if (body.mode !== 'latest') return;
-    // A Spotify-curated playlist is not the discontinued Viral 50 chart.
+    // Spotify-curated playlist positions are not the discontinued Viral 50 ranking.
     // Preserve the actual playlist index, starting at 1, once per JST day.
-    const { capture, total } = await fetchViralHitsJapan(fetchImpl, now);
+    const { capture, total, name } = await fetchEditorialPlaylist(fetchImpl, spec, now);
     if (state.latest_chart_date && capture.chart_date < state.latest_chart_date) return;
     await persist(r2, spec, capture);
     state.latest_chart_date = capture.chart_date;
     state.earliest_chart_date ||= capture.chart_date;
     state.source_start ||= capture.chart_date;
     state.source = 'spotify-playlist-position';
-    state.playlist_url = SPOTIFY_VIRAL_HITS_JAPAN_URL;
+    state.playlist_url = spec.url;
+    state.playlist_name = name;
     state.playlist_total = total;
     state.observed_at = now;
     state.checked_at = now;
@@ -225,7 +228,7 @@ export async function processJapanChartMessage(entry, env, dependencies = {}) {
     entry.ack?.();
   } catch (error) {
     console.error(JSON.stringify({ event: 'spotify_japan_chart_failed', chart_id: entry.body?.chart_id, mode: entry.body?.mode, error: String(error.message).slice(0, 240) }));
-    const spec = SPOTIFY_JP_CHARTS.find(item => item.id === entry.body?.chart_id);
+    const spec = SPOTIFY_CHART_SOURCES.find(item => item.id === entry.body?.chart_id);
     if (spec && entry.body.mode !== 'publish') {
       try {
         const state = await loadState(env.PAGES_RESPONSE_R2, spec);

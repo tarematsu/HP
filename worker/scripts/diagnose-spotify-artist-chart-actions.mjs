@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { SPOTIFY_ARTIST_CHART_CRON } from '../src/scheduled-crons.js';
-import { SPOTIFY_JP_CHARTS } from '../../packages/sh-shared/spotify-charts.mjs';
+import { SPOTIFY_CHART_SOURCES } from '../../packages/sh-shared/spotify-charts.mjs';
 
 const account = process.env.CLOUDFLARE_ACCOUNT_ID;
 const token = process.env.CLOUDFLARE_API_TOKEN;
@@ -22,7 +22,7 @@ async function api(path, body) {
 const queues = await api('/queues');
 const queue = queues.find(row => row.queue_name === queueName);
 if (!queue?.queue_id) throw new Error('Spotify Queue unavailable');
-// Manual recovery also queues the six supported chart series.
+// Manual recovery also queues five charts and sixteen official editorial playlists.
 for (const spec of SPOTIFY_JP_CHARTS) {
   await api(`/queues/${queue.queue_id}/messages`, {
     body: { message_type: 'spotify-japan-chart-work', message_version: 1,
@@ -35,4 +35,4 @@ await api(`/queues/${queue.queue_id}/messages`, {
     cron: SPOTIFY_ARTIST_CHART_CRON, scheduled_time: Date.now() },
   content_type: 'json',
 });
-console.log('Queued all six supported Japan Charts and an independent legacy artist-chart retry.');
+console.log('Queued all 21 Spotify chart/playlist sources and an independent legacy artist-chart retry.');

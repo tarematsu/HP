@@ -59,18 +59,38 @@ test('Spotify Charts shell excludes discontinued Viral panels', async () => {
   assert.doesNotMatch(runtime, /'viral'/);
 });
 
-test('Viral Hits Japan remains distinct from retired Viral 50 and exposes a read-model shard', async () => {
-  const { SPOTIFY_JP_CHARTS, spotifyChartModelKey } = await import('../../packages/sh-shared/spotify-charts.mjs');
-  const enabled = SPOTIFY_JP_CHARTS.map(spec => spec.id);
-  assert.equal(enabled.includes('viral-jp-daily'), false);
-  assert.equal(enabled.includes('viral-jp-weekly'), false);
-  assert.equal(enabled.includes('viral-hits-jp-daily'), true);
+test('all 16 Spotify editorial playlists live in a separate navigation route', async () => {
+  const { SPOTIFY_JP_CHARTS, SPOTIFY_CHART_SOURCES, SPOTIFY_EDITORIAL_PLAYLISTS, spotifyChartModelKey } =
+    await import('../../packages/sh-shared/spotify-charts.mjs');
+  const { SPOTIFY_PLAYLIST_TABS } = await import('../public/spotify-playlists-catalog.js');
+  assert.equal(SPOTIFY_JP_CHARTS.length, 5);
+  assert.equal(SPOTIFY_EDITORIAL_PLAYLISTS.length, 16);
+  assert.equal(SPOTIFY_CHART_SOURCES.length, 21);
+  assert.deepEqual(SPOTIFY_PLAYLIST_TABS.map(tab => tab.chartId), SPOTIFY_EDITORIAL_PLAYLISTS.map(spec => spec.id));
+  assert.equal(new Set(SPOTIFY_EDITORIAL_PLAYLISTS.map(spec => spec.playlistId)).size, 16);
   assert.equal(spotifyChartModelKey('viral-hits-jp-daily', '2026'), 'spotify-charts:viral-hits-jp-daily:2026');
+  assert.equal(spotifyChartModelKey('viral-jp-weekly', '2026'), null);
+  const sources = NAVIGATION.find(section => section.id === 'subscriptions').sources;
+  assert.equal(sources.find(source => source.id === 'spotify-playlists')?.label, 'Spotify プレイリスト');
+  assert.equal(ROUTES['spotify-playlists'].viewId, 'spotifyPlaylistsView');
+  assert.notEqual(ROUTES['spotify-playlists'].viewId, ROUTES['spotify-charts'].viewId);
   const { readFileSync } = await import('node:fs');
-  const shell = readFileSync(new URL('../public/spotify-charts-shell.js', import.meta.url), 'utf8');
+  const chartShell = readFileSync(new URL('../public/spotify-charts-shell.js', import.meta.url), 'utf8');
+  const playlistShell = readFileSync(new URL('../public/spotify-playlists-shell.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../public/spotify-charts.js', import.meta.url), 'utf8');
-  assert.match(shell, /Viral Hits Japan/);
-  assert.match(shell, /掲載順|掲載位置/);
-  assert.match(shell, /公式順位ではありません/);
-  assert.match(runtime, /type === 'viral-hits' \? '掲載位置'/);
+  assert.doesNotMatch(chartShell, /Viral Hits Japan/);
+  assert.match(playlistShell, /SPOTIFY_PLAYLIST_TABS/);
+  assert.match(playlistShell, /掲載位置/);
+  assert.match(runtime, /loadSpotifyPlaylistsView/);
+});
+
+test('playlist year shards are accepted only for registered IDs', async () => {
+  const response = await onRequestGet({
+    request: new Request('https://example.test/api/spotify-charts?chart=playlist-idol-pop-japan-daily&year=2026'),
+    env: { PAGES_READ_MODEL_SERVICE: { fetch(request) {
+      assert.equal(new URL(request.url).searchParams.get('key'), 'spotify-charts:playlist-idol-pop-japan-daily:2026');
+      return Response.json({ ok: true });
+    } } },
+  });
+  assert.equal(response.status, 200);
 });
