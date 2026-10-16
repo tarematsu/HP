@@ -73,6 +73,7 @@ export function auditRoutes() {
 async function inspectView(page, tab, viewport, outDir) {
   const historyMode = tab.section === 'stationhead' && ['daily', 'weekly', 'monthly'].includes(tab.mode);
   const listeningPartyMode = tab.section === 'stationhead' && tab.source === 'buddies' && tab.mode === 'broadcasts';
+  const leaderboardMode = tab.mode === 'ranking';
   if (historyMode) {
     await page.evaluate(() => {
       window.__pagesAuditHistory = { mode: null, rowCount: null, paintedMode: null };
@@ -90,6 +91,20 @@ async function inspectView(page, tab, viewport, outDir) {
       }, tab.mode, { timeout: 20_000 });
     } catch {
       historyWaitTimedOut = true;
+    }
+  }
+  let leaderboardWaitTimedOut = false;
+  if (leaderboardMode) {
+    try {
+      await page.waitForFunction(() => {
+        const cadence = document.getElementById('leaderboardCadence')?.textContent?.trim();
+        const tableRows = document.querySelectorAll('#leaderboardTbody tr').length;
+        const mobileCards = document.getElementById('leaderboardMobileList')?.children.length || 0;
+        const emptyVisible = !document.getElementById('leaderboardChartEmpty')?.hidden;
+        return Boolean(cadence && cadence !== '-' && (tableRows > 0 || mobileCards > 0 || emptyVisible));
+      }, null, { timeout: 20_000 });
+    } catch {
+      leaderboardWaitTimedOut = true;
     }
   }
   let listeningPartyWaitTimedOut = false;
@@ -182,6 +197,14 @@ async function inspectView(page, tab, viewport, outDir) {
         const item = selected.getBoundingClientRect(); const strip = selected.closest('.played-tracks-period-scroller').getBoundingClientRect();
         return item.left >= strip.left - 1 && item.right <= strip.right + 1;
       })() : null,
+      leaderboardAudit: route.mode === 'ranking' ? {
+        updatedAt: document.getElementById('leaderboardUpdatedAt')?.textContent?.trim() || '',
+        cadence: document.getElementById('leaderboardCadence')?.textContent?.trim() || '',
+        tableRows: document.querySelectorAll('#leaderboardTbody tr').length,
+        mobileCards: document.getElementById('leaderboardMobileList')?.children.length || 0,
+        chartVisible: visible(document.getElementById('leaderboardChart')),
+        emptyVisible: visible(document.getElementById('leaderboardChartEmpty')),
+      } : null,
       listeningPartyAudit: route.mode === 'broadcasts' ? {
         officialChartPainted: Number(document.getElementById('chart')?.dataset.sakurazakaMaxMinute || 0) > 0,
         officialTableReady: document.getElementById('thead')?.closest('table')?.dataset.officialPartyReadModel === 'complete',
@@ -202,6 +225,13 @@ async function inspectView(page, tab, viewport, outDir) {
   if (state.channelHistory && (!state.channelHistory.rows || !state.channelHistory.painted)) issues.push('channel history data or chart was not rendered');
   if (state.playedPeriodVisible === false) issues.push('selected playback period is outside the visible date strip');
   if (historyWaitTimedOut) issues.push('history data or chart was not rendered within 20 seconds');
+  if (leaderboardWaitTimedOut) issues.push('leaderboard data was not rendered within 20 seconds');
+  if (leaderboardMode && state.leaderboardAudit) {
+    const audit = state.leaderboardAudit;
+    if (!audit.cadence || audit.cadence === '-') issues.push('leaderboard metadata was not rendered');
+    if (audit.tableRows < 1 && audit.mobileCards < 1 && !audit.emptyVisible) issues.push('leaderboard table has no rows');
+    if (!audit.chartVisible && !audit.emptyVisible) issues.push('leaderboard chart is hidden');
+  }
   if (listeningPartyWaitTimedOut) issues.push('listening party subviews were not fully rendered within 20 seconds');
   if (listeningPartyMode && state.listeningPartyAudit) {
     const audit = state.listeningPartyAudit;
