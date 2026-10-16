@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseSpotifyPlaylistPositions } from '../src/spotify-playlist-collector.js';
 import { runJapanChartWork, SPOTIFY_VIRAL_HITS_JAPAN_URL } from '../src/spotify-japan-charts.js';
-import { spotifyChartModelKey, SPOTIFY_JP_CHARTS } from '../../packages/sh-shared/spotify-charts.mjs';
+import { spotifyChartModelKey, SPOTIFY_EDITORIAL_PLAYLISTS } from '../../packages/sh-shared/spotify-charts.mjs';
 import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 
 const PLAYLIST_ID = '37i9dQZF1DWZZbpkxU5t9L';
@@ -71,7 +71,7 @@ test('malformed and missing public embeds fail rather than recording false absen
 
 test('playlist publisher saves daily snapshots in existing year shards and publishes no backfill jobs', async () => {
   const h = harness();
-  assert.equal(SPOTIFY_JP_CHARTS.at(-1).source, 'spotify-playlist-position');
+  assert.equal(SPOTIFY_EDITORIAL_PLAYLISTS.find(item => item.id === 'viral-hits-jp-daily').source, 'spotify-playlist-position');
   await runJapanChartWork(h.env, work(), h.deps);
   assert.equal(h.requests.length, 1);
   assert.equal(h.requests[0], 'https://open.spotify.com/embed/playlist/' + PLAYLIST_ID);
