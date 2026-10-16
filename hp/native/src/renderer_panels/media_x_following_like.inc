@@ -11,12 +11,12 @@ LR"JS(
   const likeWaitChoicesMs = [4 * 1000, 7 * 1000, 9 * 1000];
   const maxLikeAttemptsPerPost = 3;
   const pauseAfterLikeMs = 800;
-  // 1.25x scroll distance per tick; retain original DOM scan cadence.
+  // Targeted 30-70px scroll steps; retain the existing DOM scan cadence.
   const scrollDelayMs = 450;
   const idleScrollDelayMs = 600;
   const emptyTimelinePollMs = 600;
-  const maxScrollStepPx = 56;
-  const minScrollStepPx = 20;
+  const maxScrollStepPx = 70;
+  const minScrollStepPx = 30;
   const targetTolerancePx = 18;
   const filterAttribute = 'data-homepanel-x-filtered';
   const filterStyleId = 'homepanel-x-timeline-filter';
@@ -206,7 +206,7 @@ LR"JS(
     if (!rect || rect.width <= 0 || rect.height <= 0) return null;
     return { button, rect };
   };
-  const targetY = () => Math.round(innerHeight * 0.62);
+  const targetY = () => Math.round(innerHeight * 0.75);
   // Filter and select from one fresh timeline snapshot. Previously the room
   // was queried three times per scroll tick, and eligible posts were sorted.
   const scanTimeline = (articles, attempted = null) => {
