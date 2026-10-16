@@ -46,8 +46,8 @@ test('offline warning overlay suppresses repeated unchanged hide/paint/repositio
 test('cancelled X acceleration restores previous scroll cadence and distances', () => {
   assert.match(xRuntime, /const scrollDelayMs = 450/);
   assert.match(xRuntime, /const idleScrollDelayMs = 600/);
-  assert.match(xRuntime, /const maxScrollStepPx = 56/);
-  assert.match(xRuntime, /const minScrollStepPx = 20/);
+  assert.match(xRuntime, /const maxScrollStepPx = 70/);
+  assert.match(xRuntime, /const minScrollStepPx = 30/);
   assert.match(xRuntime, /Math\.ceil\(Math\.abs\(distance\) \* 0\.70\)/);
   assert.match(xRuntime, /const accountCooldownMs = 48 \* 60 \* 60 \* 1000/);
   assert.match(xRuntime, /const authorFiltered =/);
