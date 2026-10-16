@@ -3,7 +3,10 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['.github/workflows/diagnose-spotify-japan-charts.yml']
+    paths:
+      - '.github/workflows/diagnose-spotify-japan-charts.yml'
+      - 'worker/scripts/diagnose-spotify-artist-chart-actions.mjs'
+      - 'packages/sh-shared/spotify-charts.mjs'
 permissions:
   contents: read
 concurrency:
@@ -32,6 +35,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          node --check scripts/diagnose-spotify-artist-chart-actions.mjs
           spotify_worker_name=$(node -p "JSON.parse(require('fs').readFileSync('wrangler.spotify-playcount.jsonc','utf8')).name")
           (timeout 75s npx wrangler tail "$spotify_worker_name" --format json \
             > "$RUNNER_TEMP/spotify-charts-tail.jsonl" \
