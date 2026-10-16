@@ -26,6 +26,10 @@ const DASHBOARD_ROUTE_MODULES = Object.freeze({
     shell: () => import('/spotify-charts-shell.js'),
     runtime: () => import('/spotify-charts.js'),
   }),
+  'spotify-playlists': Object.freeze({
+    shell: () => import('/spotify-playlists-shell.js'),
+    runtime: () => import('/spotify-charts.js'),
+  }),
   spotify: Object.freeze({
     shell: () => import('/spotify-shell.js?v=20261004.1'),
     runtime: () => import('/spotify.js?v=20261004.1'),
