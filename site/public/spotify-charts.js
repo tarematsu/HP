@@ -129,7 +129,7 @@ async function loadActive({ refresh = false } = {}) {
   const sequence = ++requestId;
   filters.bind(); filters.sync();
   try {
-    setNotice('spotifyChartsNotice');
+    setNotice(noticeId);
     if (!playlist && group === 'listeners') {
       const model = await loadSpotifyReadModel({ force: refresh });
       if (sequence !== requestId) return;
