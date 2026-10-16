@@ -43,3 +43,14 @@ test('visual audit flags clipped playlist tables even when document width fits',
   assert.match(source, /playlist table is horizontally clipped/);
   assert.match(source, /music-service-playlist-table/);
 });
+
+
+test('visual audit waits for leaderboard metadata and rendered rows before screenshot', () => {
+  assert.match(source, /leaderboardMode/);
+  assert.match(source, /leaderboardWaitTimedOut/);
+  assert.match(source, /leaderboardCadence/);
+  assert.match(source, /leaderboardTbody/);
+  assert.match(source, /leaderboard data was not rendered within 20 seconds/);
+  assert.match(source, /leaderboard metadata was not rendered/);
+  assert.match(source, /leaderboard table has no rows/);
+});
