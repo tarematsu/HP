@@ -141,48 +141,50 @@ Only the first successful post-update snapshot is finalized for a date. Earlier
 starts. Once finalized or carried forward, that date is not recollected by later
 hourly Cron invocations.
 
-## Spotify Japan Charts
+## Spotify Japan Charts and Editorial Playlists
 
-The streaming navigation separates **Spotify 再生数** (global cumulative playcounts)
-from **Spotify チャート** (monthly listeners and Japan chart ranks). The latter has
-monthly listeners, Top Artists, Top Songs, Top Albums, and Viral Hits Japan
-playlist-position panels. Each panel uses the common music-service shell,
-graph, filters and history table. Artists and songs have daily/weekly periods;
-albums have weekly periods. The playlist has daily observed positions only.
-The four tracked artist identities reuse `SPOTIFY_MONTHLY_LISTENER_ARTISTS`,
-including 坂道選抜. Collaborations match every credited tracked artist by Spotify ID.
+The streaming navigation has **Spotify 再生数**, **Spotify チャート**, and
+**Spotify プレイリスト** as separate sources. The chart source retains monthly
+listeners and the five Japan rankings (Top Artists and Top Songs: daily/weekly,
+Top Albums: weekly). Editorial playlists use an independent source tab with
+16 selectable official playlist IDs, shared graph/history/table/filter layout,
+and their **original 1-based 掲載位置** rather than an official chart rank.
 
-`spotify-japan-charts.js` handles collection in the existing Spotify Queue. The
-normal artist-chart schedule enqueues the five Japan chart series plus the
-separate Viral Hits Japan playlist snapshot. Latest captures start or
-resume backward collection, one period per invocation with a 30-second delayed
-continuation. Spotify's `displayChart.chartMetadata.dimensions.earliestDate`
-bounds backfill; 2017-01-01 is a conservative fallback when it is absent.
+The 16 playlist IDs and names are registered in the `SPOTIFY_EDITORIAL_PLAYLISTS`
+manifest in `packages/sh-shared/spotify-charts.mjs`; labels in
+`site/public/spotify-playlists-catalog.js` must stay in the same order.
+The list includes Spotify Japan 急上昇チャート, アイドルポップ：ジャパン,
+Viral Hits Japan, Tokyo Super Hits!, J-Pop Hits, Teen Culture,
+Buzz Tracker #バズトラ, Hot Hits Japan, New Music Wednesday,
+New Music Friday Japan, EQUAL Japan, RADAR: Early Noise,
+Fresh Finds Japan, キラキラポップ：ジャパン, J-Rock ON!!, and K-Pop ON! (온).
 
-Viral 50 daily and weekly charts were removed after the source was discontinued
-and historical archive probes could not retrieve data. The canonical series list
-and publicly accessible model-key allowlist no longer include Viral; existing
-queued `latest`, `history`, `archive`, and `publish` messages for these
-retired IDs are acknowledged without API, storage or further Queue work.
-Any historical R2 objects already present are not deleted by deployment; they
-are no longer published in the index or reachable through the public chart API.
-The other five chart series and their checkpoints are unaffected.
+`spotify-japan-charts.js` schedules five chart series and 16 playlist sources
+into the existing Spotify Worker Queue each day. The normal chart history cursor
+runs independently, one date per Queue message with a 30-second delay.
+Playlist sources have no historical Spotify snapshot API; instead, they
+capture the **current** public embed playlist track order each Japan-local day.
+The order accounts for unrelated tracks and podcast episodes. The collector
+matches all four Sakamichi artist identities by Spotify ID, falling back to
+exact displayed names only when no artist IDs are present. The collection
+validates a plausible list length before persisting and never fabricates
+entries for unavailable days or failed scrapes.
 
-Viral Hits Japan is the official Spotify editorial playlist at
-`https://open.spotify.com/playlist/37i9dQZF1DWZZbpkxU5t9L`. It is **not**
-the retired Viral 50 ranking. Every daily scheduled chart sweep reads the
-public embed page (without OAuth/Web API or D1 access) and stores the
-1-based original playlist positions, including gaps occupied by unrelated
-artists. Tracks credited to 櫻坂46, 乃木坂46, 日向坂46, or 坂道選抜 are matched
-by Spotify artist ID, falling back to artist names when the embed contains
-no artist IDs. Each successful daily snapshot persists in existing R2
-year shards under `spotify-charts:viral-hits-jp-daily:<year>`. Empty tracked
-results are valid only if a full playlist is parsed; HTTP failures and
-incomplete embeds preserve the previous snapshot and retry without inventing
-rank changes. The playlist's historical edits are not available via the
-current Spotify API, so tracking starts with the first successful snapshot
-and no retrospective reconstruction is attempted. Pages labels these values
-as `掲載位置` rather than an official chart rank.
+All series use the existing R2 year-partitioned responses
+`spotify-charts:<source-id>:<year>` and the common index
+`spotify-charts`. Pages only reads materialized Worker snapshots, with no
+upstream fetching or D1 history assembly. The playlist tab lazily reads the
+selected playlist's year shards and displays all 16 individual sources.
+The preexisting Viral Hits snapshots keep the compatible
+`viral-hits-jp-daily` ID; the retired Viral 50 daily/weekly chart IDs
+remain disabled. Previously queued work for retired IDs is acknowledged
+without new collection.
+
+Playlist history begins with the first successful collection. Historic
+Spotify playlist contents cannot be reconstructed from the current API.
+Earlier X posts and third-party archives may be imported separately only
+when backed by verifiable source links and explicit, dated positions; a
+mere mention of a playlist feature must not be construed as a rank.
 
 A private, short-lived access-token cache avoids refreshing OAuth or rewriting
 Worker secrets for every backfill delivery. It stores no refresh token, is excluded
