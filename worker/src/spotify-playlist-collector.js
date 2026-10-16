@@ -242,6 +242,9 @@ export function parseSpotifyPlaylistPositions(html, sourceUrl) {
   const tracks = [];
   for (const [index, row] of entity.trackList.entries()) {
     if (!row || typeof row !== 'object') throw new Error('Malformed Spotify playlist row');
+    // Podcasts are non-track playlist entries; they still occupy a playlist
+    // position, but cannot be interpreted as an unlisted music track.
+    if (nestedStrings(row).some(value => /^spotify:episode:[A-Za-z0-9]{22}$/.test(String(value)))) continue;
     const id = spotifyTrackId(row);
     const title = rowTitle(row);
     // Never silently interpret a truncated or anonymized embed as zero
@@ -270,7 +273,7 @@ export function parseSpotifyPlaylistPositions(html, sourceUrl) {
       streams: null,
     });
   }
-  return { id: playlistIdFromUrl(url), url, name: text(entity.title ?? entity.name) || 'Viral Hits Japan',
+  return { id: playlistIdFromUrl(url), url, name: text(entity.title ?? entity.name) || playlistIdFromUrl(url),
     total: entity.trackList.length, tracks };
 }
 
