@@ -6,7 +6,15 @@ export const SPOTIFY_JP_CHARTS = Object.freeze([
 ].map(([type, period]) => Object.freeze({ id: `${type}-jp-${period}`, type, period,
   limit: 200,
   start: '2017-01-01',
-})));
+})).concat([Object.freeze({
+  id: 'viral-hits-jp-daily',
+  type: 'playlist',
+  period: 'daily',
+  limit: 100,
+  // Playlist-order history starts when this collector is first deployed.
+  start: '2026-10-16',
+  source: 'spotify-playlist-position',
+})]));
 export function spotifyChartModelKey(chart = '', year = '') {
   if (!chart && !year) return 'spotify-charts';
   if (!SPOTIFY_JP_CHARTS.some(item => item.id === chart)) return null;

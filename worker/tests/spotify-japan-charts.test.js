@@ -102,11 +102,11 @@ test('404 historical dates stay missing and HTTP 429 does not advance their curs
   assert.equal(model.periods.length, 1);
 });
 
-test('only five supported series enqueue without reading Spotify or D1; retired keys are rejected', async () => {
+test('only six supported series enqueue without reading Spotify or D1; retired keys are rejected', async () => {
   const h = harness(() => { throw new Error('No network in dispatcher'); });
   await enqueueJapanCharts(h.env);
   assert.deepEqual(h.messages.map(item => item.body.chart_id), SPOTIFY_JP_CHARTS.map(item => item.id));
-  assert.equal(h.messages.length, 5);
+  assert.equal(h.messages.length, 6);
   assert.equal(materializedApiKey('https://example.test/api/spotify-charts?chart=regional-jp-daily&year=2026'), 'spotify-charts:regional-jp-daily:2026');
   assert.equal(materializedApiKey('https://example.test/api/spotify-charts?chart=bad&year=2026'), null);
   assert.equal(materializedApiKey('https://example.test/api/spotify-charts?chart=viral-jp-daily&year=2026'), null);
@@ -163,7 +163,7 @@ test('published chart index excludes retired Viral series even if old state rema
   await runJapanChartWork(h.env, { ...work('publish'), requested_at: 1 }, h);
   const index = JSON.parse(h.r2.values.get(pagesR2ResponseKey('spotify-charts')));
   assert.deepEqual(index.charts.map(item => item.chart_id), SPOTIFY_JP_CHARTS.map(item => item.id));
-  assert.equal(index.charts.length, 5);
+  assert.equal(index.charts.length, 6);
 });
 
 test('each source invocation writes each R2 key at most once', async () => {
@@ -237,7 +237,7 @@ test('new Japan Chart jobs enqueue before an independent legacy collector fails'
   });
   const response = await enqueueSpotifyScheduledDispatch(scheduled, env);
   assert.equal(response.status, 200);
-  assert.equal(messages.filter(message => message.message_type === SPOTIFY_CHART_WORK).length, 5);
+  assert.equal(messages.filter(message => message.message_type === SPOTIFY_CHART_WORK).length, 6);
   const legacy = messages.find(message => message.message_type === 'spotify-scheduled-dispatch');
   assert.ok(legacy);
   let retries = 0;
@@ -245,7 +245,7 @@ test('new Japan Chart jobs enqueue before an independent legacy collector fails'
     runSpotifyArtistChartScheduled: async () => { throw new Error('Legacy chart source unavailable'); },
   });
   assert.equal(retries, 1);
-  assert.equal(messages.filter(message => message.message_type === SPOTIFY_CHART_WORK).length, 5);
+  assert.equal(messages.filter(message => message.message_type === SPOTIFY_CHART_WORK).length, 6);
 });
 
 test('a successful history step cannot hide a failure in latest collection', async () => {

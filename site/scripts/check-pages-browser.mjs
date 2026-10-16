@@ -161,11 +161,16 @@ try {
               { id: 'chart-fixture', title: 'Fixture Track', rank: 12, artists: ['sakurazaka46'], streams: 12345 },
             ] }] });
           } else {
-            Object.assign(fixture, { charts: ['artist', 'regional', 'album'].flatMap(type =>
-              (type === 'album' ? ['weekly'] : ['daily', 'weekly']).map(period => ({
-                chart_id: `${type}-jp-${period}`, status: 'ok', years: [year], latest_chart_date: date,
-                observed_at: Date.now(), history_complete: true,
-              }))) });
+            Object.assign(fixture, { charts: [
+              ...['artist', 'regional', 'album'].flatMap(type =>
+                (type === 'album' ? ['weekly'] : ['daily', 'weekly']).map(period => ({
+                  chart_id: `${type}-jp-${period}`, status: 'ok', years: [year], latest_chart_date: date,
+                  observed_at: Date.now(), history_complete: true,
+                }))),
+              { chart_id: 'viral-hits-jp-daily', status: 'ok', years: [year], latest_chart_date: date,
+                source: 'spotify-playlist-position', playlist_total: 60,
+                observed_at: Date.now(), history_complete: true },
+            ] });
           }
         }
         if (url.pathname === '/api/kkbox') {
@@ -310,8 +315,8 @@ try {
       }
       if (mode === 'spotify-charts') {
         assert.deepEqual(await page.locator('#spotifyChartsView .music-service-view-tabs button').allTextContents(),
-          ['月間リスナー', 'トップアーティスト', 'トップソング', 'トップアルバム']);
-        for (const group of ['listeners', 'artist', 'regional', 'album']) {
+          ['月間リスナー', 'トップアーティスト', 'トップソング', 'トップアルバム', 'Viral Hits Japan']);
+        for (const group of ['listeners', 'artist', 'regional', 'album', 'viral-hits']) {
           const panel = page.locator(`#spotifyChartsView .music-service-group[data-group="${group}"]`);
           assert.equal(await panel.locator('[data-service-group]').count(), 2, `${group}: graph and list share one panel`);
         }
@@ -362,6 +367,15 @@ try {
       for (const button of await page.locator('.dashboard-view:not([hidden]) .music-service-view-tabs button[data-service-group]').all()) {
         await button.click(); await page.waitForTimeout(live ? 700 : 400); if (!live) await page.waitForLoadState('networkidle', { timeout: 45000 });
         const group = await button.getAttribute('data-service-group'); assert.equal(await button.getAttribute('aria-pressed'), 'true'); const visible = page.locator('.dashboard-view:not([hidden]) .music-service-group:not([hidden])'); assert.equal(await visible.count(), 1); assert.equal(await visible.getAttribute('data-group'), group);
+        if (!live && mode === 'spotify-charts' && group === 'viral-hits') {
+          assert.equal(await page.locator('#spotifyChartStatus-viral-hits').textContent().then(text => text.includes('全60曲')), true,
+            'playlist snapshot displays its exact source-list length');
+          assert.equal(await page.locator('#spotifyChartBody-viral-hits tr').count() > 0, true,
+            'playlist positions render as chart history rows');
+          assert.match(await page.locator('#spotifyChartBody-viral-hits tr').first().textContent(), /12番目/);
+          assert.equal(await page.locator('#spotifyChartPlot-viral-hits canvas').count(), 1,
+            'playlist positions render in the shared chart');
+        }
         if (!live && mode === 'spotify-charts' && group === 'regional' && width <= 390) {
           const card = page.locator('#spotifyChartCards-regional .dashboard-responsive-card').first();
           assert.equal(await card.locator('.dashboard-responsive-field').count(), 5,

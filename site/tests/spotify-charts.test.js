@@ -55,6 +55,22 @@ test('Spotify Charts shell excludes discontinued Viral panels', async () => {
   const { readFileSync } = await import('node:fs');
   const shell = readFileSync(new URL('../public/spotify-charts-shell.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../public/spotify-charts.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(shell, /バイラル|viral:/);
+  assert.doesNotMatch(shell, /(?:^|[, {])viral:\s*['\"]/);
   assert.doesNotMatch(runtime, /'viral'/);
+});
+
+test('Viral Hits Japan remains distinct from retired Viral 50 and exposes a read-model shard', async () => {
+  const { SPOTIFY_JP_CHARTS, spotifyChartModelKey } = await import('../../packages/sh-shared/spotify-charts.mjs');
+  const enabled = SPOTIFY_JP_CHARTS.map(spec => spec.id);
+  assert.equal(enabled.includes('viral-jp-daily'), false);
+  assert.equal(enabled.includes('viral-jp-weekly'), false);
+  assert.equal(enabled.includes('viral-hits-jp-daily'), true);
+  assert.equal(spotifyChartModelKey('viral-hits-jp-daily', '2026'), 'spotify-charts:viral-hits-jp-daily:2026');
+  const { readFileSync } = await import('node:fs');
+  const shell = readFileSync(new URL('../public/spotify-charts-shell.js', import.meta.url), 'utf8');
+  const runtime = readFileSync(new URL('../public/spotify-charts.js', import.meta.url), 'utf8');
+  assert.match(shell, /Viral Hits Japan/);
+  assert.match(shell, /掲載順|掲載位置/);
+  assert.match(shell, /公式順位ではありません/);
+  assert.match(runtime, /type === 'viral-hits' \? '掲載位置'/);
 });

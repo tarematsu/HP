@@ -17,7 +17,7 @@ const colors = { ...SAKAMICHI_GROUP_COLORS, 'sakamichi-selection': '#667287' };
 let artist = 'all';
 let group = 'listeners';
 let range = '1y';
-const periods = { artist: 'daily', regional: 'daily', album: 'weekly' };
+const periods = { artist: 'daily', regional: 'daily', album: 'weekly', 'viral-hits': 'daily' };
 let index = null;
 let monthlyRows = [];
 let requestId = 0;
@@ -70,7 +70,7 @@ function renderChartTable(type, rows, dates) {
   tablePages.set(chart, page);
   const columns = [
     { key: 'date', label: '日付' }, { key: 'artist', label: 'グループ' },
-    { key: 'rank', label: '順位', numeric: true },
+    { key: 'rank', label: type === 'viral-hits' ? '掲載位置' : '順位', numeric: true },
     { key: 'title', label: type === 'artist' ? 'アーティスト' : type === 'album' ? 'アルバム' : '曲名' },
     ...(type === 'regional' ? [{ key: 'streams', label: '再生数', numeric: true }] : []),
   ];
@@ -80,7 +80,7 @@ function renderChartTable(type, rows, dates) {
     rows: matches.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
     valuesForRow: ({ date, entry }) => [
       regionalProviderDateText(date), entry.artists.map(key => labels[key] || key).join(' / '),
-      `${entry.rank}位`, entry.title,
+      type === 'viral-hits' ? `${entry.rank}番目` : `${entry.rank}位`, entry.title,
       ...(type === 'regional' ? [entry.streams == null ? '-' : integerFormat.format(entry.streams)] : []),
     ],
     emptyMessage: '取得済み期間にランクイン履歴はありません。',
@@ -88,7 +88,7 @@ function renderChartTable(type, rows, dates) {
 }
 function renderChart(type, data, state) {
   const plot = byId(`spotifyChartPlot-${type}`);
-  const limit = 200;
+  const limit = type === 'viral-hits' ? 100 : 200;
   const rows = data.flatMap(model => model.periods || []).sort((a, b) => a.chart_date.localeCompare(b.chart_date));
   const sourceDates = rows.map(row => row.chart_date);
   // Include missing source dates so a line cannot bridge an uncollected day.
@@ -101,13 +101,15 @@ function renderChart(type, data, state) {
   const series = japanChartSeries(rows, dates, artist, colors).map(item => ({ ...item, points: item.points.map(point => ({ ...point, rank: point.rank === 201 ? limit + 1 : point.rank })) }));
   ensureChartRangeControls(plot, { owner: `spotify-${type}`, value: range, onChange: value => { range = value; tablePages.clear(); void loadActive(); } });
   renderRankHistoryChart({ container: plot, legendContainer: byId(`spotifyChartLegend-${type}`), series, dates,
-    height: 320, yMax: limit + 1, rankTicks: limit === 50 ? [1, 10, 25, 50, 51] : [1, 50, 100, 150, 201],
-    rankLabel: rank => rank === limit + 1 ? '圏外' : `${rank}位`, dateLabel: regionalProviderDateText,
-    ariaLabel: 'Spotify日本チャート順位推移。取得済みの圏外と未取得の欠測を区別。', emptyText: '取得済み期間に対象グループのランクイン履歴はありません。',
+    height: 320, yMax: limit + 1, rankTicks: limit === 100 ? [1, 25, 50, 75, 100, 101] : [1, 50, 100, 150, 201],
+    rankLabel: rank => rank === limit + 1 ? (type === 'viral-hits' ? '掲載なし' : '圏外') : type === 'viral-hits' ? `${rank}番目` : `${rank}位`, dateLabel: regionalProviderDateText,
+    ariaLabel: type === 'viral-hits' ? 'Viral Hits Japanプレイリスト掲載位置の推移。公式バイラル順位ではありません。' : 'Spotify日本チャート順位推移。取得済みの圏外と未取得の欠測を区別。',
+    emptyText: type === 'viral-hits' ? '取得済み期間に対象グループのプレイリスト掲載履歴はありません。' : '取得済み期間に対象グループのランクイン履歴はありません。',
     latestPoint: { radius: () => 2.5 },
   });
   renderChartTable(type, rows, dates);
   const status = state?.latest_status === 'error' || state?.history_status === 'error' || state?.status === 'error' ? '収集に失敗しています。取得済みの履歴を表示しています。'
+    : type === 'viral-hits' && state?.latest_chart_date ? `${regionalProviderDateText(state.latest_chart_date)}時点の掲載順 / 全${integerFormat.format(state.playlist_total || 0)}曲 / 収集開始後の日次履歴`
     : state?.status === 'unavailable' ? 'このチャートは現在取得できません。'
     : !state?.latest_chart_date ? 'まだ取得されていません。'
     : `${regionalProviderDateText(state.latest_chart_date)}付 / ${state.history_complete ? '提供期間の確認完了' : '過去データを取得中'}${state.earliest_chart_date ? `（${regionalProviderDateText(state.earliest_chart_date)}まで確認）` : ''}${state.unavailable_periods ? ` / 未提供 ${state.unavailable_periods}期間` : ''}`;
