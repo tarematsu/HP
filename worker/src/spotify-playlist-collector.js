@@ -1,5 +1,6 @@
 import { canonicalizeTrackRows } from '../../packages/sh-shared/canonical-track-rows.mjs';
 import { pagesR2ResponseKey } from './pages-response-r2.js';
+import { SPOTIFY_MONTHLY_LISTENER_ARTISTS } from './spotify-monthly-listeners.js';
 
 export const SPOTIFY_PLAYLIST_PAGES_MODEL_KEY = 'spotify-playlists';
 export const SPOTIFY_PLAYLIST_STATE_KEY = 'spotify/playlists/state.json';
@@ -223,6 +224,54 @@ export function parseSpotifyPlaylistEmbed(html, sourceUrl) {
       .filter((item) => item !== url)
       .slice(0, MAX_RELATED_LINKS_PER_PAGE),
   };
+}
+
+// Reuse the same public embed parser for a dedicated editorial playlist.
+// Its original row offsets, not a popularity estimate, are the positions.
+// Only tracks credited to our four tracked Spotify artist identities are stored.
+export function parseSpotifyPlaylistPositions(html, sourceUrl) {
+  const url = canonicalPlaylistUrl(sourceUrl);
+  const id = playlistIdFromUrl(url);
+  const document = nextData(html);
+  const entity = findEntityWithTrackList(document);
+  if (!id || !entity || !Array.isArray(entity.trackList) || !entity.trackList.length) {
+    throw new Error('Spotify playlist embed has no complete track list');
+  }
+  const byArtistId = new Map(SPOTIFY_MONTHLY_LISTENER_ARTISTS.map(row => [row.spotify_artist_id, row]));
+  const byArtistName = new Map(SPOTIFY_MONTHLY_LISTENER_ARTISTS.map(row => [normalizedArtist(row.artist_name), row]));
+  const tracks = [];
+  for (const [index, row] of entity.trackList.entries()) {
+    if (!row || typeof row !== 'object') throw new Error('Malformed Spotify playlist row');
+    const id = spotifyTrackId(row);
+    const title = rowTitle(row);
+    // Never silently interpret a truncated or anonymized embed as zero
+    // matches: this would create false "not listed" rankings in the history.
+    if (!id || !title) throw new Error('Incomplete Spotify playlist track identity');
+    const values = nestedStrings(row);
+    const artistIds = new Set(values.flatMap(value => [...String(value).matchAll(/(?:spotify:artist:|\/artist\/)([A-Za-z0-9]{22})/gu)].map(match => match[1])));
+    const matched = new Map();
+    for (const artistId of artistIds) {
+      const artist = byArtistId.get(artistId);
+      if (artist) matched.set(artist.artist_key, artist);
+    }
+    if (!artistIds.size) {
+      // Public embeds sometimes expose only the "subtitle" artist names.
+      const names = String(rowArtist(row) || '').split(/[,、，\/／&＆]+/u);
+      for (const name of names) {
+        const artist = byArtistName.get(normalizedArtist(name));
+        if (artist) matched.set(artist.artist_key, artist);
+      }
+    }
+    if (!matched.size) continue;
+    tracks.push({
+      id, title, rank: index + 1,
+      artists: [...matched.keys()],
+      artist_name: [...matched.values()].map(value => value.artist_name).join(' / '),
+      streams: null,
+    });
+  }
+  return { id: playlistIdFromUrl(url), url, name: text(entity.title ?? entity.name) || 'Viral Hits Japan',
+    total: entity.trackList.length, tracks };
 }
 
 async function getJson(r2, key) {
