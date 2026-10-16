@@ -23,7 +23,7 @@ const queues = await api('/queues');
 const queue = queues.find(row => row.queue_name === queueName);
 if (!queue?.queue_id) throw new Error('Spotify Queue unavailable');
 // Manual recovery also queues five charts and sixteen official editorial playlists.
-for (const spec of SPOTIFY_JP_CHARTS) {
+for (const spec of SPOTIFY_CHART_SOURCES) {
   await api(`/queues/${queue.queue_id}/messages`, {
     body: { message_type: 'spotify-japan-chart-work', message_version: 1,
       chart_id: spec.id, mode: 'latest', day: new Date().toISOString().slice(0, 10) },
