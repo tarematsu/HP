@@ -5,6 +5,7 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
 import assert from 'node:assert/strict';
 import { NAVIGATION, navigationForMode } from '../public/dashboard-navigation-config.js';
+import { SPOTIFY_PLAYLIST_TABS } from '../public/spotify-playlists-catalog.js';
 
 const root = resolve('site/public');
 const live = process.argv.includes('--live');
@@ -167,9 +168,11 @@ try {
                   chart_id: `${type}-jp-${period}`, status: 'ok', years: [year], latest_chart_date: date,
                   observed_at: Date.now(), history_complete: true,
                 }))),
-              { chart_id: 'viral-hits-jp-daily', status: 'ok', years: [year], latest_chart_date: date,
+              ...SPOTIFY_PLAYLIST_TABS.map(tab => ({
+                chart_id: tab.chartId, status: 'ok', years: [year], latest_chart_date: date,
                 source: 'spotify-playlist-position', playlist_total: 60,
-                observed_at: Date.now(), history_complete: true },
+                observed_at: Date.now(), history_complete: true,
+              })),
             ] });
           }
         }
@@ -239,7 +242,7 @@ try {
       if (navigationForMode(mode).section.id === 'stationhead') {
         assert.deepEqual(sourceLabels, ['Buddies', 'Ohisama', 'Nogizaka', 'リーダーボード', 'フォロワー'], `${mode}: Stationhead targets only`);
       } else {
-        assert.deepEqual(sourceLabels, ['Spotify 再生数', 'Spotify チャート', 'Apple Music', 'Amazon Music', 'YouTube Music', '🇹🇼KKBOX', '🇨🇳QQ音乐', '🇨🇳酷狗音乐'], `${mode}: streaming services only`);
+        assert.deepEqual(sourceLabels, ['Spotify 再生数', 'Spotify チャート', 'Spotify プレイリスト', 'Apple Music', 'Amazon Music', 'YouTube Music', '🇹🇼KKBOX', '🇨🇳QQ音乐', '🇨🇳酷狗音乐'], `${mode}: streaming services only`);
       }
       if (navigationForMode(mode).source.id === 'buddies') {
         assert.deepEqual(await page.locator('#functionTabs button').allTextContents(), stationheadFunctions, `${mode}: Buddies functions`);
@@ -315,13 +318,24 @@ try {
       }
       if (mode === 'spotify-charts') {
         assert.deepEqual(await page.locator('#spotifyChartsView .music-service-view-tabs button').allTextContents(),
-          ['月間リスナー', 'トップアーティスト', 'トップソング', 'トップアルバム', 'Viral Hits Japan']);
-        for (const group of ['listeners', 'artist', 'regional', 'album', 'viral-hits']) {
+          ['月間リスナー', 'トップアーティスト', 'トップソング', 'トップアルバム']);
+        for (const group of ['listeners', 'artist', 'regional', 'album']) {
           const panel = page.locator(`#spotifyChartsView .music-service-group[data-group="${group}"]`);
           assert.equal(await panel.locator('[data-service-group]').count(), 2, `${group}: graph and list share one panel`);
         }
         assert.deepEqual(await page.locator('[data-spotify-chart-artist]').allTextContents(),
           ['すべて', '櫻坂', '乃木坂', '日向坂', '坂道選抜']);
+      }
+      if (mode === 'spotify-playlists') {
+        assert.deepEqual(await page.locator('#spotifyPlaylistsView .music-service-view-tabs button').allTextContents(),
+          SPOTIFY_PLAYLIST_TABS.map(tab => tab.label));
+        assert.deepEqual(await page.locator('[data-spotify-playlist-artist]').allTextContents(),
+          ['すべて', '櫻坂', '乃木坂', '日向坂', '坂道選抜']);
+        for (const tab of SPOTIFY_PLAYLIST_TABS) {
+          const panel = page.locator(`#spotifyPlaylistsView .music-service-group[data-group="${tab.slug}"]`);
+          assert.equal(await panel.locator('[data-service-group]').count(), 2,
+            `${tab.slug}: graph and list share one panel`);
+        }
       }
       if (mode === 'kkbox') {
         // A visible lazy shell does not mean its asynchronous data render has
@@ -367,14 +381,14 @@ try {
       for (const button of await page.locator('.dashboard-view:not([hidden]) .music-service-view-tabs button[data-service-group]').all()) {
         await button.click(); await page.waitForTimeout(live ? 700 : 400); if (!live) await page.waitForLoadState('networkidle', { timeout: 45000 });
         const group = await button.getAttribute('data-service-group'); assert.equal(await button.getAttribute('aria-pressed'), 'true'); const visible = page.locator('.dashboard-view:not([hidden]) .music-service-group:not([hidden])'); assert.equal(await visible.count(), 1); assert.equal(await visible.getAttribute('data-group'), group);
-        if (!live && mode === 'spotify-charts' && group === 'viral-hits') {
-          assert.equal(await page.locator('#spotifyChartStatus-viral-hits').textContent().then(text => text.includes('全60曲')), true,
-            'playlist snapshot displays its exact source-list length');
-          assert.equal(await page.locator('#spotifyChartBody-viral-hits tr').count() > 0, true,
-            'playlist positions render as chart history rows');
-          assert.match(await page.locator('#spotifyChartBody-viral-hits tr').first().textContent(), /12番目/);
-          assert.equal(await page.locator('#spotifyChartPlot-viral-hits canvas').count(), 1,
-            'playlist positions render in the shared chart');
+        if (!live && mode === 'spotify-playlists' && group === 'viral-hits') {
+          assert.equal(await page.locator('#spotifyPlaylistStatus-viral-hits').textContent().then(text => text.includes('全60件')), true,
+            'playlist snapshot displays its exact original source length');
+          assert.equal(await page.locator('#spotifyPlaylistBody-viral-hits tr').count() > 0, true,
+            'playlist positions render in chart history table');
+          assert.match(await page.locator('#spotifyPlaylistBody-viral-hits tr').first().textContent(), /12番目/);
+          assert.equal(await page.locator('#spotifyPlaylistPlot-viral-hits canvas').count(), 1,
+            'playlist positions draw in the shared rank history chart');
         }
         if (!live && mode === 'spotify-charts' && group === 'regional' && width <= 390) {
           const card = page.locator('#spotifyChartCards-regional .dashboard-responsive-card').first();
