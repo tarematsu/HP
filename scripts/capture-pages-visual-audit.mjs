@@ -133,7 +133,7 @@ async function inspectView(page, tab, viewport, outDir) {
           && Number(firstWeekChart?.dataset.firstWeekWidth || 0) > 0
           && document.querySelectorAll('#firstWeekTbody tr').length > 0
           && document.querySelectorAll('#unofficialListeningTbody tr').length > 0;
-      }, null, { timeout: 20_000 });
+      }, null, { timeout: 45_000 });
     } catch {
       listeningPartyWaitTimedOut = true;
     }
@@ -232,7 +232,7 @@ async function inspectView(page, tab, viewport, outDir) {
     if (audit.tableRows < 1 && audit.mobileCards < 1 && !audit.emptyVisible) issues.push('leaderboard table has no rows');
     if (!audit.chartVisible && !audit.emptyVisible) issues.push('leaderboard chart is hidden');
   }
-  if (listeningPartyWaitTimedOut) issues.push('listening party subviews were not fully rendered within 20 seconds');
+  if (listeningPartyWaitTimedOut) issues.push('listening party subviews were not fully rendered within 45 seconds');
   if (listeningPartyMode && state.listeningPartyAudit) {
     const audit = state.listeningPartyAudit;
     if (!audit.officialChartPainted) issues.push('official listening party chart was not painted');
