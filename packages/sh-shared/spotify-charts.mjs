@@ -37,7 +37,7 @@ export const SPOTIFY_CHART_SOURCES = Object.freeze([...SPOTIFY_JP_CHARTS, ...SPO
 export function spotifyChartModelKey(chart = '', year = '') {
   if (!chart && !year) return 'spotify-charts';
   if (!SPOTIFY_CHART_SOURCES.some(item => item.id === chart)) return null;
-  if (!/^(20[1-9]\\d)$/.test(String(year)) || Number(year) < 2017) return null;
+  if (!/^(20[1-9]\d)$/.test(String(year)) || Number(year) < 2017) return null;
   return `spotify-charts:${chart}:${year}`;
 }
 export const SPOTIFY_CHART_MODEL_KEYS = Object.freeze(['spotify-charts',
