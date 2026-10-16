@@ -123,6 +123,14 @@ function renderChart(type, data, state) {
     : !state?.latest_chart_date ? 'まだ取得されていません。'
     : `${regionalProviderDateText(state.latest_chart_date)}付 / ${state.history_complete ? '提供期間の確認完了' : '過去データを取得中'}${state.earliest_chart_date ? `（${regionalProviderDateText(state.earliest_chart_date)}まで確認）` : ''}${state.unavailable_periods ? ` / 未提供 ${state.unavailable_periods}期間` : ''}`;
   setText(`${prefix}Status-${type}`, status);
+  if (playlist && /^https:\/\/open\.spotify\.com\/playlist\/[a-zA-Z0-9]{22}$/.test(state?.playlist_url || '')) {
+    const source = document.createElement('a');
+    source.href = state.playlist_url;
+    source.target = '_blank';
+    source.rel = 'noopener noreferrer';
+    source.textContent = 'Spotifyで掲載順を確認';
+    byId(`${prefix}Status-${type}`)?.append(' / ', source);
+  }
   setText(updatedAtId, musicDateTimeText(state?.observed_at));
 }
 async function loadActive({ refresh = false } = {}) {
