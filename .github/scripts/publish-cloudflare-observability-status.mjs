@@ -51,6 +51,7 @@ const DIAGNOSTIC_SECTION_LIMITS = Object.freeze({
   d1Insights: 7_000,
   observability: 6_500,
   telemetry: 6_500,
+  r2Collection: 3_000,
 });
 
 export function isCurrentMainTarget(targetSha, mainSha) {
@@ -182,6 +183,7 @@ ${diagnosticSection('diagnostic-contract', 'Budget contract', renderedSummaries.
 ${diagnosticSection('diagnostic-d1', 'Top D1 queries by rows read', renderedSummaries.d1Insights, outcomes.d1Insights, DIAGNOSTIC_SECTION_LIMITS.d1Insights)}
 ${diagnosticSection('diagnostic-observability', 'Cloudflare metrics and live diagnostics', renderedSummaries.observability, outcomes.query, DIAGNOSTIC_SECTION_LIMITS.observability)}
 ${diagnosticSection('diagnostic-telemetry', 'Current-deployment telemetry policy', renderedSummaries.telemetry, outcomes.telemetry, DIAGNOSTIC_SECTION_LIMITS.telemetry)}
+${diagnosticSection('diagnostic-r2-collection', 'R2 collection freshness', renderedSummaries.r2Collection || 'R2 diagnostic unavailable', outcomes.r2Collection, DIAGNOSTIC_SECTION_LIMITS.r2Collection)}
 `;
   const safeBody = sanitizeText(body).trim();
   if (safeBody.length > MAX_ISSUE_BODY_CHARS) {
@@ -228,6 +230,7 @@ export async function publishFromEnvironment() {
     d1Insights: process.env.D1_INSIGHTS_OUTCOME,
     query: process.env.OBSERVABILITY_QUERY_OUTCOME,
     telemetry: process.env.TELEMETRY_POLICY_OUTCOME,
+    r2Collection: process.env.R2_COLLECTION_OUTCOME,
   };
   const [
     mainSha,
@@ -240,6 +243,7 @@ export async function publishFromEnvironment() {
     d1Insights,
     observability,
     telemetry,
+    r2Collection,
   ] = await Promise.all([
     currentMainSha(request),
     readOptionalJson('active-worker-deployments.json'),
@@ -251,6 +255,7 @@ export async function publishFromEnvironment() {
     readOptionalText('d1-insights/summary.md'),
     readOptionalText('observability-summary.md'),
     readOptionalText('telemetry-summary.md'),
+    readOptionalText('r2-collection-summary.md'),
   ]);
   await publishCommitStatuses({
     request,
@@ -274,7 +279,7 @@ export async function publishFromEnvironment() {
     trigger: process.env.OBSERVABILITY_TRIGGER || 'unknown',
     lookbackMinutes: process.env.LOOKBACK_MINUTES || '60',
     outcomes,
-    summaries: { publicHealth, daily, freeTier, contract, d1Insights, observability, telemetry },
+    summaries: { publicHealth, daily, freeTier, contract, d1Insights, observability, telemetry, r2Collection },
     activeDeployments,
     recentMerges,
     actionsRunnerHealthBlock: extractActionsRunnerHealthBlock(existingIssue?.body),
