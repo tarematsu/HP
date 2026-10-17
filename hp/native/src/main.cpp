@@ -1,4 +1,5 @@
 #include "app.h"
+#include "app_error_dialog_recovery.h"
 #include "power_saving_controller.h"
 
 namespace {
@@ -21,13 +22,16 @@ bool HasCommandArgument(const wchar_t* expected) noexcept {
   return found;
 }
 
-bool RelaunchSelf(bool crashRestart = false, bool postRestartClick = false) {
+bool RelaunchSelf(
+    bool crashRestart = false, bool postRestartClick = false,
+    bool errorRestart = false) {
   wchar_t executable[MAX_PATH * 4]{};
   if (!GetModuleFileNameW(nullptr, executable, _countof(executable))) return false;
 
   std::wstring command = L"\"" + std::wstring(executable) + L"\"";
   if (crashRestart) command += L" --crash-restart";
   if (postRestartClick) command += L" --scheduled-restart";
+  if (errorRestart) command += L" --error-restart";
   std::vector<wchar_t> commandBuffer(command.begin(), command.end());
   commandBuffer.push_back(L'\0');
   STARTUPINFOW startup{sizeof(startup)};
@@ -107,7 +111,8 @@ int WINAPI wWinMain(
   bool apartmentInitialized = false;
   int result = 1;
   try {
-    if (HasCommandArgument(L"--crash-restart")) {
+    if (HasCommandArgument(L"--crash-restart") ||
+        hp::IsErrorDialogRestartLaunch()) {
       // The crashed process may still own the single-instance mutex briefly.
       Sleep(1'500);
     }
@@ -127,6 +132,8 @@ int WINAPI wWinMain(
       result = RelaunchSelf() ? 0 : 1;
     } else if (result == hp::App::kScheduledRestartExitCode) {
       result = RelaunchSelf(false, true) ? 0 : 1;
+    } else if (result == hp::App::kErrorDialogRestartExitCode) {
+      result = RelaunchSelf(false, true, true) ? 0 : 1;
     }
   } catch (const std::exception& error) {
     ShowStartupFailure(hp::Utf8ToWide(error.what()));
