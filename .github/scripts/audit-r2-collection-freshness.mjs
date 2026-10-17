@@ -16,8 +16,10 @@ export function assessSnapshot(service, snapshot, now = Date.now(), maxAgeHours 
   if (!Number.isFinite(successTime)) return { service, status: 'UNKNOWN', detail: 'last_success_at missing' };
   if (!Number.isFinite(time)) return { service, status: 'UNKNOWN', detail: 'source timestamp missing' };
   const ageHours = (now - successTime) / 3600000;
+  if ((now - time) / 3600000 < -1) return { service, status: 'FAIL', detail: 'future snapshot timestamp' };
   if (ageHours < -1) return { service, status: 'FAIL', detail: 'future source timestamp' };
   if (ageHours > maxAgeHours) return { service, status: 'STALE', detail: `source age ${ageHours.toFixed(1)}h > ${maxAgeHours}h` };
+  if (count === null) return { service, status: 'UNKNOWN', detail: 'tracks missing' };
   if (count === 0) return { service, status: 'FAIL', detail: 'empty tracks' };
   return { service, status: 'OK', detail: `source age ${ageHours.toFixed(1)}h; tracks=${count ?? 'not supplied'}` };
 }
