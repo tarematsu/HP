@@ -9,7 +9,7 @@ namespace hp {
 namespace {
 constexpr wchar_t kWindowClass[] = L"HomePanelNativeWindow";
 constexpr uint32_t kFastTickMs = 2000;
-constexpr int64_t kErrorDialogCheckIntervalMs = 5'000;
+constexpr int64_t kErrorDialogCheckIntervalMs = 2 * 60'000;
 constexpr int64_t kErrorDialogRestartCooldownMs = 10LL * 60LL * 1000LL;
 // Windows can combine non-urgent App deadline wakeups with existing system
 // timer activity. Urgent/sub-second callbacks stay exact.
@@ -375,7 +375,7 @@ void App::Tick() {
   }
 
   // A native fatal dialog can block the WebView2 runtime without crashing the
-  // parent. Require the same visible Windows error dialog on two 5s checks,
+  // parent. Require the same visible Windows error dialog on two 2-minute checks,
   // then use the regular graceful shutdown/relaunch path. A recovery launch
   // has a 10-minute cooldown to avoid a rapid restart loop.
   if (now >= nextErrorDialogCheckAt_) {
