@@ -25,7 +25,7 @@ test('only visible, explicit Windows runtime error dialogs trigger recovery', ()
 });
 
 test('fatal dialog recovery is confirmed twice, logged and rate-limited', () => {
-  assert.match(app, /kErrorDialogCheckIntervalMs = 2 * 60'000/);
+  assert.match(app, /kErrorDialogCheckIntervalMs = 2 \* 60'000/);
   assert.match(app, /kErrorDialogRestartCooldownMs = 10LL \* 60LL \* 1000LL/);
   assert.match(app, /dialog == lastErrorDialogTitle_/);
   assert.match(app, /errorDialogConfirmations_ >= 2/);
