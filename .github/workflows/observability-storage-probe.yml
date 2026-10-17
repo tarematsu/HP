@@ -1,0 +1,33 @@
+name: Read-only DO storage schema probe
+on:
+  push:
+    branches: [fix/observability-do-storage]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      - name: Read storage schema and recent samples
+        run: |
+          python3 - <<'PY'
+          import sys, datetime as dt
+          sys.path.insert(0,'.github/scripts')
+          import cloudflare_free_tier_audit as audit
+          schema = audit.api({'query':'{ __schema { types { name } } }'})
+          names = [x['name'] for x in schema.get('data',{}).get('__schema',{}).get('types',[]) if 'durable' in x.get('name','').lower() and any(k in x.get('name','').lower() for k in ['storage','sqlite'])]
+          print('STORAGE_TYPES', names)
+          for name in names:
+              if name.endswith('Dimensions') or name.endswith('Max') or name.endswith('Sum'):
+                  fields=audit.api({'query':'{ __type(name: "'+name+'") { fields { name } } }'})
+                  print('STORAGE_FIELDS', name, fields.get('data'))
+          now=dt.datetime.now(dt.timezone.utc)
+          query='query StorageProbe($account: string, $start: Date!, $end: Date!) { viewer { accounts(filter: {accountTag: $account}) { durableObjectsStorageGroups(limit: 1000, filter: {date_geq: $start, date_leq: $end}) { dimensions { date } max { storedBytes } } } } }'
+          samples=audit.api({'query':query,'variables':{'account':audit.ACCOUNT,'start':(now-dt.timedelta(days=7)).date().isoformat(),'end':now.date().isoformat()}})
+          print('STORAGE_SAMPLES', samples.get('data'))
+          PY
