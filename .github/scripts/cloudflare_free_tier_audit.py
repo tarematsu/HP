@@ -161,8 +161,8 @@ def graphql_document() -> str:
         doPeriodic: durableObjectsPeriodicGroups(limit: 10000, filter: {date_geq: $day, date_leq: $day}) {
           sum { duration rowsRead rowsWritten }
         }
-        doStorage: durableObjectsStorageGroups(limit: 10000, filter: {date_geq: $day, date_leq: $day}) {
-          max { storedBytes }
+        doStorage: durableObjectsSqlStorageGroups(limit: 10000, filter: {date_geq: $day, date_leq: $day}, orderBy: [datetime_DESC]) {
+          max { storedBytes } dimensions { namespaceId datetime }
         }
         kvOperations: kvOperationsAdaptiveGroups(limit: 10000, filter: {date_geq: $day, date_leq: $day}) {
           sum { requests } dimensions { actionType }
@@ -230,6 +230,31 @@ def r2_storage_snapshot(groups: Any, expected_buckets: Iterable[str] = ()) -> di
                      "bytes": latest_size([latest], "datetime", "payloadSize", "metadataSize")})
     return {"bytes": sum(row["bytes"] for row in rows) if rows and not missing else None,
             "buckets": rows, "missingBuckets": missing}
+
+
+def do_storage_snapshot(groups: Any) -> dict[str, Any]:
+    # The included 5GB allowance is SQLite storage. The legacy KV dataset can
+    # legitimately be empty while these namespaces retain several MB of data.
+    namespaces: dict[str, tuple[str, int]] = {}
+    missing: set[str] = set()
+    for group in groups or []:
+        dimensions = group.get("dimensions") or {}
+        namespace = str(dimensions.get("namespaceId") or "")
+        observed_at = str(dimensions.get("datetime") or "")
+        size = storage_bytes((group.get("max") or {}).get("storedBytes"))
+        if not namespace:
+            continue
+        if not observed_at or size is None:
+            missing.add(namespace)
+            continue
+        candidate = (observed_at, size)
+        if candidate > namespaces.get(namespace, ("", 0)):
+            namespaces[namespace] = candidate
+    missing -= namespaces.keys()
+    times = [sample[0] for sample in namespaces.values()]
+    return {"bytes": sum(sample[1] for sample in namespaces.values()) if namespaces and not missing else None,
+            "namespaceCount": len(namespaces), "missingNamespaceCount": len(missing),
+            "observedFrom": min(times) if times else None, "observedTo": max(times) if times else None}
 
 
 def display_usage(value: Any) -> str:
@@ -328,8 +353,7 @@ def aggregate(row: dict[str, Any], expected_buckets: Iterable[str] = ()) -> dict
         sums = group.get("sum") or {}
         usage["doRowsRead"] += count(sums.get("rowsRead"))
         usage["doRowsWritten"] += count(sums.get("rowsWritten"))
-    stored = [storage_bytes((group.get("max") or {}).get("storedBytes")) for group in row.get("doStorage") or []]
-    usage["doStoredBytes"] = max((value for value in stored if value is not None), default=None)
+    usage["doStoredBytes"] = do_storage_snapshot(row.get("doStorage"))["bytes"]
 
     operation_keys = {"read": "kvReads", "write": "kvWrites", "delete": "kvDeletes", "list": "kvLists"}
     for group in row.get("kvOperations") or []:
@@ -385,9 +409,11 @@ def usage_basis(key: str) -> str:
 
 def self_test() -> int:
     document = graphql_document()
-    for resource_identifier in ("namespaceId", "queueId"):
+    for resource_identifier in ("queueId",):
         assert resource_identifier not in document
     assert "dimensions { bucketName datetime }" in document
+    assert "dimensions { namespaceId datetime }" in document
+    assert "durableObjectsSqlStorageGroups" in document
     assert "pipelineId" not in document and "activeTime" not in document
     assert "sum { duration rowsRead rowsWritten }" in document
     assert "dimensions { queueID actionType consumerType }" in document
@@ -427,7 +453,7 @@ def self_test() -> int:
         "r2storage": [{"dimensions": {"bucketName": "bucket-a", "datetime": "2026-07-23T00:00:00Z"}, "max": {"payloadSize": 100, "metadataSize": 5}}],
         "doInvocations": [{"sum": {"requests": 10}}],
         "doPeriodic": [{"sum": {"duration": 2.5, "rowsRead": 2, "rowsWritten": 1}}],
-        "doStorage": [{"max": {"storedBytes": 50}}],
+        "doStorage": [{"dimensions": {"namespaceId": "namespace-a", "datetime": "2026-07-23T00:00:00Z"}, "max": {"storedBytes": 50}}],
         "kvOperations": [
             {"dimensions": {"actionType": "read"}, "sum": {"requests": 7}},
             {"dimensions": {"actionType": "write"}, "sum": {"requests": 1}},
@@ -494,6 +520,7 @@ def main() -> int:
     actual = aggregate(account_row, buckets)
     unavailable = [key for key in LIMITS if actual[key] is None]
     storage = r2_storage_snapshot(account_row.get("r2storage"), buckets)
+    do_storage = do_storage_snapshot(account_row.get("doStorage"))
     projection = projection_metadata(now)
     usage = project_daily_allowances(actual, projection)
     violations = evaluate(actual, usage, projection["enforceProjected"])
@@ -522,6 +549,7 @@ def main() -> int:
         "actualUsage": actual,
         "unavailableMetrics": unavailable,
         "r2StorageSnapshot": storage,
+        "doStorageSnapshot": do_storage,
         "usage": usage,
         "projection": projection,
         "queueOperationsBreakdown": queue_breakdown,
@@ -572,6 +600,10 @@ def main() -> int:
         lines.append(f"| {item['bucket']} | {item['observedAt']} | {item['bytes']:,} |")
     for bucket in storage["missingBuckets"]:
         lines.append(f"| {bucket} | unavailable | UNKNOWN |")
+    lines.extend(["", "### SQLite Durable Object storage coverage", "",
+                  f"- Namespaces with complete samples: {do_storage['namespaceCount']}",
+                  f"- Sample window: {do_storage['observedFrom'] or 'unavailable'} to {do_storage['observedTo'] or 'unavailable'}",
+                  f"- Missing namespace samples: {do_storage['missingNamespaceCount']}"])
     if unavailable:
         lines.append("\nUnavailable storage metrics: " + ", ".join(unavailable))
 
