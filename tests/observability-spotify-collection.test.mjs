@@ -42,14 +42,27 @@ function db({ missing = false, failed = false } = {}) {
     assert.match(sql, /snapshot_date>=\?/);
     return { bind(...args) { return {
       all: async () => ({ results: [{ snapshot_date: '2026-10-18', status: failed ? 'error' : 'complete', completed_at: now, tracks_collected: 123, albums_queued: 4, albums_completed: 4 }] }),
-      first: async () => missing && args[1] === SPOTIFY_MONTHLY_LISTENER_ARTISTS[0].artist_key ? null : { snapshot_date: '2026-10-18', monthly_listeners: 0, collected_at: now },
+      first: async () => missing && args[1] === SPOTIFY_MONTHLY_LISTENER_ARTISTS[0].artist_key ? null : { snapshot_date: '2026-10-18', monthly_listeners: 0, tracks: 123, collected_at: now },
     }; } };
   } };
 }
 test('bounded D1 checks require every artist, preserve zero values and catch collection errors', async () => {
   const rows = await auditSpotifyD1(db(), now);
-  assert.equal(rows.length, 1 + SPOTIFY_MONTHLY_LISTENER_ARTISTS.length);
+  assert.equal(rows.length, 4 + SPOTIFY_MONTHLY_LISTENER_ARTISTS.length);
   assert(rows.every(row => row.status === 'OK'));
   assert.equal((await auditSpotifyD1(db({ missing: true }), now))[1].status, 'UNKNOWN');
   assert.equal((await auditSpotifyD1(db({ failed: true }), now))[0].status, 'FAIL');
+});
+
+test('carried-forward rows cannot satisfy per-artist source evidence', async () => {
+  const statements = [];
+  const empty = { prepare(sql) { statements.push(sql); return { bind() { return {
+    all: async () => ({ results: [] }), first: async () => null,
+  }; } }; } };
+  const rows = await auditSpotifyD1(empty, now);
+  assert(rows.every(row => row.status === 'UNKNOWN'));
+  const actualQueries = statements.filter(sql => sql.includes('sh_spotify_track_targets'));
+  assert.equal(actualQueries.length, 3);
+  assert(actualQueries.every(sql => sql.includes('COALESCE(d.is_carried_forward,0)=0')));
+  assert(actualQueries.every(sql => sql.includes('target.artist_key=?')));
 });

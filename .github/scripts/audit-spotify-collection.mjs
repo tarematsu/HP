@@ -2,6 +2,7 @@
 import { SPOTIFY_CHART_SOURCES, spotifyChartModelKey } from '../../packages/sh-shared/spotify-charts.mjs';
 import { SPOTIFY_MONTHLY_LISTENER_ARTISTS } from '../../worker/src/spotify-monthly-listeners.js';
 import { pagesR2ResponseKey } from '../../worker/src/pages-response-r2.js';
+import { SPOTIFY_TARGET_ARTISTS } from '../../worker/src/spotify-playcount-common.js';
 
 const HOUR = 3600000;
 const date = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) ? Date.parse(`${value}T00:00:00Z`) : NaN;
@@ -69,11 +70,26 @@ export async function auditSpotifyD1(db, now = Date.now()) {
     const latest = runs[0];
     const completed = runs.find(run => run.status === 'complete');
     const state = completed ? freshness(completed.completed_at, now, 48) : 'UNKNOWN';
-    const terminalError = latest?.status === 'error';
+    const terminalError = ['error', 'incomplete'].includes(latest?.status);
     results.push(row('spotify/playcounts', terminalError ? 'FAIL' : state,
       `latest run=${latest?.snapshot_date || 'missing'}; state=${latest?.status || 'missing'}; albums=${latest?.albums_completed ?? '?'}/${latest?.albums_queued ?? '?'}; last complete=${completed?.snapshot_date || 'missing'}; tracks=${completed?.tracks_collected ?? '?'}; limit=48h`));
   } catch { results.push(row('spotify/playcounts', 'UNKNOWN', 'D1 collection-run read failed')); }
   const since = new Date(now - 48 * HOUR).toISOString().slice(0, 10);
+  for (const artist of SPOTIFY_TARGET_ARTISTS) {
+    const label = `spotify/playcounts/${artist.artist_key}`;
+    try {
+      // A completed run may only have carried yesterday's values forward. Those
+      // rows must never refresh source-success evidence or hide a missing artist.
+      const value = await db.prepare(`SELECT d.snapshot_date,MAX(d.collected_at) AS collected_at,COUNT(*) AS tracks
+        FROM sh_spotify_track_targets AS target
+        INNER JOIN sh_spotify_playcount_daily AS d ON d.track_id=target.track_id
+        WHERE d.snapshot_date>=? AND target.artist_key=? AND COALESCE(d.is_carried_forward,0)=0
+        GROUP BY d.snapshot_date ORDER BY d.snapshot_date DESC LIMIT 1`)
+        .bind(since, artist.artist_key).first();
+      const state = value?.tracks > 0 ? freshness(value.collected_at, now, 48) : 'UNKNOWN';
+      results.push(row(label, state, `latest actual=${value?.snapshot_date || 'missing'}; tracks=${value?.tracks ?? 0}; carried-forward rows excluded; limit=48h`));
+    } catch { results.push(row(label, 'UNKNOWN', 'D1 actual playcount sample read failed')); }
+  }
   for (const artist of SPOTIFY_MONTHLY_LISTENER_ARTISTS) {
     const label = `spotify/monthly-listeners/${artist.artist_key}`;
     try {
