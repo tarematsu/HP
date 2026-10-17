@@ -14,11 +14,11 @@ const youtubePolicy = readFileSync(
 const xRuntime = readFileSync(
   new URL('../../native/src/renderer_panels/media_x_following_like.inc', import.meta.url), 'utf8');
 
-test('X runs only for the first two minutes after each native app startup', () => {
+test('normal startups run X for two minutes; error recovery does not', () => {
   assert.match(mediaBase, /kNativeMediaStartupXPhaseMs = 2U \* 60U \* 1000U/);
   assert.match(mediaBase, /https:\/\/x\.com\/home\?homepanel=startup/);
   assert.match(host, /bool startupXActive_ = true/);
-  assert.match(host, /startupXActive_ = true;[\s\S]*CreateControllerForCurrentPhase\(\)/);
+  assert.match(host, /startupXActive_ = !IsErrorDialogRestartLaunch\(\);[\s\S]*CreateControllerForCurrentPhase\(\)/);
   assert.match(host, /const UINT duration = startupXActive_ \? kNativeMediaStartupXPhaseMs : kNativeMediaPhaseMs/);
   assert.match(host, /if \(startupXActive_\) \{\s*startupXActive_ = false;[\s\S]*NavigateCurrentPhase\(\);\s*ArmPhaseTimer\(\)/);
   assert.match(host, /if \(startupXActive_\) \{\s*if \(FAILED\(webview_->Navigate\(kNativeMediaStartupXUrl\)\)\)/);
