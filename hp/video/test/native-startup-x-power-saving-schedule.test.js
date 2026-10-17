@@ -11,9 +11,9 @@ const tverQueue = readFileSync(
 const powerSavingSchedule = readFileSync(
   new URL('../../native/src/power_saving_schedule.inc', import.meta.url), 'utf8');
 
-test('every launch runs the two-minute X phase regardless of the clock and power-saving mode', () => {
+test('regular launches run the two-minute X phase regardless of the clock and power-saving mode', () => {
   assert.match(mediaBase, /kNativeMediaStartupXPhaseMs = 2U \* 60U \* 1000U/);
-  assert.match(mediaHost, /startupXActive_ = true;[\s\S]*CreateControllerForCurrentPhase\(\)/);
+  assert.match(mediaHost, /startupXActive_ = !IsErrorDialogRestartLaunch\(\);[\s\S]*CreateControllerForCurrentPhase\(\)/);
   const navigation = mediaHost.slice(
     mediaHost.indexOf('  void NavigateCurrentPhase()'),
     mediaHost.indexOf('  bool IsTverPage()'),
