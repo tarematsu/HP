@@ -6,7 +6,7 @@ import { requestFamily } from './unified_routes.js';
 import { shouldRefreshTverFeed, tverFeedResponse } from './tver_feed_runtime.js';
 import { dispatchTverFeedRefresh } from './tver_feed_refresh_coordinator.js';
 import { tverFeedObservability } from './tver_feed_observability.js';
-import { youtubePlaylistStartResponse } from './youtube_playlist_start.js';
+import { coordinatedYoutubePlaylistStartResponse } from './youtube_playlist_start_coordinator.js';
 
 export { SchedulerCoordinator } from './scheduler_coordinator.ts';
 export { DeviceSyncCoordinator } from './device_sync_coordinator.ts';
@@ -253,7 +253,7 @@ export default {
           headers: { Allow: 'GET', 'Cache-Control': 'no-store' }
         });
       }
-      return youtubePlaylistStartResponse();
+      return coordinatedYoutubePlaylistStartResponse(env);
     }
 
     if (requestFamily(pathname) === 'homepanel') {

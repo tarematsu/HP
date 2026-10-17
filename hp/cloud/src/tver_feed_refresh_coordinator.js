@@ -1,3 +1,5 @@
+import { YOUTUBE_START_COORDINATOR_PATH, youtubeStartStorageCache } from './youtube_playlist_start_coordinator.js';
+
 const COORDINATOR_NAME = 'tver-feed-refresh';
 const REFRESH_PATH = '/tver-feed-refresh-run';
 const REFRESH_URL = `https://homepanel.internal${REFRESH_PATH}`;
@@ -21,6 +23,7 @@ export class VideoFeedCoordinator {
     this.state = state;
     this.env = env;
     this.base = null;
+    this.youtubeStartPromise = null;
   }
 
   async baseCoordinator() {
@@ -32,6 +35,20 @@ export class VideoFeedCoordinator {
 
   async fetch(request) {
     const path = new URL(request.url).pathname;
+    if (path === YOUTUBE_START_COORDINATOR_PATH) {
+      if (request.method !== 'GET') {
+        return Response.json({ error: 'method_not_allowed' }, { status: 405, headers: { Allow: 'GET' } });
+      }
+      // Share in-flight work: concurrent cold requests must not each scan HTML.
+      if (!this.youtubeStartPromise) {
+        this.youtubeStartPromise = import('./youtube_playlist_start.js')
+          .then(({ youtubePlaylistStartResponse }) => youtubePlaylistStartResponse({
+            cache: youtubeStartStorageCache(this.state.storage),
+          }))
+          .finally(() => { this.youtubeStartPromise = null; });
+      }
+      return (await this.youtubeStartPromise).clone();
+    }
     if (path !== REFRESH_PATH) {
       return (await this.baseCoordinator()).fetch(request);
     }
