@@ -76,7 +76,20 @@ function systemIncident(status) {
 export function synchronizeImmediateTriageWithSystemStatus(issueBody) {
   const body = String(issueBody || '');
   const status = observabilitySystemStatus(body);
-  if (status.overall === 'success' || !/^## Immediate triage$/m.test(body)) return body;
+  if (!/^## Immediate triage$/m.test(body)) return body;
+
+  // Runner/deployment publishers may recover after a prior diagnostic has
+  // inserted a synthetic system incident. Reconcile that incident both ways.
+  const syntheticHeadline = /^> \\*\\*(?:ACTION REQUIRED — system health is not green\\.|PENDING — system health data is incomplete\\.)\\*\\*[^\\n]*$/m;
+  const syntheticRow = /^\\| \\*\\*P[12]\\*\\* \\| (?:GitHub Actions runner health|Deployment health|Cloudflare observability) \\|[^\\n]*$/m;
+  const healthyRow = '| - | No active incidents | All monitored gates and availability signals are healthy. | Continue routine monitoring. | - |';
+  if (status.overall === 'success') {
+    // Never erase an independently reported Cloudflare incident.
+    if (!syntheticHeadline.test(body)) return body;
+    return body
+      .replace(syntheticHeadline, '> **HEALTHY — no active observability incidents were detected.**')
+      .replace(syntheticRow, healthyRow);
+  }
 
   const evidence = systemIncident(status).replaceAll('|', '\\|');
   const headline = status.overall === 'pending'
@@ -100,13 +113,19 @@ export function synchronizeImmediateTriageWithSystemStatus(issueBody) {
       : '[diagnostics](#diagnostic-observability)';
 
   let synchronized = body.replace(
-    /(## Immediate triage\s*\n\n)> \*\*(?:HEALTHY|CONTAINED)[^\n]*\*\*(?:[^\n]*)?/,
-    `$1${headline}`,
+    syntheticHeadline,
+    headline,
   );
-  synchronized = synchronized.replace(
-    '| - | No active incidents | All monitored gates and availability signals are healthy. | Continue routine monitoring. | - |',
-    `| **${priority}** | ${area} | ${evidence} | ${action} | ${drillDown} |`,
-  );
+  if (synchronized === body) {
+    synchronized = body.replace(
+      /^> \\*\\*(?:HEALTHY|CONTAINED)[^\\n]*$/m,
+      headline,
+    );
+  }
+  const systemRow = `| **${priority}** | ${area} | ${evidence} | ${action} | ${drillDown} |`;
+  synchronized = synchronized
+    .replace(syntheticRow, systemRow)
+    .replace(healthyRow, systemRow);
   return synchronized;
 }
 
