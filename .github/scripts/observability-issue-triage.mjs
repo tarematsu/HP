@@ -193,6 +193,8 @@ function outcomeEvidence(key, outcome, summaries) {
   if (key === 'daily' || key === 'freeTier') {
     const violations = extractViolationEvidence(summary);
     if (violations.length) return violations.join('; ');
+    const missing = markdownRows(summary).filter(cells => cells.some(cell => /^(UNKNOWN|unavailable)$/i.test(cell)));
+    if (missing.length) return missing.slice(0, 3).map(cells => `${cells[0]} — measurement unavailable`).join('; ');
   }
   return firstDiagnosticLine(summary);
 }

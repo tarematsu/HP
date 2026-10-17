@@ -59,12 +59,12 @@ test('Cloudflare resource budgets are fixed at 100 percent of included usage', (
     '"actualUsage": actual',
     'mixed-daily-projection-and-period-actual',
     'dimensions { actionType }',
-    'dimensions { datetime }',
+    'dimensions { bucketName datetime }',
     'dimensions { date }',
     'resource_identifier not in document',
     '"namespaceId"',
     '"queueId"',
-    '"bucketName"',
+    'bucketName datetime',
     'ACCOUNT = os.environ.get("CLOUDFLARE_ACCOUNT_ID"',
   ]);
   expectNone(script, [
