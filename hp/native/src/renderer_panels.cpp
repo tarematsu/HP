@@ -1,5 +1,6 @@
 // Kept as one translation unit so cached GDI primitives remain shared.
 // Fragment boundaries follow complete responsibilities and never split functions.
+#include "app_error_dialog_recovery.h"
 #include "native_media_audio.h"
 #include "native_media_schedule.h"
 #include "network_request_coordinator.h"

@@ -16,6 +16,7 @@ class App {
  public:
   explicit App(HINSTANCE instance, bool postRestartClick = false);
   static constexpr int kScheduledRestartExitCode = 43;
+  static constexpr int kErrorDialogRestartExitCode = 44;
   ~App();
   int Run(int showCommand);
   static App* Current();
@@ -100,6 +101,9 @@ class App {
   int64_t toastUntil_ = 0;
   int64_t nextAppTickAt_ = 0;
   int64_t nextScheduledRestartAt_ = 0;
+  int64_t nextErrorDialogCheckAt_ = 0;
+  std::wstring lastErrorDialogTitle_;
+  unsigned errorDialogConfirmations_ = 0;
   int64_t postRestartClickAt_ = 0;
   bool airHistoryDirty_ = false;
   bool stationheadPlacementDirty_ = true;

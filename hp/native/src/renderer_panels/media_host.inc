@@ -37,7 +37,7 @@ class NativeMediaPanelHost final {
             }
             environment_ = environment;
             phase_ = Phase::YouTube;
-            startupXActive_ = true;
+            startupXActive_ = !IsErrorDialogRestartLaunch();
             CreateControllerForCurrentPhase();
             ArmPhaseTimer();
           });

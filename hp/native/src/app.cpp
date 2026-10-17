@@ -1,4 +1,5 @@
 #include "app.h"
+#include "app_error_dialog_recovery.h"
 #include "web_renderer.h"
 #include "cloud_config.h"
 #include "power_saving_controller.h"
@@ -8,6 +9,8 @@ namespace hp {
 namespace {
 constexpr wchar_t kWindowClass[] = L"HomePanelNativeWindow";
 constexpr uint32_t kFastTickMs = 2000;
+constexpr int64_t kErrorDialogCheckIntervalMs = 5'000;
+constexpr int64_t kErrorDialogRestartCooldownMs = 10LL * 60LL * 1000LL;
 // Windows can combine non-urgent App deadline wakeups with existing system
 // timer activity. Urgent/sub-second callbacks stay exact.
 constexpr ULONG kAppTimerToleranceMs = 100;
@@ -371,6 +374,34 @@ void App::Tick() {
     return;
   }
 
+  // A native fatal dialog can block the WebView2 runtime without crashing the
+  // parent. Require the same visible Windows error dialog on two 5s checks,
+  // then use the regular graceful shutdown/relaunch path. A recovery launch
+  // has a 10-minute cooldown to avoid a rapid restart loop.
+  if (now >= nextErrorDialogCheckAt_) {
+    nextErrorDialogCheckAt_ = now + kErrorDialogCheckIntervalMs;
+    if (!IsErrorDialogRestartLaunch() ||
+        now - startupAt_ >= kErrorDialogRestartCooldownMs) {
+      const std::wstring dialog = FindHomePanelErrorDialog();
+      if (dialog.empty()) {
+        lastErrorDialogTitle_.clear();
+        errorDialogConfirmations_ = 0;
+      } else if (dialog == lastErrorDialogTitle_) {
+        ++errorDialogConfirmations_;
+      } else {
+        lastErrorDialogTitle_ = dialog;
+        errorDialogConfirmations_ = 1;
+      }
+      if (errorDialogConfirmations_ >= 2) {
+        logger_->Error(L"Native error dialog detected; restarting without X: " +
+                       lastErrorDialogTitle_);
+        exitCode_ = kErrorDialogRestartExitCode;
+        DestroyWindow(window_);
+        return;
+      }
+    }
+  }
+
   if (postRestartClickPending_ && postRestartClickAt_ > 0 && now >= postRestartClickAt_) {
     PerformPostRestartClick();
     postRestartClickPending_ = false;
@@ -513,6 +544,9 @@ void App::Tick() {
         nextTickMs,
         NextDelayFromDeadline(now, nextScheduledRestartAt_, kMaxAppTimerMs));
   }
+  nextTickMs = std::min(
+      nextTickMs,
+      NextDelayFromDeadline(now, nextErrorDialogCheckAt_, kMaxAppTimerMs));
   if (postRestartClickPending_ && postRestartClickAt_ > 0) {
     nextTickMs = std::min(
         nextTickMs,
