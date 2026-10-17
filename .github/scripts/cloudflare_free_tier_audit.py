@@ -10,7 +10,7 @@ import os
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 
 def csv_env(name: str, default: str = "") -> tuple[str, ...]:
@@ -153,7 +153,7 @@ def graphql_document() -> str:
           sum { requests } dimensions { actionType }
         }
         r2storage: r2StorageAdaptiveGroups(limit: 10000, filter: {datetime_geq: $monthStart, datetime_leq: $now}, orderBy: [datetime_DESC]) {
-          max { payloadSize metadataSize } dimensions { datetime }
+          max { payloadSize metadataSize } dimensions { bucketName datetime }
         }
         doInvocations: durableObjectsInvocationsAdaptiveGroups(limit: 10000, filter: {date_geq: $day, date_leq: $day}) {
           sum { requests }
@@ -186,15 +186,54 @@ def count(value: Any) -> int:
     return int(metric(value))
 
 
-def latest_size(groups: Any, time_key: str, *size_keys: str) -> int:
-    latest = ("", 0)
+def storage_bytes(value: Any) -> int | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return int(parsed) if math.isfinite(parsed) and parsed >= 0 else None
+
+
+def latest_size(groups: Any, time_key: str, *size_keys: str) -> int | None:
+    latest: tuple[str, int] | None = None
     for group in groups or []:
         observed_at = str((group.get("dimensions") or {}).get(time_key) or "")
-        maximum = group.get("max") or {}
-        candidate = (observed_at, sum(count(maximum.get(key)) for key in size_keys))
-        if candidate[0] >= latest[0]:
+        values = [storage_bytes((group.get("max") or {}).get(key)) for key in size_keys]
+        if not observed_at or any(value is None for value in values):
+            continue
+        candidate = (observed_at, sum(values))
+        if latest is None or candidate > latest:
             latest = candidate
-    return latest[1]
+    return latest[1] if latest is not None else None
+
+
+def r2_storage_snapshot(groups: Any, expected_buckets: Iterable[str] = ()) -> dict[str, Any]:
+    # Gauges are bucket-level. Select each bucket's latest complete sample, then
+    # sum those samples; the newest account-wide row is not an account total.
+    by_bucket: dict[str, list[dict[str, Any]]] = {}
+    for group in groups or []:
+        bucket = str((group.get("dimensions") or {}).get("bucketName") or "")
+        if bucket:
+            by_bucket.setdefault(bucket, []).append(group)
+    rows = []
+    missing = []
+    for bucket in sorted(set(by_bucket) | set(expected_buckets)):
+        valid = [row for row in by_bucket.get(bucket, [])
+                 if latest_size([row], "datetime", "payloadSize", "metadataSize") is not None]
+        if not valid:
+            missing.append(bucket)
+            continue
+        latest = max(valid, key=lambda row: (row.get("dimensions") or {}).get("datetime", ""))
+        rows.append({"bucket": bucket, "observedAt": latest["dimensions"]["datetime"],
+                     "bytes": latest_size([latest], "datetime", "payloadSize", "metadataSize")})
+    return {"bytes": sum(row["bytes"] for row in rows) if rows and not missing else None,
+            "buckets": rows, "missingBuckets": missing}
+
+
+def display_usage(value: Any) -> str:
+    return "UNKNOWN" if value is None else f"{value:,}"
 
 
 def queue_operation_breakdown(
@@ -261,7 +300,7 @@ def _durable_object_duration_gb_seconds(groups: Any) -> float:
     return round(duration if has_duration else active_microseconds / 1_000_000 * 0.128, 3)
 
 
-def aggregate(row: dict[str, Any]) -> dict[str, Any]:
+def aggregate(row: dict[str, Any], expected_buckets: Iterable[str] = ()) -> dict[str, Any]:
     usage: dict[str, Any] = {key: 0 for key in LIMITS}
     usage["queueOperations"] = sum(
         count((group.get("sum") or {}).get("billableOperations"))
@@ -278,7 +317,7 @@ def aggregate(row: dict[str, Any]) -> dict[str, Any]:
             usage["r2ClassAOperations"] += requests
             if action and action not in R2_CLASS_A:
                 unknown_r2.add(action)
-    usage["r2StoredBytes"] = latest_size(row.get("r2storage"), "datetime", "payloadSize", "metadataSize")
+    usage["r2StoredBytes"] = r2_storage_snapshot(row.get("r2storage"), expected_buckets)["bytes"]
 
     usage["doRequests"] = sum(
         count((group.get("sum") or {}).get("requests"))
@@ -289,10 +328,8 @@ def aggregate(row: dict[str, Any]) -> dict[str, Any]:
         sums = group.get("sum") or {}
         usage["doRowsRead"] += count(sums.get("rowsRead"))
         usage["doRowsWritten"] += count(sums.get("rowsWritten"))
-    usage["doStoredBytes"] = max(
-        (count((group.get("max") or {}).get("storedBytes")) for group in row.get("doStorage") or []),
-        default=0,
-    )
+    stored = [storage_bytes((group.get("max") or {}).get("storedBytes")) for group in row.get("doStorage") or []]
+    usage["doStoredBytes"] = max((value for value in stored if value is not None), default=None)
 
     operation_keys = {"read": "kvReads", "write": "kvWrites", "delete": "kvDeletes", "list": "kvLists"}
     for group in row.get("kvOperations") or []:
@@ -334,8 +371,9 @@ def evaluate(
 ) -> list[str]:
     return [
         key for key, limit in LIMITS.items()
-        if float(actual[key]) >= float(limit)
-        or (enforce_projected and float(usage[key]) >= float(limit))
+        if actual.get(key) is not None and usage.get(key) is not None
+        and (float(actual[key]) >= float(limit)
+             or (enforce_projected and float(usage[key]) >= float(limit)))
     ]
 
 
@@ -347,8 +385,9 @@ def usage_basis(key: str) -> str:
 
 def self_test() -> int:
     document = graphql_document()
-    for resource_identifier in ("namespaceId", "queueId", "bucketName"):
+    for resource_identifier in ("namespaceId", "queueId"):
         assert resource_identifier not in document
+    assert "dimensions { bucketName datetime }" in document
     assert "pipelineId" not in document and "activeTime" not in document
     assert "sum { duration rowsRead rowsWritten }" in document
     assert "dimensions { queueID actionType consumerType }" in document
@@ -385,7 +424,7 @@ def self_test() -> int:
             {"dimensions": {"actionType": "PutObject"}, "sum": {"requests": 2}},
             {"dimensions": {"actionType": "GetObject"}, "sum": {"requests": 5}},
         ],
-        "r2storage": [{"dimensions": {"datetime": "2026-07-23T00:00:00Z"}, "max": {"payloadSize": 100, "metadataSize": 5}}],
+        "r2storage": [{"dimensions": {"bucketName": "bucket-a", "datetime": "2026-07-23T00:00:00Z"}, "max": {"payloadSize": 100, "metadataSize": 5}}],
         "doInvocations": [{"sum": {"requests": 10}}],
         "doPeriodic": [{"sum": {"duration": 2.5, "rowsRead": 2, "rowsWritten": 1}}],
         "doStorage": [{"max": {"storedBytes": 50}}],
@@ -452,7 +491,9 @@ def main() -> int:
         raise RuntimeError(f"Expected one GraphQL account row, got {len(accounts)}")
 
     account_row = accounts[0]
-    actual = aggregate(account_row)
+    actual = aggregate(account_row, buckets)
+    unavailable = [key for key in LIMITS if actual[key] is None]
+    storage = r2_storage_snapshot(account_row.get("r2storage"), buckets)
     projection = projection_metadata(now)
     usage = project_daily_allowances(actual, projection)
     violations = evaluate(actual, usage, projection["enforceProjected"])
@@ -479,6 +520,8 @@ def main() -> int:
         "scope": _ACCOUNT_SCOPE,
         "usageKind": "mixed-daily-projection-and-period-actual",
         "actualUsage": actual,
+        "unavailableMetrics": unavailable,
+        "r2StorageSnapshot": storage,
         "usage": usage,
         "projection": projection,
         "queueOperationsBreakdown": queue_breakdown,
@@ -517,10 +560,20 @@ def main() -> int:
     ]
     for key, limit in LIMITS.items():
         lines.append(
-            f"| {key} | {actual[key]:,} | {usage[key]:,} | {usage_basis(key)} | "
+            f"| {key} | {display_usage(actual[key])} | {display_usage(usage[key])} | {usage_basis(key)} | "
             f"{limit:,} | "
-            f"{'VIOLATION' if key in violations else ('WARMUP' if key in _DAILY_RATE_METRICS and not projection['enforceProjected'] and float(usage[key]) >= float(limit) else 'OK')} |"
+            f"{'UNKNOWN' if key in unavailable else 'VIOLATION' if key in violations else ('WARMUP' if key in _DAILY_RATE_METRICS and not projection['enforceProjected'] and float(usage[key]) >= float(limit) else 'OK')} |"
         )
+
+    lines.extend(["", "### R2 storage measurement coverage", "",
+                  "Latest complete sample per bucket; values are summed across buckets.", "",
+                  "| Bucket | Observed at | Bytes |", "|---|---|---:|"])
+    for item in storage["buckets"]:
+        lines.append(f"| {item['bucket']} | {item['observedAt']} | {item['bytes']:,} |")
+    for bucket in storage["missingBuckets"]:
+        lines.append(f"| {bucket} | unavailable | UNKNOWN |")
+    if unavailable:
+        lines.append("\nUnavailable storage metrics: " + ", ".join(unavailable))
 
     lines.extend([
         "",
@@ -565,4 +618,6 @@ def main() -> int:
             f"actual={actual[key]} budgetValue={usage[key]} "
             f"basis={usage_basis(key)} limit={LIMITS[key]}"
         )
-    return 1 if violations else 0
+    for key in unavailable:
+        print(f"::error title=Cloudflare storage measurement unavailable::{key}: no complete storage sample")
+    return 1 if violations or unavailable else 0
