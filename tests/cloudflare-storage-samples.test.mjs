@@ -30,9 +30,18 @@ for value in [None, True, -1, 'bad', float('nan'), float('inf')]:
 assert audit.storage_bytes(0) == 0
 assert audit.aggregate({})['doStoredBytes'] is None
 assert audit.aggregate({})['r2StoredBytes'] is None
+sql = [{'dimensions': {'namespaceId': ns, 'datetime': at}, 'max': {'storedBytes': size}}
+       for ns, at, size in [('a', '2026-10-17T10:00:00Z', 100), ('a', '2026-10-17T11:00:00Z', 200),
+                            ('b', '2026-10-17T10:30:00Z', 300)]]
+snapshot = audit.do_storage_snapshot(sql)
+assert snapshot['bytes'] == 500 and snapshot['namespaceCount'] == 2
+assert snapshot['observedFrom'] == '2026-10-17T10:30:00Z'
+assert snapshot['observedTo'] == '2026-10-17T11:00:00Z'
+assert audit.do_storage_snapshot([])['bytes'] is None
+assert audit.do_storage_snapshot([{'dimensions': {'namespaceId': 'a', 'datetime': 'now'}, 'max': {'storedBytes': None}}])['bytes'] is None
 
 # Exercise the production report writer and exit status without credentials/API.
-row = {'r2storage': [a, b, partial], 'doStorage': [{'max': {'storedBytes': 0}}],
+row = {'r2storage': [a, b, partial], 'doStorage': [{'dimensions': {'namespaceId': 'namespace-a', 'datetime': '2026-10-17T12:00:00Z'}, 'max': {'storedBytes': 0}}],
        'kvStorage': [{'dimensions': {'date': '2026-10-17'}, 'max': {'byteCount': 0}}]}
 with tempfile.TemporaryDirectory() as directory:
     out = Path(directory)
