@@ -105,7 +105,7 @@ test('unified observability runs account-wide post-deploy, collection, and daily
   assert.doesNotMatch(workflow, /^\s+POLICY_OUTCOME:/m);
   assert.doesNotMatch(workflow, /^\s+pull_request:/m);
   assert.equal((workflow.match(/- cron:/g) || []).length, 1);
-  assert.equal((workflow.match(/continue-on-error: true/g) || []).length, 7);
+  assert.equal((workflow.match(/continue-on-error: true/g) || []).length, 8);
 
   expectAll(dailyAudit, [
     'def configured_resources()',

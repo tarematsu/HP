@@ -14,6 +14,7 @@ const outcomes = {
   d1Insights: 'success',
   query: 'success',
   telemetry: 'success',
+  r2Collection: 'success',
 };
 const deployments = {
   'sh-runtime-orchestrator': {

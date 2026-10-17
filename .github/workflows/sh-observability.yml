@@ -15,6 +15,7 @@ on:
       - '.github/scripts/audit-cloudflare-*.py'
       - '.github/scripts/audit-deployed-cloudflare-telemetry.py'
       - '.github/scripts/audit-observability-collection.mjs'
+      - '.github/scripts/audit-r2-collection-freshness.mjs'
       - '.github/scripts/cloudflare-worker-public-url.mjs'
       - '.github/scripts/cloudflare_free_tier_audit.py'
       - '.github/scripts/audit-observability-budget-gates.py'
@@ -223,6 +224,15 @@ jobs:
             exit 1
           fi
 
+      - name: Audit R2 collection freshness
+        id: r2-collection
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix worker ci --ignore-scripts --no-audit --no-fund
+          node .github/scripts/audit-r2-collection-freshness.mjs 2>&1 | tee r2-collection-audit.log
+
       - name: Resolve semantic observability outcome
         id: resolve-outcome
         if: always() && !cancelled()
@@ -236,6 +246,7 @@ jobs:
           D1_INSIGHTS_OUTCOME: ${{ steps.d1-insights.outcome }}
           OBSERVABILITY_QUERY_OUTCOME: ${{ steps.observability-query.outputs.query-outcome }}
           TELEMETRY_POLICY_OUTCOME: ${{ steps.telemetry-policy.outcome }}
+          R2_COLLECTION_OUTCOME: ${{ steps.r2-collection.outcome }}
         run: node .github/scripts/observability-workflow-outcome.mjs
 
       - name: Publish persistent observability status
@@ -254,6 +265,7 @@ jobs:
           D1_INSIGHTS_OUTCOME: ${{ steps.d1-insights.outcome }}
           OBSERVABILITY_QUERY_OUTCOME: ${{ steps.observability-query.outputs.query-outcome }}
           TELEMETRY_POLICY_OUTCOME: ${{ steps.telemetry-policy.outcome }}
+          R2_COLLECTION_OUTCOME: ${{ steps.r2-collection.outcome }}
         run: node .github/scripts/publish-cloudflare-observability-status.mjs
 
       - name: Publish semantic observability overall status
@@ -291,6 +303,8 @@ jobs:
             telemetry-audit.log
             collection-summary.md
             collection-audit.log
+            r2-collection-summary.md
+            r2-collection-audit.log
             active-worker-deployments.json
             live-tail.log
             live-tail/

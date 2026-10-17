@@ -42,6 +42,10 @@ export const OBSERVABILITY_GATE_INFO = Object.freeze({
     detail: '#diagnostic-observability',
     action: 'Open the diagnostics section and workflow run to isolate the failing API, live-tail, or persisted-error query.',
   }),
+  r2Collection: Object.freeze({
+    label: 'R2 collection freshness', priority: 'P1', detail: '#diagnostic-r2-collection',
+    action: 'Inspect the source collection timestamp and collector status in R2.',
+  }),
   telemetry: Object.freeze({
     label: 'Current-deployment telemetry policy',
     priority: 'P1',
@@ -182,6 +186,10 @@ function outcomeEvidence(key, outcome, summaries) {
   if (normalizeOutcome(outcome) === 'success') return 'No failure reported.';
   const summary = summaries?.[key] || '';
   if (key === 'telemetry') return telemetryFailureEvidence(summary);
+  if (key === 'r2Collection') {
+    const failures = markdownRows(summary).filter(cells => ['FAIL', 'STALE', 'UNKNOWN'].includes(cells[1]));
+    if (failures.length) return failures.slice(0, 4).map(cells => cells.join(' — ')).join('; ');
+  }
   if (key === 'daily' || key === 'freeTier') {
     const violations = extractViolationEvidence(summary);
     if (violations.length) return violations.join('; ');
