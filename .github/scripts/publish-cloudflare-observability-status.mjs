@@ -52,7 +52,7 @@ const DIAGNOSTIC_SECTION_LIMITS = Object.freeze({
   d1Insights: 7_000,
   observability: 6_500,
   telemetry: 6_500,
-  r2Collection: 3_000,
+  r2Collection: 12_000,
 });
 
 export function isCurrentMainTarget(targetSha, mainSha) {

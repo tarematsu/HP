@@ -4,6 +4,9 @@ import { appendFile, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createWranglerRemoteR2 } from '../../worker/scripts/remote-r2-json-adapter.mjs';
 import { regionalSnapshotKey } from '../../worker/src/regional-music-r2-snapshot.js';
+import { REGIONAL_MUSIC_SERVICES } from '../../worker/src/regional-music-service-registry.js';
+import { createWranglerRemoteD1 } from '../../worker/scripts/remote-d1-adapter.mjs';
+import { auditSpotifyCharts, auditSpotifyD1 } from './audit-spotify-collection.mjs';
 
 // Scheduled sources: daily YouTube, weekly QQ/KKBOX, weekday Kugou.
 // Allow one day of scheduling/retry grace, including Kugou's weekend gap.
@@ -59,8 +62,9 @@ export async function auditR2(r2, now = Date.now()) {
 
 export function renderR2Audit(rows) {
   const cell = value => String(value).replace(/[|\r\n<>]/g, ' ');
-  return '## R2 collection freshness (regional canonical snapshots)\n\n' +
-    'Scope: YouTube Music, QQ Music, KKBOX, Kugou canonical source snapshots; this does not certify other collectors or individual chart/catalog lanes. Missing evidence fails the gate.\n\n' +
+  return '## Persisted collection diagnostics\n\n' +
+    'Scope: all 4 active regional canonical snapshots; Spotify 5 Japan charts, 16 editorial playlists, playcount collection runs and each configured monthly-listener artist. Retired regional services are excluded. Regional chart/catalog sub-lanes and unrelated collectors are not certified by a service-level snapshot. Missing evidence fails the gate.\n\n' +
+    'Spotify latest collection and historical backfill progress are reported separately. Zero matching artists is valid; missing source evidence is not. All timestamps are UTC.\n\n' +
     '| Service | State | Evidence |\n|---|---|---|\n' +
     rows.map(row => `| ${cell(row.service)} | ${cell(row.status)} | ${cell(row.detail)} |`).join('\n') + '\n';
 }
@@ -72,6 +76,16 @@ async function main() {
   const cwd = fileURLToPath(new URL('../../worker/', import.meta.url));
   const wranglerScript = fileURLToPath(new URL('../../worker/node_modules/wrangler/bin/wrangler.js', import.meta.url));
   const rows = await auditR2(createWranglerRemoteR2({ bucket, cwd, wranglerScript }));
+  if (Object.keys(REGIONAL_MUSIC_SERVICES).some(service => !Object.hasOwn(R2_COLLECTION_MAX_AGE_HOURS, service))) {
+    rows.push({ service: 'regional/coverage', status: 'UNKNOWN', detail: 'active service has no freshness policy' });
+  }
+  const spotifyConfig = JSON.parse(await readFile(new URL('../../worker/wrangler.spotify-playcount.jsonc', import.meta.url), 'utf8'));
+  const spotifyBucket = spotifyConfig.r2_buckets.find(row => row.binding === 'PAGES_RESPONSE_R2')?.bucket_name;
+  const database = spotifyConfig.d1_databases.find(row => row.binding === 'OTHER_DB')?.database_name;
+  if (!spotifyBucket || !database) throw new Error('Spotify source storage is not configured');
+  const now = Date.now();
+  rows.push(...await auditSpotifyCharts(createWranglerRemoteR2({ bucket: spotifyBucket, cwd, wranglerScript }), now));
+  rows.push(...await auditSpotifyD1(createWranglerRemoteD1({ database, cwd, wranglerScript }), now));
   const summary = renderR2Audit(rows);
   await writeFile('r2-collection-summary.md', summary);
   if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, summary);

@@ -16,6 +16,7 @@ on:
       - '.github/scripts/audit-deployed-cloudflare-telemetry.py'
       - '.github/scripts/audit-observability-collection.mjs'
       - '.github/scripts/audit-r2-collection-freshness.mjs'
+      - '.github/scripts/audit-spotify-collection.mjs'
       - '.github/scripts/cloudflare-worker-public-url.mjs'
       - '.github/scripts/cloudflare_free_tier_audit.py'
       - '.github/scripts/audit-observability-budget-gates.py'
