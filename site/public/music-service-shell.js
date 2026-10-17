@@ -192,6 +192,13 @@ export function bindServiceGroups(root, labels = {}) {
       button.setAttribute('aria-pressed', String(selected));
     }
     syncRovingTabs(nav);
+    const selected = nav.querySelector('button.active');
+    if (selected && nav.clientWidth > 0 && nav.scrollWidth > nav.clientWidth) {
+      const bounds = nav.getBoundingClientRect();
+      const item = selected.getBoundingClientRect();
+      if (item.left < bounds.left) nav.scrollLeft += item.left - bounds.left;
+      else if (item.right > bounds.right) nav.scrollLeft += item.right - bounds.right;
+    }
     root.dispatchEvent(new CustomEvent('music-service:group-change', { detail: { group } }));
     window.dispatchEvent(new Event('resize'));
   }

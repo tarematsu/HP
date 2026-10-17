@@ -33,7 +33,7 @@ class Bucket {
   async put(key, value) { this.values.set(key, String(value)); }
   async delete(key) { this.values.delete(key); }
 }
-function harness() {
+function harness(t) {
   const r2 = new Bucket();
   const messages = [];
   const requests = [];
@@ -43,6 +43,8 @@ function harness() {
     get SPOTIFY_CHARTS_REFRESH_TOKEN() { throw new Error('Public playlist must not need OAuth'); },
   };
   let clock = Date.UTC(2026, 9, 16, 0, 20);
+  // Collection observations and persisted write cooldowns use the same clock.
+  t.mock.method(Date, 'now', () => clock);
   const deps = { now: () => clock, fetchImpl: async url => {
     requests.push(String(url));
     if (!String(url).startsWith('https://open.spotify.com/embed/playlist/')) throw new Error('unexpected source');
@@ -69,8 +71,8 @@ test('malformed and missing public embeds fail rather than recording false absen
   assert.throws(() => parseSpotifyPlaylistPositions(embed(), 'https://example.com/playlist/' + PLAYLIST_ID), /no complete track list/);
 });
 
-test('playlist publisher saves daily snapshots in existing year shards and publishes no backfill jobs', async () => {
-  const h = harness();
+test('playlist publisher saves daily snapshots in existing year shards and publishes no backfill jobs', async (t) => {
+  const h = harness(t);
   assert.equal(SPOTIFY_EDITORIAL_PLAYLISTS.find(item => item.id === 'viral-hits-jp-daily').source, 'spotify-playlist-position');
   await runJapanChartWork(h.env, work(), h.deps);
   assert.equal(h.requests.length, 1);
@@ -92,8 +94,8 @@ test('playlist publisher saves daily snapshots in existing year shards and publi
   assert.equal(h.messages.filter(item => item.body.mode === 'history').length, 0);
 });
 
-test('fetch or parser failure preserves the last good playlist ranking snapshot', async () => {
-  const h = harness();
+test('fetch or parser failure preserves the last good playlist ranking snapshot', async (t) => {
+  const h = harness(t);
   await runJapanChartWork(h.env, work(), h.deps);
   h.advance();
   h.deps.fetchImpl = async () => new Response('Forbidden', { status: 403 });
@@ -104,8 +106,8 @@ test('fetch or parser failure preserves the last good playlist ranking snapshot'
   assert.equal(model.periods.length, 1);
 });
 
-test('all sixteen editorial playlists are scheduled and their positions stay separate by playlist ID', async () => {
-  const h = harness();
+test('all sixteen editorial playlists are scheduled and their positions stay separate by playlist ID', async (t) => {
+  const h = harness(t);
   await enqueueJapanCharts(h.env);
   assert.equal(SPOTIFY_EDITORIAL_PLAYLISTS.length, 16);
   assert.deepEqual(

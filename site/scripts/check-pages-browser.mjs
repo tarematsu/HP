@@ -154,6 +154,10 @@ try {
       const url = new URL(route.request().url()); const path = url.pathname + url.search;
       if (!live) {
         const fixture = emptyFixture();
+        if (url.pathname === '/api/first-week-comparison') {
+          fixture.series = [{ single: '16th', title: '初週比較テスト', release_date_jst: '2026-09-17',
+            status: 'available', source_url: 'https://example.test/release', points: [[0, 100, 0], [5, 120, 20]] }];
+        }
         if (url.pathname === '/api/spotify-charts') {
           const date = new Date().toISOString().slice(0, 10);
           const year = date.slice(0, 4);
@@ -218,6 +222,11 @@ try {
       if (!snapshots.has(path)) snapshots.set(path, fetchLiveApiSnapshot(path));
       try { await route.fulfill(await snapshots.get(path)); }
       catch (error) { apiResults.push({ path, error: error.message }); await route.fulfill({ status: 502, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'snapshot unavailable' }) }); }
+    });
+    // Make shell arrival slower than the runtime to reproduce the cold-load race.
+    if (!live) await page.route('**/*first-week-comparison-shell*.js*', async route => {
+      await new Promise(resolve => setTimeout(resolve, 250));
+      await route.continue();
     });
     await page.goto(origin);
     for (const mode of modes) {
@@ -326,7 +335,23 @@ try {
         assert.deepEqual(await page.locator('[data-spotify-chart-artist]').allTextContents(),
           ['すべて', '櫻坂', '乃木坂', '日向坂', '坂道選抜']);
       }
+      if (!live && mode === 'broadcasts') {
+        await page.waitForFunction(() => document.querySelectorAll('#firstWeekTbody tr').length === 1
+          && Number(document.getElementById('firstWeekChart')?.dataset.firstWeekWidth) > 0, null, { timeout: 10000 });
+        assert.match(await page.locator('#firstWeekTbody').textContent(), /初週比較テスト/);
+      }
       if (mode === 'spotify-playlists') {
+        const nav = page.locator('#spotifyPlaylistsView .music-service-view-tabs');
+        assert.equal(await nav.evaluate(e => getComputedStyle(e).flexWrap), 'nowrap');
+        assert.ok(await nav.evaluate(e => e.getBoundingClientRect().height) <= 64, 'playlist choices stay in one row');
+        await nav.locator('button').first().focus();
+        await page.keyboard.press('End');
+        assert.equal(await nav.locator('button').last().getAttribute('aria-selected'), 'true');
+        assert.equal(await nav.locator('button').last().evaluate(e => {
+          const item=e.getBoundingClientRect(); const parent=e.parentElement.getBoundingClientRect();
+          return item.left >= parent.left - 2 && item.right <= parent.right + 2;
+        }), true, 'last playlist is visible after keyboard selection');
+        await page.keyboard.press('Home');
         assert.deepEqual(await page.locator('#spotifyPlaylistsView .music-service-view-tabs button').allTextContents(),
           SPOTIFY_PLAYLIST_TABS.map(tab => tab.label));
         assert.deepEqual(await page.locator('[data-spotify-playlist-artist]').allTextContents(),
