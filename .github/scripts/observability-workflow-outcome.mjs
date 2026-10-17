@@ -148,6 +148,7 @@ export async function resolveFromEnvironment() {
     telemetry,
     telemetryLog,
     liveTailLog,
+    r2Collection,
   ] = await Promise.all([
     currentMainSha(request),
     findStatusIssue({ request, title: STATUS_ISSUE_TITLE, marker: STATUS_MARKER }),
@@ -161,6 +162,7 @@ export async function resolveFromEnvironment() {
     readOptionalText('telemetry-summary.md'),
     readOptionalText('telemetry-audit.log'),
     readOptionalText('live-tail.log'),
+    readOptionalText('r2-collection-summary.md'),
   ]);
 
   const effectiveOutcomes = { ...outcomes };
@@ -179,7 +181,7 @@ export async function resolveFromEnvironment() {
     targetSha,
     mainSha,
     outcomes: effectiveOutcomes,
-    summaries: { publicHealth, daily, freeTier, contract, d1Insights, observability, telemetry: effectiveTelemetry },
+    summaries: { publicHealth, daily, freeTier, contract, d1Insights, observability, telemetry: effectiveTelemetry, r2Collection },
     activeDeployments,
     previousIssueBody: existingIssue?.body,
     generatedAt: new Date().toISOString(),
