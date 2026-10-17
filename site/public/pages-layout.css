@@ -619,3 +619,23 @@ body {
   .spotify-table col.col-number { width:25%; }
   .spotify-table col.col-delta { width:22%; }
 }
+
+
+/* Keep the 16 editorial playlist choices usable without eight rows of tabs
+   on a narrow phone. Keep navigation in the layout layer, alongside the
+   shared wrapping default, so feature-layer specificity cannot be overridden. */
+#spotifyPlaylistsView .music-service-view-tabs {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+#spotifyPlaylistsView .music-service-view-tabs button {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: max-content;
+  white-space: nowrap;
+  padding-inline: 12px;
+}

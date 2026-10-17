@@ -306,20 +306,3 @@
   cursor: pointer;
 }
 .music-service-pager button:disabled { opacity: .45; cursor: default; }
-
-
-/* Keep the 16 editorial playlist choices usable without eight rows of tabs
-   on a narrow phone; this changes only the new Spotify playlist source. */
-#spotifyPlaylistsView .music-service-view-tabs {
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
-  scrollbar-width: thin;
-}
-#spotifyPlaylistsView .music-service-view-tabs button {
-  flex: 0 0 auto;
-  width: auto;
-  min-width: max-content;
-  white-space: nowrap;
-  padding-inline: 12px;
-}

@@ -194,10 +194,11 @@ async function showHistory(mode, route, { updateUrl = true, replaceUrl = false, 
     await Promise.all([ensureModeStyles(mode), loadOnce('history:shell', () => import('/history-shell.js?v=20260930.1'))]);
     if (activeMode !== mode) return;
     if (route.firstWeek) {
-      await Promise.all([
-        loadOnce('first-week:shell', () => import('/first-week-comparison-shell.js?v=20261010.1')),
-        loadOnce('first-week:runtime', () => import('/first-week-comparison.js?v=20261002.2')),
-      ]);
+      // The runtime captures its DOM targets during module evaluation. Mount
+      // the shell first, even when its dependencies arrive after the runtime.
+      await loadOnce('first-week:shell', () => import('/first-week-comparison-shell.js?v=20261010.1'));
+      if (activeMode !== mode) return;
+      await loadOnce('first-week:runtime', () => import('/first-week-comparison.js?v=20261002.2'));
       if (activeMode !== mode) return;
     }
     await loadOnce('history:runtime', () => import('/history/history-main.js?v=20261010.1'));
