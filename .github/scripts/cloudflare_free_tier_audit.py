@@ -143,7 +143,7 @@ def configured_resources() -> tuple[set[str], set[str]]:
 
 
 def graphql_document() -> str:
-    return """query FreeTierBudget($account: string, $day: Date!, $now: Time!, $monthStart: Time!) {
+    return """query FreeTierBudget($account: string, $day: Date!, $now: Time!, $monthStart: Time!, $storageDay: Date!) {
       viewer { accounts(filter: {accountTag: $account}) {
         queues: queueMessageOperationsAdaptiveGroups(limit: 10000, filter: {date_geq: $day, date_leq: $day}) {
           sum { billableOperations }
@@ -161,7 +161,7 @@ def graphql_document() -> str:
         doPeriodic: durableObjectsPeriodicGroups(limit: 10000, filter: {date_geq: $day, date_leq: $day}) {
           sum { duration rowsRead rowsWritten }
         }
-        doStorage: durableObjectsSqlStorageGroups(limit: 10000, filter: {date_geq: $day, date_leq: $day}, orderBy: [datetime_DESC]) {
+        doStorage: durableObjectsSqlStorageGroups(limit: 10000, filter: {date_geq: $storageDay, date_leq: $day}, orderBy: [datetime_DESC]) {
           max { storedBytes } dimensions { namespaceId datetime }
         }
         kvOperations: kvOperationsAdaptiveGroups(limit: 10000, filter: {date_geq: $day, date_leq: $day}) {
@@ -508,6 +508,8 @@ def main() -> int:
         "variables": {
             "account": ACCOUNT,
             "day": day_start.date().isoformat(),
+            # Storage gauges can arrive after UTC midnight; retain the prior day.
+            "storageDay": (day_start - dt.timedelta(days=1)).date().isoformat(),
             "now": now.isoformat().replace("+00:00", "Z"),
             "monthStart": day_start.replace(day=1).isoformat().replace("+00:00", "Z"),
         },
