@@ -42,6 +42,10 @@ export const OBSERVABILITY_GATE_INFO = Object.freeze({
     detail: '#diagnostic-observability',
     action: 'Open the diagnostics section and workflow run to isolate the failing API, live-tail, or persisted-error query.',
   }),
+  r2Collection: Object.freeze({
+    label: 'R2 collection freshness', priority: 'P1', detail: '#diagnostic-r2-collection',
+    action: 'Inspect the source collection timestamp and collector status in R2.',
+  }),
   telemetry: Object.freeze({
     label: 'Current-deployment telemetry policy',
     priority: 'P1',
