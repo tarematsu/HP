@@ -41,6 +41,7 @@ const STATUS_CONTEXTS = {
   d1Insights: 'observability/d1-query-insights',
   query: 'observability/cloudflare-query',
   telemetry: 'observability/telemetry-policy',
+  r2Collection: 'observability/r2-collection-freshness',
 };
 
 const DIAGNOSTIC_SECTION_LIMITS = Object.freeze({

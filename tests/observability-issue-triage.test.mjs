@@ -25,6 +25,7 @@ const outcomes = {
   d1Insights: 'success',
   query: 'success',
   telemetry: 'failure',
+  r2Collection: 'success',
 };
 const summaries = {
   publicHealth: '| Endpoint | Result | HTTP |\n|---|---|---|\n| Unified health | success | 200 OK |',

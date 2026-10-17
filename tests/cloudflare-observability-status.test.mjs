@@ -31,6 +31,7 @@ test('unified observability issue body includes HP and Stationhead deployment co
       d1Insights: 'success',
       query: 'success',
       telemetry: 'success',
+  r2Collection: 'success',
     },
     summaries: {
       daily: '## Daily usage\n\nD1 rows read: 10',
