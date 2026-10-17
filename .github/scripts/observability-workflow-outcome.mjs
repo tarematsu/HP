@@ -133,6 +133,7 @@ export async function resolveFromEnvironment() {
     d1Insights: process.env.D1_INSIGHTS_OUTCOME,
     query: process.env.OBSERVABILITY_QUERY_OUTCOME,
     telemetry: process.env.TELEMETRY_POLICY_OUTCOME,
+    r2Collection: process.env.R2_COLLECTION_OUTCOME,
   };
   const [
     mainSha,
