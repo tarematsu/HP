@@ -277,7 +277,8 @@ test('Spotify detail lookup resolves dates first and then seeks indexed artist/d
   const detailSql = spotifyLatestDetailSql();
 
   assert.match(latestSql, /FROM sh_spotify_artist_daily/);
-  assert.match(latestSql, /GROUP BY artist_key/);
+  assert.match(latestSql, /ORDER BY daily.snapshot_date DESC LIMIT 1/);
+  assert.doesNotMatch(latestSql, /GROUP BY|MAX\(/);
   assert.doesNotMatch(latestSql, /sh_spotify_playcount_daily/);
 
   assert.match(detailSql, /INDEXED BY idx_sh_spotify_track_targets_artist/);
