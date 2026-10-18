@@ -49,3 +49,14 @@ export function spotifyDailyFinalizeR2Statement(db, message, previousDate, rows)
 export function spotifyDailyFinalizeStatement(db, message, previousDate) {
   return finalizeStatement(db, message, previousDate);
 }
+
+// Seek only aliases present in this day's snapshot. Scanning the full alias
+// catalog on every finalization is expensive even when there is nothing to delete.
+export function spotifyDailyAliasCleanupStatement(db, snapshotDate) {
+  return db.prepare(`DELETE FROM sh_spotify_playcount_daily
+    WHERE snapshot_date=? AND EXISTS (
+      SELECT 1 FROM sh_spotify_track_aliases AS alias
+      WHERE alias.source_track_id=sh_spotify_playcount_daily.track_id
+        AND alias.source_track_id<>alias.canonical_track_id
+    )`).bind(snapshotDate);
+}

@@ -1,4 +1,4 @@
-import { spotifyDailyFinalizeR2Statement, spotifyDailyFinalizeStatement } from './spotify-playcount-daily-write.js';
+import { spotifyDailyAliasCleanupStatement, spotifyDailyFinalizeR2Statement, spotifyDailyFinalizeStatement } from './spotify-playcount-daily-write.js';
 import {
   cleanupSpotifyR2RunCandidates,
   loadSpotifyR2RunCandidates,
@@ -361,12 +361,7 @@ async function finalizeAttempt(env, message) {
     r2Mode
       ? spotifyDailyFinalizeR2Statement(db, message, previousDate, candidates)
       : spotifyDailyFinalizeStatement(db, message, previousDate),
-    db.prepare(`DELETE FROM sh_spotify_playcount_daily
-      WHERE snapshot_date=? AND track_id IN (
-        SELECT source_track_id FROM sh_spotify_track_aliases
-        WHERE source_track_id<>canonical_track_id
-      )`)
-      .bind(message.snapshot_date),
+    spotifyDailyAliasCleanupStatement(db, message.snapshot_date),
     ...spotifyArtistDailyRefreshStatements(db, message.snapshot_date, now),
     // The canonical daily table is the sole latest-value source. The former
     // sh_spotify_playcount_current copy had no production readers and doubled
