@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
+import { rewriteMinuteD1WriteSql } from '../src/minute-d1-write-throttle.js';
 
 import {
   hostCheckpointDue,
@@ -34,7 +35,7 @@ function createDatabase() {
     preparedSql,
     prepare(sql) {
       preparedSql.push(sql);
-      const statement = sqlite.prepare(sql);
+      const statement = sqlite.prepare(rewriteMinuteD1WriteSql(sql));
       return {
         bind(...params) {
           return {
@@ -106,8 +107,8 @@ test('existing host resolution preserves alias priority and immediately persists
     host_id: Number(row.host_id),
     last_seen_at: Number(row.last_seen_at),
   })), [
-    { alias_type: 'handle', alias_value: 'host', host_id: 2, last_seen_at: 200 },
-    { alias_type: 'stationhead_account_id', alias_value: '123', host_id: 1, last_seen_at: 200 },
+    { alias_type: 'handle', alias_value: 'host', host_id: 2, last_seen_at: 10 },
+    { alias_type: 'stationhead_account_id', alias_value: '123', host_id: 1, last_seen_at: 10 },
   ]);
   assert.equal(db.preparedSql.length, 3);
   assert.match(db.preparedSql[0], /SELECT id,stationhead_account_id,current_handle,last_seen_at/);
@@ -124,8 +125,8 @@ test('unchanged host identity skips the host-table write before the heartbeat', 
 
   assert.equal(hostId, 1);
   assert.equal(Number(db.sqlite.prepare('SELECT last_seen_at FROM sh_hosts WHERE id=1').get().last_seen_at), 1_000);
-  assert.equal(db.preparedSql.length, 2);
-  assert.doesNotMatch(db.preparedSql.join('\n'), /UPDATE sh_hosts SET/);
+  assert.equal(db.preparedSql.length, 1);
+  assert.doesNotMatch(db.preparedSql.join('\n'), /UPDATE sh_hosts SET|INSERT INTO sh_host_aliases/);
 });
 
 test('unchanged host identity checkpoints after twenty minutes', async () => {
@@ -161,4 +162,46 @@ test('missing host retains canonical creation and avoids an immediate duplicate 
   ]);
   assert.equal(db.preparedSql.length, 4);
   assert.doesNotMatch(db.preparedSql.join('\n'), /UPDATE sh_hosts SET/);
+});
+
+function changes(db) {
+  return Number(db.sqlite.prepare('SELECT total_changes() AS count').get().count);
+}
+
+test('stable host and aliases produce no writes until their twenty-minute checkpoint', async () => {
+  const db = createDatabase();
+  try {
+    seedHost(db, { observedAt: 1_000 });
+    const before = changes(db);
+    db.preparedSql.length = 0;
+    for (let minute = 1; minute < 20; minute += 1) {
+      assert.equal(await resolveHost(db, { accountId: 123, handle: 'host' }, 1_000 + minute * 60_000), 1);
+    }
+    assert.equal(changes(db) - before, 0);
+    assert.equal(db.preparedSql.length, 19);
+    assert.doesNotMatch(db.preparedSql.join('\n'), /INSERT INTO sh_host_aliases|UPDATE sh_hosts/);
+    const plan = db.sqlite.prepare('EXPLAIN QUERY PLAN ' + db.preparedSql[0])
+      .all('stationhead_account_id', '123', 'handle', 'host')
+      .map(row => row.detail).join('\n');
+    assert.match(plan, /SEARCH alias USING INDEX.*alias_type=\? AND alias_value=\?/);
+    assert.doesNotMatch(plan, /SCAN alias/);
+    await resolveHost(db, { accountId: 123, handle: 'host' }, 1_000 + SESSION_HEARTBEAT_MS);
+    assert.equal(changes(db) - before, 3); // host plus its two aliases
+    const after = changes(db);
+    await resolveHost(db, { accountId: 123, handle: 'host' }, 1_000 + SESSION_HEARTBEAT_MS);
+    await resolveHost(db, { accountId: 123, handle: 'host' }, 1_000 + 60_000);
+    assert.equal(changes(db), after);
+  } finally { db.sqlite.close(); }
+});
+
+test('a missing alias is inserted immediately before the host checkpoint', async () => {
+  const db = createDatabase();
+  try {
+    seedHost(db, { observedAt: 1_000 });
+    const before = changes(db);
+    assert.equal(await resolveHost(db, { accountId: 123, handle: 'host', legacyId: 999 }, 2_000), 1);
+    const row = db.sqlite.prepare("SELECT host_id,last_seen_at FROM sh_host_aliases WHERE alias_type='legacy_host_id'").get();
+    assert.deepEqual({ ...row }, { host_id: 1, last_seen_at: 2_000 });
+    assert.equal(changes(db) - before, 1);
+  } finally { db.sqlite.close(); }
 });

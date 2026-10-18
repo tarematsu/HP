@@ -30,26 +30,23 @@ async function upsertAliases(db, table, idColumn, entityId, aliases, observedAt)
   }
 }
 
-function orderedAliasLookup(aliases) {
-  const pairs = aliases.flatMap((alias) => [alias.type, alias.value]);
-  return {
-    predicate: aliases.map(() => '(alias_type=? AND alias_value=?)').join(' OR '),
-    priority: `CASE ${aliases.map((_, index) => (
-      `WHEN alias_type=? AND alias_value=? THEN ${index}`
-    )).join(' ')} ELSE ${aliases.length} END`,
-    binds: pairs.concat(pairs),
-  };
-}
-
 async function findExistingHost(db, aliases) {
-  const lookup = orderedAliasLookup(aliases);
-  return db.prepare(`SELECT id,stationhead_account_id,current_handle,last_seen_at
+  const requested = aliases.map((_, index) => `(?,?,${index})`).join(',');
+  return db.prepare(`WITH requested(alias_type,alias_value,priority) AS (
+      VALUES ${requested}
+    ), known AS MATERIALIZED (
+      SELECT alias.host_id,alias.last_seen_at,requested.priority
+      FROM requested
+      JOIN sh_host_aliases AS alias
+        ON alias.alias_type=requested.alias_type AND alias.alias_value=requested.alias_value
+    )
+    SELECT id,stationhead_account_id,current_handle,last_seen_at,
+      (SELECT COUNT(*) FROM known) AS alias_count,
+      (SELECT MIN(last_seen_at) FROM known) AS alias_last_seen_at
     FROM sh_hosts WHERE id=(
-      SELECT host_id FROM sh_host_aliases
-      WHERE ${lookup.predicate}
-      ORDER BY ${lookup.priority} LIMIT 1
+      SELECT host_id FROM known ORDER BY priority LIMIT 1
     ) LIMIT 1`)
-    .bind(...lookup.binds)
+    .bind(...aliases.flatMap(alias => [alias.type, alias.value]))
     .first();
 }
 
@@ -129,7 +126,14 @@ export async function resolveHost(db, source = {}, observedAt = Date.now()) {
   }
   if (!Number.isFinite(hostId)) return null;
 
-  await upsertHostAliases(db, hostId, aliases, observedAt);
+  // Reuse the aliases already read during identity resolution. The write
+  // throttle prevents row updates, but submitting its upsert still costs reads.
+  const aliasesFresh = Number(existing?.alias_count) === aliases.length
+    && existing?.alias_last_seen_at != null
+    && Number(observedAt) - Number(existing.alias_last_seen_at) < SESSION_HEARTBEAT_MS;
+  if (!aliasesFresh || hostCheckpointDue(existing, accountId, handle, observedAt)) {
+    await upsertHostAliases(db, hostId, aliases, observedAt);
+  }
   return hostId;
 }
 
