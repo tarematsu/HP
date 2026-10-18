@@ -3,10 +3,6 @@ import { SPOTIFY_DETAIL_ARTISTS } from 'sh-shared/spotify-read-model.mjs';
 const DEFAULT_ARTIST_KEYS = Object.freeze(SPOTIFY_DETAIL_ARTISTS.map((artist) => artist.key));
 const ALLOWED_ARTIST_KEYS = new Set(DEFAULT_ARTIST_KEYS);
 
-function placeholders(count) {
-  return Array.from({ length: count }, () => '?').join(',');
-}
-
 function rows(result) {
   return Array.isArray(result?.results) ? result.results : [];
 }
@@ -20,10 +16,17 @@ function normalizedArtistKeys(values) {
 
 export function spotifyLatestSnapshotDatesSql(artistCount = DEFAULT_ARTIST_KEYS.length) {
   const count = Math.max(1, Math.trunc(Number(artistCount) || DEFAULT_ARTIST_KEYS.length));
-  return `SELECT artist_key,MAX(snapshot_date) AS snapshot_date
-    FROM sh_spotify_artist_daily
-    WHERE artist_key IN (${placeholders(count)})
-    GROUP BY artist_key`;
+  // The date-first primary key can stop at the newest matching row instead
+  // of aggregating every historical summary for all configured artists.
+  return `WITH requested(artist_key) AS (
+      VALUES ${Array.from({ length: count }, () => '(?)').join(',')}
+    )
+    SELECT requested.artist_key,(
+      SELECT daily.snapshot_date FROM sh_spotify_artist_daily AS daily
+      WHERE daily.artist_key=requested.artist_key
+      ORDER BY daily.snapshot_date DESC LIMIT 1
+    ) AS snapshot_date
+    FROM requested`;
 }
 
 export function spotifyLatestDetailSql() {
