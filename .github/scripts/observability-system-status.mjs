@@ -80,8 +80,8 @@ export function synchronizeImmediateTriageWithSystemStatus(issueBody) {
 
   // Runner/deployment publishers may recover after a prior diagnostic has
   // inserted a synthetic system incident. Reconcile that incident both ways.
-  const syntheticHeadline = /^> \\*\\*(?:ACTION REQUIRED — system health is not green\\.|PENDING — system health data is incomplete\\.)\\*\\*[^\\n]*$/m;
-  const syntheticRow = /^\\| \\*\\*P[12]\\*\\* \\| (?:GitHub Actions runner health|Deployment health|Cloudflare observability) \\|[^\\n]*$/m;
+  const syntheticHeadline = /^> \*\*(?:ACTION REQUIRED — system health is not green\.|PENDING — system health data is incomplete\.)\*\*[^\n]*$/m;
+  const syntheticRow = /^\| \*\*P[12]\*\* \| (?:GitHub Actions runner health|Deployment health|Cloudflare observability) \|[^\n]*$/m;
   const healthyRow = '| - | No active incidents | All monitored gates and availability signals are healthy. | Continue routine monitoring. | - |';
   if (status.overall === 'success') {
     // Never erase an independently reported Cloudflare incident.
@@ -118,7 +118,7 @@ export function synchronizeImmediateTriageWithSystemStatus(issueBody) {
   );
   if (synchronized === body) {
     synchronized = body.replace(
-      /^> \\*\\*(?:HEALTHY|CONTAINED)[^\\n]*$/m,
+      /^> \*\*(?:HEALTHY|CONTAINED)[^\n]*$/m,
       headline,
     );
   }
