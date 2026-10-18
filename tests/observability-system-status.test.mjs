@@ -93,3 +93,16 @@ test('every status writer synchronizes the unified system line', () => {
   assert.match(runnerWorkflow, /observability-system-status\.mjs/);
   assert.match(deploymentWorkflow, /observability-system-status\.mjs/);
 });
+
+test('synthetic runner incident clears after recovery without erasing other incidents', () => {
+  const failing = synchronizeObservabilitySystemStatus(issue({ runner: 'failure', triage: true }));
+  assert.match(failing, /ACTION REQUIRED — system health is not green/);
+  assert.match(failing, /\| \*\*P1\*\* \| GitHub Actions runner health \|/);
+  const recovered = synchronizeObservabilitySystemStatus(
+    failing.replace('- **Overall:** failure', '- **Overall:** healthy'),
+  );
+  assert.match(recovered, /HEALTHY — no active observability incidents/);
+  assert.doesNotMatch(recovered, /ACTION REQUIRED — system health is not green/);
+  assert.doesNotMatch(recovered, /\| \*\*P1\*\* \| GitHub Actions runner health \|/);
+  assert.match(recovered, /\| - \| No active incidents \|/);
+});
