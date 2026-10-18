@@ -253,28 +253,35 @@ async function failRun(db, message, error) {
     .bind(Date.now(), truncateError(error), message.snapshot_date, message.run_token).run();
 }
 
-// Filter the date before canonical aggregation. The unfiltered
-// sh_spotify_playcount_daily_canonical view groups every historical date first,
-// causing excessive D1 rows read even though finalization needs only yesterday.
+// Start from the configured artists, resolve their reverse aliases, then seek
+// exact (date, source ID) rows. A date-only scan still visits unrelated artists.
 export function spotifyPreviousTargetPlaycountsStatement(db, previousDate, targetKeys) {
   const keys = [...new Set((targetKeys || []).map(String).filter(Boolean))];
   if (!keys.length) throw new Error('Spotify previous-day target keys are required');
   const placeholders = keys.map(() => '?').join(',');
-  return db.prepare(`SELECT
-      COALESCE(alias.canonical_track_id,daily.track_id) AS track_id,
-      MAX(daily.playcount) AS playcount
-    FROM sh_spotify_playcount_daily AS daily
-    LEFT JOIN sh_spotify_track_aliases AS alias
-      ON alias.source_track_id=daily.track_id
-    WHERE daily.snapshot_date=?
-      AND EXISTS (
-        SELECT 1 FROM sh_spotify_track_targets AS target
-        WHERE target.track_id=COALESCE(alias.canonical_track_id,daily.track_id)
-          AND target.artist_key IN (${placeholders})
+  return db.prepare(`WITH targets AS MATERIALIZED (
+      SELECT DISTINCT track_id FROM sh_spotify_track_targets
+      WHERE artist_key IN (${placeholders})
+    ), sources AS MATERIALIZED (
+      SELECT target.track_id,alias.source_track_id
+      FROM targets AS target
+      CROSS JOIN sh_spotify_track_aliases AS alias
+      WHERE alias.canonical_track_id=target.track_id
+      UNION ALL
+      SELECT target.track_id,target.track_id AS source_track_id
+      FROM targets AS target
+      WHERE NOT EXISTS (
+        SELECT 1 FROM sh_spotify_track_aliases AS direct
+        WHERE direct.source_track_id=target.track_id
       )
-    GROUP BY COALESCE(alias.canonical_track_id,daily.track_id)
-    ORDER BY track_id`)
-    .bind(previousDate, ...keys);
+    )
+    SELECT source.track_id,MAX(daily.playcount) AS playcount
+    FROM sources AS source
+    CROSS JOIN sh_spotify_playcount_daily AS daily
+    WHERE daily.snapshot_date=? AND daily.track_id=source.source_track_id
+    GROUP BY source.track_id
+    ORDER BY source.track_id`)
+    .bind(...keys, previousDate);
 }
 
 async function finalizeAttempt(env, message) {
