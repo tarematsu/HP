@@ -31,13 +31,16 @@ test('targeted previous-day read is equivalent to the legacy canonical view with
         ('source-a','song-a','canonical-a',1,1),
         ('source-b','song-a','canonical-a',1,1),
         ('canonical-a','song-a','canonical-a',1,1),
-        ('remapped','song-c','elsewhere',1,1);
+        ('remapped','song-c','elsewhere',1,1),
+        ('source-c','song-d','canonical-no-self',1,1);
       INSERT INTO sh_spotify_track_targets VALUES
         ('canonical-a','sakurazaka46'),
         ('canonical-a','nogizaka46'),
         ('plain','hinatazaka46'),
         ('elsewhere','nogizaka46'),
         ('not-observed','sakurazaka46'),
+        ('remapped','sakurazaka46'),
+        ('canonical-no-self','sakurazaka46'),
         ('unrelated','another-artist');
       INSERT INTO sh_spotify_playcount_daily VALUES
         ('2026-10-13','source-a',100),
@@ -46,9 +49,13 @@ test('targeted previous-day read is equivalent to the legacy canonical view with
         ('2026-10-13','plain',50),
         ('2026-10-13','remapped',900),
         ('2026-10-13','unrelated',300),
+        ('2026-10-13','canonical-no-self',70),
+        ('2026-10-13','source-c',80),
         ('2026-10-12','canonical-a',1000),
         ('2026-10-14','plain',999);
     `);
+    db.exec(`WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<10000)
+      INSERT INTO sh_spotify_playcount_daily SELECT '2026-10-13','unrelated-'||x,x FROM n;`);
     const keys = ['sakurazaka46', 'nogizaka46', 'hinatazaka46'];
     const previousDate = '2026-10-13';
     const old = db.prepare(`SELECT DISTINCT daily.track_id,daily.playcount
@@ -69,15 +76,16 @@ test('targeted previous-day read is equivalent to the legacy canonical view with
     assert.deepEqual(current, old);
     assert.deepEqual(current, [
       { track_id: 'canonical-a', playcount: 130 },
+      { track_id: 'canonical-no-self', playcount: 80 },
       { track_id: 'elsewhere', playcount: 900 },
       { track_id: 'plain', playcount: 50 },
     ]);
 
     const plan = db.prepare('EXPLAIN QUERY PLAN ' + sql)
-      .all(previousDate, ...keys).map(row => row.detail).join('\n');
-    assert.match(plan, /SEARCH daily USING .*\(snapshot_date=\?\)/);
-    assert.match(plan, /SEARCH alias USING .*\(source_track_id=\?\)/);
-    assert.doesNotMatch(plan, /SCAN daily|MATERIALIZE sh_spotify_playcount_daily_canonical/);
+      .all(...keys, previousDate).map(row => row.detail).join('\n');
+    assert.match(plan, /SEARCH daily USING .*\(snapshot_date=\? AND track_id=\?\)/);
+    assert.match(plan, /SEARCH alias USING .*\(canonical_track_id=\?\)/);
+    assert.doesNotMatch(plan, /SCAN daily|SCAN alias|MATERIALIZE sh_spotify_playcount_daily_canonical/);
   } finally {
     db.close();
   }
