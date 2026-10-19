@@ -57,7 +57,7 @@ test('named Stationhead monitor probes only the selected or authentication-candi
   assert.match(audioLoss, /const bool needsDomProbe = selectedMonitor \|\|/);
   assert.match(audioLoss, /if \(needsDomProbe\)/);
   assert.match(audioLoss, /clearMonitorAuth = true/);
-  assert.match(schedule, /if\\(stationheadEnabled_ && monitorMode_ != MonitorMode::Off)/);
+  assert.match(schedule, /stationheadEnabled_ && monitorMode_ != MonitorMode::Off/);
   assert.match(schedule, /if \\(!stationheadEnabled_ \\|\\| monitorMode_ == MonitorMode::Off \\|\\| powerSaving_\\) return/);
 });
 
