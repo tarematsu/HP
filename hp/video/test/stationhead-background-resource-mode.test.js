@@ -63,6 +63,6 @@ test('named Stationhead monitor and interactive auth both overlay the YouTube me
 test('Stationhead monitor wake invalidates cached placement before Tick relayout', () => {
   assert.match(
     appMessages,
-    /case WM_TIMER:[\s\S]*if \(wParam == 0\) MarkStationheadPlacementDirty\(\);[\s\S]*Tick\(\);/,
+    /case WM_TIMER:[\s\S]*if \(wParam == 0 && stationheadEnabled_\) MarkStationheadPlacementDirty\(\);[\s\S]*Tick\(\);/,
   );
 });
