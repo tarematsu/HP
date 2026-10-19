@@ -23,8 +23,8 @@ const section = (source, start, end) => {
 test('new Stationhead switch occupies the right side of monitor in four-button footer', () => {
   assert.match(overlay, /kControlButtonCount = 4/);
   assert.match(overlay, /LocalPowerButtonRect\(\)[\s\S]*ControlButtonRect\(row, 1\)/);
-  assert.match(overlay, /LocalStationheadButtonRect\(\)[\s\S]*ControlButtonRect\(row, 2\)/);
-  assert.match(overlay, /LocalMuteButtonRect\(\)[\s\S]*ControlButtonRect\(row, 3\)/);
+  assert.match(overlay, /LocalStationheadButtonRect\(\)[\s\S]*?ControlButtonRect\(row, 3\)/);
+  assert.match(overlay, /LocalMuteButtonRect\(\)[\s\S]*?ControlButtonRect\(row, 2\)/);
   assert.match(overlay, /UiAction::StationheadFeatureToggle/);
   assert.match(overlay, /L"SH ON"/);
   assert.match(overlay, /L"SH OFF"/);
