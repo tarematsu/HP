@@ -210,7 +210,7 @@ RECT PowerSavingController::ParentControlStackRect() const {
   const RECT content = ShrinkRect(clock, pad);
   const int contentWidth = std::max(1L, content.right - content.left);
   const int contentHeight = std::max(1L, content.bottom - content.top);
-  const LONG statusTop = content.top + contentHeight * 790 / 1000;
+  const LONG statusTop = content.top + contentHeight * 860 / 1000;
   const RECT status{content.left, statusTop, content.right, content.bottom};
   const int statusHeight = std::max(1L, status.bottom - status.top);
   const int buttonGap = ControlButtonGap(contentWidth);
@@ -262,7 +262,7 @@ RECT PowerSavingController::LocalStationheadButtonRect() const {
   } else {
     GetClientRect(overlay_, &row);
   }
-  return ControlButtonRect(row, 3);
+  return ControlButtonRect(row, 2);
 }
 
 RECT PowerSavingController::LocalMuteButtonRect() const {
@@ -273,7 +273,7 @@ RECT PowerSavingController::LocalMuteButtonRect() const {
   } else {
     GetClientRect(overlay_, &row);
   }
-  return ControlButtonRect(row, 2);
+  return ControlButtonRect(row, 3);
 }
 
 void PowerSavingController::PaintOverlay(HWND window) {
