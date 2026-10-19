@@ -157,7 +157,7 @@ void PowerSavingController::ObserveParentMessage(
 
   switch (message) {
     case kStationheadMonitorProbeResultMessage: {
-      if (monitorMode_ == MonitorMode::Off) break;
+      if (!stationheadEnabled_ || monitorMode_ == MonitorMode::Off) break;
       const unsigned slot = static_cast<unsigned>(lParam);
       if (slot >= 6) break;
       const uint32_t bit = 1u << slot;
@@ -256,7 +256,7 @@ void PowerSavingController::AttachChildWindow(HWND window) noexcept {
   ::SetWindowSubclass(
       window, ChildSubclassProc, kChildSubclassId,
       reinterpret_cast<DWORD_PTR>(this));
-  if (IsStationheadPlaybackHost(window)) {
+  if (stationheadEnabled_ && IsStationheadPlaybackHost(window)) {
     // A recreated Stationhead host must inherit the currently selected output
     // route rather than globally muting all six windows.
     ApplyAudioMode(audioMode_);
@@ -270,7 +270,8 @@ void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
   if (!parent_ || !IsWindow(parent_)) return;
 
   const unsigned selectedProfile =
-      monitorMode_ == MonitorMode::ServiceGrid ? monitorStationheadProfile_ : 0;
+      stationheadEnabled_ && monitorMode_ == MonitorMode::ServiceGrid
+          ? monitorStationheadProfile_ : 0;
   // A named Stationhead monitor is an overlay on top of the existing media
   // panel. Keep YouTube/TVer at its normal bounds underneath it so switching
   // back to YT is only a z-order/profile change, not a WebView resize/reload.
