@@ -1,7 +1,7 @@
 // Power-saving overlay HWND, geometry and painting.
 namespace {
 constexpr wchar_t kOverlayWindowClass[] = L"HomePanelPowerSavingOverlay";
-constexpr size_t kControlButtonCount = 3;
+constexpr size_t kControlButtonCount = 4;
 constexpr COLORREF kControlOverlayBackground = RGB(20, 26, 36);
 
 HBRUSH ControlOverlayBackgroundBrush() noexcept {
@@ -66,6 +66,7 @@ LRESULT CALLBACK PowerSavingController::OverlayWndProc(
       const POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
       const RECT updateButton = controller->LocalUpdateButtonRect();
       const RECT powerButton = controller->LocalPowerButtonRect();
+      const RECT stationheadButton = controller->LocalStationheadButtonRect();
       const RECT muteButton = controller->LocalMuteButtonRect();
       if (PtInRect(&updateButton, point)) {
         if (controller->parent_ && IsWindow(controller->parent_)) {
@@ -75,6 +76,12 @@ LRESULT CALLBACK PowerSavingController::OverlayWndProc(
         }
       } else if (PtInRect(&powerButton, point)) {
         controller->CycleMonitorMode();
+      } else if (PtInRect(&stationheadButton, point)) {
+        if (controller->parent_ && IsWindow(controller->parent_)) {
+          PostMessageW(
+              controller->parent_, kRendererActionMessage,
+              static_cast<WPARAM>(UiAction::StationheadFeatureToggle), 0);
+        }
       } else if (PtInRect(&muteButton, point)) {
         controller->CycleAudioMode();
       }
@@ -125,7 +132,7 @@ void PowerSavingController::EnsureOverlay() {
   overlay_ = CreateWindowExW(
       WS_EX_NOPARENTNOTIFY,
       kOverlayWindowClass,
-      L"更新 / モニター / 音声出力",
+      L"更新 / モニター / Stationhead / 音声出力",
       WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
       0,
       0,
@@ -207,11 +214,15 @@ RECT PowerSavingController::ParentControlStackRect() const {
   const RECT status{content.left, statusTop, content.right, content.bottom};
   const int statusHeight = std::max(1L, status.bottom - status.top);
   const int buttonGap = ControlButtonGap(contentWidth);
-  const int buttonWidth = std::clamp(contentWidth * 205 / 1000, 74, 110);
+  const int buttonWidth = std::max(1, std::min(
+      std::clamp(contentWidth * 205 / 1000, 74, 110),
+      (contentWidth - buttonGap * static_cast<int>(kControlButtonCount - 1)) /
+          static_cast<int>(kControlButtonCount)));
   const int buttonHeight = std::min(
       statusHeight,
       std::clamp(statusHeight * 70 / 100, 28, 34));
-  const int rowWidth = buttonWidth * 3 + buttonGap * 2;
+  const int rowWidth = buttonWidth * static_cast<int>(kControlButtonCount) +
+      buttonGap * static_cast<int>(kControlButtonCount - 1);
   const LONG top =
       status.top + std::max(0, (statusHeight - buttonHeight) / 2);
   return RECT{
@@ -243,7 +254,7 @@ RECT PowerSavingController::LocalPowerButtonRect() const {
   return ControlButtonRect(row, 1);
 }
 
-RECT PowerSavingController::LocalMuteButtonRect() const {
+RECT PowerSavingController::LocalStationheadButtonRect() const {
   if (!overlay_) return RECT{0, 0, 1, 1};
   RECT row{};
   if (powerSaving_ && !mvStartupInputPass_) {
@@ -252,6 +263,17 @@ RECT PowerSavingController::LocalMuteButtonRect() const {
     GetClientRect(overlay_, &row);
   }
   return ControlButtonRect(row, 2);
+}
+
+RECT PowerSavingController::LocalMuteButtonRect() const {
+  if (!overlay_) return RECT{0, 0, 1, 1};
+  RECT row{};
+  if (powerSaving_ && !mvStartupInputPass_) {
+    row = ParentControlStackRect();
+  } else {
+    GetClientRect(overlay_, &row);
+  }
+  return ControlButtonRect(row, 3);
 }
 
 void PowerSavingController::PaintOverlay(HWND window) {
@@ -273,6 +295,7 @@ void PowerSavingController::PaintOverlay(HWND window) {
 
   const RECT updateButton = LocalUpdateButtonRect();
   const RECT powerButton = LocalPowerButtonRect();
+  const RECT stationheadButton = LocalStationheadButtonRect();
   const RECT muteButton = LocalMuteButtonRect();
   auto drawButton = [&](const RECT& button, bool active,
                         COLORREF activeSurface, COLORREF activeBorder,
@@ -345,6 +368,11 @@ void PowerSavingController::PaintOverlay(HWND window) {
   drawButton(
       powerButton, monitorMode_ != MonitorMode::Native,
       RGB(30, 92, 55), RGB(74, 180, 105), monitorLabel);
+
+  drawButton(
+      stationheadButton, stationheadEnabled_,
+      RGB(30, 92, 55), RGB(74, 180, 105),
+      stationheadEnabled_ ? L"SH ON" : L"SH OFF");
 
   const wchar_t* audioModeLabel = L"音声出力YT";
   if (audioMode_ == AudioMode::Stationhead) {
