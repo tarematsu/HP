@@ -165,6 +165,7 @@ void App::InitializePaths() {
     fs::copy_file(rootDir_ / L"config.example.json", settings, fs::copy_options::skip_existing, ignored);
   }
   config_ = LoadConfig(settings);
+  stationheadEnabled_ = LoadStationheadEnabled(dataDir_ / L"stationhead-enabled.txt");
   ApplyCloudConfig(config_, dataDir_ / L"device-config.json");
 }
 
@@ -205,16 +206,13 @@ void App::CreateMainWindow(int showCommand) {
     const DWORD error = GetLastError();
     throw std::runtime_error("CreateWindowEx failed (" + std::to_string(error) + ")");
   }
+  PowerSavingController::SetStationheadFeatureEnabled(stationheadEnabled_);
   PowerSavingController::AttachCurrent(window_);
   startupShowCommand_ = showCommand == SW_HIDE ? SW_SHOW : showCommand;
 }
 
-void App::StartServices() {
-  renderer_ = std::make_unique<Renderer>(window_, config_.screenWidth, config_.screenHeight);
-  if (!renderer_->LoadDashboard(dataDir_ / L"dashboard.json")) {
-    logger_->Warn(L"No valid dashboard cache; local layers will remain available");
-  }
-
+void App::InitializeStationheadServices() {
+  if (!stationheadEnabled_ || stationhead_) return;
   const fs::path stationheadUserData = dataDir_ / L"webview2-youtube-mv";
   for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
     auto player = std::make_unique<StationheadPlayer>(
@@ -237,7 +235,18 @@ void App::StartServices() {
   logger_->Info(
       L"Six Stationhead windows prepared with existing spotify-v2-1 through spotify-v2-6 WebView2 profiles");
 
+}
+
+void App::StartServices() {
+  renderer_ = std::make_unique<Renderer>(window_, config_.screenWidth, config_.screenHeight);
+  if (!renderer_->LoadDashboard(dataDir_ / L"dashboard.json")) {
+    logger_->Warn(L"No valid dashboard cache; local layers will remain available");
+  }
+
+  if (stationheadEnabled_) InitializeStationheadServices();
+
   startupAt_ = UnixMillis();
+  stationheadStartupAt_ = startupAt_;
   nextScheduledRestartAt_ = startupAt_ + MillisecondsUntilNextRandomizedRestart();
 
   // Stage 1: initialize the native dashboard and YouTube/MV WebView immediately.
@@ -293,13 +302,14 @@ void App::StartDeferredServices(int64_t now) {
     logger_->Warn(L"Native dashboard/YouTube started by deferred recovery");
   }
 
+  if (stationheadEnabled_) {
   // Former Spotify slots now run the exact Stationhead lifecycle while retaining
   // their original WebView2 profiles, cookies and Spotify authentication state.
   for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
     if (stationheadPeerStarted_[i] || !stationheadPeers_[i]) continue;
     const int64_t launchAt =
         kMediaStartupStageDelayMs * static_cast<int64_t>(i + 1);
-    if (now - startupAt_ < launchAt) continue;
+    if (now - stationheadStartupAt_ < launchAt) continue;
     stationheadPeers_[i]->Start();
     stationheadPeerStarted_[i] = true;
     stationheadPeers_[i]->SetAudioMuted(true);
@@ -311,7 +321,7 @@ void App::StartDeferredServices(int64_t now) {
 
   // The preserved ozeki profile remains the sixth Stationhead window.
   if (!stationheadStarted_ && stationhead_ &&
-      now - startupAt_ >= kMediaStartupStageDelayMs * 6) {
+      now - stationheadStartupAt_ >= kMediaStartupStageDelayMs * 6) {
     stationhead_->Start();
     stationheadStarted_ = true;
     stationhead_->SetAudioMuted(stationheadAudioMuted_);
@@ -326,6 +336,7 @@ void App::StartDeferredServices(int64_t now) {
         L"Stationhead leaderboard collector attached to spotify-v2-6 profile");
   }
   ApplyStationheadWindowPlacement();
+  }
 
   if (!cloudStarted_ && cloud_) {
     cloud_->Start();
@@ -339,9 +350,7 @@ void App::StartDeferredServices(int64_t now) {
   }
 }
 
-void App::StopServices() {
-  if (window_) KillTimer(window_, kCentralTimer);
-  nextAppTickAt_ = 0;
+void App::StopStationheadServices() {
   if (stationheadLeaderboardCollectorStarted_ && stationheadLeaderboardCollector_) {
     stationheadLeaderboardCollector_->Stop();
   }
@@ -350,15 +359,26 @@ void App::StopServices() {
     if (stationheadPeerStarted_[i] && stationheadPeers_[i]) {
       stationheadPeers_[i]->Stop();
     }
+    stationheadPeerStarted_[i] = false;
   }
   if (stationheadStarted_ && stationhead_) stationhead_->Stop();
+  stationheadStarted_ = false;
+  stationheadLeaderboardCollector_.reset();
+  for (auto& peer : stationheadPeers_) peer.reset();
+  stationhead_.reset();
+  lastStationheadForegroundOwner_ = -1;
+  placedBounds_ = {};
+  stationheadPlacementDirty_ = false;
+}
+
+void App::StopServices() {
+  if (window_) KillTimer(window_, kCentralTimer);
+  nextAppTickAt_ = 0;
+  StopStationheadServices();
   if (cloud_) cloud_->Stop();
   if (sensors_) sensors_->Stop();
   if (telemetryThread_.joinable()) telemetryThread_.join();
   if (updateThread_.joinable()) updateThread_.join();
-  stationheadLeaderboardCollector_.reset();
-  for (auto& peer : stationheadPeers_) peer.reset();
-  stationhead_.reset();
   cloud_.reset();
   sensors_.reset();
   renderer_.reset();
@@ -478,13 +498,14 @@ void App::Tick() {
   }
 
   uint32_t nextTickMs = kMaxAppTimerMs;
+  if (stationheadEnabled_) {
   for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
     if (!stationheadPeerStarted_[i]) {
       nextTickMs = std::min(
           nextTickMs,
           NextDelayFromDeadline(
               now,
-              startupAt_ + kMediaStartupStageDelayMs * static_cast<int64_t>(i + 1),
+              stationheadStartupAt_ + kMediaStartupStageDelayMs * static_cast<int64_t>(i + 1),
               kMaxAppTimerMs));
       continue;
     }
@@ -502,8 +523,9 @@ void App::Tick() {
     nextTickMs = std::min(
         nextTickMs,
         NextDelayFromDeadline(
-            now, startupAt_ + static_cast<int64_t>(kMediaStartupStageDelayMs * 6),
+            now, stationheadStartupAt_ + static_cast<int64_t>(kMediaStartupStageDelayMs * 6),
             kMaxAppTimerMs));
+  }
   }
   if (!startupUpdateScheduled_ && cloudStarted_) {
     nextTickMs = std::min(
@@ -651,7 +673,8 @@ void App::LayoutWorkspace() {
 }
 
 void App::ApplyStationheadWindowPlacement() {
-  if (selectedTab_ != WorkspaceTab::Main || !stationheadPlacementDirty_) return;
+  if (!stationheadEnabled_ || selectedTab_ != WorkspaceTab::Main ||
+      !stationheadPlacementDirty_) return;
   RECT bounds = workspaceBounds_;
   if (bounds.right <= bounds.left || bounds.bottom <= bounds.top) return;
   if (EqualRect(&bounds, &placedBounds_)) {
@@ -718,8 +741,29 @@ void App::HandleAction(UiAction action) {
       exitCode_ = kRestartExitCode;
       DestroyWindow(window_);
       break;
+    case UiAction::StationheadFeatureToggle: {
+      const bool enabled = !stationheadEnabled_;
+      if (!SaveStationheadEnabled(dataDir_ / L"stationhead-enabled.txt", enabled)) {
+        logger_->Warn(L"Could not persist Stationhead feature state");
+        ShowToast(L"Stationhead設定を保存できません", 5000);
+        break;
+      }
+      stationheadEnabled_ = enabled;
+      PowerSavingController::SetStationheadFeatureEnabled(enabled);
+      if (enabled) {
+        stationheadAudioMuted_ = true;
+        stationheadStartupAt_ = UnixMillis();
+        InitializeStationheadServices();
+      } else {
+        StopStationheadServices();
+      }
+      logger_->Info(enabled ? L"Stationhead feature enabled"
+                            : L"Stationhead feature disabled");
+      ScheduleNextTick(1);
+      break;
+    }
     case UiAction::StationheadAudioToggle:
-      if (stationhead_) {
+      if (stationheadEnabled_ && stationhead_) {
         stationheadAudioMuted_ = !stationheadAudioMuted_;
         if (!stationheadAudioMuted_) mutePeers(-1);
         stationhead_->SetAudioMuted(stationheadAudioMuted_);
@@ -735,6 +779,7 @@ void App::HandleAction(UiAction action) {
     case UiAction::StationheadPeer3Audio:
     case UiAction::StationheadPeer4Audio:
     case UiAction::StationheadPeer5Audio: {
+      if (!stationheadEnabled_) break;
       const int selectedPeer =
           static_cast<int>(action) - static_cast<int>(UiAction::StationheadPeer1Audio);
       stationheadAudioMuted_ = true;
