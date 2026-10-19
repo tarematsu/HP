@@ -94,7 +94,7 @@ test('named Stationhead monitor promotes only the selected playback host', () =>
     'void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept',
     'void PowerSavingController::Detach() noexcept',
   );
-  assert.match(placement, /monitorMode_ == MonitorMode::ServiceGrid \? monitorStationheadProfile_ : 0/);
+  assert.match(placement, /stationheadEnabled_ && monitorMode_ == MonitorMode::ServiceGrid[\s\S]*\?\s*monitorStationheadProfile_\s*:\s*0/);
   assert.match(placement, /StationheadProfileNumberFromWindow\(child\) != context->selectedProfile/);
   assert.match(placement, /SetStationheadMonitorProfile\(selectedProfile\)/);
   assert.match(placement, /const HWND insertAfter = controller->overlay_/);
