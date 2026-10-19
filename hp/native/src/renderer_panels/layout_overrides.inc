@@ -179,9 +179,9 @@ void DrawClockTimeOnly(HDC dc, const RECT& card,
   if (nativeClockReady_) hpWasteNow = nativeClockNow_; \
   DrawCourse36ClockWasteNotices((dc), hpWasteNow, hpWasteRect); \
   const std::wstring hpVersionText = kVersion; \
-  const int hpControlButtonWidth = std::clamp(SpanX(hpStatusRect, 205), 74, 110); \
   const int hpControlButtonGap = std::clamp(SpanX(hpStatusRect, 20), 6, 12); \
-  const int hpControlRowWidth = hpControlButtonWidth * 3 + hpControlButtonGap * 2; \
+  const int hpControlButtonWidth = std::max(1, std::min(std::clamp(SpanX(hpStatusRect, 205), 74, 110), (std::max(1L, hpStatusRect.right - hpStatusRect.left) - hpControlButtonGap * 3) / 4)); \
+  const int hpControlRowWidth = hpControlButtonWidth * 4 + hpControlButtonGap * 3; \
   const LONG hpStatusTextRight = std::max<LONG>(hpStatusRect.left + 1, hpStatusRect.right - hpControlRowWidth - hpControlButtonGap); \
   RECT hpVersionRect = hpStatusRect; hpVersionRect.right = hpStatusTextRight; \
   SelectObject((dc), TierFont(FontTier::Small)); \
