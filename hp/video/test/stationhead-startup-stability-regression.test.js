@@ -47,10 +47,11 @@ test('Stationhead fleet workspace keeps the dashboard visible', () => {
 test('cold startup prepares six Stationhead players and defers every start', () => {
   const start = section(app, 'void App::StartServices()', 'void App::StartDeferredServices(');
   const deferred = section(app, 'void App::StartDeferredServices(', 'void App::StopServices()');
+  const prepare = section(app, 'void App::InitializeStationheadServices()', 'void App::StartServices()');
   assert.match(appHeader, /kStationheadPeerCount = 5/);
-  assert.match(start, /std::make_unique<StationheadPlayer>\(\s*window_, config_\.stationhead,/);
-  assert.match(start, /ReuseWebViewProfile\(kStationheadPeerProfiles\[i\]\)/);
-  assert.match(start, /ReuseWebViewProfile\(kStationheadOzekiProfile\)/);
+  assert.match(prepare, /std::make_unique<StationheadPlayer>\(\s*window_, config_\.stationhead,/);
+  assert.match(prepare, /ReuseWebViewProfile\(kStationheadPeerProfiles\[i\]\)/);
+  assert.match(prepare, /ReuseWebViewProfile\(kStationheadOzekiProfile\)/);
   assert.doesNotMatch(start, /stationhead_->Start\(\)|stationheadPeers_\[i\]->Start\(\)/);
   assert.match(deferred, /stationheadPeers_\[i\]->Start\(\)/);
   assert.match(deferred, /stationhead_->Start\(\)/);
