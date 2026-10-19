@@ -43,7 +43,7 @@ test('media startup launches six Stationhead windows at thirty-second offsets', 
   );
   assert.match(
     deferred,
-    /now\s*-\s*startupAt_\s*>=\s*kMediaStartupStageDelayMs\s*\*\s*6[\s\S]*stationhead_->Start\(\)/,
+    /now\\s*-\\s*stationheadStartupAt_\\s*>=\\s*kMediaStartupStageDelayMs\\s*\\*\\s*6[\s\S]*stationhead_->Start\(\)/,
   );
   assert.match(deferred, /Stationhead peer #[\s\S]*launch issued at \+/);
   assert.match(deferred, /Stationhead #6 launch issued at \+180 seconds/);
