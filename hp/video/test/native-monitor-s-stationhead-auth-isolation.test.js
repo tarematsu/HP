@@ -13,7 +13,7 @@ const routing = readFileSync(
 
 test('named Stationhead monitors keep auth probing active across all six windows', () => {
   assert.match(schedule, /if \(monitorMode_ != MonitorMode::Off\) RequestMonitorAuthProbe\(\)/);
-  assert.match(schedule, /if \(monitorMode_ == MonitorMode::Off \|\| powerSaving_\) return/);
+  assert.match(schedule, /if \(!stationheadEnabled_ \|\| monitorMode_ == MonitorMode::Off \|\| powerSaving_\) return/);
   assert.match(schedule, /monitorAuthSlots_ = 0;[\s\S]*monitorAuthForeground_ = false/);
   assert.doesNotMatch(schedule, /SetSpotifyMonitorGridVisible|SetSpotifyMonitorForegroundSlot/);
 });
