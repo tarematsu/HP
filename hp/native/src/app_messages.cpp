@@ -30,7 +30,7 @@ LRESULT CALLBACK App::WindowProc(HWND window, UINT message, WPARAM wParam, LPARA
 LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
   switch (message) {
     case WM_TIMER:
-      if (wParam == 0) MarkStationheadPlacementDirty();
+      if (wParam == 0 && stationheadEnabled_) MarkStationheadPlacementDirty();
       Tick();
       return 0;
     case kStartupUpdateWakeMessage:
@@ -87,6 +87,7 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       return 0;
     }
     case kStationheadLeaderboardCaptureWakeMessage:
+      if (!stationheadEnabled_) return 0;
       // Leaderboard diagnostics and capture-spool writes share this wake channel.
       // Re-arm the central timer as well as refreshing Cloud so deadlines that are
       // moved earlier by asynchronous WebView2 callbacks are observed promptly.
@@ -95,8 +96,9 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       return 0;
 
     case WM_HP_PRIMARY_RELOAD_READY:
-      return stationhead_ ? 1 : 0;
+      return stationheadEnabled_ && stationhead_ ? 1 : 0;
     case WM_HP_STATIONHEAD_CHANGED: {
+      if (!stationheadEnabled_) return 0;
       bool handled = false;
       for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
         if (!stationheadPeerStarted_[i] || !stationheadPeers_[i]) continue;
