@@ -51,6 +51,26 @@ int64_t NextScheduleBoundary(int64_t nowMs) {
 }
 }  // namespace
 
+void PowerSavingController::SetStationheadFeatureEnabled(bool enabled) noexcept {
+  auto* controller = current_;
+  if (!controller || controller->stationheadEnabled_ == enabled) return;
+  controller->stationheadEnabled_ = enabled;
+  if (!enabled) {
+    controller->monitorAuthSlots_ = 0;
+    controller->monitorAuthForeground_ = false;
+    if (controller->monitorMode_ == MonitorMode::ServiceGrid) {
+      controller->ApplyMonitorMode(MonitorMode::Native);
+    }
+    if (controller->audioMode_ != AudioMode::Media &&
+        controller->audioMode_ != AudioMode::Muted) {
+      controller->ApplyAudioMode(AudioMode::Media);
+    }
+    SetStationheadMonitorProfile(0);
+  }
+  controller->ArmScheduleTimer();
+  if (controller->overlay_) InvalidateRect(controller->overlay_, nullptr, FALSE);
+}
+
 void PowerSavingController::CheckSchedule(bool force) {
   if (!overlay_) return;
   const int64_t now = UnixMillis();
@@ -68,7 +88,7 @@ void PowerSavingController::ArmScheduleTimer() {
   KillTimer(overlay_, kScheduleTimer);
   int64_t remaining = std::max<int64_t>(
       1, nextScheduleBoundaryAt_ - UnixMillis());
-  if (monitorMode_ != MonitorMode::Off) {
+  if (stationheadEnabled_ && monitorMode_ != MonitorMode::Off) {
     const int64_t probeInterval = monitorAuthForeground_
         ? kMonitorAuthActiveProbeIntervalMs
         : kMonitorAuthProbeIntervalMs;
@@ -80,7 +100,7 @@ void PowerSavingController::ArmScheduleTimer() {
 }
 
 void PowerSavingController::RequestMonitorAuthProbe() noexcept {
-  if (monitorMode_ == MonitorMode::Off || powerSaving_) return;
+  if (!stationheadEnabled_ || monitorMode_ == MonitorMode::Off || powerSaving_) return;
   RequestStationheadMonitorDomProbe();
   if (parent_ && IsWindow(parent_)) PostMessageW(parent_, WM_TIMER, 0, 0);
 }
@@ -108,6 +128,11 @@ void PowerSavingController::ApplyMode(bool enabled) {
 }
 
 void PowerSavingController::CycleMonitorMode() noexcept {
+  if (!stationheadEnabled_) {
+    ApplyMonitorMode(monitorMode_ == MonitorMode::Off
+        ? MonitorMode::Native : MonitorMode::Off);
+    return;
+  }
   switch (monitorMode_) {
     case MonitorMode::Native:
       monitorStationheadProfile_ = 6;
@@ -168,6 +193,11 @@ void PowerSavingController::ApplyMonitorMode(MonitorMode mode) noexcept {
 }
 
 void PowerSavingController::CycleAudioMode() noexcept {
+  if (!stationheadEnabled_) {
+    ApplyAudioMode(audioMode_ == AudioMode::Muted
+        ? AudioMode::Media : AudioMode::Muted);
+    return;
+  }
   switch (audioMode_) {
     case AudioMode::Media:
       ApplyAudioMode(AudioMode::Stationhead);
@@ -201,7 +231,7 @@ void PowerSavingController::ApplyAudioMode(AudioMode mode) noexcept {
   mediaMuted_ = mode != AudioMode::Media;
   SetNativeMediaPanelMuted(mediaMuted_);
 
-  if (parent_ && IsWindow(parent_)) {
+  if (stationheadEnabled_ && parent_ && IsWindow(parent_)) {
     UiAction action = UiAction::StationheadAudioMute;
     switch (mode) {
       case AudioMode::Stationhead:
