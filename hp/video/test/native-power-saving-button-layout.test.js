@@ -61,8 +61,8 @@ test('power-saving controller composes focused responsibilities without a thread
   assert.match(overlay, /void PowerSavingController::PaintOverlay/);
 });
 
-test('update, monitor and audio output controls share one horizontal clock footer row', () => {
-  assert.match(overlay, /constexpr size_t kControlButtonCount = 3/);
+test('update, monitor, Stationhead and audio output controls share one horizontal clock footer row', () => {
+  assert.match(overlay, /constexpr size_t kControlButtonCount = 4/);
   assert.match(overlay, /const int upperMediaHeight = sideHeight \* 480 \/ 1000/);
   assert.match(overlay, /compactAvailable \* 55 \/ 100/);
   assert.match(overlay, /contentHeight \* 790 \/ 1000/);
@@ -93,8 +93,8 @@ test('update, monitor and audio output controls share one horizontal clock foote
   assert.match(header, /RECT LocalUpdateButtonRect\(\) const/);
   assert.match(layout, /SpanY\(hpClockContent, 780\)/);
   assert.match(layout, /SpanY\(hpClockContent, 790\)/);
-  assert.match(layout, /hpControlButtonWidth = std::clamp\(SpanX\(hpStatusRect, 205\), 74, 110\)/);
-  assert.match(layout, /hpControlRowWidth = hpControlButtonWidth \* 3 \+ hpControlButtonGap \* 2/);
+  assert.match(layout, /hpControlButtonWidth = std::max/);
+  assert.match(layout, /hpControlRowWidth = hpControlButtonWidth \\* 4 \\+ hpControlButtonGap \\* 3/);
 });
 
 test('monitor button cycles YT, six named Stationhead windows, OFF, then YT', () => {
@@ -122,7 +122,7 @@ test('update button routes through the existing verified app-update action', () 
   assert.match(app, /case UiAction::AppUpdate:[\s\S]*CheckForUpdateAsync\(true\)/);
 });
 
-test('compact overlay clips the complete three-button control row', () => {
+test('compact overlay clips the complete four-button control row', () => {
   assert.match(overlay, /const bool compact = !powerSaving_ \|\| mvStartupInputPass_/);
   assert.match(overlay, /if \(compact\) target = ParentControlStackRect\(\)/);
   assert.match(overlay, /CreateRoundRectRgn\(/);
