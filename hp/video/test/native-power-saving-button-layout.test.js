@@ -65,7 +65,7 @@ test('update, monitor, Stationhead and audio output controls share one horizonta
   assert.match(overlay, /constexpr size_t kControlButtonCount = 4/);
   assert.match(overlay, /const int upperMediaHeight = sideHeight \* 480 \/ 1000/);
   assert.match(overlay, /compactAvailable \* 55 \/ 100/);
-  assert.match(overlay, /contentHeight \* 790 \/ 1000/);
+  assert.match(overlay, /contentHeight \* 860 \/ 1000/);
   assert.match(overlay, /contentWidth \* 205 \/ 1000, 74, 110/);
   assert.match(overlay, /ControlButtonGap\(contentWidth\)/);
   assert.match(overlay, /ControlButtonRect\(row, 0\)/);
