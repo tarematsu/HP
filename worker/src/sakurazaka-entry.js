@@ -92,11 +92,15 @@ export async function runSakurazakaScheduled(controller, env, dependencies = {})
   if (cron !== SAKURAZAKA_CRON) return { skipped: true, reason: 'unsupported-cron', cron };
   const scheduledAt = scheduledTimestamp(controller);
   const currentAt = Date.now();
-  const activeEnv = queueAttributedEnv(env, 'sh-sakurazaka46jp');
   const [due, collectionTest] = await Promise.all([
-    dueWork(activeEnv, scheduledAt, dependencies),
-    sakurazakaCollectionTestWindow(activeEnv, currentAt),
+    dueWork(env, scheduledAt, dependencies),
+    sakurazakaCollectionTestWindow(env, currentAt),
   ]);
+  // Queue attribution is only needed when a task is actually dispatched.
+  // Avoid allocating queue proxies on every no-work minute Cron invocation.
+  const activeEnv = (collectionTest.active || due.newsCheckDue || due.stationProbeDue)
+    ? queueAttributedEnv(env, 'sh-sakurazaka46jp')
+    : null;
 
   if (collectionTest.active) {
     const stages = await dispatchCollectionTest(activeEnv, currentAt, due, collectionTest);
