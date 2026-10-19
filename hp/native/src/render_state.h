@@ -12,6 +12,7 @@ enum class UiAction {
   None,
   AppUpdate,
   Restart,
+  StationheadFeatureToggle,
   StationheadAudioToggle,
   StationheadAudioMute,
   StationheadPeer1Audio,
