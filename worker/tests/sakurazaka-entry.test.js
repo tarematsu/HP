@@ -101,3 +101,15 @@ test('collection test preserves bindings inherited by queue attribution', () => 
   assert.match(source, /function collectionTestEnv\(env, targetHandle\)[\s\S]*Object\.create\(env \|\| null\)/);
   assert.doesNotMatch(source, /const testEnv\s*=\s*\{\s*\.\.\.env/);
 });
+
+test('idle minute cron does not inspect or wrap queue bindings', async () => {
+  const env = {};
+  Object.defineProperty(env, 'SAKURAZAKA_QUEUE', {
+    get() { throw new Error('idle cron must not touch queue'); },
+  });
+  const result = await runSakurazakaScheduled({
+    cron: SAKURAZAKA_CRON,
+    scheduledTime: SCHEDULED_AT,
+  }, env, dueDependencies(false, false));
+  assert.equal(result.reason, 'no-due-work');
+});
