@@ -24,6 +24,9 @@ struct AppConfig {
 };
 
 AppConfig LoadConfig(const fs::path& path);
+// Separate user-owned runtime preference; updater/cloud settings must not overwrite it.
+bool LoadStationheadEnabled(const fs::path& path);
+bool SaveStationheadEnabled(const fs::path& path, bool enabled);
 std::wstring LoadProtectedToken(const fs::path& path, const wchar_t* environmentName);
 bool SaveProtectedToken(const fs::path& path, const std::wstring& value);
 }  // namespace hp
