@@ -94,7 +94,7 @@ test('update, monitor, Stationhead and audio output controls share one horizonta
   assert.match(layout, /SpanY\(hpClockContent, 780\)/);
   assert.match(layout, /SpanY\(hpClockContent, 790\)/);
   assert.match(layout, /hpControlButtonWidth = std::max/);
-  assert.match(layout, /hpControlRowWidth = hpControlButtonWidth \\* 4 \\+ hpControlButtonGap \\* 3/);
+  assert.match(layout, /hpControlRowWidth = hpControlButtonWidth .* 4 .* hpControlButtonGap .* 3/);
 });
 
 test('monitor button cycles YT, six named Stationhead windows, OFF, then YT', () => {
