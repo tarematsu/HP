@@ -19,6 +19,7 @@ class PowerSavingController {
   void InstallForCurrentThread();
   void Uninstall() noexcept;
   static void AttachCurrent(HWND parent);
+  static void SetStationheadFeatureEnabled(bool enabled) noexcept;
   [[nodiscard]] static bool IsPowerSavingActive() noexcept {
     return current_ && current_->powerSaving_;
   }
@@ -82,11 +83,13 @@ class PowerSavingController {
   RECT ParentControlStackRect() const;
   RECT LocalUpdateButtonRect() const;
   RECT LocalPowerButtonRect() const;
+  RECT LocalStationheadButtonRect() const;
   RECT LocalMuteButtonRect() const;
 
   HWND parent_ = nullptr;
   HWND overlay_ = nullptr;
   bool powerSaving_ = false;
+  bool stationheadEnabled_ = true;
   MonitorMode monitorMode_ = MonitorMode::Native;
   unsigned monitorStationheadProfile_ = 6;
   bool monitorAuthForeground_ = false;
