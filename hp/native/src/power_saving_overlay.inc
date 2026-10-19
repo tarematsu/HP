@@ -262,7 +262,7 @@ RECT PowerSavingController::LocalStationheadButtonRect() const {
   } else {
     GetClientRect(overlay_, &row);
   }
-  return ControlButtonRect(row, 2);
+  return ControlButtonRect(row, 3);
 }
 
 RECT PowerSavingController::LocalMuteButtonRect() const {
@@ -273,7 +273,7 @@ RECT PowerSavingController::LocalMuteButtonRect() const {
   } else {
     GetClientRect(overlay_, &row);
   }
-  return ControlButtonRect(row, 3);
+  return ControlButtonRect(row, 2);
 }
 
 void PowerSavingController::PaintOverlay(HWND window) {
