@@ -92,6 +92,34 @@ std::vector<std::wstring> TokenKeys(const wchar_t* environmentName) {
 }
 }
 
+bool LoadStationheadEnabled(const fs::path& path) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input) return true;  // Preserve pre-toggle behavior on first launch.
+  char value = 0;
+  input.get(value);
+  return value != '0';
+}
+
+bool SaveStationheadEnabled(const fs::path& path, bool enabled) {
+  fs::path temporary = path;
+  temporary += L".tmp";
+  {
+    std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+    if (!output) return false;
+    output << (enabled ? "1\n" : "0\n");
+    output.flush();
+    if (!output) return false;
+  }
+  if (!MoveFileExW(
+          temporary.c_str(), path.c_str(),
+          MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+    std::error_code ignored;
+    fs::remove(temporary, ignored);
+    return false;
+  }
+  return true;
+}
+
 AppConfig LoadConfig(const fs::path& path) {
   AppConfig config;
   const auto text = ReadAll(path);
