@@ -17,7 +17,7 @@ function section(text, start, end) {
 }
 
 test('all Stationhead instances start without independent foreground permission', () => {
-  const start = section(app, 'void App::StartServices()', 'void App::StartDeferredServices(');
+  const start = section(app, 'void App::InitializeStationheadServices()', 'void App::StartServices()');
   assert.match(start, /stationheadPeers_\[i\]->SetForegroundAllowed\(false\)/);
   assert.match(start, /stationhead_->SetForegroundAllowed\(false\)/);
   assert.match(handles, /void SetForegroundAllowed\(bool allowed\)[\s\S]*player_->SetForegroundAllowed\(allowed\)/);
