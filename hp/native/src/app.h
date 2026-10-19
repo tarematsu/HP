@@ -43,6 +43,8 @@ class App {
   void StartDeferredServices(int64_t now);
   void HandleStartupUpdateWake();
   void StopServices();
+  void InitializeStationheadServices();
+  void StopStationheadServices();
   void Tick();
   void PerformPostRestartClick();
   void Draw();
@@ -90,7 +92,9 @@ class App {
   int startupShowCommand_ = SW_SHOW;
   MonotonicElapsedTimestamp startupAt_;
   bool rendererStarted_ = false;
+  bool stationheadEnabled_ = true;
   bool stationheadStarted_ = false;
+  int64_t stationheadStartupAt_ = 0;
   std::array<bool, kStationheadPeerCount> stationheadPeerStarted_{};
   bool stationheadLeaderboardCollectorStarted_ = false;
   bool cloudStarted_ = false;
