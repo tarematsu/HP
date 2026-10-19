@@ -30,8 +30,9 @@ test('media startup launches six Stationhead windows at thirty-second offsets', 
   assert.match(startup, /renderer_->Initialize\(\)/);
   assert.doesNotMatch(startup, /stationhead_->Start\(\)/);
   assert.doesNotMatch(startup, /renderer_->StartSpotify\(\)/);
-  assert.match(startup, /ReuseWebViewProfile\(kStationheadPeerProfiles\[i\]\)/);
-  assert.match(startup, /ReuseWebViewProfile\(kStationheadOzekiProfile\)/);
+  const prepare = section(app, 'void App::InitializeStationheadServices()', 'void App::StartServices()');
+  assert.match(prepare, /ReuseWebViewProfile\(kStationheadPeerProfiles\[i\]\)/);
+  assert.match(prepare, /ReuseWebViewProfile\(kStationheadOzekiProfile\)/);
 
   const deferred = section(app, 'void App::StartDeferredServices(', 'void App::StopServices()');
   assert.doesNotMatch(deferred, /renderer_->StartSpotify\(\)/);
