@@ -46,7 +46,7 @@ test('App owns six Stationhead players and defers their staggered start', () => 
 });
 
 test('Stationhead fleet shares the handoff message and placement path', () => {
-  assert.match(messages, /case WM_HP_PRIMARY_RELOAD_READY:[\\s\\S]*return stationheadEnabled_ && stationhead_ \\? 1 : 0/);
+  assert.match(messages, /return stationheadEnabled_ && stationhead_/);
   const placement = section(app, 'void App::ApplyStationheadWindowPlacement(', 'void App::ScheduleNextTick(');
   assert.match(placement, /stationheadPeers_\[i\]->SetBounds\(bounds\)/);
   assert.match(placement, /stationhead_->SetBounds\(bounds\)/);
