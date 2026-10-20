@@ -5,6 +5,8 @@ import test from 'node:test';
 const spotify = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
 const apple = readFileSync(new URL('../public/apple-music-shell.js', import.meta.url), 'utf8');
 const amazon = readFileSync(new URL('../public/amazon-music-shell.js', import.meta.url), 'utf8');
+const amazonCss = readFileSync(new URL('../public/amazon-music.css', import.meta.url), 'utf8');
+const layoutCss = readFileSync(new URL('../public/pages-layout.css', import.meta.url), 'utf8');
 const youtube = readFileSync(new URL('../public/youtube-music-shell.js', import.meta.url), 'utf8');
 const kkbox = readFileSync(new URL('../public/kkbox-shell.js', import.meta.url), 'utf8');
 const qq = readFileSync(new URL('../public/qq-music-shell.js', import.meta.url), 'utf8');
@@ -83,6 +85,13 @@ test('all music subscription presentation uses one responsive layout contract', 
   assert.match(shared, /:is\(\.music-service-meta, \.regional-chart-meta\)/);
   assert.match(shared, /font-size: var\(--dashboard-small-size\)/);
   assert.doesNotMatch(commonCss, /\.music-service-meta/);
+});
+
+test('music service pairs stack at tablet widths and Amazon rank columns remain readable on phones', () => {
+  assert.match(layoutCss, /@media \(max-width:900px\)\s*\{\s*\.music-service-group\s*\{\s*grid-template-columns:minmax\(0,1fr\);/);
+  assert.match(amazonCss, /\.amazon-rank-col:first-child\s*\{\s*width:\s*72px;/);
+  assert.match(amazonCss, /\.amazon-rank-col:nth-child\(2\)\s*\{\s*width:\s*62px;/);
+  assert.match(amazonCss, /\.amazon-artist-col\s*\{\s*width:\s*64px;/);
 });
 
 test('all service filters use the shared filter primitive', () => {
