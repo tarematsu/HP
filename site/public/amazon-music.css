@@ -16,6 +16,7 @@
 
 @media (max-width: 640px) {
   .amazon-rank-chart { --shared-chart-min-height: 220px; }
-  .amazon-rank-col { width: 84px; }
-  .amazon-artist-col { width: 82px; }
+  .amazon-rank-col:first-child { width: 72px; }
+  .amazon-rank-col:nth-child(2) { width: 62px; }
+  .amazon-artist-col { width: 64px; }
 }
