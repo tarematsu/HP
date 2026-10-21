@@ -113,8 +113,8 @@ export function desiredFeedItemsStatement(db, items) {
             video.canonical_key AS canonicalKey,
             video.media_url AS mediaUrl
        FROM json_each(?) AS input
-       INNER JOIN videos AS video
-               ON video.canonical_key = json_extract(input.value, '$.key')
+       CROSS JOIN videos AS video
+              ON video.canonical_key = json_extract(input.value, '$.key')
       WHERE video.status = 'active'
         AND NOT EXISTS (
           SELECT 1 FROM video_blocklist AS blocked

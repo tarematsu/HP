@@ -42,6 +42,8 @@ test('candidate feed excludes blocklisted and dead videos before applying the fi
 
   assert.match(statement.sql, /video_blocklist AS blocked/);
   assert.match(statement.sql, /video_death_list AS dead/);
+  // Keep the bounded input list outermost so SQLite seeks by canonical_key.
+  assert.match(statement.sql, /FROM json_each\(\?\) AS input CROSS JOIN videos AS video/);
   assert.match(statement.sql, /ORDER BY rank LIMIT \?/);
   assert.equal(statement.args.at(-1), PLAYBACK_FEED_LIMIT);
 });
