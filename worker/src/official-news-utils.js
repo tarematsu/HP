@@ -1,7 +1,7 @@
 import {
   finiteNumber,
   positiveNumber as positive,
-  timedFetch,
+  timedFetch as sharedTimedFetch,
 } from './shared.js';
 
 export const NEWS_LIST_URL = 'https://sakurazaka46.com/s/s46/news/list';
@@ -9,11 +9,24 @@ export const NEWS_ORIGIN = 'https://sakurazaka46.com';
 export const SH_ORIGIN = 'https://production1.stationhead.com';
 export const OFFICIAL_NEWS_STATE_ID = 'official-news';
 export const finite = finiteNumber;
-export { timedFetch };
+const OFFICIAL_NEWS_FETCH_TIMEOUT_MS = 20_000;
+
+export function officialNewsRequestTimeoutMs(url, timeoutMs) {
+  const target = String(url || '').toLowerCase();
+  if (target === NEWS_ORIGIN || target.startsWith(`${NEWS_ORIGIN}/`)) {
+    const configured = Number(timeoutMs);
+    return Math.max(Number.isFinite(configured) && configured > 0 ? configured : 0, OFFICIAL_NEWS_FETCH_TIMEOUT_MS);
+  }
+  return timeoutMs;
+}
+
+export async function timedFetch(url, options, timeoutMs) {
+  return sharedTimedFetch(url, options, officialNewsRequestTimeoutMs(url, timeoutMs));
+}
 
 function nonNegative(value, fallback) {
   const number = Math.trunc(Number(value));
-  return Number.isFinite(number) && number >= 0 ? number : fallback;
+  return Number.isFinite(number) && number >= 0 ? Math.trunc(number) : fallback;
 }
 
 export function officialNewsConfig(env) {
