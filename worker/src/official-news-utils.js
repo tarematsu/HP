@@ -27,5 +27,7 @@ export function officialNewsConfig(env) {
     handle: env.OFFICIAL_NEWS_STATIONHEAD_HANDLE || env.OFFICIAL_NEWS_SH_HANDLE || 'sakurazaka46jp',
     appVersion: env.STATIONHEAD_APP_VERSION || env.SH_APP_VERSION || '1.0.0',
     requestTimeoutMs: Math.min(positive(env.REQUEST_TIMEOUT_MS, 20_000), 30_000),
+    // Official-site HTML can be slower than Stationhead API calls; keep its timeout separate.
+    newsRequestTimeoutMs: Math.min(positive(env.OFFICIAL_NEWS_REQUEST_TIMEOUT_MS, 20_000), 30_000),
   };
 }
