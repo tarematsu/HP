@@ -596,7 +596,8 @@ body {
 }
 .music-service-group[hidden] { display:none!important; }
 .music-service-group > .music-service-section { min-width:0; }
-.music-service-group .table-wrap > table { width:100%; min-width:0; table-layout:fixed; }
+/* Keep Apple Music's multi-region table wide enough to scroll instead of squeezing song titles. */
+.music-service-group .table-wrap > table:not(.apple-region-table) { width:100%; min-width:0; table-layout:fixed; }
 .music-service-group .table-wrap :is(th,td) { white-space:normal; overflow-wrap:anywhere; }
 .music-service-group .spotify-table col.col-compact { width:9%; }
 .music-service-group .spotify-table col.col-number { width:25%; }
