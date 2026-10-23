@@ -644,3 +644,8 @@ body {
   white-space: nowrap;
   padding-inline: 12px;
 }
+
+/* Keep YouTube Music playlist type values unbroken at tablet and desktop widths. */
+@media (min-width:761px) {
+  .youtube-music-view .music-service-group .table-wrap .music-service-playlist-table :is(th,td):nth-child(2) { width:84px; min-width:84px; white-space:nowrap; overflow-wrap:normal; }
+}
