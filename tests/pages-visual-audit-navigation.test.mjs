@@ -56,7 +56,12 @@ test('visual audit waits for leaderboard metadata and rendered rows before scree
   assert.match(source, /leaderboard table has no rows/);
 });
 
-test('visual audit checks playback history render state', () => {
+test('visual audit waits for playback totals and table rows before screenshot', () => {
+  assert.match(source, /playedTracksMode/);
   assert.match(source, /playedTracksWaitTimedOut/);
   assert.match(source, /playedTracksAudit/);
+  assert.match(source, /played-total/);
+  assert.match(source, /played-unique/);
+  assert.match(source, /played-tbody/);
+  assert.match(source, /playback data or explicit empty state was not rendered within 20 seconds/);
 });
