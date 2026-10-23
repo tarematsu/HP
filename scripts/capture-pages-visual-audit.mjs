@@ -74,6 +74,8 @@ async function inspectView(page, tab, viewport, outDir) {
   const historyMode = tab.section === 'stationhead' && ['daily', 'weekly', 'monthly'].includes(tab.mode);
   const listeningPartyMode = tab.section === 'stationhead' && tab.source === 'buddies' && tab.mode === 'broadcasts';
   const leaderboardMode = tab.mode === 'ranking';
+  const playedTracksMode = tab.section === 'stationhead'
+    && ['played-tracks', 'hinata-played-tracks'].includes(tab.mode);
   if (historyMode) {
     await page.evaluate(() => {
       window.__pagesAuditHistory = { mode: null, rowCount: null, paintedMode: null };
@@ -105,6 +107,26 @@ async function inspectView(page, tab, viewport, outDir) {
       }, null, { timeout: 20_000 });
     } catch {
       leaderboardWaitTimedOut = true;
+    }
+  }
+  let playedTracksWaitTimedOut = false;
+  if (playedTracksMode) {
+    try {
+      await page.waitForFunction(() => {
+        const panel = document.querySelector('.dashboard-view:not([hidden]) [data-stationhead-panel="played-tracks"]:not([hidden])');
+        if (!panel) return false;
+        const total = panel.querySelector('[data-role="played-total"]')?.textContent?.trim() || '';
+        const unique = panel.querySelector('[data-role="played-unique"]')?.textContent?.trim() || '';
+        const body = panel.querySelector('[data-role="played-tbody"]');
+        const rows = body?.querySelectorAll('tr') || [];
+        const hasEmptyState = [...rows].some(row => row.textContent.includes('再生履歴データがありません。'));
+        const summaryReady = Boolean(total && unique && !['-', '—'].includes(total) && !['-', '—'].includes(unique));
+        return Boolean(panel.querySelector('.played-tracks-period.is-selected')
+          && summaryReady && rows.length > 0
+          && (hasEmptyState || Number.isFinite(Number(total.replace(/[ ,]/g, '')))));
+      }, null, { timeout: 20_000 });
+    } catch {
+      playedTracksWaitTimedOut = true;
     }
   }
   let listeningPartyWaitTimedOut = false;
@@ -197,6 +219,17 @@ async function inspectView(page, tab, viewport, outDir) {
         const item = selected.getBoundingClientRect(); const strip = selected.closest('.played-tracks-period-scroller').getBoundingClientRect();
         return item.left >= strip.left - 1 && item.right <= strip.right + 1;
       })() : null,
+      playedTracksAudit: ['played-tracks', 'hinata-played-tracks'].includes(route.mode) ? (() => {
+        const panel = document.querySelector('.dashboard-view:not([hidden]) [data-stationhead-panel="played-tracks"]:not([hidden])');
+        const total = panel?.querySelector('[data-role="played-total"]')?.textContent?.trim() || '';
+        const unique = panel?.querySelector('[data-role="played-unique"]')?.textContent?.trim() || '';
+        const rows = panel?.querySelector('[data-role="played-tbody"]')?.querySelectorAll('tr') || [];
+        return {
+          selectedPeriod: panel?.querySelector('.played-tracks-period.is-selected')?.dataset.period || '',
+          total, unique, tableRows: rows.length,
+          emptyVisible: [...rows].some(row => row.textContent.includes('再生履歴データがありません。')),
+        };
+      })() : null,
       leaderboardAudit: route.mode === 'ranking' ? {
         updatedAt: document.getElementById('leaderboardUpdatedAt')?.textContent?.trim() || '',
         cadence: document.getElementById('leaderboardCadence')?.textContent?.trim() || '',
@@ -224,6 +257,13 @@ async function inspectView(page, tab, viewport, outDir) {
   const issues = [];
   if (state.channelHistory && (!state.channelHistory.rows || !state.channelHistory.painted)) issues.push('channel history data or chart was not rendered');
   if (state.playedPeriodVisible === false) issues.push('selected playback period is outside the visible date strip');
+  if (playedTracksWaitTimedOut) issues.push('playback data or explicit empty state was not rendered within 20 seconds');
+  if (state.playedTracksAudit && (!state.playedTracksAudit.selectedPeriod
+      || state.playedTracksAudit.tableRows < 1
+      || ['-', '—', ''].includes(state.playedTracksAudit.total)
+      || ['-', '—', ''].includes(state.playedTracksAudit.unique))) {
+    issues.push('playback summary or table is incomplete');
+  }
   if (historyWaitTimedOut) issues.push('history data or chart was not rendered within 20 seconds');
   if (leaderboardWaitTimedOut) issues.push('leaderboard data was not rendered within 20 seconds');
   if (leaderboardMode && state.leaderboardAudit) {
