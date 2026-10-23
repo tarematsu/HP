@@ -55,3 +55,8 @@ test('visual audit waits for leaderboard metadata and rendered rows before scree
   assert.match(source, /leaderboard metadata was not rendered/);
   assert.match(source, /leaderboard table has no rows/);
 });
+
+test('visual audit checks playback history render state', () => {
+  assert.match(source, /playedTracksWaitTimedOut/);
+  assert.match(source, /playedTracksAudit/);
+});
