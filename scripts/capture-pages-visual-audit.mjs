@@ -74,6 +74,7 @@ async function inspectView(page, tab, viewport, outDir) {
   const historyMode = tab.section === 'stationhead' && ['daily', 'weekly', 'monthly'].includes(tab.mode);
   const listeningPartyMode = tab.section === 'stationhead' && tab.source === 'buddies' && tab.mode === 'broadcasts';
   const leaderboardMode = tab.mode === 'ranking';
+  const playedTracksMode = ['played-tracks', 'hinata-played-tracks'].includes(tab.mode);
   if (historyMode) {
     await page.evaluate(() => {
       window.__pagesAuditHistory = { mode: null, rowCount: null, paintedMode: null };
@@ -105,6 +106,21 @@ async function inspectView(page, tab, viewport, outDir) {
       }, null, { timeout: 20_000 });
     } catch {
       leaderboardWaitTimedOut = true;
+    }
+  }
+  let playedTracksWaitTimedOut = false;
+  if (playedTracksMode) {
+    try {
+      await page.waitForFunction((mode) => {
+        const viewId = mode === 'hinata-played-tracks' ? 'hinataView' : 'currentView';
+        const panel = document.querySelector('#' + viewId + ' [data-stationhead-panel="played-tracks"]:not([hidden])');
+        const total = panel?.querySelector('[data-role="played-total"]')?.textContent?.trim();
+        const unique = panel?.querySelector('[data-role="played-unique"]')?.textContent?.trim();
+        const rows = panel?.querySelector('[data-role="played-tbody"]')?.children.length || 0;
+        return Boolean(total && total !== '—' && total !== '-' && unique && unique !== '—' && unique !== '-' && rows > 0);
+      }, tab.mode, { timeout: 20_000 });
+    } catch {
+      playedTracksWaitTimedOut = true;
     }
   }
   let listeningPartyWaitTimedOut = false;
@@ -250,6 +266,7 @@ async function inspectView(page, tab, viewport, outDir) {
   if (state.visiblePanels.length !== 1) issues.push(`expected exactly one visible dashboard view, got ${state.visiblePanels.length}`);
   if (state.horizontalOverflow > 1) issues.push(`document horizontally overflows by ${state.horizontalOverflow}px`);
   if (state.playlistOverflow > 3) issues.push(`playlist table is horizontally clipped by ${state.playlistOverflow}px`);
+  if (playedTracksWaitTimedOut) issues.push('played-track summary or table was not rendered within 20 seconds');
   if (state.bodyLength < 40) issues.push(`body text is unexpectedly short (${state.bodyLength})`);
   if (state.visibleLoading) issues.push('visible loading placeholder remained after settling');
   if (state.dataErrors.length) issues.push(...state.dataErrors);
