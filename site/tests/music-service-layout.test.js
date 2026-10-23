@@ -145,6 +145,6 @@ test('Apple Music regional rankings retain their wide, scrollable table layout',
 });
 
 test('YouTube Music playlist type labels do not wrap mid-word', () => {
-  assert.match(commonCss, /\\.youtube-music-view \\.music-service-playlist-table :is\\(th, td\\):nth-child\\(2\\)\\s*\\{\\s*white-space:\\s*nowrap;\\s*overflow-wrap:\\s*normal;/);
-  assert.match(commonCss, /@media \\(min-width: 761px\\)\\s*\\{\\s*\\.youtube-music-view \\.music-service-playlist-table :is\\(th, td\\):nth-child\\(2\\)\\s*\\{\\s*min-width:\\s*82px;/);
+  assert.ok(commonCss.includes('.youtube-music-view .music-service-playlist-table :is(th, td):nth-child(2) {\n  white-space: nowrap;\n  overflow-wrap: normal;'));
+  assert.ok(commonCss.includes('@media (min-width: 761px) {\n  .youtube-music-view .music-service-playlist-table :is(th, td):nth-child(2) {\n    min-width: 82px;'));
 });
