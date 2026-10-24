@@ -91,7 +91,7 @@ function candidateRows(payload, key, message, allowedAlbums) {
         || playcount < 0 || !Number.isSafeInteger(collectedAt)) {
       throw new Error('invalid Spotify R2 candidate row values');
     }
-    return { track_id: trackId, playcount, collected_at: collectedAt };
+    return { track_id: trackId, playcount, collected_at: collectedAt, album_id: payload.album_id };
   });
 }
 

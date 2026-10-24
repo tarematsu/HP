@@ -26,13 +26,15 @@ test('canonical daily table retains the current and historical snapshots indepen
       PRIMARY KEY(snapshot_date,track_id));
       CREATE TABLE sh_spotify_playcount_candidates(
         snapshot_date TEXT NOT NULL,run_token TEXT NOT NULL,track_id TEXT NOT NULL,
-        playcount INTEGER NOT NULL,collected_at INTEGER NOT NULL,
+        album_id TEXT,playcount INTEGER NOT NULL,collected_at INTEGER NOT NULL,
         PRIMARY KEY(snapshot_date,track_id));
+      CREATE TABLE sh_spotify_releases(album_id TEXT PRIMARY KEY,release_date TEXT NOT NULL);
+      INSERT INTO sh_spotify_releases VALUES ('old-release','2025-01-01');
       CREATE TABLE sh_spotify_track_aliases (
         source_track_id TEXT PRIMARY KEY,song_key TEXT,canonical_track_id TEXT,last_seen_at INTEGER,created_at INTEGER);
       CREATE INDEX idx_sh_spotify_track_aliases_canonical ON sh_spotify_track_aliases(canonical_track_id,source_track_id);
       INSERT INTO sh_spotify_playcount_daily VALUES ('2026-10-12','track-a',1000,NULL,10,0);
-      INSERT INTO sh_spotify_playcount_candidates VALUES ('2026-10-13','run-13','track-a',1030,20);
+      INSERT INTO sh_spotify_playcount_candidates VALUES ('2026-10-13','run-13','track-a','old-release',1030,20);
       `);
     const fake = { prepare(sql) {
       return { bind(...args) {
