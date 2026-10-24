@@ -37,13 +37,19 @@ export function renderSeriesSelector({
     legendContainer.replaceChildren();
     const visible = items.filter((item, index) => !hidden.has(seriesId(item, index)));
     visible.slice(0, legendLimit).forEach((item, index) => {
-      if (index) legendContainer.append(' / ');
       const span = document.createElement('span');
+      span.className = 'series-selector-legend-item';
       span.textContent = item.label || item.name || seriesId(item, index);
       span.style.color = item.color || '#111';
       legendContainer.append(span);
     });
-    if (visible.length > legendLimit) legendContainer.append(` / 他${visible.length - legendLimit}件`);
+    if (visible.length > legendLimit) {
+      const more = document.createElement('span');
+      more.className = 'series-selector-legend-more';
+      more.textContent = `他${visible.length - legendLimit}件`;
+      more.style.color = 'var(--muted, #667287)';
+      legendContainer.append(more);
+    }
   }
 }
 

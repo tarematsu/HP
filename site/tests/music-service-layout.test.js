@@ -143,3 +143,10 @@ test('Apple Music regional rankings retain their wide, scrollable table layout',
   assert.match(appleCss, /\.apple-region-table\s*\{\s*min-width:\s*820px;\s*table-layout:\s*auto;/);
   assert.match(layoutCss, /\.music-service-group \.table-wrap > table:not\(\.apple-region-table\)\s*\{\s*width:100%;\s*min-width:0;\s*table-layout:fixed;/);
 });
+
+
+test('Apple Music series legend keeps separator characters out of independent grid cells', () => {
+  const selector = readFileSync(new URL('../public/dashboard-series-selector.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(selector, /legendContainer\.append\(' \/ '\)/);
+  assert.match(selector, /series-selector-legend-more/);
+});
