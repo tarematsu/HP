@@ -142,6 +142,52 @@ async function inspectView(page, tab, viewport, outDir) {
     await page.locator('.dashboard-view:not([hidden])').locator(tab.control).click();
     await settle(page);
   }
+
+  // A quiet network is not proof that a lazy music-service panel has painted.
+  // Wait for each chart/table (including explicit empty states) before saving
+  // the screenshot, otherwise a fast viewport can capture an apparently blank
+  // panel while slower viewports capture its completed state.
+  let serviceRenderWaitTimedOut = false;
+  if (tab.section === 'subscriptions') {
+    let serviceGroup = tab.panel || '';
+    if (!serviceGroup) {
+      serviceGroup = await page.waitForFunction(() => {
+        const root = document.querySelector('.dashboard-view:not([hidden])');
+        return root?.dataset.activeServiceGroup || false;
+      }, null, { timeout: 5000 }).catch(() => '');
+    }
+    if (serviceGroup) {
+      try {
+        await page.waitForFunction((group) => {
+          const root = document.querySelector('.dashboard-view:not([hidden])');
+          if (!root || root.dataset.activeServiceGroup !== group) return false;
+          const panel = [...root.querySelectorAll('.music-service-group')].find((item) => item.dataset.group === group);
+          if (!panel || panel.hidden) return false;
+          const sections = [...panel.querySelectorAll('.music-service-section')];
+          if (!sections.length) return false;
+
+          let renderTargets = 0;
+          for (const section of sections) {
+            const charts = [...section.querySelectorAll(
+              '.music-service-rank-chart, .spotify-trend-charts, .music-service-bar-chart',
+            )];
+            const tableBodies = [...section.querySelectorAll('table tbody')];
+            renderTargets += charts.length + tableBodies.length;
+            if (charts.some((chart) => !(
+              chart.matches('canvas, svg')
+              || chart.querySelector('canvas, svg, .shared-empty')
+            ))) return false;
+            if (tableBodies.some((body) => body.children.length === 0)) return false;
+          }
+          return renderTargets > 0;
+        }, serviceGroup, { timeout: 20_000 });
+      } catch {
+        serviceRenderWaitTimedOut = true;
+      }
+    } else {
+      serviceRenderWaitTimedOut = true;
+    }
+  }
   await revealPage(page);
 
   const state = await page.evaluate(({ route }) => {
@@ -172,7 +218,7 @@ async function inspectView(page, tab, viewport, outDir) {
     return {
       active: location.hash === `#${route.mode}` && source === route.source,
       ariaCurrent: active?.getAttribute('aria-current') || null,
-      dataErrors: text.match(/[^。\n]*(?:データの取得に失敗|データを取得できません|materialized response unavailable)[^。\n]*/g) || [],
+      dataErrors: text.match(/[^。\n]*(?:取得失敗|データの取得に失敗|データを取得できません|materialized response unavailable)[^。\n]*/g) || [],
       visiblePanels,
       horizontalOverflow: Math.max(0, scrollWidth - window.innerWidth),
       playlistOverflow: [...document.querySelectorAll('.dashboard-view:not([hidden]) .music-service-playlist-table')]
@@ -222,6 +268,7 @@ async function inspectView(page, tab, viewport, outDir) {
   await page.screenshot({ path: screenshot, fullPage: true, animations: 'disabled' });
 
   const issues = [];
+  if (serviceRenderWaitTimedOut) issues.push('music service subview did not finish rendering within 20 seconds');
   if (state.channelHistory && (!state.channelHistory.rows || !state.channelHistory.painted)) issues.push('channel history data or chart was not rendered');
   if (state.playedPeriodVisible === false) issues.push('selected playback period is outside the visible date strip');
   if (historyWaitTimedOut) issues.push('history data or chart was not rendered within 20 seconds');
