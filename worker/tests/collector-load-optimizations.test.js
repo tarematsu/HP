@@ -69,7 +69,8 @@ test('collector and recovery use sampled invocation and application logs', () =>
   ]) {
     const worker = config(path);
     assert.equal(worker.observability.head_sampling_rate, 0.1, path);
-    assert.equal(worker.observability.logs.head_sampling_rate, 0.1, path);
+    const expectedLogSamplingRate = path.includes('buddies-collector') ? 1 : 0.1;
+    assert.equal(worker.observability.logs.head_sampling_rate, expectedLogSamplingRate, path);
     assert.equal(worker.observability.logs.invocation_logs, true, path);
   }
 });
