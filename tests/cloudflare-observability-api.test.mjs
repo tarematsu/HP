@@ -148,6 +148,11 @@ test('D1 query cost collector uses resolved-account GraphQL and passes its priva
     'CLOUDFLARE_ACCOUNT_ID',
     'resolved CLOUDFLARE_ACCOUNT_ID',
   ]);
+  expectAll(d1QueryCostScript, [
+    'D1_API',
+    'request_database_id_by_name',
+    'resolve_database_id',
+  ]);
   expectNone(d1QueryCostScript, [
     'REST_API',
     'def account_id',
@@ -155,7 +160,6 @@ test('D1 query cost collector uses resolved-account GraphQL and passes its priva
     'wrangler d1 insights',
     'spawnSync',
     'node_modules/.bin/wrangler',
-    '/d1/database',
   ]);
   const result = spawnSync('python3', [fileURLToPath(d1QueryCostUrl), '--self-test'], { encoding: 'utf8' });
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
