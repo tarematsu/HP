@@ -5,6 +5,7 @@ from __future__ import annotations
 import glob
 import json
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -20,6 +21,12 @@ CONFIGS = tuple(
     if value.strip()
 )
 OUT = Path(os.environ.get("FREE_TIER_USAGE_OUTPUT_DIR", "free-tier-usage"))
+ZERO_UUID = "00000000-0000-0000-0000-000000000000"
+UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+
+
+def is_placeholder_database_id(value: str) -> bool:
+    return str(value or "").strip().lower() == ZERO_UUID
 
 
 def configured_d1_databases() -> list[dict[str, Any]]:
@@ -35,17 +42,23 @@ def configured_d1_databases() -> list[dict[str, Any]]:
                 continue
             for row in config.get("d1_databases") or []:
                 database_id = str(row.get("database_id") or "").strip().lower()
-                if not database_id:
+                configured_name = str(row.get("database_name") or "").strip()
+                if not database_id and not configured_name:
                     continue
-                item = databases.setdefault(database_id, {
+                key = configured_name or database_id
+                item = databases.setdefault(key, {
                     "databaseId": database_id,
-                    "configuredName": str(row.get("database_name") or "").strip() or None,
+                    "configuredName": configured_name or None,
                     "bindings": set(),
                 })
+                existing_id = str(item.get("databaseId") or "")
+                if database_id and existing_id and not is_placeholder_database_id(database_id) and not is_placeholder_database_id(existing_id) and database_id != existing_id:
+                    raise RuntimeError(f"Conflicting D1 IDs configured for {configured_name or key}")
+                if database_id and (not existing_id or is_placeholder_database_id(existing_id)):
+                    item["databaseId"] = database_id
                 binding = str(row.get("binding") or "").strip()
                 if binding:
                     item["bindings"].add(binding)
-                configured_name = str(row.get("database_name") or "").strip()
                 if configured_name:
                     item["configuredName"] = configured_name
     rows = [
@@ -82,18 +95,64 @@ def _request_database(database_id: str) -> dict[str, Any]:
     return result
 
 
+def _request_database_by_name(database_name: str) -> dict[str, Any]:
+    query = urllib.parse.urlencode({"name": database_name, "per_page": 100})
+    request = urllib.request.Request(
+        f"{API}/accounts/{ACCOUNT}/d1/database?{query}",
+        method="GET",
+        headers={
+            "Authorization": f"Bearer {TOKEN}",
+            "Accept": "application/json",
+            "User-Agent": "github-actions-cloudflare-observability-d1-storage",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            body = json.load(response)
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace")[:500]
+        raise RuntimeError(f"Cloudflare D1 name lookup HTTP {error.code}: {detail}") from error
+    except urllib.error.URLError as error:
+        raise RuntimeError(f"Cloudflare D1 name lookup failed: {error.reason}") from error
+    if body.get("success") is False or body.get("errors"):
+        raise RuntimeError(f"Cloudflare D1 name lookup error: {json.dumps(body.get('errors'))[:500]}")
+    rows = body.get("result") or []
+    matches = [
+        row for row in rows
+        if isinstance(row, dict) and str(row.get("name") or "") == database_name
+    ]
+    if len(matches) != 1:
+        raise RuntimeError(f"Expected exactly one Cloudflare D1 database named {database_name}, found {len(matches)}")
+    return matches[0]
+
+
 def collect_d1_storage(
     configured: list[dict[str, Any]],
     request_database: Callable[[str], dict[str, Any]] | None = None,
+    request_database_by_name: Callable[[str], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     request = request_database or _request_database
+    request_by_name = request_database_by_name or _request_database_by_name
     rows: list[dict[str, Any]] = []
     total_bytes = 0
     available = 0
     for database in configured:
-        database_id = str(database.get("databaseId") or "")
+        database_id = str(database.get("databaseId") or "").strip().lower()
+        configured_name = str(database.get("configuredName") or "").strip()
         try:
-            result = request(database_id)
+            if is_placeholder_database_id(database_id) or not database_id:
+                if not configured_name:
+                    raise RuntimeError("Placeholder D1 database ID has no configured database name")
+                result = request_by_name(configured_name)
+                resolved_id = str(result.get("uuid") or result.get("id") or result.get("database_id") or "").strip().lower()
+                if not UUID_RE.fullmatch(resolved_id) or is_placeholder_database_id(resolved_id):
+                    raise RuntimeError(f"Cloudflare did not return a valid D1 database ID for {configured_name}")
+            else:
+                result = request(database_id)
+                resolved_id = str(result.get("uuid") or result.get("id") or result.get("database_id") or database_id).strip().lower()
+            result_name = str(result.get("name") or configured_name or resolved_id)
+            if configured_name and result_name != configured_name:
+                raise RuntimeError(f"Configured D1 database {configured_name} resolved to unexpected name {result_name}")
             raw_size = result.get("file_size")
             file_size = int(raw_size) if raw_size is not None else None
             if file_size is not None and file_size < 0:
@@ -103,14 +162,15 @@ def collect_d1_storage(
                 available += 1
             rows.append({
                 **database,
-                "name": str(result.get("name") or database.get("configuredName") or database_id),
+                "databaseId": resolved_id,
+                "name": result_name,
                 "fileSize": file_size,
                 "error": None if file_size is not None else "file_size missing from Cloudflare response",
             })
-        except Exception as error:  # Diagnostic enrichment must not fail the budget gate.
+        except Exception as error:  # Coverage is surfaced separately and fails the observability budget step.
             rows.append({
                 **database,
-                "name": str(database.get("configuredName") or database_id),
+                "name": configured_name or database_id,
                 "fileSize": None,
                 "error": str(error)[:500],
             })
@@ -233,6 +293,30 @@ def self_test() -> int:
     assert "Current configured D1 total: **168.00 MB**" in markdown
     assert "stationhead-buddies" in markdown
     assert "no SQL query executed" in markdown
+
+    placeholder = [{
+        "databaseId": ZERO_UUID,
+        "configuredName": "stationhead-ohisama",
+        "bindings": ["OHISAMA_DB"],
+    }]
+
+    def fake_name_lookup(database_name: str) -> dict[str, Any]:
+        assert database_name == "stationhead-ohisama"
+        return {
+            "uuid": "9b2b4d61-2d73-4e12-9d23-0b0d9d6f1a42",
+            "name": database_name,
+            "file_size": 7_000_000,
+        }
+
+    resolved = collect_d1_storage(
+        placeholder,
+        request_database=fake_request,
+        request_database_by_name=fake_name_lookup,
+    )
+    assert resolved["complete"] is True
+    assert resolved["availableCount"] == 1
+    assert resolved["databases"][0]["databaseId"] == "9b2b4d61-2d73-4e12-9d23-0b0d9d6f1a42"
+    assert resolved["totalBytes"] == 7_000_000
 
     def partial_request(database_id: str) -> dict[str, Any]:
         if database_id == "a":
