@@ -135,10 +135,17 @@ function compareTrackRows(a, b) {
 export function spotifyPayload(artist, rows = []) {
   // A missing daily baseline is treated as zero for the first reported count.
   // Resolve after edition deduplication so a measured delta always wins.
-  const uniqueRows = dedupeTrackRows(rows).map((row) => ({
-    ...row,
-    delta: integer(row.delta) ?? Math.max(0, integer(row.playcount) ?? 0),
-  })).sort(compareTrackRows);
+  const uniqueRows = dedupeTrackRows(rows).map((row) => {
+    const playcount = Math.max(0, integer(row.playcount) ?? 0);
+    const delta = integer(row.delta);
+    // A zero count with a large negative delta is a failed cumulative observation,
+    // not a real loss of historical streams. Recover the previous count from
+    // current - delta and expose this row as carried forward.
+    if (playcount === 0 && delta != null && delta < 0) {
+      return { ...row, playcount: playcount - delta, delta: 0, is_carried_forward: 1 };
+    }
+    return { ...row, playcount, delta: delta ?? playcount };
+  }).sort(compareTrackRows);
   const tracks = uniqueRows.map((row, index) => ({
     rank: index + 1,
     track_id: integer(row.track_id),
