@@ -90,6 +90,30 @@ test('unified observability issue body includes HP and Stationhead deployment co
   assert.doesNotMatch(body, /secret-value/);
 });
 
+test('unified status keeps D1 storage details visible when free-tier diagnostics are long', () => {
+  const storageRow = '| `stationhead-minute` | `MINUTE_DB` | 349.80 MB | 349,802,496 |';
+  const freeTier = `${'x'.repeat(3_800)}\n\n### D1 database storage\n\n| Database | Binding(s) | Current size | Bytes |\n|---|---|---:|---:|\n${storageRow}`;
+  const body = buildIssueBody({
+    generatedAt: '2026-10-24T02:32:14.000Z',
+    targetSha: 'abcdef123456',
+    mainSha: 'abcdef123456',
+    runUrl: 'https://github.com/tarematsu/HP/actions/runs/123',
+    trigger: 'schedule',
+    outcomes: {
+      daily: 'success',
+      freeTier: 'success',
+      contract: 'success',
+      d1Insights: 'success',
+      query: 'success',
+      telemetry: 'success',
+      r2Collection: 'success',
+    },
+    summaries: { freeTier },
+  });
+
+  assert.ok(body.includes(storageRow), 'per-database storage rows must survive issue-body clipping');
+});
+
 test('unified workflow publishes one retrievable account-wide status', async () => {
   const workflow = await readFile(new URL('.github/workflows/sh-observability.yml', root), 'utf8');
   const deployWorkflow = await readFile(new URL('.github/workflows/deploy-split-pipeline.yml', root), 'utf8');
