@@ -4,6 +4,8 @@ import test from 'node:test';
 
 import {
   DEPLOYMENT_HEALTH_START,
+  STATIONHEAD_TARGETS,
+  STATIONHEAD_WORKERS,
   extractDeploymentError,
   mergeDeploymentHistory,
   parseDeploymentTargets,
@@ -31,11 +33,13 @@ function run(id, conclusion = 'failure') {
 test('stable target marker exposes Pages and every selected Worker', () => {
   const targets = parseDeploymentTargets(`
  echo "DEPLOYMENT_TARGETS_JSON=$deployment_targets"
- DEPLOYMENT_TARGETS_JSON={"minute_db":true,"pages":true,"workers":["sh-sakurazaka46jp","sh-buddies-recovery","sh-buddies-collector","sh-runtime-orchestrator"],"commands":["deploy:sakurazaka46jp","deploy:buddies-recovery","deploy:buddies-collector","deploy:runtime"]}
+ DEPLOYMENT_TARGETS_JSON={"minute_db":true,"pages":true,"workers":["sh-sakurazaka46jp","sh-buddies-recovery","sh-buddies-collector","sh-runtime-orchestrator","sh-spotify-playcount-collector","sh-cron-dispatcher"],"commands":["deploy:sakurazaka46jp","deploy:buddies-recovery","deploy:buddies-collector","deploy:runtime","deploy:spotify-playcount","deploy:cron-dispatcher"]}
 `);
   assert.equal(targets.minute_db, true);
   assert.equal(targets.pages, true);
-  assert.equal(targets.workers.length, 4);
+  assert.deepEqual(targets.workers, STATIONHEAD_WORKERS.map(({ target }) => target));
+  assert.deepEqual(targets.commands, STATIONHEAD_WORKERS.map(({ command }) => command));
+  assert.equal(STATIONHEAD_TARGETS.length, 7);
 });
 
 test('legacy select-job JSON still exposes selected Workers', () => {
@@ -117,7 +121,10 @@ test('history merge retains the latest targeted attempt for every Worker and Pag
   const summaries = [
     {
       run: run(5, 'success'),
-      components: [{ workflow: 'Deploy production', target: 'sh-runtime-orchestrator', result: 'success', error: '', run: run(5, 'success') }],
+      components: [
+        { workflow: 'Deploy production', target: 'sh-runtime-orchestrator', result: 'success', error: '', run: run(5, 'success') },
+        { workflow: 'Deploy production', target: 'sh-spotify-playcount-collector', result: 'success', error: '', run: run(5, 'success') },
+      ],
     },
     {
       run: run(4),
@@ -128,6 +135,7 @@ test('history merge retains the latest targeted attempt for every Worker and Pag
       components: [
         { workflow: 'Deploy production', target: 'sh-buddies-recovery', result: 'success', error: '', run: run(3, 'success') },
         { workflow: 'Deploy production', target: 'sh-buddies-collector', result: 'success', error: '', run: run(3, 'success') },
+        { workflow: 'Deploy production', target: 'sh-cron-dispatcher', result: 'success', error: '', run: run(3, 'success') },
       ],
     },
     {
@@ -136,7 +144,9 @@ test('history merge retains the latest targeted attempt for every Worker and Pag
     },
   ];
   const merged = mergeDeploymentHistory(summaries);
-  assert.equal(merged.components.filter((component) => component.target.startsWith('sh-')).length, 4);
+  assert.equal(merged.components.filter((component) => component.target.startsWith('sh-')).length, 6);
+  assert.equal(merged.components.find((component) => component.target === 'sh-spotify-playcount-collector').result, 'success');
+  assert.equal(merged.components.find((component) => component.target === 'sh-cron-dispatcher').result, 'success');
   assert.equal(merged.components.find((component) => component.target === 'Cloudflare Pages (skrzk)').result, 'failure');
   assert.equal(merged.overall, 'failure');
 });
@@ -186,7 +196,7 @@ test('history collection searches older pages while retaining newer failures', a
   t.mock.method(globalThis, 'fetch', async (url) => ({
     ok: true,
     text: async () => String(url).includes('/900/logs')
-      ? 'DEPLOYMENT_TARGETS_JSON={"workers":["sh-sakurazaka46jp","sh-buddies-recovery","sh-buddies-collector","sh-runtime-orchestrator"],"commands":["deploy:sakurazaka46jp","deploy:buddies-recovery","deploy:buddies-collector","deploy:runtime"]}'
+      ? 'DEPLOYMENT_TARGETS_JSON={"workers":["sh-sakurazaka46jp","sh-buddies-recovery","sh-buddies-collector","sh-runtime-orchestrator","sh-spotify-playcount-collector","sh-cron-dispatcher"],"commands":["deploy:sakurazaka46jp","deploy:buddies-recovery","deploy:buddies-collector","deploy:runtime","deploy:spotify-playcount","deploy:cron-dispatcher"]}'
       : 'deployment failed',
   }));
   const request = async (_method, path) => {
