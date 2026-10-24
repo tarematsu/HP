@@ -69,9 +69,9 @@ test('immutable album receipts preserve highest playcount across out-of-order re
   ], 4000);
   const accepted = [{ album_id: 'A', track_count: 2 }, { album_id: 'B', track_count: 2 }];
   assert.deepEqual(await loadSpotifyR2RunCandidates(env, albumA, accepted), [
-    { track_id: 'x', playcount: 102, collected_at: 2000 },
-    { track_id: 'y', playcount: 200, collected_at: 3000 },
-    { track_id: 'z', playcount: 50, collected_at: 2500 },
+    { track_id: 'x', playcount: 102, collected_at: 2000, album_id: 'A' },
+    { track_id: 'y', playcount: 200, collected_at: 3000, album_id: 'A' },
+    { track_id: 'z', playcount: 50, collected_at: 2500, album_id: 'B' },
   ]);
   assert.equal(await cleanupSpotifyR2RunCandidates(env, albumA), 5);
   assert.equal(bucket.objects.size, 0);
@@ -106,23 +106,26 @@ test('direct R2 candidate SQLite finalization matches the original daily candida
         collected_at INTEGER,is_carried_forward INTEGER,
         PRIMARY KEY(snapshot_date,track_id));
       CREATE TABLE sh_spotify_playcount_candidates(
-        snapshot_date TEXT,run_token TEXT,track_id TEXT,playcount INTEGER,collected_at INTEGER,
+        snapshot_date TEXT,run_token TEXT,track_id TEXT,album_id TEXT,playcount INTEGER,collected_at INTEGER,
         PRIMARY KEY(snapshot_date,track_id));
+      CREATE TABLE sh_spotify_releases(album_id TEXT PRIMARY KEY,release_date TEXT NOT NULL);
+      INSERT INTO sh_spotify_releases VALUES('old-release','2025-01-01');
       CREATE TABLE sh_spotify_track_aliases (
         source_track_id TEXT PRIMARY KEY,song_key TEXT,canonical_track_id TEXT,last_seen_at INTEGER,created_at INTEGER);
       CREATE INDEX idx_sh_spotify_track_aliases_canonical ON sh_spotify_track_aliases(canonical_track_id,source_track_id);
       INSERT INTO sh_spotify_playcount_daily VALUES
         ('2026-10-13','a',100,NULL,1,0),('2026-10-13','b',200,NULL,1,0);
       INSERT INTO sh_spotify_playcount_candidates VALUES
-        ('2026-10-14','run:1','a',103,9),('2026-10-14','run:1','b',198,9),
-        ('2026-10-14','run:1','new',7,9);
+        ('2026-10-14','run:1','a','old-release',103,9),
+        ('2026-10-14','run:1','b','old-release',198,9),
+        ('2026-10-14','run:1','new','old-release',7,9);
     `);
     const db = { prepare(sql) {
       return { bind(...values) { return { run() { return sqlite.prepare(sql).run(...values); } }; } };
     } };
     const message = observation('A');
     const rows = ['a','b','new'].map(id => ({
-      track_id: id,playcount: { a: 103,b: 198,new: 7 }[id],collected_at: 9,
+      track_id: id,playcount: { a: 103,b: 198,new: 7 }[id],collected_at: 9,album_id: 'old-release',
     }));
     spotifyDailyFinalizeStatement(db,message,'2026-10-13').run();
     const snapshot = () => sqlite.prepare(`SELECT track_id,playcount,delta,collected_at,is_carried_forward
