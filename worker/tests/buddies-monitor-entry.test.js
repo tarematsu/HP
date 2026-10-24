@@ -34,6 +34,9 @@ test('the dedicated buddies Worker owns scheduled raw collection', () => {
   assert.equal(collector.name, 'sh-buddies-collector');
   assert.equal(collector.main, 'src/buddies-collector-entry.js');
   assert.deepEqual(collector.triggers.crons, ['*/5 * * * *']);
+  assert.equal(collector.observability.head_sampling_rate, 0.1);
+  assert.equal(collector.observability.logs.head_sampling_rate, 1);
+  assert.equal(collector.observability.logs.invocation_logs, true);
   assert.deepEqual(collector.queues.consumers, []);
   assert.equal(recovery.name, 'sh-buddies-recovery');
   assert.equal(recovery.queues.consumers.length, 3);
