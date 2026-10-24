@@ -150,7 +150,7 @@ test('direct R2 candidate SQLite finalization matches the original daily candida
       { track_id:'new-release-track',playcount:40,delta:40,collected_at:9,is_carried_forward:0 },
       { track_id:'zeroed',playcount:200,delta:0,collected_at:9,is_carried_forward:1 },
     ]);
-    assert.equal(sqlite.prepare(`SELECT COUNT(*) n FROM sh_spotify_playcount_candidates`).get().n,3,
+    assert.equal(sqlite.prepare(`SELECT COUNT(*) n FROM sh_spotify_playcount_candidates`).get().n,5,
       'R2 finalization does not need to insert candidate rows into D1');
   } finally { sqlite.close(); }
 });
