@@ -262,7 +262,7 @@ test('production collector enables direct Durable Object hot state', () => {
   assert.equal(config.vars.COLLECTOR_D1_AUTH_CACHE_MS, 21_600_000);
   assert.equal(config.vars.COLLECTOR_TELEMETRY_INTERVAL_MS, 300_000);
   assert.equal(config.observability.head_sampling_rate, 0.1);
-  assert.equal(config.observability.logs.head_sampling_rate, 0.1);
+  assert.equal(config.observability.logs.head_sampling_rate, 1);
   assert.equal(config.observability.logs.invocation_logs, true);
   assert.deepEqual(config.queues.consumers, []);
 });
