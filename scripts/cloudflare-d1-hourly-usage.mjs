@@ -1,5 +1,6 @@
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { resolveConfiguredD1DatabaseId } from './cloudflare-d1-database-resolver.mjs';
 
 const GRAPHQL_URL = 'https://api.cloudflare.com/client/v4/graphql';
 const FREE_READ_ROWS_PER_DAY = 5_000_000;
@@ -73,8 +74,17 @@ async function referencedDatabases() {
   for (const file of files) {
     const source = await readFile(path.join(workerDir, file), 'utf8');
     for (const match of source.matchAll(pattern)) {
-      const [, name, id] = match;
+      const [, name, configuredId] = match;
+      const id = await resolveConfiguredD1DatabaseId({
+        databaseId: configuredId,
+        databaseName: name,
+        token,
+        accountId,
+      });
       const current = databases.get(id) || { id, name, configs: [] };
+      if (current.name !== name) {
+        throw new Error(`D1 database ID ${id} maps to conflicting names ${current.name} and ${name}`);
+      }
       current.configs.push(file);
       databases.set(id, current);
     }
