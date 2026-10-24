@@ -47,7 +47,7 @@ const STATUS_CONTEXTS = {
 const DIAGNOSTIC_SECTION_LIMITS = Object.freeze({
   publicHealth: 5_000,
   daily: 3_500,
-  freeTier: 3_500,
+  freeTier: 6_500,
   contract: 2_000,
   d1Insights: 7_000,
   observability: 6_500,
