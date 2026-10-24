@@ -15,6 +15,9 @@ const deployedAuditUrl = new URL('../.github/scripts/audit-deployed-cloudflare-t
 const dailyBudgetScript = readSource('.github/scripts/audit-cloudflare-daily-usage.py');
 const d1QueryCostUrl = new URL('../.github/scripts/query-cloudflare-d1-costs.py', import.meta.url);
 const d1QueryCostScript = readSource('.github/scripts/query-cloudflare-d1-costs.py');
+const d1HistoryUrl = new URL('../.github/scripts/audit-cloudflare-d1-history.py', import.meta.url);
+const d1HistoryScript = readSource('.github/scripts/audit-cloudflare-d1-history.py');
+const d1FreeTierUrl = new URL('../.github/scripts/audit-cloudflare-free-tier.py', import.meta.url);
 const liveTailScript = readSource('.github/scripts/capture-cloudflare-live-tail.mjs');
 const fullTelemetryWranglers = [
   'wrangler.sakurazaka46jp.jsonc',
@@ -163,6 +166,20 @@ test('D1 query cost collector uses resolved-account GraphQL and passes its priva
   ]);
   const result = spawnSync('python3', [fileURLToPath(d1QueryCostUrl), '--self-test'], { encoding: 'utf8' });
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+});
+
+test('D1 history and storage audits resolve placeholder IDs and fail closed on missing coverage', () => {
+  expectAll(d1HistoryScript, [
+    'database_name',
+    'request_database_id_by_name',
+    'resolve_database_id',
+    'dimensions { date databaseId }',
+  ]);
+  const history = spawnSync('python3', [fileURLToPath(d1HistoryUrl), '--self-test'], { encoding: 'utf8' });
+  assert.equal(history.status, 0, `${history.stdout}\n${history.stderr}`);
+
+  const storage = spawnSync('python3', [fileURLToPath(d1FreeTierUrl), '--self-test'], { encoding: 'utf8' });
+  assert.equal(storage.status, 0, `${storage.stdout}\n${storage.stderr}`);
 });
 
 test('live-tail diagnostics use resolved context and shared credential redaction', () => {
