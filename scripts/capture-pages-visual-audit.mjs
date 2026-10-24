@@ -151,19 +151,30 @@ async function inspectView(page, tab, viewport, outDir) {
   if (tab.section === 'subscriptions') {
     let serviceGroup = tab.panel || '';
     if (!serviceGroup) {
-      serviceGroup = await page.waitForFunction(() => {
+      serviceGroup = await page.evaluate(() => {
         const root = document.querySelector('.dashboard-view:not([hidden])');
-        return root?.dataset.activeServiceGroup || false;
-      }, null, { timeout: 5000 }).catch(() => '');
+        if (!root) return '__missing-root__';
+        const hasGroupPanels = root.querySelector('.music-service-group[data-group]');
+        return hasGroupPanels ? (root.dataset.activeServiceGroup || '__missing-group__') : '';
+      });
     }
-    if (serviceGroup) {
+    if (serviceGroup === '__missing-root__' || serviceGroup === '__missing-group__') {
+      serviceRenderWaitTimedOut = true;
+    } else {
       try {
         await page.waitForFunction((group) => {
           const root = document.querySelector('.dashboard-view:not([hidden])');
-          if (!root || root.dataset.activeServiceGroup !== group) return false;
-          const panel = [...root.querySelectorAll('.music-service-group')].find((item) => item.dataset.group === group);
-          if (!panel || panel.hidden) return false;
-          const sections = [...panel.querySelectorAll('.music-service-section')];
+          if (!root) return false;
+          let sections;
+          if (group) {
+            if (root.dataset.activeServiceGroup !== group) return false;
+            const panel = [...root.querySelectorAll('.music-service-group[data-group]')].find((item) => item.dataset.group === group);
+            if (!panel || panel.hidden) return false;
+            sections = [...panel.querySelectorAll('.music-service-section')];
+          } else {
+            if (root.querySelector('.music-service-group[data-group]')) return false;
+            sections = [...root.querySelectorAll('.music-service-section')].filter((section) => !section.hidden);
+          }
           if (!sections.length) return false;
 
           let renderTargets = 0;
@@ -184,8 +195,6 @@ async function inspectView(page, tab, viewport, outDir) {
       } catch {
         serviceRenderWaitTimedOut = true;
       }
-    } else {
-      serviceRenderWaitTimedOut = true;
     }
   }
   await revealPage(page);
