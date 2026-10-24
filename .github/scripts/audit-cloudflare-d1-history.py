@@ -10,6 +10,7 @@ import os
 import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -20,7 +21,9 @@ ACCOUNT = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
 CONFIGS = tuple(x.strip() for x in os.environ.get("D1_CONFIG_GLOBS", "").split(",") if x.strip())
 OUT = Path(os.environ.get("DAILY_USAGE_OUTPUT_DIR", "daily-usage"))
 DAYS = max(1, min(31, int(os.environ.get("D1_HISTORY_DAYS", "7"))))
-DB_RE = re.compile(r'"database_id"\s*:\s*"([0-9a-fA-F-]{36})"')
+DB_RE = re.compile(r'"database_name"\s*:\s*"([^"]+)"[\s\S]{0,400}?"database_id"\s*:\s*"([0-9a-fA-F-]{36})"')
+ZERO_UUID = "00000000-0000-0000-0000-000000000000"
+UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 
 
 def api(url: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -48,8 +51,62 @@ def api(url: str, payload: dict[str, Any]) -> dict[str, Any]:
     return body
 
 
-def configured_database_ids() -> set[str]:
-    database_ids: set[str] = set()
+def is_placeholder_database_id(value: str) -> bool:
+    return str(value or "").strip().lower() == ZERO_UUID
+
+
+def request_database_id_by_name(name: str) -> str:
+    if not TOKEN or not ACCOUNT:
+        raise RuntimeError("Cloudflare credentials are required to resolve a placeholder D1 database ID")
+    query = urllib.parse.urlencode({"name": name, "per_page": 100})
+    url = f"{API}/accounts/{urllib.parse.quote(ACCOUNT, safe='')}/d1/database?{query}"
+    request = urllib.request.Request(
+        url,
+        method="GET",
+        headers={
+            "Authorization": f"Bearer {TOKEN}",
+            "Accept": "application/json",
+            "User-Agent": "github-actions-cloudflare-d1-history",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            body = json.load(response)
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace")[:800]
+        raise RuntimeError(f"Cloudflare D1 name lookup HTTP {error.code}: {detail}") from error
+    except urllib.error.URLError as error:
+        raise RuntimeError(f"Cloudflare D1 name lookup failed: {error.reason}") from error
+    if body.get("success") is False or body.get("errors"):
+        raise RuntimeError(f"Cloudflare D1 name lookup error: {json.dumps(body.get('errors'))[:800]}")
+    rows = body.get("result") or []
+    matches = [
+        str(row.get("uuid") or row.get("id") or row.get("database_id") or "").strip().lower()
+        for row in rows
+        if str(row.get("name") or "") == name
+    ]
+    matches = [value for value in matches if UUID_RE.fullmatch(value) and not is_placeholder_database_id(value)]
+    if len(matches) != 1:
+        raise RuntimeError(f"Expected exactly one Cloudflare D1 database named {name}, found {len(matches)}")
+    return matches[0]
+
+
+def resolve_database_id(name: str, configured_id: str, lookup: Any | None = None) -> str:
+    database_id = str(configured_id or "").strip().lower()
+    if not database_id:
+        raise RuntimeError(f"D1 database {name} has no configured database_id")
+    if not is_placeholder_database_id(database_id):
+        if not UUID_RE.fullmatch(database_id):
+            raise RuntimeError(f"D1 database {name} has an invalid database_id")
+        return database_id
+    resolved = str((lookup or request_database_id_by_name)(name) or "").strip().lower()
+    if not UUID_RE.fullmatch(resolved) or is_placeholder_database_id(resolved):
+        raise RuntimeError(f"Cloudflare did not resolve a valid D1 database ID for {name}")
+    return resolved
+
+
+def configured_database_ids(resolve_by_name: Any | None = None) -> set[str]:
+    configured: dict[str, str] = {}
     files = 0
     for pattern in CONFIGS:
         for name in glob.glob(pattern, recursive=True):
@@ -57,10 +114,20 @@ def configured_database_ids() -> set[str]:
             if not path.is_file():
                 continue
             files += 1
-            database_ids.update(match.group(1).lower() for match in DB_RE.finditer(path.read_text(errors="replace")))
-    if not files or not database_ids:
-        raise RuntimeError("D1_CONFIG_GLOBS did not resolve any database_id")
-    return database_ids
+            for match in DB_RE.finditer(path.read_text(errors="replace")):
+                database_name, database_id = match.group(1).strip(), match.group(2).lower()
+                if not database_name:
+                    continue
+                previous = configured.get(database_name)
+                if previous and not is_placeholder_database_id(previous) and is_placeholder_database_id(database_id):
+                    continue
+                configured[database_name] = database_id
+    if not files or not configured:
+        raise RuntimeError("D1_CONFIG_GLOBS did not resolve any database_name/database_id pairs")
+    return {
+        resolve_database_id(name, database_id, resolve_by_name)
+        for name, database_id in configured.items()
+    }
 
 
 def document() -> str:
@@ -122,6 +189,22 @@ def render(rows: list[dict[str, Any]], today: str) -> str:
 
 
 def self_test() -> int:
+    resolved_id = "9b2b4d61-2d73-4e12-9d23-0b0d9d6f1a42"
+    lookup_calls: list[str] = []
+    assert resolve_database_id(
+        "stationhead-ohisama",
+        ZERO_UUID,
+        lambda name: lookup_calls.append(name) or resolved_id,
+    ) == resolved_id
+    assert lookup_calls == ["stationhead-ohisama"]
+    assert resolve_database_id("stationhead-minute", resolved_id, lambda _name: ZERO_UUID) == resolved_id
+    try:
+        resolve_database_id("stationhead-ohisama", ZERO_UUID, lambda _name: "")
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("unresolved placeholder D1 ID must fail closed")
+
     assert "dimensions { date databaseId }" in document()
     rows = aggregate([
         {"dimensions": {"date": "2026-07-30", "databaseId": "a"}, "sum": {"rowsRead": 10, "rowsWritten": 3}},
