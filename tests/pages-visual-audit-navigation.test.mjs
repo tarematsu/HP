@@ -55,3 +55,12 @@ test('visual audit waits for leaderboard metadata and rendered rows before scree
   assert.match(source, /leaderboard metadata was not rendered/);
   assert.match(source, /leaderboard table has no rows/);
 });
+
+test('visual audit waits for lazy music-service charts and empty-state tables before screenshot', () => {
+  assert.match(source, /serviceRenderWaitTimedOut/);
+  assert.match(source, /activeServiceGroup/);
+  assert.match(source, /music-service-group/);
+  assert.match(source, /music-service-rank-chart/);
+  assert.match(source, /body\.children\.length === 0/);
+  assert.match(source, /music service subview did not finish rendering within 20 seconds/);
+});
