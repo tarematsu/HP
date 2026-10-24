@@ -11,6 +11,8 @@ export const STATIONHEAD_WORKERS = Object.freeze([
   Object.freeze({ target: 'sh-buddies-recovery', command: 'deploy:buddies-recovery' }),
   Object.freeze({ target: 'sh-buddies-collector', command: 'deploy:buddies-collector' }),
   Object.freeze({ target: 'sh-runtime-orchestrator', command: 'deploy:runtime' }),
+  Object.freeze({ target: 'sh-spotify-playcount-collector', command: 'deploy:spotify-playcount' }),
+  Object.freeze({ target: 'sh-cron-dispatcher', command: 'deploy:cron-dispatcher' }),
 ]);
 export const STATIONHEAD_TARGETS = Object.freeze([
   ...STATIONHEAD_WORKERS.map((entry) => entry.target),
