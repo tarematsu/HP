@@ -17,6 +17,7 @@ function triggerPaths(source, name, nextName) {
 
 const ci = workflow('ci.yml');
 const visualAudit = workflow('pages-visual-audit.yml');
+const spotifyRecovery = workflow('recollect-spotify-manual.yml');
 const homePanelCi = workflow('homepanel-unified-ci.yml');
 const nativeBuild = workflow('native-windows-build.yml');
 const productionDeploy = workflow('deploy-split-pipeline.yml');
@@ -76,7 +77,9 @@ test('Pages production screenshots run after deployment or repair while PRs only
   assert.match(visualAudit, /^  schedule:\n/m);
   assert.match(visualAudit, /cron: '17 \*\/6 \* \* \*'/);
   assert.match(visualAudit, /github.event_name != 'pull_request'/);
-  assert.match(visualAudit, /workflows: \[Deploy production, Refresh Amazon Music read model, Rebuild Ohisama Track History, Recollect regional music manually\]/);
+  assert.match(visualAudit, /workflows: \[Deploy production, Refresh Amazon Music read model, Rebuild Ohisama Track History, Recollect regional music manually, Recollect Spotify today manually\]/);
+  assert.match(spotifyRecovery, /Wait for official production deployment/);
+  assert.doesNotMatch(spotifyRecovery, /if: github\.event_name == 'workflow_dispatch'/);
   assert.match(visualAudit, /Check responsive navigation with isolated API fixtures/);
   assert.match(visualAudit, /capture-pages-visual-audit\.mjs/);
   assert.match(visualAudit, /path: \.pages-visual-audit\/report\.json/);
