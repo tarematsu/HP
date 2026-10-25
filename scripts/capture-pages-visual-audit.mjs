@@ -74,6 +74,7 @@ async function inspectView(page, tab, viewport, outDir) {
   const historyMode = tab.section === 'stationhead' && ['daily', 'weekly', 'monthly'].includes(tab.mode);
   const listeningPartyMode = tab.section === 'stationhead' && tab.source === 'buddies' && tab.mode === 'broadcasts';
   const leaderboardMode = tab.mode === 'ranking';
+  const playedTracksMode = ['played-tracks', 'hinata-played-tracks'].includes(tab.mode);
   if (historyMode) {
     await page.evaluate(() => {
       window.__pagesAuditHistory = { mode: null, rowCount: null, paintedMode: null };
@@ -143,6 +144,25 @@ async function inspectView(page, tab, viewport, outDir) {
     await settle(page);
   }
 
+  // Track-history panels fetch the date index and selected period in sequence.
+  // Network idle alone can occur between those requests, so wait for the actual
+  // metrics and either data rows or the explicit empty state before capture.
+  let playedTracksWaitTimedOut = false;
+  if (playedTracksMode) {
+    try {
+      await page.waitForFunction(() => {
+        const panel = document.querySelector('.dashboard-view:not([hidden]) [data-stationhead-panel="played-tracks"]:not([hidden])');
+        if (!panel) return false;
+        const total = panel.querySelector('[data-role="played-total"]')?.textContent?.trim();
+        const unique = panel.querySelector('[data-role="played-unique"]')?.textContent?.trim();
+        const body = panel.querySelector('[data-role="played-tbody"]');
+        return Boolean(total && total !== '—' && unique && unique !== '—' && body && body.children.length > 0);
+      }, null, { timeout: 20_000 });
+    } catch {
+      playedTracksWaitTimedOut = true;
+    }
+  }
+
   // A quiet network is not proof that a lazy music-service panel has painted.
   // Wait for each chart/table (including explicit empty states) before saving
   // the screenshot, otherwise a fast viewport can capture an apparently blank
@@ -199,7 +219,7 @@ async function inspectView(page, tab, viewport, outDir) {
   }
   await revealPage(page);
 
-  const state = await page.evaluate(({ route }) => {
+  const state = await page.evaluate(({ route, playedTracksMode }) => {
     const active = document.querySelector('#functionTabs button.active');
     const source = document.querySelector('#sourceTabs button.active')?.dataset.source
       || document.querySelector('#sourceSelect')?.value;
@@ -252,6 +272,17 @@ async function inspectView(page, tab, viewport, outDir) {
         const item = selected.getBoundingClientRect(); const strip = selected.closest('.played-tracks-period-scroller').getBoundingClientRect();
         return item.left >= strip.left - 1 && item.right <= strip.right + 1;
       })() : null,
+      playedTracksAudit: playedTracksMode ? (() => {
+        const panel = document.querySelector('.dashboard-view:not([hidden]) [data-stationhead-panel="played-tracks"]:not([hidden])');
+        const total = panel?.querySelector('[data-role="played-total"]')?.textContent?.trim() || '';
+        const unique = panel?.querySelector('[data-role="played-unique"]')?.textContent?.trim() || '';
+        const body = panel?.querySelector('[data-role="played-tbody"]');
+        return {
+          selectedDate: panel?.querySelector('.played-tracks-period.is-selected')?.dataset.period || '',
+          total, unique, rowCount: body?.children.length || 0,
+          empty: (body?.textContent || '').includes('再生履歴データがありません。'),
+        };
+      })() : null,
       leaderboardAudit: route.mode === 'ranking' ? {
         updatedAt: document.getElementById('leaderboardUpdatedAt')?.textContent?.trim() || '',
         cadence: document.getElementById('leaderboardCadence')?.textContent?.trim() || '',
@@ -270,7 +301,7 @@ async function inspectView(page, tab, viewport, outDir) {
         unofficialRows: document.querySelectorAll('#unofficialListeningTbody tr').length,
       } : null,
     };
-  }, { route: tab });
+  }, { route: tab, playedTracksMode });
 
   const name = `${viewport.name}-${String(tab.index + 1).padStart(2, '0')}-${slug(`${tab.mode}${tab.panel ? `-${tab.panel}` : ''}`)}`;
   const screenshot = join(outDir, `${name}.png`);
@@ -280,6 +311,11 @@ async function inspectView(page, tab, viewport, outDir) {
   if (serviceRenderWaitTimedOut) issues.push('music service subview did not finish rendering within 20 seconds');
   if (state.channelHistory && (!state.channelHistory.rows || !state.channelHistory.painted)) issues.push('channel history data or chart was not rendered');
   if (state.playedPeriodVisible === false) issues.push('selected playback period is outside the visible date strip');
+  if (playedTracksWaitTimedOut) issues.push('played-tracks data was not rendered within 20 seconds');
+  if (playedTracksMode && state.playedTracksAudit && (state.playedTracksAudit.total === '—' || state.playedTracksAudit.unique === '—')) {
+    issues.push('played-tracks summary metrics remained placeholders');
+  }
+  if (playedTracksMode && state.playedTracksAudit?.rowCount === 0) issues.push('played-tracks table has no rows');
   if (historyWaitTimedOut) issues.push('history data or chart was not rendered within 20 seconds');
   if (leaderboardWaitTimedOut) issues.push('leaderboard data was not rendered within 20 seconds');
   if (leaderboardMode && state.leaderboardAudit) {

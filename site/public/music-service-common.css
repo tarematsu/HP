@@ -130,6 +130,16 @@
   text-align: right;
 }
 
+/* YouTube Music's type column is text, not the shared numeric count. */
+@media (min-width: 761px) {
+  .youtube-music-view .music-service-playlist-table :is(th, td):nth-child(2) {
+    width: 96px;
+    text-align: left;
+    white-space: nowrap;
+    overflow-wrap: normal;
+  }
+}
+
 .music-service-playlist-links {
   display: grid;
   gap: 4px;
