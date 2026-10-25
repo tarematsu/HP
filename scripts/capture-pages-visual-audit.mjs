@@ -244,12 +244,31 @@ async function inspectView(page, tab, viewport, outDir) {
       if (!visible(element)) return false;
       return /^読み込み中(?:\.{3}|…)?$/.test((element.textContent || '').trim());
     });
+    const appleRegionRoute = route.mode === 'apple-music' && (!route.panel || route.panel === 'ranks');
+    const appleRegionTable = appleRegionRoute ? document.getElementById('appleRegionCompareTable') : null;
+    const appleRegionLayout = appleRegionRoute ? (() => {
+      const requiredWidth = window.innerWidth <= 640 ? 760 : 820;
+      if (!visible(appleRegionTable)) return { ok: false, missing: true, requiredWidth, tableWidth: 0, columnsWidth: 0, wrapperWidth: 0, scrollWidth: 0 };
+      const wrapper = appleRegionTable.closest('.apple-region-table-wrap');
+      const cells = [...(appleRegionTable.tHead?.rows[0]?.cells || [])];
+      const first = cells[0]?.getBoundingClientRect();
+      const last = cells.at(-1)?.getBoundingClientRect();
+      const tableWidth = appleRegionTable.getBoundingClientRect().width;
+      const columnsWidth = first && last ? last.right - first.left : 0;
+      const wrapperWidth = wrapper?.clientWidth || 0;
+      const scrollWidth = wrapper?.scrollWidth || 0;
+      return {
+        ok: tableWidth >= requiredWidth - 1 && columnsWidth >= requiredWidth - 1 && scrollWidth >= requiredWidth - 1,
+        missing: false, requiredWidth, tableWidth, columnsWidth, wrapperWidth, scrollWidth,
+      };
+    })() : null;
     return {
       active: location.hash === `#${route.mode}` && source === route.source,
       ariaCurrent: active?.getAttribute('aria-current') || null,
       dataErrors: text.match(/[^。\n]*(?:取得失敗|データの取得に失敗|データを取得できません|materialized response unavailable)[^。\n]*/g) || [],
       visiblePanels,
       horizontalOverflow: Math.max(0, scrollWidth - window.innerWidth),
+      appleRegionLayout,
       playlistOverflow: [...document.querySelectorAll('.dashboard-view:not([hidden]) .music-service-playlist-table')]
         .filter(visible)
         .reduce((max, table) => {
@@ -342,6 +361,9 @@ async function inspectView(page, tab, viewport, outDir) {
   if (state.visiblePanels.length !== 1) issues.push(`expected exactly one visible dashboard view, got ${state.visiblePanels.length}`);
   if (state.horizontalOverflow > 1) issues.push(`document horizontally overflows by ${state.horizontalOverflow}px`);
   if (state.playlistOverflow > 3) issues.push(`playlist table is horizontally clipped by ${state.playlistOverflow}px`);
+  if (state.appleRegionLayout && !state.appleRegionLayout.ok) {
+    issues.push(`Apple Music regional table is compressed or not fully scrollable: ${JSON.stringify(state.appleRegionLayout)}`);
+  }
   if (state.bodyLength < 40) issues.push(`body text is unexpectedly short (${state.bodyLength})`);
   if (state.visibleLoading) issues.push('visible loading placeholder remained after settling');
   if (state.dataErrors.length) issues.push(...state.dataErrors);

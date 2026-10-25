@@ -598,6 +598,19 @@ body {
 .music-service-group > .music-service-section { min-width:0; }
 /* Keep Apple Music's multi-region table wide enough to scroll instead of squeezing song titles. */
 .music-service-group .table-wrap > table:not(.apple-region-table) { width:100%; min-width:0; table-layout:fixed; }
+/* The layout layer sets all shared tables to width:100%. Override that rule
+   for Apple Music's regional table so its columns actually occupy the wide
+   scrollable table rather than being compressed into the two-column panel. */
+.music-service-group .table-wrap > table.shared-numeric-table.apple-region-table {
+  width: max-content;
+  min-width: 820px;
+  table-layout: auto;
+}
+@media (max-width: 640px) {
+  .music-service-group .table-wrap > table.shared-numeric-table.apple-region-table {
+    min-width: 760px;
+  }
+}
 .music-service-group .table-wrap :is(th,td) { white-space:normal; overflow-wrap:anywhere; }
 .music-service-group .spotify-table col.col-compact { width:9%; }
 .music-service-group .spotify-table col.col-number { width:25%; }
