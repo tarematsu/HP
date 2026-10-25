@@ -146,4 +146,6 @@ test('Apple Music regional rankings retain their wide, scrollable table layout',
   assert.match(apple, /className: 'apple-table apple-region-table sticky-first-column'/);
   assert.match(appleCss, /\.apple-region-table\s*\{\s*min-width:\s*820px;\s*table-layout:\s*auto;/);
   assert.match(layoutCss, /\.music-service-group \.table-wrap > table:not\(\.apple-region-table\)\s*\{\s*width:100%;\s*min-width:0;\s*table-layout:fixed;/);
+  assert.match(layoutCss, /\.music-service-group \.table-wrap > table\.shared-numeric-table\.apple-region-table\s*\{\s*width:\s*max-content;\s*min-width:\s*820px;\s*table-layout:\s*auto;/);
+  assert.match(layoutCss, /@media \(max-width: 640px\)\s*\{\s*\.music-service-group \.table-wrap > table\.shared-numeric-table\.apple-region-table\s*\{\s*min-width:\s*760px;/);
 });

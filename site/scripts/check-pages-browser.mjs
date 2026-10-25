@@ -307,6 +307,30 @@ try {
           .map((node) => node.dataset.key));
         assert.deepEqual(clipped, [], 'follower cards stay within the viewport');
       }
+      if (mode === 'apple-music') {
+        const table = page.locator('.dashboard-view:not([hidden]) #appleRegionCompareTable');
+        await table.waitFor({ state: 'visible', timeout: 15000 });
+        const layout = await table.evaluate((node) => {
+          const wrapper = node.closest('.apple-region-table-wrap');
+          const cells = [...(node.tHead?.rows[0]?.cells || [])];
+          const first = cells[0]?.getBoundingClientRect();
+          const last = cells.at(-1)?.getBoundingClientRect();
+          return {
+            tableWidth: node.getBoundingClientRect().width,
+            columnsWidth: first && last ? last.right - first.left : 0,
+            wrapperWidth: wrapper?.clientWidth || 0,
+            scrollWidth: wrapper?.scrollWidth || 0,
+            minWidth: Number.parseFloat(getComputedStyle(node).minWidth) || 0,
+          };
+        });
+        const expectedWidth = width <= 640 ? 760 : 820;
+        assert.ok(layout.tableWidth >= expectedWidth - 1,
+          `Apple Music regional table box is too narrow at ${width}px: ${JSON.stringify(layout)}`);
+        assert.ok(layout.columnsWidth >= expectedWidth - 1,
+          `Apple Music regional columns are compressed at ${width}px: ${JSON.stringify(layout)}`);
+        assert.ok(layout.scrollWidth >= expectedWidth - 1,
+          `Apple Music regional table cannot scroll to its full width at ${width}px: ${JSON.stringify(layout)}`);
+      }
       if (mode === 'spotify') {
         assert.deepEqual(await page.locator('#spotifyView .music-service-view-tabs button').allTextContents(),
           ['総再生数', '今年リリース曲再生数']);
