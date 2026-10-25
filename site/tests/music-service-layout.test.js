@@ -137,6 +137,10 @@ test('YouTube Music playlist rows use an unclipped single-column mobile layout',
 });
 
 
+test('YouTube Music desktop and tablet playlist type stays readable in a fixed-layout table', () => {
+  assert.match(commonCss, /@media \\(min-width: 761px\\)\\s*\\{[\\s\\S]*?\\.youtube-music-view \\.music-service-playlist-table :is\\(th, td\\):nth-child\\(2\\)\\s*\\{\\s*width: 96px;\\s*text-align: left;\\s*white-space: nowrap;\\s*overflow-wrap: normal;/);
+});
+
 test('Apple Music regional rankings retain their wide, scrollable table layout', () => {
   const appleCss = readFileSync(new URL('../public/apple-music.css', import.meta.url), 'utf8');
   assert.match(apple, /className: 'apple-table apple-region-table sticky-first-column'/);
