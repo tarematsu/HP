@@ -27,6 +27,16 @@ test('visual audit waits for history data and fresh chart paint before recording
   assert.match(source, /history summary returned no rows/);
 });
 
+test('visual audit waits for played-track metrics and rows before screenshot', () => {
+  assert.match(source, /playedTracksMode/);
+  assert.match(source, /playedTracksWaitTimedOut/);
+  assert.match(source, /data-role="played-total"/);
+  assert.match(source, /data-role="played-unique"/);
+  assert.match(source, /data-role="played-tbody"/);
+  assert.match(source, /played-tracks data was not rendered within 20 seconds/);
+  assert.match(source, /played-tracks summary metrics remained placeholders/);
+});
+
 test('visual audit requires every listening-party subview to be visibly rendered', () => {
   assert.match(source, /listeningPartyMode/);
   assert.match(source, /if \(listeningPartyMode\) \{[\s\S]*?await revealPage\(page\);[\s\S]*?await settle\(page\);[\s\S]*?try \{/);
