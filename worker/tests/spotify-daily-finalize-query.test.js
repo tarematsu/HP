@@ -33,6 +33,7 @@ test('daily finalization seeks aliases and applies narrow Spotify regression rul
         ('2026-09-29','canonical',110,NULL,1,0),('2026-09-29','plain',50,NULL,1,0),
         ('2026-09-29','remapped',900,NULL,1,0),('2026-09-29','new-release-track',100,NULL,1,0),
         ('2026-09-29','zeroed',1234567,NULL,1,0),('2026-09-29','old-adjusted',200,NULL,1,0),
+        ('2026-09-29','zero-baseline-old',0,NULL,1,0),('2026-09-29','zero-baseline-new',0,NULL,1,0),
         ('2026-09-28','plain',999,NULL,1,0),
         ('2026-09-30','canonical',1,NULL,1,1);
       INSERT INTO sh_spotify_playcount_candidates VALUES
@@ -44,6 +45,10 @@ test('daily finalization seeks aliases and applies narrow Spotify regression rul
         ('2026-09-30','run','new-release-track','new-release',40,20),
         ('2026-09-30','run','zeroed','old-release',0,20),
         ('2026-09-30','run','old-adjusted','old-release',198,20),
+        ('2026-09-30','run','zero-baseline-old','old-release',500,20),
+        ('2026-09-30','run','zero-baseline-new','new-release',600,20),
+        ('2026-09-30','run','first-baseline-old','old-release',700,20),
+        ('2026-09-30','run','first-baseline-new','new-release',800,20),
         ('2026-09-30','old-run','ignored','old-release',100,20),
         ('2026-09-28','run','other-date','old-release',100,20);
     `);
@@ -63,11 +68,15 @@ test('daily finalization seeks aliases and applies narrow Spotify regression rul
     assert.deepEqual(actual, [
       { track_id: 'canonical', playcount: 130, delta: 10, is_carried_forward: 0 },
       { track_id: 'elsewhere', playcount: 950, delta: 50, is_carried_forward: 0 },
+      { track_id: 'first-baseline-new', playcount: 800, delta: 800, is_carried_forward: 0 },
+      { track_id: 'first-baseline-old', playcount: 700, delta: null, is_carried_forward: 0 },
       { track_id: 'new', playcount: 10, delta: null, is_carried_forward: 0 },
       { track_id: 'new-release-track', playcount: 40, delta: 40, is_carried_forward: 0 },
       { track_id: 'old-adjusted', playcount: 198, delta: -2, is_carried_forward: 0 },
       { track_id: 'plain', playcount: 45, delta: -5, is_carried_forward: 0 },
       { track_id: 'remapped', playcount: 1000, delta: null, is_carried_forward: 0 },
+      { track_id: 'zero-baseline-new', playcount: 600, delta: 600, is_carried_forward: 0 },
+      { track_id: 'zero-baseline-old', playcount: 500, delta: null, is_carried_forward: 0 },
       { track_id: 'zeroed', playcount: 1234567, delta: 0, is_carried_forward: 1 },
     ]);
   } finally { db.close(); }
