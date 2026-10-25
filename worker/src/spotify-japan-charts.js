@@ -37,18 +37,24 @@ async function saveState(r2, spec, state) {
 async function requestIndexPublication(env, spec) {
   await enqueue(env, { chart_id: spec.id, mode: 'publish', requested_at: Date.now() });
 }
-async function publishIndex(env, body, dependencies = {}) {
+async function publishIndex(env, body, spec, dependencies = {}) {
   const r2 = env.PAGES_RESPONSE_R2;
   const now = dependencies.now?.() ?? Date.now();
   const previous = await read(r2, 'spotify-charts', null);
   const publishedAt = Number(previous?.updated_at) || 0;
-  if (publishedAt && publishedAt >= Number(body.requested_at || 0)) return;
+  const indexedState = previous?.charts?.find(item => item?.chart_id === spec.id);
+  const currentState = await loadState(r2, spec);
+  const indexContainsCurrentState = Boolean(indexedState)
+    && Number(indexedState.updated_at || 0) >= Number(currentState.updated_at || 0);
+  // A newer index timestamp alone does not cover a source write that raced with
+  // publication. Coalesce only when this message's own state is already indexed.
+  if (publishedAt && publishedAt >= Number(body.requested_at || 0) && indexContainsCurrentState) return;
   if (publishedAt && now - publishedAt < 30000) {
     await enqueue(env, body);
     return;
   }
   const charts = [];
-  for (const spec of SPOTIFY_CHART_SOURCES) charts.push(await loadState(r2, spec));
+  for (const chartSpec of SPOTIFY_CHART_SOURCES) charts.push(await loadState(r2, chartSpec));
   await save(r2, 'spotify-charts', { ok: true, updated_at: now, charts });
 }
 async function tokenFingerprint(value) {
@@ -135,7 +141,7 @@ export async function runJapanChartWork(env, body, dependencies = {}) {
   if (RETIRED_CHART_IDS.has(body?.chart_id)) return;
   const spec = SPOTIFY_CHART_SOURCES.find(item => item.id === body?.chart_id);
   if (!spec || body.message_version !== 1 || !['latest', 'history', 'publish'].includes(body.mode)) throw new Error('Invalid chart work');
-  if (body.mode === 'publish') return publishIndex(env, body, dependencies);
+  if (body.mode === 'publish') return publishIndex(env, body, spec, dependencies);
   const r2 = env.PAGES_RESPONSE_R2;
   const state = await loadState(r2, spec);
   if (body.mode === 'history' && (spec.type === 'playlist' || state.history_complete || !state.cursor || body.cursor !== state.cursor)) return;
