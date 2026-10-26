@@ -47,6 +47,9 @@ jobs:
         if: steps.repair.outputs.repaired == 'true'
         working-directory: worker
         run: node scripts/bootstrap-spotify-read-model.mjs
+      - name: Wait for public API cache to expire
+        if: steps.repair.outputs.repaired == 'true'
+        run: sleep 360
       - name: Capture post-repair production screenshots
         if: steps.repair.outputs.repaired == 'true'
         env:
