@@ -264,6 +264,22 @@ try {
         assert.deepEqual(await page.locator('#functionTabs button').allTextContents(), [], `${mode}: standalone source`);
         assert.equal(await page.locator('#sourceSelect').inputValue(), mode);
       }
+      if (['spotify', 'spotify-charts', 'spotify-playlists', 'apple-music', 'amazon-music', 'youtube-music', 'qq_music', 'kugou_music'].includes(mode)) {
+        const nav = page.locator('.dashboard-view:not([hidden]) .music-service-view-tabs').first();
+        const tabLayout = await nav.evaluate((element) => {
+          const buttons = [...element.querySelectorAll('button')];
+          return {
+            flexWrap: getComputedStyle(element).flexWrap,
+            height: element.getBoundingClientRect().height,
+            rows: [...new Set(buttons.map(button => Math.round(button.getBoundingClientRect().top)))],
+            whiteSpaces: buttons.map(button => getComputedStyle(button).whiteSpace),
+          };
+        });
+        assert.equal(tabLayout.flexWrap, 'nowrap', `${mode}: service sub-tabs remain on one row`);
+        assert.ok(tabLayout.height <= 64, `${mode}: service sub-tabs do not wrap vertically`);
+        assert.equal(tabLayout.rows.length, 1, `${mode}: all service sub-tabs share one row`);
+        assert.ok(tabLayout.whiteSpaces.every(value => value === 'nowrap'), `${mode}: service sub-tab labels stay intact`);
+      }
       if (!live && mode === 'current') {
         await page.waitForTimeout(100);
         assert.equal(await page.locator('[data-role="track-image"]').isHidden(), true, 'broken artwork stays hidden');
