@@ -87,6 +87,12 @@ test('all music subscription presentation uses one responsive layout contract', 
   assert.doesNotMatch(commonCss, /\.music-service-meta/);
 });
 
+test('music-service sub-tabs remain a single horizontally scrollable row', () => {
+  assert.match(layoutCss, /\.music-service-view-tabs\s*\{[\s\S]*?flex-wrap:\s*nowrap;[\s\S]*?overflow-x:\s*auto;/);
+  assert.match(layoutCss, /\.music-service-view-tabs button\s*\{[\s\S]*?flex:\s*0 0 auto;[\s\S]*?min-width:\s*max-content;[\s\S]*?white-space:\s*nowrap;/);
+  assert.doesNotMatch(layoutCss, /#spotifyPlaylistsView \.music-service-view-tabs/);
+});
+
 test('music service pairs stack at tablet widths and Amazon rank columns remain readable on phones', () => {
   assert.match(layoutCss, /@media \(max-width:900px\)\s*\{\s*\.music-service-group\s*\{\s*grid-template-columns:minmax\(0,1fr\);/);
   assert.match(amazonCss, /\.amazon-rank-col:first-child\s*\{\s*width:\s*72px;/);
