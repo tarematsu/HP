@@ -10,8 +10,11 @@ import {
 function createD1(database) {
   const statement = (sql, bindings = []) => ({
     bind(...values) { return statement(sql, values); },
-    all() { return { results: database.prepare(sql).all(...bindings) }; },
-    first() { return database.prepare(sql).get(...bindings) ?? null; },
+    all() { return { results: database.prepare(sql).all(...bindings).map((row) => ({ ...row })) }; },
+    first() {
+      const row = database.prepare(sql).get(...bindings);
+      return row ? { ...row } : null;
+    },
     run() {
       const result = database.prepare(sql).run(...bindings);
       return { meta: { changes: Number(result.changes || 0) } };
@@ -119,21 +122,22 @@ test('historical Spotify zero-count regression and rebound are repaired without 
     assert.deepEqual(report.outliers_after, []);
     assert.deepEqual(report.repair_dates, ['2026-10-23', '2026-10-24', '2026-10-25', '2026-10-26']);
 
-    const zeroDay = sqlite.prepare(`SELECT playcount,delta,is_carried_forward
-      FROM sh_spotify_playcount_daily WHERE snapshot_date=? AND track_id=?`).get('2026-10-24', 861);
+    const zeroDay = { ...sqlite.prepare(`SELECT playcount,delta,is_carried_forward
+      FROM sh_spotify_playcount_daily WHERE snapshot_date=? AND track_id=?`).get('2026-10-24', 861) };
     assert.deepEqual(zeroDay, { playcount: 2_172_726, delta: 0, is_carried_forward: 1 });
 
-    const reboundDay = sqlite.prepare(`SELECT playcount,delta,is_carried_forward
-      FROM sh_spotify_playcount_daily WHERE snapshot_date=? AND track_id=?`).get('2026-10-25', 861);
+    const reboundDay = { ...sqlite.prepare(`SELECT playcount,delta,is_carried_forward
+      FROM sh_spotify_playcount_daily WHERE snapshot_date=? AND track_id=?`).get('2026-10-25', 861) };
     assert.deepEqual(reboundDay, { playcount: 2_369_690, delta: 196_964, is_carried_forward: 0 });
 
-    const nextDay = sqlite.prepare(`SELECT playcount,delta,is_carried_forward
-      FROM sh_spotify_playcount_daily WHERE snapshot_date=? AND track_id=?`).get('2026-10-26', 861);
+    const nextDay = { ...sqlite.prepare(`SELECT playcount,delta,is_carried_forward
+      FROM sh_spotify_playcount_daily WHERE snapshot_date=? AND track_id=?`).get('2026-10-26', 861) };
     assert.deepEqual(nextDay, { playcount: 2_406_164, delta: 36_474, is_carried_forward: 0 });
 
     const summary = sqlite.prepare(`SELECT snapshot_date,total_delta FROM sh_spotify_artist_daily
       WHERE artist_key='nogizaka46' AND snapshot_date BETWEEN ? AND ? ORDER BY snapshot_date`)
-      .all('2026-10-23', '2026-10-26');
+      .all('2026-10-23', '2026-10-26')
+      .map((row) => ({ ...row }));
     assert.deepEqual(summary, [
       { snapshot_date: '2026-10-23', total_delta: 500 },
       { snapshot_date: '2026-10-24', total_delta: 0 },
