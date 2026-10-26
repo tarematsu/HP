@@ -202,6 +202,33 @@ test('index publication coalesces updates for 30 seconds and acknowledges covere
   assert.equal(h.messages.length, 1);
 });
 
+test('a newer Spotify source state is republished even when the index timestamp is newer than its request', async () => {
+  const h = harness(() => { throw new Error('Publication must not call Spotify'); });
+  const viral = SPOTIFY_EDITORIAL_PLAYLISTS.find(item => item.id === 'viral-hits-jp-daily');
+  h.r2.values.set(pagesR2ResponseKey('spotify-charts'), JSON.stringify({
+    ok: true,
+    updated_at: 60000,
+    charts: [{ chart_id: viral.id, updated_at: 40000, latest_status: 'error', status: 'error', observed_at: 30000 }],
+  }));
+  h.r2.values.set(`spotify/charts/state/${viral.id}.json`, JSON.stringify({
+    chart_id: viral.id, updated_at: 70000, latest_status: 'ok', status: 'ok',
+    latest_chart_date: '2026-10-25', observed_at: 70000, history_complete: true, years: ['2026'],
+  }));
+  h.now = () => 100000;
+
+  await runJapanChartWork(h.env, {
+    message_type: SPOTIFY_CHART_WORK, message_version: 1, chart_id: viral.id,
+    mode: 'publish', requested_at: 50000,
+  }, h);
+
+  const index = JSON.parse(h.r2.values.get(pagesR2ResponseKey('spotify-charts')));
+  const published = index.charts.find(item => item.chart_id === viral.id);
+  assert.equal(index.updated_at, 100000);
+  assert.equal(published.updated_at, 70000);
+  assert.equal(published.latest_status, 'ok');
+  assert.equal(published.status, 'ok');
+});
+
 test('failed publication handoff resumes committed history without rewriting its checkpoint', async () => {
   const h = harness(async url => Response.json(payload(url.endsWith('/latest') ? '2026-10-14' : url.split('/').at(-1))));
   await runJapanChartWork(h.env, work('latest'), h);

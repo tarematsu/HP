@@ -34,7 +34,11 @@ function finalizeStatement(db, message, previousDate, payloadRows = null) {
         END AS playcount,
         CASE
           WHEN playcount=0 AND previous_playcount>0 THEN 0
+          WHEN previous_playcount IS NULL
+            AND substr(release_date,1,4)=substr(?,1,4) THEN playcount
           WHEN previous_playcount IS NULL THEN NULL
+          WHEN previous_playcount=0 AND playcount>0
+            AND COALESCE(substr(release_date,1,4),'')<>substr(?,1,4) THEN NULL
           WHEN playcount<previous_playcount
             AND substr(release_date,1,4)=substr(?,1,4) THEN playcount
           ELSE playcount-previous_playcount
@@ -60,7 +64,7 @@ function finalizeStatement(db, message, previousDate, payloadRows = null) {
       ...(payloadRows == null
         ? [message.snapshot_date, message.run_token]
         : [JSON.stringify(payloadRows.map(row => [row.track_id, row.playcount, row.collected_at, row.album_id ?? null]))]),
-      message.snapshot_date, message.snapshot_date);
+      message.snapshot_date, message.snapshot_date, message.snapshot_date, message.snapshot_date);
 }
 
 // Only R2-accepted candidate rows are eligible for finalization. All row

@@ -29,10 +29,10 @@ test('Spotify detail uses sh_tracks.id to merge editions and sorts by delta desc
   ]);
 
   assert.deepEqual(payload.tracks.map(({ track_id, name, delta }) => [track_id, name, delta]), [
-    [104, '未更新曲', 12_000_000],
     [103, '何歳の頃に戻りたいのか？', 5_572],
     [102, '自業自得', 3_991],
     [101, 'BAN', 2_940],
+    [104, '未更新曲', null],
   ]);
   assert.deepEqual(payload.tracks.map((track) => track.rank), [1, 2, 3, 4]);
   assert.equal(payload.unresolved_track_count, 0);
@@ -58,7 +58,7 @@ test('Spotify unresolved sources never masquerade as canonical track ids', () =>
   assert.equal(payload.unresolved_track_count, 1);
 });
 
-test('first reported playcount supplies missing delta without replacing measured zero or negative deltas', () => {
+test('unknown first-observation deltas stay unknown while measured zero and negative deltas are preserved', () => {
   const payload = spotifyPayload(artist, [
     row(1, 'new', '新曲', 1200, null),
     row(2, 'zero', '更新なし', 9000, 0),
@@ -67,7 +67,7 @@ test('first reported playcount supplies missing delta without replacing measured
     row(4, 'edition-b', '別盤', 7000, 100),
   ]);
   assert.deepEqual(payload.tracks.map(track => [track.track_id, track.delta]), [
-    [1, 1200], [4, 100], [2, 0], [3, -5],
+    [4, 100], [2, 0], [3, -5], [1, null],
   ]);
-  assert.equal(payload.total_delta, 1295);
+  assert.equal(payload.total_delta, 95);
 });

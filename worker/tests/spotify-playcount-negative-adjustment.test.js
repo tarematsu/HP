@@ -58,3 +58,27 @@ test('daily finalization preserves genuine old-track decreases and applies new-r
   assert.match(finalizer, /playcount=0 AND previous_playcount>0/);
   assert.match(finalizer, /substr\(release_date,1,4\)=substr\(\?,1,4\)/);
 });
+
+
+test('unbaselined older tracks do not inflate the daily total with lifetime playcounts', () => {
+  const model = spotifyReadModelAll([
+    {
+      artist_key: 'nogizaka46', snapshot_date: '2026-10-25', track_id: 861,
+      spotify_track_id: 'source-861', name: 'First observed older song', playcount: 2369690,
+      delta: null, collected_at: 1000, is_carried_forward: 0,
+    },
+    {
+      artist_key: 'nogizaka46', snapshot_date: '2026-10-25', track_id: 862,
+      spotify_track_id: 'source-862', name: 'Measured song', playcount: 39233571,
+      delta: 8249, collected_at: 1000, is_carried_forward: 0,
+    },
+  ], [{
+    artist_key: 'nogizaka46', artist_name: '乃木坂46', snapshot_date: '2026-10-25',
+    total_delta: 8249, top10_delta: 8249, top10_year_delta: 8249,
+  }], []);
+
+  const group = model.groups.nogizaka46;
+  assert.equal(group.tracks.find((track) => track.name === 'First observed older song').delta, null);
+  assert.equal(group.total_delta, 8249);
+  assert.equal(model.trend.nogizaka46.find((point) => point.snapshot_date === '2026-10-25').total_delta, 8249);
+});

@@ -133,8 +133,9 @@ function compareTrackRows(a, b) {
 }
 
 export function spotifyPayload(artist, rows = []) {
-  // A missing daily baseline is treated as zero for the first reported count.
-  // Resolve after edition deduplication so a measured delta always wins.
+  // A missing daily baseline is unknown, not zero: a newly discovered older
+  // track must not contribute its entire lifetime count to the daily aggregate.
+  // Current-year release baselines are assigned by the daily finalizer.
   const uniqueRows = dedupeTrackRows(rows).map((row) => {
     const playcount = Math.max(0, integer(row.playcount) ?? 0);
     const delta = integer(row.delta);
@@ -144,7 +145,7 @@ export function spotifyPayload(artist, rows = []) {
     if (playcount === 0 && delta != null && delta < 0) {
       return { ...row, playcount: playcount - delta, delta: 0, is_carried_forward: 1 };
     }
-    return { ...row, playcount, delta: delta ?? playcount };
+    return { ...row, playcount, delta };
   }).sort(compareTrackRows);
   const tracks = uniqueRows.map((row, index) => ({
     rank: index + 1,
