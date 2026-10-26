@@ -586,8 +586,24 @@ body {
 .metrics .metric, .summary-cards article { border-right-color:#627989; }
 .metrics .metric > span, .summary-cards article > span { color:#eef3f8; }
 .metrics .metric strong, .summary-cards strong { letter-spacing:0; }
-.music-service-view-tabs { display:flex; gap:4px; flex-wrap:wrap; }
-.music-service-view-tabs button { min-height:46px; flex:1 1 100px; white-space:normal; text-wrap:balance; }
+.music-service-view-tabs {
+  display:flex;
+  gap:4px;
+  min-width:0;
+  max-width:100%;
+  flex-wrap:nowrap;
+  overflow-x:auto;
+  overscroll-behavior-inline:contain;
+  scrollbar-width:thin;
+}
+.music-service-view-tabs button {
+  min-height:46px;
+  flex:0 0 auto;
+  width:auto;
+  min-width:max-content;
+  white-space:nowrap;
+  padding-inline:12px;
+}
 .music-service-view-tabs button.active { background:var(--panel-2); border-bottom:3px solid var(--accent); color:var(--text); font-weight:700; }
 .music-service-group { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:10px; align-items:start; }
 /* Keep chart/table pairs readable on tablet-width viewports. */
@@ -628,7 +644,7 @@ body {
   .current-metrics .metric.featured { grid-column:1/-1; display:flex; align-items:baseline; justify-content:space-between; border-right:0; border-bottom:1px solid #627989; }
   .current-metrics .metric.featured strong { font-size:36px; }
   .music-service-group { grid-template-columns:minmax(0,1fr); }
-  .music-service-view-tabs button { flex-basis:70px; font-size:14px; }
+  .music-service-view-tabs button { font-size:14px; }
   .dashboard-function-tabs > button { white-space:normal; text-wrap:balance; }
   .dashboard-view :is(.subtle,.notice,.chart-detail,.host) { font-size:13px; }
   .table-wrap > table.spotify-table { min-width:0; table-layout:fixed; }
@@ -638,22 +654,3 @@ body {
   .spotify-table col.col-delta { width:22%; }
 }
 
-
-/* Keep the 16 editorial playlist choices usable without eight rows of tabs
-   on a narrow phone. Keep navigation in the layout layer, alongside the
-   shared wrapping default, so feature-layer specificity cannot be overridden. */
-#spotifyPlaylistsView .music-service-view-tabs {
-  min-width: 0;
-  max-width: 100%;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
-  scrollbar-width: thin;
-}
-#spotifyPlaylistsView .music-service-view-tabs button {
-  flex: 0 0 auto;
-  width: auto;
-  min-width: max-content;
-  white-space: nowrap;
-  padding-inline: 12px;
-}
