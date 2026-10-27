@@ -34,10 +34,10 @@ export function assessSnapshot(service, snapshot, now = Date.now(), maxAgeHours 
       `collector state=${String(state).replace(/[^a-z_-]/gi, '').slice(0, 40)}`,
     ];
     const safeText = value => String(value ?? '')
-      .replace(/\\bBearer\\s+[^\\s,;"'}]+/gi, 'Bearer [redacted]')
-      .replace(/(["']?(?:authorization|token|api[_-]?key|secret|password)["']?\\s*[:=]\\s*)("[^"]*"|'[^']*'|[^,\\s}]+)/gi, '$1[redacted]')
-      .replace(/[\\r\\n|<>]+/g, ' ')
-      .replace(/\\s+/g, ' ')
+      .replace(/\bBearer\s+[^\s,;"'}]+/gi, 'Bearer [redacted]')
+      .replace(/(["']?(?:authorization|token|api[_-]?key|secret|password)["']?\s*[:=]\s*)("[^"]*"|'[^']*'|[^,\s}]+)/gi, '$1[redacted]')
+      .replace(/[\r\n|<>]+/g, ' ')
+      .replace(/\s+/g, ' ')
       .trim();
     const errorClass = safeText(snapshot.state.last_error_class).slice(0, 100);
     const errorMessage = safeText(snapshot.state.last_error_message).slice(0, 400);
