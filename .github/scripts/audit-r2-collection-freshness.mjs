@@ -29,7 +29,29 @@ export function assessSnapshot(service, snapshot, now = Date.now(), maxAgeHours 
   }
   const state = snapshot.state.status;
   if (!state) return result('UNKNOWN', 'collector status missing');
-  if (state !== 'ok') return result('FAIL', `collector state=${String(state).replace(/[^a-z_-]/gi, '').slice(0, 40)}`);
+  if (state !== 'ok') {
+    const detail = [
+      `collector state=${String(state).replace(/[^a-z_-]/gi, '').slice(0, 40)}`,
+    ];
+    const safeText = value => String(value ?? '')
+      .replace(/\bBearer\s+[^\s,;"'}]+/gi, 'Bearer [redacted]')
+      .replace(/(["']?(?:authorization|token|api[_-]?key|secret|password)["']?\s*[:=]\s*)("[^"]*"|'[^']*'|[^,\s}]+)/gi, '$1[redacted]')
+      .replace(/[\r\n|<>]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const errorClass = safeText(snapshot.state.last_error_class).slice(0, 100);
+    const errorMessage = safeText(snapshot.state.last_error_message).slice(0, 400);
+    if (errorClass) detail.push(`class=${errorClass}`);
+    if (errorMessage) detail.push(`error=${errorMessage}`);
+    const counts = snapshot.state.entity_counts;
+    if (counts && typeof counts === 'object' && !Array.isArray(counts)) {
+      const countSummary = ['artists', 'tracks', 'releases', 'playlists', 'memberships', 'failures']
+        .filter(key => Number.isFinite(Number(counts[key])))
+        .map(key => `${key}=${Number(counts[key])}`);
+      if (countSummary.length) detail.push(`counts ${countSummary.join(', ')}`);
+    }
+    return result('FAIL', detail.join('; '));
+  }
   const time = timestamp(snapshot.updated_at);
   const successTime = timestamp(snapshot.state.last_success_at);
   if (!Number.isFinite(successTime)) return result('UNKNOWN', 'last_success_at missing or invalid');

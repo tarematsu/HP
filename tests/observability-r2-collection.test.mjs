@@ -55,6 +55,26 @@ test('missing, failed, malformed and mismatched evidence cannot report healthy',
   }
 });
 
+test('degraded collector diagnostics include sanitized error details and partial counts', () => {
+  const row = snapshot('youtube_music');
+  row.state.status = 'degraded';
+  row.state.last_error_class = 'collection_error';
+  row.state.last_error_message = JSON.stringify([{
+    canonical_artist: 'sakurazaka46',
+    stage: 'full_songs',
+    error: 'YouTube Music browse HTTP 403; Authorization: Bearer secret-token',
+  }]);
+  row.state.entity_counts = { artists: 3, tracks: 41, failures: 1 };
+
+  const result = assessSnapshot('youtube_music', row, now);
+  assert.equal(result.status, 'FAIL');
+  assert.match(result.detail, /collector state=degraded/);
+  assert.match(result.detail, /class=collection_error/);
+  assert.match(result.detail, /YouTube Music browse HTTP 403/);
+  assert.match(result.detail, /tracks=41/);
+  assert.doesNotMatch(result.detail, /secret-token/);
+});
+
 test('R2 reads only configured canonical keys and isolates missing/read/decode failures', async () => {
   const keys = [];
   const rows = await auditR2({ get: async key => {

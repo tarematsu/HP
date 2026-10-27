@@ -167,7 +167,7 @@ def graphql_document() -> str:
         kvOperations: kvOperationsAdaptiveGroups(limit: 10000, filter: {date_geq: $day, date_leq: $day}) {
           sum { requests } dimensions { actionType }
         }
-        kvStorage: kvStorageAdaptiveGroups(limit: 10000, filter: {date_geq: $day, date_leq: $day}, orderBy: [date_DESC]) {
+        kvStorage: kvStorageAdaptiveGroups(limit: 10000, filter: {date_geq: $storageDay, date_leq: $day}, orderBy: [date_DESC]) {
           max { keyCount byteCount } dimensions { date }
         }
       }}
@@ -409,6 +409,7 @@ def usage_basis(key: str) -> str:
 
 def self_test() -> int:
     document = graphql_document()
+    assert "kvStorage: kvStorageAdaptiveGroups(limit: 10000, filter: {date_geq: $storageDay, date_leq: $day}" in document
     for resource_identifier in ("queueId",):
         assert resource_identifier not in document
     assert "dimensions { bucketName datetime }" in document
