@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'worker/scripts/repair-spotify-delta-history-actions.mjs'
+      - 'scripts/pages-data-audit.mjs'
       - '.github/workflows/repair-spotify-delta-history.yml'
 
 permissions:
