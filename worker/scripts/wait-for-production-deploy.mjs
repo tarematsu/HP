@@ -1,15 +1,16 @@
 import { pathToFileURL } from 'node:url';
 
-export function deploymentState(runs, sha) {
+export function deploymentState(runs, sha, { required = true } = {}) {
   const run = runs.filter(run => run.head_sha === sha && run.head_branch === 'main'
     && run.path === '.github/workflows/deploy-split-pipeline.yml' && run.event === 'push')
     .sort((a,b) => b.id - a.id)[0];
-  if (!run || run.status !== 'completed') return 'waiting';
+  if (!run) return required ? 'waiting' : 'ready';
+  if (run.status !== 'completed') return 'waiting';
   if (run.conclusion !== 'success') throw new Error(`Production deployment ${run.id} ended with ${run.conclusion}`);
   return 'ready';
 }
 
-export async function waitForProductionDeployment({ repository, sha, token, fetchImpl=fetch, pause=ms=>new Promise(resolve=>setTimeout(resolve,ms)), now=Date.now }) {
+export async function waitForProductionDeployment({ repository, sha, token, deploymentRequired = true, fetchImpl=fetch, pause=ms=>new Promise(resolve=>setTimeout(resolve,ms)), now=Date.now }) {
   if (repository !== 'tarematsu/HP' || !/^[a-f0-9]{40}$/.test(sha || '')) throw new Error('Invalid production repository or commit');
   const deadline = now() + 15 * 60_000;
   while (now() < deadline) {
@@ -17,8 +18,10 @@ export async function waitForProductionDeployment({ repository, sha, token, fetc
       headers: { accept:'application/vnd.github+json', ...(token ? { authorization:`Bearer ${token}` } : {}) },
     });
     if (!response.ok) throw new Error(`Deployment status request failed: HTTP ${response.status}`);
-    if (deploymentState((await response.json()).workflow_runs || [],sha) === 'ready') {
-      console.log('Production deployment succeeded; regional recollection can start.');
+    if (deploymentState((await response.json()).workflow_runs || [],sha,{ required:deploymentRequired }) === 'ready') {
+      console.log(deploymentRequired
+        ? 'Production deployment succeeded; regional recollection can start.'
+        : 'No production deployment is required for this commit; regional recollection can start.');
       return;
     }
     await pause(15_000);
@@ -27,5 +30,10 @@ export async function waitForProductionDeployment({ repository, sha, token, fetc
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  await waitForProductionDeployment({ repository:process.env.GITHUB_REPOSITORY, sha:process.env.GITHUB_SHA, token:process.env.GH_TOKEN });
+  await waitForProductionDeployment({
+    repository:process.env.GITHUB_REPOSITORY,
+    sha:process.env.GITHUB_SHA,
+    token:process.env.GH_TOKEN,
+    deploymentRequired:process.env.PRODUCTION_DEPLOYMENT_REQUIRED !== 'false',
+  });
 }
