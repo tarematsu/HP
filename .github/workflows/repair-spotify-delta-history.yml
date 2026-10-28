@@ -7,6 +7,7 @@ on:
     paths:
       - 'worker/scripts/repair-spotify-delta-history-actions.mjs'
       - '.github/workflows/repair-spotify-delta-history.yml'
+      - 'docs/spotify-daily-delta-spike-investigation.md'
 
 permissions:
   contents: read
