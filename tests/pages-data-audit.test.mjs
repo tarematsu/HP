@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { missingRecentDays, timestampIssue, leaderboardSourceIssues, auditPagesData } from '../scripts/pages-data-audit.mjs';
+import { missingRecentDays, timestampIssue, leaderboardSourceIssues, spotifyDeltaOutlierIssues, auditPagesData } from '../scripts/pages-data-audit.mjs';
 const now = Date.parse('2026-10-10T16:00:00Z');
 test('daily audit respects UTC closure and detects internal missing dates', () => {
   assert.deepEqual(missingRecentDays(['2026-10-06', '2026-10-08', '2026-10-09'], now), ['2026-10-07']);
@@ -35,4 +35,30 @@ test('leaderboard source freshness is checked after Monday publication deadline'
   assert.match(leaderboardSourceIssues({ source_max_ranking_date: '2026-10-05' }, tuesday)[0], /2026-10-12/);
   assert.deepEqual(leaderboardSourceIssues({ source_max_ranking_date: '2026-10-12' }, tuesday), []);
   assert.match(leaderboardSourceIssues({ setup_required: true }, tuesday)[0], /unavailable/);
+});
+
+test('Spotify trend audit catches completed-date delta outliers and ignores the in-progress JST day', () => {
+  const auditNow = Date.parse('2026-10-28T01:00:00Z'); // 10:00 JST on 2026-10-28
+  const issues = spotifyDeltaOutlierIssues({
+    trend: {
+      nogizaka46: [
+        { snapshot_date: '2026-10-24', total_delta: -10_863_630 },
+        { snapshot_date: '2026-10-25', total_delta: 11_848_450 },
+        { snapshot_date: '2026-10-26', total_delta: 182_370 },
+        { snapshot_date: '2026-10-28', total_delta: 12_000_000 },
+      ],
+    },
+  }, auditNow);
+  assert.deepEqual(issues, [
+    'nogizaka46: daily total delta outlier on 2026-10-24 (-10863630)',
+    'nogizaka46: daily total delta outlier on 2026-10-25 (11848450)',
+  ]);
+});
+
+test('Spotify trend audit rejects nonnumeric aggregate values on completed dates', () => {
+  assert.deepEqual(spotifyDeltaOutlierIssues({
+    trend: { sakurazaka46: [{ snapshot_date: '2026-10-26', total_delta: 'broken' }] },
+  }, Date.parse('2026-10-28T01:00:00Z')), [
+    'sakurazaka46: daily total delta is not numeric on 2026-10-26',
+  ]);
 });
