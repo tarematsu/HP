@@ -9,6 +9,11 @@ test('recollection waits for the exact official production deployment', () => {
     assert.equal(deploymentState([{...run,...override}],sha),'waiting');
   }
 });
+test('an audit-only commit may proceed when no production deployment was triggered', () => {
+  assert.equal(deploymentState([],sha),'waiting');
+  assert.equal(deploymentState([],sha,{required:false}),'ready');
+  assert.equal(deploymentState([{...run,status:'in_progress'}],sha,{required:false}),'waiting');
+});
 test('a failed or cancelled deployment cannot start recollection', () => {
   for (const conclusion of ['failure','cancelled']) assert.throws(()=>deploymentState([{...run,conclusion}],sha),/Production deployment/);
 });
