@@ -1,7 +1,9 @@
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
 const GROUPS = ['sakurazaka46', 'nogizaka46', 'hinatazaka46'];
+const SPOTIFY_DAILY_DELTA_OUTLIER_THRESHOLD = 5_000_000;
 const dayKey = (at) => new Date(at).toISOString().slice(0, 10);
+const jstDayKey = (at) => new Date(at + 9 * HOUR).toISOString().slice(0, 10);
 
 export function timestampIssue(value, now, maxAge) {
   const at = Number(value);
@@ -39,6 +41,29 @@ export function leaderboardSourceIssues(payload, now = Date.now()) {
     : [];
 }
 
+// The production Spotify chart uses these same aggregate daily deltas. Keep a
+// visible audit failure for completed dates whose values are large enough to
+// distort the graph; the bounded repair workflow uses the same threshold.
+export function spotifyDeltaOutlierIssues(payload, now = Date.now()) {
+  const todayJst = jstDayKey(now);
+  const issues = [];
+  for (const [artistKey, points] of Object.entries(payload?.trend || {})) {
+    if (!Array.isArray(points)) continue;
+    for (const point of points) {
+      const date = String(point?.snapshot_date || '');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date >= todayJst) continue;
+      if (point?.total_delta == null || point.total_delta === '') continue;
+      const delta = Number(point.total_delta);
+      if (!Number.isFinite(delta)) {
+        issues.push(`${artistKey}: daily total delta is not numeric on ${date}`);
+      } else if (Math.abs(delta) >= SPOTIFY_DAILY_DELTA_OUTLIER_THRESHOLD) {
+        issues.push(`${artistKey}: daily total delta outlier on ${date} (${delta})`);
+      }
+    }
+  }
+  return issues;
+}
+
 export async function auditPagesData(getJson, now = Date.now()) {
   const checks = [];
   const check = async (name, path, inspect) => {
@@ -73,6 +98,7 @@ export async function auditPagesData(getJson, now = Date.now()) {
       return issue ? `${key}: ${issue}` : null;
     });
     issues.push(timestampIssue(p.artist_chart?.latest_observed_at, now, 48 * HOUR));
+    issues.push(...spotifyDeltaOutlierIssues(p, now));
     return issues;
   }));
   for (const [service, hours] of [['youtube-music', 36], ['kkbox', 8 * 24], ['qq-music', 8 * 24], ['kugou-music', 4 * 24]]) {
