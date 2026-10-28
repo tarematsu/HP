@@ -2,26 +2,26 @@
 
 ## Symptom
 
-The Spotify Pages view for 乃木坂46 showed an approximately -11 million then +11 million daily-delta spike around 2026-10-26/27, while the latest displayed daily change was +294,162. Treat this as a data-integrity incident until proven otherwise.
+The production Spotify view showed an approximately -11.46 million then +12.14 million daily-delta spike for 乃木坂46 in late October, despite the current per-track table showing ordinary positive daily changes. This is a data-integrity incident, not a chart-styling issue.
 
-## Investigation plan
+## Evidence from production visual audit
 
-1. Trace the complete data path: Spotify source payload -> album candidates -> daily finalization in D1 -> artist daily summaries -> published Pages read model -> graph rendering.
-2. Inspect the affected dates and adjacent dates for tracks whose observed playcount became zero, regressed, disappeared, changed canonical identity, or rebounded the next day. Compare raw per-track values, delta, artist total_delta, and the published read model.
-3. Review the existing historical-spike repair (PR #2274) and prior safeguards. Determine whether the repair was not merged/run, did not include the affected dates, or left another producer/reader path vulnerable.
-4. Reproduce the negative/positive spike with a focused regression test, including zero-count observations, missing/baseline-less tracks, aliases, and daily aggregate refresh.
-5. Fix the source of the corruption rather than hiding/clamping the graph. Preserve legitimate Spotify corrections while preventing million-scale false deltas from transient invalid observations.
-6. Repair only affected historical rows using the production finalization logic, if a safe guarded repair path exists. Avoid adding recurring D1 reads/writes.
-7. Validate unit tests, Worker tests, read-model tests, CI/browser audit, and verify the published graph/read-model no longer contains the outlier.
+- Latest available audit run: [Pages visual audit #40592578939](https://github.com/tarematsu/HP/actions/runs/40592578939).
+- Screenshot timestamp: 2026-10-27T22:20:12Z (2026-10-28 07:20:12 JST); artifact `pages-visual-audit-40592578939-1`.
+- Desktop screenshot `desktop-13-spotify.png` shows the negative/positive lifetime-sized spikes on the daily-delta chart, while the adjacent per-track table contains normal-sized deltas.
+- The current main finalizer already carries forward a zero playcount when the previous count was positive, and PR #2274 added a regression test for the zero-count/rebound pattern.
+- The historical repair workflow run [#40589410444](https://github.com/tarematsu/HP/actions/runs/40589410444) was skipped on the PR #2274 merge push. Its job requires the commit message marker `[repair-spotify-history]`; the merge commit did not include it. Therefore the guarded historical repair was never run, so the published graph can still expose the pre-fix daily rows.
 
-## Acceptance criteria
+## Root cause and repair
 
-- No unexplained multi-million daily-delta outlier remains for the affected artist/date range.
-- A zero or invalid playcount observation cannot produce a false lifetime-sized negative delta and next-day positive rebound.
-- Genuine downward corrections remain representable.
-- Regression tests fail on the observed defect and pass with the fix.
-- The repair is date-scoped, repeat-safe, and does not add recurring resource usage.
+The confirmed immediate cause is that the historical D1 re-finalization step was not executed after the safeguard was merged. The workflow already has a bounded repair path: it scans the compact artist-daily summary for multi-million outliers, re-finalizes only the outlier dates and their adjacent dates from stored daily observations using the production finalizer, refreshes those artist summaries, and republishes the read model only if rows actually changed. It adds no recurring D1 workload.
 
-## Initial status
+This PR adds the investigation document to the workflow's push path filter so a documented incident can trigger the existing guarded repair when the merge commit carries `[repair-spotify-history]`. The workflow guard remains in place; ordinary documentation edits do not run the repair. The repair report must still be checked after merge. If outliers remain or no stored values change, continue tracing raw daily rows and the published read model rather than suppressing or clamping the graph.
 
-Investigation started. Root cause, affected rows, and production repair outcome are not yet confirmed. Do not consider the issue resolved until the source data and published read model are checked.
+## Validation and acceptance criteria
+
+1. Run the repository JavaScript/source-contract tests and required CI.
+2. Merge with the explicit `[repair-spotify-history]` marker so the existing repair workflow runs once after the production pipeline.
+3. Verify the repair report shows no remaining outliers, and that the workflow republishes only when values changed.
+4. Verify the post-repair Pages visual audit generates a fresh production artifact and the graph no longer contains lifetime-sized spikes.
+5. Preserve genuine downward Spotify corrections and avoid recurring D1 reads/writes.
