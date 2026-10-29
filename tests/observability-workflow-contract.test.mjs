@@ -42,5 +42,5 @@ test('semantic decision precedes Issue mutation and overall status publication f
 test('Spotify history repair completion refreshes Observability even after a failed repair', () => {
   const workflowRun = workflow.slice(workflow.indexOf('  workflow_run:'), workflow.indexOf('  push:'));
   assert.match(workflowRun, /"Repair Spotify historical delta outliers"/);
-  assert.match(workflow, /github\\.event\\.workflow_run\\.name == 'Repair Spotify historical delta outliers'/);
+  assert.match(workflow, /github\.event\.workflow_run\.name == 'Repair Spotify historical delta outliers'/);
 });
