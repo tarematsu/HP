@@ -49,7 +49,7 @@ export async function repairSpotifyHistoricalDate(db, snapshotDate, now = Date.n
 
   // Re-run the production finalizer against the already stored observations.
   // Its conditional upserts only write rows whose normalized values actually differ.
-  const results = await db.batch([
+  const statements = [
     spotifyDailyFinalizeR2Statement(
       db,
       { snapshot_date: snapshotDate, run_token: `history-repair:${snapshotDate}` },
@@ -57,13 +57,31 @@ export async function repairSpotifyHistoricalDate(db, snapshotDate, now = Date.n
       rows,
     ),
     ...spotifyArtistDailyRefreshStatements(db, snapshotDate, now),
-  ]);
+  ];
+  if (typeof db.script === 'function') {
+    // The remote D1 CLI has a command-size limit for batch(). Execute the same
+    // write-only statements from a SQL file instead of splitting them into
+    // extra remote calls or changing the repair scope.
+    await db.script(statements);
+    return {
+      snapshot_date: snapshotDate,
+      input_rows: rows.length,
+      daily_rows_changed: null,
+      summary_rows_deleted: null,
+      summary_rows_changed: null,
+      write_mode: 'script',
+      write_statements: statements.length,
+    };
+  }
+  const results = await db.batch(statements);
   return {
     snapshot_date: snapshotDate,
     input_rows: rows.length,
     daily_rows_changed: Number(results?.[0]?.meta?.changes || 0),
     summary_rows_deleted: Number(results?.[1]?.meta?.changes || 0),
     summary_rows_changed: Number(results?.[2]?.meta?.changes || 0),
+    write_mode: 'batch',
+    write_statements: statements.length,
   };
 }
 
@@ -74,7 +92,7 @@ export async function runSpotifyDeltaHistoryRepair({
   threshold = SPOTIFY_DAILY_DELTA_OUTLIER_THRESHOLD,
   logger = (value) => console.log(value),
 } = {}) {
-  if (!db?.prepare || typeof db.batch !== 'function') {
+  if (!db?.prepare || (typeof db.script !== 'function' && typeof db.batch !== 'function')) {
     throw new Error('Remote Spotify D1 database is required');
   }
   const throughDate = previousDateKey(today);
@@ -117,7 +135,10 @@ export async function runSpotifyDeltaHistoryRepair({
     ORDER BY snapshot_date,artist_key`)
     .bind(SPOTIFY_TREND_START_DATE, today, threshold)
     .all());
-  const changedRows = repairs.reduce((sum, row) => sum
+  const writeMode = repairs.some((row) => row.write_mode === 'script') ? 'script' : 'batch';
+  // Wrangler's SQL-file execution does not expose per-statement change counts.
+  // The post-write outlier query remains the success criterion for that path.
+  const changedRows = writeMode === 'script' ? null : repairs.reduce((sum, row) => sum
     + row.daily_rows_changed + row.summary_rows_deleted + row.summary_rows_changed, 0);
   const report = {
     event: 'spotify_delta_history_repair',
@@ -128,6 +149,7 @@ export async function runSpotifyDeltaHistoryRepair({
     outliers_before: before,
     repair_dates: repairDates,
     repairs,
+    write_mode: writeMode,
     changed_rows: changedRows,
     outliers_after: after,
   };
