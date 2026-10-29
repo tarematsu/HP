@@ -74,3 +74,14 @@ test('visual audit waits for lazy music-service charts and empty-state tables be
   assert.match(source, /body\.children\.length === 0/);
   assert.match(source, /music service subview did not finish rendering within 20 seconds/);
 });
+
+
+test('visual audit waits for Nogizaka listening-party data before screenshot', () => {
+  assert.match(source, /nogizakaBroadcastMode/);
+  assert.match(source, /nogizakaBroadcastWaitTimedOut/);
+  assert.match(source, /broadcast-count/);
+  assert.match(source, /broadcast-tbody/);
+  assert.match(source, /Nogizaka listening-party data was not rendered within 20 seconds/);
+  assert.match(source, /Nogizaka listening-party summary metrics remained placeholders/);
+  assert.match(source, /Nogizaka listening-party table has no rows/);
+});

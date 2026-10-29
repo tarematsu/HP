@@ -73,6 +73,7 @@ export function auditRoutes() {
 async function inspectView(page, tab, viewport, outDir) {
   const historyMode = tab.section === 'stationhead' && ['daily', 'weekly', 'monthly'].includes(tab.mode);
   const listeningPartyMode = tab.section === 'stationhead' && tab.source === 'buddies' && tab.mode === 'broadcasts';
+  const nogizakaBroadcastMode = tab.section === 'stationhead' && tab.source === 'nogizaka' && tab.mode === 'nogizaka';
   const leaderboardMode = tab.mode === 'ranking';
   const playedTracksMode = ['played-tracks', 'hinata-played-tracks'].includes(tab.mode);
   if (historyMode) {
@@ -109,6 +110,7 @@ async function inspectView(page, tab, viewport, outDir) {
     }
   }
   let listeningPartyWaitTimedOut = false;
+  let nogizakaBroadcastWaitTimedOut = false;
   if (listeningPartyMode) {
     // The comparison panels are rendered lazily. On narrow viewports they sit
     // well below the fold, so reveal them before waiting for their paint state.
@@ -142,6 +144,29 @@ async function inspectView(page, tab, viewport, outDir) {
   if (tab.control) {
     await page.locator('.dashboard-view:not([hidden])').locator(tab.control).click();
     await settle(page);
+  }
+
+  // Nogizaka shares the Stationhead broadcast renderer, but its async read model
+  // is not covered by the Sakurazaka-specific listening-party wait above. Wait
+  // for the summary and table to be populated before capturing this route at
+  // every viewport; network idle alone can occur before its first render.
+  if (nogizakaBroadcastMode) {
+    try {
+      await page.waitForFunction(() => {
+        const panel = document.querySelector('#nogizakaListeningPartyView:not([hidden])');
+        if (!panel) return false;
+        const count = panel.querySelector('[data-role="broadcast-count"]')?.textContent?.trim();
+        const body = panel.querySelector('[data-role="broadcast-tbody"]');
+        const chart = panel.querySelector('[data-role="broadcast-chart"]');
+        const empty = panel.querySelector('[data-role="broadcast-chart-empty"]');
+        const notice = panel.querySelector('[data-role="notice"]');
+        const failed = notice && !notice.hidden && /データの取得に失敗|初期化に失敗/.test(notice.textContent || '');
+        const chartResolved = Boolean((chart && !chart.hidden) || (empty && !empty.hidden));
+        return Boolean(failed || (count && count !== '—' && body && body.children.length > 0 && chartResolved));
+      }, null, { timeout: 20_000 });
+    } catch {
+      nogizakaBroadcastWaitTimedOut = true;
+    }
   }
 
   // Track-history panels fetch the date index and selected period in sequence.
@@ -319,6 +344,19 @@ async function inspectView(page, tab, viewport, outDir) {
         unofficialVisible: visible(document.getElementById('unofficialListeningPanel')),
         unofficialRows: document.querySelectorAll('#unofficialListeningTbody tr').length,
       } : null,
+      nogizakaBroadcastAudit: route.mode === 'nogizaka' ? (() => {
+        const panel = document.getElementById('nogizakaListeningPartyView');
+        const body = panel?.querySelector('[data-role="broadcast-tbody"]');
+        const notice = panel?.querySelector('[data-role="notice"]');
+        return {
+          count: panel?.querySelector('[data-role="broadcast-count"]')?.textContent?.trim() || '',
+          rowCount: body?.children.length || 0,
+          emptyRow: (body?.textContent || '').includes('リスパデータがありません。'),
+          chartVisible: visible(panel?.querySelector('[data-role="broadcast-chart"]')),
+          chartEmptyVisible: visible(panel?.querySelector('[data-role="broadcast-chart-empty"]')),
+          notice: visible(notice) ? (notice.textContent || '').trim() : '',
+        };
+      })() : null,
     };
   }, { route: tab, playedTracksMode });
 
@@ -344,6 +382,14 @@ async function inspectView(page, tab, viewport, outDir) {
     if (!audit.chartVisible && !audit.emptyVisible) issues.push('leaderboard chart is hidden');
   }
   if (listeningPartyWaitTimedOut) issues.push('listening party subviews were not fully rendered within 45 seconds');
+  if (nogizakaBroadcastWaitTimedOut) issues.push('Nogizaka listening-party data was not rendered within 20 seconds');
+  if (nogizakaBroadcastMode && state.nogizakaBroadcastAudit) {
+    const audit = state.nogizakaBroadcastAudit;
+    if (!audit.count || audit.count === '—') issues.push('Nogizaka listening-party summary metrics remained placeholders');
+    if (audit.rowCount < 1) issues.push('Nogizaka listening-party table has no rows');
+    if (!audit.chartVisible && !audit.chartEmptyVisible) issues.push('Nogizaka listening-party chart has no rendered state');
+    if (audit.notice && /データの取得に失敗|初期化に失敗/.test(audit.notice)) issues.push(`Nogizaka listening-party data error: ${audit.notice}`);
+  }
   if (listeningPartyMode && state.listeningPartyAudit) {
     const audit = state.listeningPartyAudit;
     if (!audit.officialChartPainted) issues.push('official listening party chart was not painted');
