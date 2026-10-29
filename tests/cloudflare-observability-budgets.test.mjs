@@ -47,7 +47,7 @@ test('unified observability runs account-wide post-deploy, collection, and daily
 
   expectAll(workflow, [
     'name: Unified Cloudflare Observability',
-    'workflows: ["Deploy production", "Deploy HomePanel Cloud services", "Run runtime offline maintenance"]',
+    'workflows: ["Deploy production", "Deploy HomePanel Cloud services", "Run runtime offline maintenance", "Repair Spotify historical delta outliers"]',
     'branches: [main]',
     '.github/actions/cloudflare-observability-diagnostics/action.yml',
     '.github/scripts/audit-observability-collection.mjs',
