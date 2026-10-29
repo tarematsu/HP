@@ -649,9 +649,10 @@ body {
   .dashboard-view :is(.subtle,.notice,.chart-detail,.host) { font-size:13px; }
   .table-wrap > table.spotify-table { min-width:0; table-layout:fixed; }
   .spotify-table :is(th,td) { white-space:normal; overflow-wrap:anywhere; padding-inline:4px; font-size:13px; }
-  .spotify-table col.col-compact { width:9%; }
+  .spotify-table col.col-compact { width:12%; }
   .spotify-table col.col-number { width:25%; }
   .spotify-table col.col-delta { width:22%; }
+  .spotify-table :is(th,td):first-child { white-space:nowrap; overflow-wrap:normal; }
 }
 
 
