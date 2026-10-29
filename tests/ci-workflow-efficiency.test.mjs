@@ -182,7 +182,7 @@ test('D1 query insights are manual-only and avoid installing Wrangler', () => {
 
 test('unified Cloudflare observability runs after production activity and daily at 01:00 UTC', () => {
   assert.match(observability, /^  workflow_run:\n/m);
-  assert.match(observability, /workflows: \["Deploy production", "Deploy HomePanel Cloud services", "Run runtime offline maintenance"\]/);
+  assert.match(observability, /workflows: \["Deploy production", "Deploy HomePanel Cloud services", "Run runtime offline maintenance", "Repair Spotify historical delta outliers"\]/);
   assert.match(observability, /^  push:\n/m);
   assert.match(observability, /branches: \[main\]/);
   assert.match(observability, /\.github\/workflows\/sh-observability\.yml/);
