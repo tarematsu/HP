@@ -147,6 +147,10 @@ test('YouTube Music desktop and tablet playlist type stays readable in a fixed-l
   assert.match(commonCss, /@media \(min-width: 761px\)\s*\{[\s\S]*?\.youtube-music-view \.music-service-playlist-table :is\(th, td\):nth-child\(2\)\s*\{\s*width: 96px;\s*text-align: left;\s*white-space: nowrap;\s*overflow-wrap: normal;/);
 });
 
+test('Spotify ranking numbers stay on one line in narrow mobile tables', () => {
+  assert.match(layoutCss, /@media \(max-width:760px\)\s*\{[\s\S]*?\.spotify-table col\.col-compact \{ width:12%; \}[\s\S]*?\.spotify-table :is\(th,td\):first-child \{ white-space:nowrap; overflow-wrap:normal; \}/);
+});
+
 test('Apple Music regional rankings retain their wide, scrollable table layout', () => {
   const appleCss = readFileSync(new URL('../public/apple-music.css', import.meta.url), 'utf8');
   assert.match(apple, /className: 'apple-table apple-region-table sticky-first-column'/);
