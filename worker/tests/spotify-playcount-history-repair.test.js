@@ -20,14 +20,31 @@ function createD1(database) {
       return { meta: { changes: Number(result.changes || 0) } };
     },
   });
-  return {
+  const adapter = {
+    scriptCalls: 0,
+    batchCalls: 0,
     prepare(sql) { return statement(sql); },
+    async script(statements) {
+      adapter.scriptCalls += 1;
+      database.exec('BEGIN');
+      try {
+        const results = [];
+        for (const item of statements) results.push(await item.run());
+        database.exec('COMMIT');
+        return results.at(-1);
+      } catch (error) {
+        database.exec('ROLLBACK');
+        throw error;
+      }
+    },
     async batch(statements) {
+      adapter.batchCalls += 1;
       const results = [];
       for (const item of statements) results.push(await item.run());
       return results;
     },
   };
+  return adapter;
 }
 
 function fixture() {
@@ -118,6 +135,11 @@ test('historical Spotify zero-count regression and rebound are repaired without 
     });
 
     assert.equal(report.status, 'repaired');
+    assert.equal(report.write_mode, 'script');
+    assert.equal(report.changed_rows, null);
+    assert.equal(db.scriptCalls, 4);
+    assert.equal(db.batchCalls, 0);
+    assert.ok(report.repairs.every((row) => row.write_mode === 'script' && row.write_statements === 3));
     assert.deepEqual(report.outliers_before.map((row) => row.snapshot_date), ['2026-10-24', '2026-10-25']);
     assert.deepEqual(report.outliers_after, []);
     assert.deepEqual(report.repair_dates, ['2026-10-23', '2026-10-24', '2026-10-25', '2026-10-26']);

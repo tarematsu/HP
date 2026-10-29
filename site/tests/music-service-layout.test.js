@@ -155,3 +155,10 @@ test('Apple Music regional rankings retain their wide, scrollable table layout',
   assert.match(layoutCss, /\.music-service-group \.table-wrap > table\.shared-numeric-table\.apple-region-table\s*\{\s*width:\s*max-content;\s*min-width:\s*820px;\s*table-layout:\s*auto;/);
   assert.match(layoutCss, /@media \(max-width: 640px\)\s*\{\s*\.music-service-group \.table-wrap > table\.shared-numeric-table\.apple-region-table\s*\{\s*min-width:\s*760px;/);
 });
+
+
+test('regional chart-history dates stay unbroken inside a scrollable mobile table', () => {
+  assert.match(layoutCss, /\.music-service-group \.table-wrap > table\.music-service-history-table\s*\{[^}]*min-width:\s*560px;[^}]*table-layout:\s*auto;/s);
+  assert.match(layoutCss, /\.music-service-group \.table-wrap > table\.music-service-history-table :is\(th, td\):first-child\s*\{[^}]*white-space:\s*nowrap;[^}]*overflow-wrap:\s*normal;/s);
+  assert.match(layoutCss, /\.table-wrap\s*\{[^}]*overflow-x:\s*auto;/s);
+});

@@ -654,3 +654,18 @@ body {
   .spotify-table col.col-delta { width:22%; }
 }
 
+
+/* Regional chart-history dates are identifiers, not prose. Keep them intact
+   on narrow screens and scroll inside the table wrapper instead of wrapping
+   a single date across two rows. */
+@media (max-width: 760px) {
+  .music-service-group .table-wrap > table.music-service-history-table {
+    width: max-content;
+    min-width: 560px;
+    table-layout: auto;
+  }
+  .music-service-group .table-wrap > table.music-service-history-table :is(th, td):first-child {
+    white-space: nowrap;
+    overflow-wrap: normal;
+  }
+}

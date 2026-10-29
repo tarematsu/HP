@@ -20,7 +20,7 @@ test('HomePanel observability is covered by the canonical unified workflow and i
 
   expectAll(workflow, [
     'name: Unified Cloudflare Observability',
-    'workflows: ["Deploy production", "Deploy HomePanel Cloud services", "Run runtime offline maintenance"]',
+    'workflows: ["Deploy production", "Deploy HomePanel Cloud services", "Run runtime offline maintenance", "Repair Spotify historical delta outliers"]',
     ".github/workflows/publish-github-actions-runner-health.yml",
     `CLOUDFLARE_WORKERS: ${workerList}`,
     'CLOUDFLARE_PUBLIC_HEALTH_WORKERS: "HomePanel Cloud health|homepanel-cloud|/api/health"',
