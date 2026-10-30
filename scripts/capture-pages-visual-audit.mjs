@@ -70,12 +70,34 @@ export function auditRoutes() {
   })))).map((route, index) => ({ ...route, index }));
 }
 
+const KKBOX_SERIES_FILTERS = Object.freeze([
+  'tw:newrelease',
+  'hk:newrelease',
+  'tw:song',
+  'hk:song',
+]);
+const KKBOX_PERIOD_FILTERS = Object.freeze(['daily', 'weekly']);
+
+export function kkboxAuditRoutes(route) {
+  if (route?.mode !== 'kkbox') return [];
+  return KKBOX_SERIES_FILTERS.flatMap((series) => KKBOX_PERIOD_FILTERS.map((period) => ({
+    ...route,
+    panel: `${series.replace(':', '-')}-${period}`,
+    controls: [
+      `button[data-kkbox-series-filter="${series}"]`,
+      `button[data-kkbox-period-filter="${period}"]`,
+    ],
+    kkboxSelection: { series, period },
+  })));
+}
+
 async function inspectView(page, tab, viewport, outDir) {
   const historyMode = tab.section === 'stationhead' && ['daily', 'weekly', 'monthly'].includes(tab.mode);
   const listeningPartyMode = tab.section === 'stationhead' && tab.source === 'buddies' && tab.mode === 'broadcasts';
   const nogizakaBroadcastMode = tab.section === 'stationhead' && tab.source === 'nogizaka' && tab.mode === 'nogizaka';
   const leaderboardMode = tab.mode === 'ranking';
   const playedTracksMode = ['played-tracks', 'hinata-played-tracks'].includes(tab.mode);
+  const kkboxMode = Boolean(tab.kkboxSelection);
   if (historyMode) {
     await page.evaluate(() => {
       window.__pagesAuditHistory = { mode: null, rowCount: null, paintedMode: null };
@@ -141,9 +163,31 @@ async function inspectView(page, tab, viewport, outDir) {
       listeningPartyWaitTimedOut = true;
     }
   }
-  if (tab.control) {
-    await page.locator('.dashboard-view:not([hidden])').locator(tab.control).click();
+  const controls = Array.isArray(tab.controls) ? tab.controls : tab.control ? [tab.control] : [];
+  for (const control of controls) {
+    await page.locator('.dashboard-view:not([hidden])').locator(control).click();
     await settle(page);
+  }
+
+  let kkboxWaitTimedOut = false;
+  if (kkboxMode) {
+    try {
+      await page.waitForFunction(({ series, period }) => {
+        const selected = (attribute, value) => [...document.querySelectorAll(`[data-${attribute}]`)]
+          .some((button) => button.getAttribute(`data-${attribute}`) === value
+            && button.getAttribute('aria-pressed') === 'true');
+        const body = document.getElementById('kkboxJapaneseHistoryBody');
+        const chart = document.getElementById('kkboxJapaneseRankChart');
+        const chartReady = Boolean(chart && (
+          chart.querySelector('canvas, svg, .shared-empty') || (chart.textContent || '').trim()
+        ));
+        return selected('kkbox-series-filter', series)
+          && selected('kkbox-period-filter', period)
+          && Boolean(body && body.children.length > 0 && chartReady);
+      }, tab.kkboxSelection, { timeout: 20_000 });
+    } catch {
+      kkboxWaitTimedOut = true;
+    }
   }
 
   // Nogizaka shares the Stationhead broadcast renderer, but its async read model
@@ -194,15 +238,12 @@ async function inspectView(page, tab, viewport, outDir) {
   // panel while slower viewports capture its completed state.
   let serviceRenderWaitTimedOut = false;
   if (tab.section === 'subscriptions') {
-    let serviceGroup = tab.panel || '';
-    if (!serviceGroup) {
-      serviceGroup = await page.evaluate(() => {
-        const root = document.querySelector('.dashboard-view:not([hidden])');
-        if (!root) return '__missing-root__';
-        const hasGroupPanels = root.querySelector('.music-service-group[data-group]');
-        return hasGroupPanels ? (root.dataset.activeServiceGroup || '__missing-group__') : '';
-      });
-    }
+    const serviceGroup = await page.evaluate((requestedGroup) => {
+      const root = document.querySelector('.dashboard-view:not([hidden])');
+      if (!root) return '__missing-root__';
+      const hasGroupPanels = Boolean(root.querySelector('.music-service-group[data-group]'));
+      return hasGroupPanels ? (requestedGroup || root.dataset.activeServiceGroup || '__missing-group__') : '';
+    }, tab.panel || '');
     if (serviceGroup === '__missing-root__' || serviceGroup === '__missing-group__') {
       serviceRenderWaitTimedOut = true;
     } else {
@@ -357,6 +398,21 @@ async function inspectView(page, tab, viewport, outDir) {
           notice: visible(notice) ? (notice.textContent || '').trim() : '',
         };
       })() : null,
+      kkboxAudit: route.kkboxSelection ? (() => {
+        const selected = (selector, attribute) => [...document.querySelectorAll(selector)]
+          .find((button) => button.getAttribute('aria-pressed') === 'true')
+          ?.getAttribute(attribute) || '';
+        const chart = document.getElementById('kkboxJapaneseRankChart');
+        const body = document.getElementById('kkboxJapaneseHistoryBody');
+        return {
+          series: selected('[data-kkbox-series-filter]', 'data-kkbox-series-filter'),
+          period: selected('[data-kkbox-period-filter]', 'data-kkbox-period-filter'),
+          rowCount: body?.children.length || 0,
+          chartReady: Boolean(chart && (
+            chart.querySelector('canvas, svg, .shared-empty') || (chart.textContent || '').trim()
+          )),
+        };
+      })() : null,
     };
   }, { route: tab, playedTracksMode });
 
@@ -383,6 +439,13 @@ async function inspectView(page, tab, viewport, outDir) {
   }
   if (listeningPartyWaitTimedOut) issues.push('listening party subviews were not fully rendered within 45 seconds');
   if (nogizakaBroadcastWaitTimedOut) issues.push('Nogizaka listening-party data was not rendered within 20 seconds');
+  if (kkboxWaitTimedOut) issues.push('KKBOX selected category and period did not finish rendering within 20 seconds');
+  if (tab.kkboxSelection && state.kkboxAudit) {
+    if (state.kkboxAudit.series !== tab.kkboxSelection.series) issues.push('KKBOX selected category does not match the requested capture state');
+    if (state.kkboxAudit.period !== tab.kkboxSelection.period) issues.push('KKBOX selected period does not match the requested capture state');
+    if (state.kkboxAudit.rowCount < 1) issues.push('KKBOX history table has no rendered rows or empty state');
+    if (!state.kkboxAudit.chartReady) issues.push('KKBOX ranking chart has no rendered state');
+  }
   if (nogizakaBroadcastMode && state.nogizakaBroadcastAudit) {
     const audit = state.nogizakaBroadcastAudit;
     if (!audit.count || audit.count === '—') issues.push('Nogizaka listening-party summary metrics remained placeholders');
@@ -487,7 +550,10 @@ async function auditViewport(browser, baseUrl, viewport, outDir) {
   const views = [];
   for (const tab of tabs) {
     try {
-      views.push(await inspectView(page, tab, viewport, outDir));
+      const routeStates = tab.mode === 'kkbox' ? kkboxAuditRoutes(tab) : [tab];
+      for (const routeState of routeStates) {
+        views.push(await inspectView(page, routeState, viewport, outDir));
+      }
       const panels = await page.locator('.dashboard-view:not([hidden]) :is(button[data-stationhead-section], button[data-service-group]):visible:not(:disabled)').evaluateAll((buttons) => buttons.map((button) => {
         const attribute = button.hasAttribute('data-stationhead-section') ? 'data-stationhead-section' : 'data-service-group';
         return { panel: button.getAttribute(attribute), control: `button[${attribute}="${button.getAttribute(attribute)}"]` };
