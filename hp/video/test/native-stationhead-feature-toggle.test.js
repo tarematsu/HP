@@ -42,20 +42,31 @@ test('toggle is committed atomically outside updater-managed files before changi
   assert.match(app, /PowerSavingController::SetStationheadFeatureEnabled\(stationheadEnabled_\)/);
 });
 
-test('OFF releases all six Stationhead players, collector and scheduled launch deadlines', () => {
+test('OFF stops all six playback windows but leaves the independent leaderboard collector running', () => {
   const stop = section(app, 'void App::StopStationheadServices()', 'void App::StopServices()');
-  assert.match(stop, /stationheadLeaderboardCollector_->Stop\(\)/);
+  assert.doesNotMatch(stop, /stationheadLeaderboardCollector_->Stop\(\)/);
+  assert.doesNotMatch(stop, /stationheadLeaderboardCollector_\.reset\(\)/);
   assert.match(stop, /stationheadPeers_\[i\]->Stop\(\)/);
   assert.match(stop, /stationhead_->Stop\(\)/);
-  assert.match(stop, /stationheadLeaderboardCollector_\.reset\(\)/);
   assert.match(stop, /for \(auto& peer : stationheadPeers_\) peer\.reset\(\)/);
   assert.match(stop, /stationhead_\.reset\(\)/);
-  const startup = section(app, 'void App::StartDeferredServices(', 'void App::StopStationheadServices()');
-  assert.match(startup, /if \(stationheadEnabled_\) \{/);
+  const startup = section(app, 'void App::StartServices()', 'void App::StartDeferredServices(');
+  assert.match(startup, /stationheadLeaderboardCollector_ =/);
+  const deferredCollector = section(app, 'void App::StartDeferredServices(', 'void App::StopStationheadServices()');
+  assert.match(deferredCollector, /stationheadLeaderboardCollector_->Start\(now\)/);
+  assert.ok(deferredCollector.indexOf('stationheadLeaderboardCollector_->Start(now)') < deferredCollector.indexOf('if (stationheadEnabled_)'));
+  const shutdown = section(app, 'void App::StopServices()', 'void App::Tick()');
+  assert.match(shutdown, /stationheadLeaderboardCollector_->Stop\(\)/);
+  assert.match(shutdown, /stationheadLeaderboardCollector_\.reset\(\)/);
+  const deferredPlayers = section(app, 'void App::StartDeferredServices(', 'void App::StopStationheadServices()');
+  assert.match(deferredPlayers, /if \(stationheadEnabled_\) \{/);
   assert.match(header, /int64_t stationheadStartupAt_ = 0/);
   const tick = section(app, 'void App::Tick()', 'void App::Draw()');
   assert.match(tick, /if \(stationheadEnabled_\) \{[\s\S]*stationheadStartupAt_ \+ kMediaStartupStageDelayMs/);
   assert.match(messages, /case WM_HP_STATIONHEAD_CHANGED:[\s\S]*if \(!stationheadEnabled_\) return 0/);
+  const leaderboardWake = section(messages, 'case kStationheadLeaderboardCaptureWakeMessage:', 'case WM_HP_PRIMARY_RELOAD_READY:');
+  assert.doesNotMatch(leaderboardWake, /stationheadEnabled_/);
+  assert.match(leaderboardWake, /ScheduleNextTick\(1\)/);
 });
 
 test('OFF suppresses Stationhead monitor probes and restricts audio to YT or mute', () => {

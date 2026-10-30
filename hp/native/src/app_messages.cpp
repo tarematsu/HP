@@ -87,7 +87,7 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       return 0;
     }
     case kStationheadLeaderboardCaptureWakeMessage:
-      if (!stationheadEnabled_) return 0;
+      // Leaderboard collection is independent of the playback feature toggle.
       // Leaderboard diagnostics and capture-spool writes share this wake channel.
       // Re-arm the central timer as well as refreshing Cloud so deadlines that are
       // moved earlier by asynchronous WebView2 callbacks are observed promptly.
