@@ -95,9 +95,11 @@ test('leaderboard acquisition uses a disposable 1x1 background WebView and waits
   assert.match(failBody, /environment_\.Reset\(\)/);
 
   assert.match(app, /StationheadLeaderboardCollector>[\s\S]*kStationheadOzekiProfile/);
-  const stationheadStart = app.indexOf('stationhead_->Start();');
-  const collectorStart = app.indexOf('stationheadLeaderboardCollector_->Start(now);');
-  assert.ok(stationheadStart >= 0 && collectorStart > stationheadStart);
+  const deferredStart = app.indexOf('void App::StartDeferredServices(');
+  const stationheadStart = app.indexOf('if (stationheadEnabled_) {', deferredStart);
+  const collectorStart = app.indexOf('stationheadLeaderboardCollector_->Start(now);', deferredStart);
+  assert.ok(deferredStart >= 0 && collectorStart > deferredStart && collectorStart < stationheadStart);
+  assert.match(app, /stationheadLeaderboardCollector_ =/);
   assert.match(app, /stationheadLeaderboardCollector_->Tick\(now\)/);
   assert.match(app, /stationheadLeaderboardCollector_->NextWakeAt\(\)/);
   assert.match(app, /stationheadLeaderboardCollector_->Stop\(\)/);
