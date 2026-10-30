@@ -42,14 +42,22 @@ test('toggle is committed atomically outside updater-managed files before changi
   assert.match(app, /PowerSavingController::SetStationheadFeatureEnabled\(stationheadEnabled_\)/);
 });
 
-test('OFF releases all six Stationhead players, collector and scheduled launch deadlines', () => {
+test('OFF stops all six playback windows but leaves the independent leaderboard collector running', () => {
   const stop = section(app, 'void App::StopStationheadServices()', 'void App::StopServices()');
-  assert.match(stop, /stationheadLeaderboardCollector_->Stop\(\)/);
+  assert.doesNotMatch(stop, /stationheadLeaderboardCollector_->Stop\(\)/);
+  assert.doesNotMatch(stop, /stationheadLeaderboardCollector_\.reset\(\)/);
   assert.match(stop, /stationheadPeers_\[i\]->Stop\(\)/);
   assert.match(stop, /stationhead_->Stop\(\)/);
-  assert.match(stop, /stationheadLeaderboardCollector_\.reset\(\)/);
   assert.match(stop, /for \(auto& peer : stationheadPeers_\) peer\.reset\(\)/);
   assert.match(stop, /stationhead_\.reset\(\)/);
+  const startup = section(app, 'void App::StartServices()', 'void App::StartDeferredServices(');
+  assert.match(startup, /stationheadLeaderboardCollector_ =/);
+  const deferredCollector = section(app, 'void App::StartDeferredServices(', 'void App::StopStationheadServices()');
+  assert.match(deferredCollector, /stationheadLeaderboardCollector_->Start\(now\)/);
+  assert.ok(deferredCollector.indexOf('stationheadLeaderboardCollector_->Start(now)') < deferredCollector.indexOf('if (stationheadEnabled_)'));
+  const shutdown = section(app, 'void App::StopServices()', 'void App::Tick()');
+  assert.match(shutdown, /stationheadLeaderboardCollector_->Stop\(\)/);
+  assert.match(shutdown, /stationheadLeaderboardCollector_\.reset\(\)/);
   const startup = section(app, 'void App::StartDeferredServices(', 'void App::StopStationheadServices()');
   assert.match(startup, /if \(stationheadEnabled_\) \{/);
   assert.match(header, /int64_t stationheadStartupAt_ = 0/);
