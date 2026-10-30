@@ -58,8 +58,8 @@ test('OFF stops all six playback windows but leaves the independent leaderboard 
   const shutdown = section(app, 'void App::StopServices()', 'void App::Tick()');
   assert.match(shutdown, /stationheadLeaderboardCollector_->Stop\(\)/);
   assert.match(shutdown, /stationheadLeaderboardCollector_\.reset\(\)/);
-  const startup = section(app, 'void App::StartDeferredServices(', 'void App::StopStationheadServices()');
-  assert.match(startup, /if \(stationheadEnabled_\) \{/);
+  const deferredPlayers = section(app, 'void App::StartDeferredServices(', 'void App::StopStationheadServices()');
+  assert.match(deferredPlayers, /if \(stationheadEnabled_\) \{/);
   assert.match(header, /int64_t stationheadStartupAt_ = 0/);
   const tick = section(app, 'void App::Tick()', 'void App::Draw()');
   assert.match(tick, /if \(stationheadEnabled_\) \{[\s\S]*stationheadStartupAt_ \+ kMediaStartupStageDelayMs/);
