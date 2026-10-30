@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { auditRoutes } from '../scripts/capture-pages-visual-audit.mjs';
+import { auditRoutes, kkboxAuditRoutes } from '../scripts/capture-pages-visual-audit.mjs';
 import { NAVIGATION } from '../site/public/dashboard-navigation-config.js';
 
 const source = readFileSync(new URL('../scripts/capture-pages-visual-audit.mjs', import.meta.url), 'utf8');
@@ -84,4 +84,34 @@ test('visual audit waits for Nogizaka listening-party data before screenshot', (
   assert.match(source, /Nogizaka listening-party data was not rendered within 20 seconds/);
   assert.match(source, /Nogizaka listening-party summary metrics remained placeholders/);
   assert.match(source, /Nogizaka listening-party table has no rows/);
+});
+
+
+test('visual audit captures every KKBOX category in both daily and weekly modes', () => {
+  const route = auditRoutes().find(({ mode }) => mode === 'kkbox');
+  const states = kkboxAuditRoutes(route);
+  assert.equal(states.length, 8);
+  assert.equal(new Set(states.map(({ panel }) => panel)).size, 8);
+  assert.deepEqual(
+    states.map(({ kkboxSelection }) => `${kkboxSelection.series}/${kkboxSelection.period}`).sort(),
+    [
+      'hk:newrelease/daily', 'hk:newrelease/weekly',
+      'hk:song/daily', 'hk:song/weekly',
+      'tw:newrelease/daily', 'tw:newrelease/weekly',
+      'tw:song/daily', 'tw:song/weekly',
+    ],
+  );
+  assert.ok(states.every(({ controls }) => controls.length === 2));
+  assert.ok(states.some(({ controls }) => controls.includes('button[data-kkbox-period-filter="daily"]')));
+  assert.ok(states.some(({ controls }) => controls.includes('button[data-kkbox-period-filter="weekly"]')));
+});
+
+test('visual audit verifies KKBOX category, period, chart and history state before capture', () => {
+  assert.match(source, /kkboxWaitTimedOut/);
+  assert.match(source, /data-kkbox-series-filter/);
+  assert.match(source, /data-kkbox-period-filter/);
+  assert.match(source, /kkboxJapaneseRankChart/);
+  assert.match(source, /kkboxJapaneseHistoryBody/);
+  assert.match(source, /KKBOX selected category does not match/);
+  assert.match(source, /KKBOX selected period does not match/);
 });
