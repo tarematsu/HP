@@ -64,6 +64,9 @@ test('OFF stops all six playback windows but leaves the independent leaderboard 
   const tick = section(app, 'void App::Tick()', 'void App::Draw()');
   assert.match(tick, /if \(stationheadEnabled_\) \{[\s\S]*stationheadStartupAt_ \+ kMediaStartupStageDelayMs/);
   assert.match(messages, /case WM_HP_STATIONHEAD_CHANGED:[\s\S]*if \(!stationheadEnabled_\) return 0/);
+  const leaderboardWake = section(messages, 'case kStationheadLeaderboardCaptureWakeMessage:', 'case WM_HP_PRIMARY_RELOAD_READY:');
+  assert.doesNotMatch(leaderboardWake, /stationheadEnabled_/);
+  assert.match(leaderboardWake, /ScheduleNextTick\(1\)/);
 });
 
 test('OFF suppresses Stationhead monitor probes and restricts audio to YT or mute', () => {
