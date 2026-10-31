@@ -92,8 +92,14 @@ for (const [source, cursor, uniqueColumn] of [
     const db = fakeDb({ results: rows });
     assert.equal(await loadStationheadMinuteFactGapRows(db, source, 2, 100, 200), rows);
     assert.deepEqual(db.calls[0].args, [2, 100, 200]);
-    assert.match(db.calls[0].sql, new RegExp(`WHERE channel_id=\\? AND ${cursor}>\\? AND ${cursor}<\\?`));
-    assert.match(db.calls[0].sql, new RegExp(`ORDER BY ${cursor} ASC,id ASC`));
+    const scopedWhere = source === 'buddies'
+      ? /WHERE facts\.channel_id=\? AND facts\.minute_at>\? AND facts\.minute_at<\?/
+      : new RegExp(`WHERE channel_id=\\? AND ${cursor}>\\? AND ${cursor}<\\?`);
+    const chronologicalOrder = source === 'buddies'
+      ? /ORDER BY facts\.minute_at ASC,facts\.id ASC/
+      : new RegExp(`ORDER BY ${cursor} ASC,id ASC`);
+    assert.match(db.calls[0].sql, scopedWhere);
+    assert.match(db.calls[0].sql, chronologicalOrder);
     assert.ok(db.calls[0].sql.includes(uniqueColumn));
     assert.equal(db.calls.length, 1);
   });
