@@ -86,6 +86,6 @@ test('collector degradation includes sanitized failure details without exposing 
   assert.match(youtube.issues.join(' '), /sakurazaka46/);
   assert.match(youtube.issues.join(' '), /full_songs/);
   assert.match(youtube.issues.join(' '), /HTTP 429/);
-  assert.match(youtube.issues.join(' '), /\\[url\\]/);
-  assert.doesNotMatch(youtube.issues.join(' '), /music\\.youtube\\.com|secret-token/);
+  assert.match(youtube.issues.join(' '), /\[url\]/);
+  assert.doesNotMatch(youtube.issues.join(' '), /music\.youtube\.com|secret-token/);
 });
