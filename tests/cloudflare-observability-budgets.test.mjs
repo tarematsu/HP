@@ -38,6 +38,15 @@ test('observability script changes are covered by pull-request CI', () => {
   assert.match(workflow, /needs\.changes\.outputs\.contracts == 'true'/);
 });
 
+test('unified observability runs are serialized to prevent stale issue writes', () => {
+  const workflow = readSource('.github/workflows/sh-observability.yml');
+  expectAll(workflow, [
+    'concurrency:',
+    'group: unified-cloudflare-observability-${{ github.repository }}',
+    'cancel-in-progress: false',
+  ]);
+});
+
 test('unified observability runs account-wide post-deploy, collection, and daily gates', () => {
   const workflow = readSource('.github/workflows/sh-observability.yml');
   const dailyAudit = readSource('.github/scripts/audit-cloudflare-daily-usage.py');
