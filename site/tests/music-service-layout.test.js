@@ -166,3 +166,10 @@ test('regional chart-history dates stay unbroken inside a scrollable mobile tabl
   assert.match(layoutCss, /\.music-service-group \.table-wrap > table\.music-service-history-table :is\(th, td\):first-child\s*\{[^}]*white-space:\s*nowrap;[^}]*overflow-wrap:\s*normal;/s);
   assert.match(layoutCss, /\.table-wrap\s*\{[^}]*overflow-x:\s*auto;/s);
 });
+
+
+test('Apple Music series legend keeps separator characters out of independent grid cells', () => {
+  const selector = readFileSync(new URL('../public/dashboard-series-selector.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(selector, /legendContainer\.append\(' \/ '\)/);
+  assert.match(selector, /series-selector-legend-more/);
+});
