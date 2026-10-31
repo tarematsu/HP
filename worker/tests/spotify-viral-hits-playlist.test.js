@@ -7,7 +7,7 @@ import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 
 const PLAYLIST_ID = '37i9dQZF1DWZZbpkxU5t9L';
 const TRACK = index => String(index).padStart(22, '0');
-function embed(artistAt = [2, 23, 60]) {
+function embed(artistAt = [2, 23, 60], customize = null) {
   const trackList = Array.from({ length: 60 }, (_, i) => ({
     uri: `spotify:track:${TRACK(i + 1)}`,
     title: `Track ${i + 1}`,
@@ -22,6 +22,7 @@ function embed(artistAt = [2, 23, 60]) {
   ], subtitle: '櫻坂46, 坂道選抜' };
   // An explicit unrelated artist ID must win over a misleading display name.
   trackList[30] = { ...trackList[30], artistUri: 'spotify:artist:1234567890ABCDEFGHIJKL', subtitle: '櫻坂46' };
+  customize?.(trackList);
   return '<!doctype html><script id="__NEXT_DATA__" type="application/json">' + JSON.stringify({
     props: { pageProps: { state: { data: { entity: { title: 'Viral Hits Japan', subtitle: 'Spotify',
       trackList } } } } },
@@ -64,6 +65,37 @@ test('official Viral Hits playlist rows retain original 1-based positions includ
   ]);
   assert.equal(model.tracks[0].id, TRACK(2));
   assert.equal(model.tracks[1].streams, null);
+});
+
+test('English Spotify artist names still match when unrelated album metadata carries another artist ID', () => {
+  const html = embed([], trackList => {
+    const unrelatedAlbumArtist = 'spotify:artist:1234567890ABCDEFGHIJKL';
+    trackList[0] = { ...trackList[0], subtitle: 'Sakurazaka46', album: { artistUri: unrelatedAlbumArtist } };
+    trackList[1] = { ...trackList[1], subtitle: 'Nogizaka46', album: { artistUri: unrelatedAlbumArtist } };
+    trackList[2] = { ...trackList[2], subtitle: 'Hinatazaka46', album: { artistUri: unrelatedAlbumArtist } };
+    trackList[3] = { ...trackList[3], subtitle: 'Sakamichi Selection', album: { artistUri: unrelatedAlbumArtist } };
+  });
+  const model = parseSpotifyPlaylistPositions(html, SPOTIFY_VIRAL_HITS_JAPAN_URL);
+  assert.deepEqual(model.tracks.map(row => [row.rank, row.artists]), [
+    [1, ['sakurazaka46']],
+    [2, ['nogizaka46']],
+    [3, ['hinatazaka46']],
+    [4, ['sakamichi-selection']],
+    [30, ['sakurazaka46', 'sakamichi-selection']],
+  ]);
+});
+
+test('primary artist objects and raw Spotify artist IDs are recognized', () => {
+  const html = embed([], trackList => {
+    trackList[0] = { ...trackList[0], artists: [{ id: '0Ti7MfCiVVQAK8zLSiqlto', name: 'Sakurazaka46' }] };
+    trackList[1] = { ...trackList[1], artist: { uri: 'spotify:artist:08lN7bm4Etec8ETFxaTUmq', name: 'Nogizaka46' } };
+  });
+  const model = parseSpotifyPlaylistPositions(html, SPOTIFY_VIRAL_HITS_JAPAN_URL);
+  assert.deepEqual(model.tracks.map(row => [row.rank, row.artists]), [
+    [1, ['sakurazaka46']],
+    [2, ['nogizaka46']],
+    [30, ['sakurazaka46', 'sakamichi-selection']],
+  ]);
 });
 
 test('malformed and missing public embeds fail rather than recording false absence', () => {
