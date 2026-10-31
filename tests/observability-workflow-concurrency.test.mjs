@@ -12,6 +12,8 @@ test('observability runs are not cancelled by workflow or job concurrency', () =
 });
 
 test('stale observability runs cannot overwrite the current-main issue', () => {
+  assert.match(workflow, /^\s+actions: read$/m);
+  assert.match(publisher, /shouldPublishObservabilityStatus/);
   assert.match(publisher, /if \(!isCurrentMainTarget\(targetSha, mainSha\)\)/);
   assert.match(publisher, /Skip stale observability issue/);
 });
