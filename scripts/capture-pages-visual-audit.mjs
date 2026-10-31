@@ -91,6 +91,266 @@ export function kkboxAuditRoutes(route) {
   })));
 }
 
+const CHART_RANGE_VALUES = Object.freeze(['1m', '6m', '1y', 'all']);
+const SAKAMICHI_FILTER_VALUES = Object.freeze(['all', 'sakurazaka46', 'nogizaka46', 'hinatazaka46']);
+const SPOTIFY_FILTER_VALUES = Object.freeze([...SAKAMICHI_FILTER_VALUES, 'sakamichi-selection']);
+const HISTORY_RANGE_VALUES = Object.freeze(['30', '180', '365', 'all']);
+const HISTORY_PERIOD_VALUES = Object.freeze(['month', 'half-year', 'year', 'all']);
+
+function auditControlRoute(route, { panel = null, label, controls = [], controlState }) {
+  const selectedPanel = panel || route.panel;
+  const panelControl = route.control || (panel ? 'button[data-service-group="' + panel + '"]' : null);
+  return {
+    ...route,
+    ...(selectedPanel ? { panel: selectedPanel } : {}),
+    ...(panelControl ? { control: panelControl } : {}),
+    controls: [...(Array.isArray(route.controls) ? route.controls : []), ...controls],
+    auditLabel: label,
+    controlState,
+  };
+}
+
+function selectedButtonStates(route, { panel = null, values, selectorForValue, label }) {
+  return values.map((value) => {
+    const selector = selectorForValue(value);
+    return auditControlRoute(route, {
+      panel,
+      label: label + '-' + value,
+      controls: [selector],
+      controlState: { selector, attribute: 'aria-pressed', value: 'true' },
+    });
+  });
+}
+
+function chartRangeStates(route, { panel = null, prefix, owner, label }) {
+  return selectedButtonStates(route, {
+    panel,
+    values: CHART_RANGE_VALUES,
+    label,
+    selectorForValue: (value) => prefix + '.chart-range-controls[data-range-owner="' + owner
+      + '"] button[data-range="' + value + '"]',
+  });
+}
+
+// Capture every distinct filter/range interaction once per component family.
+// The default tab and every service subview are still captured independently;
+// representative panels keep this interaction matrix bounded without
+// duplicating identical controls across all sixteen editorial playlists.
+export function filterAuditRoutes(route) {
+  if (!route) return [];
+
+  if (route.mode === 'spotify' && !route.panel) {
+    return selectedButtonStates(route, {
+      panel: 'plays',
+      values: SAKAMICHI_FILTER_VALUES,
+      label: 'spotify-artist',
+      selectorForValue: (value) => '#spotifyView button[data-spotify-artist="' + value + '"]',
+    });
+  }
+
+  if (route.mode === 'spotify-charts') {
+    if (!route.panel) {
+      return selectedButtonStates(route, {
+        panel: 'listeners',
+        values: SPOTIFY_FILTER_VALUES,
+        label: 'spotify-chart-artist',
+        selectorForValue: (value) => '#spotifyChartsView button[data-spotify-chart-artist="' + value + '"]',
+      });
+    }
+    if (route.panel === 'artist' || route.panel === 'regional') {
+      const type = route.panel;
+      return [
+        ...selectedButtonStates(route, {
+          values: ['daily', 'weekly'],
+          label: 'spotify-chart-' + type + '-period',
+          selectorForValue: (value) => '#spotifyChartsView button[data-spotify-chart-period-' + type + '="' + value + '"]',
+        }),
+        ...chartRangeStates(route, {
+          prefix: '#spotifyChartsView',
+          owner: 'spotifyChart-' + type,
+          label: 'spotify-chart-' + type + '-range',
+        }),
+      ];
+    }
+    if (route.panel === 'album') {
+      return [
+        ...selectedButtonStates(route, {
+          values: ['weekly'],
+          label: 'spotify-chart-album-period',
+          selectorForValue: (value) => '#spotifyChartsView button[data-spotify-chart-period-album="' + value + '"]',
+        }),
+        ...chartRangeStates(route, {
+          prefix: '#spotifyChartsView',
+          owner: 'spotifyChart-album',
+          label: 'spotify-chart-album-range',
+        }),
+      ];
+    }
+  }
+
+  if (route.mode === 'spotify-playlists') {
+    if (!route.panel) {
+      return selectedButtonStates(route, {
+        panel: 'spotify-japan-rising',
+        values: SPOTIFY_FILTER_VALUES,
+        label: 'spotify-playlist-artist',
+        selectorForValue: (value) => '#spotifyPlaylistsView button[data-spotify-playlist-artist="' + value + '"]',
+      });
+    }
+    if (route.panel === 'spotify-japan-rising') {
+      return chartRangeStates(route, {
+        prefix: '#spotifyPlaylistsView',
+        owner: 'spotifyPlaylist-spotify-japan-rising',
+        label: 'spotify-playlist-range',
+      });
+    }
+  }
+
+  if (route.mode === 'apple-music') {
+    if (!route.panel) {
+      return selectedButtonStates(route, {
+        panel: 'ranks',
+        values: ['sakurazaka46', 'nogizaka46', 'hinatazaka46'],
+        label: 'apple-artist',
+        selectorForValue: (value) => '#appleMusicView button[data-apple-artist="' + value + '"]',
+      });
+    }
+    if (route.panel === 'ranks') {
+      return [
+        auditControlRoute(route, {
+          label: 'apple-series-selector-open',
+          controls: ['#appleSeriesSelector summary'],
+          controlState: { selector: '#appleSeriesSelector', property: 'open', value: true },
+        }),
+        auditControlRoute(route, {
+          label: 'apple-series-first-toggle',
+          controls: ['#appleSeriesSelector summary', '#appleSeriesOptions label:first-child input[type="checkbox"]'],
+          controlState: {
+            selector: '#appleSeriesOptions label:first-child input[type="checkbox"]',
+            property: 'checked',
+            value: false,
+          },
+        }),
+      ];
+    }
+  }
+
+  if (route.mode === 'amazon-music' && !route.panel) {
+    return selectedButtonStates(route, {
+      panel: 'ranks',
+      values: ['all', 'titles', 'sakurazaka', 'nogizaka', 'hinatazaka'],
+      label: 'amazon-mode',
+      selectorForValue: (value) => '#amazonMusicView button[data-amazon-mode="' + value + '"]',
+    });
+  }
+
+  if (route.mode === 'kkbox'
+    && route.kkboxSelection?.series === 'tw:newrelease'
+    && route.kkboxSelection?.period === 'daily') {
+    return [
+      ...selectedButtonStates(route, {
+        values: SAKAMICHI_FILTER_VALUES,
+        label: 'kkbox-artist',
+        selectorForValue: (value) => '#kkboxView button[data-kkbox-artist-filter="' + value + '"]',
+      }),
+      ...chartRangeStates(route, {
+        prefix: '#kkboxView',
+        owner: 'kkbox-japanese-rank',
+        label: 'kkbox-range',
+      }),
+    ];
+  }
+
+  if (route.mode === 'qq_music' && route.panel === 'japan') {
+    return [
+      ...selectedButtonStates(route, {
+        values: SAKAMICHI_FILTER_VALUES,
+        label: 'qq-japan-artist',
+        selectorForValue: (value) => '#qqMusicView .music-service-group[data-group="japan"] button[data-qq-artist-filter="' + value + '"]',
+      }),
+      ...chartRangeStates(route, {
+        prefix: '#qqMusicView',
+        owner: 'qqJapanRankChart',
+        label: 'qq-japan-range',
+      }),
+    ];
+  }
+
+  if (route.mode === 'kugou_music' && route.panel === 'japan') {
+    return [
+      ...selectedButtonStates(route, {
+        values: SAKAMICHI_FILTER_VALUES,
+        label: 'kugou-japan-artist',
+        selectorForValue: (value) => '#kugouMusicView .music-service-group[data-group="japan"] button[data-kugou-artist-filter="' + value + '"]',
+      }),
+      ...chartRangeStates(route, {
+        prefix: '#kugouMusicView',
+        owner: 'kugouJapanRankChart',
+        label: 'kugou-japan-range',
+      }),
+    ];
+  }
+
+  if (route.mode === 'past' || route.mode === 'hinata-past') {
+    const root = route.mode === 'past' ? '#currentView' : '#hinataView';
+    return HISTORY_RANGE_VALUES.map((value) => {
+      const selector = root + ' button[data-history-range="' + value + '"]';
+      return auditControlRoute(route, {
+        label: route.mode + '-range-' + value,
+        controls: [selector],
+        controlState: { selector, className: 'active', value: true },
+      });
+    });
+  }
+
+  if (route.mode === 'daily' || route.mode === 'weekly') {
+    const states = selectedButtonStates(route, {
+      values: HISTORY_PERIOD_VALUES,
+      label: 'history-period',
+      selectorForValue: (value) => '#historyView button[data-history-period="' + value + '"]',
+    });
+    if (route.mode === 'daily') {
+      const selector = '#historyPastWeekToggle button[data-history-past-mode="weekly"]';
+      states.push(auditControlRoute(route, {
+        label: 'history-past-weekly',
+        controls: [selector],
+        controlState: { selector, attribute: 'aria-pressed', value: 'true' },
+      }));
+    }
+    return states;
+  }
+
+  if (route.mode === 'played-tracks' || route.mode === 'hinata-played-tracks') {
+    const root = route.mode === 'played-tracks' ? '#currentView' : '#hinataView';
+    const selector = root + ' input[data-role="played-week"]';
+    return [auditControlRoute(route, {
+      label: route.mode + '-weekly',
+      controls: [selector],
+      controlState: { selector, property: 'checked', value: true },
+    })];
+  }
+
+  if (route.mode === 'nogizaka' && route.source === 'nogizaka') {
+    const details = '#nogizakaListeningPartyView details.series-selector';
+    const summary = details + ' summary';
+    const checkbox = '#nogizakaListeningPartyView .series-selector-options label:first-child input[type="checkbox"]';
+    return [
+      auditControlRoute(route, {
+        label: 'nogizaka-series-selector-open',
+        controls: [summary],
+        controlState: { selector: details, property: 'open', value: true },
+      }),
+      auditControlRoute(route, {
+        label: 'nogizaka-series-first-toggle',
+        controls: [summary, checkbox],
+        controlState: { selector: checkbox, property: 'checked', value: false },
+      }),
+    ];
+  }
+
+  return [];
+}
+
 async function inspectView(page, tab, viewport, outDir) {
   const historyMode = tab.section === 'stationhead' && ['daily', 'weekly', 'monthly'].includes(tab.mode);
   const listeningPartyMode = tab.section === 'stationhead' && tab.source === 'buddies' && tab.mode === 'broadcasts';
@@ -163,10 +423,29 @@ async function inspectView(page, tab, viewport, outDir) {
       listeningPartyWaitTimedOut = true;
     }
   }
-  const controls = Array.isArray(tab.controls) ? tab.controls : tab.control ? [tab.control] : [];
+  const controls = [
+    ...(tab.control ? [tab.control] : []),
+    ...(Array.isArray(tab.controls) ? tab.controls : []),
+  ];
   for (const control of controls) {
     await page.locator('.dashboard-view:not([hidden])').locator(control).click();
     await settle(page);
+  }
+
+  let controlStateTimedOut = false;
+  if (tab.controlState) {
+    try {
+      await page.waitForFunction((expected) => {
+        const element = document.querySelector(expected.selector);
+        if (!element) return false;
+        if (expected.attribute) return element.getAttribute(expected.attribute) === String(expected.value);
+        if (expected.property) return element[expected.property] === expected.value;
+        if (expected.className) return element.classList.contains(expected.className) === Boolean(expected.value);
+        return false;
+      }, tab.controlState, { timeout: 20_000 });
+    } catch {
+      controlStateTimedOut = true;
+    }
   }
 
   let kkboxWaitTimedOut = false;
@@ -416,11 +695,12 @@ async function inspectView(page, tab, viewport, outDir) {
     };
   }, { route: tab, playedTracksMode });
 
-  const name = `${viewport.name}-${String(tab.index + 1).padStart(2, '0')}-${slug(`${tab.mode}${tab.panel ? `-${tab.panel}` : ''}`)}`;
+  const name = `${viewport.name}-${String(tab.index + 1).padStart(2, '0')}-${slug(`${tab.mode}${tab.panel ? `-${tab.panel}` : '' }${tab.auditLabel ? `-${tab.auditLabel}` : ''}`)}`;
   const screenshot = join(outDir, `${name}.png`);
   await page.screenshot({ path: screenshot, fullPage: true, animations: 'disabled' });
 
   const issues = [];
+  if (controlStateTimedOut) issues.push('interactive control did not reach the requested state within 20 seconds');
   if (serviceRenderWaitTimedOut) issues.push('music service subview did not finish rendering within 20 seconds');
   if (state.channelHistory && (!state.channelHistory.rows || !state.channelHistory.painted)) issues.push('channel history data or chart was not rendered');
   if (state.playedPeriodVisible === false) issues.push('selected playback period is outside the visible date strip');
@@ -548,21 +828,31 @@ async function auditViewport(browser, baseUrl, viewport, outDir) {
   if (!tabs.length) throw new Error('No visible navigation tabs were found');
 
   const views = [];
-  for (const tab of tabs) {
+  const captureRoute = async (route) => {
     try {
-      const routeStates = tab.mode === 'kkbox' ? kkboxAuditRoutes(tab) : [tab];
-      for (const routeState of routeStates) {
-        views.push(await inspectView(page, routeState, viewport, outDir));
-      }
-      const panels = await page.locator('.dashboard-view:not([hidden]) :is(button[data-stationhead-section], button[data-service-group]):visible:not(:disabled)').evaluateAll((buttons) => buttons.map((button) => {
-        const attribute = button.hasAttribute('data-stationhead-section') ? 'data-stationhead-section' : 'data-service-group';
-        return { panel: button.getAttribute(attribute), control: `button[${attribute}="${button.getAttribute(attribute)}"]` };
-      }));
-      for (const panel of panels) views.push(await inspectView(page, { ...tab, ...panel }, viewport, outDir));
+      views.push(await inspectView(page, route, viewport, outDir));
     } catch (error) {
-      const screenshot = join(outDir, `${viewport.name}-${tab.index + 1}-failed.png`);
+      const label = slug(route.mode + (route.panel ? '-' + route.panel : '') + (route.auditLabel ? '-' + route.auditLabel : ''));
+      const screenshot = join(outDir, viewport.name + '-' + String((route.index || 0) + 1).padStart(2, '0') + '-' + label + '-failed.png');
       await page.screenshot({ path: screenshot, fullPage: true, animations: 'disabled' }).catch(() => {});
-      views.push({ tab, viewport: viewport.name, screenshot, ok: false, issues: [String(error?.message || error)] });
+      views.push({ tab: route, viewport: viewport.name, screenshot, ok: false, issues: [String(error?.message || error)] });
+    }
+  };
+  for (const tab of tabs) {
+    const routeStates = tab.mode === 'kkbox' ? kkboxAuditRoutes(tab) : [tab];
+    for (const routeState of routeStates) {
+      await captureRoute(routeState);
+      for (const controlState of filterAuditRoutes(routeState)) await captureRoute(controlState);
+    }
+    const panels = await page.locator('.dashboard-view:not([hidden]) :is(button[data-stationhead-section], button[data-service-group]):visible:not(:disabled)')
+      .evaluateAll((buttons) => buttons.map((button) => {
+        const attribute = button.hasAttribute('data-stationhead-section') ? 'data-stationhead-section' : 'data-service-group';
+        return { panel: button.getAttribute(attribute), control: 'button[' + attribute + '="' + button.getAttribute(attribute) + '"]' };
+      })).catch(() => []);
+    for (const panel of panels) {
+      const panelRoute = { ...tab, ...panel };
+      await captureRoute(panelRoute);
+      for (const controlState of filterAuditRoutes(panelRoute)) await captureRoute(controlState);
     }
   }
 
