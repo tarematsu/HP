@@ -68,11 +68,12 @@ function safeCollectorDiagnostic(value) {
   const text = String(value || '').trim();
   if (!text) return null;
   return text
-    .replace(/https?:\\/\\/[^\\s"'<>]+/gi, '[url]')
-    .replace(/((?:api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|cookie|token)\\s*[:=]\\s*)[^,\\s"'<>}]+/gi, '$1[redacted]')
-    .replace(/\\bBearer\\s+\\S+/gi, 'Bearer [redacted]')
-    .replace(/\\bAIza[0-9A-Za-z_-]{20,}\\b/g, '[redacted]')
-    .replace(/\\b[A-Za-z0-9_-]{40,}\\b/g, '[redacted]')
+    .replace(/https?:\/\/[^\s"'<>]+/gi, '[url]')
+    .replace(/("(?:api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|cookie|token)"\s*:\s*")[^"]*(")/gi, '$1[redacted]$2')
+    .replace(/((?:api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|cookie|token)\s*[:=]\s*)[^,\s"'<>}]+/gi, '$1[redacted]')
+    .replace(/\bBearer\s+\S+/gi, 'Bearer [redacted]')
+    .replace(/\bAIza[0-9A-Za-z_-]{20,}\b/g, '[redacted]')
+    .replace(/\b[A-Za-z0-9_-]{40,}\b/g, '[redacted]')
     .slice(0, 400);
 }
 
@@ -80,10 +81,10 @@ function collectorStatusIssue(state) {
   const status = String(state?.status || '').toLowerCase();
   if (!/^(error|failed|blocked|degraded)$/.test(status)) return null;
   const details = [
-    state?.last_error_class ? `class=${safeCollectorDiagnostic(state.last_error_class)}` : null,
-    state?.last_error_message ? `detail=${safeCollectorDiagnostic(state.last_error_message)}` : null,
+    state?.last_error_class ? 'class=' + safeCollectorDiagnostic(state.last_error_class) : null,
+    state?.last_error_message ? 'detail=' + safeCollectorDiagnostic(state.last_error_message) : null,
   ].filter(Boolean);
-  return `collector status: ${status}${details.length ? ` (${details.join('; ')})` : ''}`;
+  return 'collector status: ' + status + (details.length ? ' (' + details.join('; ') + ')' : '');
 }
 
 export async function auditPagesData(getJson, now = Date.now()) {
