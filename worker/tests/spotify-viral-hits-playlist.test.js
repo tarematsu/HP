@@ -13,9 +13,9 @@ function embed(artistAt = [2, 23, 60], customize = null) {
     title: `Track ${i + 1}`,
     subtitle: 'Other Artist',
   }));
-  trackList[artistAt[0] - 1] = { ...trackList[artistAt[0] - 1], artistUri: 'spotify:artist:0Ti7MfCiVVQAK8zLSiqlto', subtitle: '櫻坂46' };
-  trackList[artistAt[1] - 1] = { ...trackList[artistAt[1] - 1], artistUri: 'spotify:artist:08lN7bm4Etec8ETFxaTUmq', subtitle: '乃木坂46' };
-  trackList[artistAt[2] - 1] = { ...trackList[artistAt[2] - 1], artistUri: 'spotify:artist:0eQSoTI7sQENREQM8Klp2j', subtitle: '日向坂46' };
+  if (artistAt[0]) trackList[artistAt[0] - 1] = { ...trackList[artistAt[0] - 1], artistUri: 'spotify:artist:0Ti7MfCiVVQAK8zLSiqlto', subtitle: '櫻坂46' };
+  if (artistAt[1]) trackList[artistAt[1] - 1] = { ...trackList[artistAt[1] - 1], artistUri: 'spotify:artist:08lN7bm4Etec8ETFxaTUmq', subtitle: '乃木坂46' };
+  if (artistAt[2]) trackList[artistAt[2] - 1] = { ...trackList[artistAt[2] - 1], artistUri: 'spotify:artist:0eQSoTI7sQENREQM8Klp2j', subtitle: '日向坂46' };
   trackList[29] = { ...trackList[29], contributors: [
     { uri: 'spotify:artist:0Ti7MfCiVVQAK8zLSiqlto' },
     { uri: 'spotify:artist:44VXOtivzQwdqj1Xs80SaX' },
