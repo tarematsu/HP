@@ -2,12 +2,13 @@
 // Buddies and Ohisama have different schemas and cursor semantics.
 const GAP_QUERIES = Object.freeze({
   buddies: `SELECT
-      channel_id,station_id,minute_at,observed_at,is_broadcasting,
-      listener_count,online_member_count,total_member_count,guest_count,
-      reported_total_listens,reported_current_stream_count,broadcast_start_time
-    FROM sh_minute_facts
-    WHERE channel_id=? AND minute_at>? AND minute_at<?
-    ORDER BY minute_at ASC,id ASC`,
+      facts.channel_id,context.station_id,facts.minute_at,facts.observed_at,facts.is_broadcasting,
+      facts.listener_count,facts.online_member_count,facts.total_member_count,facts.guest_count,
+      facts.reported_total_listens,facts.reported_current_stream_count,context.broadcast_start_time
+    FROM sh_minute_facts facts
+    LEFT JOIN sh_minute_fact_context context ON context.fact_id=facts.id
+    WHERE facts.channel_id=? AND facts.minute_at>? AND facts.minute_at<?
+    ORDER BY facts.minute_at ASC,facts.id ASC`,
   ohisama: `SELECT
       channel_id,station_id,is_broadcasting,observed_at,
       online_member_count,total_member_count,reported_current_stream_count
