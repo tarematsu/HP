@@ -2,8 +2,8 @@ const WORKFLOW_PATH = '.github/workflows/sh-observability.yml';
 
 export function extractObservabilityRunMetadata(issueBody = '') {
   const body = String(issueBody || '');
-  const runId = Number(body.match(/\\/actions\\/runs\\/(\\d+)/)?.[1] || 0);
-  const mainSha = body.match(/\\*\\*Current main SHA:\\*\\* `([^`]+)`/)?.[1] || '';
+  const runId = Number(body.match(/\/actions\/runs\/(\d+)/)?.[1] || 0);
+  const mainSha = body.match(/\*\*Current main SHA:\*\* `([^`]+)`/)?.[1] || '';
   return { runId, mainSha };
 }
 
