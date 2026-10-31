@@ -261,32 +261,36 @@ export function filterAuditRoutes(route) {
     ];
   }
 
-  if (route.mode === 'qq_music' && route.panel === 'japan') {
+  if (route.mode === 'qq_music' && (route.panel === 'japan' || route.panel === 'anime')) {
+    const group = route.panel;
+    const chart = group === 'japan' ? 'qqJapanRankChart' : 'qqAnimeRankChart';
     return [
       ...selectedButtonStates(route, {
         values: SAKAMICHI_FILTER_VALUES,
-        label: 'qq-japan-artist',
-        selectorForValue: (value) => '#qqMusicView .music-service-group[data-group="japan"] button[data-qq-artist-filter="' + value + '"]',
+        label: 'qq-' + group + '-artist',
+        selectorForValue: (value) => '#qqMusicView .music-service-group[data-group="' + group + '"] button[data-qq-artist-filter="' + value + '"]',
       }),
       ...chartRangeStates(route, {
         prefix: '#qqMusicView',
-        owner: 'qqJapanRankChart',
-        label: 'qq-japan-range',
+        owner: chart,
+        label: 'qq-' + group + '-range',
       }),
     ];
   }
 
-  if (route.mode === 'kugou_music' && route.panel === 'japan') {
+  if (route.mode === 'kugou_music' && (route.panel === 'japan' || route.panel === 'acg')) {
+    const group = route.panel;
+    const chart = group === 'japan' ? 'kugouJapanRankChart' : 'kugouAcgRankChart';
     return [
       ...selectedButtonStates(route, {
         values: SAKAMICHI_FILTER_VALUES,
-        label: 'kugou-japan-artist',
-        selectorForValue: (value) => '#kugouMusicView .music-service-group[data-group="japan"] button[data-kugou-artist-filter="' + value + '"]',
+        label: 'kugou-' + group + '-artist',
+        selectorForValue: (value) => '#kugouMusicView .music-service-group[data-group="' + group + '"] button[data-kugou-artist-filter="' + value + '"]',
       }),
       ...chartRangeStates(route, {
         prefix: '#kugouMusicView',
-        owner: 'kugouJapanRankChart',
-        label: 'kugou-japan-range',
+        owner: chart,
+        label: 'kugou-' + group + '-range',
       }),
     ];
   }
