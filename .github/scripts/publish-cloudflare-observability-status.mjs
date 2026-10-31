@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { pathToFileURL } from 'node:url';
+import { shouldPublishObservabilityStatus } from './observability-run-ordering.mjs';
 import {
   MAX_ISSUE_BODY_CHARS,
   clipMarkdown,
@@ -258,6 +259,24 @@ export async function publishFromEnvironment() {
     readOptionalText('telemetry-summary.md'),
     readOptionalText('r2-collection-summary.md'),
   ]);
+  if (!isCurrentMainTarget(targetSha, mainSha)) {
+    console.log(`::warning title=Skip stale observability issue::target_sha=${targetSha} current_main_sha=${mainSha}`);
+    return;
+  }
+
+  const currentRunId = requiredEnv('GITHUB_RUN_ID');
+  const existingIssue = await findStatusIssue({ request, title: STATUS_ISSUE_TITLE, marker: STATUS_MARKER });
+  const workflowRunsResponse = await request('GET', '/actions/runs?branch=main&per_page=100');
+  if (!shouldPublishObservabilityStatus({
+    currentRunId,
+    targetSha,
+    existingIssueBody: existingIssue?.body,
+    workflowRuns: workflowRunsResponse?.workflow_runs || [],
+  })) {
+    console.log(`::notice title=Skip superseded observability report::run_id=${currentRunId} target_sha=${targetSha}`);
+    return;
+  }
+
   await publishCommitStatuses({
     request,
     targetSha,
@@ -266,12 +285,7 @@ export async function publishFromEnvironment() {
     contexts: STATUS_CONTEXTS,
     overallDescription: 'Unified Cloudflare observability',
   });
-  if (!isCurrentMainTarget(targetSha, mainSha)) {
-    console.log(`::warning title=Skip stale observability issue::target_sha=${targetSha} current_main_sha=${mainSha}`);
-    return;
-  }
 
-  const existingIssue = await findStatusIssue({ request, title: STATUS_ISSUE_TITLE, marker: STATUS_MARKER });
   const body = buildIssueBody({
     generatedAt: new Date().toISOString(),
     targetSha,
@@ -287,12 +301,23 @@ export async function publishFromEnvironment() {
     deploymentHealthBlock: extractDeploymentHealthBlock(existingIssue?.body),
     previousIssueBody: existingIssue?.body,
   });
+  const latestIssue = await findStatusIssue({ request, title: STATUS_ISSUE_TITLE, marker: STATUS_MARKER });
+  const latestRunsResponse = await request('GET', '/actions/runs?branch=main&per_page=100');
+  if (!shouldPublishObservabilityStatus({
+    currentRunId,
+    targetSha,
+    existingIssueBody: latestIssue?.body,
+    workflowRuns: latestRunsResponse?.workflow_runs || [],
+  })) {
+    console.log(`::notice title=Skip superseded observability issue write::run_id=${currentRunId} target_sha=${targetSha}`);
+    return;
+  }
   const issue = await upsertStatusIssue({
     request,
     title: STATUS_ISSUE_TITLE,
     marker: STATUS_MARKER,
     body,
-    existingIssue,
+    existingIssue: latestIssue,
   });
   console.log(`Published unified observability status to issue #${issue.number}`);
 }
