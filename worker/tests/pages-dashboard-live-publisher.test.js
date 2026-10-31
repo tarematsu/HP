@@ -28,7 +28,8 @@ test('steady-state live publication is differential and reads D1 only for bounde
   assert.match(sharedReadModel, /STATIONHEAD_READ_MODEL_INCREMENTAL_GAP_MS = 11 \* 60_000/);
   assert.match(sharedReadModel, /STATIONHEAD_READ_MODEL_RECOVERY_GAP_MS = DAY_MS/);
   assert.match(publisher, /loadStationheadMinuteFactGapRows\(env\?\.MINUTE_DB, 'buddies'/);
-  assert.match(factReader, /minute_at>\? AND minute_at<\?/);
+  assert.match(factReader, /facts\.minute_at>\? AND facts\.minute_at<\?/);
+  assert.match(factReader, /LEFT JOIN sh_minute_fact_context context ON context\.fact_id=facts\.id/);
   assert.match(publisher, /mode = 'recovery'/);
   assert.match(publisher, /mode = 'bootstrap'/);
   assert.match(publisher, /loadExistingState\(bucket\)/);
