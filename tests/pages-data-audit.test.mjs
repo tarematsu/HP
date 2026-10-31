@@ -62,3 +62,30 @@ test('Spotify trend audit rejects nonnumeric aggregate values on completed dates
     'sakurazaka46: daily total delta is not numeric on 2026-10-26',
   ]);
 });
+
+test('collector degradation includes sanitized failure details without exposing URLs or tokens', async () => {
+  const report = await auditPagesData(async (path) => {
+    if (path === '/api/youtube-music') {
+      return {
+        services: [{
+          status: 'degraded',
+          last_success_at: now,
+          last_error_class: 'collection_error',
+          last_error_message: JSON.stringify([{
+            canonical_artist: 'sakurazaka46',
+            stage: 'full_songs',
+            error: 'HTTP 429 https://music.youtube.com/youtubei/v1/browse?key=secret-token',
+          }]),
+        }],
+      };
+    }
+    throw new Error('HTTP 503');
+  }, now);
+  const youtube = report.checks.find((row) => row.name === 'youtube-music');
+  assert.equal(youtube.ok, false);
+  assert.match(youtube.issues.join(' '), /sakurazaka46/);
+  assert.match(youtube.issues.join(' '), /full_songs/);
+  assert.match(youtube.issues.join(' '), /HTTP 429/);
+  assert.match(youtube.issues.join(' '), /\[url\]/);
+  assert.doesNotMatch(youtube.issues.join(' '), /music\.youtube\.com|secret-token/);
+});
