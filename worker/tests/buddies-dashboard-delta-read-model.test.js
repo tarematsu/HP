@@ -220,7 +220,8 @@ test('Buddies dashboard gap recovery selects only the missing D1 interval', asyn
   assert.equal(result.recovery_rows, 3);
   assert.equal(queries.length, 1);
   assert.match(queries[0], /FROM sh_minute_facts/);
-  assert.match(queries[0], /minute_at>\? AND minute_at<\?/);
+  assert.match(queries[0], /facts\.minute_at>\? AND facts\.minute_at<\?/);
+  assert.match(queries[0], /LEFT JOIN sh_minute_fact_context context ON context\.fact_id=facts\.id/);
   assert.deepEqual(binds[0], [46, previousAt, observedAt]);
   const hot = JSON.parse(r2.values.get(BUDDIES_DASHBOARD_HOT_STATE_KEY));
   assert.equal(hot.payload.history.at(-1).observed_at, observedAt);

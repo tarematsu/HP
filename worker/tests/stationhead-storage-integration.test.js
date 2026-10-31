@@ -1,5 +1,6 @@
 import { planStationheadPlaybackDaily } from '../src/stationhead-playback-store.js';
 import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 import { loadStationheadMinuteFactGapRows } from '../src/stationhead-minute-facts-reader.js';
 import { upsertStationheadPeriodSummary } from '../src/stationhead-period-summary-store.js';
@@ -24,6 +25,64 @@ function fakeDb(result = { results: [] }) {
   };
 }
 
+function sqliteD1(db) {
+  return {
+    prepare(sql) {
+      const statement = db.prepare(sql);
+      return {
+        bind(...args) {
+          return { async all() { return { results: statement.all(...args) }; } };
+        },
+      };
+    },
+  };
+}
+
+test('Buddies gap recovery resolves station and broadcast context from the sparse context view', async () => {
+  const sqlite = new DatabaseSync(':memory:');
+  try {
+    sqlite.exec(`
+      CREATE TABLE sh_minute_facts (
+        id INTEGER PRIMARY KEY, channel_id INTEGER NOT NULL, minute_at INTEGER NOT NULL,
+        observed_at INTEGER NOT NULL, broadcast_session_id INTEGER, is_broadcasting INTEGER,
+        listener_count INTEGER, online_member_count INTEGER, total_member_count INTEGER,
+        guest_count INTEGER, reported_total_listens INTEGER, reported_current_stream_count INTEGER
+      );
+      CREATE TABLE sh_broadcast_sessions (
+        id INTEGER PRIMARY KEY, station_id INTEGER, broadcast_start_time INTEGER
+      );
+      CREATE TABLE sh_minute_fact_context_v2 (
+        fact_id INTEGER PRIMARY KEY, station_id_override INTEGER, broadcast_start_time_override INTEGER
+      );
+      CREATE VIEW sh_minute_fact_context AS
+        SELECT v.fact_id,
+          COALESCE(v.station_id_override,s.station_id) AS station_id,
+          COALESCE(v.broadcast_start_time_override,s.broadcast_start_time) AS broadcast_start_time
+        FROM sh_minute_fact_context_v2 v
+        LEFT JOIN sh_minute_facts f ON f.id=v.fact_id
+        LEFT JOIN sh_broadcast_sessions s ON s.id=f.broadcast_session_id;
+      INSERT INTO sh_broadcast_sessions VALUES(7,3953999,1200);
+      INSERT INTO sh_minute_facts VALUES
+        (1,318,100,100,7,1,10,20,30,40,50,60),
+        (2,318,200,200,7,1,11,21,31,41,51,61),
+        (3,318,300,300,7,1,12,22,32,42,52,62),
+        (4,318,250,250,7,1,13,23,33,43,53,63);
+      INSERT INTO sh_minute_fact_context_v2 VALUES
+        (2,NULL,NULL),(4,1234,1500);
+    `);
+
+    const rows = await loadStationheadMinuteFactGapRows(sqliteD1(sqlite), 'buddies', 318, 100, 300);
+    assert.deepEqual(rows.map((row) => [
+      row.channel_id, row.station_id, row.minute_at, row.broadcast_start_time,
+    ]), [
+      [318, 3953999, 200, 1200],
+      [318, 1234, 250, 1500],
+    ]);
+  } finally {
+    sqlite.close();
+  }
+});
+
 for (const [source, cursor, uniqueColumn] of [
   ['buddies', 'minute_at', 'broadcast_start_time'],
   ['ohisama', 'observed_at', 'reported_current_stream_count'],
@@ -33,8 +92,14 @@ for (const [source, cursor, uniqueColumn] of [
     const db = fakeDb({ results: rows });
     assert.equal(await loadStationheadMinuteFactGapRows(db, source, 2, 100, 200), rows);
     assert.deepEqual(db.calls[0].args, [2, 100, 200]);
-    assert.match(db.calls[0].sql, new RegExp(`WHERE channel_id=\\? AND ${cursor}>\\? AND ${cursor}<\\?`));
-    assert.match(db.calls[0].sql, new RegExp(`ORDER BY ${cursor} ASC,id ASC`));
+    const scopedWhere = source === 'buddies'
+      ? /WHERE facts\.channel_id=\? AND facts\.minute_at>\? AND facts\.minute_at<\?/
+      : new RegExp(`WHERE channel_id=\\? AND ${cursor}>\\? AND ${cursor}<\\?`);
+    const chronologicalOrder = source === 'buddies'
+      ? /ORDER BY facts\.minute_at ASC,facts\.id ASC/
+      : new RegExp(`ORDER BY ${cursor} ASC,id ASC`);
+    assert.match(db.calls[0].sql, scopedWhere);
+    assert.match(db.calls[0].sql, chronologicalOrder);
     assert.ok(db.calls[0].sql.includes(uniqueColumn));
     assert.equal(db.calls.length, 1);
   });
