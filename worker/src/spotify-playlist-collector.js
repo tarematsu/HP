@@ -159,6 +159,13 @@ function normalizedArtist(value) {
     .toLocaleLowerCase('ja-JP');
 }
 
+const SPOTIFY_ARTIST_NAME_ALIASES = Object.freeze({
+  sakurazaka46: Object.freeze(['Sakurazaka46']),
+  nogizaka46: Object.freeze(['Nogizaka46']),
+  hinatazaka46: Object.freeze(['Hinatazaka46']),
+  'sakamichi-selection': Object.freeze(['Sakamichi Selection']),
+});
+
 function targetTrack(row) {
   const strings = nestedStrings(row);
   if (strings.some((value) => String(value).includes(`spotify:artist:${TARGET_ARTIST_ID}`)
@@ -179,11 +186,50 @@ function rowTitle(row) {
   return text(row?.title ?? row?.name ?? row?.track?.name);
 }
 
+function artistDisplayName(value) {
+  if (typeof value === 'string') return text(value);
+  if (!value || typeof value !== 'object') return null;
+  return text(value.name ?? value.artistName ?? value.artist_name ?? value.displayName ?? value.title);
+}
+
 function rowArtist(row) {
-  const direct = text(row?.subtitle ?? row?.artist ?? row?.artistName ?? row?.track?.artistName);
+  const direct = [
+    row?.subtitle, row?.artistName, row?.artist_name,
+    row?.track?.artistName, row?.track?.artist_name,
+  ].map(text).find(Boolean);
   if (direct) return direct;
-  const artists = Array.isArray(row?.track?.artists) ? row.track.artists.map((item) => text(item?.name)).filter(Boolean) : [];
-  return artists.length ? artists.join(', ') : null;
+
+  for (const value of [row?.artist, row?.track?.artist]) {
+    const name = artistDisplayName(value);
+    if (name) return name;
+  }
+  for (const value of [row?.artists, row?.track?.artists, row?.contributors, row?.track?.contributors]) {
+    if (!Array.isArray(value)) continue;
+    const names = value.map(artistDisplayName).filter(Boolean);
+    if (names.length) return names.join(', ');
+  }
+  return null;
+}
+
+// Only explicit primary-artist fields may veto a display-name fallback.
+// Searching every nested string also finds album/label/contributor artist IDs,
+// which can otherwise hide a real playlist credit when the embed omits the
+// primary artist URI but still exposes its visible subtitle.
+function primaryArtistIds(row) {
+  const primaryArtistFields = [
+    row?.artistUri, row?.artist_uri, row?.artistId, row?.artist_id,
+    row?.artist, row?.artists,
+    row?.track?.artistUri, row?.track?.artist_uri, row?.track?.artistId, row?.track?.artist_id,
+    row?.track?.artist, row?.track?.artists,
+  ];
+  const values = nestedStrings(primaryArtistFields);
+  return new Set(values.flatMap((value) => {
+    const item = String(value);
+    const ids = [...item.matchAll(/(?:spotify:artist:|\/artist\/)([A-Za-z0-9]{22})/gu)]
+      .map((match) => match[1]);
+    if (/^[A-Za-z0-9]{22}$/u.test(item)) ids.push(item);
+    return ids;
+  }));
 }
 
 export function parseSpotifyPlaylistEmbed(html, sourceUrl) {
@@ -238,7 +284,11 @@ export function parseSpotifyPlaylistPositions(html, sourceUrl) {
     throw new Error('Spotify playlist embed has no complete track list');
   }
   const byArtistId = new Map(SPOTIFY_MONTHLY_LISTENER_ARTISTS.map(row => [row.spotify_artist_id, row]));
-  const byArtistName = new Map(SPOTIFY_MONTHLY_LISTENER_ARTISTS.map(row => [normalizedArtist(row.artist_name), row]));
+  const byArtistName = new Map();
+  for (const row of SPOTIFY_MONTHLY_LISTENER_ARTISTS) {
+    const names = [row.artist_name, ...(SPOTIFY_ARTIST_NAME_ALIASES[row.artist_key] || [])];
+    for (const name of names) byArtistName.set(normalizedArtist(name), row);
+  }
   const tracks = [];
   for (const [index, row] of entity.trackList.entries()) {
     if (!row || typeof row !== 'object') throw new Error('Malformed Spotify playlist row');
@@ -251,7 +301,7 @@ export function parseSpotifyPlaylistPositions(html, sourceUrl) {
     // matches: this would create false "not listed" rankings in the history.
     if (!id || !title) throw new Error('Incomplete Spotify playlist track identity');
     const values = nestedStrings(row);
-    const artistIds = new Set(values.flatMap(value => [...String(value).matchAll(/(?:spotify:artist:|\/artist\/)([A-Za-z0-9]{22})/gu)].map(match => match[1])));
+    const artistIds = primaryArtistIds(row);
     const matched = new Map();
     for (const artistId of artistIds) {
       const artist = byArtistId.get(artistId);
