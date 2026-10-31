@@ -42,6 +42,10 @@ permissions:
   issues: write
   statuses: write
 
+concurrency:
+  group: unified-cloudflare-observability-${{ github.repository }}
+  cancel-in-progress: false
+
 jobs:
   classify:
     name: Select safe diagnostic trigger
