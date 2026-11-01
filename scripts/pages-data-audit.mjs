@@ -102,7 +102,8 @@ export function kkboxSourcePeriodIssues(payload, now = Date.now(), maxAge = 8 * 
   const issues = [];
   for (const key of KKBOX_SERIES) {
     const item = series[key];
-    if (!item || Number(item.checked_requests) < 1) {
+    const checkedRequests = Number(item?.checked_requests);
+    if (!item || !Number.isFinite(checkedRequests) || checkedRequests < 1) {
       issues.push(`${key}: no successful provider-period checks`);
       continue;
     }
