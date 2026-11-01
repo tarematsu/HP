@@ -17,3 +17,17 @@ test('stale observability runs cannot overwrite the current-main issue', () => {
   assert.match(publisher, /if \(!isCurrentMainTarget\(targetSha, mainSha\)\)/);
   assert.match(publisher, /Skip stale observability issue/);
 });
+
+test('collection integrity audit still runs when telemetry audit fails', () => {
+  const start = workflow.indexOf('- name: Enforce current-deployment telemetry and collection integrity');
+  const end = workflow.indexOf('- name: Audit R2 collection freshness', start);
+  assert.ok(start >= 0 && end > start, 'telemetry integrity step must exist');
+  const block = workflow.slice(start, end);
+  const pipefail = block.indexOf('set -o pipefail');
+  const noExit = block.indexOf('set +e');
+  const telemetry = block.indexOf('python3 .github/scripts/audit-deployed-cloudflare-telemetry.py');
+  const collection = block.indexOf('node .github/scripts/audit-observability-collection.mjs');
+  const aggregateFailure = block.indexOf('if (( telemetry_status != 0 || collection_status != 0 )); then');
+  assert.ok(pipefail >= 0 && pipefail < noExit && noExit < telemetry);
+  assert.ok(telemetry < collection && collection < aggregateFailure);
+});
