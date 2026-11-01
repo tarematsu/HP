@@ -107,7 +107,7 @@ export function kkboxSourcePeriodIssues(payload, now = Date.now(), maxAge = 8 * 
       continue;
     }
     const latest = String(item.latest_period || '');
-    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(latest)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(latest)) {
       issues.push(`${key}: latest provider period is missing`);
       continue;
     }

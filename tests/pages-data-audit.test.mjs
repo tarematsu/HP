@@ -23,7 +23,7 @@ test('KKBOX freshness checks every provider series instead of trusting the colle
   series['hk/weekly/song'].latest_period = '2026-10-01';
   const issues = kkboxSourcePeriodIssues(payload, now);
   assert.equal(issues.length, 1);
-  assert.match(issues[0], /hk\\/weekly\\/song: latest provider period is stale/);
+  assert.ok(issues[0].includes('hk/weekly/song: latest provider period is stale'));
   assert.match(issues[0], /2026-10-01/);
 
   assert.match(kkboxSourcePeriodIssues({}, now)[0], /coverage is missing/);
