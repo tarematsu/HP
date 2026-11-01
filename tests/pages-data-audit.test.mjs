@@ -29,6 +29,8 @@ test('KKBOX freshness checks every provider series instead of trusting the colle
   assert.match(kkboxSourcePeriodIssues({}, now)[0], /coverage is missing/);
   series['hk/weekly/song'] = { checked_requests: 0, latest_period: null };
   assert.match(kkboxSourcePeriodIssues(payload, now)[0], /no successful provider-period checks/);
+  series['hk/weekly/song'] = { latest_period: '2026-10-09' };
+  assert.match(kkboxSourcePeriodIssues(payload, now)[0], /no successful provider-period checks/);
 });
 
 test('HTTP failures remain separate data failures rather than successful screenshots', async () => {
