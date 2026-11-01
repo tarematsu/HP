@@ -194,6 +194,8 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
+          # Preserve both audit reports when telemetry finds an error; fail after both checks.
+          set +e
           actual_summary="$GITHUB_STEP_SUMMARY"
           telemetry_status=0
           collection_status=0
