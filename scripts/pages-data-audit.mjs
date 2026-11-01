@@ -1,6 +1,10 @@
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
 const GROUPS = ['sakurazaka46', 'nogizaka46', 'hinatazaka46'];
+const KKBOX_SERIES = [
+  'tw/daily/song', 'tw/daily/newrelease', 'tw/weekly/song', 'tw/weekly/newrelease',
+  'hk/daily/song', 'hk/daily/newrelease', 'hk/weekly/song', 'hk/weekly/newrelease',
+];
 const SPOTIFY_DAILY_DELTA_OUTLIER_THRESHOLD = 5_000_000;
 const dayKey = (at) => new Date(at).toISOString().slice(0, 10);
 const jstDayKey = (at) => new Date(at + 9 * HOUR).toISOString().slice(0, 10);
@@ -87,6 +91,38 @@ function collectorStatusIssue(state) {
   return 'collector status: ' + status + (details.length ? ' (' + details.join('; ') + ')' : '');
 }
 
+// Collector success timestamps only prove that the request completed. KKBOX's
+// provider can still return an old chart period, so validate every territory /
+// cadence / chart series against the provider's own latest period as well.
+export function kkboxSourcePeriodIssues(payload, now = Date.now(), maxAge = 8 * DAY) {
+  const series = payload?.kkbox_japanese_chart?.coverage?.series;
+  if (!series || typeof series !== 'object' || Array.isArray(series)) {
+    return ['KKBOX source-period coverage is missing'];
+  }
+  const issues = [];
+  for (const key of KKBOX_SERIES) {
+    const item = series[key];
+    if (!item || Number(item.checked_requests) < 1) {
+      issues.push(`${key}: no successful provider-period checks`);
+      continue;
+    }
+    const latest = String(item.latest_period || '');
+    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(latest)) {
+      issues.push(`${key}: latest provider period is missing`);
+      continue;
+    }
+    const periodAt = Date.parse(`${latest}T00:00:00Z`);
+    if (!Number.isFinite(periodAt)) {
+      issues.push(`${key}: latest provider period is invalid (${latest})`);
+    } else if (periodAt > now + 5 * 60_000) {
+      issues.push(`${key}: latest provider period is in the future (${latest})`);
+    } else if (now - periodAt > maxAge) {
+      issues.push(`${key}: latest provider period is stale (${latest}, ${Math.floor((now - periodAt) / DAY)} days old)`);
+    }
+  }
+  return issues;
+}
+
 export async function auditPagesData(getJson, now = Date.now()) {
   const checks = [];
   const check = async (name, path, inspect) => {
@@ -127,11 +163,14 @@ export async function auditPagesData(getJson, now = Date.now()) {
   for (const [service, hours] of [['youtube-music', 36], ['kkbox', 8 * 24], ['qq-music', 8 * 24], ['kugou-music', 4 * 24]]) {
     tasks.push(check(service, `/api/${service}`, (p) => {
       const states = p.services || [];
-      if (!states.length) return [timestampIssue(p.source_updated_at, now, hours * HOUR)];
-      return states.flatMap((state) => [
-        timestampIssue(state.last_success_at, now, hours * HOUR),
-        collectorStatusIssue(state),
-      ]);
+      const issues = states.length
+        ? states.flatMap((state) => [
+          timestampIssue(state.last_success_at, now, hours * HOUR),
+          collectorStatusIssue(state),
+        ])
+        : [timestampIssue(p.source_updated_at, now, hours * HOUR)];
+      if (service === 'kkbox') issues.push(...kkboxSourcePeriodIssues(p, now));
+      return issues;
     }));
   }
   await Promise.all(tasks);

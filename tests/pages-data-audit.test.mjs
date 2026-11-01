@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { missingRecentDays, timestampIssue, leaderboardSourceIssues, spotifyDeltaOutlierIssues, auditPagesData } from '../scripts/pages-data-audit.mjs';
+import { missingRecentDays, timestampIssue, leaderboardSourceIssues, spotifyDeltaOutlierIssues, kkboxSourcePeriodIssues, auditPagesData } from '../scripts/pages-data-audit.mjs';
 const now = Date.parse('2026-10-10T16:00:00Z');
 test('daily audit respects UTC closure and detects internal missing dates', () => {
   assert.deepEqual(missingRecentDays(['2026-10-06', '2026-10-08', '2026-10-09'], now), ['2026-10-07']);
@@ -11,6 +11,26 @@ test('republishing cannot make an old provider observation fresh', () => {
   assert.match(timestampIssue(null, now, 1000), /missing/);
   assert.match(timestampIssue(now + 600_000, now, 1000), /future/);
 });
+test('KKBOX freshness checks every provider series instead of trusting the collector timestamp', () => {
+  const keys = [
+    'tw/daily/song', 'tw/daily/newrelease', 'tw/weekly/song', 'tw/weekly/newrelease',
+    'hk/daily/song', 'hk/daily/newrelease', 'hk/weekly/song', 'hk/weekly/newrelease',
+  ];
+  const series = Object.fromEntries(keys.map((key) => [key, { checked_requests: 1, latest_period: '2026-10-09' }]));
+  const payload = { kkbox_japanese_chart: { coverage: { series } } };
+  assert.deepEqual(kkboxSourcePeriodIssues(payload, now), []);
+
+  series['hk/weekly/song'].latest_period = '2026-10-01';
+  const issues = kkboxSourcePeriodIssues(payload, now);
+  assert.equal(issues.length, 1);
+  assert.match(issues[0], /hk\\/weekly\\/song: latest provider period is stale/);
+  assert.match(issues[0], /2026-10-01/);
+
+  assert.match(kkboxSourcePeriodIssues({}, now)[0], /coverage is missing/);
+  series['hk/weekly/song'] = { checked_requests: 0, latest_period: null };
+  assert.match(kkboxSourcePeriodIssues(payload, now)[0], /no successful provider-period checks/);
+});
+
 test('HTTP failures remain separate data failures rather than successful screenshots', async () => {
   const report = await auditPagesData(async () => { throw new Error('HTTP 503'); }, now);
   assert.equal(report.ok, false);
