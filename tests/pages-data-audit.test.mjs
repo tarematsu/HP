@@ -50,11 +50,20 @@ test('fresh partial collection remains a data failure', async () => {
   assert.deepEqual(youtube.issues, ['collector status: degraded']);
 });
 
-test('leaderboard source freshness is checked after Monday publication deadline', () => {
-  const mondayBeforeDeadline = Date.parse('2026-10-12T14:00:00Z');
+test('leaderboard freshness checks the previous week before Monday night collection', () => {
+  const mondayMorning = Date.parse('2026-10-12T00:00:00Z'); // 09:00 JST
+  const mondayBeforeGrace = Date.parse('2026-10-12T14:00:00Z'); // 23:00 JST
   const tuesday = Date.parse('2026-10-13T14:00:00Z');
-  assert.deepEqual(leaderboardSourceIssues({ source_max_ranking_date: '2026-10-05' }, mondayBeforeDeadline), []);
-  assert.match(leaderboardSourceIssues({ source_max_ranking_date: '2026-10-05' }, tuesday)[0], /2026-10-12/);
+  const latestPreviousWeek = { source_max_ranking_date: '2026-10-05' };
+
+  assert.deepEqual(leaderboardSourceIssues(latestPreviousWeek, mondayMorning), []);
+  assert.match(leaderboardSourceIssues({ source_max_ranking_date: '2026-09-28' }, mondayMorning)[0], /2026-10-05/);
+  assert.match(
+    leaderboardSourceIssues({ source_max_ranking_date: '2026-10-05' }, Date.parse('2026-11-02T01:34:35Z'))[0],
+    /2026-10-26/,
+  );
+  assert.deepEqual(leaderboardSourceIssues(latestPreviousWeek, mondayBeforeGrace), []);
+  assert.match(leaderboardSourceIssues(latestPreviousWeek, tuesday)[0], /2026-10-12/);
   assert.deepEqual(leaderboardSourceIssues({ source_max_ranking_date: '2026-10-12' }, tuesday), []);
   assert.match(leaderboardSourceIssues({ setup_required: true }, tuesday)[0], /unavailable/);
 });
