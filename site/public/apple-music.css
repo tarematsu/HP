@@ -34,6 +34,12 @@
   white-space: nowrap;
 }
 
+.apple-rank-legend > .series-selector-legend-item,
+.apple-rank-legend > .series-selector-legend-more {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .apple-rank-empty {
   --shared-empty-padding: 54px 12px;
 }
