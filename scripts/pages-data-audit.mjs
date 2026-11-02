@@ -38,7 +38,14 @@ export function leaderboardSourceIssues(payload, now = Date.now()) {
   const jst = new Date(now + 9 * HOUR);
   jst.setUTCHours(0, 0, 0, 0);
   jst.setUTCDate(jst.getUTCDate() - ((jst.getUTCDay() + 6) % 7));
-  const expected = jst.toISOString().slice(0, 10);
+  const currentMonday = jst.toISOString().slice(0, 10);
+  const scheduledAt = Date.parse(`${currentMonday}T12:17:00Z`);
+  // Before Monday's 21:17 JST collection, the latest required source week is
+  // still the previous Monday. After the scheduled time, allow three hours
+  // for the current week's collection and publication to finish.
+  const expected = now < scheduledAt
+    ? new Date(Date.parse(`${currentMonday}T00:00:00Z`) - 7 * DAY).toISOString().slice(0, 10)
+    : currentMonday;
   const deadline = Date.parse(`${expected}T12:17:00Z`) + 3 * HOUR;
   return now >= deadline && latest < expected
     ? [`leaderboard collection not confirmed for ${expected} (latest imported week: ${latest})`]
