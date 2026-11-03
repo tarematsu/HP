@@ -669,4 +669,16 @@ body {
     white-space: nowrap;
     overflow-wrap: normal;
   }
+  /* Empty history rows contain prose rather than date identifiers. They do not
+     need the wide, horizontally scrollable layout used by populated tables. */
+  .music-service-group .table-wrap > table.music-service-history-table:has(tbody td[colspan]) {
+    width: 100%;
+    min-width: 0;
+    table-layout: fixed;
+  }
+  .music-service-group .table-wrap > table.music-service-history-table:has(tbody td[colspan]) td[colspan] {
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
 }
