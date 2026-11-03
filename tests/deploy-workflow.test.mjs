@@ -257,14 +257,20 @@ test('Worker package scripts contain only active deployment and bundle operation
   }
 });
 
-test('observability covers every active Stationhead Worker while account budgets include recovery resources', () => {
+test('observability covers every active production Worker while account budgets include recovery resources', () => {
   for (const worker of [
     'sh-sakurazaka46jp',
+    'sh-nogizaka46smej',
     'sh-buddies-recovery',
     'sh-buddies-collector',
+    'sh-ohisama-collector',
+    'sh-spotify-playcount-collector',
+    'sh-amazon-music-collector',
+    'sh-regional-music-collector',
+    'sh-scheduled-collection-jobs',
     'sh-cron-dispatcher',
     'sh-runtime-orchestrator',
-    'sh-regional-music-collector',
+    'homepanel-cloud',
   ]) {
     assert.match(observabilityWorkflow, new RegExp(`CLOUDFLARE_WORKERS:[^\\n]*${worker}`));
   }
