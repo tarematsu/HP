@@ -41,6 +41,10 @@ runs:
       run: |
         set -uo pipefail
         actual_summary="$GITHUB_STEP_SUMMARY"
+        if ! python3 .github/scripts/query-cloudflare-observability.py --self-test; then
+          echo "::error title=Cloudflare telemetry query self-test failed::Refusing to run with invalid diagnostic filters"
+          exit 1
+        fi
         (
           GITHUB_STEP_SUMMARY=observability-summary.md \
             python3 .github/scripts/query-cloudflare-observability.py \
