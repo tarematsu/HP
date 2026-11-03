@@ -33,7 +33,8 @@ function completeEvidence() {
   };
 }
 
-test('collection audit requires all four Stationhead Workers, HomePanel, public health, and fresh TVer feed', () => {
+test('collection audit requires Stationhead and regional music Workers, HomePanel, public health, and fresh TVer feed', () => {
+  assert.ok(REQUIRED_CLOUDFLARE_WORKERS.includes('sh-regional-music-collector'));
   assert.deepEqual(configuredWorkers(REQUIRED_CLOUDFLARE_WORKERS.join(',')), REQUIRED_CLOUDFLARE_WORKERS);
   const result = evaluateCollectionCoverage(completeEvidence());
   assert.equal(result.failures.length, 0);

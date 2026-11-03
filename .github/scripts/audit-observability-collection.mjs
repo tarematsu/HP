@@ -11,6 +11,7 @@ export const REQUIRED_CLOUDFLARE_WORKERS = Object.freeze([
   'sh-buddies-recovery',
   'sh-buddies-collector',
   'sh-runtime-orchestrator',
+  'sh-regional-music-collector',
   'homepanel-cloud',
 ]);
 
@@ -55,7 +56,7 @@ export function evaluateCollectionCoverage({
       ? `Duplicate Worker entries: ${[...new Set(duplicates)].join(', ')}`
       : missingConfigured.length
         ? `Required Workers missing from CLOUDFLARE_WORKERS: ${missingConfigured.join(', ')}`
-        : `${configured.length} Workers configured, including all four Stationhead Workers and HomePanel.`);
+        : `${configured.length} Workers configured, including the required Stationhead and regional-music Workers plus HomePanel.`);
 
   for (const worker of REQUIRED_CLOUDFLARE_WORKERS) {
     const deployment = deployments?.[worker];
