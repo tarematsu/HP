@@ -8,10 +8,16 @@ import { sanitizeText } from './observability-status-publisher.mjs';
 
 export const REQUIRED_CLOUDFLARE_WORKERS = Object.freeze([
   'sh-sakurazaka46jp',
+  'sh-nogizaka46smej',
   'sh-buddies-recovery',
   'sh-buddies-collector',
-  'sh-runtime-orchestrator',
+  'sh-ohisama-collector',
+  'sh-spotify-playcount-collector',
+  'sh-amazon-music-collector',
   'sh-regional-music-collector',
+  'sh-scheduled-collection-jobs',
+  'sh-cron-dispatcher',
+  'sh-runtime-orchestrator',
   'homepanel-cloud',
 ]);
 
@@ -56,7 +62,7 @@ export function evaluateCollectionCoverage({
       ? `Duplicate Worker entries: ${[...new Set(duplicates)].join(', ')}`
       : missingConfigured.length
         ? `Required Workers missing from CLOUDFLARE_WORKERS: ${missingConfigured.join(', ')}`
-        : `${configured.length} Workers configured, including the required Stationhead and regional-music Workers plus HomePanel.`);
+        : All 11 production Stationhead and collection Workers plus HomePanel are configured.);
 
   for (const worker of REQUIRED_CLOUDFLARE_WORKERS) {
     const deployment = deployments?.[worker];
