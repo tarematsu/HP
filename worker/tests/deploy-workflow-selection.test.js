@@ -52,7 +52,7 @@ test('shared-scheduler Worker config changes deploy only their owning services',
     ['worker/wrangler.scheduled-collection-jobs.jsonc', 'sh-scheduled-collection-jobs', 'deploy:scheduled-collection-jobs'],
   ];
   for (const [path, worker, command] of cases) {
-    const result = select(path + '\\n');
+    const result = select(path + '\n');
     assert.deepEqual(result.workers, [worker], path);
     assert.deepEqual(result.commands, [command], path);
   }
