@@ -60,7 +60,7 @@ test('generic dispatcher owns shared service bindings while Sakurazaka stays iso
     { binding: 'REGIONAL_MUSIC_SCHEDULED', service: 'sh-regional-music-collector' },
     { binding: 'SCHEDULED_COLLECTION_JOBS', service: 'sh-scheduled-collection-jobs' },
   ]);
-  assert.equal(collectionJobs.triggers, undefined);
+  assert.deepEqual(collectionJobs.triggers?.crons, []);
   assert.deepEqual(collectionJobs.d1_databases.map(({ binding }) => binding), ['MINUTE_DB', 'OTHER_DB']);
   assert.deepEqual(collectionJobs.r2_buckets.map(({ binding }) => binding), ['PAGES_RESPONSE_R2']);
 });
