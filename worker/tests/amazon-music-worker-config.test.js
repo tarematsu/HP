@@ -28,7 +28,7 @@ test('music collector receives schedules from the generic dispatcher', () => {
   const source = readFileSync(new URL('../src/amazon-music-entry.js', import.meta.url), 'utf8');
   assert.equal(value.name, 'sh-amazon-music-collector');
   assert.equal(value.main, 'src/amazon-music-entry.js');
-  assert.equal(value.triggers, undefined);
+  assert.deepEqual(value.triggers?.crons, []);
   assert.match(source, /handleInternalScheduled/);
   assert.match(source, /AMAZON_MUSIC_CRON/);
   assert.match(source, /MUSIC_PLAYLIST_REFRESH_CRON/);
