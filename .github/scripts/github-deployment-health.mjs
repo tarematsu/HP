@@ -8,11 +8,16 @@ export const DEPLOYMENT_HISTORY_MAX_PAGES = 5;
 
 export const STATIONHEAD_WORKERS = Object.freeze([
   Object.freeze({ target: 'sh-sakurazaka46jp', command: 'deploy:sakurazaka46jp' }),
+  Object.freeze({ target: 'sh-nogizaka46smej', command: 'deploy:nogizaka46smej' }),
   Object.freeze({ target: 'sh-buddies-recovery', command: 'deploy:buddies-recovery' }),
   Object.freeze({ target: 'sh-buddies-collector', command: 'deploy:buddies-collector' }),
-  Object.freeze({ target: 'sh-runtime-orchestrator', command: 'deploy:runtime' }),
+  Object.freeze({ target: 'sh-ohisama-collector', command: 'deploy:ohisama-collector' }),
   Object.freeze({ target: 'sh-spotify-playcount-collector', command: 'deploy:spotify-playcount' }),
+  Object.freeze({ target: 'sh-amazon-music-collector', command: 'deploy:amazon-music' }),
+  Object.freeze({ target: 'sh-regional-music-collector', command: 'deploy:regional-music' }),
+  Object.freeze({ target: 'sh-scheduled-collection-jobs', command: 'deploy:scheduled-collection-jobs' }),
   Object.freeze({ target: 'sh-cron-dispatcher', command: 'deploy:cron-dispatcher' }),
+  Object.freeze({ target: 'sh-runtime-orchestrator', command: 'deploy:runtime' }),
 ]);
 export const STATIONHEAD_TARGETS = Object.freeze([
   ...STATIONHEAD_WORKERS.map((entry) => entry.target),
