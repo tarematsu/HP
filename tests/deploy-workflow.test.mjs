@@ -264,6 +264,7 @@ test('observability covers every active Stationhead Worker while account budgets
     'sh-buddies-collector',
     'sh-cron-dispatcher',
     'sh-runtime-orchestrator',
+    'sh-regional-music-collector',
   ]) {
     assert.match(observabilityWorkflow, new RegExp(`CLOUDFLARE_WORKERS:[^\\n]*${worker}`));
   }
