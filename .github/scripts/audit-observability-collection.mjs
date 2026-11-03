@@ -62,7 +62,7 @@ export function evaluateCollectionCoverage({
       ? `Duplicate Worker entries: ${[...new Set(duplicates)].join(', ')}`
       : missingConfigured.length
         ? `Required Workers missing from CLOUDFLARE_WORKERS: ${missingConfigured.join(', ')}`
-        : All 11 production Stationhead and collection Workers plus HomePanel are configured.);
+        : 'All 11 production Stationhead and collection Workers plus HomePanel are configured.');
 
   for (const worker of REQUIRED_CLOUDFLARE_WORKERS) {
     const deployment = deployments?.[worker];
