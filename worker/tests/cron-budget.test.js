@@ -31,6 +31,20 @@ test('active production Workers keep only Sakurazaka, Buddies, and generic dispa
   assert.equal(counts.reduce((sum, count) => sum + count, 0) <= 5, true);
 });
 
+test('Workers owned by the shared dispatcher explicitly clear native Cron triggers', () => {
+  const centrallyScheduled = [
+    config('wrangler.nogizaka46smej.jsonc'),
+    config('wrangler.ohisama-collector.jsonc'),
+    config('wrangler.spotify-playcount.jsonc'),
+    config('wrangler.amazon-music.jsonc'),
+    config('wrangler.regional-music.jsonc'),
+    config('wrangler.scheduled-collection-jobs.jsonc'),
+  ];
+  for (const workerConfig of centrallyScheduled) {
+    assert.deepEqual(workerConfig.triggers?.crons, []);
+  }
+});
+
 test('generic dispatcher owns shared service bindings while Sakurazaka stays isolated', () => {
   const sakurazaka = config('wrangler.sakurazaka46jp.jsonc');
   const shared = config('wrangler.cron-dispatcher.jsonc');
@@ -46,7 +60,7 @@ test('generic dispatcher owns shared service bindings while Sakurazaka stays iso
     { binding: 'REGIONAL_MUSIC_SCHEDULED', service: 'sh-regional-music-collector' },
     { binding: 'SCHEDULED_COLLECTION_JOBS', service: 'sh-scheduled-collection-jobs' },
   ]);
-  assert.equal(collectionJobs.triggers, undefined);
+  assert.deepEqual(collectionJobs.triggers?.crons, []);
   assert.deepEqual(collectionJobs.d1_databases.map(({ binding }) => binding), ['MINUTE_DB', 'OTHER_DB']);
   assert.deepEqual(collectionJobs.r2_buckets.map(({ binding }) => binding), ['PAGES_RESPONSE_R2']);
 });

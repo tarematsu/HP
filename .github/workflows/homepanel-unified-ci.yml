@@ -37,6 +37,7 @@ on:
       - '.github/scripts/audit-cloudflare-telemetry.py'
       - '.github/scripts/audit-deployed-cloudflare-telemetry.py'
       - '.github/scripts/query-cloudflare-d1-costs.py'
+      - '.github/scripts/query-cloudflare-observability.py'
       - '.github/scripts/resolve-cloudflare-account.mjs'
       - '.github/scripts/resolve-cloudflare-config.mjs'
       - '.github/scripts/observability-*.mjs'
@@ -83,6 +84,7 @@ on:
       - '.github/scripts/audit-cloudflare-telemetry.py'
       - '.github/scripts/audit-deployed-cloudflare-telemetry.py'
       - '.github/scripts/query-cloudflare-d1-costs.py'
+      - '.github/scripts/query-cloudflare-observability.py'
       - '.github/scripts/resolve-cloudflare-account.mjs'
       - '.github/scripts/resolve-cloudflare-config.mjs'
       - '.github/scripts/observability-*.mjs'
@@ -175,6 +177,7 @@ jobs:
               python3 .github/scripts/audit-cloudflare-telemetry.py --self-test
               python3 .github/scripts/audit-deployed-cloudflare-telemetry.py --self-test
               python3 .github/scripts/query-cloudflare-d1-costs.py --self-test
+              python3 .github/scripts/query-cloudflare-observability.py --self-test
               node --test tests/cloudflare-*.test.mjs tests/homepanel-*.test.mjs tests/observability-*.test.mjs'
 
       - name: Install HomePanel workspace dependencies

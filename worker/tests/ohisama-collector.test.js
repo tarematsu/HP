@@ -156,7 +156,7 @@ test('ohisama Worker config binds its own D1 and the canonical track catalog whi
   ));
   assert.equal(config.name, 'sh-ohisama-collector');
   assert.equal(config.main, 'src/ohisama-service-entry.js');
-  assert.equal(config.triggers, undefined);
+  assert.deepEqual(config.triggers?.crons, []);
   assert.deepEqual(config.d1_databases.map(({ binding, database_name }) => ({ binding, database_name })), [
     { binding: 'OHISAMA_DB', database_name: 'stationhead-ohisama' },
     { binding: 'MINUTE_DB', database_name: 'stationhead-minute' },

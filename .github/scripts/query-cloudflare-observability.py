@@ -24,6 +24,8 @@ ERROR_LEVELS = {"error", "fatal"}
 WARNING_LEVELS = {"warn", "warning"}
 CPU_CLASS_ORDER = {"http": 0, "cron": 1, "queue": 2, "durableObject": 3}
 CPU_METRICS = {"count": "cpu_samples", "median": "cpu_p50_ms", "p99": "cpu_p99_ms"}
+DIAGNOSTIC_FILTER_BATCH_SIZE = 7
+DIAGNOSTIC_EVENT_LIMIT = 100
 
 
 def request_json(url: str, *, method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -98,7 +100,8 @@ def worker_metrics(account_id: str, worker: str, start: dt.datetime, end: dt.dat
     }
 
 
-def service_filters() -> list[dict[str, Any]]:
+def service_filters(workers: list[str] | None = None) -> list[dict[str, Any]]:
+    selected_workers = WORKERS if workers is None else workers
     return [
         {
             "kind": "filter",
@@ -107,7 +110,7 @@ def service_filters() -> list[dict[str, Any]]:
             "type": "string",
             "value": worker,
         }
-        for worker in WORKERS
+        for worker in selected_workers
     ]
 
 
@@ -266,8 +269,18 @@ def telemetry_cpu_metrics(account_id: str, start: dt.datetime, end: dt.datetime)
     return parse_cpu_calculations(calculations)
 
 
-def telemetry_diagnostics(account_id: str, start: dt.datetime, end: dt.datetime) -> list[dict[str, Any]]:
-    services = service_filters()
+def worker_filter_batches(workers: list[str], size: int = DIAGNOSTIC_FILTER_BATCH_SIZE) -> list[list[str]]:
+    if size < 1:
+        raise ValueError("Worker filter batch size must be positive")
+    return [workers[index:index + size] for index in range(0, len(workers), size)]
+
+
+def telemetry_diagnostic_payload(
+    start: dt.datetime,
+    end: dt.datetime,
+    workers: list[str],
+    batch_number: int,
+) -> dict[str, Any]:
     diagnostic_markers: list[dict[str, Any]] = [
         {
             "kind": "filter",
@@ -286,12 +299,8 @@ def telemetry_diagnostics(account_id: str, start: dt.datetime, end: dt.datetime)
             for level in ("error", "fatal", "warn", "warning")
         ],
     ]
-    filters: list[dict[str, Any]] = [
-        {"kind": "group", "filterCombination": "or", "filters": services},
-        {"kind": "group", "filterCombination": "or", "filters": diagnostic_markers},
-    ]
-    payload = {
-        "queryId": "github-actions-worker-diagnostics",
+    return {
+        "queryId": f"github-actions-worker-diagnostics-batch-{batch_number}",
         "dry": True,
         "timeframe": {
             "from": int(start.timestamp() * 1000),
@@ -299,33 +308,39 @@ def telemetry_diagnostics(account_id: str, start: dt.datetime, end: dt.datetime)
         },
         "parameters": {
             "view": "events",
-            "limit": 100,
+            "limit": DIAGNOSTIC_EVENT_LIMIT,
             "datasets": [],
             "filterCombination": "and",
-            "filters": filters,
+            "filters": [
+                {"kind": "group", "filterCombination": "or", "filters": service_filters(workers)},
+                {"kind": "group", "filterCombination": "or", "filters": diagnostic_markers},
+            ],
         },
     }
-    try:
-        data = request_json(
-            f"{API_BASE}/accounts/{account_id}/workers/observability/telemetry/query",
-            method="POST",
-            payload=payload,
-        )
-    except RuntimeError as error:
-        print(f"::warning title=Telemetry filter fallback::{str(error).replace(chr(10), ' ')[:500]}")
-        payload["parameters"]["filters"] = [filters[1]]
-        data = request_json(
-            f"{API_BASE}/accounts/{account_id}/workers/observability/telemetry/query",
-            method="POST",
-            payload=payload,
-        )
-    events = (((data.get("result") or {}).get("events") or {}).get("events") or [])
+
+
+def telemetry_diagnostics(account_id: str, start: dt.datetime, end: dt.datetime) -> list[dict[str, Any]]:
+    endpoint = f"{API_BASE}/accounts/{account_id}/workers/observability/telemetry/query"
     selected: list[dict[str, Any]] = []
-    for event in events:
-        metadata = event.get("$metadata") if isinstance(event.get("$metadata"), dict) else {}
-        workers = event.get("$workers") if isinstance(event.get("$workers"), dict) else {}
-        service = str(metadata.get("service") or workers.get("scriptName") or "")
-        if service in WORKERS:
+    seen: set[str] = set()
+    batches = worker_filter_batches(WORKERS)
+    for batch_number, batch in enumerate(batches, start=1):
+        payload = telemetry_diagnostic_payload(start, end, batch, batch_number)
+        data = request_json(endpoint, method="POST", payload=payload)
+        events = (((data.get("result") or {}).get("events") or {}).get("events") or [])
+        for event in events:
+            metadata = event.get("$metadata") if isinstance(event.get("$metadata"), dict) else {}
+            workers = event.get("$workers") if isinstance(event.get("$workers"), dict) else {}
+            service = str(metadata.get("service") or workers.get("scriptName") or "")
+            if service not in batch:
+                continue
+            identity = metadata.get("id") or event.get("id")
+            key = f"{service}:{identity}" if identity is not None else (
+                f"{service}:{json.dumps(event, sort_keys=True, separators=(',', ':'), default=str)}"
+            )
+            if key in seen:
+                continue
+            seen.add(key)
             selected.append(event)
     return selected
 
@@ -467,6 +482,23 @@ def self_test() -> int:
         assert aliasless_rows[0]["cpu_p50_ms"] == 2.5
         assert aliasless_rows[0]["cpu_p99_ms"] == 9.5
         assert worker_script_filters()[0]["key"] == "$workers.scriptName"
+        WORKERS[:] = [f"worker-{index}" for index in range(12)]
+        batches = worker_filter_batches(WORKERS)
+        assert [len(batch) for batch in batches] == [7, 5]
+        for batch_number, batch in enumerate(batches, start=1):
+            payload = telemetry_diagnostic_payload(
+                dt.datetime(2026, 11, 3, tzinfo=dt.timezone.utc),
+                dt.datetime(2026, 11, 3, 1, tzinfo=dt.timezone.utc),
+                batch,
+                batch_number,
+            )
+            filters = payload["parameters"]["filters"]
+            filter_nodes = len(filters) + sum(len(group["filters"]) for group in filters)
+            assert filter_nodes <= 16
+            assert len(filters[0]["filters"]) == len(batch)
+            assert len(filters[1]["filters"]) == 5
+            assert payload["queryId"].endswith(str(batch_number))
+        WORKERS[:] = ["a"]
         assert cpu_class_label("scheduled", "stateless") == "cron"
         assert cpu_class_label("fetch", "durableObject") == "durableObject/fetch"
     finally:

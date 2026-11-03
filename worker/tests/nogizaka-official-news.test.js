@@ -157,7 +157,7 @@ test('Nogizaka Worker owns an isolated queue while scheduling is delegated', () 
   );
   assert.equal(wrangler.name, 'sh-nogizaka46smej');
   assert.equal(wrangler.main, 'src/nogizaka-service-entry.js');
-  assert.equal(wrangler.triggers, undefined);
+  assert.deepEqual(wrangler.triggers?.crons, []);
   assert.equal(wrangler.queues.consumers[0].queue, 'stationhead-nogizaka46smej');
   assert.match(migration, /sh_nogizaka_official_news_announcements/);
   assert.match(migration, /sh_nogizaka46smej_main/);

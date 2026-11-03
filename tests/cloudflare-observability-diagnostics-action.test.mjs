@@ -11,11 +11,18 @@ const resolver = read('.github/scripts/observability-workflow-outcome.mjs');
 const collectionAudit = read('.github/scripts/audit-observability-collection.mjs');
 const publicHealth = read('.github/scripts/capture-public-health-endpoints.mjs');
 const workerPublicUrl = read('.github/scripts/cloudflare-worker-public-url.mjs');
+const observabilityQuery = read('.github/scripts/query-cloudflare-observability.py');
 
 const workerList = 'sh-sakurazaka46jp,sh-nogizaka46smej,sh-buddies-recovery,sh-buddies-collector,sh-ohisama-collector,sh-spotify-playcount-collector,sh-amazon-music-collector,sh-regional-music-collector,sh-scheduled-collection-jobs,sh-cron-dispatcher,sh-runtime-orchestrator,homepanel-cloud';
 
 test('shared diagnostics action owns persisted-query, required public health, and fail-closed multi-Worker Live Tail orchestration', () => {
   assert.match(action, /python3 \.github\/scripts\/query-cloudflare-observability\.py/);
+  assert.match(action, /query-cloudflare-observability\.py --self-test/);
+  assert.match(observabilityQuery, /DIAGNOSTIC_FILTER_BATCH_SIZE = 7/);
+  assert.match(observabilityQuery, /worker_filter_batches\(WORKERS\)/);
+  assert.match(observabilityQuery, /telemetry_diagnostic_payload/);
+  assert.doesNotMatch(observabilityQuery, /Telemetry filter fallback/);
+  assert.doesNotMatch(observabilityQuery, /payload\[\"parameters\"\]\[\"filters\"\] = \[filters\[1\]\]/);
   assert.match(action, /node \.github\/scripts\/capture-cloudflare-live-tail\.mjs/);
   assert.match(action, /node \.github\/scripts\/capture-public-health-endpoints\.mjs/);
   assert.match(action, /live-tail-workers:/);
