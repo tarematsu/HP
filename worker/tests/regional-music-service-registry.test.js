@@ -65,7 +65,7 @@ test('generic dispatcher owns YouTube Music cron while regional services remain 
   assert.equal(REGIONAL_MUSIC_DAILY_CRON, '0 21 * * *');
   assert.equal(scheduledCollectorForCron(YOUTUBE_MUSIC_DAILY_CRON), collectYouTubeMusicDaily);
   assert.equal(scheduledCollectorForCron(REGIONAL_MUSIC_DAILY_CRON), collectRegionalServicesDaily);
-  assert.equal(regionalConfig.triggers, undefined);
+  assert.deepEqual(regionalConfig.triggers?.crons, []);
   assert.equal(regionalConfig.main, 'src/regional-music-service-entry.js');
   assert.deepEqual(regionalConfig.queues?.consumers, [{
     queue: 'regional-music-daily',
