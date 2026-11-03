@@ -167,6 +167,11 @@ test('regional chart-history dates stay unbroken inside a scrollable mobile tabl
   assert.match(layoutCss, /\.table-wrap\s*\{[^}]*overflow-x:\s*auto;/s);
 });
 
+test('empty regional chart-history tables fit narrow screens without horizontal clipping', () => {
+  assert.match(layoutCss, /table\\.music-service-history-table:has\\(tbody td\\[colspan\\]\\)\\s*\\{[^}]*width:\\s*100%;[^}]*min-width:\\s*0;[^}]*table-layout:\\s*fixed;/s);
+  assert.match(layoutCss, /table\\.music-service-history-table:has\\(tbody td\\[colspan\\]\\) td\\[colspan\\]\\s*\\{[^}]*white-space:\\s*normal;[^}]*overflow-wrap:\\s*anywhere;/s);
+});
+
 
 test('Apple Music series legend keeps separator characters out of independent grid cells', () => {
   const selector = readFileSync(new URL('../public/dashboard-series-selector.js', import.meta.url), 'utf8');
