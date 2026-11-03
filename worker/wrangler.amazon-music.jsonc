@@ -3,6 +3,9 @@
   "name": "sh-amazon-music-collector",
   "main": "src/amazon-music-entry.js",
   "compatibility_date": "2026-06-24",
+  "triggers": {
+    "crons": []
+  },
   "workers_dev": false,
   "preview_urls": false,
   "observability": {
