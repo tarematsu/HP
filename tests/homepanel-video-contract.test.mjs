@@ -132,7 +132,7 @@ test('unified observability includes only active Workers', async () => {
   }
   const observability = readSource('.github/workflows/sh-observability.yml');
   expectAll(observability, [
-    'CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,sh-spotify-playcount-collector,sh-regional-music-collector,sh-cron-dispatcher,homepanel-cloud',
+    'CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-nogizaka46smej,sh-buddies-recovery,sh-buddies-collector,sh-ohisama-collector,sh-spotify-playcount-collector,sh-amazon-music-collector,sh-regional-music-collector,sh-scheduled-collection-jobs,sh-cron-dispatcher,sh-runtime-orchestrator,homepanel-cloud',
     'D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc',
     'query-cloudflare-observability.py',
     'audit-deployed-cloudflare-telemetry.py',
