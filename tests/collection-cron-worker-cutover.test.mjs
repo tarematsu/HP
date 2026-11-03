@@ -45,17 +45,19 @@ test('shared dispatcher owns collection timing without owning collection data', 
 test('Sakurazaka and Buddies remain the only standalone collection cron owners', () => {
   const sakurazaka = JSON.parse(read('worker/wrangler.sakurazaka46jp.jsonc'));
   const buddies = JSON.parse(read('worker/wrangler.buddies-collector.jsonc'));
+  const nogizaka = JSON.parse(read('worker/wrangler.nogizaka46smej.jsonc'));
+  const ohisama = JSON.parse(read('worker/wrangler.ohisama-collector.jsonc'));
   const scheduledJobs = JSON.parse(read('worker/wrangler.scheduled-collection-jobs.jsonc'));
   const amazon = JSON.parse(read('worker/wrangler.amazon-music.jsonc'));
   const regional = JSON.parse(read('worker/wrangler.regional-music.jsonc'));
 
   assert.deepEqual(sakurazaka.triggers?.crons, ['* * * * *']);
   assert.deepEqual(buddies.triggers?.crons, ['*/5 * * * *']);
-  assert.equal(scheduledJobs.triggers, undefined);
+  for (const worker of [nogizaka, ohisama, scheduledJobs, amazon, regional]) {
+    assert.deepEqual(worker.triggers?.crons, []);
+  }
   assert.ok(scheduledJobs.d1_databases.some(({ binding }) => binding === 'MINUTE_DB'));
   assert.ok(scheduledJobs.d1_databases.some(({ binding }) => binding === 'OTHER_DB'));
-  assert.equal(amazon.triggers, undefined);
-  assert.equal(regional.triggers, undefined);
 });
 
 test('high-frequency status workflows are event-driven instead of cron-polled', () => {
