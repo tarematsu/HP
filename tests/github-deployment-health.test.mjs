@@ -33,13 +33,13 @@ function run(id, conclusion = 'failure') {
 test('stable target marker exposes Pages and every selected Worker', () => {
   const targets = parseDeploymentTargets(`
  echo "DEPLOYMENT_TARGETS_JSON=$deployment_targets"
- DEPLOYMENT_TARGETS_JSON={"minute_db":true,"pages":true,"workers":["sh-sakurazaka46jp","sh-buddies-recovery","sh-buddies-collector","sh-runtime-orchestrator","sh-spotify-playcount-collector","sh-cron-dispatcher"],"commands":["deploy:sakurazaka46jp","deploy:buddies-recovery","deploy:buddies-collector","deploy:runtime","deploy:spotify-playcount","deploy:cron-dispatcher"]}
+ DEPLOYMENT_TARGETS_JSON={"minute_db":true,"pages":true,"workers":["sh-sakurazaka46jp","sh-nogizaka46smej","sh-buddies-recovery","sh-buddies-collector","sh-ohisama-collector","sh-spotify-playcount-collector","sh-amazon-music-collector","sh-regional-music-collector","sh-scheduled-collection-jobs","sh-cron-dispatcher","sh-runtime-orchestrator"],"commands":["deploy:sakurazaka46jp","deploy:nogizaka46smej","deploy:buddies-recovery","deploy:buddies-collector","deploy:ohisama-collector","deploy:spotify-playcount","deploy:amazon-music","deploy:regional-music","deploy:scheduled-collection-jobs","deploy:cron-dispatcher","deploy:runtime"]}
 `);
   assert.equal(targets.minute_db, true);
   assert.equal(targets.pages, true);
   assert.deepEqual(targets.workers, STATIONHEAD_WORKERS.map(({ target }) => target));
   assert.deepEqual(targets.commands, STATIONHEAD_WORKERS.map(({ command }) => command));
-  assert.equal(STATIONHEAD_TARGETS.length, 7);
+  assert.equal(STATIONHEAD_TARGETS.length, 12);
 });
 
 test('legacy select-job JSON still exposes selected Workers', () => {
@@ -124,6 +124,8 @@ test('history merge retains the latest targeted attempt for every Worker and Pag
       components: [
         { workflow: 'Deploy production', target: 'sh-runtime-orchestrator', result: 'success', error: '', run: run(5, 'success') },
         { workflow: 'Deploy production', target: 'sh-spotify-playcount-collector', result: 'success', error: '', run: run(5, 'success') },
+        { workflow: 'Deploy production', target: 'sh-amazon-music-collector', result: 'success', error: '', run: run(5, 'success') },
+        { workflow: 'Deploy production', target: 'sh-regional-music-collector', result: 'success', error: '', run: run(5, 'success') },
       ],
     },
     {
@@ -133,8 +135,11 @@ test('history merge retains the latest targeted attempt for every Worker and Pag
     {
       run: run(3, 'success'),
       components: [
+        { workflow: 'Deploy production', target: 'sh-nogizaka46smej', result: 'success', error: '', run: run(3, 'success') },
         { workflow: 'Deploy production', target: 'sh-buddies-recovery', result: 'success', error: '', run: run(3, 'success') },
         { workflow: 'Deploy production', target: 'sh-buddies-collector', result: 'success', error: '', run: run(3, 'success') },
+        { workflow: 'Deploy production', target: 'sh-ohisama-collector', result: 'success', error: '', run: run(3, 'success') },
+        { workflow: 'Deploy production', target: 'sh-scheduled-collection-jobs', result: 'success', error: '', run: run(3, 'success') },
         { workflow: 'Deploy production', target: 'sh-cron-dispatcher', result: 'success', error: '', run: run(3, 'success') },
       ],
     },
@@ -144,7 +149,7 @@ test('history merge retains the latest targeted attempt for every Worker and Pag
     },
   ];
   const merged = mergeDeploymentHistory(summaries);
-  assert.equal(merged.components.filter((component) => component.target.startsWith('sh-')).length, 6);
+  assert.equal(merged.components.filter((component) => component.target.startsWith('sh-')).length, 11);
   assert.equal(merged.components.find((component) => component.target === 'sh-spotify-playcount-collector').result, 'success');
   assert.equal(merged.components.find((component) => component.target === 'sh-cron-dispatcher').result, 'success');
   assert.equal(merged.components.find((component) => component.target === 'Cloudflare Pages (skrzk)').result, 'failure');
