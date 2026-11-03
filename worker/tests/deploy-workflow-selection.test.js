@@ -43,6 +43,21 @@ test('deployment workflow changes redeploy all active Workers in dependency orde
   ]);
 });
 
+test('shared-scheduler Worker config changes deploy only their owning services', () => {
+  const cases = [
+    ['worker/wrangler.nogizaka46smej.jsonc', 'sh-nogizaka46smej', 'deploy:nogizaka46smej'],
+    ['worker/wrangler.ohisama-collector.jsonc', 'sh-ohisama-collector', 'deploy:ohisama-collector'],
+    ['worker/wrangler.amazon-music.jsonc', 'sh-amazon-music-collector', 'deploy:amazon-music'],
+    ['worker/wrangler.regional-music.jsonc', 'sh-regional-music-collector', 'deploy:regional-music'],
+    ['worker/wrangler.scheduled-collection-jobs.jsonc', 'sh-scheduled-collection-jobs', 'deploy:scheduled-collection-jobs'],
+  ];
+  for (const [path, worker, command] of cases) {
+    const result = select(path + '\\n');
+    assert.deepEqual(result.workers, [worker], path);
+    assert.deepEqual(result.commands, [command], path);
+  }
+});
+
 test('Spotify read-model bootstrap changes redeploy the Spotify collector', () => {
   const result = select('worker/scripts/bootstrap-spotify-read-model.mjs\n');
   assert.deepEqual(result.workers, ['sh-spotify-playcount-collector']);
