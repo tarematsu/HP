@@ -3,6 +3,10 @@ import { qqAnimeHistoryRecord, qqIsoWeekPeriod, upsertQqAnimeHistoryArtifacts } 
 import { qqJapanHistoryRecord, upsertQqJapanHistoryArtifacts } from './qq-japan-chart-history-view.js';
 import { collectYouTubeMusic } from './regional-music-youtube-music.js';
 import { collectKkbox } from './regional-music-kkbox.js';
+import {
+  kkboxHistoryRecordsFromSnapshot,
+  upsertKkboxJapaneseHistoryArtifacts,
+} from './kkbox-japanese-chart-history.js';
 import { collectKugouMusic } from './regional-music-kugou.js';
 import {
   collectQqMusic,
@@ -79,8 +83,29 @@ export async function collectRegionalServiceToR2(service, env, observedAt = Date
   });
   await saveJson(env.PAGES_RESPONSE_R2, regionalDayKey(service, snapshot.day), snapshot);
   await saveJson(env.PAGES_RESPONSE_R2, regionalSnapshotKey(service), snapshot);
+
+  let japaneseChartHistoryChanged = false;
+  if (service === 'kkbox' && snapshot.state?.status !== 'error') {
+    const records = kkboxHistoryRecordsFromSnapshot(snapshot);
+    if (records.length) {
+      const historyResult = await upsertKkboxJapaneseHistoryArtifacts({
+        load: (key) => loadJson(env?.PAGES_RESPONSE_R2, key),
+        save: (key, value) => saveJson(env?.PAGES_RESPONSE_R2, key, value),
+        records,
+        updatedAt: observedAt,
+      });
+      japaneseChartHistoryChanged = historyResult.changed;
+    }
+  }
+
   const published = await publishRegionalMusicReadModelForService(env, service, observedAt);
-  return { service, snapshot_status: snapshot.state?.status || 'error', snapshot_day: snapshot.day, published };
+  return {
+    service,
+    snapshot_status: snapshot.state?.status || 'error',
+    snapshot_day: snapshot.day,
+    ...(service === 'kkbox' ? { japanese_chart_history_changed: japaneseChartHistoryChanged } : {}),
+    published,
+  };
 }
 
 function qqCycleKey(timestamp = Date.now()) {
