@@ -120,7 +120,7 @@ test('unified workflow publishes one retrievable account-wide status', async () 
   const publisher = await readFile(new URL('.github/scripts/publish-cloudflare-observability-status.mjs', root), 'utf8');
 
   assert.match(workflow, /workflows: \["Deploy production", "Deploy HomePanel Cloud services", "Run runtime offline maintenance", "Repair Spotify historical delta outliers"\]/);
-  assert.match(workflow, /CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,sh-spotify-playcount-collector,sh-regional-music-collector,sh-cron-dispatcher,homepanel-cloud/);
+  assert.match(workflow, /CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-nogizaka46smej,sh-buddies-recovery,sh-buddies-collector,sh-ohisama-collector,sh-spotify-playcount-collector,sh-amazon-music-collector,sh-regional-music-collector,sh-scheduled-collection-jobs,sh-cron-dispatcher,sh-runtime-orchestrator,homepanel-cloud/);
   assert.doesNotMatch(workflow, /homepanel-cloud,homepanel-video/);
   assert.match(workflow, /D1_CONFIG_GLOBS: worker\/wrangler\*\.jsonc,site\/wrangler\.jsonc,hp\/cloud\/wrangler\.jsonc/);
   assert.doesNotMatch(workflow, /hp\/video\/wrangler\.jsonc/);

@@ -6,7 +6,7 @@ import { expectAll, expectNone, readSource } from './helpers/source-contract.mjs
 
 const root = new URL('../', import.meta.url);
 
-const workerList = 'sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,sh-spotify-playcount-collector,sh-regional-music-collector,sh-cron-dispatcher,homepanel-cloud';
+const workerList = 'sh-sakurazaka46jp,sh-nogizaka46smej,sh-buddies-recovery,sh-buddies-collector,sh-ohisama-collector,sh-spotify-playcount-collector,sh-amazon-music-collector,sh-regional-music-collector,sh-scheduled-collection-jobs,sh-cron-dispatcher,sh-runtime-orchestrator,homepanel-cloud';
 
 test('HomePanel observability is covered by the canonical unified workflow and issue', async () => {
   const workflow = readSource('.github/workflows/sh-observability.yml');
@@ -52,8 +52,17 @@ test('HomePanel observability is covered by the canonical unified workflow and i
     'upsertStatusIssue',
   ]);
   expectAll(collectionAudit, [
+    "'sh-sakurazaka46jp'",
+    "'sh-nogizaka46smej'",
     "'sh-buddies-recovery'",
+    "'sh-buddies-collector'",
+    "'sh-ohisama-collector'",
+    "'sh-spotify-playcount-collector'",
+    "'sh-amazon-music-collector'",
     "'sh-regional-music-collector'",
+    "'sh-scheduled-collection-jobs'",
+    "'sh-cron-dispatcher'",
+    "'sh-runtime-orchestrator'",
     "'homepanel-cloud'",
     "'Unified health'",
     "'HomePanel Cloud health'",

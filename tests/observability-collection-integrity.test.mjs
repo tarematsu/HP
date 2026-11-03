@@ -33,8 +33,21 @@ function completeEvidence() {
   };
 }
 
-test('collection audit requires Stationhead and regional music Workers, HomePanel, public health, and fresh TVer feed', () => {
-  assert.ok(REQUIRED_CLOUDFLARE_WORKERS.includes('sh-regional-music-collector'));
+test('collection audit requires all production Workers, HomePanel, public health, and fresh TVer feed', () => {
+  assert.deepEqual(REQUIRED_CLOUDFLARE_WORKERS, [
+    'sh-sakurazaka46jp',
+    'sh-nogizaka46smej',
+    'sh-buddies-recovery',
+    'sh-buddies-collector',
+    'sh-ohisama-collector',
+    'sh-spotify-playcount-collector',
+    'sh-amazon-music-collector',
+    'sh-regional-music-collector',
+    'sh-scheduled-collection-jobs',
+    'sh-cron-dispatcher',
+    'sh-runtime-orchestrator',
+    'homepanel-cloud',
+  ]);
   assert.deepEqual(configuredWorkers(REQUIRED_CLOUDFLARE_WORKERS.join(',')), REQUIRED_CLOUDFLARE_WORKERS);
   const result = evaluateCollectionCoverage(completeEvidence());
   assert.equal(result.failures.length, 0);
