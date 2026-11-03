@@ -341,6 +341,13 @@ async function inspectView(page, tab, viewport, outDir) {
           const wrapper = table.closest('.table-wrap');
           return Math.max(max, wrapper ? wrapper.scrollWidth - wrapper.clientWidth : 0);
         }, 0),
+      emptyHistoryOverflow: [...document.querySelectorAll('.dashboard-view:not([hidden]) .music-service-history-table')]
+        .filter(visible)
+        .filter((table) => table.querySelector('tbody td[colspan]'))
+        .reduce((max, table) => {
+          const wrapper = table.closest('.table-wrap');
+          return Math.max(max, wrapper ? wrapper.scrollWidth - wrapper.clientWidth : 0);
+        }, 0),
       bodyLength: text.length,
       suspicious,
       visibleLoading,
@@ -470,6 +477,7 @@ async function inspectView(page, tab, viewport, outDir) {
   if (state.visiblePanels.length !== 1) issues.push(`expected exactly one visible dashboard view, got ${state.visiblePanels.length}`);
   if (state.horizontalOverflow > 1) issues.push(`document horizontally overflows by ${state.horizontalOverflow}px`);
   if (state.playlistOverflow > 3) issues.push(`playlist table is horizontally clipped by ${state.playlistOverflow}px`);
+  if (state.emptyHistoryOverflow > 3) issues.push(`empty regional chart-history message is horizontally clipped by ${state.emptyHistoryOverflow}px`);
   if (state.appleRegionLayout && !state.appleRegionLayout.ok) {
     issues.push(`Apple Music regional table is compressed or not fully scrollable: ${JSON.stringify(state.appleRegionLayout)}`);
   }
