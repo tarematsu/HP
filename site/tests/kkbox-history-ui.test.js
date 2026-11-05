@@ -17,20 +17,22 @@ test('KKBOX owns its chart history layout as a first-class music service', () =>
   assert.match(shell, /kkboxJapaneseHistoryBody/);
   assert.match(shell, /musicServiceRegionalChartPair/);
   assert.match(shell, /filterAttribute: 'kkbox-artist-filter'/);
-  assert.doesNotMatch(shell, /regional-music\.css|loadRegionalMusicReadModel/i);
+  assert.doesNotMatch(shell, /regional-music\\.css|loadRegionalMusicReadModel/i);
 
   assert.match(runtime, /renderRankHistoryChart/);
-  assert.match(runtime, /payload\?\.kkbox_japanese_chart/);
+  assert.match(runtime, /payload\\?\\.kkbox_japanese_chart/);
   assert.match(runtime, /activeTerritory = 'tw'/);
   assert.match(runtime, /activePeriodType = 'weekly'/);
   assert.match(runtime, /activeChartType = 'newrelease'/);
   assert.match(runtime, /OUT_OF_CHART_RANK = 101/);
   assert.match(runtime, /CHART_START_DATE = '2020-10-01'/);
   assert.match(runtime, /date >= CHART_START_DATE/);
-  assert.match(runtime, /const ordered = history\s*\.filter\(seriesSelected\)\s*\.filter\(artistVisible\)/);
+  assert.match(runtime, /const ordered = history\\s*\\.filter\\(seriesSelected\\)\\s*\\.filter\\(artistVisible\\)/);
   assert.doesNotMatch(runtime, /keyakizaka46/);
   assert.doesNotMatch(runtime, /hiragana_keyakizaka46/);
-  assert.match(runtime, /loadMusicServiceReadModel\(SERVICE\)/);
+  assert.match(runtime, /staleRegionalSourcePeriods/);
+  assert.match(runtime, /提供元の更新が遅れているため/);
+  assert.match(runtime, /loadMusicServiceReadModel\\(SERVICE\\)/);
   assert.match(runtime, /export async function loadKkboxView/);
-  assert.doesNotMatch(runtime, /location\.hash|hashchange|popstate|loadRegionalMusicReadModel/i);
+  assert.doesNotMatch(runtime, /location\\.hash|hashchange|popstate|loadRegionalMusicReadModel/i);
 });
