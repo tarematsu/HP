@@ -30,6 +30,8 @@ test('KKBOX owns its chart history layout as a first-class music service', () =>
   assert.match(runtime, /const ordered = history\s*\.filter\(seriesSelected\)\s*\.filter\(artistVisible\)/);
   assert.doesNotMatch(runtime, /keyakizaka46/);
   assert.doesNotMatch(runtime, /hiragana_keyakizaka46/);
+  assert.match(runtime, /staleRegionalSourcePeriods/);
+  assert.match(runtime, /提供元の更新が遅れているため/);
   assert.match(runtime, /loadMusicServiceReadModel\(SERVICE\)/);
   assert.match(runtime, /export async function loadKkboxView/);
   assert.doesNotMatch(runtime, /location\.hash|hashchange|popstate|loadRegionalMusicReadModel/i);

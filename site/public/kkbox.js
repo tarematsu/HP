@@ -23,6 +23,7 @@ import {
   regionalProviderDateText as dateText,
   regionalRankChartOptions,
   renderRegionalServiceStatus,
+  staleRegionalSourcePeriods,
 } from './music-service-regional-ui.js';
 
 const SERVICE = 'kkbox';
@@ -113,6 +114,24 @@ function syncFilterButtons() { regionalFilters.sync(); }
 function bindFilters() { regionalFilters.bind(); }
 
 function renderStatus(payload) {
+  const state = (Array.isArray(payload?.services) ? payload.services : [])
+    .find((item) => item.service === SERVICE);
+  if (state?.status !== 'error') {
+    const stale = staleRegionalSourcePeriods(payload?.kkbox_japanese_chart?.coverage?.series);
+    if (stale.length) {
+      const periods = [...new Set(stale.map((item) => item.period))].sort();
+      const periodRange = periods.length > 1
+        ? `${dateText(periods[0])}〜${dateText(periods.at(-1))}`
+        : dateText(periods[0]);
+      const maxAgeDays = Math.max(...stale.map((item) => item.ageDays));
+      const partialFailure = state?.status === 'degraded' ? ' 一部項目の取得にも失敗しています。' : '';
+      setNotice(
+        'kkboxNotice',
+        `KKBOX提供元の最新チャート期間は${periodRange}（最大${maxAgeDays}日前）です。提供元の更新が遅れているため、取得済みの最新データを表示しています。${partialFailure}`,
+      );
+      return;
+    }
+  }
   renderRegionalServiceStatus(payload, { service: SERVICE, noticeId: 'kkboxNotice', label: 'KKBOX' });
 }
 function render(payload) {

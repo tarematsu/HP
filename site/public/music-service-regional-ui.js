@@ -1,6 +1,8 @@
 import { byId, setNotice } from './dashboard-ui-common.js?v=20261001.1';
 
 const boundFilters = new WeakSet();
+const DAY_MS = 24 * 60 * 60 * 1000;
+export const REGIONAL_SOURCE_PERIOD_MAX_AGE_MS = 8 * DAY_MS;
 
 export function regionalProviderDate(value) {
   const text = String(value || '').trim();
@@ -10,6 +12,18 @@ export function regionalProviderDate(value) {
 export function regionalProviderDateText(value, fallback = '-') {
   const date = regionalProviderDate(value);
   return date ? date.replaceAll('-', '/') : fallback;
+}
+
+export function staleRegionalSourcePeriods(series, now = Date.now(), maxAgeMs = REGIONAL_SOURCE_PERIOD_MAX_AGE_MS) {
+  if (!series || typeof series !== 'object' || Array.isArray(series)) return [];
+  const current = Number(now);
+  if (!Number.isFinite(current)) return [];
+  return Object.entries(series).flatMap(([key, item]) => {
+    const period = regionalProviderDate(item?.latest_period);
+    const periodAt = period ? Date.parse(`${period}T00:00:00Z`) : NaN;
+    if (!Number.isFinite(periodAt) || current - periodAt <= maxAgeMs) return [];
+    return [{ key, period, ageDays: Math.floor((current - periodAt) / DAY_MS) }];
+  });
 }
 
 // Filter state remains owned by each service. Only DOM sync and event binding
