@@ -6,7 +6,7 @@ export const REGIONAL_SOURCE_PERIOD_MAX_AGE_MS = 8 * DAY_MS;
 
 export function regionalProviderDate(value) {
   const text = String(value || '').trim();
-  return /^\\d{4}-\\d{2}-\\d{2}/.test(text) ? text.slice(0, 10) : '';
+  return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : '';
 }
 
 export function regionalProviderDateText(value, fallback = '-') {
