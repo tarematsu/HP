@@ -6,6 +6,7 @@ import {
   regionalProviderDateText,
   regionalRankChartOptions,
   renderRegionalServiceStatus,
+  staleRegionalSourcePeriods,
 } from '../public/music-service-regional-ui.js';
 
 test('regional date parser preserves shared YYYY-MM-DD semantics', () => {
@@ -15,6 +16,23 @@ test('regional date parser preserves shared YYYY-MM-DD semantics', () => {
   assert.equal(regionalProviderDateText('2026-10-14T00:00:00Z'), '2026/10/14');
   assert.equal(regionalProviderDateText('invalid'), '-');
   assert.equal(regionalProviderDateText('invalid', '原文'), '原文');
+});
+
+test('regional source-period freshness uses provider dates rather than fetch timestamps', () => {
+  const now = Date.parse('2026-11-05T00:00:00Z');
+  const stale = staleRegionalSourcePeriods({
+    'tw/daily/song': { latest_period: '2026-10-02' },
+    'tw/weekly/song': { latest_period: '2026-10-01' },
+    'hk/daily/song': { latest_period: '2026-10-29' },
+    'hk/weekly/song': { latest_period: 'invalid' },
+  }, now);
+  assert.deepEqual(stale, [
+    { key: 'tw/daily/song', period: '2026-10-02', ageDays: 34 },
+    { key: 'tw/weekly/song', period: '2026-10-01', ageDays: 35 },
+  ]);
+  assert.deepEqual(staleRegionalSourcePeriods({
+    'tw/daily/song': { latest_period: '2026-10-29' },
+  }, now), [], 'periods within the eight-day freshness window remain current');
 });
 
 test('regional controls share idempotent binding and accessible pressed state', () => {
@@ -78,4 +96,3 @@ test('regional chart defaults preserve common rank and missing-rank semantics', 
     globalThis.document = previousDocument;
   }
 });
-
