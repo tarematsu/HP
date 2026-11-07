@@ -19,6 +19,21 @@ test('visual audit uses current navigation and retains screenshots when a route 
   assert.match(source, /views.push\(\{ tab, viewport: viewport.name, screenshot, ok: false/);
 });
 
+test('visual audit waits for the selected route shell and Stationhead panel before capture', () => {
+  assert.match(source, /import \{ NAVIGATION, ROUTES \}/);
+  assert.match(source, /routeWaitTimedOut/);
+  assert.match(source, /location\.hash !== `#\$\{mode\}`/);
+  assert.match(source, /data-stationhead-panel/);
+});
+
+test('visual audit waits for Buddies and Ohisama past-history rows and chart paint before capture', () => {
+  assert.match(source, /channelHistoryMode/);
+  assert.match(source, /channelHistoryWaitTimedOut/);
+  assert.match(source, /historyRows/);
+  assert.match(source, /historyPainted/);
+  assert.match(source, /Stationhead past history data or chart was not rendered within 20 seconds/);
+});
+
 test('visual audit waits for history data and fresh chart paint before recording a successful screenshot', () => {
   assert.match(source, /history:data-loaded/);
   assert.match(source, /history:period-chart-drawn/);
