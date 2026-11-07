@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { NAVIGATION } from '../site/public/dashboard-navigation-config.js';
+import { NAVIGATION, ROUTES } from '../site/public/dashboard-navigation-config.js';
 import { auditPagesData } from './pages-data-audit.mjs';
 
 function parseArgs(argv) {
@@ -93,6 +93,7 @@ export function kkboxAuditRoutes(route) {
 
 async function inspectView(page, tab, viewport, outDir) {
   const historyMode = tab.section === 'stationhead' && ['daily', 'weekly', 'monthly'].includes(tab.mode);
+  const channelHistoryMode = tab.section === 'stationhead' && ['past', 'hinata-past'].includes(tab.mode);
   const listeningPartyMode = tab.section === 'stationhead' && tab.source === 'buddies' && tab.mode === 'broadcasts';
   const nogizakaBroadcastMode = tab.section === 'stationhead' && tab.source === 'nogizaka' && tab.mode === 'nogizaka';
   const leaderboardMode = tab.mode === 'ranking';
@@ -105,6 +106,60 @@ async function inspectView(page, tab, viewport, outDir) {
   }
   await page.evaluate((mode) => { location.hash = mode; }, tab.mode);
   await settle(page);
+
+  // Dynamic route shells and Stationhead subpanels mount asynchronously.
+  // Network idle can occur before the selected view becomes visible, especially
+  // on slower tablet layouts. Never save a screenshot of the previous/empty shell.
+  const route = ROUTES[tab.mode];
+  let routeWaitTimedOut = false;
+  if (route?.viewId) {
+    try {
+      await page.waitForFunction(({ mode, source, viewId, panel }) => {
+        const visible = (element) => {
+          if (!element || element.hidden) return false;
+          const style = getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
+          return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+        };
+        const view = document.getElementById(viewId);
+        const activeSource = document.querySelector('#sourceTabs button.active')?.dataset.source
+          || document.querySelector('#sourceSelect')?.value;
+        const activeMode = document.querySelector('#functionTabs button.active')?.dataset.mode;
+        const functionTabs = document.getElementById('functionTabs');
+        if (location.hash !== `#${mode}` || activeSource !== source || !visible(view)) return false;
+        if (functionTabs && !functionTabs.hidden && activeMode !== mode) return false;
+        if (!panel) return true;
+        return visible(view.querySelector(`[data-stationhead-panel="${panel}"]`));
+      }, {
+        mode: tab.mode,
+        source: tab.source,
+        viewId: route.viewId,
+        panel: tab.source === 'nogizaka' ? null : route.panel || null,
+      }, { timeout: 20_000 });
+    } catch {
+      routeWaitTimedOut = true;
+    }
+  }
+
+  let channelHistoryWaitTimedOut = false;
+  if (channelHistoryMode) {
+    try {
+      await page.waitForFunction(() => {
+        const root = document.querySelector('.stationhead-channel-view:not([hidden])');
+        const panel = root?.querySelector('[data-stationhead-panel="history"]:not([hidden])');
+        if (!root || !panel || root.dataset.historyRows == null) return false;
+        const rowCount = Number(root.dataset.historyRows);
+        const body = panel.querySelector('[data-role="daily-tbody"]');
+        const notice = root.querySelector('[data-role="notice"]');
+        const failed = notice && !notice.hidden && /データの取得に失敗|初期化に失敗/.test(notice.textContent || '');
+        const explicitEmpty = rowCount === 0 && Boolean(body?.children.length);
+        return failed || explicitEmpty || (rowCount > 0 && root.dataset.historyPainted === 'true');
+      }, null, { timeout: 20_000 });
+    } catch {
+      channelHistoryWaitTimedOut = true;
+    }
+  }
+
   let historyWaitTimedOut = false;
   if (historyMode) {
     try {
@@ -348,8 +403,13 @@ async function inspectView(page, tab, viewport, outDir) {
       title: document.title,
       historyAudit: window.__pagesAuditHistory || null,
       channelHistory: ['past', 'hinata-past'].includes(route.mode) ? (() => {
-        const panel = document.querySelector('.dashboard-view:not([hidden])');
-        return { rows: Number(panel?.dataset.historyRows || 0), painted: panel?.dataset.historyPainted === 'true' };
+        const panel = document.querySelector('.stationhead-channel-view:not([hidden])');
+        const historyPanel = panel?.querySelector('[data-stationhead-panel="history"]:not([hidden])');
+        return {
+          rows: Number(panel?.dataset.historyRows || 0),
+          painted: panel?.dataset.historyPainted === 'true',
+          panelVisible: visible(historyPanel),
+        };
       })() : null,
       playedPeriodVisible: ['played-tracks', 'hinata-played-tracks'].includes(route.mode) ? (() => {
         const selected = document.querySelector('.dashboard-view:not([hidden]) .played-tracks-period.is-selected');
@@ -421,8 +481,10 @@ async function inspectView(page, tab, viewport, outDir) {
   await page.screenshot({ path: screenshot, fullPage: true, animations: 'disabled' });
 
   const issues = [];
+  if (routeWaitTimedOut) issues.push('selected dashboard route did not become visible within 20 seconds');
+  if (channelHistoryWaitTimedOut) issues.push('Stationhead past history data or chart was not rendered within 20 seconds');
   if (serviceRenderWaitTimedOut) issues.push('music service subview did not finish rendering within 20 seconds');
-  if (state.channelHistory && (!state.channelHistory.rows || !state.channelHistory.painted)) issues.push('channel history data or chart was not rendered');
+  if (state.channelHistory && (!state.channelHistory.panelVisible || !state.channelHistory.rows || !state.channelHistory.painted)) issues.push('channel history data or chart was not rendered');
   if (state.playedPeriodVisible === false) issues.push('selected playback period is outside the visible date strip');
   if (playedTracksWaitTimedOut) issues.push('played-tracks data was not rendered within 20 seconds');
   if (playedTracksMode && state.playedTracksAudit && (state.playedTracksAudit.total === '—' || state.playedTracksAudit.unique === '—')) {
