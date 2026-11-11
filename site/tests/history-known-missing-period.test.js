@@ -21,16 +21,16 @@ const chartSource = readFileSync(
 );
 
 test('known gap expands to daily, weekly, and monthly read-model periods', () => {
-  assert.equal(knownMissingPeriodKeys('daily').length, 160);
-  assert.equal(knownMissingPeriodKeys('daily')[0], '2026-01-14');
+  assert.equal(knownMissingPeriodKeys('daily').length, 171);
+  assert.equal(knownMissingPeriodKeys('daily')[0], '2025-09-13');
   assert.equal(knownMissingPeriodKeys('daily').at(-1), '2026-06-22');
 
-  assert.equal(knownMissingPeriodKeys('weekly').length, 24);
-  assert.equal(knownMissingPeriodKeys('weekly')[0], '2026-01-12');
+  assert.equal(knownMissingPeriodKeys('weekly').length, 27);
+  assert.equal(knownMissingPeriodKeys('weekly')[0], '2025-09-08');
   assert.equal(knownMissingPeriodKeys('weekly').at(-1), '2026-06-22');
 
   assert.deepEqual(knownMissingPeriodKeys('monthly'), [
-    '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06',
+    '2025-09', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06',
   ]);
 });
 
@@ -65,6 +65,20 @@ test('known gap replaces any stored values only in the returned read model', () 
   assert.equal(missing.listener_avg, '-');
   assert.equal(missing.sample_count, '-');
   assert.equal(after.listener_avg, 202);
+});
+
+test('September 2025 missing rows are materialized without inventing source values', () => {
+  const rows = materializeKnownMissingPeriods(
+    [{ period_key: '2025-09-12', listener_avg: 120 }, { period_key: '2025-09-24', listener_avg: 130 }],
+    'daily',
+    '2025-09-12',
+    '2025-09-24',
+    Date.parse('2026-11-11T00:00:00Z'),
+  );
+  const missing = rows.filter((row) => row.period_key >= '2025-09-13' && row.period_key <= '2025-09-23');
+  assert.equal(missing.length, 11);
+  assert.ok(missing.every((row) => row.known_missing === true && row.synthetic_missing === true));
+  assert.ok(missing.every((row) => row.listener_avg === '-' && row.sample_count === '-'));
 });
 
 test('current or future gap periods are not materialized yet', () => {
