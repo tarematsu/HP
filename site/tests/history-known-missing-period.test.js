@@ -34,6 +34,21 @@ test('known gap expands to daily, weekly, and monthly read-model periods', () =>
   ]);
 });
 
+test('September 2025 source-empty dates are declared missing across daily, weekly, and monthly periods', () => {
+  assert.deepEqual(knownMissingPeriodKeys('daily').filter((key) => key.startsWith('2025-09')), [
+    '2025-09-13', '2025-09-14', '2025-09-15', '2025-09-16', '2025-09-17',
+    '2025-09-18', '2025-09-19', '2025-09-20', '2025-09-21', '2025-09-22', '2025-09-23',
+  ]);
+  assert.equal(isKnownMissingPeriod('daily', '2025-09-12'), false);
+  assert.equal(isKnownMissingPeriod('daily', '2025-09-13'), true);
+  assert.equal(isKnownMissingPeriod('daily', '2025-09-23'), true);
+  assert.equal(isKnownMissingPeriod('daily', '2025-09-24'), false);
+  assert.equal(isKnownMissingPeriod('weekly', '2025-09-08'), true);
+  assert.equal(isKnownMissingPeriod('weekly', '2025-09-15'), true);
+  assert.equal(isKnownMissingPeriod('weekly', '2025-09-22'), true);
+  assert.equal(isKnownMissingPeriod('monthly', '2025-09'), true);
+});
+
 test('known gap replaces any stored values only in the returned read model', () => {
   const rows = materializeKnownMissingPeriods([
     { period_key: '2026-01-13', listener_avg: 101 },
