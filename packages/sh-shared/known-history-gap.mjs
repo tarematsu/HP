@@ -4,11 +4,22 @@ import {
 } from './period-completeness.mjs';
 
 const DAY_MS = 86_400_000;
+// Periods with no source observations are represented as explicit missing rows
+// in read models and reported as known gaps by materialized-data audits.
+export const KNOWN_HISTORY_GAP_RANGES = Object.freeze([
+  { start: '2025-09-13', end: '2025-09-23' },
+  { start: '2026-01-14', end: '2026-06-22' },
+]);
+
+// Keep the original 2026 bounds for the first-week comparison's separate
+// collection-window logic; the 2025 gap must not widen that window.
 export const KNOWN_HISTORY_GAP_START = '2026-01-14';
 export const KNOWN_HISTORY_GAP_END = '2026-06-22';
 
-const GAP_START_MS = Date.parse(`${KNOWN_HISTORY_GAP_START}T00:00:00Z`);
-const GAP_END_EXCLUSIVE_MS = Date.parse(`${KNOWN_HISTORY_GAP_END}T00:00:00Z`) + DAY_MS;
+const GAP_RANGES = KNOWN_HISTORY_GAP_RANGES.map(({ start, end }) => ({
+  start: Date.parse(`${start}T00:00:00Z`),
+  end: Date.parse(`${end}T00:00:00Z`) + DAY_MS,
+}));
 const MISSING_VALUE = '-';
 const MISSING_FIELDS = [
   'sample_count', 'reliable_sample_count',
@@ -48,22 +59,28 @@ function addMonth(monthKey) {
 
 export function isKnownMissingPeriod(mode, periodKey) {
   const bounds = expectedPeriodBounds(mode, periodKey);
-  return overlaps(bounds, { start: GAP_START_MS, end: GAP_END_EXCLUSIVE_MS });
+  return GAP_RANGES.some((range) => overlaps(bounds, range));
 }
 
 export function knownMissingPeriodKeys(mode) {
   const keys = [];
   if (mode === 'daily') {
-    for (let key = KNOWN_HISTORY_GAP_START; key <= KNOWN_HISTORY_GAP_END; key = addDays(key, 1)) keys.push(key);
-    return keys;
+    for (const range of KNOWN_HISTORY_GAP_RANGES) {
+      for (let key = range.start; key <= range.end; key = addDays(key, 1)) keys.push(key);
+    }
+    return [...new Set(keys)].sort();
   }
   if (mode === 'weekly') {
-    for (let key = mondayKey(KNOWN_HISTORY_GAP_START); key <= KNOWN_HISTORY_GAP_END; key = addDays(key, 7)) keys.push(key);
-    return keys;
+    for (const range of KNOWN_HISTORY_GAP_RANGES) {
+      for (let key = mondayKey(range.start); key <= range.end; key = addDays(key, 7)) keys.push(key);
+    }
+    return [...new Set(keys)].sort();
   }
   if (mode === 'monthly') {
-    for (let key = KNOWN_HISTORY_GAP_START.slice(0, 7); key <= KNOWN_HISTORY_GAP_END.slice(0, 7); key = addMonth(key)) keys.push(key);
-    return keys;
+    for (const range of KNOWN_HISTORY_GAP_RANGES) {
+      for (let key = range.start.slice(0, 7); key <= range.end.slice(0, 7); key = addMonth(key)) keys.push(key);
+    }
+    return [...new Set(keys)].sort();
   }
   return keys;
 }
