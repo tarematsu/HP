@@ -16,6 +16,7 @@ on:
       - 'worker/src/cron-dispatcher-entry.js'
       - 'worker/src/scheduled-crons.js'
       - 'worker/src/regional-music-dispatch-plan.js'
+      - 'worker/scripts/resolve-regional-recollection-services.mjs'
       - '.github/workflows/recollect-regional-music-manual.yml'
 
 permissions:
@@ -33,15 +34,22 @@ jobs:
     timeout-minutes: 75
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
-      RECOLLECTION_SERVICES: ${{ github.event_name == 'push' && (contains(github.event.head_commit.modified, 'worker/src/cron-dispatcher-entry.js') || contains(github.event.head_commit.modified, 'worker/src/scheduled-crons.js') || contains(github.event.head_commit.modified, 'worker/src/regional-music-dispatch-plan.js')) && 'kkbox' || github.event_name == 'push' && 'youtube_music' || inputs.services }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       - uses: ./.github/actions/cloudflare-context
         with:
           api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CF_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Resolve selected regional services
+        id: selection
+        working-directory: worker
+        env:
+          INPUT_SERVICES: ${{ inputs.services }}
+        run: node scripts/resolve-regional-recollection-services.mjs
       - name: Wait for the official production deployment of this commit
         working-directory: worker
         env:
@@ -52,6 +60,8 @@ jobs:
         run: npm ci --prefer-offline --no-audit --no-fund
       - name: Recollect selected services to R2 and publish their results
         working-directory: worker
+        env:
+          RECOLLECTION_SERVICES: ${{ steps.selection.outputs.services }}
         run: |
           if [ -n "$RECOLLECTION_SERVICES" ]; then
             node scripts/collect-regional-r2-actions.mjs "--services=$RECOLLECTION_SERVICES"
@@ -59,6 +69,6 @@ jobs:
             node scripts/collect-regional-r2-actions.mjs --all
           fi
       - name: Verify current YouTube source observations after repair
-        if: always() && contains(env.RECOLLECTION_SERVICES, 'youtube_music')
+        if: always() && steps.selection.outputs.verify_youtube == 'true'
         working-directory: worker
         run: node scripts/verify-youtube-music-actions.mjs
