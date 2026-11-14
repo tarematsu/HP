@@ -32,7 +32,16 @@ test('regional source-period freshness uses provider dates rather than fetch tim
   ]);
   assert.deepEqual(staleRegionalSourcePeriods({
     'tw/daily/song': { latest_period: '2026-10-29' },
-  }, now), [], 'periods within the eight-day freshness window remain current');
+  }, now), [], 'periods within the nine-day freshness window remain current');
+});
+
+test('regional source-period freshness allows the scheduled nine-day KKBOX cycle', () => {
+  const now = Date.parse('2026-11-14T00:00:00Z');
+  const series = { 'tw/weekly/song': { latest_period: '2026-11-05' } };
+  assert.deepEqual(staleRegionalSourcePeriods(series, now), []);
+  assert.deepEqual(staleRegionalSourcePeriods(series, now + 1), [
+    { key: 'tw/weekly/song', period: '2026-11-05', ageDays: 9 },
+  ]);
 });
 
 test('regional controls share idempotent binding and accessible pressed state', () => {
