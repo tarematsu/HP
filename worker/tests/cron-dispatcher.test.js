@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   amazonMusicDue,
   CRON_DISPATCHER_CRON,
+  KKBOX_WEEKLY_CRON,
   runCronDispatcher,
 } from '../src/cron-dispatcher-entry.js';
 
@@ -106,6 +107,19 @@ test('regional and Stationhead collection schedules are dispatched to target Wor
   assert.deepEqual(calls.map(({ name }) => name), ['collection-jobs', 'ohisama', 'collection-jobs', 'nogizaka']);
   assert.equal(calls[1].body.cron, '*/5 * * * *');
   assert.equal(calls[2].body.cron, '17 12 * * 1');
+});
+
+test('KKBOX weekly collection runs after Thursday provider periods close', async () => {
+  const calls = [];
+  // Friday 15:00 UTC is Saturday 00:00 JST, after the weekly provider period closes.
+  await runCronDispatcher({ scheduledTime: Date.UTC(2026, 10, 13, 15, 0) }, env(calls));
+  assert.equal(KKBOX_WEEKLY_CRON, '0 15 * * 5');
+  assert.equal(calls.filter(({ name, body }) => name === 'regional' && body.cron === KKBOX_WEEKLY_CRON).length, 1);
+
+  calls.length = 0;
+  // The former Sunday 15:00 UTC / Monday 00:00 JST slot must no longer collect KKBOX.
+  await runCronDispatcher({ scheduledTime: Date.UTC(2026, 10, 8, 15, 0) }, env(calls));
+  assert.equal(calls.some(({ name, body }) => name === 'regional' && body.cron === KKBOX_WEEKLY_CRON), false);
 });
 
 test('hourly HomePanel watchdog forces radar due without restoring a HomePanel Worker Cron', async () => {
