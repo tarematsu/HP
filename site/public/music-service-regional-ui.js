@@ -2,7 +2,8 @@ import { byId, setNotice } from './dashboard-ui-common.js?v=20261001.1';
 
 const boundFilters = new WeakSet();
 const DAY_MS = 24 * 60 * 60 * 1000;
-export const REGIONAL_SOURCE_PERIOD_MAX_AGE_MS = 8 * DAY_MS;
+// KKBOX dates are provider period dates; Saturday collection may observe a Thursday date 8d15h old.
+export const REGIONAL_SOURCE_PERIOD_MAX_AGE_MS = 9 * DAY_MS;
 
 export function regionalProviderDate(value) {
   const text = String(value || '').trim();

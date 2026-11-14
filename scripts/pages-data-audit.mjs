@@ -101,7 +101,9 @@ function collectorStatusIssue(state) {
 // Collector success timestamps only prove that the request completed. KKBOX's
 // provider can still return an old chart period, so validate every territory /
 // cadence / chart series against the provider's own latest period as well.
-export function kkboxSourcePeriodIssues(payload, now = Date.now(), maxAge = 8 * DAY) {
+// A Thursday provider date can be 8d15h old at the next Saturday 00:00 JST collection.
+// Allow that full weekly cadence, then fail if the next provider period is still missing.
+export function kkboxSourcePeriodIssues(payload, now = Date.now(), maxAge = 9 * DAY) {
   const series = payload?.kkbox_japanese_chart?.coverage?.series;
   if (!series || typeof series !== 'object' || Array.isArray(series)) {
     return ['KKBOX source-period coverage is missing'];

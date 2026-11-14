@@ -85,7 +85,7 @@ const due = {
   amazon: (_parts, timestamp) => amazonMusicDue(timestamp),
   playlists: ({ hour, minute }) => minute === 0 && [5, 17].includes(hour),
   daily15: ({ hour, minute }) => hour === 15 && minute === 0,
-  kkbox: ({ day, hour, minute }) => day === 0 && hour === 15 && minute === 0,
+  kkbox: ({ day, hour, minute }) => day === 5 && hour === 15 && minute === 0,
   qqWeekly: ({ day, hour, minute }) => day === 4 && hour === 9 && minute === 0,
   kugou: ({ day, hour, minute }) => day >= 1 && day <= 5 && hour === 2 && minute === 30,
   kugouAcg: ({ day, hour, minute }) => day === 3 && hour === 2 && minute === 40,

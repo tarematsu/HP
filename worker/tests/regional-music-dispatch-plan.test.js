@@ -2,15 +2,16 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {KUGOU_MUSIC_WEEKDAY_JST_HOUR,QQ_MUSIC_WEEKLY_JST_DAY,QQ_MUSIC_WEEKLY_JST_HOUR,REGIONAL_MUSIC_DAILY_SERVICES,REGIONAL_MUSIC_DISPATCH_UTC_HOUR,REGIONAL_MUSIC_EVERY_DAY,REGIONAL_MUSIC_WEEKLY_SERVICES,regionalMusicR2DueServices,regionalMusicDispatchForTimestamp,enqueueRegionalMusicDispatch} from '../src/regional-music-dispatch-plan.js';
 
-test('regional cadence keeps Monday KKBOX, QQ Thursday 18:00 and Kugou weekdays 11:30',()=>{
+test('regional cadence keeps Saturday KKBOX, QQ Thursday 18:00 and Kugou weekdays 11:30',()=>{
   assert.equal(REGIONAL_MUSIC_DISPATCH_UTC_HOUR,15);
   assert.equal(QQ_MUSIC_WEEKLY_JST_DAY,4);
   assert.equal(QQ_MUSIC_WEEKLY_JST_HOUR,18);
   assert.equal(KUGOU_MUSIC_WEEKDAY_JST_HOUR,11);
   assert.deepEqual(REGIONAL_MUSIC_EVERY_DAY,[]);
+  assert.deepEqual(regionalMusicR2DueServices(Date.parse('2026-10-02T15:00:00Z')),REGIONAL_MUSIC_WEEKLY_SERVICES);
   assert.deepEqual(regionalMusicR2DueServices(Date.parse('2026-10-03T15:00:00Z')),[]);
-  assert.deepEqual(regionalMusicR2DueServices(Date.parse('2026-10-04T15:00:00Z')),REGIONAL_MUSIC_WEEKLY_SERVICES);
-  assert.equal(new Set(regionalMusicR2DueServices(Date.parse('2026-10-04T15:00:00Z'))).size,1);
+  assert.deepEqual(regionalMusicR2DueServices(Date.parse('2026-10-04T15:00:00Z')),[]);
+  assert.equal(new Set(regionalMusicR2DueServices(Date.parse('2026-10-02T15:00:00Z'))).size,1);
   assert.deepEqual(REGIONAL_MUSIC_WEEKLY_SERVICES,['kkbox']);
   assert.equal(REGIONAL_MUSIC_DAILY_SERVICES.length,3);
   assert.deepEqual(regionalMusicR2DueServices(Date.parse('2026-10-06T07:00:00Z')),[]);
