@@ -7,7 +7,8 @@ export const AMAZON_MUSIC_CRON = '0,10,15,20,30,40,50 * * * *';
 export const MUSIC_PLAYLIST_REFRESH_CRON = '0 5,17 * * *';
 export const YOUTUBE_MUSIC_DAILY_CRON = '0 15 * * *';
 export const REGIONAL_MUSIC_DAILY_CRON = '0 21 * * *';
-export const KKBOX_WEEKLY_CRON = '0 15 * * 0';
+// Weekly provider periods close on Thursday; collect Saturday 00:00 JST.
+export const KKBOX_WEEKLY_CRON = '0 15 * * 5';
 export const QQ_WEEKLY_CRON = '0 9 * * 4';
 export const KUGOU_WEEKDAY_CRON = '30 2 * * 1-5';
 export const KUGOU_ACG_WEEKLY_CRON = '40 2 * * 3';
