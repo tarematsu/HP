@@ -13,6 +13,9 @@ on:
     paths:
       - 'worker/src/regional-music-youtube-music.js'
       - 'worker/src/regional-music-service-entry.js'
+      - 'worker/src/cron-dispatcher-entry.js'
+      - 'worker/src/scheduled-crons.js'
+      - 'worker/src/regional-music-dispatch-plan.js'
       - '.github/workflows/recollect-regional-music-manual.yml'
 
 permissions:
@@ -49,7 +52,7 @@ jobs:
       - name: Recollect selected services to R2 and publish their results
         working-directory: worker
         env:
-          RECOLLECTION_SERVICES: ${{ github.event_name == 'push' && 'youtube_music' || inputs.services }}
+          RECOLLECTION_SERVICES: ${{ github.event_name == 'push' && (contains(github.event.head_commit.modified, 'worker/src/cron-dispatcher-entry.js') || contains(github.event.head_commit.modified, 'worker/src/scheduled-crons.js') || contains(github.event.head_commit.modified, 'worker/src/regional-music-dispatch-plan.js')) && 'kkbox' || github.event_name == 'push' && 'youtube_music' || inputs.services }}
         run: |
           if [ -n "$RECOLLECTION_SERVICES" ]; then
             node scripts/collect-regional-r2-actions.mjs "--services=$RECOLLECTION_SERVICES"
