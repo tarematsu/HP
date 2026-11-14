@@ -33,6 +33,18 @@ test('KKBOX freshness checks every provider series instead of trusting the colle
   assert.match(kkboxSourcePeriodIssues(payload, now)[0], /no successful provider-period checks/);
 });
 
+test('KKBOX date-only provider periods allow the Saturday collection window but flag a missed cycle', () => {
+  const keys = [
+    'tw/daily/song', 'tw/daily/newrelease', 'tw/weekly/song', 'tw/weekly/newrelease',
+    'hk/daily/song', 'hk/daily/newrelease', 'hk/weekly/song', 'hk/weekly/newrelease',
+  ];
+  const series = Object.fromEntries(keys.map((key) => [key, { checked_requests: 1, latest_period: '2026-11-05' }]));
+  const payload = { kkbox_japanese_chart: { coverage: { series } } };
+  const nineDayBoundary = Date.parse('2026-11-14T00:00:00Z');
+  assert.deepEqual(kkboxSourcePeriodIssues(payload, nineDayBoundary), []);
+  assert.equal(kkboxSourcePeriodIssues(payload, nineDayBoundary + 1).length, keys.length);
+});
+
 test('HTTP failures remain separate data failures rather than successful screenshots', async () => {
   const report = await auditPagesData(async () => { throw new Error('HTTP 503'); }, now);
   assert.equal(report.ok, false);
