@@ -4,7 +4,7 @@ import {collectRegionalR2Snapshot,mergeRegionalR2Snapshot,regionalSnapshotFromPa
 import {saveRegionalArtist,saveRegionalTrack,saveRegionalRelease,saveRegionalPlaylist,saveRegionalPlaylistSnapshot,saveRegionalPlaylistMembership,saveRegionalCollectorState} from '../src/regional-music-store.js';
 import {collectRegionalR2Run,parseRegionalServiceSelection} from '../scripts/collect-regional-r2-actions.mjs';
 const now=Date.parse('2026-10-05T15:00:00Z');
-const kkboxNow=Date.parse('2026-10-04T15:00:00Z');
+const kkboxNow=Date.parse('2026-10-02T15:00:00Z');
 
 function minuteDbWithTracks(tracks) {
   let reads=0;
@@ -106,7 +106,7 @@ test('first R2 migration seeds published observations without changing their tim
   assert.equal(regionalSnapshotFromPayload(payload,'missing'),null);
 });
 
-test('Monday 00:00 runner invokes only KKBOX with zero SQL and writes daily/latest objects',async()=>{
+test('Saturday 00:00 runner invokes only KKBOX with zero SQL and writes daily/latest objects',async()=>{
   const writes=[];const called=[];
   const collectors={kkbox:async env=>{called.push('kkbox');assert.equal(env.OTHER_DB,undefined);await saveRegionalCollectorState(env,{service:'kkbox',status:'ok',last_success_at:kkboxNow});}};
   const result=await collectRegionalR2Run({now:kkboxNow,collectors,load:async()=>null,save:async(key)=>writes.push(key)});
@@ -145,7 +145,7 @@ test('service selection parser deduplicates and rejects unknown services',()=>{
 });
 
 test('scheduled retry reuses complete same-day KKBOX service without provider requests or writes',async()=>{
-  const result=await collectRegionalR2Run({now:kkboxNow,collectors:{},load:async()=>({day:'2026-10-05',state:{status:'ok'}}),save:async()=>{throw new Error('must not write');}});
+  const result=await collectRegionalR2Run({now:kkboxNow,collectors:{},load:async()=>({day:'2026-10-03',state:{status:'ok'}}),save:async()=>{throw new Error('must not write');}});
   assert.equal(result.length,1);
   assert.ok(result.every(row=>row.reused));
 });
