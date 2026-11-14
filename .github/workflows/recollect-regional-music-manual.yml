@@ -60,6 +60,6 @@ jobs:
             node scripts/collect-regional-r2-actions.mjs --all
           fi
       - name: Verify current YouTube source observations after repair
-        if: always() && (github.event_name == 'push' || inputs.services == 'youtube_music')
+        if: always() && contains(env.RECOLLECTION_SERVICES, 'youtube_music')
         working-directory: worker
         run: node scripts/verify-youtube-music-actions.mjs
