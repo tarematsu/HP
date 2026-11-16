@@ -342,9 +342,11 @@ try {
         await table.waitFor({ state: 'visible', timeout: 15000 });
         const amazonLayout = await table.evaluate((node) => {
           const headers = [...node.tHead.rows[0].cells].map((cell) => cell.textContent.trim());
+          const headerHeights = [...node.tHead.rows[0].cells].map((cell) => cell.getBoundingClientRect().height);
           const cells = [...(node.tBodies[0]?.rows[0]?.cells || [])];
           return {
             headers,
+            headerHeights,
             values: cells.slice(0, 3).map((cell) => ({
               text: cell.textContent.trim(),
               whiteSpace: getComputedStyle(cell).whiteSpace,
@@ -362,6 +364,8 @@ try {
         assert.ok(amazonLayout.values.every((cell) => cell.overflowWrap === 'normal'),
           `${label}: Amazon Music rank and group values do not break anywhere`);
         if (width <= 390) {
+          assert.ok(amazonLayout.headerHeights[2] <= 40,
+            `${label}: Amazon Music group heading remains on one line (height=${amazonLayout.headerHeights[2]})`);
           assert.ok(amazonLayout.values.every((cell) => cell.height <= 32),
             `${label}: Amazon Music rank and group cells remain single-line ( ${JSON.stringify(amazonLayout.values)} )`);
           assert.ok(amazonLayout.values.every((cell) => cell.scrollWidth <= cell.clientWidth + 1),
