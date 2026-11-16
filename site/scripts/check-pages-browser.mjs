@@ -323,6 +323,16 @@ try {
           .map((node) => node.dataset.key));
         assert.deepEqual(clipped, [], 'follower cards stay within the viewport');
       }
+      if (mode === 'amazon-music') {
+        const table = page.locator('#amazonMusicTbody').locator('xpath=ancestor::table[1]');
+        await table.waitFor({ state: 'visible', timeout: 15000 });
+        const header = table.locator('thead th').first();
+        assert.equal((await header.textContent()).trim(), '順位', `${label}: Amazon Music rank header stays concise`);
+        if (width <= 390) {
+          const height = await header.evaluate((node) => node.getBoundingClientRect().height);
+          assert.ok(height <= 56, `${label}: Amazon Music rank header does not wrap into multiple lines (height=${height})`);
+        }
+      }
       if (mode === 'apple-music') {
         const table = page.locator('.dashboard-view:not([hidden]) #appleRegionCompareTable');
         await table.waitFor({ state: 'visible', timeout: 15000 });

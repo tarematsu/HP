@@ -8,7 +8,7 @@ const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import
 const tableDom = readFileSync(new URL('../public/dashboard-table-dom.js', import.meta.url), 'utf8');
 
 test('Amazon Music table exposes artist and previous-day rank change columns', () => {
-  assert.match(shell, /headers: \['Amazon Music総合順位', '前日比', 'アーティスト', '曲名'\]/);
+  assert.match(shell, /headers: \['順位', '前日比', 'アーティスト', '曲名'\]/);
   assert.match(runtime, /signedInteger\(track\?\.rank_change\)/);
   assert.match(runtime, /appendTableRow\(tbody, \[/);
   assert.match(runtime, /track\?\.group_name \|\| '-'/);
