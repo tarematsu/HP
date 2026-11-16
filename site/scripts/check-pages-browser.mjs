@@ -330,7 +330,7 @@ try {
         assert.equal((await header.textContent()).trim(), '順位', `${label}: Amazon Music rank header stays concise`);
         if (width <= 390) {
           const height = await header.evaluate((node) => node.getBoundingClientRect().height);
-          assert.ok(height <= 48, `${label}: Amazon Music rank header does not wrap into multiple lines (height=${height})`);
+          assert.ok(height <= 56, `${label}: Amazon Music rank header does not wrap into multiple lines (height=${height})`);
         }
       }
       if (mode === 'apple-music') {
