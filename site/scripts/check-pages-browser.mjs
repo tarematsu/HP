@@ -340,7 +340,6 @@ try {
       if (mode === 'amazon-music') {
         const table = page.locator('#amazonMusicTbody').locator('xpath=ancestor::table[1]');
         await table.waitFor({ state: 'visible', timeout: 15000 });
-        const header = table.locator('thead th').first();
         const amazonLayout = await table.evaluate((node) => {
           const headers = [...node.tHead.rows[0].cells].map((cell) => cell.textContent.trim());
           const cells = [...(node.tBodies[0]?.rows[0]?.cells || [])];
