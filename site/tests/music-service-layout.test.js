@@ -93,6 +93,11 @@ test('music-service sub-tabs remain a single horizontally scrollable row', () =>
   assert.doesNotMatch(layoutCss, /#spotifyPlaylistsView \.music-service-view-tabs/);
 });
 
+test('Amazon Music rank table uses a concise first-column heading', () => {
+  assert.match(amazon, /headers: \['順位', '前日比', 'アーティスト', '曲名'\]/);
+  assert.doesNotMatch(amazon, /headers: \['Amazon Music総合順位'/);
+});
+
 test('music service pairs stack at tablet widths and Amazon rank columns remain readable on phones', () => {
   assert.match(layoutCss, /@media \(max-width:900px\)\s*\{\s*\.music-service-group\s*\{\s*grid-template-columns:minmax\(0,1fr\);/);
   assert.match(amazonCss, /\.amazon-rank-col:first-child\s*\{\s*width:\s*72px;/);
