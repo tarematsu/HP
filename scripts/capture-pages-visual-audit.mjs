@@ -91,6 +91,37 @@ export function kkboxAuditRoutes(route) {
   })));
 }
 
+const STATIONHEAD_HISTORY_RANGES = Object.freeze(['30', '180', '365', 'all']);
+
+export function stationheadHistoryAuditRoutes(route) {
+  if (!['past', 'hinata-past'].includes(route?.mode)) return [];
+  return ['daily', 'weekly'].flatMap((mode) => STATIONHEAD_HISTORY_RANGES
+    .filter((range) => !(mode === 'daily' && range === 'all'))
+    .map((range) => ({
+      ...route,
+      panel: `history-${mode}-${range}`,
+      historySelection: { mode, range },
+    })));
+}
+
+export function playedTracksAuditRoutes(route) {
+  if (!['played-tracks', 'hinata-played-tracks'].includes(route?.mode)) return [];
+  return [{
+    ...route,
+    panel: 'weekly',
+    playedTracksSelection: { weekly: true },
+  }];
+}
+
+export function auditRouteStates(route) {
+  if (route?.mode === 'kkbox') return kkboxAuditRoutes(route);
+  return [
+    route,
+    ...stationheadHistoryAuditRoutes(route),
+    ...playedTracksAuditRoutes(route),
+  ];
+}
+
 async function inspectView(page, tab, viewport, outDir) {
   const historyMode = tab.section === 'stationhead' && ['daily', 'weekly', 'monthly'].includes(tab.mode);
   const channelHistoryMode = tab.section === 'stationhead' && ['past', 'hinata-past'].includes(tab.mode);
@@ -218,6 +249,79 @@ async function inspectView(page, tab, viewport, outDir) {
       listeningPartyWaitTimedOut = true;
     }
   }
+  let historySelectionWaitTimedOut = false;
+  if (tab.historySelection) {
+    try {
+      const { mode, range } = tab.historySelection;
+      const root = page.locator('.dashboard-view:not([hidden]) .stationhead-channel-view:not([hidden])').first();
+      const selectedMode = await root.locator('[data-history-table-mode][aria-pressed="true"]')
+        .getAttribute('data-history-table-mode').catch(() => null);
+      if (selectedMode !== mode) {
+        const previousRows = Number(await root.getAttribute('data-history-rows') || 0);
+        await root.locator(`button[data-history-table-mode="${mode}"]`).click();
+        await page.waitForFunction(({ mode: requestedMode, previousRows: before }) => {
+          const view = document.querySelector('.dashboard-view:not([hidden]) .stationhead-channel-view:not([hidden])');
+          const button = view?.querySelector(`[data-history-table-mode="${requestedMode}"]`);
+          const rows = Number(view?.dataset.historyRows || 0);
+          const title = view?.querySelector('[data-role="history-table-title"]')?.textContent?.trim();
+          const bodyRows = view?.querySelectorAll('[data-role="daily-tbody"] > tr').length || 0;
+          return button?.getAttribute('aria-pressed') === 'true'
+            && title === `${requestedMode === 'weekly' ? '週次' : '日次'}データ`
+            && rows > 0 && rows !== before
+            && view?.dataset.historyPainted === 'true'
+            && bodyRows > 0;
+        }, { mode, previousRows }, { timeout: 20_000 });
+      }
+
+      const selectedRange = await root.locator('[data-history-range].active')
+        .getAttribute('data-history-range').catch(() => null);
+      if (selectedRange !== range) {
+        await root.locator(`button[data-history-range="${range}"]`).click();
+      }
+      await page.waitForFunction(({ mode: requestedMode, range: requestedRange }) => {
+        const view = document.querySelector('.dashboard-view:not([hidden]) .stationhead-channel-view:not([hidden])');
+        const modeButton = view?.querySelector(`[data-history-table-mode="${requestedMode}"]`);
+        const rangeButton = view?.querySelector(`[data-history-range="${requestedRange}"]`);
+        const title = view?.querySelector('[data-role="history-table-title"]')?.textContent?.trim();
+        const bodyRows = view?.querySelectorAll('[data-role="daily-tbody"] > tr').length || 0;
+        return modeButton?.getAttribute('aria-pressed') === 'true'
+          && rangeButton?.classList.contains('active')
+          && title === `${requestedMode === 'weekly' ? '週次' : '日次'}データ`
+          && view?.dataset.historyPainted === 'true'
+          && bodyRows > 0;
+      }, { mode, range }, { timeout: 20_000 });
+    } catch {
+      historySelectionWaitTimedOut = true;
+    }
+  }
+
+  let playedTracksSelectionWaitTimedOut = false;
+  if (tab.playedTracksSelection?.weekly) {
+    try {
+      const panel = page.locator('.dashboard-view:not([hidden]) .stationhead-channel-view:not([hidden]) [data-stationhead-panel="played-tracks"]:not([hidden])');
+      const beforeTotal = (await panel.locator('[data-role="played-total"]').textContent())?.trim() || '';
+      const checkbox = panel.locator('[data-role="played-week"]');
+      if (!await checkbox.isChecked()) await checkbox.check();
+      await page.waitForFunction((previousTotal) => {
+        const view = document.querySelector('.dashboard-view:not([hidden]) .stationhead-channel-view:not([hidden]) [data-stationhead-panel="played-tracks"]:not([hidden])');
+        const checkbox = view?.querySelector('[data-role="played-week"]');
+        const periods = [...(view?.querySelectorAll('[data-role="played-periods"] button') || [])];
+        const selected = periods.find((button) => button.classList.contains('is-selected'));
+        const total = view?.querySelector('[data-role="played-total"]')?.textContent?.trim() || '';
+        const bodyRows = view?.querySelectorAll('[data-role="played-tbody"] > tr').length || 0;
+        return checkbox?.checked === true
+          && periods.length > 0
+          && periods.every((button) => (button.textContent || '').includes('(週)'))
+          && selected
+          && (selected.textContent || '').includes('(週)')
+          && total !== '' && total !== '—' && total !== previousTotal
+          && bodyRows > 0;
+      }, beforeTotal, { timeout: 20_000 });
+    } catch {
+      playedTracksSelectionWaitTimedOut = true;
+    }
+  }
+
   const controls = Array.isArray(tab.controls) ? tab.controls : tab.control ? [tab.control] : [];
   for (const control of controls) {
     await page.locator('.dashboard-view:not([hidden])').locator(control).click();
@@ -411,6 +515,18 @@ async function inspectView(page, tab, viewport, outDir) {
           panelVisible: visible(historyPanel),
         };
       })() : null,
+      historySelectionAudit: route.historySelection ? (() => {
+        const panel = document.querySelector('.stationhead-channel-view:not([hidden])');
+        const historyPanel = panel?.querySelector('[data-stationhead-panel="history"]:not([hidden])');
+        return {
+          mode: historyPanel?.querySelector('[data-history-table-mode][aria-pressed="true"]')?.dataset.historyTableMode || '',
+          range: historyPanel?.querySelector('[data-history-range].active')?.dataset.historyRange || '',
+          title: historyPanel?.querySelector('[data-role="history-table-title"]')?.textContent?.trim() || '',
+          rows: Number(panel?.dataset.historyRows || 0),
+          visibleRows: historyPanel?.querySelectorAll('[data-role="daily-tbody"] > tr').length || 0,
+          painted: panel?.dataset.historyPainted === 'true',
+        };
+      })() : null,
       playedPeriodVisible: ['played-tracks', 'hinata-played-tracks'].includes(route.mode) ? (() => {
         const selected = document.querySelector('.dashboard-view:not([hidden]) .played-tracks-period.is-selected');
         if (!selected) return false;
@@ -426,6 +542,16 @@ async function inspectView(page, tab, viewport, outDir) {
           selectedDate: panel?.querySelector('.played-tracks-period.is-selected')?.dataset.period || '',
           total, unique, rowCount: body?.children.length || 0,
           empty: (body?.textContent || '').includes('再生履歴データがありません。'),
+        };
+      })() : null,
+      playedTracksSelectionAudit: route.playedTracksSelection ? (() => {
+        const panel = document.querySelector('.dashboard-view:not([hidden]) [data-stationhead-panel="played-tracks"]:not([hidden])');
+        const periods = [...(panel?.querySelectorAll('[data-role="played-periods"] button') || [])];
+        return {
+          weekly: panel?.querySelector('[data-role="played-week"]')?.checked === true,
+          weekLabels: periods.length > 0 && periods.every((button) => (button.textContent || '').includes('(週)')),
+          selectedPeriod: periods.find((button) => button.classList.contains('is-selected'))?.dataset.period || '',
+          rowCount: panel?.querySelectorAll('[data-role="played-tbody"] > tr').length || 0,
         };
       })() : null,
       leaderboardAudit: route.mode === 'ranking' ? {
@@ -483,14 +609,28 @@ async function inspectView(page, tab, viewport, outDir) {
   const issues = [];
   if (routeWaitTimedOut) issues.push('selected dashboard route did not become visible within 20 seconds');
   if (channelHistoryWaitTimedOut) issues.push('Stationhead past history data or chart was not rendered within 20 seconds');
+  if (historySelectionWaitTimedOut) issues.push('Stationhead daily/weekly history selection did not finish rendering within 20 seconds');
+  if (playedTracksSelectionWaitTimedOut) issues.push('Stationhead weekly played-track selection did not finish rendering within 20 seconds');
   if (serviceRenderWaitTimedOut) issues.push('music service subview did not finish rendering within 20 seconds');
   if (state.channelHistory && (!state.channelHistory.panelVisible || !state.channelHistory.rows || !state.channelHistory.painted)) issues.push('channel history data or chart was not rendered');
+  if (tab.historySelection && state.historySelectionAudit) {
+    const expectedTitle = tab.historySelection.mode === 'weekly' ? '週次データ' : '日次データ';
+    if (state.historySelectionAudit.mode !== tab.historySelection.mode) issues.push('Stationhead history table mode does not match the requested capture state');
+    if (state.historySelectionAudit.range !== tab.historySelection.range) issues.push('Stationhead history range does not match the requested capture state');
+    if (state.historySelectionAudit.title !== expectedTitle) issues.push('Stationhead history title does not match the selected granularity');
+    if (!state.historySelectionAudit.rows || !state.historySelectionAudit.visibleRows || !state.historySelectionAudit.painted) issues.push('Stationhead selected history state has no rendered data');
+  }
   if (state.playedPeriodVisible === false) issues.push('selected playback period is outside the visible date strip');
   if (playedTracksWaitTimedOut) issues.push('played-tracks data was not rendered within 20 seconds');
   if (playedTracksMode && state.playedTracksAudit && (state.playedTracksAudit.total === '—' || state.playedTracksAudit.unique === '—')) {
     issues.push('played-tracks summary metrics remained placeholders');
   }
   if (playedTracksMode && state.playedTracksAudit?.rowCount === 0) issues.push('played-tracks table has no rows');
+  if (tab.playedTracksSelection && state.playedTracksSelectionAudit
+      && (!state.playedTracksSelectionAudit.weekly || !state.playedTracksSelectionAudit.weekLabels
+        || !state.playedTracksSelectionAudit.selectedPeriod || !state.playedTracksSelectionAudit.rowCount)) {
+    issues.push('Stationhead weekly played-track state is incomplete');
+  }
   if (historyWaitTimedOut) issues.push('history data or chart was not rendered within 20 seconds');
   if (leaderboardWaitTimedOut) issues.push('leaderboard data was not rendered within 20 seconds');
   if (leaderboardMode && state.leaderboardAudit) {
@@ -612,7 +752,7 @@ async function auditViewport(browser, baseUrl, viewport, outDir) {
   const views = [];
   for (const tab of tabs) {
     try {
-      const routeStates = tab.mode === 'kkbox' ? kkboxAuditRoutes(tab) : [tab];
+      const routeStates = auditRouteStates(tab);
       for (const routeState of routeStates) {
         views.push(await inspectView(page, routeState, viewport, outDir));
       }
