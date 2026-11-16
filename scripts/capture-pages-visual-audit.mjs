@@ -299,24 +299,34 @@ async function inspectView(page, tab, viewport, outDir) {
   if (tab.playedTracksSelection?.weekly) {
     try {
       const panel = page.locator('.dashboard-view:not([hidden]) .stationhead-channel-view:not([hidden]) [data-stationhead-panel="played-tracks"]:not([hidden])');
-      const beforeTotal = (await panel.locator('[data-role="played-total"]').textContent())?.trim() || '';
+      const body = panel.locator('[data-role="played-tbody"]');
+      const beforeMutation = await body.evaluate((element) => {
+        element.dataset.pagesAuditMutationCount = '0';
+        const observer = new MutationObserver(() => {
+          element.dataset.pagesAuditMutationCount = String(Number(element.dataset.pagesAuditMutationCount || 0) + 1);
+          observer.disconnect();
+        });
+        observer.observe(element, { childList: true, subtree: true, characterData: true });
+        return Number(element.dataset.pagesAuditMutationCount);
+      });
       const checkbox = panel.locator('[data-role="played-week"]');
       if (!await checkbox.isChecked()) await checkbox.check();
-      await page.waitForFunction((previousTotal) => {
+      await page.waitForFunction((previousMutation) => {
         const view = document.querySelector('.dashboard-view:not([hidden]) .stationhead-channel-view:not([hidden]) [data-stationhead-panel="played-tracks"]:not([hidden])');
         const checkbox = view?.querySelector('[data-role="played-week"]');
         const periods = [...(view?.querySelectorAll('[data-role="played-periods"] button') || [])];
         const selected = periods.find((button) => button.classList.contains('is-selected'));
-        const total = view?.querySelector('[data-role="played-total"]')?.textContent?.trim() || '';
-        const bodyRows = view?.querySelectorAll('[data-role="played-tbody"] > tr').length || 0;
+        const body = view?.querySelector('[data-role="played-tbody"]');
+        const bodyRows = body?.querySelectorAll('tr').length || 0;
+        const mutation = Number(body?.dataset.pagesAuditMutationCount || 0);
         return checkbox?.checked === true
           && periods.length > 0
           && periods.every((button) => (button.textContent || '').includes('(週)'))
           && selected
           && (selected.textContent || '').includes('(週)')
-          && total !== '' && total !== '—' && total !== previousTotal
+          && mutation > previousMutation
           && bodyRows > 0;
-      }, beforeTotal, { timeout: 20_000 });
+      }, beforeMutation, { timeout: 20_000 });
     } catch {
       playedTracksSelectionWaitTimedOut = true;
     }
