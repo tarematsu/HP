@@ -11,7 +11,7 @@ const tracksTable = musicServiceTable({
   className: 'amazon-table',
   wrapClassName: 'table-fit-mobile',
   colgroupHtml: '<colgroup><col class="amazon-rank-col"><col class="amazon-rank-col"><col class="amazon-artist-col"><col></colgroup>',
-  headers: ['順位', '前日比', 'アーティスト', '曲名'],
+  headers: ['順位', '前日比', 'グループ', '曲名'],
   bodyId: 'amazonMusicTbody',
 });
 
