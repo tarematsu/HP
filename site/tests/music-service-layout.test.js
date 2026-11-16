@@ -94,7 +94,7 @@ test('music-service sub-tabs remain a single horizontally scrollable row', () =>
 });
 
 test('Amazon Music rank table uses a concise first-column heading', () => {
-  assert.match(amazon, /headers: \['順位', '前日比', 'アーティスト', '曲名'\]/);
+  assert.match(amazon, /headers: \\['順位', '前日比', 'グループ', '曲名'\\]/);
   assert.doesNotMatch(amazon, /headers: \['Amazon Music総合順位'/);
 });
 
