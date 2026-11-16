@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { auditRoutes, kkboxAuditRoutes } from '../scripts/capture-pages-visual-audit.mjs';
+import {
+  auditRoutes,
+  auditRouteStates,
+  kkboxAuditRoutes,
+  playedTracksAuditRoutes,
+  stationheadHistoryAuditRoutes,
+} from '../scripts/capture-pages-visual-audit.mjs';
 import { NAVIGATION } from '../site/public/dashboard-navigation-config.js';
 
 const source = readFileSync(new URL('../scripts/capture-pages-visual-audit.mjs', import.meta.url), 'utf8');
@@ -129,4 +135,44 @@ test('visual audit verifies KKBOX category, period, chart and history state befo
   assert.match(source, /kkboxJapaneseHistoryBody/);
   assert.match(source, /KKBOX selected category does not match/);
   assert.match(source, /KKBOX selected period does not match/);
+});
+
+
+test('visual audit captures daily and weekly Stationhead history at every range for Buddies and Ohisama', () => {
+  const routes = auditRoutes();
+  for (const mode of ['past', 'hinata-past']) {
+    const route = routes.find((item) => item.mode === mode);
+    const states = stationheadHistoryAuditRoutes(route);
+    assert.equal(states.length, 7);
+    assert.deepEqual(
+      states.map(({ historySelection }) => `${historySelection.mode}/${historySelection.range}`).sort(),
+      [
+        'daily/180', 'daily/30', 'daily/365',
+        'weekly/180', 'weekly/30', 'weekly/365', 'weekly/all',
+      ],
+    );
+    assert.ok(states.every(({ panel }) => panel.startsWith('history-')));
+    assert.equal(auditRouteStates(route).length, 8, 'the default daily/all state plus seven variants are captured');
+  }
+});
+
+test('visual audit captures the weekly played-track toggle for Buddies and Ohisama', () => {
+  const routes = auditRoutes();
+  for (const mode of ['played-tracks', 'hinata-played-tracks']) {
+    const route = routes.find((item) => item.mode === mode);
+    const states = playedTracksAuditRoutes(route);
+    assert.equal(states.length, 1);
+    assert.equal(states[0].playedTracksSelection.weekly, true);
+    assert.equal(states[0].panel, 'weekly');
+    assert.equal(auditRouteStates(route).length, 2, 'the default daily state plus weekly state are captured');
+  }
+});
+
+test('visual audit waits for the selected Stationhead history and played-track controls before capture', () => {
+  assert.match(source, /historySelectionWaitTimedOut/);
+  assert.match(source, /data-history-table-mode/);
+  assert.match(source, /data-history-range/);
+  assert.match(source, /playedTracksSelectionWaitTimedOut/);
+  assert.match(source, /data-role="played-week"/);
+  assert.match(source, /Stationhead weekly played-track state is incomplete/);
 });
