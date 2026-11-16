@@ -20,3 +20,12 @@
   .amazon-rank-col:nth-child(2) { width: 62px; }
   .amazon-artist-col { width: 64px; }
 }
+
+@media (max-width: 760px) {
+  .amazon-table :is(th, td).amazon-rank-number,
+  .amazon-table td.amazon-artist-name,
+  .amazon-table th:nth-child(3) {
+    white-space: nowrap;
+    overflow-wrap: normal;
+  }
+}
