@@ -96,7 +96,7 @@ test('Amazon Music uses the shared music-service metadata and section layout whi
   assert.match(shell, /櫻坂46/);
   assert.match(shell, /乃木坂46/);
   assert.match(shell, /日向坂46/);
-  assert.match(shell, /headers: \['順位', '前日比', 'アーティスト', '曲名'\]/);
+  assert.match(shell, /headers: \\['順位', '前日比', 'グループ', '曲名'\\]/);
   assert.match(musicCss, /\.music-service-section/);
   assert.doesNotMatch(shell, /dashboardSummary|dashboardSummaryItem|dashboardDataCard|dashboardChartCard/);
 });
