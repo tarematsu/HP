@@ -225,6 +225,28 @@ async function inspectView(page, tab, viewport, outDir) {
       leaderboardWaitTimedOut = true;
     }
   }
+  let followersWaitTimedOut = false;
+  if (tab.mode === 'followers') {
+    try {
+      await page.waitForFunction((viewId) => {
+        const view = document.getElementById(viewId);
+        if (!view || view.hidden) return false;
+        const updatedAt = view.querySelector('#followersUpdatedAt')?.textContent?.trim();
+        const cadence = view.querySelector('#followersCadence')?.textContent?.trim();
+        const notice = view.querySelector('#followersNotice');
+        const body = view.querySelector('#followersTbody');
+        return Boolean(
+          (updatedAt && updatedAt !== '-')
+          || (cadence && cadence !== '-')
+          || body?.children.length
+          || (notice && !notice.hidden && (notice.textContent || '').trim()),
+        );
+      }, route.viewId, { timeout: 20_000 });
+    } catch {
+      followersWaitTimedOut = true;
+    }
+  }
+
   let listeningPartyWaitTimedOut = false;
   let nogizakaBroadcastWaitTimedOut = false;
   if (listeningPartyMode) {
@@ -584,6 +606,19 @@ async function inspectView(page, tab, viewport, outDir) {
         chartVisible: visible(document.getElementById('leaderboardChart')),
         emptyVisible: visible(document.getElementById('leaderboardChartEmpty')),
       } : null,
+      followersAudit: route.mode === 'followers' ? (() => {
+        const view = document.getElementById(route.viewId);
+        const notice = view?.querySelector('#followersNotice');
+        const body = view?.querySelector('#followersTbody');
+        const updatedAt = view?.querySelector('#followersUpdatedAt')?.textContent?.trim() || '';
+        const cadence = view?.querySelector('#followersCadence')?.textContent?.trim() || '';
+        const noticeText = visible(notice) ? (notice.textContent || '').trim() : '';
+        const rowCount = body?.children.length || 0;
+        return {
+          updatedAt, cadence, notice: noticeText, rowCount,
+          rendered: Boolean((updatedAt && updatedAt !== '-') || (cadence && cadence !== '-') || rowCount || noticeText),
+        };
+      })() : null,
       listeningPartyAudit: route.mode === 'broadcasts' ? {
         officialChartPainted: Number(document.getElementById('chart')?.dataset.sakurazakaMaxMinute || 0) > 0,
         officialTableReady: document.getElementById('thead')?.closest('table')?.dataset.officialPartyReadModel === 'complete',
@@ -655,6 +690,10 @@ async function inspectView(page, tab, viewport, outDir) {
   }
   if (historyWaitTimedOut) issues.push('history data or chart was not rendered within 20 seconds');
   if (leaderboardWaitTimedOut) issues.push('leaderboard data was not rendered within 20 seconds');
+  if (followersWaitTimedOut) issues.push('followers data or explicit empty/error state was not rendered within 20 seconds');
+  if (tab.mode === 'followers' && state.followersAudit && !state.followersAudit.rendered) {
+    issues.push('followers metadata, table, and notice remained unrendered');
+  }
   if (leaderboardMode && state.leaderboardAudit) {
     const audit = state.leaderboardAudit;
     if (!audit.cadence || audit.cadence === '-') issues.push('leaderboard metadata was not rendered');
