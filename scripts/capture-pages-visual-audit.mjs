@@ -122,6 +122,12 @@ export function auditRouteStates(route) {
   ];
 }
 
+export function stationheadViewSelector(viewId) {
+  const id = String(viewId || '');
+  if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(id)) throw new Error(`Invalid Stationhead view id: ${id}`);
+  return `#${id}.stationhead-channel-view:not([hidden])`;
+}
+
 async function inspectView(page, tab, viewport, outDir) {
   const historyMode = tab.section === 'stationhead' && ['daily', 'weekly', 'monthly'].includes(tab.mode);
   const channelHistoryMode = tab.section === 'stationhead' && ['past', 'hinata-past'].includes(tab.mode);
@@ -142,6 +148,7 @@ async function inspectView(page, tab, viewport, outDir) {
   // Network idle can occur before the selected view becomes visible, especially
   // on slower tablet layouts. Never save a screenshot of the previous/empty shell.
   const route = ROUTES[tab.mode];
+  const channelViewSelector = route?.viewId ? stationheadViewSelector(route.viewId) : null;
   let routeWaitTimedOut = false;
   if (route?.viewId) {
     try {
@@ -175,9 +182,10 @@ async function inspectView(page, tab, viewport, outDir) {
   let channelHistoryWaitTimedOut = false;
   if (channelHistoryMode) {
     try {
-      await page.waitForFunction(() => {
-        const root = document.querySelector('.stationhead-channel-view:not([hidden])');
-        const panel = root?.querySelector('[data-stationhead-panel="history"]:not([hidden])');
+      await page.waitForFunction((viewId) => {
+        const root = document.getElementById(viewId);
+        if (!root || root.hidden) return false;
+        const panel = root.querySelector('[data-stationhead-panel="history"]:not([hidden])');
         if (!root || !panel || root.dataset.historyRows == null) return false;
         const rowCount = Number(root.dataset.historyRows);
         const body = panel.querySelector('[data-role="daily-tbody"]');
@@ -185,7 +193,7 @@ async function inspectView(page, tab, viewport, outDir) {
         const failed = notice && !notice.hidden && /データの取得に失敗|初期化に失敗/.test(notice.textContent || '');
         const explicitEmpty = rowCount === 0 && Boolean(body?.children.length);
         return failed || explicitEmpty || (rowCount > 0 && root.dataset.historyPainted === 'true');
-      }, null, { timeout: 20_000 });
+      }, route?.viewId || '', { timeout: 20_000 });
     } catch {
       channelHistoryWaitTimedOut = true;
     }
@@ -217,6 +225,28 @@ async function inspectView(page, tab, viewport, outDir) {
       leaderboardWaitTimedOut = true;
     }
   }
+  let followersWaitTimedOut = false;
+  if (tab.mode === 'followers') {
+    try {
+      await page.waitForFunction((viewId) => {
+        const view = document.getElementById(viewId);
+        if (!view || view.hidden) return false;
+        const updatedAt = view.querySelector('#followersUpdatedAt')?.textContent?.trim();
+        const cadence = view.querySelector('#followersCadence')?.textContent?.trim();
+        const notice = view.querySelector('#followersNotice');
+        const body = view.querySelector('#followersTbody');
+        return Boolean(
+          (updatedAt && updatedAt !== '-')
+          || (cadence && cadence !== '-')
+          || body?.children.length
+          || (notice && !notice.hidden && (notice.textContent || '').trim()),
+        );
+      }, route.viewId, { timeout: 20_000 });
+    } catch {
+      followersWaitTimedOut = true;
+    }
+  }
+
   let listeningPartyWaitTimedOut = false;
   let nogizakaBroadcastWaitTimedOut = false;
   if (listeningPartyMode) {
@@ -253,14 +283,15 @@ async function inspectView(page, tab, viewport, outDir) {
   if (tab.historySelection) {
     try {
       const { mode, range } = tab.historySelection;
-      const root = page.locator('.dashboard-view:not([hidden]) .stationhead-channel-view:not([hidden])').first();
+      const root = page.locator(channelViewSelector);
       const selectedMode = await root.locator('[data-history-table-mode][aria-pressed="true"]')
         .getAttribute('data-history-table-mode').catch(() => null);
       if (selectedMode !== mode) {
         const previousRows = Number(await root.getAttribute('data-history-rows') || 0);
         await root.locator(`button[data-history-table-mode="${mode}"]`).click();
-        await page.waitForFunction(({ mode: requestedMode, previousRows: before }) => {
-          const view = document.querySelector('.dashboard-view:not([hidden]) .stationhead-channel-view:not([hidden])');
+        await page.waitForFunction(({ viewId, mode: requestedMode, previousRows: before }) => {
+          const view = document.getElementById(viewId);
+          if (!view || view.hidden) return false;
           const button = view?.querySelector(`[data-history-table-mode="${requestedMode}"]`);
           const rows = Number(view?.dataset.historyRows || 0);
           const title = view?.querySelector('[data-role="history-table-title"]')?.textContent?.trim();
@@ -270,7 +301,7 @@ async function inspectView(page, tab, viewport, outDir) {
             && rows > 0 && rows !== before
             && view?.dataset.historyPainted === 'true'
             && bodyRows > 0;
-        }, { mode, previousRows }, { timeout: 20_000 });
+        }, { viewId: route.viewId, mode, previousRows }, { timeout: 20_000 });
       }
 
       const selectedRange = await root.locator('[data-history-range].active')
@@ -278,8 +309,9 @@ async function inspectView(page, tab, viewport, outDir) {
       if (selectedRange !== range) {
         await root.locator(`button[data-history-range="${range}"]`).click();
       }
-      await page.waitForFunction(({ mode: requestedMode, range: requestedRange }) => {
-        const view = document.querySelector('.dashboard-view:not([hidden]) .stationhead-channel-view:not([hidden])');
+      await page.waitForFunction(({ viewId, mode: requestedMode, range: requestedRange }) => {
+        const view = document.getElementById(viewId);
+        if (!view || view.hidden) return false;
         const modeButton = view?.querySelector(`[data-history-table-mode="${requestedMode}"]`);
         const rangeButton = view?.querySelector(`[data-history-range="${requestedRange}"]`);
         const title = view?.querySelector('[data-role="history-table-title"]')?.textContent?.trim();
@@ -289,7 +321,7 @@ async function inspectView(page, tab, viewport, outDir) {
           && title === `${requestedMode === 'weekly' ? '週次' : '日次'}データ`
           && view?.dataset.historyPainted === 'true'
           && bodyRows > 0;
-      }, { mode, range }, { timeout: 20_000 });
+      }, { viewId: route.viewId, mode, range }, { timeout: 20_000 });
     } catch {
       historySelectionWaitTimedOut = true;
     }
@@ -298,7 +330,7 @@ async function inspectView(page, tab, viewport, outDir) {
   let playedTracksSelectionWaitTimedOut = false;
   if (tab.playedTracksSelection?.weekly) {
     try {
-      const panel = page.locator('.dashboard-view:not([hidden]) .stationhead-channel-view:not([hidden]) [data-stationhead-panel="played-tracks"]:not([hidden])');
+      const panel = page.locator(`${channelViewSelector} [data-stationhead-panel="played-tracks"]:not([hidden])`);
       const body = panel.locator('[data-role="played-tbody"]');
       const beforeMutation = await body.evaluate((element) => {
         element.dataset.pagesAuditMutationCount = '0';
@@ -311,8 +343,9 @@ async function inspectView(page, tab, viewport, outDir) {
       });
       const checkbox = panel.locator('[data-role="played-week"]');
       if (!await checkbox.isChecked()) await checkbox.check();
-      await page.waitForFunction((previousMutation) => {
-        const view = document.querySelector('.dashboard-view:not([hidden]) .stationhead-channel-view:not([hidden]) [data-stationhead-panel="played-tracks"]:not([hidden])');
+      await page.waitForFunction(({ viewId, previousMutation }) => {
+        const root = document.getElementById(viewId);
+        const view = root?.querySelector('[data-stationhead-panel="played-tracks"]:not([hidden])');
         const checkbox = view?.querySelector('[data-role="played-week"]');
         const periods = [...(view?.querySelectorAll('[data-role="played-periods"] button') || [])];
         const selected = periods.find((button) => button.classList.contains('is-selected'));
@@ -326,7 +359,7 @@ async function inspectView(page, tab, viewport, outDir) {
           && (selected.textContent || '').includes('(週)')
           && mutation > previousMutation
           && bodyRows > 0;
-      }, beforeMutation, { timeout: 20_000 });
+      }, { viewId: route.viewId, previousMutation: beforeMutation }, { timeout: 20_000 });
     } catch {
       playedTracksSelectionWaitTimedOut = true;
     }
@@ -388,14 +421,15 @@ async function inspectView(page, tab, viewport, outDir) {
   let playedTracksWaitTimedOut = false;
   if (playedTracksMode) {
     try {
-      await page.waitForFunction(() => {
-        const panel = document.querySelector('.dashboard-view:not([hidden]) [data-stationhead-panel="played-tracks"]:not([hidden])');
+      await page.waitForFunction((viewId) => {
+        const root = document.getElementById(viewId);
+        const panel = root?.querySelector('[data-stationhead-panel="played-tracks"]:not([hidden])');
         if (!panel) return false;
         const total = panel.querySelector('[data-role="played-total"]')?.textContent?.trim();
         const unique = panel.querySelector('[data-role="played-unique"]')?.textContent?.trim();
         const body = panel.querySelector('[data-role="played-tbody"]');
         return Boolean(total && total !== '—' && unique && unique !== '—' && body && body.children.length > 0);
-      }, null, { timeout: 20_000 });
+      }, route?.viewId || '', { timeout: 20_000 });
     } catch {
       playedTracksWaitTimedOut = true;
     }
@@ -517,7 +551,7 @@ async function inspectView(page, tab, viewport, outDir) {
       title: document.title,
       historyAudit: window.__pagesAuditHistory || null,
       channelHistory: ['past', 'hinata-past'].includes(route.mode) ? (() => {
-        const panel = document.querySelector('.stationhead-channel-view:not([hidden])');
+        const panel = document.getElementById(route.viewId);
         const historyPanel = panel?.querySelector('[data-stationhead-panel="history"]:not([hidden])');
         return {
           rows: Number(panel?.dataset.historyRows || 0),
@@ -526,7 +560,7 @@ async function inspectView(page, tab, viewport, outDir) {
         };
       })() : null,
       historySelectionAudit: route.historySelection ? (() => {
-        const panel = document.querySelector('.stationhead-channel-view:not([hidden])');
+        const panel = document.getElementById(route.viewId);
         const historyPanel = panel?.querySelector('[data-stationhead-panel="history"]:not([hidden])');
         return {
           mode: historyPanel?.querySelector('[data-history-table-mode][aria-pressed="true"]')?.dataset.historyTableMode || '',
@@ -538,13 +572,13 @@ async function inspectView(page, tab, viewport, outDir) {
         };
       })() : null,
       playedPeriodVisible: ['played-tracks', 'hinata-played-tracks'].includes(route.mode) ? (() => {
-        const selected = document.querySelector('.dashboard-view:not([hidden]) .played-tracks-period.is-selected');
+        const selected = document.querySelector(`#${route.viewId} .played-tracks-period.is-selected`);
         if (!selected) return false;
         const item = selected.getBoundingClientRect(); const strip = selected.closest('.played-tracks-period-scroller').getBoundingClientRect();
         return item.left >= strip.left - 1 && item.right <= strip.right + 1;
       })() : null,
       playedTracksAudit: playedTracksMode ? (() => {
-        const panel = document.querySelector('.dashboard-view:not([hidden]) [data-stationhead-panel="played-tracks"]:not([hidden])');
+        const panel = document.querySelector(`#${route.viewId} [data-stationhead-panel="played-tracks"]:not([hidden])`);
         const total = panel?.querySelector('[data-role="played-total"]')?.textContent?.trim() || '';
         const unique = panel?.querySelector('[data-role="played-unique"]')?.textContent?.trim() || '';
         const body = panel?.querySelector('[data-role="played-tbody"]');
@@ -555,7 +589,7 @@ async function inspectView(page, tab, viewport, outDir) {
         };
       })() : null,
       playedTracksSelectionAudit: route.playedTracksSelection ? (() => {
-        const panel = document.querySelector('.dashboard-view:not([hidden]) [data-stationhead-panel="played-tracks"]:not([hidden])');
+        const panel = document.querySelector(`#${route.viewId} [data-stationhead-panel="played-tracks"]:not([hidden])`);
         const periods = [...(panel?.querySelectorAll('[data-role="played-periods"] button') || [])];
         return {
           weekly: panel?.querySelector('[data-role="played-week"]')?.checked === true,
@@ -572,6 +606,19 @@ async function inspectView(page, tab, viewport, outDir) {
         chartVisible: visible(document.getElementById('leaderboardChart')),
         emptyVisible: visible(document.getElementById('leaderboardChartEmpty')),
       } : null,
+      followersAudit: route.mode === 'followers' ? (() => {
+        const view = document.getElementById(route.viewId);
+        const notice = view?.querySelector('#followersNotice');
+        const body = view?.querySelector('#followersTbody');
+        const updatedAt = view?.querySelector('#followersUpdatedAt')?.textContent?.trim() || '';
+        const cadence = view?.querySelector('#followersCadence')?.textContent?.trim() || '';
+        const noticeText = visible(notice) ? (notice.textContent || '').trim() : '';
+        const rowCount = body?.children.length || 0;
+        return {
+          updatedAt, cadence, notice: noticeText, rowCount,
+          rendered: Boolean((updatedAt && updatedAt !== '-') || (cadence && cadence !== '-') || rowCount || noticeText),
+        };
+      })() : null,
       listeningPartyAudit: route.mode === 'broadcasts' ? {
         officialChartPainted: Number(document.getElementById('chart')?.dataset.sakurazakaMaxMinute || 0) > 0,
         officialTableReady: document.getElementById('thead')?.closest('table')?.dataset.officialPartyReadModel === 'complete',
@@ -610,7 +657,7 @@ async function inspectView(page, tab, viewport, outDir) {
         };
       })() : null,
     };
-  }, { route: tab, playedTracksMode });
+  }, { route: { ...tab, viewId: route?.viewId || '' }, playedTracksMode });
 
   const name = `${viewport.name}-${String(tab.index + 1).padStart(2, '0')}-${slug(`${tab.mode}${tab.panel ? `-${tab.panel}` : ''}`)}`;
   const screenshot = join(outDir, `${name}.png`);
@@ -643,6 +690,10 @@ async function inspectView(page, tab, viewport, outDir) {
   }
   if (historyWaitTimedOut) issues.push('history data or chart was not rendered within 20 seconds');
   if (leaderboardWaitTimedOut) issues.push('leaderboard data was not rendered within 20 seconds');
+  if (followersWaitTimedOut) issues.push('followers data or explicit empty/error state was not rendered within 20 seconds');
+  if (tab.mode === 'followers' && state.followersAudit && !state.followersAudit.rendered) {
+    issues.push('followers metadata, table, and notice remained unrendered');
+  }
   if (leaderboardMode && state.leaderboardAudit) {
     const audit = state.leaderboardAudit;
     if (!audit.cadence || audit.cadence === '-') issues.push('leaderboard metadata was not rendered');
