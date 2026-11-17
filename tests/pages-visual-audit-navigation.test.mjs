@@ -184,3 +184,12 @@ test('visual audit scopes Stationhead controls to the selected dashboard view', 
   assert.ok(source.includes('page.locator(channelViewSelector)'));
   assert.equal(source.includes('.dashboard-view:not([hidden]) .stationhead-channel-view:not([hidden])'), false);
 });
+
+test('visual audit waits for the lazy followers view to render metadata and table or notice', () => {
+  assert.match(source, /followersWaitTimedOut/);
+  assert.match(source, /followersUpdatedAt/);
+  assert.match(source, /followersCadence/);
+  assert.match(source, /followersTbody/);
+  assert.match(source, /followersAudit/);
+  assert.match(source, /followers metadata, table, and notice remained unrendered/);
+});
