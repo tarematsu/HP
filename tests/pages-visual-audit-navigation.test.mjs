@@ -181,6 +181,6 @@ test('visual audit waits for the selected Stationhead history and played-track c
 test('visual audit scopes Stationhead controls to the selected dashboard view', () => {
   assert.equal(stationheadViewSelector('currentView'), '#currentView.stationhead-channel-view:not([hidden])');
   assert.equal(stationheadViewSelector('hinataView'), '#hinataView.stationhead-channel-view:not([hidden])');
-  assert.match(source, /page\\.locator\\(channelViewSelector\\)/);
-  assert.doesNotMatch(source, /\\.dashboard-view:not\\(\\[hidden\\]\\) \\.stationhead-channel-view:not\\(\\[hidden\\]\\)/);
+  assert.ok(source.includes('page.locator(channelViewSelector)'));
+  assert.equal(source.includes('.dashboard-view:not([hidden]) .stationhead-channel-view:not([hidden])'), false);
 });
