@@ -7,6 +7,7 @@ import {
   kkboxAuditRoutes,
   playedTracksAuditRoutes,
   stationheadHistoryAuditRoutes,
+  stationheadViewSelector,
 } from '../scripts/capture-pages-visual-audit.mjs';
 import { NAVIGATION } from '../site/public/dashboard-navigation-config.js';
 
@@ -175,4 +176,11 @@ test('visual audit waits for the selected Stationhead history and played-track c
   assert.match(source, /playedTracksSelectionWaitTimedOut/);
   assert.match(source, /data-role="played-week"/);
   assert.match(source, /Stationhead weekly played-track state is incomplete/);
+});
+
+test('visual audit scopes Stationhead controls to the selected dashboard view', () => {
+  assert.equal(stationheadViewSelector('currentView'), '#currentView.stationhead-channel-view:not([hidden])');
+  assert.equal(stationheadViewSelector('hinataView'), '#hinataView.stationhead-channel-view:not([hidden])');
+  assert.match(source, /page\\.locator\\(channelViewSelector\\)/);
+  assert.doesNotMatch(source, /\\.dashboard-view:not\\(\\[hidden\\]\\) \\.stationhead-channel-view:not\\(\\[hidden\\]\\)/);
 });
