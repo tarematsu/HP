@@ -142,7 +142,7 @@ export function kugouJapanSourcePeriodIssues(payload, now = Date.now(), maxAge =
     return ['Kugou Japan chart latest provider period is missing'];
   }
   const periodAt = Date.parse(`${latest}T00:00:00Z`);
-  if (!Number.isFinite(periodAt)) return [`Kugou Japan chart latest provider period is invalid (${latest})`];
+  if (!Number.isFinite(periodAt) || new Date(periodAt).toISOString().slice(0, 10) !== latest) return [`Kugou Japan chart latest provider period is invalid (${latest})`];
   if (periodAt > now + 5 * 60_000) return [`Kugou Japan chart latest provider period is in the future (${latest})`];
   if (now - periodAt > maxAge) {
     return [`Kugou Japan chart latest provider period is stale (${latest}, ${Math.floor((now - periodAt) / DAY)} days old)`];
