@@ -138,7 +138,7 @@ export function kkboxSourcePeriodIssues(payload, now = Date.now(), maxAge = 9 * 
 // the provider period independently and allow four days across a weekend.
 export function kugouJapanSourcePeriodIssues(payload, now = Date.now(), maxAge = 4 * DAY) {
   const latest = String(payload?.kugou_japan_chart?.coverage?.latest_available || '').slice(0, 10);
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(latest)) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(latest)) {
     return ['Kugou Japan chart latest provider period is missing'];
   }
   const periodAt = Date.parse(`${latest}T00:00:00Z`);
