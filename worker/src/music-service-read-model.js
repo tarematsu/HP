@@ -17,6 +17,7 @@ import {
   QQ_ANIME_HISTORY_VIEW_KEY,
 } from './qq-anime-chart-history-view.js';
 import { KKBOX_JAPANESE_HISTORY_VIEW_KEY } from './kkbox-japanese-chart-history.js';
+import { KUGOU_JAPAN_CHART_HISTORY_VIEW_KEY } from './kugou-japan-chart-collector.js';
 import {
   KUGOU_JAPAN_CHART_COVERAGE,
   KUGOU_JAPAN_CHART_HISTORY,
@@ -340,6 +341,23 @@ function scopedSourceUpdatedAt(scoped) {
   ]);
 }
 
+export function kugouJapanChartReadModel(view = null) {
+  const dynamicHistory = Array.isArray(view?.history) ? view.history : [];
+  const history = [...KUGOU_JAPAN_CHART_HISTORY, ...dynamicHistory]
+    .sort((a, b) => String(b.published_at || '').localeCompare(String(a.published_at || ''))
+      || Number(a.rank) - Number(b.rank)
+      || String(a.canonical_artist || '').localeCompare(String(b.canonical_artist || '')));
+  return {
+    coverage:{
+      ...KUGOU_JAPAN_CHART_COVERAGE,
+      ...(view?.coverage && typeof view.coverage === 'object' ? view.coverage : {}),
+      legacy_covered_dates:KUGOU_JAPAN_CHART_COVERAGE.legacy_covered_dates,
+      entries:history.length,
+    },
+    history,
+  };
+}
+
 export function musicServiceReadModelPayload(snapshot, service, updatedAt = Date.now()) {
   const serviceId = String(service || '').trim();
   const scoped = musicServiceSnapshot(snapshot, serviceId);
@@ -363,10 +381,7 @@ export function musicServiceReadModelPayload(snapshot, service, updatedAt = Date
   }
   if (serviceId === 'kkbox') payload.kkbox_japanese_chart = chartHistoryReadModel(snapshot?.kkboxJapaneseChart);
   if (serviceId === 'kugou_music') {
-    payload.kugou_japan_chart = {
-      coverage:KUGOU_JAPAN_CHART_COVERAGE,
-      history:KUGOU_JAPAN_CHART_HISTORY,
-    };
+    payload.kugou_japan_chart = kugouJapanChartReadModel(snapshot?.kugouJapanChart);
     payload.kugou_acg_chart = qqJapanChartReadModel(snapshot?.kugouAcgChart, snapshot?.kugouAcgChartIndex);
   }
   return payload;
@@ -385,10 +400,7 @@ export function musicServicesReadModelPayload(snapshot, updatedAt = Date.now()) 
     qq_japan_chart: qqJapanChartReadModel(snapshot?.qqJapanChart, snapshot?.qqJapanChartIndex),
     qq_anime_chart: qqAnimeChartReadModel(snapshot?.qqAnimeChart, snapshot?.qqAnimeChartIndex),
     kkbox_japanese_chart: chartHistoryReadModel(snapshot?.kkboxJapaneseChart),
-    kugou_japan_chart: {
-      coverage: KUGOU_JAPAN_CHART_COVERAGE,
-      history: KUGOU_JAPAN_CHART_HISTORY,
-    },
+    kugou_japan_chart: kugouJapanChartReadModel(snapshot?.kugouJapanChart),
     kugou_acg_chart: qqJapanChartReadModel(snapshot?.kugouAcgChart, snapshot?.kugouAcgChartIndex),
     services: (Array.isArray(snapshot?.services) ? snapshot.services : []).map(normalizedCollectorState),
   };
@@ -467,12 +479,14 @@ async function hydrateServicePayload(env, baseSnapshot, service, generatedAt, pr
       payload.kkbox_japanese_chart = chartHistoryReadModel(view);
       extraTimes.push(view?.updated_at);
     } else if (serviceId === 'kugou_music') {
-      const [acgView, acgIndex] = await Promise.all([
+      const [japanView, acgView, acgIndex] = await Promise.all([
+        r2Json(r2, KUGOU_JAPAN_CHART_HISTORY_VIEW_KEY),
         r2Json(r2, KUGOU_ACG_HISTORY_VIEW_KEY),
         r2Json(r2, KUGOU_ACG_HISTORY_INDEX_KEY),
       ]);
+      payload.kugou_japan_chart = kugouJapanChartReadModel(japanView);
       payload.kugou_acg_chart = qqJapanChartReadModel(acgView, acgIndex);
-      extraTimes.push(acgView?.updated_at, acgIndex?.updated_at);
+      extraTimes.push(japanView?.updated_at, acgView?.updated_at, acgIndex?.updated_at);
     }
   }
 

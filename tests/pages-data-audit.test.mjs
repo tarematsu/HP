@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { missingRecentDays, timestampIssue, leaderboardSourceIssues, spotifyDeltaOutlierIssues, kkboxSourcePeriodIssues, auditPagesData } from '../scripts/pages-data-audit.mjs';
+import { missingRecentDays, timestampIssue, leaderboardSourceIssues, spotifyDeltaOutlierIssues, kkboxSourcePeriodIssues, kugouJapanSourcePeriodIssues, auditPagesData } from '../scripts/pages-data-audit.mjs';
 const now = Date.parse('2026-10-10T16:00:00Z');
 test('daily audit respects UTC closure and detects internal missing dates', () => {
   assert.deepEqual(missingRecentDays(['2026-10-06', '2026-10-08', '2026-10-09'], now), ['2026-10-07']);
@@ -44,6 +44,20 @@ test('KKBOX date-only provider periods allow the Saturday collection window but 
   assert.deepEqual(kkboxSourcePeriodIssues(payload, nineDayBoundary), []);
   assert.equal(kkboxSourcePeriodIssues(payload, nineDayBoundary + 1).length, keys.length);
 });
+
+test('Kugou Japan chart freshness follows the provider period, not the catalog collector timestamp', () => {
+  const fresh = { kugou_japan_chart: { coverage: { latest_available: '2026-10-09 10:10:01' } } };
+  assert.deepEqual(kugouJapanSourcePeriodIssues(fresh, now), []);
+
+  const stale = { kugou_japan_chart: { coverage: { latest_available: '2026-10-05 10:10:01' } } };
+  assert.match(kugouJapanSourcePeriodIssues(stale, now)[0], /latest provider period is stale/);
+  assert.match(kugouJapanSourcePeriodIssues({}, now)[0], /period is missing/);
+  assert.match(
+    kugouJapanSourcePeriodIssues({ kugou_japan_chart: { coverage: { latest_available: '2026-10-11' } } }, now)[0],
+    /period is in the future/,
+  );
+});
+
 
 test('HTTP failures remain separate data failures rather than successful screenshots', async () => {
   const report = await auditPagesData(async () => { throw new Error('HTTP 503'); }, now);

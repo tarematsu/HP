@@ -127,6 +127,8 @@ test('Kugou owns Japan and ACG chart history', () => {
   assert.match(kugouShell, /酷狗音乐 日本榜 グループ別最高順位推移/);
   assert.match(kugouShell, /酷狗音乐 ACG新歌榜 グループ別最高順位推移/);
   assert.match(kugouRuntime, /payload\?\.kugou_japan_chart/);
+  assert.match(kugouShell, /kugouJapanChartSourceDate/);
+  assert.match(kugouRuntime, /setText\('kugouJapanChartSourceDate'/);
   assert.match(kugouRuntime, /payload\?\.kugou_acg_chart/);
   assert.match(kugouRuntime, /loadMusicServiceReadModel\(SERVICE\)/);
   assert.match(kugouRuntime, /renderRankHistoryChart/);

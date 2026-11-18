@@ -8,6 +8,7 @@ import {
   upsertKkboxJapaneseHistoryArtifacts,
 } from './kkbox-japanese-chart-history.js';
 import { collectKugouMusic } from './regional-music-kugou.js';
+import { collectLatestKugouJapanHistory } from './kugou-japan-chart-collector.js';
 import {
   collectQqMusic,
   fetchQqAnimeToplist,
@@ -219,10 +220,36 @@ export async function collectKugouAcgToR2(env, observedAt = Date.now(), fetchImp
   return result;
 }
 
-export async function runRegionalScheduledJob(cron, env, observedAt = Date.now(), fetchImpl = fetch) {
+export async function collectKugouJapanChartToR2(
+  env,
+  observedAt = Date.now(),
+  fetchImpl = fetch,
+  publishReadModel = publishRegionalMusicReadModelForService,
+) {
+  const collectedAt = Math.max(Number(observedAt) || 0, Date.now());
+  const result = await collectLatestKugouJapanHistory({
+    load: (key) => loadJson(env?.PAGES_RESPONSE_R2, key),
+    save: (key, value) => saveJson(env?.PAGES_RESPONSE_R2, key, value),
+    fetchImpl,
+    now: collectedAt,
+  });
+  if (result.stale) {
+    throw new Error(`Kugou Japan chart source regressed to ${result.period}; stored period is ${result.stored_period}`);
+  }
+  if (result.changed) await publishReadModel(env, 'kugou_music', collectedAt);
+  return result;
+}
+
+export async function runRegionalScheduledJob(cron, env, observedAt = Date.now(), fetchImpl = fetch, dependencies = {}) {
   if (cron === KKBOX_WEEKLY_CRON) return collectRegionalServiceToR2('kkbox', env, observedAt, fetchImpl);
   if (cron === QQ_WEEKLY_CRON) return collectRegionalServiceToR2('qq_music', env, observedAt, fetchImpl);
-  if (cron === KUGOU_WEEKDAY_CRON) return collectRegionalServiceToR2('kugou_music', env, observedAt, fetchImpl);
+  if (cron === KUGOU_WEEKDAY_CRON) {
+    const collectService = dependencies.collectRegionalServiceToR2 || collectRegionalServiceToR2;
+    const collectJapanChart = dependencies.collectKugouJapanChartToR2 || collectKugouJapanChartToR2;
+    const result = await collectService('kugou_music', env, observedAt, fetchImpl);
+    const japanChart = await collectJapanChart(env, observedAt, fetchImpl, dependencies.publishReadModel);
+    return { ...result, japan_chart:japanChart };
+  }
   if (cron === KUGOU_ACG_WEEKLY_CRON) return collectKugouAcgToR2(env, observedAt, fetchImpl);
   if (cron === QQ_TOPLIST_POLL_CRON) return collectQqToplistsToR2(env, observedAt, fetchImpl);
   throw new Error(`unsupported regional scheduled cron: ${cron || '(empty)'}`);

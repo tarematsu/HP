@@ -8,6 +8,7 @@ const rankingSections = [
     chartSectionId: 'kugouJapanChartSection', group: 'japan',
     historySectionId: 'kugouJapanHistorySection',
     chartTitle: '酷狗音乐 日本榜 グループ別最高順位推移',
+    leadingChartHtml: '<p><small id="kugouJapanChartSourceDate">日本榜 最新公開日: -</small></p>',
     historyTitle: '酷狗音乐 日本榜 ランクイン履歴',
     chartId: 'kugouJapanRankChart',
     legendId: 'kugouJapanRankLegend',

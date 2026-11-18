@@ -133,6 +133,24 @@ export function kkboxSourcePeriodIssues(payload, now = Date.now(), maxAge = 9 * 
   return issues;
 }
 
+// Kugou's Japan new-song chart is published on workdays. Its catalog collector
+// can succeed while the ranking endpoint keeps returning an old volume, so check
+// the provider period independently and allow four days across a weekend.
+export function kugouJapanSourcePeriodIssues(payload, now = Date.now(), maxAge = 4 * DAY) {
+  const latest = String(payload?.kugou_japan_chart?.coverage?.latest_available || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(latest)) {
+    return ['Kugou Japan chart latest provider period is missing'];
+  }
+  const periodAt = Date.parse(`${latest}T00:00:00Z`);
+  if (!Number.isFinite(periodAt) || new Date(periodAt).toISOString().slice(0, 10) !== latest) return [`Kugou Japan chart latest provider period is invalid (${latest})`];
+  if (periodAt > now + 5 * 60_000) return [`Kugou Japan chart latest provider period is in the future (${latest})`];
+  const ageDays = Math.floor((now - periodAt) / DAY);
+  if (ageDays > Math.floor(maxAge / DAY)) {
+    return [`Kugou Japan chart latest provider period is stale (${latest}, ${ageDays} days old)`];
+  }
+  return [];
+}
+
 export async function auditPagesData(getJson, now = Date.now()) {
   const checks = [];
   const check = async (name, path, inspect) => {
@@ -180,6 +198,7 @@ export async function auditPagesData(getJson, now = Date.now()) {
         ])
         : [timestampIssue(p.source_updated_at, now, hours * HOUR)];
       if (service === 'kkbox') issues.push(...kkboxSourcePeriodIssues(p, now));
+      if (service === 'kugou-music') issues.push(...kugouJapanSourcePeriodIssues(p, now));
       return issues;
     }));
   }
