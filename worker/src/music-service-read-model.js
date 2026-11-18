@@ -344,7 +344,6 @@ function scopedSourceUpdatedAt(scoped) {
 export function kugouJapanChartReadModel(view = null) {
   const dynamicHistory = Array.isArray(view?.history) ? view.history : [];
   const history = [...KUGOU_JAPAN_CHART_HISTORY, ...dynamicHistory]
-    .filter((item) => item?.canonical_artist && Number.isFinite(Number(item?.rank)) && Number(item.rank) > 0)
     .sort((a, b) => String(b.published_at || '').localeCompare(String(a.published_at || ''))
       || Number(a.rank) - Number(b.rank)
       || String(a.canonical_artist || '').localeCompare(String(b.canonical_artist || '')));
