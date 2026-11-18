@@ -25,7 +25,7 @@ function validDate(value) {
 function issueNumber(volume) {
   for (const value of [volume?.issue, volume?.volname, volume?.voltitle]) {
     const text = String(value || '').trim();
-    if (/^20\d{6}$/.test(text)) continue;
+    if (dateFromVolume(text)) continue;
     const match = text.match(/(\d{1,3})(?:期)?$/);
     const number = Number(match?.[1]);
     if (Number.isInteger(number) && number >= 1 && number <= 999) return number;
@@ -41,8 +41,8 @@ export function kugouJapanVolumeList(payload) {
     for (const volume of Array.isArray(group?.vols) ? group.vols : []) {
       const volid = String(volume?.volid ?? '').trim();
       if (!volid || seen.has(volid)) continue;
-      const publishedAt = dateFromVolume(volume?.volname) || dateFromVolume(volume?.voltitle);
-      if (!validDate(publishedAt)) continue;
+      const publishedAt = [volume?.volname, volume?.voltitle].map(dateFromVolume).find(validDate) || '';
+      if (!publishedAt) continue;
       seen.add(volid);
       volumes.push({
         period:publishedAt,
@@ -54,7 +54,12 @@ export function kugouJapanVolumeList(payload) {
       });
     }
   }
-  return volumes.sort((a, b) => b.published_at.localeCompare(a.published_at) || Number(b.volid) - Number(a.volid));
+  return volumes.sort((a, b) => {
+    const dateOrder = b.published_at.localeCompare(a.published_at);
+    if (dateOrder) return dateOrder;
+    const numericOrder = Number(b.volid) - Number(a.volid);
+    return Number.isFinite(numericOrder) ? numericOrder : String(b.volid).localeCompare(String(a.volid));
+  });
 }
 
 export function kugouJapanVolumeUrl() {
@@ -91,8 +96,8 @@ async function fetchJson(fetchImpl, url) {
   const response = await fetchImpl(url, {
     headers:{
       accept:'application/json,text/plain,*/*',
-      referer:'https://www.kugou.com/',
-      'user-agent':'Mozilla/5.0 compatible; skrzk-pages-kugou-japan/1.0',
+      referer:'http://m.kugou.com/',
+      'user-agent':'Mozilla/5.0',
     },
     signal:AbortSignal.timeout(30_000),
   });
