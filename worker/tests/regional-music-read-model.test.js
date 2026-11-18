@@ -7,6 +7,7 @@ import {
   publishMusicServiceReadModel,
   qqAnimeChartReadModel,
   qqJapanChartReadModel,
+  kugouJapanChartReadModel,
   chartHistoryReadModel,
   musicServiceReadModelKey,
   musicServicesReadModelPayload,
@@ -16,6 +17,8 @@ import { pagesR2ResponseKey } from '../src/pages-response-r2.js';
 import { QQ_JAPAN_HISTORY_VIEW_KEY } from '../src/qq-japan-chart-history-view.js';
 import { QQ_ANIME_HISTORY_INDEX_KEY, QQ_ANIME_HISTORY_VIEW_KEY } from '../src/qq-anime-chart-history-view.js';
 import { KKBOX_JAPANESE_HISTORY_VIEW_KEY } from '../src/kkbox-japanese-chart-history.js';
+import { KUGOU_JAPAN_CHART_HISTORY_VIEW_KEY } from '../src/kugou-japan-chart-collector.js';
+import { KUGOU_ACG_HISTORY_INDEX_KEY, KUGOU_ACG_HISTORY_VIEW_KEY } from '../src/kugou-acg-chart-history.js';
 
 test('music service read model normalizes collector health for retained services', () => {
   const payload = musicServicesReadModelPayload({
@@ -122,6 +125,67 @@ test('music service read model includes complete Kugou Japan chart seed and cove
   assert.equal(best('sakurazaka46'), 15);
   assert.equal(best('nogizaka46'), 1);
   assert.equal(best('hinatazaka46'), 4);
+});
+
+test('Kugou Japan chart read model merges daily R2 history with the static seed', () => {
+  const normalized = kugouJapanChartReadModel({
+    updated_at:970,
+    coverage:{
+      latest_available:'2026-11-13',
+      latest_checked:'2026-11-14',
+      latest_rank_in:'2026-11-13',
+    },
+    history:[{
+      period:'2026-11-13',
+      published_at:'2026-11-13',
+      canonical_artist:'nogizaka46',
+      rank:10,
+      title:'君ロス',
+      track_id:'japan-101',
+    }],
+  });
+  assert.equal(normalized.history.length, 1497);
+  assert.equal(normalized.coverage.latest_available, '2026-11-13');
+  assert.equal(normalized.coverage.latest_checked, '2026-11-14');
+  assert.equal(normalized.coverage.entries, 1497);
+  assert.ok(normalized.history.some((row) => row.track_id === 'japan-101' && row.rank === 10));
+});
+
+test('Kugou service publication injects the Japan chart R2 view and source timestamp', async () => {
+  const writes = [];
+  const japan = {
+    updated_at:970,
+    coverage:{ latest_available:'2026-11-13', latest_checked:'2026-11-14' },
+    history:[{
+      period:'2026-11-13',
+      published_at:'2026-11-13',
+      canonical_artist:'nogizaka46',
+      rank:10,
+      title:'君ロス',
+      track_id:'japan-101',
+    }],
+  };
+  const acg = { updated_at:960, coverage:{}, history:[] };
+  await publishMusicServiceReadModel({
+    OTHER_DB:{},
+    PAGES_RESPONSE_R2:{
+      put(){},
+      async get(key) {
+        if (key === KUGOU_JAPAN_CHART_HISTORY_VIEW_KEY) return { async json() { return structuredClone(japan); } };
+        if (key === KUGOU_ACG_HISTORY_VIEW_KEY) return { async json() { return structuredClone(acg); } };
+        if (key === KUGOU_ACG_HISTORY_INDEX_KEY) return { async json() { return { updated_at:955, weeks:{} }; } };
+        return null;
+      },
+    },
+  }, 'kugou_music', 1000, {
+    loadReadModel:async()=>({ artists:[], tracks:[], releases:[], playlists:[], memberships:[], services:[] }),
+    saveR2Response:async(_r2,key,body)=>{ writes.push({ key, body:JSON.parse(body) }); return { storage:'r2', bytes:body.length }; },
+  });
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].key, 'music-service:kugou_music');
+  assert.equal(writes[0].body.kugou_japan_chart.coverage.latest_available, '2026-11-13');
+  assert.ok(writes[0].body.kugou_japan_chart.history.some((row) => row.track_id === 'japan-101'));
+  assert.equal(writes[0].body.source_updated_at, 970);
 });
 
 test('YouTube Music collector metadata exposes free public metrics without account-only fields', () => {
