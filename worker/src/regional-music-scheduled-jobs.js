@@ -226,16 +226,17 @@ export async function collectKugouJapanChartToR2(
   fetchImpl = fetch,
   publishReadModel = publishRegionalMusicReadModelForService,
 ) {
+  const collectedAt = Math.max(Number(observedAt) || 0, Date.now());
   const result = await collectLatestKugouJapanHistory({
     load: (key) => loadJson(env?.PAGES_RESPONSE_R2, key),
     save: (key, value) => saveJson(env?.PAGES_RESPONSE_R2, key, value),
     fetchImpl,
-    now: observedAt,
+    now: collectedAt,
   });
   if (result.stale) {
     throw new Error(`Kugou Japan chart source regressed to ${result.period}; stored period is ${result.stored_period}`);
   }
-  if (result.changed) await publishReadModel(env, 'kugou_music', observedAt);
+  if (result.changed) await publishReadModel(env, 'kugou_music', collectedAt);
   return result;
 }
 
