@@ -6,20 +6,18 @@ export const KUGOU_JAPAN_CHART_RANK_ID = 31312;
 export const KUGOU_JAPAN_CHART_HISTORY_VIEW_KEY = 'regional-music/kugou_music/japan-chart-history/view.json';
 export const KUGOU_JAPAN_CHART_TARGETS = Object.freeze(Object.keys(REGIONAL_MUSIC_ARTISTS));
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 function dateFromVolume(value) {
   const text = String(value || '');
-  const compact = text.match(/(?:^|\\D)(20\\d{2})(\\d{2})(\\d{2})(?:\\D|$)/);
+  const compact = text.match(/(?:^|\D)(20\d{2})(\d{2})(\d{2})(?:\D|$)/);
   if (compact) return `${compact[1]}-${compact[2]}-${compact[3]}`;
-  const separated = text.match(/(?:^|\\D)(20\\d{2})[-/.](\\d{1,2})[-/.](\\d{1,2})(?:\\D|$)/);
+  const separated = text.match(/(?:^|\D)(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})(?:\D|$)/);
   if (!separated) return '';
   return `${separated[1]}-${String(Number(separated[2])).padStart(2, '0')}-${String(Number(separated[3])).padStart(2, '0')}`;
 }
 
 function validDate(value) {
   const text = String(value || '');
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(text)) return false;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
   const parsed = new Date(`${text}T00:00:00Z`);
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === text;
 }
@@ -27,8 +25,8 @@ function validDate(value) {
 function issueNumber(volume) {
   for (const value of [volume?.issue, volume?.volname, volume?.voltitle]) {
     const text = String(value || '').trim();
-    if (/^20\\d{6}$/.test(text)) continue;
-    const match = text.match(/(\\d{1,3})(?:期)?$/);
+    if (/^20\d{6}$/.test(text)) continue;
+    const match = text.match(/(\d{1,3})(?:期)?$/);
     const number = Number(match?.[1]);
     if (Number.isInteger(number) && number >= 1 && number <= 999) return number;
   }
@@ -108,7 +106,7 @@ async function fetchJson(fetchImpl, url) {
 
 function artistCandidates(entry) {
   const filename = String(entry?.filename || entry?.FileName || '');
-  const artistPart = filename.split(/\\s+-\\s+/, 1)[0] || '';
+  const artistPart = filename.split(/\s+-\s+/, 1)[0] || '';
   return [
     artistPart,
     entry?.singername,
@@ -131,7 +129,7 @@ function canonicalArtistFromEntry(entry) {
 
 function titleFromEntry(entry) {
   const filename = String(entry?.filename || entry?.FileName || '').trim();
-  const split = filename.match(/^.+?\\s+-\\s+(.+)$/u);
+  const split = filename.match(/^.+?\s+-\s+(.+)$/u);
   return String(entry?.remark || entry?.songname || entry?.SongName || split?.[1] || filename || '').trim() || null;
 }
 
