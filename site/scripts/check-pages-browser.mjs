@@ -180,6 +180,20 @@ try {
             ] });
           }
         }
+
+        if (url.pathname === '/api/amazon-music') {
+          Object.assign(fixture, {
+            tracks: [
+              { amazon_music_id: 'amazon-mobile-rank-1', track_id: 1, group_name: '櫻坂46',
+                title: '愛 MUST BE', display_title: '愛 MUST BE', amazon_rank: 4012, rank_change: 1764,
+                is_title_track: true },
+              { amazon_music_id: 'amazon-mobile-rank-2', track_id: 2, group_name: '乃木坂46',
+                title: '君ロス', display_title: '君ロス', amazon_rank: 554, rank_change: -26,
+                is_title_track: true },
+            ],
+            history: [],
+          });
+        }
         if (url.pathname === '/api/kkbox') {
           // Test a real, renderable KKBOX read model rather than the generic
           // fixture (which lacks "service" and exercises only error fallback).
@@ -326,11 +340,36 @@ try {
       if (mode === 'amazon-music') {
         const table = page.locator('#amazonMusicTbody').locator('xpath=ancestor::table[1]');
         await table.waitFor({ state: 'visible', timeout: 15000 });
-        const header = table.locator('thead th').first();
-        assert.equal((await header.textContent()).trim(), '順位', `${label}: Amazon Music rank header stays concise`);
+        const amazonLayout = await table.evaluate((node) => {
+          const headers = [...node.tHead.rows[0].cells].map((cell) => cell.textContent.trim());
+          const headerHeights = [...node.tHead.rows[0].cells].map((cell) => cell.getBoundingClientRect().height);
+          const cells = [...(node.tBodies[0]?.rows[0]?.cells || [])];
+          return {
+            headers,
+            headerHeights,
+            values: cells.slice(0, 3).map((cell) => ({
+              text: cell.textContent.trim(),
+              whiteSpace: getComputedStyle(cell).whiteSpace,
+              overflowWrap: getComputedStyle(cell).overflowWrap,
+              height: cell.getBoundingClientRect().height,
+              scrollWidth: cell.scrollWidth,
+              clientWidth: cell.clientWidth,
+            })),
+          };
+        });
+        assert.deepEqual(amazonLayout.headers, ['順位', '前日比', 'グループ', '曲名'],
+          `${label}: Amazon Music table headers`);
+        assert.deepEqual(amazonLayout.values.map((cell) => cell.whiteSpace), ['nowrap', 'nowrap', 'nowrap'],
+          `${label}: Amazon Music numeric and group columns stay on one line`);
+        assert.ok(amazonLayout.values.every((cell) => cell.overflowWrap === 'normal'),
+          `${label}: Amazon Music rank and group values do not break anywhere`);
         if (width <= 390) {
-          const height = await header.evaluate((node) => node.getBoundingClientRect().height);
-          assert.ok(height <= 56, `${label}: Amazon Music rank header does not wrap into multiple lines (height=${height})`);
+          assert.ok(amazonLayout.headerHeights[2] <= 40,
+            `${label}: Amazon Music group heading remains on one line (height=${amazonLayout.headerHeights[2]})`);
+          assert.ok(amazonLayout.values.every((cell) => cell.height <= 32),
+            `${label}: Amazon Music rank and group cells remain single-line ( ${JSON.stringify(amazonLayout.values)} )`);
+          assert.ok(amazonLayout.values.every((cell) => cell.scrollWidth <= cell.clientWidth + 1),
+            `${label}: Amazon Music rank and group values fit their columns`);
         }
       }
       if (mode === 'apple-music') {
